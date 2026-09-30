@@ -7,7 +7,7 @@ after a timer: unobserved cookies require a fresh store or explicit domain opt-i
 import hashlib
 import json
 
-from PyQt6.QtCore import QObject, QUrl
+from PyQt6.QtCore import QDateTime, QObject, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
 
 from utils import load_json, save_json
@@ -32,8 +32,25 @@ def fingerprint(cookie):
     return hashlib.sha256(bytes(cookie.toRawForm())).hexdigest()
 
 
+def delete_exact(store, cookie):
+    """Qt's deleteCookie filters by name+URL, potentially matching other paths.
+
+    Expire the exact canonical name/domain/path instead, preserving host-only
+    scope. This does not modify Chromium's SQLite files directly.
+    """
+    expired = QNetworkCookie(cookie)
+    expired.setExpirationDate(QDateTime.fromSecsSinceEpoch(1))
+    domain = cookie_site(cookie)
+    if not cookie.domain().startswith("."):
+        expired.setDomain("")
+    origin = QUrl(
+        f"{'https' if cookie.isSecure() else 'http'}://{domain}{cookie.path() or '/'}"
+    )
+    store.setCookie(expired, origin)
+
+
 class CookieSharing(QObject):
-    def __init__(self, config, global_profile, parent=None):
+    def __init__(self, config, global_profile, parent=None, observe_global=True):
         super().__init__(parent)
         self.config = config
         self.global_profile = global_profile
@@ -55,8 +72,9 @@ class CookieSharing(QObject):
             else set()
         )
         store = global_profile.cookieStore()
-        store.cookieAdded.connect(self.global_added)
-        store.cookieRemoved.connect(self.global_removed)
+        if observe_global:
+            store.cookieAdded.connect(self.global_added)
+            store.cookieRemoved.connect(self.global_removed)
         store.loadAllCookies()
 
     def register(self, name, profile, directory, fresh):
@@ -100,7 +118,10 @@ class CookieSharing(QObject):
 
     def local(self, name, domain):
         state = self.states[name]
-        return state["block_all"] or any(
+        blocked = state["block_all"] and not any(
+            related_domains(domain, site) for site in state["opt_in"]
+        )
+        return blocked or any(
             related_domains(domain, site) for site in state["local_sites"]
         )
 
@@ -125,7 +146,7 @@ class CookieSharing(QObject):
         self.global_cookies.pop(key, None)
         self.deleted.add(key)
         save_json(self.deletions_file, sorted(self.deleted))
-        for name in self.profiles:
+        for name in tuple(self.enabled):
             observed = self.observed[name].get(key)
             inherited = self.states[name]["inherited"].get(key)
             if (
@@ -134,7 +155,7 @@ class CookieSharing(QObject):
                 and not self.local(name, cookie_site(cookie))
             ):
                 self.pending[name][key] = None
-                self.profiles[name].cookieStore().deleteCookie(observed)
+                delete_exact(self.profiles[name].cookieStore(), observed)
 
     def target_added(self, name, cookie):
         if self.closed or (key := cookie_key(cookie)) is None:
@@ -146,16 +167,24 @@ class CookieSharing(QObject):
             self.pending[name].pop(key, None)
             self.states[name]["inherited"][key] = digest
             self.save(name)
-            if key in self.deleted and not self.local(name, cookie_site(cookie)):
+            if (
+                name in self.enabled
+                and key in self.deleted
+                and not self.local(name, cookie_site(cookie))
+            ):
                 self.pending[name][key] = None
-                self.profiles[name].cookieStore().deleteCookie(cookie)
+                delete_exact(self.profiles[name].cookieStore(), cookie)
             return
         inherited = self.states[name]["inherited"].get(key)
         if inherited != digest:
             self.mark_local(name, cookie_site(cookie))
-        elif key in self.deleted and not self.local(name, cookie_site(cookie)):
+        elif (
+            name in self.enabled
+            and key in self.deleted
+            and not self.local(name, cookie_site(cookie))
+        ):
             self.pending[name][key] = None
-            self.profiles[name].cookieStore().deleteCookie(cookie)
+            delete_exact(self.profiles[name].cookieStore(), cookie)
         elif name in self.enabled and key in self.global_cookies:
             self.copy(name, self.global_cookies[key])
 
@@ -204,6 +233,14 @@ class CookieSharing(QObject):
         self.profiles[name].cookieStore().setCookie(copy, origin)
 
     def reconcile(self, name):
+        for key, cookie in list(self.observed[name].items()):
+            if (
+                key in self.deleted
+                and self.states[name]["inherited"].get(key) == fingerprint(cookie)
+                and not self.local(name, cookie_site(cookie))
+            ):
+                self.pending[name][key] = None
+                delete_exact(self.profiles[name].cookieStore(), cookie)
         for cookie in list(self.global_cookies.values()):
             self.copy(name, cookie)
 
@@ -212,6 +249,7 @@ class CookieSharing(QObject):
             return
         if cookies is None:
             self.states[name]["block_all"] = True
+            self.states[name]["opt_in"] = []
             self.save(name)
         else:
             for cookie in cookies:
@@ -220,7 +258,6 @@ class CookieSharing(QObject):
     def use_global(self, name, domain):
         domain = domain.lower().strip().lstrip(".")
         state = self.states[name]
-        state["block_all"] = False
         state["local_sites"] = [
             s for s in state["local_sites"] if not related_domains(s, domain)
         ]
@@ -230,7 +267,7 @@ class CookieSharing(QObject):
         for key, cookie in list(self.observed[name].items()):
             if related_domains(cookie_site(cookie), domain):
                 self.pending[name][key] = None
-                self.profiles[name].cookieStore().deleteCookie(cookie)
+                delete_exact(self.profiles[name].cookieStore(), cookie)
                 self.observed[name].pop(key, None)
                 state["inherited"].pop(key, None)
         self.save(name)

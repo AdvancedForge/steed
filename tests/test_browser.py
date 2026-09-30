@@ -2,8 +2,13 @@
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
+import threading
+import time
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -11,12 +16,16 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWebEngineCore import QWebEnginePermission
-from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
+from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 
+from ad_blocker import FilterEngine
 from browser_window import BrowserWindow
 from config import Config
+from cookie_manager import CookieInfo
+from cookie_sharing import cookie_site
 from main import configure_chromium_flags
 from tab_manager import TabManager, TabState
+from ui.cookie_dialog import CookieDialog
 from ui.settings_dialog import SettingsDialog
 from ui.tab_bar import TabBar
 from utils import load_json, sanitize_profile_name, save_json
@@ -103,11 +112,53 @@ class BrowserTests(unittest.TestCase):
         cls.app.setQuitOnLastWindowClosed(False)
         cls.directories = []
 
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/file":
+                    payload = b"verified-download\n" * 4096
+                    content_type = "application/octet-stream"
+                elif self.path == "/advert.js":
+                    payload = b"window.adLoaded = true;"
+                    content_type = "text/javascript"
+                elif self.path == "/filters":
+                    payload = (
+                        "[Adblock Plus 2.0]\n" + "||fixture-ads.example^\n" * 20
+                    ).encode()
+                    content_type = "text/plain"
+                else:
+                    payload = b'<html><head><title>Fixture</title></head><body><div class="advert">Ad</div><div>Content</div><script src="/advert.js"></script></body></html>'
+                    content_type = "text/html"
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                if self.path == "/file":
+                    self.send_header(
+                        "Content-Disposition", 'attachment; filename="fixture.bin"'
+                    )
+                self.end_headers()
+                try:
+                    self.wfile.write(payload)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # A deliberately blocked/cancelled request closed it.
+
+            def log_message(self, *args):
+                pass
+
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.server_thread = threading.Thread(
+            target=cls.server.serve_forever, daemon=True
+        )
+        cls.server_thread.start()
+        cls.origin = f"http://127.0.0.1:{cls.server.server_port}"
+
     @classmethod
     def tearDownClass(cls):
         # Chromium finishes background storage work as the application shuts
         # down. Keep temporary profile directories until that work is joined.
         sip.delete(cls.app)
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.server_thread.join()
         for directory in cls.directories:
             directory.cleanup()
 
@@ -130,6 +181,291 @@ class BrowserTests(unittest.TestCase):
             self.window.close()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.home_patch.stop()
+
+    def wait_for(self, predicate, timeout=8):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        self.fail("Timed out waiting for local Chromium fixture")
+
+    def javascript(self, script):
+        result = []
+        self.window.tabs[self.window.current_tab_index].page().runJavaScript(
+            script, result.append
+        )
+        self.wait_for(lambda: bool(result))
+        return result[0]
+
+    def test_closed_tab_restores_position_group_and_identity(self):
+        window = self.window
+        window._new_tab(self.local_page)
+        window._set_tab_group_existing(1, "Work")
+        identity = window.tabs[1].tab_id
+        window._new_tab(self.local_page)
+        window._close_tab(1)
+        window._restore_closed_tab()
+        self.assertEqual(window.tabs[1].tab_id, identity)
+        self.assertEqual(window.tabs[1].group, "Work")
+        self.assertEqual(window.current_tab_index, 1)
+        self.assertFalse(window.restore_tab_action.isEnabled())
+
+    def test_closed_tab_profile_isolation(self):
+        self.window._new_tab(self.local_page)
+        self.window._close_tab(1)
+        self.window._switch_to_profile("search")
+        self.window._restore_closed_tab()
+        self.assertEqual(len(self.window.tabs), 1)
+        self.window._switch_to_profile("default")
+        self.window._restore_closed_tab()
+        self.assertEqual(len(self.window.tabs), 2)
+
+    def test_groups_rename_collapse_reorder_delete_and_restore(self):
+        window = self.window
+        window._new_tab(self.local_page)
+        window._new_tab(self.local_page)
+        window._set_tab_group_existing(1, "Work")
+        window._set_tab_group_existing(2, "Work")
+        group_id = window.tabs[1].group_id
+        window.rename_group(group_id, "Renamed")
+        window.toggle_group(group_id)
+        self.assertTrue(window.tab_bar.tab_bar.isTabVisible(1))
+        self.assertFalse(window.tab_bar.tab_bar.isTabVisible(2))
+        window.move_group(group_id)
+        self.assertEqual(window.tabs[0].group_id, group_id)
+        self.assertEqual(window.tabs[1].group_id, group_id)
+        window._switch_to_profile("search")
+        window._switch_to_profile("default")
+        self.assertEqual(window.tabs[0].group, "Renamed")
+        self.assertTrue(window.tab_manager.groups[group_id].collapsed)
+        window.delete_group(group_id)
+        self.assertTrue(all(tab.group_id is None for tab in window.tabs))
+        self.assertTrue(all(window.tab_bar.tab_bar.isTabVisible(i) for i in range(3)))
+
+    def test_windows_share_profiles_until_last_owner_closes(self):
+        second = BrowserWindow()
+        profile = self.window.profile_manager.current_profile
+        self.assertIs(second.profile_manager.current_profile, profile)
+        second.close()
+        self.assertFalse(sip.isdeleted(profile))
+        self.window.close()
+        self.assertTrue(sip.isdeleted(profile))
+
+    def test_user_agent_applies_at_creation_and_clear_restores_default(self):
+        manager = self.window.profile_manager
+        original = manager.current_profile.httpUserAgent()
+        self.assertNotIn("Chrome/122.0.0.0", original)
+        self.window.config.set("user_agent_override", "Fixture-UA")
+        manager.refresh_settings()
+        manager.create_profile("ua-test")
+        for profile in (
+            manager.get_profile("ua-test"),
+            manager.global_profile,
+            manager.search_profile,
+        ):
+            self.assertEqual(profile.httpUserAgent(), "Fixture-UA")
+        self.window.config.set("user_agent_override", "")
+        manager.refresh_settings()
+        self.assertEqual(manager.current_profile.httpUserAgent(), original)
+
+    def test_native_global_cookies_and_local_override(self):
+        manager = self.window.profile_manager
+        sharing = manager.registry.sharing
+        global_store = manager.global_profile.cookieStore()
+        target_store = manager.current_profile.cookieStore()
+        cookie = QNetworkCookie(b"test_session", b"shared")
+        cookie.setDomain(".cookie-fixture.example")
+        cookie.setPath("/")
+        global_store.setCookie(cookie, QUrl("https://cookie-fixture.example"))
+        self.wait_for(
+            lambda: any(
+                c.value() == b"shared" for c in sharing.observed["default"].values()
+            )
+        )
+        cookie.setValue(b"independent")
+        target_store.setCookie(cookie, QUrl("https://cookie-fixture.example"))
+        self.wait_for(lambda: sharing.local("default", "cookie-fixture.example"))
+        cookie.setValue(b"changed-global")
+        global_store.setCookie(cookie, QUrl("https://cookie-fixture.example"))
+        self.wait_for(
+            lambda: any(
+                c.value() == b"changed-global" for c in sharing.global_cookies.values()
+            )
+        )
+        values = {
+            bytes(c.value())
+            for c in sharing.observed["default"].values()
+            if cookie_site(c) == "cookie-fixture.example"
+        }
+        self.assertEqual(values, {b"independent"})
+
+    def test_native_host_only_cookie_scope(self):
+        sharing = self.window.profile_manager.registry.sharing
+        cookie = QNetworkCookie(b"host_cookie", b"value")
+        cookie.setPath("/")
+        self.window.profile_manager.global_profile.cookieStore().setCookie(
+            cookie, QUrl("https://host-fixture.example")
+        )
+        self.wait_for(
+            lambda: any(
+                bytes(c.name()) == b"host_cookie"
+                for c in sharing.observed["default"].values()
+            )
+        )
+        target = next(
+            c
+            for c in sharing.observed["default"].values()
+            if bytes(c.name()) == b"host_cookie"
+        )
+        self.assertEqual(target.domain(), "host-fixture.example")
+
+    def test_native_global_update_and_logout_delete_inherited_cookie(self):
+        manager = self.window.profile_manager
+        sharing = manager.registry.sharing
+        cookie = QNetworkCookie(b"session", b"first")
+        cookie.setDomain(".update-fixture.example")
+        cookie.setPath("/")
+        store = manager.global_profile.cookieStore()
+        origin = QUrl("https://update-fixture.example")
+        store.setCookie(cookie, origin)
+        self.wait_for(
+            lambda: any(
+                bytes(c.value()) == b"first"
+                for c in sharing.observed["default"].values()
+            )
+        )
+        cookie.setValue(b"second")
+        store.setCookie(cookie, origin)
+        self.wait_for(
+            lambda: any(
+                bytes(c.value()) == b"second"
+                for c in sharing.observed["default"].values()
+            )
+        )
+        self.assertFalse(sharing.local("default", "update-fixture.example"))
+        store.deleteCookie(cookie, origin)
+        self.wait_for(lambda: not sharing.observed["default"])
+        self.assertFalse(sharing.local("default", "update-fixture.example"))
+
+    def test_inheritance_persists_and_global_loads_without_visible_tab(self):
+        data = Path(self.directory.name) / "restart"
+        data.mkdir()
+        script = Path(__file__).with_name("profile_restart.py")
+        for phase in ("write", "read"):
+            result = subprocess.run(
+                [sys.executable, str(script), "--data", str(data), "--phase", phase],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_startup_sharing_can_be_disabled(self):
+        self.window.close()
+        Config().set("global_cookie_sharing_apply_on_startup", False)
+        self.window = BrowserWindow()
+        sharing = self.window.profile_manager.registry.sharing
+        self.assertEqual(sharing.enabled, set())
+        self.window._switch_to_profile("default")
+        self.assertIn("default", sharing.enabled)
+
+    def test_cookie_viewer_filtered_selection_targets_displayed_cookie(self):
+        manager = self.window.cookie_manager
+        first = QNetworkCookie(b"first", b"1")
+        first.setDomain(".first.example")
+        second = QNetworkCookie(b"second", b"2")
+        second.setDomain(".second.example")
+        manager.cookies = [CookieInfo(first), CookieInfo(second)]
+        dialog = CookieDialog(manager, self.window)
+        dialog.filter_input.setText("second")
+        dialog.table.selectRow(0)
+        with (
+            patch.object(
+                QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+            ),
+            patch.object(manager, "delete_cookie") as delete,
+        ):
+            dialog.delete_selected()
+        self.assertEqual(delete.call_args.args[0].name, "second")
+        dialog.accept()
+
+    def test_exact_cookie_deletion_preserves_same_name_on_other_path(self):
+        manager = self.window.cookie_manager
+        store = manager.cookie_store
+        root = QNetworkCookie(b"same_name", b"root")
+        root.setDomain(".paths-fixture.example")
+        root.setPath("/")
+        nested = QNetworkCookie(root)
+        nested.setPath("/nested")
+        nested.setValue(b"nested")
+        store.setCookie(root, QUrl("http://paths-fixture.example"))
+        store.setCookie(nested, QUrl("http://paths-fixture.example/nested"))
+        self.wait_for(lambda: len(manager.cookies) == 2)
+        target = next(c for c in manager.cookies if c.path == "/nested")
+        self.window.profile_manager.protect_cookie_deletion([target.cookie])
+        manager.delete_cookie(target)
+        self.wait_for(lambda: len(manager.cookies) == 1)
+        self.assertEqual(manager.cookies[0].path, "/")
+        self.assertEqual(manager.cookies[0].value, "root")
+
+    def test_real_download_completes_and_empty_save_cancels(self):
+        destination = Path(self.directory.name) / "fixture.bin"
+        page = self.window.tabs[0].page()
+        with patch.object(
+            QFileDialog, "getSaveFileName", return_value=(str(destination), "")
+        ):
+            page.download(QUrl(self.origin + "/file"))
+            self.wait_for(lambda: bool(self.window.download_manager.records))
+            self.wait_for(
+                lambda: any(
+                    r.state == "DownloadCompleted"
+                    for r in self.window.download_manager.records.values()
+                )
+            )
+        self.assertEqual(destination.read_bytes(), b"verified-download\n" * 4096)
+        with patch.object(
+            QFileDialog, "getSaveFileName", return_value=("", "")
+        ) as picker:
+            page.download(QUrl(self.origin + "/file"))
+            self.wait_for(lambda: picker.called)
+            self.wait_for(lambda: not self.window.download_manager.active())
+
+    def test_actual_request_filter_and_cosmetic_hiding(self):
+        self.window.adblock.engine = FilterEngine(
+            ["/advert.js$script", "127.0.0.1##.advert"]
+        )
+        loaded = []
+        self.window.tabs[0].loadFinished.connect(loaded.append)
+        self.window.tabs[0].setUrl(QUrl(self.origin + "/index"))
+        self.wait_for(lambda: any(loaded) and self.window.adblock.count > 0)
+        self.wait_for(
+            lambda: (
+                self.javascript(
+                    "getComputedStyle(document.querySelector('.advert')).display"
+                )
+                == "none"
+            )
+        )
+        self.assertFalse(self.javascript("window.adLoaded === true"))
+        self.window.config.set("adblock_exceptions", ["127.0.0.1"])
+        loaded.clear()
+        self.window.tabs[0].reload()
+        self.wait_for(lambda: bool(loaded))
+        self.assertTrue(self.javascript("window.adLoaded === true"))
+
+    def test_filter_list_update_compiles_in_worker(self):
+        service = self.window.adblock
+        with patch("ad_blocker.SOURCES", (self.origin + "/filters",)):
+            service.update()
+            self.wait_for(lambda: not service.updating)
+        self.assertTrue(
+            service.engine.blocked(
+                "https://fixture-ads.example/ad", "https://example.org", "script"
+            )
+        )
+        self.assertTrue(service.cache.exists())
 
     def test_tabs_and_profile_switching(self):
         self.window._new_tab(self.local_page, "Codec")

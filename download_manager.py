@@ -105,6 +105,17 @@ class DownloadManager(QObject):
         if key in self.private:
             self.private.discard(key)
             self.records.pop(key, None)
+        elif key in self.records and self.records[key].state in (
+            "DownloadRequested",
+            "DownloadInProgress",
+        ):
+            self.records[key].state = "Interrupted"
+            self.records[
+                key
+            ].error = "Download request was destroyed before completion."
+            self.records[key].paused = False
+            self.save()
+        self.changed.emit()
 
     def active(self):
         return [

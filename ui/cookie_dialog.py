@@ -34,6 +34,7 @@ class CookieDialog(QDialog):
 
     def update_cookies(self, cookies):
         self.cookies = cookies
+        self.status.setText(self.manager.status)
         self.filter_cookies(self.filter_input.text())
 
     def setup_ui(self) -> None:
@@ -42,6 +43,9 @@ class CookieDialog(QDialog):
         self.setMinimumSize(800, 600)
 
         layout = QVBoxLayout(self)
+        self.status = QLabel(self.manager.status)
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
 
         # Filter
         filter_layout = QHBoxLayout()
@@ -141,6 +145,10 @@ class CookieDialog(QDialog):
         if not selected_rows:
             return
 
+        # Confirmations run a nested event loop. Capture objects before live
+        # cookie updates have an opportunity to reorder the displayed rows.
+        cookies = [self.displayed_cookies[row] for row in sorted(selected_rows)]
+
         reply = QMessageBox.question(
             self,
             "Delete Cookies",
@@ -149,7 +157,6 @@ class CookieDialog(QDialog):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            cookies = [self.displayed_cookies[row] for row in sorted(selected_rows)]
             self.protect_deletion([cookie.cookie for cookie in cookies])
             for cookie in cookies:
                 self.manager.delete_cookie(cookie)
