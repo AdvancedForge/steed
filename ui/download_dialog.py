@@ -4,7 +4,15 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDesktopServices
-from PyQt6.QtWidgets import QDialog, QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
 
 
 class DownloadDialog(QDialog):
