@@ -35,6 +35,7 @@ from config import Config
 from cookie_manager import CookieManager
 from profile_manager import ProfileManager
 from tab_manager import ClosedTabHistory, TabManager, TabState
+from ui.adblock_dialog import AdBlockDialog
 from ui.address_bar import AddressBar
 from ui.cookie_dialog import CookieDialog
 from ui.download_dialog import DownloadDialog
@@ -92,6 +93,7 @@ class BrowserWindow(QMainWindow):
         self.profile_manager = ProfileManager(self.config, profile_name, self)
         self.config = self.profile_manager.config
         self.download_manager = self.profile_manager.registry.downloads
+        self.adblock = self.profile_manager.registry.adblock
         self.tab_manager = None
         self.cookie_manager = None
         self.tabs: list[BrowserTab] = []
@@ -171,6 +173,9 @@ class BrowserWindow(QMainWindow):
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(lambda: DownloadDialog(self.download_manager, self).exec())
         file_menu.addAction(downloads_action)
+        adblock_action = QAction("Ad Blocking...", self)
+        adblock_action.triggered.connect(lambda: AdBlockDialog(self.adblock, self).exec())
+        file_menu.addAction(adblock_action)
         file_menu.addSeparator()
         settings_action = QAction("Settings...", self)
         settings_action.setShortcut(QKeySequence("Ctrl+,"))
@@ -573,6 +578,8 @@ class BrowserWindow(QMainWindow):
             return
         if tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
+        if ok:
+            self.adblock.apply_cosmetic(tab)
         self._save_current_tabs()
 
     def _save_current_tabs(self):

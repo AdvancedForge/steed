@@ -10,6 +10,7 @@ from PyQt6.QtWebEngineCore import QWebEngineProfile
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication
 
+from ad_blocker import AdBlocker
 from config import Config
 from cookie_sharing import CookieSharing
 from download_manager import DownloadManager
@@ -31,12 +32,14 @@ class ProfileRegistry(QObject):
         self.defaults = {}
         self.owners = set()
         self.downloads = DownloadManager(config, self)
+        self.adblock = AdBlocker(config, self)
         self.global_profile = self.create("global", config.config_dir / "global_profile")
         self.search_profile = QWebEngineProfile(self)
         self.defaults["search"] = self.search_profile.httpUserAgent()
         self.search_profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         configure_web_settings(self.search_profile.settings())
         self.downloads.attach(self.search_profile, "search")
+        self.adblock.attach(self.search_profile)
         self.sharing = CookieSharing(config, self.global_profile, self)
         self.refresh_settings()
 
@@ -55,6 +58,7 @@ class ProfileRegistry(QObject):
             profile.setHttpUserAgent(override)
         self.profiles[name] = profile
         self.downloads.attach(profile, name)
+        self.adblock.attach(profile)
         if hasattr(self, "sharing"):
             self.sharing.register(name, profile, directory, fresh)
         return profile
@@ -107,7 +111,8 @@ class ProfileManager(QObject):
         self.registry = registry
         self.config = registry.config
         registry.owners.add(self)
-        registry.profiles_updated.connect(self.profiles_updated.emit)
+        self._profile_change_callback = self.profiles_updated.emit
+        registry.profiles_updated.connect(self._profile_change_callback)
         self.global_profile = registry.global_profile
         self.search_profile = registry.search_profile
         self._profiles = registry.profiles
@@ -229,6 +234,6 @@ class ProfileManager(QObject):
     def close(self):
         if not self._closed:
             self._closed = True
-            self.registry.profiles_updated.disconnect(self.profiles_updated.emit)
+            self.registry.profiles_updated.disconnect(self._profile_change_callback)
             self.registry.release(self)
             self.current_profile = None
