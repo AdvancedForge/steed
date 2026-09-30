@@ -1,26 +1,27 @@
 """Configuration management for the custom browser."""
-import json
-import os
+
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
+
+from utils import load_json, save_json
 
 
 class Config:
     """Manages browser configuration."""
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         self.config_dir = Path.home() / ".custom_browser"
         self.config_file = self.config_dir / "config.json"
         self.profiles_dir = self.config_dir / "profiles"
         self._ensure_directories()
         self._config = self._load_config()
-    
-    def _ensure_directories(self):
+
+    def _ensure_directories(self) -> None:
         """Create necessary directories if they don't exist."""
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
-    
-    def _load_config(self) -> Dict[str, Any]:
+
+    def _load_config(self) -> dict[str, Any]:
         """Load configuration from file."""
         default_config = {
             "default_profile": "default",
@@ -33,48 +34,42 @@ class Config:
             "global_cookie_sharing_mode": "on_switch",  # "on_switch" or "all_profiles"
             "global_cookie_sharing_apply_on_startup": True,
         }
-        
-        if self.config_file.exists():
-            try:
-                with open(self.config_file, 'r') as f:
-                    user_config = json.load(f)
-                    default_config.update(user_config)
-            except Exception:
-                pass
-        
+
+        user_config = load_json(self.config_file, default={})
+        if isinstance(user_config, dict):
+            default_config.update(user_config)
+
         return default_config
-    
-    def save_config(self):
+
+    def save_config(self) -> None:
         """Save configuration to file."""
-        with open(self.config_file, 'w') as f:
-            json.dump(self._config, f, indent=2)
-    
-    def onetime_save_config(self, configur):
-        """Save configuration to file."""
-        with open(self.config_file, 'w') as f:
-            json.dump(configur, f, indent=2)
+        save_json(self.config_file, self._config)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value."""
         return self._config.get(key, default)
-    
-    def set(self, key: str, value: Any):
+
+    def set(self, key: str, value: Any) -> None:
         """Set a configuration value."""
         self._config[key] = value
         self.save_config()
-    
+
+    def update(self, values: dict[str, Any]) -> None:
+        """Save a set of preference changes with one disk write."""
+        self._config.update(values)
+        self.save_config()
+
     @property
     def default_profile(self) -> str:
         """Get the default profile name."""
         return self.get("default_profile", "default")
-    
+
     @property
     def dark_mode(self) -> bool:
         """Check if dark mode is enabled."""
         return self.get("dark_mode", False)
-    
+
     @dark_mode.setter
-    def dark_mode(self, value: bool):
+    def dark_mode(self, value: bool) -> None:
         """Set dark mode."""
         self.set("dark_mode", value)
-

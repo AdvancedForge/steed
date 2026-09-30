@@ -1,4 +1,6 @@
-.cursor/
-.goosehints
 .venv/
 __pycache__/
+*.py[cod]
+.ruff_cache/
+core
+core.*
