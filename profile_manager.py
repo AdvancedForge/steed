@@ -5,14 +5,18 @@ from pathlib import Path
 from uuid import uuid4
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWebEngineCore import QWebEngineProfile
+from PyQt6.QtCore import QObject, QUrl, pyqtSignal
+from PyQt6.QtWebEngineCore import (
+    QWebEnginePage,
+    QWebEngineProfile,
+)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication
 
 from ad_blocker import AdBlocker
 from config import Config
-from cookie_sharing import CookieSharing
+from cookie_sharing import CookieSharing, cookie_key
+from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
 from utils import get_profile_path, sanitize_profile_name
 from webengine import configure_web_settings
@@ -29,6 +33,8 @@ class ProfileRegistry(QObject):
         super().__init__(parent)
         self.config = config
         self.profiles = {}
+        self.bootstrap_pages = {}
+        self.snapshots = {}
         self.defaults = {}
         self.owners = set()
         self.downloads = DownloadManager(config, self)
@@ -44,7 +50,12 @@ class ProfileRegistry(QObject):
         configure_web_settings(self.search_profile.settings())
         self.downloads.attach(self.search_profile, "search")
         self.adblock.attach(self.search_profile)
-        self.sharing = CookieSharing(config, self.global_profile, self)
+        self.prepare_inspection("search", self.search_profile)
+        # Confirm source identities through a full snapshot: live Qt signals
+        # cannot distinguish partitioned cookies and overwrite notifications.
+        self.sharing = CookieSharing(
+            config, self.global_profile, self, observe_global=False
+        )
         self.refresh_settings()
 
     def create(self, name, directory):
@@ -67,7 +78,36 @@ class ProfileRegistry(QObject):
         self.adblock.attach(profile)
         if hasattr(self, "sharing"):
             self.sharing.register(name, profile, directory, fresh)
+        self.prepare_inspection(name, profile)
         return profile
+
+    def prepare_inspection(self, name, profile):
+        # A profile with no page may not initialize Chromium's network context,
+        # so startup loadAllCookies alone is insufficient (notably for global).
+        page = QWebEnginePage(profile, self)
+        page.loadFinished.connect(lambda ok: profile.cookieStore().loadAllCookies())
+        self.bootstrap_pages[name] = page
+        page.setUrl(QUrl("about:blank"))
+        snapshot = CookieSnapshot(page, self)
+        self.snapshots[name] = snapshot
+        snapshot.loaded.connect(
+            lambda cookies, n=name: self.snapshot_loaded(n, cookies)
+        )
+        snapshot.failed.connect(logger.warning)
+
+    def snapshot_loaded(self, name, cookies):
+        if name == "search" or self.sharing.closed:
+            return
+        if name == "global":
+            present = {cookie_key(cookie) for cookie in cookies}
+            for key, previous in list(self.sharing.global_cookies.items()):
+                if key not in present:
+                    self.sharing.global_removed(previous)
+        for cookie in cookies:
+            if name == "global":
+                self.sharing.global_added(cookie)
+            else:
+                self.sharing.target_added(name, cookie)
 
     def get(self, name):
         if name == "search":
@@ -92,6 +132,13 @@ class ProfileRegistry(QObject):
             return
         self.sharing.closed = True
         self.downloads.cancel_active()
+        for snapshot in self.snapshots.values():
+            snapshot.close()
+            sip.delete(snapshot.frontend)
+        self.snapshots.clear()
+        for page in self.bootstrap_pages.values():
+            sip.delete(page)
+        self.bootstrap_pages.clear()
         for profile in (*self.profiles.values(), self.search_profile):
             sip.delete(profile)
         self.profiles.clear()
@@ -149,6 +196,8 @@ class ProfileManager(QObject):
         ):
             return False
         self.get_profile(name)
+        if self.config.get("global_cookie_sharing_mode", "on_switch") == "all_profiles":
+            self.registry.sharing.enable(name)
         self.registry.profiles_updated.emit()
         return True
 
@@ -196,6 +245,10 @@ class ProfileManager(QObject):
                 for w in QApplication.allWidgets()
             ):
                 return False
+            snapshot = self.registry.snapshots.pop(name)
+            snapshot.close()
+            sip.delete(snapshot.frontend)
+            sip.delete(self.registry.bootstrap_pages.pop(name))
             sip.delete(profile)
             del self._profiles[name]
             self.registry.sharing.profiles.pop(name, None)
@@ -245,6 +298,8 @@ class ProfileManager(QObject):
 
     def refresh_settings(self):
         self.registry.refresh_settings()
+        if self.config.get("global_cookie_sharing_mode", "on_switch") == "all_profiles":
+            self.propagate_global_cookies_to_all_profiles()
         for owner in self.registry.owners:
             if owner.current_profile_name in self.registry.sharing.profiles:
                 self.registry.sharing.enable(owner.current_profile_name)

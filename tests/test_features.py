@@ -67,7 +67,7 @@ class FeatureTests(unittest.TestCase):
         sharing.global_added(original)
         sharing.target_added("work", original)
         sharing.global_removed(original)
-        store.deleteCookie.assert_called_once()
+        self.assertEqual(store.setCookie.call_count, 2)
         sharing.target_removed("work", original)
         self.assertFalse(sharing.local("work", "example.org"))
 
@@ -114,8 +114,28 @@ class FeatureTests(unittest.TestCase):
         sharing.global_added(original)
         sharing.global_removed(original)
         sharing.target_added("work", original)
-        store.deleteCookie.assert_called_once()
+        self.assertEqual(store.setCookie.call_count, 2)
         self.assertIn(cookie_key(original), load_json(sharing.deletions_file))
+
+    def test_clear_all_then_reset_one_site_keeps_other_sites_blocked(self):
+        sharing, store = self.sharing()
+        sharing.global_added(cookie())
+        sharing.global_added(cookie(domain=".other.example"))
+        sharing.protect_deletion("work")
+        sharing.use_global("work", "example.org")
+        self.assertFalse(sharing.local("work", "example.org"))
+        self.assertTrue(sharing.local("work", "other.example"))
+
+    def test_inheritance_disabled_does_not_process_startup_tombstones(self):
+        sharing, store = self.sharing()
+        original = cookie()
+        sharing.global_added(original)
+        sharing.enabled.clear()
+        sharing.global_removed(original)
+        sharing.target_added("work", original)
+        self.assertEqual(store.setCookie.call_count, 1)
+        sharing.enable("work")
+        self.assertEqual(store.setCookie.call_count, 2)
 
     def test_download_restart_marks_unfinished_interrupted(self):
         save_json(

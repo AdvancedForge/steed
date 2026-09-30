@@ -4,6 +4,8 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWebEngineCore import QWebEngineProfile
 
+from cookie_sharing import delete_exact
+
 
 class CookieInfo:
     """Information about a cookie."""
@@ -39,12 +41,14 @@ class CookieManager(QObject):
     cookies_loaded = pyqtSignal(list)  # Emitted when cookies are loaded
 
     def __init__(
-        self, profile: QWebEngineProfile, parent: QObject | None = None
+        self, profile: QWebEngineProfile, parent: QObject | None = None, snapshot=None
     ) -> None:
         super().__init__(parent)
         self.profile = profile
         self.cookie_store = profile.cookieStore()
         self.cookies: list[CookieInfo] = []
+        self.snapshot = snapshot
+        self.status = "Loading stored cookies..." if snapshot else "Live cookie updates"
         self._closed = False
         self._update_timer = QTimer(self)
         self._update_timer.setSingleShot(True)
@@ -55,6 +59,21 @@ class CookieManager(QObject):
         # Connect to cookie store signals
         self.cookie_store.cookieAdded.connect(self._on_cookie_added)
         self.cookie_store.cookieRemoved.connect(self._on_cookie_removed)
+        if snapshot is not None:
+            snapshot.loaded.connect(self._on_snapshot)
+            snapshot.failed.connect(self._on_snapshot_failed)
+
+    def _on_snapshot(self, cookies):
+        self.cookies = [CookieInfo(cookie) for cookie in cookies]
+        omitted = self.snapshot.skipped_partitioned
+        self.status = "Stored and live cookies loaded" + (
+            f"; {omitted} partitioned cookies omitted (unsupported)" if omitted else ""
+        )
+        self._update_timer.start(0)
+
+    def _on_snapshot_failed(self, message):
+        self.status = message
+        self._update_timer.start(0)
 
     def close(self) -> None:
         """Detach from the store when switching profiles or closing a window."""
@@ -64,10 +83,16 @@ class CookieManager(QObject):
         self._update_timer.stop()
         self.cookie_store.cookieAdded.disconnect(self._on_cookie_added)
         self.cookie_store.cookieRemoved.disconnect(self._on_cookie_removed)
+        if self.snapshot is not None:
+            self.snapshot.loaded.disconnect(self._on_snapshot)
+            self.snapshot.failed.disconnect(self._on_snapshot_failed)
         self.deleteLater()
 
     def _on_cookie_added(self, cookie: QNetworkCookie) -> None:
         """Handle when a cookie is added."""
+        if self.snapshot is not None:
+            self.snapshot.refresh()
+            return  # Native signals omit partition identity; use confirmed data.
         cookie_info = CookieInfo(cookie)
         # Update or add to list
         existing = next(
@@ -87,6 +112,9 @@ class CookieManager(QObject):
 
     def _on_cookie_removed(self, cookie: QNetworkCookie) -> None:
         """Handle when a cookie is removed."""
+        if self.snapshot is not None:
+            self.snapshot.refresh()
+            return
         cookie_info = CookieInfo(cookie)
         self.cookies = [
             c
@@ -102,6 +130,8 @@ class CookieManager(QObject):
     def load_all_cookies(self) -> None:
         """Load all cookies from the store."""
         self.cookie_store.loadAllCookies()
+        if self.snapshot is not None:
+            self.snapshot.refresh()
 
     def get_cookies_for_domain(self, domain: str) -> list[CookieInfo]:
         """Get cookies for a specific domain."""
@@ -115,7 +145,7 @@ class CookieManager(QObject):
 
     def delete_cookie(self, cookie_info: CookieInfo) -> None:
         """Delete a specific cookie."""
-        self.cookie_store.deleteCookie(cookie_info.cookie)
+        delete_exact(self.cookie_store, cookie_info.cookie)
 
     def delete_cookies_for_domain(self, domain: str) -> None:
         """Delete all cookies for a domain."""

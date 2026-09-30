@@ -119,6 +119,11 @@ class AdBlocker(QObject):
     def applies(self, url):
         host = QUrl(url).host().lower()
         exceptions = self.config.get("adblock_exceptions", [])
+        exceptions = (
+            [site for site in exceptions if isinstance(site, str)]
+            if isinstance(exceptions, list)
+            else []
+        )
         return bool(
             self.config.get("adblock_enabled", True)
             and host

@@ -63,7 +63,7 @@ class BrowserTab(QWebEngineView):
     ):
         super().__init__(parent)
         self.profile = profile
-        self.window = window
+        self.browser_window = window
         self.group = None
         self.group_id = None
         self.tab_id = uuid4().hex
@@ -83,7 +83,7 @@ class BrowserTab(QWebEngineView):
             self.setUrl(initial_qurl)
 
     def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> "BrowserTab":
-        return self.window._new_tab(return_tab=True)
+        return self.browser_window._new_tab(return_tab=True)
 
 
 class BrowserWindow(QMainWindow):
@@ -134,7 +134,8 @@ class BrowserWindow(QMainWindow):
         self.tab_manager = TabManager(profile_path, self)
         profile = self.profile_manager.get_profile(profile_name)
 
-        self.cookie_manager = CookieManager(profile, self)
+        snapshot = self.profile_manager.registry.snapshots.get(profile_name)
+        self.cookie_manager = CookieManager(profile, self, snapshot)
         # Connect signals for tab groups
         if self.tab_manager:
             self.tab_manager.tab_state_changed.connect(
@@ -437,7 +438,7 @@ class BrowserWindow(QMainWindow):
         index: int | None = None,
     ):
         home = self.config.get("home_page", "https://www.google.com")
-        if not home or home == "about:blank":
+        if not home:
             home = "https://www.duckduckgo.com"
 
         if not url:
@@ -844,8 +845,14 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             event.accept()
             return
+        closing_owners = {self.profile_manager}
+        pending_windows = list(self._child_windows)
+        while pending_windows:
+            child = pending_windows.pop()
+            closing_owners.add(child.profile_manager)
+            pending_windows.extend(child._child_windows)
         if (
-            len(self.profile_manager.registry.owners) == 1
+            self.profile_manager.registry.owners <= closing_owners
             and self.download_manager.active()
         ):
             reply = QMessageBox.question(
