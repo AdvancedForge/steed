@@ -2,6 +2,8 @@
 
 import logging
 from pathlib import Path
+from urllib.parse import quote
+from uuid import uuid4
 
 from PyQt6 import sip
 from PyQt6.QtCore import Qt, QUrl
@@ -34,7 +36,7 @@ from PyQt6.QtWidgets import (
 from config import Config
 from cookie_manager import CookieManager
 from profile_manager import ProfileManager
-from tab_manager import TabManager, TabState
+from tab_manager import ClosedTabHistory, TabManager, TabState
 from ui.address_bar import AddressBar
 from ui.cookie_dialog import CookieDialog
 from ui.settings_dialog import SettingsDialog
@@ -62,6 +64,7 @@ class BrowserTab(QWebEngineView):
         self.profile = profile
         self.window = window
         self.group = None
+        self.tab_id = uuid4().hex
         page = BrowserPage(profile, self)
         self.setPage(page)
         settings = self.settings()
@@ -94,7 +97,7 @@ class BrowserWindow(QMainWindow):
         self.tabs: list[BrowserTab] = []
         self.current_tab_index = 0
         self._restoring_tabs = False
-        self._closed_tabs_stack: list[TabState] = []
+        self.closed_tabs = ClosedTabHistory()
         self._child_windows: list[BrowserWindow] = []
         self.setup_window()
         self.setup_menus()
@@ -161,6 +164,8 @@ class BrowserWindow(QMainWindow):
         restore_tab_action = QAction("Restore Closed Tab", self)
         restore_tab_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
         restore_tab_action.triggered.connect(self._restore_closed_tab)
+        self.restore_tab_action = restore_tab_action
+        restore_tab_action.setEnabled(False)
         file_menu.addAction(restore_tab_action)
         close_tab_action = QAction("Close Tab", self)
         close_tab_action.setShortcut(QKeySequence("Ctrl+W"))
@@ -312,6 +317,7 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.clear_all_tabs()
         # Restore tabs for new profile
         self._restore_tabs()
+        self.restore_tab_action.setEnabled(self.closed_tabs.available(profile_name))
 
     def _create_profile(self):
         name, ok = QInputDialog.getText(self, "New Profile", "Profile name:")
@@ -405,7 +411,7 @@ class BrowserWindow(QMainWindow):
         if not home or home == "about:blank":
             home = "https://www.duckduckgo.com"
 
-        if not url or url == "about:blank":
+        if not url:
             url = home
 
         qurl = self._text_to_qurl(url)
@@ -417,12 +423,6 @@ class BrowserWindow(QMainWindow):
         tab.page().fullScreenRequested.connect(self._on_fullscreen_requested)
         tab.page().desktopMediaRequested.connect(self._on_desktop_media_requested)
 
-        script = """
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        });
-        """
-        tab.page().runJavaScript(script)
         tab.urlChanged.connect(lambda u: self._on_tab_url_changed(tab, u))
         tab.titleChanged.connect(lambda t: self._on_tab_title_changed(tab, t))
         tab.loadProgress.connect(lambda p: self._on_load_progress(tab, p))
@@ -446,12 +446,23 @@ class BrowserWindow(QMainWindow):
             return tab
 
     def _close_tab(self, index: int):
-        if len(self.tabs) <= 1:
+        if len(self.tabs) <= 1 or not 0 <= index < len(self.tabs):
             return
+        active = self.tabs[self.current_tab_index]
         tab = self.tabs.pop(index)
+        state = TabState(
+            tab.url().toString() or tab.page().requestedUrl().toString(),
+            tab.title() or self.tab_bar.tab_bar.tabText(index),
+            tab.group,
+            tab.tab_id,
+        )
+        self.closed_tabs.push(self.profile_manager.current_profile_name, state, index)
+        self.restore_tab_action.setEnabled(True)
         self.tab_bar.remove_tab(index)
         self._dispose_tab(tab)
-        self.current_tab_index = max(0, index - 1)
+        self.current_tab_index = (
+            self.tabs.index(active) if active in self.tabs else max(0, index - 1)
+        )
         self._switch_tab(self.current_tab_index)
         self._save_current_tabs()
         self._sync_tab_group_labels()
@@ -460,13 +471,23 @@ class BrowserWindow(QMainWindow):
         self._close_tab(self.current_tab_index)
 
     def _restore_closed_tab(self):
-        if self._closed_tabs_stack:
-            state = self._closed_tabs_stack.pop()
-            self._new_tab(url=state.url, title=state.title)
+        profile = self.profile_manager.current_profile_name
+        closed = self.closed_tabs.pop(profile)
+        if closed is not None:
+            state = closed.state
+            tab = self._new_tab(
+                url=state.url, title=state.title, index=closed.index, return_tab=True
+            )
+            tab.group = state.group
+            tab.tab_id = state.tab_id
+            self._sync_tab_group_labels()
+            self._save_current_tabs()
+        self.restore_tab_action.setEnabled(self.closed_tabs.available(profile))
 
     def _on_tab_moved(self, from_idx: int, to_idx: int):
         tab = self.tabs.pop(from_idx)
         self.tabs.insert(to_idx, tab)
+        self.current_tab_index = self.tab_bar.get_current_index()
         self._save_current_tabs()
         self._sync_tab_group_labels()
 
@@ -498,10 +519,13 @@ class BrowserWindow(QMainWindow):
         url_text = (url_text or "").strip()
         if url_text.startswith(("http://", "https://", "file://", "about:")):
             return QUrl(url_text)
-        if "." in url_text and " " not in url_text:
-            return QUrl(f"https://{url_text}")
+        if " " not in url_text and (
+            "." in url_text or url_text.startswith(("localhost", "["))
+        ):
+            scheme = "http" if url_text.startswith(("localhost", "127.", "[::1]")) else "https"
+            return QUrl(f"{scheme}://{url_text}")
         search = self.config.get("search_engine", "https://www.google.com/search?q=")
-        return QUrl(f"{search}{url_text}")
+        return QUrl(f"{search}{quote(url_text, safe='')}")
 
     def _go_back(self):
         if self.tabs:
@@ -556,18 +580,14 @@ class BrowserWindow(QMainWindow):
         states = []
         for i, tab in enumerate(self.tabs):
             group = tab.group
-            url = tab.url().toString()
-            if not url or url == "about:blank":
+            url = tab.url().toString() or tab.page().requestedUrl().toString()
+            if not url:
                 url = self.config.get("home_page", "https://www.google.com")
-            title = (
-                self.tab_bar.tab_bar.tabText(i)
-                if i < self.tab_bar.tab_bar.count()
-                else tab.title()
-            )
+            title = tab.title() or "New Tab"
             if not title or title == "about:blank":
                 title = "New Tab"
 
-            states.append(TabState(url=url, title=title, group=group))
+            states.append(TabState(url=url, title=title, group=group, tab_id=tab.tab_id))
 
         self.tab_manager.save_tabs(states)
 
@@ -584,6 +604,7 @@ class BrowserWindow(QMainWindow):
                         url=state.url, title=state.title, index=len(self.tabs)
                     )
                     self.tabs[-1].group = state.group
+                    self.tabs[-1].tab_id = state.tab_id
             else:
                 self._new_tab(index=len(self.tabs))
         finally:

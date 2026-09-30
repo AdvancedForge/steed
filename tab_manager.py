@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from uuid import uuid4
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -15,6 +16,36 @@ class TabState:
     url: str
     title: str
     group: str | None = None
+    tab_id: str = field(default_factory=lambda: uuid4().hex, compare=False)
+
+
+@dataclass
+class ClosedTab:
+    state: TabState
+    index: int
+
+
+class ClosedTabHistory:
+    """Bounded, non-persistent histories; incognito records never reach disk."""
+
+    def __init__(self, limit: int = 50) -> None:
+        self.limit = limit
+        self._profiles: dict[str, list[ClosedTab]] = {}
+
+    def push(self, profile: str, state: TabState, index: int) -> None:
+        history = self._profiles.setdefault(profile, [])
+        history.append(ClosedTab(state, index))
+        del history[:-self.limit]
+
+    def pop(self, profile: str) -> ClosedTab | None:
+        history = self._profiles.get(profile, [])
+        return history.pop() if history else None
+
+    def clear(self, profile: str) -> None:
+        self._profiles.pop(profile, None)
+
+    def available(self, profile: str) -> bool:
+        return bool(self._profiles.get(profile))
 
 
 class TabManager(QObject):
@@ -46,6 +77,7 @@ class TabManager(QObject):
                     url=item.get("url", "https://www.google.com"),
                     title=item.get("title", "New Tab"),
                     group=item.get("group"),
+                    tab_id=item.get("tab_id") or uuid4().hex,
                 )
             )
         self.tab_states = states
