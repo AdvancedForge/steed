@@ -48,7 +48,9 @@ class DownloadManager(QObject):
             self.records[record.download_id] = record
 
     def attach(self, profile, name):
-        profile.downloadRequested.connect(lambda request, n=name: self.handle(request, n))
+        profile.downloadRequested.connect(
+            lambda request, n=name: self.handle(request, n)
+        )
 
     def handle(self, request, profile):
         view = QWebEngineView.forPage(request.page()) if request.page() else None
@@ -67,7 +69,12 @@ class DownloadManager(QObject):
         self.requests[key] = request
         if profile == "search":
             self.private.add(key)
-        for signal in (request.receivedBytesChanged, request.totalBytesChanged, request.stateChanged, request.isPausedChanged):
+        for signal in (
+            request.receivedBytesChanged,
+            request.totalBytesChanged,
+            request.stateChanged,
+            request.isPausedChanged,
+        ):
             signal.connect(lambda *args, k=key: self.refresh(k))
         request.destroyed.connect(lambda: self.request_destroyed(key))
         request.accept()
@@ -84,7 +91,11 @@ class DownloadManager(QObject):
         record.total = request.totalBytes()
         record.state = request.state().name
         record.paused = request.isPaused()
-        record.error = request.interruptReasonString() if record.state == "DownloadInterrupted" else ""
+        record.error = (
+            request.interruptReasonString()
+            if record.state == "DownloadInterrupted"
+            else ""
+        )
         self.changed.emit()
         if previous != record.state:
             self.save()
@@ -96,7 +107,12 @@ class DownloadManager(QObject):
             self.records.pop(key, None)
 
     def active(self):
-        return [key for key, record in self.records.items() if key in self.requests and record.state in ("DownloadRequested", "DownloadInProgress")]
+        return [
+            key
+            for key, record in self.records.items()
+            if key in self.requests
+            and record.state in ("DownloadRequested", "DownloadInProgress")
+        ]
 
     def control(self, key, action):
         request = self.requests.get(key)
@@ -114,7 +130,11 @@ class DownloadManager(QObject):
             self.control(key, "cancel")
 
     def save(self):
-        records = [asdict(record) for key, record in self.records.items() if key not in self.private]
+        records = [
+            asdict(record)
+            for key, record in self.records.items()
+            if key not in self.private
+        ]
         save_json(self.history_file, records[-200:])
 
     @staticmethod

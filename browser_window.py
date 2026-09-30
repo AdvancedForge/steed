@@ -39,6 +39,7 @@ from ui.adblock_dialog import AdBlockDialog
 from ui.address_bar import AddressBar
 from ui.cookie_dialog import CookieDialog
 from ui.download_dialog import DownloadDialog
+from ui.group_dialog import GroupDialog
 from ui.settings_dialog import SettingsDialog
 from ui.tab_bar import TabBar
 from webengine import configure_web_settings
@@ -64,6 +65,7 @@ class BrowserTab(QWebEngineView):
         self.profile = profile
         self.window = window
         self.group = None
+        self.group_id = None
         self.tab_id = uuid4().hex
         page = BrowserPage(profile, self)
         self.setPage(page)
@@ -171,10 +173,14 @@ class BrowserWindow(QMainWindow):
         file_menu.addAction(close_tab_action)
         downloads_action = QAction("Downloads...", self)
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
-        downloads_action.triggered.connect(lambda: DownloadDialog(self.download_manager, self).exec())
+        downloads_action.triggered.connect(
+            lambda: DownloadDialog(self.download_manager, self).exec()
+        )
         file_menu.addAction(downloads_action)
         adblock_action = QAction("Ad Blocking...", self)
-        adblock_action.triggered.connect(lambda: AdBlockDialog(self.adblock, self).exec())
+        adblock_action.triggered.connect(
+            lambda: AdBlockDialog(self.adblock, self).exec()
+        )
         file_menu.addAction(adblock_action)
         file_menu.addSeparator()
         settings_action = QAction("Settings...", self)
@@ -251,6 +257,7 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.group_rename_requested.connect(self._handle_group_rename_request)
         self.tab_bar.group_set_requested.connect(self._set_tab_group_existing)
         self.tab_bar.group_clear_requested.connect(self._clear_tab_group)
+        self.tab_bar.group_toggle_requested.connect(self._toggle_named_group)
         layout.addWidget(self.tab_bar)
         # Address bar
         self.address_bar = AddressBar()
@@ -334,7 +341,9 @@ class BrowserWindow(QMainWindow):
             if self.profile_manager.create_profile(name):
                 self._switch_to_profile(name)
             else:
-                QMessageBox.warning(self, "New Profile", "Choose a new, non-reserved profile name.")
+                QMessageBox.warning(
+                    self, "New Profile", "Choose a new, non-reserved profile name."
+                )
 
     def _rename_profile(self):
         profiles = self.profile_manager.list_profiles()
@@ -356,7 +365,11 @@ class BrowserWindow(QMainWindow):
                     self._switch_to_profile(new_name)
                     self._update_profile_shortcuts()
                 else:
-                    QMessageBox.warning(self, "Error", "Could not rename profile. Switch all windows away from it first, and choose an unused name.")
+                    QMessageBox.warning(
+                        self,
+                        "Error",
+                        "Could not rename profile. Switch all windows away from it first, and choose an unused name.",
+                    )
 
     def _delete_profile(self):
         profiles = self.profile_manager.list_profiles()
@@ -381,11 +394,17 @@ class BrowserWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.Yes:
                 if self.profile_manager.delete_profile(profile):
                     QMessageBox.information(
-                        self, "Archived", f"Profile '{profile}' moved to deleted_profiles and can be recovered."
+                        self,
+                        "Archived",
+                        f"Profile '{profile}' moved to deleted_profiles and can be recovered.",
                     )
                     self._update_profile_shortcuts()
                 else:
-                    QMessageBox.warning(self, "Failed", "Could not archive profile. Switch all windows away from it first.")
+                    QMessageBox.warning(
+                        self,
+                        "Failed",
+                        "Could not archive profile. Switch all windows away from it first.",
+                    )
 
     def _pop_out_profile(self):
         profiles = self.profile_manager.list_profiles()
@@ -465,6 +484,7 @@ class BrowserWindow(QMainWindow):
             tab.title() or self.tab_bar.tab_bar.tabText(index),
             tab.group,
             tab.tab_id,
+            tab.group_id,
         )
         self.closed_tabs.push(self.profile_manager.current_profile_name, state, index)
         self.restore_tab_action.setEnabled(True)
@@ -489,7 +509,10 @@ class BrowserWindow(QMainWindow):
                 url=state.url, title=state.title, index=closed.index, return_tab=True
             )
             tab.group = state.group
+            tab.group_id = state.group_id
             tab.tab_id = state.tab_id
+            if state.group_id in self.tab_manager.groups:
+                self.tab_manager.groups[state.group_id].collapsed = False
             self._sync_tab_group_labels()
             self._save_current_tabs()
         self.restore_tab_action.setEnabled(self.closed_tabs.available(profile))
@@ -532,7 +555,11 @@ class BrowserWindow(QMainWindow):
         if " " not in url_text and (
             "." in url_text or url_text.startswith(("localhost", "["))
         ):
-            scheme = "http" if url_text.startswith(("localhost", "127.", "[::1]")) else "https"
+            scheme = (
+                "http"
+                if url_text.startswith(("localhost", "127.", "[::1]"))
+                else "https"
+            )
             return QUrl(f"{scheme}://{url_text}")
         search = self.config.get("search_engine", "https://www.google.com/search?q=")
         return QUrl(f"{search}{quote(url_text, safe='')}")
@@ -586,6 +613,7 @@ class BrowserWindow(QMainWindow):
         if self._restoring_tabs or self.profile_manager.is_search_profile():
             return
         states = []
+        self._normalize_groups()
         for tab in self.tabs:
             group = tab.group
             url = tab.url().toString() or tab.page().requestedUrl().toString()
@@ -595,7 +623,15 @@ class BrowserWindow(QMainWindow):
             if not title or title == "about:blank":
                 title = "New Tab"
 
-            states.append(TabState(url=url, title=title, group=group, tab_id=tab.tab_id))
+            states.append(
+                TabState(
+                    url=url,
+                    title=title,
+                    group=group,
+                    tab_id=tab.tab_id,
+                    group_id=tab.group_id,
+                )
+            )
 
         self.tab_manager.save_tabs(states)
 
@@ -613,6 +649,7 @@ class BrowserWindow(QMainWindow):
                     )
                     self.tabs[-1].group = state.group
                     self.tabs[-1].tab_id = state.tab_id
+                    self.tabs[-1].group_id = state.group_id
             else:
                 self._new_tab(index=len(self.tabs))
         finally:
@@ -648,36 +685,109 @@ class BrowserWindow(QMainWindow):
             permission.deny()
 
     def _on_download_requested(self, download: QWebEngineDownloadRequest):
-        self.download_manager.handle(download, self.profile_manager.current_profile_name)
+        self.download_manager.handle(
+            download, self.profile_manager.current_profile_name
+        )
 
     # ---------- Tab Group UI ----------
     def _handle_group_rename_request(self, tab_index: int):
         name, ok = QInputDialog.getText(self, "Tab Group", "Group name:")
         if ok:
             group = name.strip() or None
-            self.tabs[tab_index].group = group
-            self._sync_tab_group_labels()
-            self._save_current_tabs()
+            if group:
+                self._set_tab_group_existing(tab_index, group)
+            else:
+                self._clear_tab_group(tab_index)
 
     def _set_tab_group_existing(self, tab_index: int, group_name: str):
         if 0 <= tab_index < len(self.tabs):
-            self.tabs[tab_index].group = group_name
+            group = self.tab_manager.ensure_group(group_name)
+            group.collapsed = False
+            self.tabs[tab_index].group = group.name
+            self.tabs[tab_index].group_id = group.group_id
             self._sync_tab_group_labels()
             self._save_current_tabs()
 
     def _clear_tab_group(self, tab_index: int):
+        if not 0 <= tab_index < len(self.tabs):
+            return
         self.tabs[tab_index].group = None
+        self.tabs[tab_index].group_id = None
         self._sync_tab_group_labels()
         self._save_current_tabs()
 
     def _sync_tab_group_labels(self):
+        self._normalize_groups()
+        self.tab_bar.available_groups = [
+            group.name for group in self.tab_manager.groups.values()
+        ]
+        seen = set()
+        visible_indices = []
+        was_blocked = self.tab_bar.tab_bar.blockSignals(True)
         for i, tab in enumerate(self.tabs):
             self.tab_bar.set_tab_group(i, tab.group)
+            group = self.tab_manager.groups.get(tab.group_id)
+            visible = not (group and group.collapsed and group.group_id in seen)
+            self.tab_bar.tab_bar.setTabVisible(i, visible)
+            if visible:
+                visible_indices.append(i)
+            if group:
+                seen.add(group.group_id)
+        self.tab_bar.tab_bar.blockSignals(was_blocked)
+        if self.tabs and self.current_tab_index not in visible_indices:
+            self._switch_tab(visible_indices[0])
+        self.tab_manager.save_groups()
+
+    def _normalize_groups(self):
+        for tab in self.tabs:
+            if tab.group_id in self.tab_manager.groups:
+                tab.group = self.tab_manager.groups[tab.group_id].name
+            elif tab.group_id is not None:
+                tab.group = None
+                tab.group_id = None
+            elif tab.group:
+                tab.group_id = self.tab_manager.ensure_group(tab.group).group_id
+
+    def rename_group(self, group_id, name):
+        if any(
+            group.name == name and group.group_id != group_id
+            for group in self.tab_manager.groups.values()
+        ):
+            QMessageBox.warning(
+                self, "Tab Group", "Another group already has that name."
+            )
+            return False
+        self.tab_manager.groups[group_id].name = name
+        self._sync_tab_group_labels()
+        self._save_current_tabs()
+        return True
+
+    def delete_group(self, group_id):
+        self.tab_manager.groups.pop(group_id, None)
+        self._sync_tab_group_labels()
+        self._save_current_tabs()
+
+    def toggle_group(self, group_id):
+        group = self.tab_manager.groups[group_id]
+        group.collapsed = not group.collapsed
+        self._sync_tab_group_labels()
+
+    def _toggle_named_group(self, name):
+        group = self.tab_manager.ensure_group(name)
+        self.toggle_group(group.group_id)
+
+    def move_group(self, group_id, position=0):
+        members = [tab.tab_id for tab in self.tabs if tab.group_id == group_id]
+        for offset, tab_id in enumerate(members):
+            index = next(i for i, tab in enumerate(self.tabs) if tab.tab_id == tab_id)
+            self.tab_bar.tab_bar.moveTab(
+                index, min(position + offset, len(self.tabs) - 1)
+            )
+        self._sync_tab_group_labels()
+        self._save_current_tabs()
 
     def _manage_tab_groups(self):
-        QMessageBox.information(
-            self, "Not Implemented", "Tab Group management UI not implemented yet."
-        )
+        GroupDialog(self).exec()
 
     def _toggle_dark_mode(self, enabled: bool):
         self.config.dark_mode = enabled
@@ -686,8 +796,9 @@ class BrowserWindow(QMainWindow):
     def _view_cookies(self):
         if not self.cookie_manager:
             return
-        cookies = self.cookie_manager.get_all_cookies()
-        dlg = CookieDialog(cookies, self)
+        dlg = CookieDialog(
+            self.cookie_manager, self, self.profile_manager.protect_cookie_deletion
+        )
         dlg.exec()
 
     def _clear_all_cookies(self):
@@ -700,6 +811,7 @@ class BrowserWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
+            self.profile_manager.protect_cookie_deletion()
             self.cookie_manager.clear_all_cookies()
 
     # ---------- Tab Bar group display updates ----------
@@ -732,9 +844,14 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             event.accept()
             return
-        if len(self.profile_manager.registry.owners) == 1 and self.download_manager.active():
+        if (
+            len(self.profile_manager.registry.owners) == 1
+            and self.download_manager.active()
+        ):
             reply = QMessageBox.question(
-                self, "Active Downloads", "Closing will cancel active downloads. Close anyway?",
+                self,
+                "Active Downloads",
+                "Closing will cancel active downloads. Close anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -827,7 +944,9 @@ class BrowserWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def _open_settings(self):
-        dlg = SettingsDialog(self.config, self, self.profile_manager.current_profile.httpUserAgent())
+        dlg = SettingsDialog(
+            self.config, self, self.profile_manager.current_profile.httpUserAgent()
+        )
         if dlg.exec():
             dlg.apply()
 
@@ -837,13 +956,17 @@ class BrowserWindow(QMainWindow):
             self.profile_manager.refresh_settings()
 
     def _use_global_cookies(self):
-        if not self.tabs or self.profile_manager.current_profile_name in ("global", "search"):
+        if not self.tabs or self.profile_manager.current_profile_name in (
+            "global",
+            "search",
+        ):
             return
         domain = self.tabs[self.current_tab_index].url().host()
         if not domain:
             return
         reply = QMessageBox.question(
-            self, "Use Global Cookies",
+            self,
+            "Use Global Cookies",
             f"Replace the local cookie baseline for {domain} with global cookies? This can change your signed-in account. Reload the page afterwards.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
