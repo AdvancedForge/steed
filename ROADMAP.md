@@ -20,16 +20,43 @@ Extensions/bookmarks move earlier only for a concrete workflow dependency. Built
 
 Status vocabulary: **pending**, **in progress**, **implemented — verification pending**, **verified**, **blocked**. Record verification and blockers here; an attempted action is not evidence of completion.
 
+## Current handoff — September 30, 2026
+
+The seven browser essentials below are implemented, with automated verification. The manual daily-use gate remains pending, especially Google login. Agent implementation has not started; extensions and bookmarks remain non-blocking later work. The user requested a stopping point here and will continue later.
+
+Verification: 44 tests passed, including real Chromium request/cosmetic filtering, filter compilation, completed file downloads, cookie scope and exact-path deletion, global update/logout, shared-window lifetime, and a two-process persistent-cookie restart. Ruff lint/format checks, whitespace checks, and the real-entry-point startup/render/shutdown smoke test also passed with Qt 6.11.2.
+
+Implementation notes for the next session:
+
+- Qt 6.11's `loadAllCookies` path does not report already-persisted cookies reliably in the tested runtime. `cookie_snapshot.py` uses a private, in-process DevTools frontend to obtain authoritative snapshots; no remote debugging listener is opened. This engine-specific adapter needs regression testing when Qt is upgraded. Snapshots reject concurrent-change races and omit unsupported partitioned identities from viewing/sharing.
+- Existing profiles deliberately do not accept previously unobserved global cookies automatically. Their pre-existing cookies stay local. Use **Cookies → Use Global Cookies for This Site** for an explicit baseline reset. New empty stores can inherit automatically; restarted stores reconcile confirmed inherited identities and explicit site opt-ins.
+- Selected deletion expires the exact cookie identity rather than using Qt's broad name/URL deletion filter. Explicit deletion protects against reinheritance. A reset after Clear All enables only the chosen site, not all sites.
+- Ad blocking starts with a small bootstrap list. Use **File → Ad Blocking → Download / Update EasyList and EasyPrivacy** for full lists. Network rules and supported CSS hiding are implemented; scriptlets and resource redirects are not enabled. Updates preserve the last working rules on failure.
+- Profiles share engine instances across windows. Incognito data lives until the owning application registry closes, not merely until a profile switch. Profile archival is recoverable under `~/.custom_browser/deleted_profiles/`; active profiles cannot be renamed/archived.
+- Download history persists only non-incognito metadata; unfinished entries become interrupted on restart. Downloads are never automatically reopened or restarted.
+
+Manual acceptance checklist before A1:
+
+- [ ] Launch on the normal desktop and verify graphics, navigation, search, media permissions, multiple windows, and clean shutdown.
+- [ ] Reopen closed tabs repeatedly, switch profiles, and verify independent histories and restored groups/positions.
+- [ ] Test real global and separate profile logins, restart, logout, explicit deletion, and confirmed global-baseline reset.
+- [ ] Verify UA settings after restart; test Google account login and third-party Google sign-in. Record the exact error if either fails.
+- [ ] Download a real file; check progress, pause/resume where supported, cancellation, opening/revealing files, and active-download shutdown confirmation.
+- [ ] Update full filter lists, test ordinary sites, and verify exceptions after reload.
+- [ ] Test filtered cookie deletion and tab-group operations during normal use.
+
+Next step: complete this checklist and resolve any browser blockers, then start A1/A2. Do not mark the agent framework complete or bypass the agreed browser gate.
+
 ## 1. Browser essentials — prerequisite gate
 
-### B1. Recently closed tabs — pending
+### B1. Recently closed tabs — implemented — verification pending
 
 - Maintain bounded, memory-only closed-tab history per profile.
 - Restore URL, title, insertion position, and group through the menu and Ctrl+Shift+T.
 - Do not restore another profile's closed tabs; empty history is harmless.
 - Verify repeated closure/restoration in reverse order, profile switching, and invalid indices.
 
-### B2. Global profiles — pending
+### B2. Global profiles — implemented — verification pending
 
 Global cookies are a shared baseline, not unconditional replacements:
 
@@ -46,7 +73,7 @@ Global cookies are a shared baseline, not unconditional replacements:
 - Keep incognito isolated and provenance-free. Cookie sharing is not local-storage or complete authentication-session synchronization.
 - Verify updates, deletion, local login preservation, migration, restarts, settings changes, multiple windows, and incognito isolation.
 
-### B3. User-agent overrides and login — pending
+### B3. User-agent overrides and login — implemented — verification pending
 
 - Apply overrides at profile creation/startup, including incognito; remove the outdated hardcoded Chrome default.
 - Clearing an override restores the engine's actual default. Display the effective UA.
@@ -54,14 +81,14 @@ Global cookies are a shared baseline, not unconditional replacements:
 - Manually test Google account login and third-party Google sign-in. UA spoofing is not a guarantee: Google may reject embedded browsers separately.
 - If a required login is impossible on Qt, record the exact failure and revisit the engine before further dependent work. External-browser connector OAuth does not log websites into the Qt browser.
 
-### B4. Download manager — pending
+### B4. Download manager — implemented — verification pending
 
 - Progress, destination, state, errors, cancel, supported pause/resume, history, open/reveal actions.
 - Explicitly cancel abandoned save dialogs. Require a clear decision before closing with active downloads.
 - Persist metadata, not live engine requests; unfinished historical requests become interrupted on restart.
 - Verify real local downloads, interruption, cancellation, empty save dialogs, completed file existence, and shutdown.
 
-### B5. Ad blocking — pending
+### B5. Ad blocking — implemented — verification pending
 
 - Qt request-interceptor network filtering through a filtering-engine adapter; use Python bindings to Brave's engine rather than inventing a filter parser.
 - Filter-list management, last-known-good updates, per-site exceptions, diagnostics, and supported cosmetic filtering.
@@ -69,14 +96,14 @@ Global cookies are a shared baseline, not unconditional replacements:
 - Report unsupported filtering capabilities instead of claiming full uBlock compatibility.
 - Verify advertisement/tracker fixtures, exception behavior, malformed updates, and regular-site usability.
 
-### B6. Cookie deletion — pending
+### B6. Cookie deletion — implemented — verification pending
 
 - Load cookies when opening the viewer; update from store events.
 - Delete selected, site-level, or profile-wide cookies. Filtered rows must target the displayed cookie.
 - Explicit deletion prevents immediate reinheritance; integrate with B2 provenance.
 - Verify exact deletion, filtered selections, asynchronous updates, and no resurrection.
 
-### B7. Tab groups — pending
+### B7. Tab groups — implemented — verification pending
 
 - Create, rename, delete, move, collapse/expand, and persist groups.
 - Stable tab/group identities, not mutable indices, define membership.

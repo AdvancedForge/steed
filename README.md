@@ -11,14 +11,18 @@ A Python desktop browser built with PyQt6 and Qt WebEngine, with profile managem
 - **Search Profile (Incognito)**: Special profile that doesn't save cookies or browsing data
 - **Cookie Management**: Per-profile cookie storage with easy viewing and deletion
 - **Dark Mode**: Dark theme for the browser interface
-- **Tab Groups**: Assign group names through the tab context menu
-- **Downloads and Permissions**: Save-file prompts and site permission dialogs
+- **Recently Closed Tabs**: Per-profile, memory-only restore history with position/group restoration
+- **Tab Groups**: Stable groups with creation, rename, deletion, collapse/expand, and grouped movement
+- **Downloads and Permissions**: Progress/history manager, supported pause/resume, cancellation, save prompts, and site permissions
+- **Ad Blocking**: Native network rules and supported CSS hiding, list updates, and site exceptions
+- **User-Agent Overrides**: Applied at startup and to new profiles; clearing restores the engine default
 
 ### Profile System
 
 - Ordinary profiles have separate cookies, tabs, and web storage; application preferences are shared
 - Profiles are stored in `~/.custom_browser/profiles/{profile_name}/`
-- The `global` profile is stored in `~/.custom_browser/global_profile/`; its cookies are copied to ordinary profiles according to the cookie sharing setting
+- The `global` profile is stored in `~/.custom_browser/global_profile/`; its cookies form a one-way shared baseline while separate profile logins remain local
+- Windows share application-owned engine profiles; a second browser process cannot open the same storage directory
 - Search profile acts as incognito mode (no persistence)
 - Easy profile switching without losing current session
 
@@ -27,14 +31,27 @@ A Python desktop browser built with PyQt6 and Qt WebEngine, with profile managem
 - Multiple tabs with tab bar interface
 - Tabs are saved before closing
 - Tabs are restored when reopening a profile
-- Tab state includes URL, title, and group name
+- Tab state includes URL, title, and stable tab/group identities
+- `Ctrl+Shift+T` restores recently closed tabs for the current profile (up to 50, not saved across restart)
 
 ### Cookie Control
 
 - View all cookies for current profile
-- Clear all cookies through the Cookies menu
+- Delete selected cookies, selected sites, or all cookies through the viewer/menu
 - Filter cookies by domain or name
 - Search profile has no cookie persistence
+
+Existing profiles are migrated conservatively: pre-existing cookies remain local rather than being overwritten by the global profile. **Cookies → Use Global Cookies for This Site** explicitly resets the current site's baseline, after confirmation. Local changes/deletions prevent automatic reinheritance. Cookie sharing does not copy local storage or guarantee a complete signed-in session.
+
+Qt 6.11 persisted-cookie enumeration uses a private in-process inspection adapter; no remote debugging port is opened. Partitioned cookies are omitted from viewing/sharing because Qt's cookie type cannot preserve their identity; bulk clear still operates on the engine store.
+
+### Downloads and Ad Blocking
+
+Open **File → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history. Interrupted downloads are not automatically restarted.
+
+Open **File → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, or add host-name exceptions. Initial bootstrap rules are limited; download the full lists for broader coverage. Reload pages after changing exceptions. Scriptlets and resource redirects are not enabled; unsupported filters are not presented as full uBlock compatibility.
+
+The full browser-first and agent-framework plan, current status, and manual acceptance checklist are in [ROADMAP.md](ROADMAP.md). Agent implementation has not started.
 
 ## Installation
 
@@ -121,7 +138,7 @@ The search profile is a special profile that:
 - Doesn't save cookies
 - Doesn't save browsing history
 - Doesn't save tabs
-- Keeps browsing data in memory for the owning window's lifetime; switching away does not reset that in-memory profile
+- Keeps browsing data in memory for the application registry's lifetime; switching away or closing one of several windows does not reset that shared in-memory profile
 
 Access it via **Profile → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
 
@@ -196,19 +213,18 @@ Tests use temporary profiles and local content. Chromium still needs to initiali
 
 ## Existing limitations
 
-- Restore Closed Tab is present but its history stack is not populated.
-- Delete Selected and Clear All inside the cookie viewer are not connected to the cookie store. Use **Cookies → Clear All Cookies** for bulk deletion.
-- The tab group management dialog is a placeholder; the tab context menu supports group assignment.
-- Apply global cookies on startup is displayed in settings but is not currently used to gate cookie sharing.
-- User-agent overrides are applied through the settings dialog, not automatically on startup.
+- Real Google login and normal-desktop daily use still require manual verification. Google can reject embedded browsers independently of the user-agent override.
+- Global-cookie inheritance intentionally preserves unknown/local ownership and excludes partitioned identities; it is not full browser-session synchronization.
+- Ad blocking requires downloading full lists for broad coverage and does not enable scriptlets or resource redirects.
+- Active profiles must be switched away from in every window before rename/archive. Archived profile data is recoverable under `~/.custom_browser/deleted_profiles/`.
+- Tab sessions are saved per profile; the most recently saved window supplies that profile's restored session.
 
 ## Future Enhancements
 
 Planned features (not yet implemented):
 - Bookmarks management
-- Download manager
-- Ad blocking
 - Extension system
+- External-agent task sessions, scoped permissions, deterministic page tools, MCP connections, and declarative interface styling (see roadmap)
 
 ## License
 
