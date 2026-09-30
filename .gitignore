@@ -1,0 +1,4 @@
+.cursor/
+.goosehints
+.venv/
+__pycache__/
