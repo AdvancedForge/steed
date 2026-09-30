@@ -1,12 +1,12 @@
 """Tab bar widget."""
-from PyQt6.QtWidgets import QTabBar, QWidget, QPushButton, QHBoxLayout, QMenu, QInputDialog
+
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QHBoxLayout, QMenu, QPushButton, QTabBar, QWidget
 
 
 class TabBar(QWidget):
     """Custom tab bar with add button."""
-    
+
     tab_close_requested = pyqtSignal(int)
     tab_changed = pyqtSignal(int)
     new_tab_requested = pyqtSignal()
@@ -14,17 +14,17 @@ class TabBar(QWidget):
     group_rename_requested = pyqtSignal(int)
     group_set_requested = pyqtSignal(int, str)
     group_clear_requested = pyqtSignal(int)
-    
-    def __init__(self, parent=None):
+
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setup_ui()
-    
-    def setup_ui(self):
+
+    def setup_ui(self) -> None:
         """Set up the UI."""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
+
         self.tab_bar = QTabBar()
         self.tab_bar.setTabsClosable(True)
         self.tab_bar.setMovable(True)
@@ -35,17 +35,17 @@ class TabBar(QWidget):
         self.tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tab_bar.customContextMenuRequested.connect(self._show_context_menu)
 
-        self.groups = {} # index -> group_name
-        
+        self.groups = {}  # index -> group_name
+
         self.new_tab_btn = QPushButton("+")
         self.new_tab_btn.setToolTip("New Tab")
         self.new_tab_btn.setMaximumWidth(30)
         self.new_tab_btn.setMaximumHeight(30)
         self.new_tab_btn.clicked.connect(self.new_tab_requested.emit)
-        
+
         layout.addWidget(self.tab_bar)
         layout.addWidget(self.new_tab_btn)
-    
+
     def add_tab(self, title: str = "New Tab") -> int:
         index = self.tab_bar.addTab(title)
         self.groups[index] = self.groups.get(index)
@@ -53,59 +53,47 @@ class TabBar(QWidget):
 
     def insert_tab(self, index: int, title: str = "New Tab") -> int:
         index = max(0, min(index, self.tab_bar.count()))
-        idx = self.tab_bar.insertTab(index, title)
+        groups = [self.groups.get(i) for i in range(self.tab_bar.count())]
+        groups.insert(index, None)
+        self.groups = dict(enumerate(groups))
+        return self.tab_bar.insertTab(index, title)
 
-        # shift groups up for indices >= index
-        # new_groups = {}
-        # for i in range(self.tab_bar.count()):
-        #     if i < index:
-        #         new_groups[i] = self.groups.get(i)
-        #     elif i == index:
-        #         new_groups[i] = None
-        #     else:
-        #         new_groups[i] = self.groups.get(i - 1)
-        # self.groups = new_groups
-        return idx
-
-    
-    def remove_tab(self, index: int):
+    def remove_tab(self, index: int) -> None:
         self.tab_bar.removeTab(index)
         # reindex groups
         new_groups = {}
         for i in range(self.tab_bar.count()):
-            # best effort: keep group from old mapping if possible
             new_groups[i] = self.groups.get(i if i < index else i + 1)
         self.groups = new_groups
 
-
-    def clear_all_tabs(self):
+    def clear_all_tabs(self) -> None:
         """Clear all tabs."""
-        for i in range(self.tab_bar.count()):
+        for _ in range(self.tab_bar.count()):
             self.tab_bar.removeTab(0)
+        self.groups.clear()
 
-    def set_tab_title(self, index: int, title: str):
+    def set_tab_title(self, index: int, title: str) -> None:
         """Set the title of a tab."""
         if 0 <= index < self.tab_bar.count():
             self.tab_bar.setTabText(index, title)
-    
-    def set_current_tab(self, index: int):
+
+    def set_current_tab(self, index: int) -> None:
         if 0 <= index < self.tab_bar.count():
             was_blocked = self.tab_bar.blockSignals(True)
             self.tab_bar.setCurrentIndex(index)
             self.tab_bar.blockSignals(was_blocked)
 
-
-    def set_tab_group(self, index, group_name):
+    def set_tab_group(self, index: int, group_name: str | None) -> None:
         self.groups[index] = group_name
         current_text = self.tab_bar.tabText(index)
         if group_name:
             # Prefix title with group name in brackets
-            if "]" in current_text and current_text.startswith("["):
-                current_text = current_text.split("] ", 1)[1]
+            if "] " in current_text and current_text.startswith("["):
+                current_text = current_text.partition("] ")[2]
             self.tab_bar.setTabText(index, f"[{group_name}] {current_text}")
         else:
-            if "]" in current_text and current_text.startswith("["):
-                self.tab_bar.setTabText(index, current_text.split("] ", 1)[1])
+            if "] " in current_text and current_text.startswith("["):
+                self.tab_bar.setTabText(index, current_text.partition("] ")[2])
 
     def _show_context_menu(self, position):
         index = self.tab_bar.tabAt(position)
@@ -120,7 +108,11 @@ class TabBar(QWidget):
             sub = menu.addMenu("Set to existing")
             for g in existing_groups:
                 act = sub.addAction(g)
-                act.triggered.connect(lambda checked=False, i=index, name=g: self.group_set_requested.emit(i, name))
+                act.triggered.connect(
+                    lambda checked=False, i=index, name=g: (
+                        self.group_set_requested.emit(i, name)
+                    )
+                )
 
         clear_group = menu.addAction("Clear Group")
         action = menu.exec(self.tab_bar.mapToGlobal(position))
@@ -130,34 +122,19 @@ class TabBar(QWidget):
         elif action == clear_group:
             self.group_clear_requested.emit(index)
 
-
-    
     def get_current_index(self) -> int:
         """Get the current tab index."""
         return self.tab_bar.currentIndex()
-    
+
     def get_tab_count(self) -> int:
         """Get the number of tabs."""
         return self.tab_bar.count()
 
-    def _on_internal_tab_moved(self, from_idx: int, to_idx: int):
+    def _on_internal_tab_moved(self, from_idx: int, to_idx: int) -> None:
         # Update groups mapping to match visual order
         if from_idx == to_idx:
             return
-        group = self.groups.pop(from_idx, None)
-        new_groups = {}
-        for i in range(self.tab_bar.count()):
-            if i == to_idx:
-                new_groups[i] = group
-            else:
-                # map from old index in a stable way
-                if i < min(from_idx, to_idx) or i > max(from_idx, to_idx):
-                    old_i = i
-                else:
-                    if from_idx < to_idx:
-                        old_i = i + 1 if i < to_idx else i
-                    else:
-                        old_i = i - 1 if i > to_idx else i
-                new_groups[i] = self.groups.get(old_i)
-        self.groups = new_groups
+        groups = [self.groups.get(i) for i in range(self.tab_bar.count())]
+        groups.insert(to_idx, groups.pop(from_idx))
+        self.groups = dict(enumerate(groups))
         self.tab_moved.emit(from_idx, to_idx)

@@ -1,73 +1,111 @@
 # Custom Browser for Framework 12
 
-A custom Python browser built with PyQt6 and PyQtWebEngine, optimized for Framework 12 laptops with profile management, tab persistence, and cookie control.
+A Python desktop browser built with PyQt6 and Qt WebEngine, with profile management, tab persistence, and cookie controls. Originally built for a Framework 12 laptop, it uses Qt's normal display scaling and graphics backend selection.
 
 ## Features
 
 ### Core Features
+
 - **Profile Management**: Multiple isolated browser profiles with separate cookies and data
 - **Tab Persistence**: Tabs are automatically saved when closed and restored when reopening a profile
 - **Search Profile (Incognito)**: Special profile that doesn't save cookies or browsing data
 - **Cookie Management**: Per-profile cookie storage with easy viewing and deletion
-- **Dark Mode**: System-wide dark theme support
-- **Framework 12 Optimizations**: Optimized for high-DPI displays, touchscreen support, and battery efficiency
+- **Dark Mode**: Dark theme for the browser interface
+- **Tab Groups**: Assign group names through the tab context menu
+- **Downloads and Permissions**: Save-file prompts and site permission dialogs
 
 ### Profile System
-- Each profile has isolated storage for cookies, tabs, and preferences
+
+- Ordinary profiles have separate cookies, tabs, and web storage; application preferences are shared
 - Profiles are stored in `~/.custom_browser/profiles/{profile_name}/`
+- The `global` profile is stored in `~/.custom_browser/global_profile/`; its cookies are copied to ordinary profiles according to the cookie sharing setting
 - Search profile acts as incognito mode (no persistence)
 - Easy profile switching without losing current session
 
 ### Tab Management
+
 - Multiple tabs with tab bar interface
 - Tabs are saved before closing
 - Tabs are restored when reopening a profile
-- Tab state includes URL, title, and scroll position
+- Tab state includes URL, title, and group name
 
 ### Cookie Control
+
 - View all cookies for current profile
-- Delete individual cookies or all cookies
+- Clear all cookies through the Cookies menu
 - Filter cookies by domain or name
 - Search profile has no cookie persistence
 
 ## Installation
 
-1. Install dependencies:
+Requires Python 3.10 or later and a graphical desktop session. Dependencies use PyQt6 and PyQt6-WebEngine 6.11.0 with Qt 6.11.x. Linux x86-64 wheels require glibc 2.34 or later; ARM64 wheels require glibc 2.39 or later.
+
+From the project directory, create a virtual environment if one does not already exist:
+
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade -r requirements.txt
 ```
 
-2. Run the browser:
+Run the browser with that environment:
+
 ```bash
 python main.py
 ```
 
+You can also run `.venv/bin/python main.py` directly. Running `python3 main.py` without activating the environment may use a different PyQt installation.
+
+### Graphics troubleshooting
+
+The browser lets Qt select its graphics backend. Older versions forced `--use-gl=desktop`, which can abort with `--use-gl=desktop is not supported with the current configuration`.
+
+If that option was also set in your shell environment, clear it before launching:
+
+```bash
+unset QTWEBENGINE_CHROMIUM_FLAGS
+.venv/bin/python main.py
+```
+
+For a separate GPU-driver problem, try disabling GPU acceleration for that run:
+
+```bash
+QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" .venv/bin/python main.py
+```
+
+The browser preserves explicit Chromium options and enables PipeWire screen capture without forcing a graphics backend.
+
 ## Usage
 
 ### Keyboard Shortcuts
+
 - `Ctrl+T`: New tab
 - `Ctrl+W`: Close current tab
-- `Ctrl+Shift+N`: Open search profile (incognito)
-- `Ctrl+Q`: Quit browser
+- `Ctrl+Shift+N`: Open search profile in a separate window (incognito)
+- `Ctrl+Shift+0`: Switch the current window to search profile
+- `Ctrl+,`: Settings
+- `Ctrl+Q`: Close the window
 
 ### Menu Options
 
 **File Menu:**
+
 - New Tab
 - Close Tab
 - Exit
 
 **Profile Menu:**
+
 - Switch Profile: Change to a different profile
 - New Profile: Create a new profile
 - Search Profile (Incognito): Open incognito mode
 
 **Cookies Menu:**
+
 - View Cookies: Open cookie manager dialog
 - Clear All Cookies: Delete all cookies for current profile
 
-**View Menu:**
-- Dark Mode: Toggle dark theme
+Dark mode is available in **File → Settings**.
 
 ### Creating and Switching Profiles
 
@@ -79,34 +117,32 @@ python main.py
 ### Search Profile (Incognito)
 
 The search profile is a special profile that:
+
 - Doesn't save cookies
 - Doesn't save browsing history
 - Doesn't save tabs
-- Clears all data when closed
+- Keeps browsing data in memory for the owning window's lifetime; switching away does not reset that in-memory profile
 
-Access it via **Profile → Search Profile (Incognito)** or `Ctrl+Shift+N`.
+Access it via **Profile → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
 
 ## Configuration
 
 Configuration is stored in `~/.custom_browser/config.json`. You can edit this file directly or use the browser's settings interface.
 
 ### Configuration Options
+
 - `default_profile`: Default profile to use on startup
 - `home_page`: URL to load for home button
-- `search_engine`: Search engine URL (with `{query}` placeholder)
+- `search_engine`: URL prefix such as `https://www.duckduckgo.com/?q=` (search text is appended)
 - `dark_mode`: Enable dark mode by default
 - `restore_tabs_on_startup`: Restore tabs when opening a profile
 - `window_width`: Default window width
 - `window_height`: Default window height
+- `global_cookie_sharing_mode`: `on_switch` or `all_profiles`
 
 ## Framework 12 Optimizations
 
-The browser is optimized for Framework 12 laptops:
-- **High DPI Support**: Proper scaling for 1920x1200 display
-- **Touchscreen**: Larger touch targets (minimum 44x44px)
-- **Battery Efficiency**: Optimized rendering and lazy tab loading
-- **Performance**: Hardware acceleration enabled
-- **Memory**: Efficient memory management for systems with 12GB+ RAM
+High-DPI scaling uses Qt's pass-through rounding policy. Hardware acceleration follows Qt's platform defaults. Saved tabs are restored eagerly.
 
 ## Project Structure
 
@@ -119,10 +155,15 @@ Browser/
 ├── cookie_manager.py       # Cookie handling
 ├── config.py               # Configuration management
 ├── utils.py                # Utility functions
+├── webengine.py            # Shared engine settings
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
 │   ├── tab_bar.py         # Tab bar widget
-│   └── cookie_dialog.py   # Cookie viewer/editor
+│   ├── cookie_dialog.py   # Cookie viewer
+│   └── settings_dialog.py # Preferences dialog
+├── tests/                 # Regression tests and startup smoke check
+├── pyproject.toml         # Ruff lint/format configuration
+├── requirements-dev.txt
 └── requirements.txt
 ```
 
@@ -132,6 +173,34 @@ Browser/
 - **Browser Engine**: PyQtWebEngine (Chromium-based)
 - **Storage**: JSON files for configuration, SQLite for cookies (via Qt)
 - **Profiles**: Isolated storage directories per profile
+
+JSON preferences and tab files are replaced atomically. Settings are saved when you click Save in the preferences dialog.
+
+## Development checks
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m ruff check .
+python -m ruff format --check .
+python -m unittest discover -s tests -v
+```
+
+For headless Linux checks:
+
+```bash
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python -m unittest discover -s tests -v
+QT_QPA_PLATFORM=offscreen python tests/smoke_browser.py
+```
+
+Tests use temporary profiles and local content. Chromium still needs to initialize its process sandbox; a restricted container may require running the tests outside that container's sandbox.
+
+## Existing limitations
+
+- Restore Closed Tab is present but its history stack is not populated.
+- Delete Selected and Clear All inside the cookie viewer are not connected to the cookie store. Use **Cookies → Clear All Cookies** for bulk deletion.
+- The tab group management dialog is a placeholder; the tab context menu supports group assignment.
+- Apply global cookies on startup is displayed in settings but is not currently used to gate cookie sharing.
+- User-agent overrides are applied through the settings dialog, not automatically on startup.
 
 ## Future Enhancements
 

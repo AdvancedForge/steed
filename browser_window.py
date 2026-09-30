@@ -1,95 +1,101 @@
 """Main browser window."""
 
-from PyQt6.QtWidgets import (
-    QMainWindow,
-    QApplication,
-    QWidget,
-    QVBoxLayout,
-    QMenuBar,
-    QMenu,
-    QStatusBar,
-    QMessageBox,
-    QInputDialog,
-    QSizePolicy,
-    QDialog,
-    QListWidget,
-    QLabel,
-    QPushButton,
-    QHBoxLayout
+import logging
+from pathlib import Path
+
+from PyQt6 import sip
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtWebEngineCore import (
+    QWebEngineDownloadRequest,
+    QWebEngineFullScreenRequest,
+    QWebEnginePage,
+    QWebEnginePermission,
+    QWebEngineSettings,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QModelIndex
-from PyQt6.QtGui import QKeySequence, QAction
-from pathlib import Path
-from typing import List, Optional
+from PyQt6.QtWidgets import (
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QListWidget,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QStatusBar,
+    QVBoxLayout,
+    QWidget,
+)
+
 from config import Config
+from cookie_manager import CookieManager
 from profile_manager import ProfileManager
 from tab_manager import TabManager, TabState
-from cookie_manager import CookieManager
 from ui.address_bar import AddressBar
-from ui.tab_bar import TabBar
 from ui.cookie_dialog import CookieDialog
 from ui.settings_dialog import SettingsDialog
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineDownloadRequest, QWebEngineSettings, QWebEngineFullScreenRequest
+from ui.tab_bar import TabBar
+from webengine import configure_web_settings
+
+logger = logging.getLogger(__name__)
+
 
 class BrowserPage(QWebEnginePage):
+    """Forward page console messages to the application's logging system."""
+
     def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
-        # Print media/codec errors to terminal
-        print(f"[JS:{level}] {sourceID}:{lineNumber} {message}")
+        logger.info("[JS:%s] %s:%s %s", level, sourceID, lineNumber, message)
         super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
 
 
 class BrowserTab(QWebEngineView):
     """Represents a single browser tab."""
 
-    def __init__(self, profile, parent=None, window=None, initial_qurl: QUrl | None = None):
+    def __init__(
+        self, profile, parent=None, window=None, initial_qurl: QUrl | None = None
+    ):
         super().__init__(parent)
         self.profile = profile
         self.window = window
         self.group = None
         page = BrowserPage(profile, self)
         self.setPage(page)
-        # Enable plugins and PDF viewer
         settings = self.settings()
-        settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, False)
-
-        # Media / embeds / animation
-        settings.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.Accelerated2dCanvasEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        configure_web_settings(settings)
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, False
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+        )
         settings.setAttribute(settings.WebAttribute.ScreenCaptureEnabled, True)
-        try:
-            settings.setAttribute(QWebEngineSettings.WebAttribute.ImageAnimationEnabled, True)
-        except Exception:
-            pass
-        
+
         if initial_qurl is not None and initial_qurl.isValid():
             self.setUrl(initial_qurl)
 
-
-    def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> 'BrowserTab':
+    def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> "BrowserTab":
         return self.window._new_tab(return_tab=True)
 
+
 class BrowserWindow(QMainWindow):
-    _download_connected_profile_ids = set()
     """Main browser window."""
 
-    def __init__(self, profile_name: Optional[str] = None):
+    def __init__(self, profile_name: str | None = None):
         super().__init__()
         self.config = Config()
-        self.profile_manager = ProfileManager(self.config, profile_name)
+        self.profile_manager = ProfileManager(self.config, profile_name, self)
+        self._download_connected_profiles = set()
         self.tab_manager = None
         self.cookie_manager = None
-        self.tabs: List[BrowserTab] = []
+        self.tabs: list[BrowserTab] = []
         self.current_tab_index = 0
         self._restoring_tabs = False
-        self._closed_tabs_stack: List[TabState] = []
-        self._child_windows: List[BrowserWindow] = []
+        self._closed_tabs_stack: list[TabState] = []
+        self._child_windows: list[BrowserWindow] = []
         self.setup_window()
         self.setup_menus()
         self.setup_ui()
@@ -113,26 +119,36 @@ class BrowserWindow(QMainWindow):
             self._new_tab()
 
     def _initialize_profile(self, profile_name: str):
-        # Setup TabManager and CookieManager for the given profile
+        if self.cookie_manager is not None:
+            self.cookie_manager.close()
+        if self.tab_manager is not None:
+            self.tab_manager.deleteLater()
         profile_path = self.profile_manager.get_profile_data_path(profile_name)
-        self.tab_manager = TabManager(profile_path)
+        self.tab_manager = TabManager(profile_path, self)
         profile = self.profile_manager.get_profile(profile_name)
 
-        # Connect downloadRequested ONCE per profile object
-        pid = int(profile.__hash__()) if hasattr(profile, "__hash__") else id(profile)
-        if pid not in BrowserWindow._download_connected_profile_ids:
+        if profile not in self._download_connected_profiles:
             profile.downloadRequested.connect(self._on_download_requested)
-            BrowserWindow._download_connected_profile_ids.add(pid)
+            self._download_connected_profiles.add(profile)
 
-        self.cookie_manager = CookieManager(profile)
+        self.cookie_manager = CookieManager(profile, self)
         # Connect signals for tab groups
         if self.tab_manager:
-            self.tab_manager.tab_state_changed.connect(self._update_tab_bar_group_display)
-            self.tab_manager.group_data_updated.connect(self._refresh_all_tab_bar_groups)
+            self.tab_manager.tab_state_changed.connect(
+                self._update_tab_bar_group_display
+            )
+            self.tab_manager.group_data_updated.connect(
+                self._refresh_all_tab_bar_groups
+            )
 
     def setup_window(self):
         self.setWindowTitle("Custom Browser")
-        self.setGeometry(100, 100, self.config.get("window_width", 1200), self.config.get("window_height", 800))
+        self.setGeometry(
+            100,
+            100,
+            self.config.get("window_width", 1200),
+            self.config.get("window_height", 800),
+        )
 
     def setup_menus(self):
         menubar = self.menuBar()
@@ -140,7 +156,7 @@ class BrowserWindow(QMainWindow):
         file_menu = menubar.addMenu("File")
         new_tab_action = QAction("New Tab", self)
         new_tab_action.setShortcut(QKeySequence("Ctrl+T"))
-        new_tab_action.triggered.connect(self._new_tab)
+        new_tab_action.triggered.connect(lambda: self._new_tab())
         file_menu.addAction(new_tab_action)
         restore_tab_action = QAction("Restore Closed Tab", self)
         restore_tab_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
@@ -180,11 +196,15 @@ class BrowserWindow(QMainWindow):
         profile_menu.addSeparator()
         pop_search_action = QAction("Pop Out Search Profile (Incognito)", self)
         pop_search_action.setShortcut(QKeySequence("Ctrl+Shift+N"))
-        pop_search_action.triggered.connect(lambda: self._pop_out_profile_named("search"))
+        pop_search_action.triggered.connect(
+            lambda: self._pop_out_profile_named("search")
+        )
         profile_menu.addAction(pop_search_action)
         search_profile_action = QAction("Switch to Search Profile (Incognito)", self)
         search_profile_action.setShortcut(QKeySequence("Ctrl+Shift+0"))
-        search_profile_action.triggered.connect(lambda: self._switch_to_profile("search"))
+        search_profile_action.triggered.connect(
+            lambda: self._switch_to_profile("search")
+        )
         profile_menu.addAction(search_profile_action)
         # Quick shortcuts submenu
         self.profile_shortcuts_menu = QMenu("Quick Switch", self)
@@ -202,12 +222,6 @@ class BrowserWindow(QMainWindow):
         clear_cookies_action = QAction("Clear All Cookies", self)
         clear_cookies_action.triggered.connect(self._clear_all_cookies)
         cookies_menu.addAction(clear_cookies_action)
-        # View menu
-        # view_menu = menubar.addMenu("View")
-        # dark_mode_action = QAction("Dark Mode", self, checkable=True)
-        # dark_mode_action.setChecked(self.config.dark_mode)
-        # dark_mode_action.triggered.connect(self._toggle_dark_mode)
-        # view_menu.addAction(dark_mode_action)
 
     def setup_ui(self):
         central = QWidget()
@@ -218,7 +232,7 @@ class BrowserWindow(QMainWindow):
         # Tab bar
         self.tab_bar = TabBar()
         self.tab_bar.new_tab_requested.connect(self._new_tab)
-        self.tab_bar.tab_changed.connect(lambda idx: self._switch_tab(idx))
+        self.tab_bar.tab_changed.connect(self._switch_tab)
         self.tab_bar.tab_close_requested.connect(self._close_tab)
         self.tab_bar.tab_moved.connect(self._on_tab_moved)
         self.tab_bar.group_rename_requested.connect(self._handle_group_rename_request)
@@ -235,7 +249,9 @@ class BrowserWindow(QMainWindow):
         layout.addWidget(self.address_bar)
         # Tab container
         self.tab_container = QWidget()
-        self.tab_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.tab_container.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.tab_layout = QVBoxLayout(self.tab_container)
         self.tab_layout.setContentsMargins(0, 0, 0, 0)
         self.tab_layout.setSpacing(0)
@@ -275,7 +291,9 @@ class BrowserWindow(QMainWindow):
 
     def _switch_profile(self):
         profiles = self.profile_manager.list_profiles() + ["search"]
-        profile, ok = QInputDialog.getItem(self, "Switch Profile", "Select profile:", profiles, 0, False)
+        profile, ok = QInputDialog.getItem(
+            self, "Switch Profile", "Select profile:", profiles, 0, False
+        )
         if ok:
             self._switch_to_profile(profile)
 
@@ -289,10 +307,7 @@ class BrowserWindow(QMainWindow):
         self._initialize_profile(profile_name)
         # Clean current tabs UI
         for tab in self.tabs:
-            page = tab.page()
-            if page:
-                page.deleteLater()
-            tab.deleteLater()
+            self._dispose_tab(tab)
         self.tabs.clear()
         self.tab_bar.clear_all_tabs()
         # Restore tabs for new profile
@@ -309,14 +324,20 @@ class BrowserWindow(QMainWindow):
         profiles = self.profile_manager.list_profiles()
         if not profiles:
             return
-        profile, ok = QInputDialog.getItem(self, "Rename Profile", "Select profile:", profiles, 0, False)
+        profile, ok = QInputDialog.getItem(
+            self, "Rename Profile", "Select profile:", profiles, 0, False
+        )
         if ok and profile:
-            new_name, ok2 = QInputDialog.getText(self, "Rename Profile", f"New name for '{profile}':")
+            new_name, ok2 = QInputDialog.getText(
+                self, "Rename Profile", f"New name for '{profile}':"
+            )
             if ok2 and new_name:
                 if self.profile_manager.rename_profile(profile, new_name):
-                    QMessageBox.information(self, "Success", f"Profile renamed to '{new_name}'")
+                    QMessageBox.information(
+                        self, "Success", f"Profile renamed to '{new_name}'"
+                    )
                     self._update_profile_shortcuts()
-                    self._switch_to_profile(new_name)  # <- add this
+                    self._switch_to_profile(new_name)
                     self._update_profile_shortcuts()
                 else:
                     QMessageBox.warning(self, "Error", "Could not rename profile.")
@@ -327,26 +348,37 @@ class BrowserWindow(QMainWindow):
         # Exclude current profile
         profiles = [p for p in profiles if p != current]
         if not profiles:
-            QMessageBox.information(self, "No Profiles", "No profiles available to delete.")
+            QMessageBox.information(
+                self, "No Profiles", "No profiles available to delete."
+            )
             return
-        profile, ok = QInputDialog.getItem(self, "Delete Profile", "Select profile to delete:", profiles, 0, False)
+        profile, ok = QInputDialog.getItem(
+            self, "Delete Profile", "Select profile to delete:", profiles, 0, False
+        )
         if ok and profile:
-            reply = QMessageBox.question(self, "Delete Profile",
+            reply = QMessageBox.question(
+                self,
+                "Delete Profile",
                 f"Delete profile '{profile}'? This will remove all data.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
             if reply == QMessageBox.StandardButton.Yes:
                 if self.profile_manager.delete_profile(profile):
-                    QMessageBox.information(self, "Deleted", f"Profile '{profile}' deleted.")
+                    QMessageBox.information(
+                        self, "Deleted", f"Profile '{profile}' deleted."
+                    )
                     self._update_profile_shortcuts()
                 else:
                     QMessageBox.warning(self, "Failed", "Could not delete profile.")
 
     def _pop_out_profile(self):
         profiles = self.profile_manager.list_profiles()
-        profile, ok = QInputDialog.getItem(self, "Pop out Profile", "Select profile:", profiles, 0, False)
+        profile, ok = QInputDialog.getItem(
+            self, "Pop out Profile", "Select profile:", profiles, 0, False
+        )
         if ok and profile:
-            _pop_out_profile_named(profile)
-    
+            self._pop_out_profile_named(profile)
+
     def _pop_out_profile_named(self, profile: str):
         win = BrowserWindow(profile_name=profile)
         win.show()
@@ -356,13 +388,19 @@ class BrowserWindow(QMainWindow):
         self.profile_shortcuts_menu.clear()
         profiles = self.profile_manager.list_profiles()
         for i, name in enumerate(profiles[:9]):
-            action = QAction(f"{name} (Ctrl+Shift+{i+1})", self)
-            action.setShortcut(QKeySequence(f"Ctrl+Shift+{i+1}"))
+            action = QAction(f"{name} (Ctrl+Shift+{i + 1})", self)
+            action.setShortcut(QKeySequence(f"Ctrl+Shift+{i + 1}"))
             action.triggered.connect(lambda checked, n=name: self._switch_to_profile(n))
             self.profile_shortcuts_menu.addAction(action)
 
     # ---------- Tab handling ----------
-    def _new_tab(self, url: Optional[str] = None, title: Optional[str] = None, return_tab: bool = False, index: Optional[int] = None):
+    def _new_tab(
+        self,
+        url: str | None = None,
+        title: str | None = None,
+        return_tab: bool = False,
+        index: int | None = None,
+    ):
         home = self.config.get("home_page", "https://www.google.com")
         if not home or home == "about:blank":
             home = "https://www.duckduckgo.com"
@@ -370,20 +408,14 @@ class BrowserWindow(QMainWindow):
         if not url or url == "about:blank":
             url = home
 
-        # Convert the input text to a QUrl using your existing rules
-        qurl = self._text_to_qurl(url)  # add helper below
+        qurl = self._text_to_qurl(url)
 
         profile = self.profile_manager.current_profile
-        tab = BrowserTab(profile, self.tab_container, self, initial_qurl=qurl)
+        tab = BrowserTab(profile, self.tab_container, self)
         self.tab_layout.addWidget(tab)
-        # Connect permission and download signals
-        tab.page().featurePermissionRequested.connect(self._on_permission_requested)
+        tab.page().permissionRequested.connect(self._on_permission_requested)
         tab.page().fullScreenRequested.connect(self._on_fullscreen_requested)
-        # Screen share picker (Qt 6.7+)
-        try:
-            tab.page().desktopMediaRequested.connect(self._on_desktop_media_requested)
-        except Exception as e:
-            print("desktopMediaRequested connect failed:", e)
+        tab.page().desktopMediaRequested.connect(self._on_desktop_media_requested)
 
         script = """
         Object.defineProperty(navigator, 'webdriver', {
@@ -391,7 +423,6 @@ class BrowserWindow(QMainWindow):
         });
         """
         tab.page().runJavaScript(script)
-        #tab.page().profile().downloadRequested.connect(self._on_download_requested)
         tab.urlChanged.connect(lambda u: self._on_tab_url_changed(tab, u))
         tab.titleChanged.connect(lambda t: self._on_tab_title_changed(tab, t))
         tab.loadProgress.connect(lambda p: self._on_load_progress(tab, p))
@@ -406,6 +437,9 @@ class BrowserWindow(QMainWindow):
         self._switch_tab(index)
         self._sync_tab_group_labels()
 
+        # Start loading only after signals and tab bookkeeping are ready.
+        tab.setUrl(qurl)
+
         if not self._restoring_tabs:
             self._save_current_tabs()
         if return_tab:
@@ -416,10 +450,7 @@ class BrowserWindow(QMainWindow):
             return
         tab = self.tabs.pop(index)
         self.tab_bar.remove_tab(index)
-        page = tab.page()
-        if page:
-            page.deleteLater()
-        tab.deleteLater()
+        self._dispose_tab(tab)
         self.current_tab_index = max(0, index - 1)
         self._switch_tab(self.current_tab_index)
         self._save_current_tabs()
@@ -453,7 +484,7 @@ class BrowserWindow(QMainWindow):
         self.address_bar.set_url(cur.url().toString())
         self.address_bar.set_back_enabled(cur.history().canGoBack())
         self.address_bar.set_forward_enabled(cur.history().canGoForward())
-        self.status_bar.showMessage(f"Tab {index+1} of {len(self.tabs)}")
+        self.status_bar.showMessage(f"Tab {index + 1} of {len(self.tabs)}")
 
     def _navigate_to_url(self, url_text: str):
         if not self.tabs:
@@ -461,16 +492,8 @@ class BrowserWindow(QMainWindow):
         self._navigate_tab_to_url(self.tabs[self.current_tab_index], url_text)
 
     def _navigate_tab_to_url(self, tab: BrowserTab, url_text: str):
-        url_text = url_text.strip()
-        if url_text.startswith(("http://", "https://", "file://", "about:")):
-            url = QUrl(url_text)
-        elif "." in url_text and " " not in url_text:
-            url = QUrl(f"https://{url_text}")
-        else:
-            search = self.config.get("search_engine", "https://www.google.com/search?q=")
-            url = QUrl(f"{search}{url_text}")
-        tab.setUrl(url)
-    
+        tab.setUrl(self._text_to_qurl(url_text))
+
     def _text_to_qurl(self, url_text: str) -> QUrl:
         url_text = (url_text or "").strip()
         if url_text.startswith(("http://", "https://", "file://", "about:")):
@@ -480,16 +503,18 @@ class BrowserWindow(QMainWindow):
         search = self.config.get("search_engine", "https://www.google.com/search?q=")
         return QUrl(f"{search}{url_text}")
 
-
     def _go_back(self):
         if self.tabs:
             self.tabs[self.current_tab_index].back()
+
     def _go_forward(self):
         if self.tabs:
             self.tabs[self.current_tab_index].forward()
+
     def _reload(self):
         if self.tabs:
             self.tabs[self.current_tab_index].reload()
+
     def _go_home(self):
         home = self.config.get("home_page", "https://www.google.com")
         self._navigate_to_url(home)
@@ -513,10 +538,14 @@ class BrowserWindow(QMainWindow):
             if len(title) > 30:
                 title = title[:27] + "..."
             self.tab_bar.set_tab_title(idx, title)
+
     def _on_load_progress(self, tab: BrowserTab, progress: int):
-        if tab == self.tabs[self.current_tab_index]:
+        if not self._closing and self.tabs and tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage(f"Loading... {progress}%")
+
     def _on_load_finished(self, tab: BrowserTab, ok: bool):
+        if self._closing or tab not in self.tabs:
+            return
         if tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
         self._save_current_tabs()
@@ -526,14 +555,18 @@ class BrowserWindow(QMainWindow):
             return
         states = []
         for i, tab in enumerate(self.tabs):
-            group = getattr(tab, "group", None)
+            group = tab.group
             url = tab.url().toString()
             if not url or url == "about:blank":
                 url = self.config.get("home_page", "https://www.google.com")
-            title = self.tab_bar.tab_bar.tabText(i) if i < self.tab_bar.tab_bar.count() else tab.title()
+            title = (
+                self.tab_bar.tab_bar.tabText(i)
+                if i < self.tab_bar.tab_bar.count()
+                else tab.title()
+            )
             if not title or title == "about:blank":
                 title = "New Tab"
-            
+
             states.append(TabState(url=url, title=title, group=group))
 
         self.tab_manager.save_tabs(states)
@@ -544,55 +577,61 @@ class BrowserWindow(QMainWindow):
             return
         saved = self.tab_manager.get_saved_tabs()
         self._restoring_tabs = True
-        if saved:
-            for state in saved:
-                self._new_tab(url=state.url, title=state.title, index=len(self.tabs))
-                # after the tab is created and index is known
-                tab = self.tabs[-1]
-                tab.group = getattr(state, "group", None)
-                self._sync_tab_group_labels()
-        else:
-            self._new_tab(index=len(self.tabs))
-
-        self._restoring_tabs = False
+        try:
+            if saved:
+                for state in saved:
+                    self._new_tab(
+                        url=state.url, title=state.title, index=len(self.tabs)
+                    )
+                    self.tabs[-1].group = state.group
+            else:
+                self._new_tab(index=len(self.tabs))
+        finally:
+            self._restoring_tabs = False
         self._switch_tab(0)
         self._sync_tab_group_labels()
 
     # ---------- Permission & Download ----------
-    def _on_permission_requested(self, url, feature):
+    def _on_permission_requested(self, permission: QWebEnginePermission):
+        if self._closing or not permission.isValid():
+            return
+        permission_type = QWebEnginePermission.PermissionType
         feature_names = {
-            QWebEnginePage.Feature.MediaAudioCapture: "Microphone",
-            QWebEnginePage.Feature.MediaVideoCapture: "Camera",
-            QWebEnginePage.Feature.MediaAudioVideoCapture: "Microphone and Camera",
-            QWebEnginePage.Feature.DesktopVideoCapture: "Screen Share",
-            QWebEnginePage.Feature.DesktopAudioVideoCapture: "Screen Share with Audio",
-            QWebEnginePage.Feature.Notifications: "Notifications",
-            QWebEnginePage.Feature.Geolocation: "Location",
+            permission_type.MediaAudioCapture: "Microphone",
+            permission_type.MediaVideoCapture: "Camera",
+            permission_type.MediaAudioVideoCapture: "Microphone and Camera",
+            permission_type.DesktopVideoCapture: "Screen Share",
+            permission_type.DesktopAudioVideoCapture: "Screen Share with Audio",
+            permission_type.Notifications: "Notifications",
+            permission_type.Geolocation: "Location",
         }
-        name = feature_names.get(feature, "Unknown")
-        reply = QMessageBox.question(self, "Permission Request",
-            f"{url.toString()} requests {name}. Allow?",
+        name = feature_names.get(permission.permissionType(), "Unknown")
+        reply = QMessageBox.question(
+            self,
+            "Permission Request",
+            f"{permission.origin().toString()} requests {name}. Allow?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        tab = self.tabs[self.current_tab_index]
+            QMessageBox.StandardButton.No,
+        )
         if reply == QMessageBox.StandardButton.Yes:
-            tab.page().setFeaturePermission(url, feature, QWebEnginePage.PermissionPolicy.PermissionGrantedByUser)
+            permission.grant()
         else:
-            tab.page().setFeaturePermission(url, feature, QWebEnginePage.PermissionPolicy.PermissionDeniedByUser)
+            permission.deny()
 
     def _on_download_requested(self, download: QWebEngineDownloadRequest):
         url = download.url().toString()
         name = download.suggestedFileName()
         size = download.totalBytes()
-        size_str = f"{size/1024:.2f} KB" if size > 0 else "Unknown"
+        size_str = f"{size / 1024:.2f} KB" if size > 0 else "Unknown"
         info = f"URL: {url}<br>Name: {name}<br>Size: {size_str}"
         dlg = QMessageBox(self)
         dlg.setWindowTitle("Download Request")
         dlg.setText("A download was requested:")
         dlg.setInformativeText(info)
-        dlg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel)
+        dlg.setStandardButtons(
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel
+        )
         if dlg.exec() == QMessageBox.StandardButton.Save:
-            from PyQt6.QtWidgets import QFileDialog
             path, _ = QFileDialog.getSaveFileName(self, "Save File", name)
             if path:
                 download.setDownloadDirectory(str(Path(path).parent))
@@ -609,13 +648,12 @@ class BrowserWindow(QMainWindow):
             self.tabs[tab_index].group = group
             self._sync_tab_group_labels()
             self._save_current_tabs()
-    
+
     def _set_tab_group_existing(self, tab_index: int, group_name: str):
         if 0 <= tab_index < len(self.tabs):
             self.tabs[tab_index].group = group_name
             self._sync_tab_group_labels()
             self._save_current_tabs()
-
 
     def _clear_tab_group(self, tab_index: int):
         self.tabs[tab_index].group = None
@@ -624,10 +662,12 @@ class BrowserWindow(QMainWindow):
 
     def _sync_tab_group_labels(self):
         for i, tab in enumerate(self.tabs):
-            self.tab_bar.set_tab_group(i, getattr(tab, "group", None))
+            self.tab_bar.set_tab_group(i, tab.group)
 
     def _manage_tab_groups(self):
-        QMessageBox.information(self, "Not Implemented", "Tab Group management UI not implemented yet.")
+        QMessageBox.information(
+            self, "Not Implemented", "Tab Group management UI not implemented yet."
+        )
 
     def _toggle_dark_mode(self, enabled: bool):
         self.config.dark_mode = enabled
@@ -643,8 +683,12 @@ class BrowserWindow(QMainWindow):
     def _clear_all_cookies(self):
         if not self.cookie_manager:
             return
-        reply = QMessageBox.question(self, "Clear Cookies", "Delete all cookies for this profile?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(
+            self,
+            "Clear Cookies",
+            "Delete all cookies for this profile?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
         if reply == QMessageBox.StandardButton.Yes:
             self.cookie_manager.clear_all_cookies()
 
@@ -658,58 +702,55 @@ class BrowserWindow(QMainWindow):
         for i in range(len(self.tabs)):
             self._update_tab_bar_group_display(i)
 
+    @staticmethod
+    def _dispose_tab(tab: BrowserTab) -> None:
+        """Stop a tab and detach its callbacks before scheduling deletion."""
+        for signal in (
+            tab.urlChanged,
+            tab.titleChanged,
+            tab.loadProgress,
+            tab.loadFinished,
+        ):
+            signal.disconnect()
+        tab.stop()
+        tab.hide()
+        # BrowserPage is parented to the view and is destroyed with it.
+        tab.deleteLater()
+
     # ---------- Close handling ----------
     def closeEvent(self, event):
-        self._closing = True  # <-- add this first
+        if self._closing:
+            event.accept()
+            return
+        self._closing = True
 
         self._save_current_tabs()
-        self.config.set("window_width", self.width())
-        self.config.set("window_height", self.height())
+        self.config.update(
+            {"window_width": self.width(), "window_height": self.height()}
+        )
 
         for win in self._child_windows:
             win.close()
 
-        try:
-            if self.profile_manager.current_profile:
-                self.profile_manager.current_profile.cookieStore().flushStore()
-        except Exception:
-            pass
-
-        try:
-            self.profile_manager.flush_all_cookie_stores()
-        except Exception:
-            pass
-
+        if self.cookie_manager is not None:
+            self.cookie_manager.close()
+            self.cookie_manager = None
         for tab in list(self.tabs):
-            # Disconnect signals so late emissions don't hit handlers while closing
-            try: tab.urlChanged.disconnect()
-            except Exception: pass
-            try: tab.titleChanged.disconnect()
-            except Exception: pass
-            try: tab.loadProgress.disconnect()
-            except Exception: pass
-            try: tab.loadFinished.disconnect()
-            except Exception: pass
-
-            try:
-                tab.stop()
-            except Exception:
-                pass
-            try:
-                p = tab.page()
-                if p:
-                    p.deleteLater()
-            except Exception:
-                pass
-            tab.deleteLater()
+            self._dispose_tab(tab)
 
         self.tabs.clear()
         self.current_tab_index = 0
-        QApplication.processEvents()
+        # Qt requires pages to be destroyed before their profiles. Profile
+        # destruction also flushes the engine's persistent cookies and storage.
+        # Include tabs already awaiting deferred deletion after a profile switch.
+        # Explicit destruction here also works while a nested dialog is closing.
+        for tab in self.tab_container.findChildren(BrowserTab):
+            sip.delete(tab)
+        self.profile_manager.close()
+        self._download_connected_profiles.clear()
 
         event.accept()
 
-    
     def _on_fullscreen_requested(self, request: QWebEngineFullScreenRequest):
         request.accept()
 
@@ -759,14 +800,14 @@ class BrowserWindow(QMainWindow):
         self.address_bar.setVisible(self._saved_vis.get("address", True))
         if self.statusBar():
             self.statusBar().setVisible(self._saved_vis.get("status", True))
-    
+
     def keyPressEvent(self, event):
         if self._was_fullscreen and event.key() == Qt.Key.Key_Escape:
             self._exit_fullscreen()
             event.accept()
             return
         super().keyPressEvent(event)
-    
+
     def _open_settings(self):
         dlg = SettingsDialog(self.config, self)
         if dlg.exec():
@@ -775,31 +816,22 @@ class BrowserWindow(QMainWindow):
             # Apply dark mode immediately
             self.apply_dark_mode()
 
-            # Apply UA immediately to current profiles (best-effort)
+            # Apply the override to the same profiles as before.
             ua = self.config.get("user_agent_override", "")
-            try:
-                # current profile
-                if self.profile_manager.current_profile:
-                    self.profile_manager.current_profile.setHttpUserAgent(ua)
-            except Exception:
-                pass
-            # try global + search too
-            for name in ("global", "search"):
-                try:
-                    self.profile_manager.get_profile(name).setHttpUserAgent(ua)
-                except Exception:
-                    pass
+            for profile in (
+                self.profile_manager.current_profile,
+                self.profile_manager.global_profile,
+                self.profile_manager.search_profile,
+            ):
+                if profile is not None:
+                    profile.setHttpUserAgent(ua)
 
-            # Optional: if they set cookie sharing to all_profiles, propagate now if your ProfileManager supports it
-            try:
-                mode = self.config.get("global_cookie_sharing_mode", "on_switch")
-                if mode == "all_profiles" and hasattr(self.profile_manager, "propagate_global_cookies_to_all_profiles"):
-                    self.profile_manager.propagate_global_cookies_to_all_profiles()
-            except Exception:
-                pass
+            mode = self.config.get("global_cookie_sharing_mode", "on_switch")
+            if mode == "all_profiles":
+                self.profile_manager.propagate_global_cookies_to_all_profiles()
 
     def _on_desktop_media_requested(self, request):
-        print("desktopMediaRequested fired")  # debug: you should see this in terminal
+        logger.debug("Desktop media requested")
 
         # Keep it alive while dialog is open
         self._pending_desktop_request = request
@@ -840,18 +872,14 @@ class BrowserWindow(QMainWindow):
         share_window.setEnabled(windows_model.rowCount() > 0)
 
         def do_cancel():
-            try:
-                if self._pending_desktop_request:
-                    self._pending_desktop_request.cancel()
-            except Exception:
-                pass
+            if self._pending_desktop_request is not None:
+                self._pending_desktop_request.cancel()
             self._pending_desktop_request = None
-            dlg.reject()
 
         def do_screen():
             row = screens_list.currentRow()
             if row >= 0 and self._pending_desktop_request:
-                idx = screens_model.index(row, 0)  # QModelIndex required :contentReference[oaicite:2]{index=2}
+                idx = screens_model.index(row, 0)
                 self._pending_desktop_request.selectScreen(idx)
                 self._pending_desktop_request = None
                 dlg.accept()
@@ -859,12 +887,12 @@ class BrowserWindow(QMainWindow):
         def do_window():
             row = windows_list.currentRow()
             if row >= 0 and self._pending_desktop_request:
-                idx = windows_model.index(row, 0)  # QModelIndex required :contentReference[oaicite:3]{index=3}
+                idx = windows_model.index(row, 0)
                 self._pending_desktop_request.selectWindow(idx)
                 self._pending_desktop_request = None
                 dlg.accept()
 
-        cancel.clicked.connect(do_cancel)
+        cancel.clicked.connect(dlg.reject)
         dlg.rejected.connect(do_cancel)
         share_screen.clicked.connect(do_screen)
         share_window.clicked.connect(do_window)
