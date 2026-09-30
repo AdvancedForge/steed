@@ -33,10 +33,14 @@ class ProfileRegistry(QObject):
         self.owners = set()
         self.downloads = DownloadManager(config, self)
         self.adblock = AdBlocker(config, self)
-        self.global_profile = self.create("global", config.config_dir / "global_profile")
+        self.global_profile = self.create(
+            "global", config.config_dir / "global_profile"
+        )
         self.search_profile = QWebEngineProfile(self)
         self.defaults["search"] = self.search_profile.httpUserAgent()
-        self.search_profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+        self.search_profile.setHttpCacheType(
+            QWebEngineProfile.HttpCacheType.MemoryHttpCache
+        )
         configure_web_settings(self.search_profile.settings())
         self.downloads.attach(self.search_profile, "search")
         self.adblock.attach(self.search_profile)
@@ -50,7 +54,9 @@ class ProfileRegistry(QObject):
         profile.setPersistentStoragePath(str(directory / "storage"))
         profile.setCachePath(str(directory / "cache"))
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
-        profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies)
+        profile.setPersistentCookiesPolicy(
+            QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies
+        )
         configure_web_settings(profile.settings())
         self.defaults[name] = profile.httpUserAgent()
         override = self.config.get("user_agent_override", "").strip()
@@ -136,7 +142,11 @@ class ProfileManager(QObject):
 
     def create_profile(self, name):
         name = sanitize_profile_name(name)
-        if not name or name in ("global", "search") or self.get_profile_path(name).exists():
+        if (
+            not name
+            or name in ("global", "search")
+            or self.get_profile_path(name).exists()
+        ):
             return False
         self.get_profile(name)
         self.registry.profiles_updated.emit()
@@ -146,18 +156,32 @@ class ProfileManager(QObject):
         name = sanitize_profile_name(name)
         self.current_profile_name = name
         self.current_profile = self.get_profile(name)
-        if name not in ("global", "search") and (not startup or self.config.get("global_cookie_sharing_apply_on_startup", True)):
+        if name not in ("global", "search") and (
+            not startup
+            or self.config.get("global_cookie_sharing_apply_on_startup", True)
+        ):
             sharing = self.registry.sharing
-            if self.config.get("global_cookie_sharing_mode", "on_switch") == "all_profiles":
+            if (
+                self.config.get("global_cookie_sharing_mode", "on_switch")
+                == "all_profiles"
+            ):
                 self.propagate_global_cookies_to_all_profiles()
             else:
-                sharing.enabled = {o.current_profile_name for o in self.registry.owners if o.current_profile_name in sharing.profiles}
+                sharing.enabled = {
+                    o.current_profile_name
+                    for o in self.registry.owners
+                    if o.current_profile_name in sharing.profiles
+                }
                 sharing.enable(name)
         self.profile_changed.emit(name)
 
     def list_profiles(self):
         names = {"default", "global"}
-        names.update(p.name for p in self.config.profiles_dir.iterdir() if p.is_dir() and p.name not in ("search", "global_profile"))
+        names.update(
+            p.name
+            for p in self.config.profiles_dir.iterdir()
+            if p.is_dir() and p.name not in ("search", "global_profile")
+        )
         return sorted(names)
 
     def _available_for_mutation(self, name):
@@ -167,7 +191,10 @@ class ProfileManager(QObject):
             return False
         profile = self._profiles.get(name)
         if profile is not None:
-            if any(isinstance(w, QWebEngineView) and w.page().profile() is profile for w in QApplication.allWidgets()):
+            if any(
+                isinstance(w, QWebEngineView) and w.page().profile() is profile
+                for w in QApplication.allWidgets()
+            ):
                 return False
             sip.delete(profile)
             del self._profiles[name]
@@ -194,7 +221,11 @@ class ProfileManager(QObject):
 
     def rename_profile(self, old_name, new_name):
         old, new = sanitize_profile_name(old_name), sanitize_profile_name(new_name)
-        if not new or new in ("global", "search", "default") or self.get_profile_path(new).exists():
+        if (
+            not new
+            or new in ("global", "search", "default")
+            or self.get_profile_path(new).exists()
+        ):
             return False
         if not self._available_for_mutation(old):
             return False

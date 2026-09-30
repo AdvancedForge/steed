@@ -46,6 +46,14 @@ class CookieSharing(QObject):
         self.enabled = set()
         self.paths = {}
         self.closed = False
+        self.deletions_file = config.config_dir / "global_cookie_deletions.json"
+        deleted = load_json(self.deletions_file, [])
+        self.deleted = (
+            set(deleted)
+            if isinstance(deleted, list)
+            and all(isinstance(key, str) for key in deleted)
+            else set()
+        )
         store = global_profile.cookieStore()
         store.cookieAdded.connect(self.global_added)
         store.cookieRemoved.connect(self.global_removed)
@@ -66,14 +74,20 @@ class CookieSharing(QObject):
             self.states[name]["inherited"] = {}
         for field in ("local_sites", "opt_in"):
             values = self.states[name][field]
-            self.states[name][field] = [v for v in values if isinstance(v, str)] if isinstance(values, list) else []
+            self.states[name][field] = (
+                [v for v in values if isinstance(v, str)]
+                if isinstance(values, list)
+                else []
+            )
         self.observed[name] = {}
         self.pending[name] = {}
         if fresh:
             self.fresh.add(name)
         store = profile.cookieStore()
         store.cookieAdded.connect(lambda cookie, n=name: self.target_added(n, cookie))
-        store.cookieRemoved.connect(lambda cookie, n=name: self.target_removed(n, cookie))
+        store.cookieRemoved.connect(
+            lambda cookie, n=name: self.target_removed(n, cookie)
+        )
         store.loadAllCookies()
 
     def save(self, name):
@@ -86,7 +100,9 @@ class CookieSharing(QObject):
 
     def local(self, name, domain):
         state = self.states[name]
-        return state["block_all"] or any(related_domains(domain, site) for site in state["local_sites"])
+        return state["block_all"] or any(
+            related_domains(domain, site) for site in state["local_sites"]
+        )
 
     def mark_local(self, name, domain):
         if domain and domain not in self.states[name]["local_sites"]:
@@ -97,6 +113,9 @@ class CookieSharing(QObject):
         if self.closed or (key := cookie_key(cookie)) is None:
             return
         self.global_cookies[key] = QNetworkCookie(cookie)
+        if key in self.deleted:
+            self.deleted.discard(key)
+            save_json(self.deletions_file, sorted(self.deleted))
         for name in tuple(self.enabled):
             self.copy(name, cookie)
 
@@ -104,10 +123,16 @@ class CookieSharing(QObject):
         if self.closed or (key := cookie_key(cookie)) is None:
             return
         self.global_cookies.pop(key, None)
+        self.deleted.add(key)
+        save_json(self.deletions_file, sorted(self.deleted))
         for name in self.profiles:
             observed = self.observed[name].get(key)
             inherited = self.states[name]["inherited"].get(key)
-            if observed is not None and inherited == fingerprint(observed) and not self.local(name, cookie_site(cookie)):
+            if (
+                observed is not None
+                and inherited == fingerprint(observed)
+                and not self.local(name, cookie_site(cookie))
+            ):
                 self.pending[name][key] = None
                 self.profiles[name].cookieStore().deleteCookie(observed)
 
@@ -121,10 +146,16 @@ class CookieSharing(QObject):
             self.pending[name].pop(key, None)
             self.states[name]["inherited"][key] = digest
             self.save(name)
+            if key in self.deleted and not self.local(name, cookie_site(cookie)):
+                self.pending[name][key] = None
+                self.profiles[name].cookieStore().deleteCookie(cookie)
             return
         inherited = self.states[name]["inherited"].get(key)
         if inherited != digest:
             self.mark_local(name, cookie_site(cookie))
+        elif key in self.deleted and not self.local(name, cookie_site(cookie)):
+            self.pending[name][key] = None
+            self.profiles[name].cookieStore().deleteCookie(cookie)
         elif name in self.enabled and key in self.global_cookies:
             self.copy(name, self.global_cookies[key])
 
@@ -150,9 +181,14 @@ class CookieSharing(QObject):
         digest = fingerprint(cookie)
         if current is not None:
             existing = fingerprint(current)
-            if existing != self.states[name]["inherited"].get(key) or existing == digest:
+            if (
+                existing != self.states[name]["inherited"].get(key)
+                or existing == digest
+            ):
                 return
-        elif name not in self.fresh and not any(related_domains(domain, site) for site in self.states[name]["opt_in"]):
+        elif name not in self.fresh and not any(
+            related_domains(domain, site) for site in self.states[name]["opt_in"]
+        ):
             return
         if self.pending[name].get(key) == digest:
             return
@@ -160,7 +196,12 @@ class CookieSharing(QObject):
         self.states[name]["inherited"][key] = digest
         self.save(name)
         origin = QUrl(f"{'https' if cookie.isSecure() else 'http'}://{domain}/")
-        self.profiles[name].cookieStore().setCookie(cookie, origin)
+        copy = QNetworkCookie(cookie)
+        if not cookie.domain().startswith("."):
+            # setCookie adds a dot to nonempty domains. Empty + explicit origin
+            # retains a host-only cookie instead of widening it to subdomains.
+            copy.setDomain("")
+        self.profiles[name].cookieStore().setCookie(copy, origin)
 
     def reconcile(self, name):
         for cookie in list(self.global_cookies.values()):
@@ -180,7 +221,9 @@ class CookieSharing(QObject):
         domain = domain.lower().strip().lstrip(".")
         state = self.states[name]
         state["block_all"] = False
-        state["local_sites"] = [s for s in state["local_sites"] if not related_domains(s, domain)]
+        state["local_sites"] = [
+            s for s in state["local_sites"] if not related_domains(s, domain)
+        ]
         if domain not in state["opt_in"]:
             state["opt_in"].append(domain)
         self.enabled.add(name)

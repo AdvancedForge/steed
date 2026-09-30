@@ -12,17 +12,29 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from cookie_manager import CookieInfo
+from cookie_manager import CookieInfo, CookieManager
 
 
 class CookieDialog(QDialog):
     """Dialog for viewing and managing cookies."""
 
-    def __init__(self, cookies: list[CookieInfo], parent=None):
+    def __init__(self, manager: CookieManager, parent=None, protect_deletion=None):
         super().__init__(parent)
-        self.cookies = cookies
+        self.manager = manager
+        self.protect_deletion = protect_deletion or (lambda cookies: None)
+        self.cookies = manager.get_all_cookies()
+        self.displayed_cookies = []
         self.setup_ui()
         self.populate_table()
+        manager.cookies_loaded.connect(self.update_cookies)
+        self.finished.connect(
+            lambda: manager.cookies_loaded.disconnect(self.update_cookies)
+        )
+        manager.load_all_cookies()
+
+    def update_cookies(self, cookies):
+        self.cookies = cookies
+        self.filter_cookies(self.filter_input.text())
 
     def setup_ui(self) -> None:
         """Set up the UI."""
@@ -60,11 +72,14 @@ class CookieDialog(QDialog):
 
         self.clear_all_btn = QPushButton("Clear All")
         self.clear_all_btn.clicked.connect(self.clear_all)
+        self.delete_site_btn = QPushButton("Delete Selected Sites")
+        self.delete_site_btn.clicked.connect(self.delete_sites)
 
         self.close_btn = QPushButton("Close")
         self.close_btn.clicked.connect(self.accept)
 
         button_layout.addWidget(self.delete_btn)
+        button_layout.addWidget(self.delete_site_btn)
         button_layout.addWidget(self.clear_all_btn)
         button_layout.addStretch()
         button_layout.addWidget(self.close_btn)
@@ -74,6 +89,7 @@ class CookieDialog(QDialog):
         """Populate the table with cookies."""
         if cookies is None:
             cookies = self.cookies
+        self.displayed_cookies = list(cookies)
 
         self.table.setRowCount(len(cookies))
 
@@ -133,11 +149,33 @@ class CookieDialog(QDialog):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            # Emit signal or call callback
-            self.cookies_to_delete = [
-                self.cookies[row] for row in sorted(selected_rows, reverse=True)
+            cookies = [self.displayed_cookies[row] for row in sorted(selected_rows)]
+            self.protect_deletion([cookie.cookie for cookie in cookies])
+            for cookie in cookies:
+                self.manager.delete_cookie(cookie)
+
+    def delete_sites(self):
+        rows = {item.row() for item in self.table.selectedItems()}
+        sites = {self.displayed_cookies[row].domain.lstrip(".").lower() for row in rows}
+        if not sites:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Delete Site Cookies",
+            "Delete cookies for these domains and their subdomains?\n"
+            + "\n".join(sorted(sites)),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            cookies = [
+                cookie
+                for site in sites
+                for cookie in self.manager.get_cookies_for_domain(site)
             ]
-            self.accept()
+            self.protect_deletion([cookie.cookie for cookie in cookies])
+            for cookie in cookies:
+                self.manager.delete_cookie(cookie)
 
     def clear_all(self) -> None:
         """Clear all cookies."""
@@ -149,5 +187,5 @@ class CookieDialog(QDialog):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            self.clear_all_requested = True
-            self.accept()
+            self.protect_deletion(None)
+            self.manager.clear_all_cookies()

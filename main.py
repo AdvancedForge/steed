@@ -48,7 +48,11 @@ def main() -> int:
     config = Config()
     app._profile_lock = QLockFile(str(config.config_dir / "browser.lock"))
     if not app._profile_lock.tryLock(0):
-        QMessageBox.warning(None, "Browser Already Running", "This browser data directory is already in use. Use the running browser to open another window.")
+        QMessageBox.warning(
+            None,
+            "Browser Already Running",
+            "This browser data directory is already in use. Use the running browser to open another window.",
+        )
         return 1
 
     window = BrowserWindow()

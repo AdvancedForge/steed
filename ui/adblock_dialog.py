@@ -17,11 +17,19 @@ class AdBlockDialog(QDialog):
         self.setWindowTitle("Ad Blocking")
         self.resize(620, 260)
         layout = QVBoxLayout(self)
-        self.enabled = QCheckBox("Enable network blocking and supported cosmetic filters")
+        self.enabled = QCheckBox(
+            "Enable network blocking and supported cosmetic filters"
+        )
         self.enabled.setChecked(service.config.get("adblock_enabled", True))
         layout.addWidget(self.enabled)
-        layout.addWidget(QLabel("Site exceptions (comma-separated host names; reload affected pages):"))
-        self.exceptions = QLineEdit(", ".join(service.config.get("adblock_exceptions", [])))
+        layout.addWidget(
+            QLabel(
+                "Site exceptions (comma-separated host names; reload affected pages):"
+            )
+        )
+        self.exceptions = QLineEdit(
+            ", ".join(service.config.get("adblock_exceptions", []))
+        )
         layout.addWidget(self.exceptions)
         self.status = QLabel()
         self.status.setWordWrap(True)
@@ -38,10 +46,20 @@ class AdBlockDialog(QDialog):
         self.refresh()
 
     def refresh(self):
-        self.status.setText(f"{self.service.status}\nBlocked requests this session: {self.service.count:,}")
+        self.status.setText(
+            f"{self.service.status}\nBlocked requests this session: {self.service.count:,}"
+        )
         self.update_button.setEnabled(not self.service.updating)
 
     def save(self):
-        hosts = sorted({host.strip().lower().lstrip('.') for host in self.exceptions.text().split(',') if host.strip()})
-        self.service.config.update({"adblock_enabled": self.enabled.isChecked(), "adblock_exceptions": hosts})
+        hosts = sorted(
+            {
+                host.strip().lower().lstrip(".")
+                for host in self.exceptions.text().split(",")
+                if host.strip()
+            }
+        )
+        self.service.config.update(
+            {"adblock_enabled": self.enabled.isChecked(), "adblock_exceptions": hosts}
+        )
         self.accept()

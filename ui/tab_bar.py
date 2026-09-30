@@ -14,6 +14,7 @@ class TabBar(QWidget):
     group_rename_requested = pyqtSignal(int)
     group_set_requested = pyqtSignal(int, str)
     group_clear_requested = pyqtSignal(int)
+    group_toggle_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -36,6 +37,7 @@ class TabBar(QWidget):
         self.tab_bar.customContextMenuRequested.connect(self._show_context_menu)
 
         self.groups = {}  # index -> group_name
+        self.available_groups = []
 
         self.new_tab_btn = QPushButton("+")
         self.new_tab_btn.setToolTip("New Tab")
@@ -103,7 +105,9 @@ class TabBar(QWidget):
         menu = QMenu(self)
         set_new = menu.addAction("Set Group…")
 
-        existing_groups = sorted({g for g in self.groups.values() if g})
+        existing_groups = sorted(
+            {g for g in self.groups.values() if g} | set(self.available_groups)
+        )
         if existing_groups:
             sub = menu.addMenu("Set to existing")
             for g in existing_groups:
@@ -115,12 +119,19 @@ class TabBar(QWidget):
                 )
 
         clear_group = menu.addAction("Clear Group")
+        toggle_group = (
+            menu.addAction("Collapse / Expand Group")
+            if self.groups.get(index)
+            else None
+        )
         action = menu.exec(self.tab_bar.mapToGlobal(position))
 
         if action == set_new:
             self.group_rename_requested.emit(index)
         elif action == clear_group:
             self.group_clear_requested.emit(index)
+        elif action == toggle_group and toggle_group is not None:
+            self.group_toggle_requested.emit(self.groups[index])
 
     def get_current_index(self) -> int:
         """Get the current tab index."""

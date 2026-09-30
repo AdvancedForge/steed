@@ -57,7 +57,9 @@ class SettingsDialog(QDialog):
         self.user_agent = QLineEdit(self.config.get("user_agent_override", ""))
         self.user_agent.setPlaceholderText("Leave blank to use default UA")
         form.addRow("User-Agent override:", self.user_agent)
-        effective = QLabel(effective_ua or "The engine default is used when no override is set.")
+        effective = QLabel(
+            effective_ua or "The engine default is used when no override is set."
+        )
         effective.setWordWrap(True)
         form.addRow("Current effective User-Agent:", effective)
 

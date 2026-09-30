@@ -17,6 +17,14 @@ class TabState:
     title: str
     group: str | None = None
     tab_id: str = field(default_factory=lambda: uuid4().hex, compare=False)
+    group_id: str | None = None
+
+
+@dataclass
+class TabGroup:
+    group_id: str
+    name: str
+    collapsed: bool = False
 
 
 @dataclass
@@ -35,7 +43,7 @@ class ClosedTabHistory:
     def push(self, profile: str, state: TabState, index: int) -> None:
         history = self._profiles.setdefault(profile, [])
         history.append(ClosedTab(state, index))
-        del history[:-self.limit]
+        del history[: -self.limit]
 
     def pop(self, profile: str) -> ClosedTab | None:
         history = self._profiles.get(profile, [])
@@ -59,6 +67,34 @@ class TabManager(QObject):
         self.profile_dir = profile_dir
         self.tabs_file = self.profile_dir / "tabs.json"
         self.tab_states: list[TabState] = []
+        self.groups_file = self.profile_dir / "groups.json"
+        self.groups: dict[str, TabGroup] = {}
+        raw = load_json(self.groups_file, []) if str(profile_dir) != "." else []
+        for item in raw if isinstance(raw, list) else []:
+            if (
+                isinstance(item, dict)
+                and isinstance(item.get("group_id"), str)
+                and isinstance(item.get("name"), str)
+            ):
+                group = TabGroup(
+                    item["group_id"], item["name"], bool(item.get("collapsed", False))
+                )
+                self.groups[group.group_id] = group
+
+    def save_groups(self):
+        if str(self.profile_dir) != ".":
+            save_json(
+                self.groups_file, [asdict(group) for group in self.groups.values()]
+            )
+
+    def ensure_group(self, name):
+        for group in self.groups.values():
+            if group.name == name:
+                return group
+        group = TabGroup(uuid4().hex, name)
+        self.groups[group.group_id] = group
+        self.save_groups()
+        return group
 
     def save_tabs(self, states: list[TabState]) -> None:
         self.tab_states = list(states)
@@ -78,6 +114,7 @@ class TabManager(QObject):
                     title=item.get("title", "New Tab"),
                     group=item.get("group"),
                     tab_id=item.get("tab_id") or uuid4().hex,
+                    group_id=item.get("group_id"),
                 )
             )
         self.tab_states = states
