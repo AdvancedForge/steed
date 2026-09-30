@@ -6,10 +6,11 @@ import os
 import shlex
 import sys
 
-from PyQt6.QtCore import QCoreApplication, Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QCoreApplication, QLockFile, Qt
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from browser_window import BrowserWindow
+from config import Config
 
 
 def configure_chromium_flags() -> None:
@@ -42,6 +43,13 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Custom Browser")
     app.setOrganizationName("CustomBrowser")
+
+    # Prevent separate processes from corrupting the same Chromium stores.
+    config = Config()
+    app._profile_lock = QLockFile(str(config.config_dir / "browser.lock"))
+    if not app._profile_lock.tryLock(0):
+        QMessageBox.warning(None, "Browser Already Running", "This browser data directory is already in use. Use the running browser to open another window.")
+        return 1
 
     window = BrowserWindow()
     window.show()

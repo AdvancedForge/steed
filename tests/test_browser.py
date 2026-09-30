@@ -197,13 +197,13 @@ class BrowserTests(unittest.TestCase):
         cookie = QNetworkCookie(b"session", b"test")
         cookie.setDomain("example.org")
         cookie.setPath("/")
-        manager._global_cookie_sharing_mode = "all_profiles"
-        with patch.object(
-            manager, "_apply_single_global_cookie_to_all_profiles"
-        ) as apply:
-            manager._on_global_cookie_added(cookie)
+        self.window.config.set("global_cookie_sharing_mode", "all_profiles")
+        manager.refresh_settings()
+        sharing = manager.registry.sharing
+        with patch.object(sharing, "copy") as apply:
+            sharing.global_added(cookie)
         apply.assert_called_once()
-        self.assertEqual(len(manager._global_cookie_map), 1)
+        self.assertEqual(len(sharing.global_cookies), 1)
 
     def test_settings_save_once(self):
         dialog = SettingsDialog(self.window.config)

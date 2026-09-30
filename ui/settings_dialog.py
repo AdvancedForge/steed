@@ -17,7 +17,7 @@ from config import Config
 class SettingsDialog(QDialog):
     """Edit preferences and commit them together when Save is selected."""
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: Config, parent=None, effective_ua: str = "") -> None:
         super().__init__(parent)
         self.config = config
         self.setWindowTitle("Settings")
@@ -57,6 +57,9 @@ class SettingsDialog(QDialog):
         self.user_agent = QLineEdit(self.config.get("user_agent_override", ""))
         self.user_agent.setPlaceholderText("Leave blank to use default UA")
         form.addRow("User-Agent override:", self.user_agent)
+        effective = QLabel(effective_ua or "The engine default is used when no override is set.")
+        effective.setWordWrap(True)
+        form.addRow("Current effective User-Agent:", effective)
 
         self.global_cookie_mode = QComboBox()
         self.global_cookie_mode.addItems(["on_switch", "all_profiles"])

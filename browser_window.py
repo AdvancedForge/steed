@@ -1,7 +1,6 @@
 """Main browser window."""
 
 import logging
-from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -18,7 +17,6 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QDialog,
-    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -39,6 +37,7 @@ from profile_manager import ProfileManager
 from tab_manager import ClosedTabHistory, TabManager, TabState
 from ui.address_bar import AddressBar
 from ui.cookie_dialog import CookieDialog
+from ui.download_dialog import DownloadDialog
 from ui.settings_dialog import SettingsDialog
 from ui.tab_bar import TabBar
 from webengine import configure_web_settings
@@ -91,7 +90,8 @@ class BrowserWindow(QMainWindow):
         super().__init__()
         self.config = Config()
         self.profile_manager = ProfileManager(self.config, profile_name, self)
-        self._download_connected_profiles = set()
+        self.config = self.profile_manager.config
+        self.download_manager = self.profile_manager.registry.downloads
         self.tab_manager = None
         self.cookie_manager = None
         self.tabs: list[BrowserTab] = []
@@ -130,10 +130,6 @@ class BrowserWindow(QMainWindow):
         self.tab_manager = TabManager(profile_path, self)
         profile = self.profile_manager.get_profile(profile_name)
 
-        if profile not in self._download_connected_profiles:
-            profile.downloadRequested.connect(self._on_download_requested)
-            self._download_connected_profiles.add(profile)
-
         self.cookie_manager = CookieManager(profile, self)
         # Connect signals for tab groups
         if self.tab_manager:
@@ -171,6 +167,10 @@ class BrowserWindow(QMainWindow):
         close_tab_action.setShortcut(QKeySequence("Ctrl+W"))
         close_tab_action.triggered.connect(self._close_current_tab)
         file_menu.addAction(close_tab_action)
+        downloads_action = QAction("Downloads...", self)
+        downloads_action.setShortcut(QKeySequence("Ctrl+J"))
+        downloads_action.triggered.connect(lambda: DownloadDialog(self.download_manager, self).exec())
+        file_menu.addAction(downloads_action)
         file_menu.addSeparator()
         settings_action = QAction("Settings...", self)
         settings_action.setShortcut(QKeySequence("Ctrl+,"))
@@ -227,6 +227,9 @@ class BrowserWindow(QMainWindow):
         clear_cookies_action = QAction("Clear All Cookies", self)
         clear_cookies_action.triggered.connect(self._clear_all_cookies)
         cookies_menu.addAction(clear_cookies_action)
+        use_global_action = QAction("Use Global Cookies for This Site...", self)
+        use_global_action.triggered.connect(self._use_global_cookies)
+        cookies_menu.addAction(use_global_action)
 
     def setup_ui(self):
         central = QWidget()
@@ -323,8 +326,10 @@ class BrowserWindow(QMainWindow):
         name, ok = QInputDialog.getText(self, "New Profile", "Profile name:")
         if ok and name:
             name = name.strip()
-            self.profile_manager.create_profile(name)
-            self._switch_to_profile(name)
+            if self.profile_manager.create_profile(name):
+                self._switch_to_profile(name)
+            else:
+                QMessageBox.warning(self, "New Profile", "Choose a new, non-reserved profile name.")
 
     def _rename_profile(self):
         profiles = self.profile_manager.list_profiles()
@@ -346,7 +351,7 @@ class BrowserWindow(QMainWindow):
                     self._switch_to_profile(new_name)
                     self._update_profile_shortcuts()
                 else:
-                    QMessageBox.warning(self, "Error", "Could not rename profile.")
+                    QMessageBox.warning(self, "Error", "Could not rename profile. Switch all windows away from it first, and choose an unused name.")
 
     def _delete_profile(self):
         profiles = self.profile_manager.list_profiles()
@@ -365,17 +370,17 @@ class BrowserWindow(QMainWindow):
             reply = QMessageBox.question(
                 self,
                 "Delete Profile",
-                f"Delete profile '{profile}'? This will remove all data.",
+                f"Archive profile '{profile}'? It can be recovered from deleted_profiles in the browser data directory.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
                 if self.profile_manager.delete_profile(profile):
                     QMessageBox.information(
-                        self, "Deleted", f"Profile '{profile}' deleted."
+                        self, "Archived", f"Profile '{profile}' moved to deleted_profiles and can be recovered."
                     )
                     self._update_profile_shortcuts()
                 else:
-                    QMessageBox.warning(self, "Failed", "Could not delete profile.")
+                    QMessageBox.warning(self, "Failed", "Could not archive profile. Switch all windows away from it first.")
 
     def _pop_out_profile(self):
         profiles = self.profile_manager.list_profiles()
@@ -549,10 +554,6 @@ class BrowserWindow(QMainWindow):
         if not self.tabs or not (0 <= self.current_tab_index < len(self.tabs)):
             return
 
-        # If we're browsing in global, remember current host so host-only cookies can be mapped correctly
-        if self.profile_manager.is_global_profile():
-            self.profile_manager.note_global_active_url(url)
-
         if tab == self.tabs[self.current_tab_index]:
             self.address_bar.set_url(url.toString())
 
@@ -578,7 +579,7 @@ class BrowserWindow(QMainWindow):
         if self._restoring_tabs or self.profile_manager.is_search_profile():
             return
         states = []
-        for i, tab in enumerate(self.tabs):
+        for tab in self.tabs:
             group = tab.group
             url = tab.url().toString() or tab.page().requestedUrl().toString()
             if not url:
@@ -640,26 +641,7 @@ class BrowserWindow(QMainWindow):
             permission.deny()
 
     def _on_download_requested(self, download: QWebEngineDownloadRequest):
-        url = download.url().toString()
-        name = download.suggestedFileName()
-        size = download.totalBytes()
-        size_str = f"{size / 1024:.2f} KB" if size > 0 else "Unknown"
-        info = f"URL: {url}<br>Name: {name}<br>Size: {size_str}"
-        dlg = QMessageBox(self)
-        dlg.setWindowTitle("Download Request")
-        dlg.setText("A download was requested:")
-        dlg.setInformativeText(info)
-        dlg.setStandardButtons(
-            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel
-        )
-        if dlg.exec() == QMessageBox.StandardButton.Save:
-            path, _ = QFileDialog.getSaveFileName(self, "Save File", name)
-            if path:
-                download.setDownloadDirectory(str(Path(path).parent))
-                download.setDownloadFileName(Path(path).name)
-                download.accept()
-        else:
-            download.cancel()
+        self.download_manager.handle(download, self.profile_manager.current_profile_name)
 
     # ---------- Tab Group UI ----------
     def _handle_group_rename_request(self, tab_index: int):
@@ -743,6 +725,15 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             event.accept()
             return
+        if len(self.profile_manager.registry.owners) == 1 and self.download_manager.active():
+            reply = QMessageBox.question(
+                self, "Active Downloads", "Closing will cancel active downloads. Close anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
         self._closing = True
 
         self._save_current_tabs()
@@ -768,7 +759,6 @@ class BrowserWindow(QMainWindow):
         for tab in self.tab_container.findChildren(BrowserTab):
             sip.delete(tab)
         self.profile_manager.close()
-        self._download_connected_profiles.clear()
 
         event.accept()
 
@@ -830,26 +820,29 @@ class BrowserWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def _open_settings(self):
-        dlg = SettingsDialog(self.config, self)
+        dlg = SettingsDialog(self.config, self, self.profile_manager.current_profile.httpUserAgent())
         if dlg.exec():
             dlg.apply()
 
             # Apply dark mode immediately
             self.apply_dark_mode()
 
-            # Apply the override to the same profiles as before.
-            ua = self.config.get("user_agent_override", "")
-            for profile in (
-                self.profile_manager.current_profile,
-                self.profile_manager.global_profile,
-                self.profile_manager.search_profile,
-            ):
-                if profile is not None:
-                    profile.setHttpUserAgent(ua)
+            self.profile_manager.refresh_settings()
 
-            mode = self.config.get("global_cookie_sharing_mode", "on_switch")
-            if mode == "all_profiles":
-                self.profile_manager.propagate_global_cookies_to_all_profiles()
+    def _use_global_cookies(self):
+        if not self.tabs or self.profile_manager.current_profile_name in ("global", "search"):
+            return
+        domain = self.tabs[self.current_tab_index].url().host()
+        if not domain:
+            return
+        reply = QMessageBox.question(
+            self, "Use Global Cookies",
+            f"Replace the local cookie baseline for {domain} with global cookies? This can change your signed-in account. Reload the page afterwards.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.profile_manager.use_global_cookies(domain)
 
     def _on_desktop_media_requested(self, request):
         logger.debug("Desktop media requested")
