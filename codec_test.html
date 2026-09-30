@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Codec test</title>
+<pre id="out"></pre>
+<script>
+function t(label, ok){ return `${label}: ${ok ? "YES" : "NO"}`; }
+
+const v = document.createElement('video');
+const a = document.createElement('audio');
+
+const tests = [
+  ["video/mp4; codecs=\"avc1.42E01E\"", v.canPlayType('video/mp4; codecs="avc1.42E01E"')],
+  ["video/mp4; codecs=\"avc1.640028\"", v.canPlayType('video/mp4; codecs="avc1.640028"')],
+  ["audio/mp4; codecs=\"mp4a.40.2\"", a.canPlayType('audio/mp4; codecs="mp4a.40.2"')],
+  ["video/webm; codecs=\"vp9\"", v.canPlayType('video/webm; codecs="vp9"')],
+  ["video/webm; codecs=\"vp8\"", v.canPlayType('video/webm; codecs="vp8"')],
+  ["video/quicktime", v.canPlayType('video/quicktime')],
+  ["video/quicktime; codecs=\"avc1.42E01E, mp4a.40.2\"", v.canPlayType('video/quicktime; codecs="avc1.42E01E, mp4a.40.2"')],
+];
+
+const ms = window.MediaSource && MediaSource.isTypeSupported
+  ? [
+      ["MSE mp4+h264", MediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"')],
+      ["MSE webm+vp9", MediaSource.isTypeSupported('video/webm; codecs="vp9"')],
+    ]
+  : [["MediaSource", false]];
+
+document.getElementById('out').textContent =
+  "canPlayType:\n" +
+  tests.map(([k,v]) => `${k}: ${v || "NO"}`).join("\n") +
+  "\n\nMediaSource:\n" +
+  ms.map(([k,v]) => t(k,v)).join("\n");
+</script>
