@@ -34,10 +34,11 @@ KeePassXC; see the [setup guide](DOCUMENTATION.md#third-party-password-managers)
 
 ## Project status and documentation
 
-Browser essentials are implemented and covered by automated checks. Manual
-acceptance remains pending, including Google sign-in persistence and normal
-KeePassXC pairing. Agent collaboration features, bookmarks, and generic extension
-support are planned.
+Browser essentials are implemented and covered by automated checks. Remaining
+manual checks are tracked in the roadmap; the user has authorized proceeding.
+The first agent-service foundation is in development: task storage, a Qt command
+broker, and independent private pages. External-agent access, bookmarks, and
+generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,
   troubleshooting, development checks, and technical design.
