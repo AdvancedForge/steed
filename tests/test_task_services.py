@@ -47,10 +47,26 @@ class TaskServiceTests(unittest.TestCase):
                         f'<script>document.title="Script ran"; fetch("{denied}/forbidden-script")</script>'
                         "</html>"
                     ).encode()
+                if self.path == "/service-worker.js":
+                    payload = (
+                        'self.addEventListener("install", e => e.waitUntil(self.skipWaiting()));'
+                        'self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));'
+                        'self.addEventListener("fetch", e => {'
+                        'if (new URL(e.request.url).pathname !== "/worker-controlled") return;'
+                        "e.respondWith((async () => {"
+                        f'try {{ await fetch("{denied}/forbidden-worker", {{mode:"no-cors"}}); }} catch (_) {{}}'
+                        'return new Response("<html><title>Worker guarded</title></html>",'
+                        '{headers: {"Content-Type":"text/html"}});})());});'
+                    ).encode()
                 if self.path == "/slow":
                     time.sleep(0.3)
                 self.send_response(200)
-                self.send_header("Content-Type", "text/html")
+                self.send_header(
+                    "Content-Type",
+                    "application/javascript"
+                    if self.path == "/service-worker.js"
+                    else "text/html",
+                )
                 self.send_header("Content-Length", str(len(payload)))
                 if self.path == "/cookie":
                     self.send_header("Set-Cookie", "task_cookie=fixture; Path=/")

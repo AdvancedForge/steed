@@ -39,7 +39,8 @@ Browser essentials are implemented and covered by automated checks. Remaining
 manual checks are tracked in the roadmap; the user has authorized proceeding.
 The agent-service foundation includes task storage, a Qt command broker,
 independent private pages, reusable browser services, and user-approved task
-permissions. Task browsing currently retrieves documents in private profiles.
+permissions. Task browsing retrieves documents in private profiles or explicitly
+approved existing profiles, with exclusive access and limits on sites and budgets.
 External-agent access, bookmarks, and generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,

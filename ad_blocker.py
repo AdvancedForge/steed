@@ -152,6 +152,7 @@ class AdBlocker(QObject):
     def attach(self, profile):
         interceptor = FilterInterceptor(self, profile)
         interceptor.blocked.connect(self.note_blocked)
+        profile.adblock_interceptor = interceptor
         profile.setUrlRequestInterceptor(interceptor)
 
     def _refresh_exceptions(self, force=False):

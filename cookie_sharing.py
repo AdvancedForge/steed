@@ -61,6 +61,7 @@ class CookieSharing(QObject):
         self.pending = {}
         self.fresh = set()
         self.enabled = set()
+        self.suspended = set()
         self.paths = {}
         self.closed = False
         self.deletions_file = config.config_dir / "global_cookie_deletions.json"
@@ -118,7 +119,12 @@ class CookieSharing(QObject):
     def enable(self, name):
         # A registry being torn down must not resume writing cookies from a
         # reconcile that was already in flight.
-        if self.closed or name not in self.profiles or name not in self.states:
+        if (
+            self.closed
+            or name not in self.profiles
+            or name not in self.states
+            or name in self.suspended
+        ):
             return
         self.enabled.add(name)
         self.reconcile(name)
@@ -154,6 +160,8 @@ class CookieSharing(QObject):
         self.deleted.add(key)
         save_json(self.deletions_file, sorted(self.deleted))
         for name in tuple(self.enabled):
+            if name in self.suspended:
+                continue
             observed = self.observed[name].get(key)
             inherited = self.states[name]["inherited"].get(key)
             if (
@@ -221,6 +229,7 @@ class CookieSharing(QObject):
             self.closed
             or key is None
             or name not in self.enabled
+            or name in self.suspended
             or name not in self.states
             or self.local(name, domain)
         ):
@@ -252,7 +261,7 @@ class CookieSharing(QObject):
         self.profiles[name].cookieStore().setCookie(copy, origin)
 
     def reconcile(self, name):
-        if self.closed or name not in self.observed:
+        if self.closed or name not in self.observed or name in self.suspended:
             return
         for key, cookie in list(self.observed[name].items()):
             if (

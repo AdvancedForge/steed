@@ -436,7 +436,7 @@ the last working rules.
 
 ## Internal task services
 
-Ordinary tabs and private task pages use `services/navigation_service.py` for
+Ordinary tabs and task pages use `services/navigation_service.py` for
 navigation and `services/permission_service.py` for permission wiring and
 lifetime checks. Browser prompts stay in the UI; task pages deny permissions.
 The application-owned `DownloadManager` receives a destination-picker callback
@@ -502,10 +502,10 @@ Navigation dispatch is not load completion: wait for a snapshot with
 `loading=False` and check `load_success`. `tests/test_task_services.py` demonstrates
 the complete workflow with a real local HTTP fixture, without AI or an account.
 
-Each session owns a separate off-the-record profile. Its page survives closing
+By default, each session owns a separate off-the-record profile. Its page survives closing
 an attached view, and a new view attaches to the same page. Task completion or
 the last browser window closing disposes pages before their profiles. Downloads,
-file selection, site permissions, scripts, workers, WebSockets, external URL
+file selection, site permissions, document scripts, new workers, WebSockets, external URL
 schemes, and the built-in PDF viewer are unavailable in current task pages.
 Ordinary browser tabs retain their existing settings. Task browsing currently
 supports document retrieval with GET/HEAD; these methods can still cause website
@@ -513,9 +513,49 @@ effects, so the grant is not a guarantee that a site is read-only.
 
 Scopes match exact HTTP/HTTPS origins, including scheme and port; subdomains and
 redirect destinations need their own entries. Credentials, wildcards, and origin
-paths are rejected. `about:blank` is allowed without adding an origin. Named
-persistent profiles and file destinations cannot currently be granted. Only
+paths are rejected. `about:blank` is allowed without adding an origin. File
+destinations cannot currently be granted. Only
 `navigate`, metadata `inspect`, and view `attach` are supported actions.
+
+### Existing signed-in task profiles
+
+An internal client can request `"profile": "existing:work"` to use the existing
+**work** profile. Use the identical selector in `session.open`; omitting it selects
+`private` and fails a named-profile grant. The profile must already exist under
+Steed's profiles directory. Arbitrary paths, aliases outside that directory,
+the global-cookie source, and the incognito search profile are rejected.
+
+Before approval, switch away from the requested profile in every browser window
+and finish its downloads and password operations. One task reserves the profile
+for the entire approved grant, including when it has no open session. Until the
+task ends, ordinary switching, pop-outs, rename/archive, and another task's grant
+cannot use that profile. Approval failure rolls back the reservation.
+
+The task uses the same Qt profile, cookies, cache, and site storage; this is not a
+copy of the account session. Requests can send existing credentials, and site
+changes persist after completion. The approval screen discloses this storage
+boundary, exclusive access, and limits before the user approves.
+
+The request guard covers the entire profile, including requests from existing
+service workers. Background activity may spend the same request budget. Task
+document scripts and new worker scripts remain disabled; an existing service
+worker can still execute and serve cached/generated content. This is not an
+isolated script execution environment. Ad filtering continues after the task
+policy check. Trusted cookie inspection and global-cookie inheritance into the
+profile pause during task access.
+
+When the grant ends, pages close and the profile stays alive. Its ended network
+guard continues blocking requests until the user explicitly selects that profile
+for ordinary browsing. Selection restores its ordinary interceptor, cookie
+inspection, and configured cookie inheritance. Ending a grant cannot undo
+requests already sent, account changes, or local storage changes.
+
+Qt shares persistent data among pages using a profile and applies profile
+interception before page interception; see the
+[Qt profile documentation](https://doc.qt.io/qt-6.11/qwebengineprofile.html) and
+[page interception documentation](https://doc.qt.io/qt-6.11/qwebenginepage.html#setUrlRequestInterceptor).
+
+### Grant enforcement and persistence
 
 `allow_private_network=false` permits public literal IP addresses only. Private
 addresses and all DNS hostnames require `true`, explicitly disclosed in the
@@ -551,9 +591,9 @@ end too. Pages, commands, and approved authority are never
 restored/replayed. An asynchronous journal write failure disables further task
 commands and emits `service.failed`; cleanup still disposes engine resources.
 
-DOM inspection, active page execution, form/file actions, persistent-profile
-grants, and watch/takeover controls remain future work. Signed-in task profiles
-need verified scoped request routing before they can share existing user storage.
+DOM inspection, active document execution, form/file actions, and watch/takeover
+controls remain future work. Existing-profile grants currently support the same
+restricted document retrieval and metadata operations as private task pages.
 
 ## Development checks
 
@@ -591,7 +631,7 @@ filling still need user verification.
 
 ## Verification record
 
-Current browser/A1/A2 checks (October 1, 2026): all 157 regressions passed on Qt
+Current browser/A1/A2 checks (October 1, 2026): all 172 regressions passed on Qt
 6.11.2, including four new task-storage checks and six real-Qt task-service
 checks. The deterministic client exercised navigation without a view, attachment
 to the same page, completion, task/cookie isolation, worker dispatch, queued
@@ -602,22 +642,29 @@ The latest checks also cover find match counts, direction and case, navigation,
 profile-query isolation, stale callbacks, fullscreen restoration, zoom shortcuts
 and bounds, injected download destinations, invalidated permissions, task
 permission denial, and exactly-once screen-share cleanup. Ordinary tabs and
-private task pages use the shared navigation and permission services.
+task pages use the shared navigation and permission services.
 Startup/render/shutdown and local Google-login HTTPS smoke checks, desktop-entry
 validation, Ruff, formatting, and whitespace checks passed. The user authorized
 proceeding with remaining manual follow-ups recorded in the roadmap. Password
 improvements are deferred.
 
-A2 adds eight policy checks, four storage checks, twelve real-Qt service checks,
-and a browser menu failure check to the previous 132-check suite. Coverage includes pending/denied
+A2 adds nine policy checks, four storage checks, twelve real-Qt service checks,
+fourteen existing-profile checks, and a browser menu failure check to the previous
+132-check suite. Coverage includes pending/denied
 authority, client identity, origin/profile/action/file rejection, native redirect
 and resource interception, POST blocking, cancelled task downloads, UI approval
 and revocation, expiry without further commands, concurrent request budgets,
 queued-work rejection, database migration, restart recovery, and SQLite approval
 failure handling. The new approval dialog was rendered with a synthetic request
 and visually inspected; this is separate from manual desktop acceptance.
-Current task pages support private document retrieval;
-persistent profiles, active scripts, and file operations remain unavailable.
+Existing-profile checks use temporary storage and synthetic credentials. They
+verify cookie/local-storage continuity, exclusive access, selection/pop-out
+rejection, profile path restrictions, downloads without destination prompts,
+redirect/resource boundaries, out-of-scope service-worker fetches, retained
+revocation guards, expiry, ad filtering, shared-window shutdown order, and
+journal/setup failure cleanup. These checks establish fixture behavior, not
+real-account compatibility. Task document scripts and file operations remain
+unavailable.
 
 During A1 verification, one full-suite attempt exited with a native WebEngine segmentation fault
 during its first test. The same test passed with crash diagnostics enabled, and
@@ -696,10 +743,10 @@ future work. Implementation order and status live in [ROADMAP.md](ROADMAP.md).
 
 #### A2. Sessions and grants — in progress
 
-Private-task grants, user review, origin/action/budget enforcement, cancellation,
-and durable decision records are implemented. Persistent-profile routing and
-grants for later file/active-page capabilities remain to be implemented and
-verified. The following describes the full target scope.
+Private and exclusive existing-profile grants, user review, origin/action/budget
+enforcement, cancellation, and durable decision records are implemented. Grants
+for later file/active-page capabilities remain to be implemented alongside those
+operations. The following describes the full target scope.
 
 - Task-owned pages, grant, artifacts, history, and lifecycle exist independently of visible tabs.
 - Default to a separate off-the-record task profile. Explicitly authorized persistent profiles share their existing cookies/storage; disclose that boundary.

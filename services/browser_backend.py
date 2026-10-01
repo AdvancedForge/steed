@@ -1,4 +1,4 @@
-"""Replaceable session backend, initially implemented with private Qt pages."""
+"""Replaceable session backend with private or exclusively leased Qt profiles."""
 
 import threading
 from dataclasses import dataclass, field
@@ -98,12 +98,13 @@ class TaskPage(QWebEnginePage):
 class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
     """Profile-wide scope covers redirects/resources without Qt/store lookups."""
 
-    def __init__(self, grant, blocked, parent):
+    def __init__(self, grant, blocked, parent, fallback=None):
         super().__init__(parent)
         self.grant = grant
         self.report_blocked = blocked
         self._reported = set()
         self._lock = threading.Lock()
+        self.fallback = fallback
 
     def interceptRequest(self, info):
         resource = QWebEngineUrlRequestInfo.ResourceType
@@ -128,6 +129,8 @@ class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
                 self._reported.add(reason)
             if fresh:
                 self.report_blocked(reason)
+        elif self.fallback is not None:
+            self.fallback.interceptRequest(info)
 
 
 @dataclass
@@ -136,6 +139,7 @@ class QtSession:
     profile: QWebEngineProfile
     page: TaskPage
     grant: LiveGrant
+    owns_profile: bool = True
     views: list[QWebEngineView] = field(default_factory=list)
     revision: int = 0
     loading: bool = False
@@ -146,7 +150,7 @@ class QtBrowserBackend(QObject):
     changed = pyqtSignal(object)
     blocked = pyqtSignal(str, str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, profile_provider=None):
         super().__init__(parent)
         app = QApplication.instance()
         if app is None or QThread.currentThread() != app.thread():
@@ -154,6 +158,7 @@ class QtBrowserBackend(QObject):
         self._sessions: dict[str, QtSession] = {}
         self.navigation = NavigationService(self)
         self._closed = False
+        self.profile_provider = profile_provider
 
     def _session(self, session_id):
         require_owner_thread(self)
@@ -169,10 +174,26 @@ class QtBrowserBackend(QObject):
             raise RuntimeError("Browser backend is closed")
         grant.check("open", profile=profile)
         session_id = uuid4().hex
-        # An unnamed profile is off the record, separate from user/global profiles.
-        profile = QWebEngineProfile(self)
-        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
-        settings = profile.settings()
+        owns_profile = profile == "private"
+        if owns_profile:
+            profile = QWebEngineProfile(self)
+            profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+        elif self.profile_provider is not None:
+            profile = self.profile_provider(task_id, profile)
+        else:
+            raise ValueError("Existing profiles require the application registry")
+
+        def report(reason):
+            self.blocked.emit(task_id, reason)
+
+        if owns_profile:
+            interceptor = TaskRequestInterceptor(grant, report, profile)
+            profile.setUrlRequestInterceptor(interceptor)
+            profile.task_interceptor = interceptor
+            profile.downloadRequested.connect(lambda request: request.cancel())
+        page = TaskPage(profile, self, grant, report)
+        # Page overrides preserve the ordinary profile's rendering preferences.
+        settings = page.settings()
         settings.setUnknownUrlSchemePolicy(
             QWebEngineSettings.UnknownUrlSchemePolicy.DisallowUnknownUrlSchemes
         )
@@ -188,20 +209,12 @@ class QtBrowserBackend(QObject):
         ):
             settings.setAttribute(attribute, False)
 
-        def report(reason):
-            self.blocked.emit(task_id, reason)
-
-        interceptor = TaskRequestInterceptor(grant, report, profile)
-        profile.setUrlRequestInterceptor(interceptor)
-        profile.task_interceptor = interceptor
-        profile.downloadRequested.connect(lambda request: request.cancel())
-        page = TaskPage(profile, self, grant, report)
         page.setAudioMuted(True)
         page.fullScreenRequested.connect(lambda request: request.reject())
         page.registerProtocolHandlerRequested.connect(lambda request: request.reject())
         page.selectClientCertificate.connect(lambda selection: selection.selectNone())
         PermissionService.deny_page(page, lambda: self._closed)
-        session = QtSession(task_id, profile, page, grant)
+        session = QtSession(task_id, profile, page, grant, owns_profile)
         self._sessions[session_id] = session
         page.loadStarted.connect(lambda: self._started(session_id))
         page.loadFinished.connect(lambda ok: self._finished(session_id, ok))
@@ -278,7 +291,8 @@ class QtBrowserBackend(QObject):
         session.page.blockSignals(True)
         self.navigation.action(session.page, "stop")
         sip.delete(session.page)
-        sip.delete(session.profile)
+        if session.owns_profile:
+            sip.delete(session.profile)
 
     def close(self):
         require_owner_thread(self)

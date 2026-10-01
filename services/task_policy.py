@@ -9,7 +9,25 @@ from urllib.parse import urlsplit
 
 from PyQt6.QtCore import QUrl
 
+from utils import sanitize_profile_name
+
 SUPPORTED_ACTIONS = frozenset({"navigate", "inspect", "attach"})
+
+
+def task_profile_name(selector):
+    """Explicit named-profile selector, never a path or a sanitized alias."""
+    if not isinstance(selector, str) or not selector.startswith("existing:"):
+        raise ValueError("Use private or existing:<profile name>")
+    name = selector.removeprefix("existing:")
+    if (
+        not name
+        or len(name) > 128
+        or name != sanitize_profile_name(name)
+        or not name.isprintable()
+        or name in ("global", "search")
+    ):
+        raise ValueError("Choose an existing named profile other than global/search")
+    return name
 
 
 class TaskPermissionError(PermissionError):
@@ -103,7 +121,7 @@ class TaskScope:
             raise ValueError("Unsupported task action")
         profile = values.get("profile", "private")
         if profile != "private":
-            raise ValueError("Only private task profiles are currently supported")
+            task_profile_name(profile)
         private = values.get("allow_private_network", False)
         if not isinstance(private, bool):
             raise ValueError("Network permission must be a boolean")
@@ -161,12 +179,12 @@ class LiveGrant:
             self._ended = "expired"
         return self._ended
 
-    def check(self, action, *, url=None, profile="private", destination=None):
+    def check(self, action, *, url=None, profile=None, destination=None):
         with self._lock:
             reason = self._reason()
             if reason:
                 raise TaskPermissionError(reason)
-            if profile != self.scope.profile:
+            if profile is not None and profile != self.scope.profile:
                 raise TaskPermissionError("profile_out_of_scope")
             if destination is not None:
                 raise TaskPermissionError("file_actions_unavailable")
