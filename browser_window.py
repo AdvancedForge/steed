@@ -931,16 +931,13 @@ class BrowserWindow(QMainWindow):
         event.accept()
 
     def _on_fullscreen_requested(self, request: QWebEngineFullScreenRequest):
-        # Accept only a genuine toggle. A non-toggle request has no source of
-        # truth for enter versus exit, so declining it is safer than guessing.
-        if not request.toggleOn():
-            request.deny()
-            return
+        # toggleOn describes the requested state, not whether to invert ours.
+        entering = request.toggleOn()
         request.accept()
-        if self._was_fullscreen:
-            self._exit_fullscreen()
-        else:
+        if entering:
             self._enter_fullscreen()
+        else:
+            self._exit_fullscreen()
 
     def _enter_fullscreen(self):
         if self._was_fullscreen:

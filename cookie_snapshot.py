@@ -40,8 +40,15 @@ REFRESH_DEBOUNCE_MS = 120
 # are memoized on the page so a second inspection costs one protocol call rather
 # than a fresh module load. The target is re-resolved every time because the
 # inspected page is not stable across a session.
-SNAPSHOT_SCRIPT = """window.__browserCookieSnapshot = null;
+SNAPSHOT_SCRIPT = """window.__browserCookieRequest = REQUEST_ID;
+window.__browserCookieSnapshot = null;
 (() => {
+    const requestId = REQUEST_ID;
+    const publish = result => {
+        if (window.__browserCookieRequest === requestId) {
+            window.__browserCookieSnapshot = result;
+        }
+    };
     const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     const sdk = window.__browserCookieSdk
         || (window.__browserCookieSdk =
@@ -56,20 +63,20 @@ SNAPSHOT_SCRIPT = """window.__browserCookieSnapshot = null;
                     if (response.getError()) {
                         throw new Error(response.getError());
                     }
-                    window.__browserCookieSnapshot = {cookies: response.cookies};
+                    publish({cookies: response.cookies});
                 });
             }
             if (attempt >= 50) {
-                window.__browserCookieSnapshot = {
+                publish({
                     error: 'Inspection target unavailable'
-                };
+                });
                 return;
             }
             return wait(100).then(() => findTarget(attempt + 1));
         };
         return findTarget(0);
     }).catch(error => {
-        window.__browserCookieSnapshot = {error: String(error)};
+        publish({error: String(error)});
     });
 })();"""
 
@@ -85,6 +92,7 @@ class CookieSnapshot(QObject):
         self.ready = False
         self.pending = False
         self.attempts = 0
+        self.request_id = 0
         self.revision = 0
         self.request_revision = 0
         self.retries = 0
@@ -108,6 +116,7 @@ class CookieSnapshot(QObject):
         self.revision += 1
         # A write is new information: discard the backoff and re-inspect at once.
         self.cooldowns = 0
+        self.timeouts = 0
         # Coalesce: one page load writes several cookies, and each snapshot is a
         # full DevTools round trip. Debouncing collapses a burst into one.
         QTimer.singleShot(REFRESH_DEBOUNCE_MS, self.refresh)
@@ -135,10 +144,13 @@ class CookieSnapshot(QObject):
         self.attempts = 0
         self.timed_out = False
         self.request_revision = self.revision
+        self.request_id += 1
         # The SDK module and its target manager are cached on the frontend page
         # across refreshes: re-importing per snapshot dominated the wall time
         # and delayed every enumeration behind a fresh module evaluation.
-        self.frontend.runJavaScript(SNAPSHOT_SCRIPT)
+        self.frontend.runJavaScript(
+            SNAPSHOT_SCRIPT.replace("REQUEST_ID", str(self.request_id))
+        )
         self.timer.start()
 
     def _resume_after_cooldown(self):
@@ -148,7 +160,7 @@ class CookieSnapshot(QObject):
         if self.revision != self.request_revision:
             self.refresh()
             return
-        if self.timed_out and self.timeouts < MAX_TIMEOUT_RETRIES:
+        if self.timed_out and self.timeouts <= MAX_TIMEOUT_RETRIES:
             # A timeout with no concurrent writes means inspection simply had not
             # settled yet, not that the store is busy. Try again, bounded.
             self.refresh()
@@ -170,16 +182,29 @@ class CookieSnapshot(QObject):
         self.attempts += 1
         if self.attempts > MAX_POLL_ATTEMPTS:
             self.timeouts += 1
-            self._give_up(
-                "Cookie inspection timed out; cached live cookies are still available."
-            )
+            if self.timeouts <= MAX_TIMEOUT_RETRIES:
+                self.pending = False
+                self.timer.stop()
+                self.timed_out = True
+                QTimer.singleShot(COOLDOWN_MS, self._resume_after_cooldown)
+            else:
+                self._give_up(
+                    "Cookie inspection timed out; cached live cookies are still available."
+                )
             return
+        request_id = self.request_id
         self.frontend.runJavaScript(
-            "window.__browserCookieSnapshot", self.accept_result
+            "window.__browserCookieSnapshot",
+            lambda result: self.accept_result(result, request_id),
         )
 
-    def accept_result(self, result):
-        if self.closed or not self.pending or not isinstance(result, dict):
+    def accept_result(self, result, request_id=None):
+        if (
+            self.closed
+            or not self.pending
+            or (request_id is not None and request_id != self.request_id)
+            or not isinstance(result, dict)
+        ):
             return
         self.pending = False
         self.timer.stop()
@@ -204,8 +229,6 @@ class CookieSnapshot(QObject):
             QTimer.singleShot(COOLDOWN_MS, self._resume_after_cooldown)
             return
         self.retries = 0
-        self.cooldowns = 0
-        self.timeouts = 0
         if self.dirty:
             # A change arrived while this result was in flight, so it cannot be
             # the answer to it. Inspect again before reporting anything.
@@ -227,6 +250,11 @@ class CookieSnapshot(QObject):
                 return
             self.failed.emit("Cookie inspection unavailable: " + message)
             return
+        # Failed rounds must retain their budget; only a confirmed result
+        # starts a fresh recovery cycle.
+        self.cooldowns = 0
+        self.timeouts = 0
+        self.retryable_error = False
         cookies = []
         self.skipped_partitioned = 0
         for record in result.get("cookies", []):
