@@ -20,12 +20,12 @@ from cookie_sharing import CookieSharing, cookie_key, fingerprint
 from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
 from password_manager import PasswordManager
-from services.browser_backend import TaskRequestInterceptor
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
 from services.task_policy import task_profile_name
 from services.task_service import TaskService
 from ui.download_dialog import choose_download_destination
+from ui.task_approval import TaskApprovalQueue
 from utils import get_profile_path, sanitize_profile_name
 from webengine import configure_web_settings
 
@@ -90,6 +90,7 @@ class ProfileRegistry(QObject):
             self._tasks = TaskService(
                 self.config.config_dir / "tasks.sqlite", self, profiles=self
             )
+            self.task_approvals = TaskApprovalQueue(self, self._tasks)
         return self._tasks
 
     def validate_task_profile(self, selector):
@@ -107,93 +108,33 @@ class ProfileRegistry(QObject):
         """Reserve on the Qt thread, without granting engine authority."""
         require_owner_thread(self)
         name = self.validate_task_profile(selector)
-        profile = self.profiles.get(name)
-        if (
-            name in self.task_profiles
-            or any(owner.current_profile_name == name for owner in self.owners)
-            or self.passwords.busy(name)
-            or any(
-                self.downloads.records[key].profile == name
-                for key in self.downloads.active()
-            )
-            or (
-                profile is not None
-                and any(
-                    isinstance(widget, QWebEngineView)
-                    and widget.page().profile() is profile
-                    for widget in QApplication.allWidgets()
-                )
-            )
-        ):
-            raise ValueError(
-                "Switch away from this profile in every window and finish its "
-                "downloads/password operations before approving. "
-                "Only one task can use it at a time."
-            )
-        # Initialize any existing storage before authority is installed.
         self.get(name)
-        self.task_profiles[name] = task_id
-
-    def activate_task_profile(self, task_id, grant, report):
-        profile = self.task_profile(task_id, grant.scope.profile)
-        name = task_profile_name(grant.scope.profile)
-        # The trusted DevTools frontend is a script-enabled page on this profile.
-        # Suspend it rather than exempting privileged schemes from task policy.
-        snapshot = self.snapshots.pop(name, None)
-        if snapshot is not None:
-            snapshot.close()
-            sip.delete(snapshot.frontend)
-            sip.delete(snapshot)
-        bootstrap = self.bootstrap_pages.pop(name, None)
-        if bootstrap is not None:
-            sip.delete(bootstrap)
-        interceptor = TaskRequestInterceptor(
-            grant,
-            lambda reason: report(task_id, reason),
-            profile,
-            fallback=profile.adblock_interceptor,
-        )
-        # Retain previous interceptors as Qt children until profile teardown;
-        # a callback may still be completing when a new interceptor is installed.
-        profile.task_interceptor = interceptor
-        profile.task_restricted = True
-        self.sharing.enabled.discard(name)
-        self.sharing.suspended.add(name)
-        profile.setUrlRequestInterceptor(interceptor)
+        self.task_profiles.setdefault(name, set()).add(task_id)
 
     def task_profile(self, task_id, selector):
         require_owner_thread(self)
         name = task_profile_name(selector)
-        if self.task_profiles.get(name) != task_id:
+        if task_id not in self.task_profiles.get(name, set()):
             raise ValueError("The task does not hold this profile")
         return self.profiles[name]
 
     def release_task_profiles(self, task_id=None):
         require_owner_thread(self)
-        for name, owner in list(self.task_profiles.items()):
-            if task_id is None or owner == task_id:
+        for name, tasks in list(self.task_profiles.items()):
+            if task_id is None:
+                tasks.clear()
+            else:
+                tasks.discard(task_id)
+            if not tasks:
                 self.task_profiles.pop(name)
-        # Keep the ended grant's network guard until a user selects the profile.
-        # Closing task pages alone does not stop existing background workers.
 
     def check_user_profile(self, name):
+        # Task authority belongs to its pages; user browsing remains available.
         require_owner_thread(self)
-        if sanitize_profile_name(name) in self.task_profiles:
-            raise ValueError(
-                "This profile is being used by a task. Revoke its access or "
-                "cancel the task in File → Task Permissions before switching."
-            )
 
     def activate_user_profile(self, name):
         self.check_user_profile(name)
-        profile = self.get(name)
-        if getattr(profile, "task_restricted", False):
-            profile.setUrlRequestInterceptor(profile.adblock_interceptor)
-            profile.task_restricted = False
-            self.sharing.suspended.discard(name)
-        if name not in self.snapshots:
-            self.prepare_inspection(name, profile)
-        return profile
+        return self.get(name)
 
     def create(self, name, directory):
         fresh = not directory.exists()
@@ -366,6 +307,8 @@ class ProfileManager(QObject):
         self.config = registry.config
         registry.check_user_profile(initial_profile or config.default_profile)
         registry.owners.add(self)
+        if registry._tasks is not None:
+            registry.task_approvals.schedule()
         self._profile_change_callback = self.profiles_updated.emit
         registry.profiles_updated.connect(self._profile_change_callback)
         self.global_profile = registry.global_profile

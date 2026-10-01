@@ -118,11 +118,12 @@
                 if ((tag === "iframe" || tag === "frame") && frameElements.length < 16) frameElements.push(node);
                 const role = clean(node.getAttribute("role"), 64).toLowerCase();
                 let kind = "", operations = [], href = null;
-                const constraints = ["actions_not_implemented"];
+                const constraints = [];
                 if (tag === "a" && node.hasAttribute("href")) {
                     kind = "link";
                     const link = new URL(node.href, doc.baseURI);
-                    if ((link.protocol === "http:" || link.protocol === "https:") && !link.username && !link.password) {
+                    if (link.href.length > 2048) constraints.push("link_url_too_long");
+                    else if ((link.protocol === "http:" || link.protocol === "https:") && !link.username && !link.password) {
                         href = safeUrl(link.href); operations = ["navigate"];
                     } else constraints.push("unsupported_link_url");
                 } else if (tag === "button") { kind = "button"; operations = ["activate"]; }
@@ -138,6 +139,7 @@
                     kind = "custom"; constraints.push("custom_control_unsupported");
                 }
                 if (kind) {
+                    if (kind !== "link") constraints.push("actions_not_implemented");
                     if (remainingTargets <= 0) limitations.add("targets_truncated");
                     else {
                         const enabled = !node.matches(":disabled") && node.getAttribute("aria-disabled") !== "true";

@@ -54,9 +54,10 @@ class PageInspectionTests(unittest.TestCase):
         sip.delete(self.service)
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
-    def session(self, *, read=True, origins=None):
+    def session(self, *, read=True, origins=None, actions=None):
         task = self.command("task.create", objective="Inspect synthetic content")
-        actions = ["navigate", "inspect", "attach"] + (["read"] if read else [])
+        if actions is None:
+            actions = ["navigate", "inspect", "attach"] + (["read"] if read else [])
         grant = self.request(
             task.task_id, actions=actions, origins=origins or [self.origin]
         )
@@ -90,6 +91,231 @@ class PageInspectionTests(unittest.TestCase):
         self.wait_for(lambda: bool(results))
         self.assertIs(results[0], True)
         return results[0]
+
+    def follow(self, task_id, session_id, snapshot, target):
+        return self.command(
+            "page.navigate",
+            task_id=task_id,
+            session_id=session_id,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=target.target_id,
+        )
+
+    def test_target_navigation_reports_a_loaded_document_and_invalidates_old_targets(
+        self,
+    ):
+        task_id, _, session_id, page = self.session()
+        self.load(session_id, page)
+        snapshot = self.inspect(task_id, session_id)
+        target = snapshot.frames[0].targets[0]
+        outcome = self.follow(task_id, session_id, snapshot, target)
+        self.assertEqual(outcome.status, "loaded")
+        self.assertEqual(outcome.url, self.origin + "/next")
+        self.assertGreater(outcome.revision, snapshot.revision)
+        with self.assertRaises(PageInspectionError):
+            self.follow(task_id, session_id, snapshot, target)
+        journal = self.service.store.events(task_id)
+        self.assertTrue(
+            any(event.kind == "page.navigation_requested" for event in journal)
+        )
+        self.assertTrue(
+            any(event.kind == "page.navigation_finished" for event in journal)
+        )
+        self.assertNotIn("Next page", repr(journal))
+
+    def test_long_link_destinations_are_not_silently_truncated_and_executed(self):
+        task_id, _, session_id, page = self.session()
+        self.load(
+            session_id, page, '<a href="/next?query=' + "x" * 2100 + '">Long link</a>'
+        )
+        snapshot = self.inspect(task_id, session_id)
+        target = snapshot.frames[0].targets[0]
+        self.assertIsNone(target.href)
+        self.assertIn("link_url_too_long", target.constraints)
+        with self.assertRaises(PageInspectionError):
+            self.follow(task_id, session_id, snapshot, target)
+
+    def test_fragment_navigation_reports_the_observed_destination(self):
+        task_id, _, session_id, page = self.session()
+        self.load(
+            session_id,
+            page,
+            '<a href="#section">Section</a><h2 id="section">Section</h2>',
+        )
+        snapshot = self.inspect(task_id, session_id)
+        self.service.backend.navigation_timeout_ms = 500
+        outcome = self.follow(
+            task_id, session_id, snapshot, snapshot.frames[0].targets[0]
+        )
+        self.assertEqual(outcome.status, "same_document")
+        self.assertEqual(outcome.url, self.origin + "/inspection#section")
+        self.assertFalse(self.service.backend.inspect(session_id).loading)
+        self.assertTrue(self.service.backend.inspect(session_id).load_success)
+        self.assertIn("Section", self.inspect(task_id, session_id).frames[0].text)
+
+    def test_target_navigation_denies_unapproved_origins_controls_and_stale_dom(self):
+        task_id, _, session_id, page = self.session()
+        self.load(
+            session_id,
+            page,
+            '<a id="link" href="https://unapproved.example/">Other</a><button>Button</button>',
+        )
+        snapshot = self.inspect(task_id, session_id)
+        with patch.object(self.service.backend, "navigate_observed") as dispatch:
+            with self.assertRaises(TaskPermissionError):
+                self.follow(
+                    task_id, session_id, snapshot, snapshot.frames[0].targets[0]
+                )
+            with self.assertRaises(PageInspectionError):
+                self.follow(
+                    task_id, session_id, snapshot, snapshot.frames[0].targets[1]
+                )
+            self.script(page, "document.getElementById('link').href='/next'; true")
+            with self.assertRaises(PageInspectionError):
+                self.follow(
+                    task_id, session_id, snapshot, snapshot.frames[0].targets[0]
+                )
+        dispatch.assert_not_called()
+
+    def test_target_navigation_needs_read_and_navigate_and_rejects_cross_task(self):
+        task_id, _, session_id, page = self.session()
+        self.load(session_id, page)
+        snapshot = self.inspect(task_id, session_id)
+        other_id, _, _, _ = self.session()
+        with self.assertRaises(TaskPermissionError):
+            self.follow(other_id, session_id, snapshot, snapshot.frames[0].targets[0])
+        reader_id, _, reader_session, _ = self.session(actions=["read"])
+        with patch.object(self.service.backend, "inspect_target") as inspect:
+            with self.assertRaises(TaskPermissionError):
+                self.follow(
+                    reader_id, reader_session, snapshot, snapshot.frames[0].targets[0]
+                )
+        inspect.assert_not_called()
+
+    def test_target_navigation_reports_blocked_redirects_and_timeout_as_unsuccessful(
+        self,
+    ):
+        task_id, _, session_id, page = self.session()
+        self.load(session_id, page, '<a href="/redirect-out">Redirect</a>')
+        snapshot = self.inspect(task_id, session_id)
+        outcome = self.follow(
+            task_id, session_id, snapshot, snapshot.frames[0].targets[0]
+        )
+        self.assertEqual(outcome.status, "load_failed")
+        self.assertFalse(any("forbidden" in path for path, _ in self.requests))
+        self.load(session_id, page, '<a href="/slow">Slow</a>')
+        snapshot = self.inspect(task_id, session_id)
+        self.service.backend.navigation_timeout_ms = 20
+        outcome = self.follow(
+            task_id, session_id, snapshot, snapshot.frames[0].targets[0]
+        )
+        self.assertEqual(outcome.status, "timed_out")
+        self.assertIsNone(self.service.backend._sessions[session_id].pending_action)
+
+    def test_revocation_settles_pending_target_navigation(
+        self,
+    ):
+        task_id, grant_id, session_id, page = self.session()
+        self.load(session_id, page, '<a href="/slow">Slow</a>')
+        snapshot = self.inspect(task_id, session_id)
+        future = self.service.broker.submit(
+            "page.navigate",
+            task_id=task_id,
+            session_id=session_id,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=snapshot.frames[0].targets[0].target_id,
+        )
+        self.wait_for(
+            lambda: (
+                self.service.backend._sessions[session_id].pending_action is not None
+            )
+        )
+        self.service.revoke_grant(task_id, grant_id)
+        self.wait_for(future.done)
+        with self.assertRaises((TaskPermissionError, PageInspectionError)):
+            future.result()
+
+    def test_target_navigation_never_dispatches_when_request_evidence_cannot_be_saved(
+        self,
+    ):
+        task_id, _, session_id, page = self.session()
+        self.load(session_id, page)
+        snapshot = self.inspect(task_id, session_id)
+        record = self.service.store.record_event
+
+        def fail_request(task_id, kind, payload):
+            if kind == "page.navigation_requested":
+                raise sqlite3.OperationalError("fixture")
+            return record(task_id, kind, payload)
+
+        with (
+            patch.object(self.service.store, "record_event", side_effect=fail_request),
+            patch.object(self.service.backend, "navigate_observed") as dispatch,
+        ):
+            with self.assertRaises(sqlite3.Error):
+                self.follow(
+                    task_id, session_id, snapshot, snapshot.frames[0].targets[0]
+                )
+        dispatch.assert_not_called()
+        self.assertTrue(self.service.failure)
+
+    def test_target_navigation_receipt_failure_rejects_an_already_loaded_page(self):
+        task_id, _, session_id, page = self.session()
+        self.load(session_id, page)
+        snapshot = self.inspect(task_id, session_id)
+        record = self.service.store.record_event
+
+        def fail_receipt(task_id, kind, payload):
+            if kind == "page.navigation_finished":
+                raise sqlite3.OperationalError("fixture")
+            return record(task_id, kind, payload)
+
+        with patch.object(self.service.store, "record_event", side_effect=fail_receipt):
+            with self.assertRaises(sqlite3.Error):
+                self.follow(
+                    task_id, session_id, snapshot, snapshot.frames[0].targets[0]
+                )
+        self.assertTrue(self.service.failure)
+        self.assertTrue(any(path == "/next" for path, _ in self.requests))
+
+    def test_stop_and_superseding_navigation_reject_the_old_action_without_success(
+        self,
+    ):
+        task_id, _, session_id, page = self.session()
+        for command in ("session.stop", "session.navigate"):
+            with self.subTest(command=command):
+                self.load(session_id, page, '<a href="/slow">Slow</a>')
+                snapshot = self.inspect(task_id, session_id)
+                future = self.service.broker.submit(
+                    "page.navigate",
+                    task_id=task_id,
+                    session_id=session_id,
+                    snapshot_id=snapshot.snapshot_id,
+                    target_id=snapshot.frames[0].targets[0].target_id,
+                )
+                self.wait_for(
+                    lambda: (
+                        self.service.backend._sessions[session_id].pending_action
+                        is not None
+                    )
+                )
+                arguments = {"task_id": task_id, "session_id": session_id}
+                if command == "session.navigate":
+                    arguments["url"] = self.origin + "/replacement"
+                self.command(command, **arguments)
+                self.wait_for(future.done)
+                with self.assertRaises(PageInspectionError):
+                    future.result()
+                self.assertIsNone(
+                    self.service.backend._sessions[session_id].pending_action
+                )
+                if command == "session.navigate":
+                    self.wait_for(
+                        lambda: (
+                            self.service.backend.inspect(session_id).load_success
+                            is True
+                        )
+                    )
 
     def test_readable_text_control_labels_frames_and_values_omitted_without_a_view(
         self,

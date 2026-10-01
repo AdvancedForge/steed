@@ -1,21 +1,23 @@
-"""Real engine checks for exclusive access to synthetic signed-in profiles."""
+"""Real engine checks for collaborative access to synthetic signed-in profiles."""
 
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import test_task_services as fixtures
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtWebEngineCore import (
+    QWebEngineHttpRequest,
+    QWebEnginePage,
+    QWebEngineSettings,
+)
 from qt_test_support import keep_directory
 
 from browser_window import BrowserWindow
 from config import Config
-from download_manager import DownloadRecord
 from profile_manager import ProfileManager
 from services.task_policy import TaskPermissionError
 from ui.task_dialog import TaskDialog
@@ -137,55 +139,50 @@ class TaskProfileTests(unittest.TestCase):
         self.assertEqual(values, ["signed-in"])
         self.assertIn(("/after-finish", "task_cookie=fixture"), self.requests)
 
-    def test_busy_profile_approval_and_concurrent_task_access_are_rejected(self):
-        task_id, grant_id = self.named_request()
+    def test_user_and_multiple_tasks_share_a_busy_profile_with_independent_grants(self):
         self.manager.switch_to_profile("work")
-        with self.assertRaisesRegex(ValueError, "Switch away"):
-            self.service.approve_grant(task_id, grant_id)
-        self.assertEqual(self.registry.task_profiles, {})
-        self.manager.switch_to_profile("default")
+        user = self.page()
+        self.load(user, "/cookie")
         with patch.object(self.registry.passwords, "busy", return_value=True):
-            with self.assertRaises(ValueError):
-                self.service.approve_grant(task_id, grant_id)
-        self.registry.downloads.records["busy"] = DownloadRecord(
-            "busy", "fixture", "", "work"
-        )
-        self.registry.downloads.requests["busy"] = Mock()
-        with self.assertRaises(ValueError):
-            self.service.approve_grant(task_id, grant_id)
-        self.registry.downloads.records.clear()
-        self.registry.downloads.requests.clear()
-        self.service.approve_grant(task_id, grant_id)
-        second_id, second_grant = self.named_request()
-        with self.assertRaises(ValueError):
-            self.service.approve_grant(second_id, second_grant)
-        self.assertEqual(self.registry.task_profiles, {"work": task_id})
-        with self.assertRaises(ValueError):
-            self.manager.switch_to_profile("work")
-        self.assertEqual(self.manager.current_profile_name, "default")
+            first_id, first_grant, first_session = self.named_session()
+            second_id, _, second_session = self.named_session()
+        self.assertEqual(self.registry.task_profiles, {"work": {first_id, second_id}})
         self.assertFalse(self.manager.rename_profile("work", "other"))
         self.assertFalse(self.manager.delete_profile("work"))
-        owners = set(self.registry.owners)
-        with self.assertRaises(ValueError):
-            ProfileManager(self.config, "work")
-        self.assertEqual(self.registry.owners, owners)
+        self.navigate(first_id, first_session, "/first-task")
+        self.navigate(second_id, second_session, "/second-task")
+        self.assertIn(("/first-task", "task_cookie=fixture"), self.requests)
+        self.assertIn(("/second-task", "task_cookie=fixture"), self.requests)
+        # Ordinary browsing may use destinations and methods outside task scope.
+        user.setUrl(QUrl(f"http://localhost:{self.server.server_port}/human-outside"))
+        self.wait_for(lambda: user.url().host() == "localhost" and not user.isLoading())
+        self.assertTrue(any(path == "/human-outside" for path, _ in self.requests))
+        request = QWebEngineHttpRequest(QUrl(self.origin + "/human-post"))
+        request.setMethod(QWebEngineHttpRequest.Method.Post)
+        user.load(request)
+        self.wait_for(
+            lambda: any(path == "POST /human-post" for path, _ in self.requests)
+        )
+        self.service.revoke_grant(first_id, first_grant)
+        self.assertEqual(self.registry.task_profiles, {"work": {second_id}})
+        self.navigate(second_id, second_session, "/second-still-active")
+        self.load(user, "/human-still-active")
+        other = ProfileManager(self.config, "work")
+        other.close()
+        sip.delete(other)
 
-    def test_browser_switch_and_popout_keep_existing_tabs_when_profile_is_reserved(
-        self,
-    ):
+    def test_browser_switch_and_popout_can_join_a_task_profile(self):
         window = BrowserWindow()
         self.windows.append(window)
-        task_id, _ = self.named_request()
-        grant = self.service.store.grants(task_id)[0]
-        self.service.approve_grant(task_id, grant.grant_id)
-        tabs = list(window.tabs)
-        with patch.object(QMessageBox, "warning") as warning:
-            window._switch_to_profile("work")
-            window._pop_out_profile_named("work")
-        self.assertEqual(warning.call_count, 2)
-        self.assertEqual(window.tabs, tabs)
-        self.assertEqual(window.profile_manager.current_profile_name, "default")
-        self.assertEqual(window._child_windows, [])
+        task_id, _, _ = self.named_session()
+        window._switch_to_profile("work")
+        window._pop_out_profile_named("work")
+        self.assertEqual(window.profile_manager.current_profile_name, "work")
+        self.assertEqual(len(window._child_windows), 1)
+        self.assertIs(
+            window._child_windows[0].profile_manager.current_profile, self.profile
+        )
+        self.assertEqual(self.registry.task_profiles, {"work": {task_id}})
 
     def test_unknown_profiles_paths_and_other_profile_sessions_are_denied(self):
         task = self.command("task.create", objective="Invalid profile")
@@ -234,7 +231,7 @@ class TaskProfileTests(unittest.TestCase):
         self.assertEqual(states, ["DownloadCancelled"])
         self.assertEqual(self.registry.downloads.records, {})
 
-    def test_existing_service_worker_cannot_fetch_outside_the_profile_grant(self):
+    def test_task_bypasses_existing_workers_without_disabling_user_workers(self):
         seed = self.page()
         self.load(seed, "/worker-seed")
         seed.runJavaScript(
@@ -246,43 +243,40 @@ class TaskProfileTests(unittest.TestCase):
         sip.delete(seed)
         task_id, _, session_id = self.named_session()
         self.navigate(task_id, session_id, "/worker-controlled")
-        self.assertEqual(
-            self.service.backend.inspect(session_id).title, "Worker guarded"
-        )
+        self.assertEqual(self.service.backend.inspect(session_id).title, "Task fixture")
         self.assertFalse(any(path == "/forbidden-worker" for path, _ in self.requests))
-        self.wait_for(
-            lambda: any(
-                event.payload.get("reason") == "origin_out_of_scope"
-                for event in self.service.store.events(task_id)
-            )
-        )
+        self.assertTrue(any(path == "/worker-controlled" for path, _ in self.requests))
+        self.load(self.page(), "/worker-controlled")
+        self.assertEqual(self.pages[-1].title(), "Worker guarded")
+        self.assertTrue(any(path == "/forbidden-worker" for path, _ in self.requests))
+        self.requests.clear()
+        self.navigate(task_id, session_id, "/worker-controlled")
+        self.assertFalse(any(path == "/forbidden-worker" for path, _ in self.requests))
 
-    def test_revocation_blocks_residual_profile_requests_until_user_reactivation(self):
+    def test_revocation_closes_only_task_pages_and_preserves_user_profile_services(
+        self,
+    ):
+        self.manager.switch_to_profile("work")
+        user = self.page()
+        snapshot = self.registry.snapshots["work"]
         task_id, grant_id, session_id = self.named_session()
         page = self.service.backend._sessions[session_id].page
+        guard = page.task_interceptor
         self.service.revoke_grant(task_id, grant_id)
         self.assertTrue(sip.isdeleted(page))
         self.assertEqual(self.registry.task_profiles, {})
-        guard = self.profile.task_interceptor
         self.assertEqual(guard.grant.reason(), "revoked")
-        self.load(self.page(), "/after-revoke-denied", success=False)
-        self.assertFalse(
-            any(path == "/after-revoke-denied" for path, _ in self.requests)
-        )
-        self.manager.refresh_settings()
-        self.assertTrue(self.profile.task_restricted)
+        self.assertIs(self.registry.snapshots["work"], snapshot)
         self.config.set("global_cookie_sharing_mode", "all_profiles")
         self.registry.refresh_settings()
-        self.assertNotIn("work", self.registry.sharing.enabled)
-        self.assertIn("work", self.registry.sharing.suspended)
-        self.manager.switch_to_profile("work")
-        self.assertFalse(self.profile.task_restricted)
-        self.assertNotIn("work", self.registry.sharing.suspended)
         self.assertIn("work", self.registry.sharing.enabled)
-        self.load(self.page(), "/after-revoke-allowed")
-        self.assertTrue(
-            any(path == "/after-revoke-allowed" for path, _ in self.requests)
-        )
+        self.assertNotIn("work", self.registry.sharing.suspended)
+        self.load(user, "/after-revoke-allowed")
+        with patch.object(
+            self.registry.downloads, "destination_picker", return_value=""
+        ) as picker:
+            user.setUrl(QUrl(self.origin + "/download"))
+            self.wait_for(lambda: picker.called)
 
     def test_persistence_failure_rolls_back_reservation_and_cannot_install_authority(
         self,
@@ -310,38 +304,45 @@ class TaskProfileTests(unittest.TestCase):
         now[0] = 1000.0
         self.wait_for(lambda: not self.registry.task_profiles)
         self.assertEqual(self.service.store.grant(task_id, grant_id).status, "expired")
-        self.assertTrue(self.profile.task_restricted)
+        self.assertFalse(getattr(self.profile, "task_restricted", False))
         with self.assertRaises(TaskPermissionError):
             self.command("session.open", task_id=task_id, profile="existing:work")
 
-    def test_partial_engine_setup_failure_freezes_authority_and_releases_reservation(
-        self,
-    ):
-        task_id, grant_id = self.named_request()
-        activate = self.registry.activate_task_profile
-
-        def fail_after_activation(*arguments):
-            activate(*arguments)
-            raise RuntimeError("fixture setup failure")
-
-        with patch.object(
-            self.registry, "activate_task_profile", side_effect=fail_after_activation
-        ):
-            with self.assertRaises(RuntimeError):
-                self.service.approve_grant(task_id, grant_id)
-        self.assertIn("could not be initialized", self.service.failure)
-        self.wait_for(lambda: not self.registry.task_profiles)
-        self.assertEqual(
-            self.profile.task_interceptor.grant.reason(), "approval_failed"
-        )
-        self.load(self.page(), "/failed-setup-denied", success=False)
+    def test_network_setup_failure_denies_task_navigation_without_affecting_user(self):
+        task_id, _, session_id = self.named_session()
+        session = self.service.backend._sessions[session_id]
+        session.network._fail()
+        with self.assertRaisesRegex(RuntimeError, "protection unavailable"):
+            self.command(
+                "session.navigate",
+                task_id=task_id,
+                session_id=session_id,
+                url=self.origin + "/failed-setup-denied",
+            )
         self.assertFalse(
             any(path == "/failed-setup-denied" for path, _ in self.requests)
         )
+        self.load(self.page(), "/user-unaffected")
+
+    def test_lost_worker_protection_denies_later_navigation(self):
+        task_id, _, session_id = self.named_session()
+        self.navigate(task_id, session_id, "/before-loss")
+        session = self.service.backend._sessions[session_id]
+        session.network._loaded(False)
+        with self.assertRaisesRegex(RuntimeError, "protection unavailable"):
+            self.command(
+                "session.navigate",
+                task_id=task_id,
+                session_id=session_id,
+                url=self.origin + "/after-loss-denied",
+            )
+        self.assertFalse(any(path == "/after-loss-denied" for path, _ in self.requests))
+        self.load(self.page(), "/human-after-loss")
 
     def test_revocation_journal_failure_freezes_and_releases_the_named_profile(self):
         task_id, grant_id, session_id = self.named_session()
         page = self.service.backend._sessions[session_id].page
+        guard = page.task_interceptor
         with patch.object(
             self.service.store,
             "resolve_grant",
@@ -352,10 +353,10 @@ class TaskProfileTests(unittest.TestCase):
         self.assertTrue(self.service.failure)
         self.wait_for(lambda: sip.isdeleted(page))
         self.assertEqual(self.registry.task_profiles, {})
-        self.assertEqual(self.profile.task_interceptor.grant.reason(), "revoked")
-        self.load(self.page(), "/journal-failure-denied", success=False)
-        self.assertFalse(
-            any(path == "/journal-failure-denied" for path, _ in self.requests)
+        self.assertEqual(guard.grant.reason(), "revoked")
+        self.load(self.page(), "/journal-failure-allowed")
+        self.assertTrue(
+            any(path == "/journal-failure-allowed" for path, _ in self.requests)
         )
 
     def test_task_guard_preserves_ordinary_ad_filtering(self):
@@ -380,7 +381,7 @@ class TaskProfileTests(unittest.TestCase):
         page = self.service.backend._sessions[session_id].page
         self.manager.close()
         self.assertFalse(sip.isdeleted(page))
-        self.assertEqual(self.registry.task_profiles, {"work": task_id})
+        self.assertEqual(self.registry.task_profiles, {"work": {task_id}})
         order = []
         page.destroyed.connect(lambda: order.append("page"))
         self.profile.destroyed.connect(lambda: order.append("profile"))
@@ -388,14 +389,14 @@ class TaskProfileTests(unittest.TestCase):
         sip.delete(other)
         self.assertEqual(order, ["page", "profile"])
 
-    def test_approval_discloses_shared_storage_and_exclusive_access(self):
+    def test_approval_discloses_shared_storage_and_concurrent_access(self):
         self.named_request()
         dialog = TaskDialog(self.service)
         try:
             details = dialog.details.toPlainText()
             self.assertIn("existing:work", details)
             self.assertIn("Site changes persist", details)
-            self.assertIn("entire profile", details)
+            self.assertIn("task pages only", details)
             self.assertIn("background", details)
             self.assertIn("URL/title metadata only", details)
         finally:

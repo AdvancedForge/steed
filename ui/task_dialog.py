@@ -27,8 +27,8 @@ class TaskDialog(QDialog):
         self.resize(800, 600)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Review task requests before approving access. Existing profiles need "
-            "exclusive task access; switch away in every window before approval. "
+            "Requests open automatically for approval. Existing profiles support "
+            "shared access; you can keep browsing while a task uses your sign-in. "
             "Task scripts and file actions are unavailable. Revoking access cancels the task."
         )
         notice.setWordWrap(True)
@@ -139,9 +139,9 @@ class TaskDialog(QDialog):
                 + (
                     "Storage: existing cookies, cached responses, and site storage are shared. "
                     "Site changes persist and may change your signed-in session. "
-                    "The network scope and budget apply to the entire profile, including background requests. "
-                    "Background workers may already exist; task document scripts stay disabled. "
-                    "After the task ends, network access stays blocked until you select this profile for ordinary browsing.\n"
+                    "The network scope and budget apply to task pages only. "
+                    "Task pages bypass background service workers and keep document scripts disabled. "
+                    "Your tabs and other approved tasks can use this profile at the same time.\n"
                     if scope["profile"] != "private"
                     else "Storage: a separate private profile for each session.\n"
                 )
