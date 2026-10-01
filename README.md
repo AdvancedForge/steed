@@ -18,6 +18,7 @@ A Python desktop browser built with PyQt6 and Qt WebEngine, with profile managem
 - **User-Agent Overrides**: Applied at startup and to new profiles; clearing restores the engine default
 - **History Suggestions**: Address completion by URL or page title, saved separately for each ordinary profile
 - **Refresh Shortcuts**: Ctrl+R and F5 reload the current tab; Ctrl+L selects the address bar
+- **KeePassXC Passwords**: In-browser login selection, fill shortcut, and saving through KeePassXC's encrypted local protocol
 
 ### Profile System
 
@@ -117,6 +118,7 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 - `Ctrl+J`: Downloads
 - `Ctrl+R` or `F5`: Reload the current tab
 - `Ctrl+L`: Focus and select the address bar
+- `Ctrl+Shift+L`: Fill a matching KeePassXC login (choose an entry if several match)
 - `Ctrl+,`: Settings
 - `Ctrl+Q`: Close the window
 
@@ -130,6 +132,8 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 - Reload
 - Go to Address Bar
 - Clear Browsing History...
+- Passwords...
+- Fill Login
 - Downloads...
 - Ad Blocking...
 - Settings...
@@ -179,29 +183,49 @@ visits and suggestions. Subsequent visits start a new history.
 
 ### Third-Party Password Managers
 
+The **Passwords** button beside the address bar connects directly to KeePassXC
+on Linux. Login selection, filling, and saving happen inside this browser;
+KeePassXC owns the encrypted vault and handles unlocking and access approval.
+No browser extension or Auto-Type configuration is required.
+
+1. Install [KeePassXC](https://keepassxc.org/download/), create or open a vault,
+   and enable **Tools → Settings → Browser Integration → Enable browser integration**.
+2. Install this project's updated requirements (`.venv/bin/python -m pip install
+   -r requirements.txt`) and restart the browser.
+3. Click **Passwords → Connect KeePassXC**, approve the connection in KeePassXC,
+   and give it a name such as `Steed default`. Pairing is remembered per ordinary
+   profile; incognito pairing lasts only for this application's session.
+4. Open an HTTPS login page. Press **Ctrl+Shift+L** to fill the sole matching
+   entry, or choose an entry when several match. You can also use
+   **Passwords → Fill Login**. KeePassXC may ask you to approve site access once.
+5. To store a login, type it into the form and choose
+   **Passwords → Save This Login...**. Review the website, username, and masked
+   password, then Save. This creates a new entry in the open KeePassXC vault.
+
+For separate username/password screens, such as Google, use the fill shortcut
+on each step. Filling sends input/change events and never submits the form.
+Automatic save prompts, updating existing entries, iframe/shadow-root forms,
+TOTP, and passkeys are not implemented. Cross-site form actions and non-HTTPS
+pages are excluded (loopback HTTP is allowed for local fixtures).
+
+The connection follows the published
+[KeePassXC browser protocol](https://github.com/keepassxreboot/keepassxc-browser/blob/develop/keepassxc-protocol.md).
+It uses PyNaCl authenticated encryption, verifies the local socket peer belongs
+to this user, and checks response nonces. Passwords are used transiently for
+the requested fill/save and are not written to browser JSON or logs.
+Only private pairing metadata is stored in per-profile `password_manager.json`
+with owner-only permissions. Navigation or document replacement invalidates a
+pending fill. The picker retains only entry names/usernames/identifiers and
+fetches credentials again when you fill, so locking the vault invalidates the
+listed login's access. Closing the password dialog cancels pending requests.
+
 [KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type)
-is a practical first option on this machine's X11 desktop. It types credentials
-into the focused form without a browser extension; the vault remains in KeePassXC.
-
-1. Install [KeePassXC](https://keepassxc.org/download/) and create or open a vault.
-2. Open the intended login page and focus its username field.
-3. Select the corresponding entry in KeePassXC and press `Ctrl+Shift+V` there
-   to perform entry-level Auto-Type into the previous window. Adapt the entry's
-   sequence for multi-step forms.
-
-For global Auto-Type, configure a hotkey in KeePassXC's **Tools → Settings →
-Auto-Type** and add a window association to the entry. Browser window titles
-include the active site's actual hostname, for example
-`Custom Browser - default - accounts.google.com`. An association such as
-`Custom Browser - * - accounts.google.com` matches that exact host across
-profiles. Page titles and background tabs cannot supply the hostname.
-
-This workflow is documented but has not been tested with a live KeePassXC vault.
-Extension-based autofill remains pending: Qt's
-[extension manager](https://doc.qt.io/qt-6/qwebengineextensionmanager.html)
-requires Qt 6.10 or later, supports Manifest V3, and does not load custom
-extensions into incognito profiles. This browser has no extension UI yet;
-compatibility with a specific manager must be tested before promising support.
+remains an optional alternative. Window titles include the active hostname,
+so a window association such as `Custom Browser - * - accounts.google.com`
+can match the site. General extension support remains pending. Loading the
+unmodified official Bitwarden 2026.9.2 package crashed the tested Qt WebEngine
+6.11 runtime with both install and unpacked-load APIs, so it is not exposed as
+a supported password-manager option.
 
 ### Creating and Switching Profiles
 
@@ -244,7 +268,8 @@ Configuration is stored in `~/.custom_browser/config.json`. You can edit this fi
 The same directory also holds browser-managed state, which is not configuration:
 `downloads.json`, `filter_lists.json`, `global_cookie_deletions.json`, the
 `profiles/` and `global_profile/` storage directories, `deleted_profiles/` for
-archived profiles, and per-profile `tabs.json`, `groups.json`, `history.json`, and
+archived profiles, and per-profile `tabs.json`, `groups.json`, `history.json`,
+`password_manager.json`, and
 `cookie_inheritance.json`. The inheritance journal stores hashes, never cookie
 values.
 
@@ -261,6 +286,8 @@ Browser/
 ├── profile_manager.py      # Profiles plus the application-owned engine registry
 ├── tab_manager.py          # Tab save/restore, closed-tab history, tab groups
 ├── browsing_history.py     # Bounded per-profile visits for address completion
+├── password_manager.py     # Encrypted local KeePassXC connection and pairing
+├── password_forms.py       # Isolated-world form inspection and explicit filling
 ├── cookie_manager.py       # Cookie viewing and deletion for one profile
 ├── cookie_sharing.py       # Global-cookie baseline, provenance, re-inheritance guards
 ├── cookie_snapshot.py      # Private in-process DevTools cookie enumeration
@@ -275,6 +302,7 @@ Browser/
 │   ├── tab_bar.py         # Tab bar widget with group context menu
 │   ├── cookie_dialog.py   # Cookie viewer
 │   ├── download_dialog.py # Download list with pause/resume/cancel/open
+│   ├── password_dialog.py # KeePassXC connection, login picker, fill/save actions
 │   ├── adblock_dialog.py  # Filtering toggle, exceptions, list updates
 │   ├── group_dialog.py    # Tab group management
 │   └── settings_dialog.py # Preferences dialog
@@ -282,8 +310,10 @@ Browser/
 │   ├── test_browser.py    # Regression suite (needs Qt)
 │   ├── test_features.py   # Pure policy/filtering checks
 │   ├── test_history.py    # History persistence and private-session checks
+│   ├── test_password_manager.py # Encrypted protocol and pairing regressions
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
 │   ├── smoke_google_login.py # Local HTTPS login-compatibility check (manual)
+│   ├── smoke_password_manager.py # Real KeePassXC synthetic-vault check (optional)
 │   └── profile_restart.py # Two-process cookie persistence check (manual)
 ├── pyproject.toml         # Ruff lint/format configuration
 ├── requirements-dev.txt
@@ -317,11 +347,19 @@ For headless Linux checks:
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python -m unittest discover -s tests -v
 QT_QPA_PLATFORM=offscreen python tests/smoke_browser.py
 QT_QPA_PLATFORM=offscreen python tests/smoke_google_login.py
+python tests/smoke_password_manager.py
 ```
 
 Tests use temporary profiles and local content. Chromium still needs to initialize its process sandbox; a restricted container may require running the tests outside that container's sandbox.
 
 The Google compatibility smoke check also needs `openssl`. It uses a temporary loopback HTTPS server, maps the Google account host to that server for this test process, and trusts only its generated certificate key. It never contacts Google or uses an account.
+
+The optional password-manager smoke check needs `keepassxc` and `keepassxc-cli`.
+It runs offscreen with isolated configuration and a synthetic temporary vault,
+seeds a fixture pairing, and checks encrypted saving/retrieval and vault locking.
+It does not exercise the interactive pairing dialog or access an existing vault.
+The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
+filling still need user verification.
 
 ## Existing limitations
 

@@ -31,11 +31,12 @@ the address bar. History suggestions match URLs and titles, retain up to 1,000
 unique successful web visits per profile, survive ordinary-profile restarts,
 and remain memory-only in incognito. Windows share history within a profile;
 **File → Clear Browsing History...** clears its visits and suggestions.
-KeePassXC Auto-Type is the initial documented password-manager workflow for the
-current X11 desktop; window titles expose the active hostname for matching,
-independently of page titles. No manager preference was given. A live vault
-workflow and extension-based autofill remain unverified; credentials stay in
-the external manager. See the README for setup.
+Password management now uses a direct KeePassXC connection on Linux, with a
+Passwords button, in-browser login picker, Ctrl+Shift+L filling, and explicit
+Save This Login. Vault storage/unlocking stay in KeePassXC; pairing metadata is
+private and per profile (memory-only in incognito). Automatic save prompts,
+updates, embedded forms, TOTP, and passkeys remain pending. Auto-Type is optional.
+See the README for setup.
 
 Verification for these additions: four history storage tests and six focused
 Qt browser checks passed, covering reload shortcuts from page/address focus,
@@ -43,6 +44,18 @@ completion navigation, shared-window/private-profile isolation, successful
 visit recording, hostname matching, and profile rename persistence. Five
 existing profile-switching/shutdown checks also passed. Ruff lint/format and
 whitespace checks passed. Desktop Auto-Type remains a manual check.
+
+Password integration verification: seven encrypted local-protocol checks and nine
+real Chromium form/UI checks passed, including replay/tamper rejection,
+credential-free pairing persistence, denial/cancellation, separate login steps,
+save requests, keyboard filling, navigation invalidation, vault locking after
+listing, and form-action changes during input handling. Four existing profile
+and shutdown checks also passed. An isolated real KeePassXC 2.7.6 vault passed
+encrypted save/retrieve and vault-lock checks with a seeded fixture association.
+The user still needs to verify interactive pairing and normal site filling on
+the desktop. The official Bitwarden 2026.9.2 extension crashed this Qt WebEngine
+runtime during both install and unpacked load; generic extension support has
+not been exposed.
 
 Verification: 71 tests passed, including real Chromium request/cosmetic filtering, nested/srcdoc frame hiding and reload exceptions, filter compilation and immediate cached-worker outcomes, fullscreen enter/exit and repeated requests, completed file downloads, cookie scope and exact-path deletion, global update/logout, shared-window lifetime, a two-process persistent-cookie restart, persisted-cookie enumeration through the DevTools adapter, the startup-sharing flag in all-profiles mode, abandoned-download-dialog cancellation, shutdown confirmation when active downloads are genuinely at risk, and cookie-snapshot refresh scheduling, bounded recovery, and stale-response rejection. Repeated runs were used to confirm the suite is stable rather than merely green once. Ruff lint/format checks, whitespace checks, and the real-entry-point startup/render/shutdown smoke test also passed with Qt 6.11.2.
 
@@ -75,7 +88,7 @@ Manual acceptance checklist before A1:
 - [ ] Download a real file; check progress, pause/resume where supported, cancellation, opening/revealing files, and active-download shutdown confirmation.
 - [ ] Update full filter lists, test ordinary sites, and verify exceptions after reload.
 - [ ] Test filtered cookie deletion and tab-group operations during normal use.
-- [ ] Try history suggestions, Ctrl+R/F5, Ctrl+L, and KeePassXC Auto-Type on the desktop.
+- [ ] Try history suggestions, Ctrl+R/F5, Ctrl+L, KeePassXC pairing, Ctrl+Shift+L filling, and saving a login on the desktop.
 
 Next step: complete this checklist and resolve any browser blockers, then start A1/A2. Do not mark the agent framework complete or bypass the agreed browser gate.
 
