@@ -9,16 +9,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 1, 2026
 
-Browser essentials now include Ctrl+F find in page and per-tab zoom. All 188
-regression checks, the startup/render/shutdown smoke check, and the
-local Google-login HTTPS smoke check passed on Qt 6.11.2. Launcher validation,
-Ruff, formatting, and whitespace checks also passed.
+Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
+198-test suite passed, followed by all 44 focused task checks after five additional
+regressions and the anchor-link fix; the suite now contains 203 tests.
+Startup/render/shutdown and local Google HTTPS smoke checks passed on Qt 6.11.2.
+Ruff, formatting, and whitespace checks passed. Launcher validation passed
+during the previous browser checks.
 
 The user reports few complaints during daily use and authorized proceeding after
 the checks available to the assistant. A1 is implemented, and A2 supports private
-and exclusive existing-profile grants. File and active-page authority will be
+and concurrently shared existing-profile grants, with automatic approval popups. File and active-page authority will be
 implemented alongside their A3 operations. A3 has started with read-only content
-inspection and stale-target validation; controlled page actions remain next.
+inspection, stale-target validation, and observed link navigation; other controlled
+page actions remain next.
 Real-account login
 persistence, third-party Google sign-in, hardware permission flows, and ordinary
 site usability remain follow-up checks; no automated fixture establishes those
@@ -47,7 +50,7 @@ checks does not establish the unverified manual results below.
 The user authorized proceeding with these manual follow-ups recorded. Resolve
 any browser blocker found during continued use alongside A1 work.
 
-- [x] Run the complete regression suite (188 checks), startup smoke,
+- [x] Run the complete regression suite (198 checks plus final focused checks), startup smoke,
   local Google-login smoke, launcher validation, and lint/format checks.
 
 - [ ] Launch from the applications menu; check graphics, navigation, search,
@@ -138,19 +141,21 @@ Implemented for the current task backend:
 - SQLite grant decisions and journal events commit atomically. Restart ends
   authority without replay. Revocation, cancellation, expiry, and exhausted
   budgets close pages and reject queued mutations.
-- Existing-profile grants share signed-in cookies/storage with exclusive access.
-  Windows, downloads, password operations, and other tasks must release that
-  profile before approval. Switching, pop-outs, and profile mutation remain
-  blocked for the grant's lifetime. An ended network guard stays installed until
-  the user resumes ordinary browsing.
+- Permission requests automatically open a simple Approve/Deny popup; additional
+  requests queue and the management dialog remains available for review/revocation.
+- Existing-profile grants share live signed-in cookies/storage alongside user
+  tabs and other tasks. Task pages have separate scopes and budgets. Profile
+  rename/archive/delete remain blocked while tasks hold it; user switching,
+  pop-outs, downloads, password operations, and cookie inspection continue.
 - Private/DNS network access needs explicit permission. Document scripts, new
   workers, WebSockets, file actions, and non-GET/HEAD methods are unavailable.
-  Existing service workers may execute; their network requests use the same
-  profile-wide scope and budget. Storage changes persist and are disclosed.
+  Shared-profile task pages bypass existing service workers through a private
+  per-target adapter; user workers retain ordinary behavior. Setup failure
+  denies task navigation. Storage changes persist and are disclosed.
 
-Verification: nine policy checks, eight storage checks, eighteen real-Qt
-service checks, and fourteen existing-profile checks, including a seeded service
-worker's denied cross-origin fetch and setup/journal failures, plus a browser
+Verification: policy/storage/service regressions and sixteen shared-profile
+checks, plus four automatic-popup checks, including task worker bypass without disabling user workers,
+concurrent profiles, selective revocation, and setup/journal failures, plus a browser
 menu failure check. Full browser regressions and startup smoke passed; a synthetic
 approval dialog was rendered and visually inspected. Manual desktop use remains a
 desktop follow-up.
@@ -166,7 +171,7 @@ successful file workflows and active-document execution remain unsupported.
 
 ### A3. Page inspection and actions — in progress
 
-Implemented the initial read-only stage:
+Implemented inspection and initial navigation actions:
 
 - `page.inspect` requires an explicit `read` grant; existing metadata grants do
   not gain content access. It returns bounded text, frame provenance, and control
@@ -183,15 +188,20 @@ Implemented the initial read-only stage:
   results. Same-origin frames are inspected; inaccessible frames, shadow DOM,
   canvas content, and truncation have explicit limitations.
 
-Verification: fourteen new inspection/broker regressions plus content-permission
-and signed-in-read checks passed as part of the complete 188-test suite.
-Startup/render/shutdown and local Google compatibility smoke checks also passed.
+Verification: the original inspection/broker checks passed in the complete
+198-test suite. All twenty-four current inspection/navigation checks passed in
+the final 44-check task run, including observed outcomes, fragment jumps, long-link
+rejection, stop/supersession, and request/receipt failures. Startup/render/shutdown
+and local Google compatibility smoke checks also passed.
 Fixtures verify extraction without a view, value omission, frame boundaries,
 DOM replacement, forged/stale references, timeouts, revocation, callback-time
 expiry, concurrent reads, worker completion, shutdown, and failed evidence writes.
 
-Next: deterministic target-based navigation and controlled activation, entry,
-selection, scrolling, and waits. Add separate grants for active document scripts,
+- `page.navigate` follows a validated link target with explicit read/navigation
+  authority. It returns an observed load outcome; stale references, blocked
+  redirects, timeout, cancellation, and evidence failures cannot become success.
+
+Next: controlled activation, entry, selection, scrolling, and waits. Add separate grants for active document scripts,
 form effects, uploads, and download destinations alongside those operations.
 Native input semantics and observed action outcomes still need implementation;
 full form/SPA workflows have not been verified.

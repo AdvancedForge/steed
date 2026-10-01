@@ -354,10 +354,11 @@ Browser/
 ├── services/
 │   ├── task_store.py       # SQLite tasks, append-only events, restart recovery
 │   ├── command_broker.py   # Named commands dispatched on the Qt thread
-│   ├── browser_backend.py  # Backend interface and independent private Qt pages
+│   ├── browser_backend.py  # Task pages, profile sharing, and observed navigation
 │   ├── navigation_service.py # Shared navigation, find, and zoom operations
 │   ├── permission_service.py # Modern/legacy permission responses and task denial
 │   ├── task_policy.py      # Exact scopes, expiry, and thread-safe request budgets
+│   ├── task_network.py     # Private per-target service-worker bypass adapter
 │   ├── task_client.py      # Task-bound client command facade
 │   ├── page_inspector.py   # Asynchronous snapshots and opaque target validation
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
@@ -371,6 +372,7 @@ Browser/
 │   ├── download_dialog.py # Download list with pause/resume/cancel/open
 │   ├── media_dialog.py    # One-shot screen/window share picker
 │   ├── task_dialog.py     # Trusted task-grant review and cancellation
+│   ├── task_approval.py   # Automatic queued approval popups
 │   ├── password_dialog.py # KeePassXC connection, login picker, fill/save actions
 │   ├── adblock_dialog.py  # Filtering toggle, exceptions, list updates
 │   ├── group_dialog.py    # Tab group management
@@ -383,7 +385,8 @@ Browser/
 │   ├── test_task_store.py # Atomic task storage, journal, and recovery checks
 │   ├── test_task_policy.py # Origin, action, network, and concurrent budget checks
 │   ├── test_task_services.py # Deterministic client and real private-page checks
-│   ├── test_task_profiles.py # Existing storage, reservations, and revocation checks
+│   ├── test_task_profiles.py # Concurrent profiles, worker bypass, and revocation
+│   ├── test_task_approval.py # Automatic popups, queueing, and explicit decisions
 │   ├── test_page_inspection.py # Content consent, extraction, stale targets, and async cleanup
 │   ├── qt_test_support.py # Shared QApplication and deferred fixture cleanup
 │   ├── test_password_manager.py # Encrypted protocol and pairing regressions
@@ -504,7 +507,12 @@ bound client, and use that client to submit `grant.request` with this scope:
 }
 ```
 
-Open **File → Task Permissions**, review the scope, and approve the request.
+A nonmodal **Allow task access?** popup opens automatically in a browser window.
+Review the task, profile, sites, actions, and duration, then click **Approve** or
+**Deny**. Requests queue one at a time. Closing/Escape leaves a request pending;
+review it later in **File → Task Permissions**, which also provides revocation.
+Requests made before a window opens wait for one. A client only submits
+`grant.request`; approval is never available through its command handle.
 Then submit `session.open` through the client. Use the returned `session_id` for
 navigation and inspection; omit `task_id` when using the bound handle.
 Navigation dispatch is not load completion: wait for a snapshot with
@@ -533,7 +541,7 @@ access must be requested separately.
 Add `"read"` to a proposed grant's `actions` before requesting approval. The
 approval screen discloses that readable text and control labels will be shared
 with the task client, including on signed-in pages. Existing metadata-only grants
-cannot call `page.inspect` or `page.target`. No cloud provider receives this data
+cannot call `page.inspect`, `page.target`, or `page.navigate`. No cloud provider receives this data
 through the current implementation; external-agent transport and provider
 disclosure permissions remain future milestones.
 
@@ -543,17 +551,15 @@ navigation revision, source (`rendered_dom`), frame snapshots, and limitations.
 Each readable frame contains bounded text and target descriptions: opaque target
 ID, frame ID, kind/role, label, enabled/read-only state, link URL when supported,
 candidate operations, and constraints. Candidate operations describe controls;
-they do not authorize or execute actions. All current candidates report
-`actions_not_implemented`.
+they do not authorize or execute actions. Controls other than links report `actions_not_implemented`.
 
 Pass a snapshot ID and its target ID to `page.target` to validate that reference.
 Only the most recent inspection for a session is retained. Navigation, frame URL
 or document changes, observed DOM mutations, removed/replaced nodes, and a newer inspection
 invalidate old references. The navigation revision alone is not a DOM revision;
 the snapshot ID and browser-side document/node checks enforce freshness.
-Unknown targets and cross-task/session references fail. These checks establish
-the foundation for later actions; no clicking, entry, selection, or file action
-command is exposed yet.
+Unknown targets and cross-task/session references fail. `page.navigate` uses a validated link reference; clicking controls, entry,
+selection, and file actions remain pending.
 
 Inspection uses fixed browser code in Qt's
 [isolated application world](https://doc.qt.io/qt-6.11/qwebenginescript.html#ScriptWorldId-enum).
@@ -564,7 +570,8 @@ visible page text as safe: site text and labels remain untrusted data.
 
 Results contain at most 32,000 text characters, 200 targets, and 16 frames, with a
 12,000-node traversal budget and a five-second engine timeout. Labels and link
-URLs are bounded too. Same-origin frames and readable `srcdoc` frames are
+URLs are bounded too; links over 2,048 characters cannot be navigated rather than
+executing a truncated destination. Same-origin frames and readable `srcdoc` frames are
 inspected. Cross-origin/sandboxed or unready frames report
 `frame_inaccessible_or_not_ready`; shadow DOM and canvas content are not inspected.
 Truncation and unsupported content are reported, not silently presented as a
@@ -578,6 +585,37 @@ content is returned. Page text, labels, form values, and full snapshots are not
 written to the task journal. A failed evidence write rejects the result and
 disables task commands.
 
+### Target-based link navigation
+
+After `page.inspect`, follow an observed link using its opaque identifiers:
+
+```python
+client.submit(
+    "page.navigate",
+    session_id=session_id,
+    snapshot_id=snapshot.snapshot_id,
+    target_id=link.target_id,
+)
+```
+
+Both `read` and `navigate` must be approved. The browser revalidates document/node
+identity and enabled state, checks the exact destination origin, and records the
+request before issuing GET navigation in the task's main page. It does not click
+site handlers, submit forms, or execute caller scripts. Links inside readable
+frames can be followed, but their destination opens in the main task page.
+
+The future returns `NavigationResult` with session ID, actual URL, revision, and
+`status`: `loaded`, `same_document`, `load_failed`, or `timed_out`. Fragment jumps
+report `same_document` after observing the destination without reloading the
+document. A blocked redirect is a failed
+load. Timeout stops the load and is not proof of absent website effects. Stop,
+superseding navigation, renderer termination, revocation, expiry, or close reject
+interrupted operations. New navigation invalidates old target references.
+Request and outcome evidence must be saved before dispatch and return respectively;
+failed journal writes disable task commands. Labels and returned page text remain
+outside the journal. Loaded means document load completion, not application-level
+success; scripts and full SPA/form workflows remain unsupported.
+
 ### Existing signed-in task profiles
 
 An internal client can request `"profile": "existing:work"` to use the existing
@@ -586,30 +624,35 @@ An internal client can request `"profile": "existing:work"` to use the existing
 Steed's profiles directory. Arbitrary paths, aliases outside that directory,
 the global-cookie source, and the incognito search profile are rejected.
 
-Before approval, switch away from the requested profile in every browser window
-and finish its downloads and password operations. One task reserves the profile
-for the entire approved grant, including when it has no open session. Until the
-task ends, ordinary switching, pop-outs, rename/archive, and another task's grant
-cannot use that profile. Approval failure rolls back the reservation.
+Approval permits a task and the user to use the **same live Qt profile at the
+same time**. Multiple approved tasks can share it too; every task retains its own
+grant, pages, sites, budgets, and cancellation. Current tabs, pop-outs, downloads,
+and password operations remain available. Rename/archive/delete are blocked
+while a task holds the profile, including when it has no open sessions. Approval
+failure rolls back the task's profile reference.
 
-The task uses the same Qt profile, cookies, cache, and site storage; this is not a
-copy of the account session. Requests can send existing credentials, and site
-changes persist after completion. The approval screen discloses this storage
-boundary, exclusive access, and limits before the user approves.
+Cookies, cache, and site storage are shared, rather than copied. Requests can
+send existing credentials; site changes persist and can change the shared
+signed-in session. The popup discloses this. Cookie inspection, configured cookie
+inheritance, and ordinary ad filtering remain active.
 
-The request guard covers the entire profile, including requests from existing
-service workers. Background activity may spend the same request budget. Task
-document scripts and new worker scripts remain disabled; an existing service
-worker can still execute and serve cached/generated content. This is not an
-isolated script execution environment. Ad filtering continues after the task
-policy check. Trusted cookie inspection and global-cookie inheritance into the
-profile pause during task access.
+Private sessions use a profile request guard. Shared-profile task pages use a
+page request guard after ordinary profile filtering. Task pages disable document
+scripts and new workers. Before navigating a shared-profile page, a hidden,
+in-process DevTools adapter enables that target's service-worker bypass. Existing
+workers therefore cannot serve or fetch on behalf of its document requests;
+ordinary user pages retain their service workers. Initialization failure, timeout,
+frontend reload, or renderer termination disables task navigation. The adapter
+uses fixed browser code and exposes no debug listener or client protocol access.
+Its private frontend SDK names are verified against Qt 6.11.2 and require
+rechecking on engine upgrades, as does the cookie snapshot adapter. See
+[the protocol's worker-bypass command](https://chromedevtools.github.io/devtools-protocol/1-3/Network/#method-setBypassServiceWorker).
 
-When the grant ends, pages close and the profile stays alive. Its ended network
-guard continues blocking requests until the user explicitly selects that profile
-for ordinary browsing. Selection restores its ordinary interceptor, cookie
-inspection, and configured cookie inheritance. Ending a grant cannot undo
-requests already sent, account changes, or local storage changes.
+Task budgets apply to task-page requests. Unrelated user/worker traffic belongs
+to ordinary browsing and does not spend those budgets. This is shared account
+state, not isolation from the user's simultaneous changes. Revocation closes only
+that task's pages; other tasks and user browsing continue without reselecting the
+profile. Ending a grant cannot undo requests, account effects, or storage changes.
 
 Qt shares persistent data among pages using a profile and applies profile
 interception before page interception; see the
@@ -627,7 +670,7 @@ listed origins; it does not add other sites or ports. There is no DNS pinning,
 OS/network sandbox, or control over tools used outside this application.
 
 Approval installs an immutable live grant only after its journal transaction
-commits. Command checks happen at dispatch, and a profile-wide
+commits. Command checks happen at dispatch, and a profile or task-page
 [Qt request interceptor](https://doc.qt.io/qt-6.11/qwebengineurlrequestinterceptor.html)
 also checks page requests and request budgets. It uses live policy without
 calling engine objects or SQLite from its callback. Denials record reason codes;
@@ -692,7 +735,26 @@ filling still need user verification.
 
 ## Verification record
 
-Current browser/A1/A2/A3 checks (October 1, 2026): all 188 regressions passed on Qt
+Latest collaborative-profile/navigation update (October 1, 2026): the complete
+198-test suite passed, followed by 44 focused checks after adding five further
+regressions and fixing same-document anchor navigation. The suite now contains
+203 tests. The focused run covered all current inspection, target-navigation,
+shared-profile, and approval-popup tests. Startup/render/shutdown, local Google
+HTTPS compatibility, Ruff, formatting, and whitespace checks passed. A synthetic
+popup was rendered and visually inspected separately from desktop acceptance.
+
+New coverage includes queued nonmodal approvals, explicit decisions, pending
+requests without windows, plain-text objectives, failed approval writes, two tasks
+and a user sharing one signed-in profile, selective revocation, retained user
+POST/download/worker behavior, worker-protection loss, target scope and permission
+checks, stale/unsupported/long links, anchor jumps, blocked redirects, observed
+load results, timeout, stop/supersession, and request/receipt journal failures.
+Real-account collaboration and interactive desktop usage remain user follow-ups.
+
+Earlier verification records:
+
+Before the shared-profile/popup/navigation update, all 188 browser/A1/A2/A3
+regressions passed (October 1, 2026) on Qt
 6.11.2, including four new task-storage checks and six real-Qt task-service
 checks. The deterministic client exercised navigation without a view, attachment
 to the same page, completion, task/cookie isolation, worker dispatch, queued
@@ -719,11 +781,11 @@ queued-work rejection, database migration, restart recovery, and SQLite approval
 failure handling. The new approval dialog was rendered with a synthetic request
 and visually inspected; this is separate from manual desktop acceptance.
 Existing-profile checks use temporary storage and synthetic credentials. They
-verify cookie/local-storage continuity, exclusive access, selection/pop-out
-rejection, profile path restrictions, downloads without destination prompts,
-redirect/resource boundaries, out-of-scope service-worker fetches, retained
-revocation guards, expiry, ad filtering, shared-window shutdown order, and
-journal/setup failure cleanup. These checks establish fixture behavior, not
+now verify cookie/local-storage continuity, concurrent user/task access,
+switching/pop-outs, profile path restrictions, task downloads without destination
+prompts, ordinary user downloads and POST requests, redirect/resource boundaries,
+worker bypass for task pages with ordinary workers retained, selective revocation,
+expiry, ad filtering, shared-window shutdown order, and journal/setup failures. These checks establish fixture behavior, not
 real-account compatibility. Task document scripts and file operations remain
 unavailable.
 
@@ -735,8 +797,8 @@ limits, output bounds, unchanged DOM, stale/replaced/forged targets, cross-task
 denial, timeout, supersession, revocation, callback-time expiry, deferred worker
 replies, shutdown, and journal failure without content disclosure. The full
 188-test suite, startup smoke, Google compatibility smoke, lint/format, and
-whitespace checks passed. Controlled page actions and full SPA workflows remain
-unimplemented; these results apply to the read-only stage.
+whitespace checks passed. These results apply to the read-only stage; target-based navigation is added below.
+Control activation and full SPA workflows remain unimplemented.
 The content-access disclosure was rendered with a synthetic existing-profile
 request and visually inspected. All fourteen focused inspection checks passed
 again after tightening string and label traversal bounds.
@@ -818,7 +880,8 @@ future work. Implementation order and status live in [ROADMAP.md](ROADMAP.md).
 
 #### A2. Sessions and grants — in progress
 
-Private and exclusive existing-profile grants, user review, origin/action/budget
+Private and concurrently shared existing-profile grants, automatic user approval
+popups, origin/action/budget
 enforcement, cancellation, and durable decision records are implemented. Grants
 for later file/active-page capabilities remain to be implemented alongside those
 operations. The following describes the full target scope.
@@ -836,7 +899,8 @@ operations. The following describes the full target scope.
 #### A3. Text-first inspection and deterministic actions — in progress
 
 Read-only snapshots, explicit content grants, bounded extraction, and opaque
-target validation are implemented. Controlled actions, active-page permissions,
+target validation and observed link navigation are implemented. Other controlled
+actions, active-page permissions,
 native input semantics, file grants, and full SPA/form workflows remain pending.
 The following describes the complete milestone target.
 

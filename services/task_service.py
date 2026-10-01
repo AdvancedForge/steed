@@ -10,6 +10,7 @@ from PyQt6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, pyqtSig
 
 from services.browser_backend import BrowserBackend, QtBrowserBackend, navigation_url
 from services.command_broker import CommandBroker, require_owner_thread
+from services.page_inspector import PageInspectionError
 from services.task_client import TaskClient
 from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
 from services.task_store import ACTIVE_STATUSES, TERMINAL_STATUSES, TaskStore
@@ -70,6 +71,7 @@ class TaskService(QObject):
                 "session.inspect": self._inspect,
                 "page.inspect": self._inspect_page,
                 "page.target": self._inspect_target,
+                "page.navigate": self._navigate_target,
                 "session.stop": self._stop,
                 "session.attach": self._attach,
                 "session.close": self._close_session,
@@ -143,10 +145,6 @@ class TaskService(QObject):
                 task_id, grant_id, "approved", expires_at=expires
             )
             self._grants[task_id] = (grant_id, grant)
-            if existing:
-                self.profiles.activate_task_profile(
-                    task_id, grant, self.backend.blocked.emit
-                )
         except Exception:
             grant.end("approval_failed")
             if task_id in self._grants:
@@ -339,6 +337,83 @@ class TaskService(QObject):
                     result.set_result(value)
 
         source.add_done_callback(completed)
+        return result
+
+    def _navigate_target(self, task_id, session_id, snapshot_id, target_id):
+        self._owned(task_id, session_id)
+        grant = self._authorize(task_id, "read")
+        try:
+            grant.check("navigate")
+        except TaskPermissionError as error:
+            self._deny(task_id, error.code)
+        checked = self.backend.inspect_target(session_id, snapshot_id, target_id)
+        result = Future()
+
+        def validated(source):
+            try:
+                target = source.result()
+                self._usable()
+                self._owned(task_id, session_id)
+                grant.check("read")
+                if (
+                    target.kind != "link"
+                    or not target.enabled
+                    or target.read_only
+                    or "navigate" not in target.operations
+                    or target.href is None
+                ):
+                    raise PageInspectionError("target_not_navigable")
+                grant.check("navigate", url=target.href)
+                try:
+                    self.store.record_event(
+                        task_id,
+                        "page.navigation_requested",
+                        {
+                            "session_id": session_id,
+                            "snapshot_id": snapshot_id,
+                            "target_id": target_id,
+                        },
+                    )
+                except Exception as error:
+                    result.set_exception(error)
+                    self._fatal()
+                    return
+                navigated = self.backend.navigate_observed(session_id, target.href)
+                receipt = self._read_result(
+                    task_id,
+                    session_id,
+                    grant,
+                    navigated,
+                    "page.navigation_finished",
+                    lambda outcome: {**asdict(outcome), "target_id": target_id},
+                )
+                receipt.add_done_callback(completed)
+            except Exception as error:
+                if not self._closed and not self.failure:
+                    try:
+                        self.store.record_event(
+                            task_id,
+                            "page.navigation_failed",
+                            {
+                                "session_id": session_id,
+                                "reason": getattr(error, "code", "navigation_failed"),
+                            },
+                        )
+                    except Exception as write_error:
+                        result.set_exception(write_error)
+                        self._fatal()
+                        return
+                result.set_exception(error)
+
+        def completed(source):
+            if result.done():
+                return
+            try:
+                result.set_result(source.result())
+            except Exception as error:
+                result.set_exception(error)
+
+        checked.add_done_callback(validated)
         return result
 
     def _stop(self, task_id, session_id):

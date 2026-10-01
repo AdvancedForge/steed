@@ -57,7 +57,7 @@ class DownloadManager(QObject):
 
     def _profile_download(self, request, name, profile):
         # Gate before the ordinary handler can open a destination dialog.
-        if getattr(profile, "task_restricted", False) is True:
+        if getattr(request.page(), "is_task_page", False) is True:
             request.cancel()
             return
         self.handle(request, name)
