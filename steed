@@ -4,7 +4,7 @@ set -eu
 steed_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$steed_dir"
 if [ ! -x "$steed_dir/.venv/bin/python" ]; then
-    printf '%s\n' 'Steed needs its virtual environment. Follow Installation in README.md.' >&2
+    printf '%s\n' 'Steed needs its virtual environment. Follow Installation in DOCUMENTATION.md.' >&2
     exit 1
 fi
 exec "$steed_dir/.venv/bin/python" "$steed_dir/main.py" "$@"
