@@ -16,6 +16,8 @@ A Python desktop browser built with PyQt6 and Qt WebEngine, with profile managem
 - **Downloads and Permissions**: Progress/history manager, supported pause/resume, cancellation, save prompts, and site permissions
 - **Ad Blocking**: Native network rules and supported CSS hiding, list updates, and site exceptions
 - **User-Agent Overrides**: Applied at startup and to new profiles; clearing restores the engine default
+- **History Suggestions**: Address completion by URL or page title, saved separately for each ordinary profile
+- **Refresh Shortcuts**: Ctrl+R and F5 reload the current tab; Ctrl+L selects the address bar
 
 ### Profile System
 
@@ -98,7 +100,7 @@ Google sign-in compatibility is enabled by default in **File → Settings**. It 
 
 Restart with `.venv/bin/python main.py`, then open `https://accounts.google.com/` and sign in normally. The compatibility setting takes precedence over the global User-Agent override for this host. Reload sign-in tabs after changing the setting.
 
-Local HTTPS tests verify redirects, form bodies, and the opt-out on the pinned Qt 6.11 runtime. A real account login still needs manual verification: [Google can restrict embedded-browser sign-ins](https://support.google.com/accounts/answer/7675428), and this workaround cannot guarantee acceptance for every account. External-browser OAuth does not create a signed-in web session in this browser.
+Local HTTPS tests verify redirects, form bodies, and the opt-out on the pinned Qt 6.11 runtime. The user reported account sign-in working on October 1, 2026; persistence after restart and third-party sign-in remain unconfirmed. [Google can restrict embedded-browser sign-ins](https://support.google.com/accounts/answer/7675428), and this workaround cannot guarantee acceptance for every account. External-browser OAuth does not create a signed-in web session in this browser.
 
 The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use the project's virtual environment for Google sign-in; older-Qt startup compatibility does not establish login compatibility.
 
@@ -113,6 +115,8 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 - `Ctrl+Shift+0`: Switch the current window to search profile
 - `Ctrl+Shift+1` … `Ctrl+Shift+9`: Switch to the Nth profile
 - `Ctrl+J`: Downloads
+- `Ctrl+R` or `F5`: Reload the current tab
+- `Ctrl+L`: Focus and select the address bar
 - `Ctrl+,`: Settings
 - `Ctrl+Q`: Close the window
 
@@ -123,6 +127,9 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 - New Tab
 - Restore Closed Tab
 - Close Tab
+- Reload
+- Go to Address Bar
+- Clear Browsing History...
 - Downloads...
 - Ad Blocking...
 - Settings...
@@ -156,6 +163,45 @@ Dark mode is available in **File → Settings**.
 
 Site permissions (camera, microphone, location, notifications, screen sharing) are
 asked per request and default to deny. Nothing is remembered between requests.
+
+### Address Suggestions
+
+Type part of a visited URL or page title in the address bar, choose a suggestion
+with the arrow keys, and press Enter. Clicking a suggestion also opens it.
+Successful HTTP/HTTPS visits are stored newest first, with up to 1,000 unique
+URLs per profile. Ordinary profile history survives restarts and is shared by
+windows using that profile. Incognito suggestions stay in memory and do not
+include ordinary profile history. Local files and URLs containing embedded
+usernames/passwords are excluded.
+
+Use **File → Clear Browsing History...** to clear the current profile's saved
+visits and suggestions. Subsequent visits start a new history.
+
+### Third-Party Password Managers
+
+[KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type)
+is a practical first option on this machine's X11 desktop. It types credentials
+into the focused form without a browser extension; the vault remains in KeePassXC.
+
+1. Install [KeePassXC](https://keepassxc.org/download/) and create or open a vault.
+2. Open the intended login page and focus its username field.
+3. Select the corresponding entry in KeePassXC and press `Ctrl+Shift+V` there
+   to perform entry-level Auto-Type into the previous window. Adapt the entry's
+   sequence for multi-step forms.
+
+For global Auto-Type, configure a hotkey in KeePassXC's **Tools → Settings →
+Auto-Type** and add a window association to the entry. Browser window titles
+include the active site's actual hostname, for example
+`Custom Browser - default - accounts.google.com`. An association such as
+`Custom Browser - * - accounts.google.com` matches that exact host across
+profiles. Page titles and background tabs cannot supply the hostname.
+
+This workflow is documented but has not been tested with a live KeePassXC vault.
+Extension-based autofill remains pending: Qt's
+[extension manager](https://doc.qt.io/qt-6/qwebengineextensionmanager.html)
+requires Qt 6.10 or later, supports Manifest V3, and does not load custom
+extensions into incognito profiles. This browser has no extension UI yet;
+compatibility with a specific manager must be tested before promising support.
 
 ### Creating and Switching Profiles
 
@@ -198,7 +244,7 @@ Configuration is stored in `~/.custom_browser/config.json`. You can edit this fi
 The same directory also holds browser-managed state, which is not configuration:
 `downloads.json`, `filter_lists.json`, `global_cookie_deletions.json`, the
 `profiles/` and `global_profile/` storage directories, `deleted_profiles/` for
-archived profiles, and per-profile `tabs.json`, `groups.json`, and
+archived profiles, and per-profile `tabs.json`, `groups.json`, `history.json`, and
 `cookie_inheritance.json`. The inheritance journal stores hashes, never cookie
 values.
 
@@ -214,6 +260,7 @@ Browser/
 ├── browser_window.py       # Main window UI (tab/profile/permission coordination)
 ├── profile_manager.py      # Profiles plus the application-owned engine registry
 ├── tab_manager.py          # Tab save/restore, closed-tab history, tab groups
+├── browsing_history.py     # Bounded per-profile visits for address completion
 ├── cookie_manager.py       # Cookie viewing and deletion for one profile
 ├── cookie_sharing.py       # Global-cookie baseline, provenance, re-inheritance guards
 ├── cookie_snapshot.py      # Private in-process DevTools cookie enumeration
@@ -234,6 +281,7 @@ Browser/
 ├── tests/
 │   ├── test_browser.py    # Regression suite (needs Qt)
 │   ├── test_features.py   # Pure policy/filtering checks
+│   ├── test_history.py    # History persistence and private-session checks
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
 │   ├── smoke_google_login.py # Local HTTPS login-compatibility check (manual)
 │   └── profile_restart.py # Two-process cookie persistence check (manual)

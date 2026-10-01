@@ -15,6 +15,7 @@ from unittest.mock import Mock, patch
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
+from PyQt6.QtTest import QSignalSpy, QTest
 from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest
 from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 
@@ -814,6 +815,109 @@ class BrowserTests(unittest.TestCase):
         save.assert_called_once()
         self.assertFalse(self.window.config.get("google_login_compatibility"))
         dialog.deleteLater()
+
+    def test_ctrl_r_and_f5_reload_active_tab_from_both_focus_locations(self):
+        self.window._new_tab(self.local_page)
+        active, inactive = self.window.tabs[1], self.window.tabs[0]
+        self.window.show()
+        self.window.activateWindow()
+        self.app.processEvents()
+        with (
+            patch.object(active, "reload") as reload,
+            patch.object(inactive, "reload") as other,
+        ):
+            self.window.address_bar.focus_address()
+            QTest.keyClick(
+                self.window.address_bar.address_input,
+                Qt.Key.Key_R,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            active.setFocus()
+            QTest.keyClick(active, Qt.Key.Key_R, Qt.KeyboardModifier.ControlModifier)
+            QTest.keyClick(active, Qt.Key.Key_F5)
+        self.assertEqual(reload.call_count, 3)
+        other.assert_not_called()
+
+    def test_history_completion_matches_title_and_enter_navigates_once(self):
+        address = self.window.address_bar
+        target = "https://history-fixture.example/docs"
+        self.window.history.record(target, "Fixture Documentation")
+        address.url_changed.disconnect(self.window._navigate_to_url)
+        chosen = QSignalSpy(address.url_changed)
+        self.window.show()
+        self.window.activateWindow()
+        address.focus_address()
+        self.app.processEvents()
+        QTest.keyClicks(address.address_input, "Fixture Doc")
+        self.wait_for(lambda: address.completer.popup().isVisible())
+        address.completer.popup().setCurrentIndex(
+            address.completer.completionModel().index(0, 0)
+        )
+        QTest.keyClick(address.address_input, Qt.Key.Key_Return)
+        self.assertEqual(list(chosen), [[target]])
+        self.assertEqual(address.address_input.text(), target)
+
+    def test_history_is_shared_between_windows_and_isolated_between_profiles(self):
+        history = self.window.history
+        target = "https://history-fixture.example/work"
+        history.record(target, "Work")
+        second = BrowserWindow()
+        try:
+            self.assertIs(second.history, history)
+            self.assertEqual(second.address_bar.history_model.rowCount(), 1)
+            self.window._switch_to_profile("search")
+            self.assertIsNone(self.window.history.path)
+            self.assertEqual(self.window.address_bar.history_model.rowCount(), 0)
+            self.window.history.record("https://private-fixture.example/", "Private")
+            self.assertEqual(second.address_bar.history_model.rowCount(), 1)
+            self.window._switch_to_profile("default")
+            self.assertIs(self.window.history, history)
+            self.assertEqual(self.window.address_bar.history_model.rowCount(), 1)
+        finally:
+            second.close()
+
+    def test_successful_http_load_adds_history_but_failed_load_does_not(self):
+        self.window._new_tab(self.origin + "/history")
+        tab = self.window.tabs[self.window.current_tab_index]
+        self.wait_for(
+            lambda: any(
+                entry.url == self.origin + "/history"
+                for entry in self.window.history.entries()
+            )
+        )
+        before = self.window.history.entries()
+        self.window._on_load_finished(tab, False)
+        self.assertEqual(self.window.history.entries(), before)
+
+    def test_autotype_window_title_uses_active_host_not_page_title(self):
+        self.window._new_tab(self.local_page)
+        active, background = self.window.tabs[1], self.window.tabs[0]
+        self.window._on_tab_url_changed(active, QUrl("https://login.example.org/"))
+        self.assertEqual(
+            self.window.windowTitle(), "Custom Browser - default - login.example.org"
+        )
+        self.window._on_tab_title_changed(active, "bank.example.com")
+        self.window._on_tab_url_changed(background, QUrl("https://bank.example.com/"))
+        self.assertEqual(
+            self.window.windowTitle(), "Custom Browser - default - login.example.org"
+        )
+        self.window._switch_tab(0)
+        self.assertNotIn("login.example.org", self.window.windowTitle())
+
+    def test_profile_rename_flushes_history_and_reopens_at_new_path(self):
+        manager = self.window.profile_manager
+        self.assertTrue(manager.create_profile("work"))
+        history = manager.registry.get_history("work")
+        history.record("https://history-fixture.example/work", "Work")
+        old_path = history.path
+        self.assertTrue(manager.rename_profile("work", "renamed"))
+        self.assertFalse(old_path.parent.exists())
+        history.record("https://history-fixture.example/late", "Late")
+        history.flush()
+        self.assertFalse(old_path.parent.exists())
+        restored = manager.registry.get_history("renamed")
+        self.assertEqual(restored.entries()[0].title, "Work")
+        self.assertEqual(len(restored.entries()), 1)
 
     def test_shutdown_destroys_pages_before_profiles(self):
         pages = [self.window.tabs[0].page()]

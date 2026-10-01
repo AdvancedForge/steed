@@ -139,6 +139,7 @@ class BrowserWindow(QMainWindow):
         self.adblock = self.profile_manager.registry.adblock
         self.tab_manager = None
         self.cookie_manager = None
+        self.history = None
         self.tabs: list[BrowserTab] = []
         self.current_tab_index = 0
         self._restoring_tabs = False
@@ -169,6 +170,11 @@ class BrowserWindow(QMainWindow):
             self._new_tab()
 
     def _initialize_profile(self, profile_name: str):
+        if self.history is not None:
+            self.history.changed.disconnect(self._refresh_address_history)
+        self.history = self.profile_manager.registry.get_history(profile_name)
+        self.history.changed.connect(self._refresh_address_history)
+        self._refresh_address_history()
         if self.cookie_manager is not None:
             self.cookie_manager.close()
         if self.tab_manager is not None:
@@ -212,6 +218,17 @@ class BrowserWindow(QMainWindow):
         close_tab_action.setShortcut(QKeySequence("Ctrl+W"))
         close_tab_action.triggered.connect(self._close_current_tab)
         file_menu.addAction(close_tab_action)
+        self.reload_action = QAction("Reload", self)
+        self.reload_action.setShortcuts([QKeySequence("Ctrl+R"), QKeySequence("F5")])
+        self.reload_action.triggered.connect(self._reload)
+        file_menu.addAction(self.reload_action)
+        focus_address_action = QAction("Go to Address Bar", self)
+        focus_address_action.setShortcut(QKeySequence("Ctrl+L"))
+        focus_address_action.triggered.connect(lambda: self.address_bar.focus_address())
+        file_menu.addAction(focus_address_action)
+        clear_history_action = QAction("Clear Browsing History...", self)
+        clear_history_action.triggered.connect(self._clear_browsing_history)
+        file_menu.addAction(clear_history_action)
         downloads_action = QAction("Downloads...", self)
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(
@@ -344,11 +361,22 @@ class BrowserWindow(QMainWindow):
 
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):
-        if profile_name == "search":
-            self.setWindowTitle("Custom Browser - Search Profile (Incognito)")
-        else:
-            self.setWindowTitle(f"Custom Browser - {profile_name}")
+        self._update_window_title()
         self._update_profile_shortcuts()
+
+    def _update_window_title(self, url=None):
+        profile_name = self.profile_manager.current_profile_name
+        label = (
+            "Search Profile (Incognito)" if profile_name == "search" else profile_name
+        )
+        title = f"Custom Browser - {label}"
+        if url is None and 0 <= self.current_tab_index < len(self.tabs):
+            url = self.tabs[self.current_tab_index].url()
+        # KeePassXC Auto-Type can match this host. Page-provided titles must not
+        # be able to masquerade as another site's window-title association.
+        if url is not None and url.scheme() in ("http", "https") and url.host():
+            title += f" - {url.host()}"
+        self.setWindowTitle(title)
 
     def _switch_profile(self):
         profiles = self.profile_manager.list_profiles() + ["search"]
@@ -584,6 +612,7 @@ class BrowserWindow(QMainWindow):
         self.address_bar.set_url(cur.url().toString())
         self.address_bar.set_back_enabled(cur.history().canGoBack())
         self.address_bar.set_forward_enabled(cur.history().canGoForward())
+        self._update_window_title(cur.url())
         self.status_bar.showMessage(f"Tab {index + 1} of {len(self.tabs)}")
 
     def _navigate_to_url(self, url_text: str):
@@ -622,6 +651,22 @@ class BrowserWindow(QMainWindow):
         if self.tabs:
             self.tabs[self.current_tab_index].reload()
 
+    def _refresh_address_history(self):
+        self.address_bar.set_history(self.history.entries())
+
+    def _clear_browsing_history(self):
+        if (
+            QMessageBox.question(
+                self,
+                "Clear Browsing History",
+                "Clear browsing history and address suggestions for this profile?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
+            self.history.clear()
+
     def _go_home(self):
         home = self.config.get("home_page", "https://www.google.com")
         self._navigate_to_url(home)
@@ -634,6 +679,7 @@ class BrowserWindow(QMainWindow):
 
         if tab == self.tabs[self.current_tab_index]:
             self.address_bar.set_url(url.toString())
+            self._update_window_title(url)
 
     def _on_tab_title_changed(self, tab: BrowserTab, title: str):
         if tab in self.tabs:
@@ -652,6 +698,7 @@ class BrowserWindow(QMainWindow):
         if tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
         if ok:
+            self.history.record(tab.url().toString(), tab.title())
             self.adblock.apply_cosmetic(tab)
         self._schedule_tab_save()
 
@@ -970,6 +1017,8 @@ class BrowserWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        if self.history is not None:
+            self.history.changed.disconnect(self._refresh_address_history)
 
         self._save_current_tabs()
         self.config.update(

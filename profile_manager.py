@@ -14,6 +14,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication
 
 from ad_blocker import AdBlocker
+from browsing_history import BrowsingHistory
 from config import Config
 from cookie_sharing import CookieSharing, cookie_key, fingerprint
 from cookie_snapshot import CookieSnapshot
@@ -43,6 +44,7 @@ class ProfileRegistry(QObject):
         self.bootstrap_pages = {}
         self.snapshots = {}
         self.defaults = {}
+        self.histories = {}
         self.snapshot_disagreements = 0
         self.global_fingerprints = None
         self.owners = set()
@@ -166,6 +168,17 @@ class ProfileRegistry(QObject):
         else:
             self.sharing.enabled.clear()
 
+    def get_history(self, name):
+        if name not in self.histories:
+            if name == "search":
+                path = None
+            elif name == "global":
+                path = self.config.config_dir / "global_profile" / "history.json"
+            else:
+                path = self.config.profiles_dir / name / "history.json"
+            self.histories[name] = BrowsingHistory(path, self)
+        return self.histories[name]
+
     def sharing_applies_to_all(self):
         """Whether every profile shares global cookies right now.
 
@@ -184,6 +197,9 @@ class ProfileRegistry(QObject):
         if self.owners:
             return
         self.sharing.closed = True
+        for history in self.histories.values():
+            history.close()
+        self.histories.clear()
         self.downloads.cancel_active()
         for snapshot in self.snapshots.values():
             snapshot.close()
@@ -304,6 +320,10 @@ class ProfileManager(QObject):
             del self._profiles[name]
             self.registry.sharing.profiles.pop(name, None)
             self.registry.sharing.enabled.discard(name)
+        history = self.registry.histories.pop(name, None)
+        if history is not None:
+            history.close()
+            history.deleteLater()
         return True
 
     def delete_profile(self, name):
