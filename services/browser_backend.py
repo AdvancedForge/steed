@@ -11,6 +11,8 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from services.command_broker import require_owner_thread
+from services.navigation_service import NavigationService
+from services.permission_service import PermissionService
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,7 @@ class QtBrowserBackend(QObject):
         if app is None or QThread.currentThread() != app.thread():
             raise RuntimeError("Qt browser backends require the application thread")
         self._sessions: dict[str, QtSession] = {}
+        self.navigation = NavigationService(self)
         self._closed = False
 
     def _session(self, session_id):
@@ -126,20 +129,7 @@ class QtBrowserBackend(QObject):
         profile.downloadRequested.connect(lambda request: request.cancel())
         page = TaskPage(profile, self)
         page.setAudioMuted(True)
-        if hasattr(page, "permissionRequested"):
-            page.permissionRequested.connect(lambda permission: permission.deny())
-        else:
-            page.featurePermissionRequested.connect(
-                lambda origin, feature: page.setFeaturePermission(
-                    origin,
-                    feature,
-                    QWebEnginePage.PermissionPolicy.PermissionDeniedByUser,
-                )
-            )
-        if hasattr(page, "desktopMediaRequested"):
-            page.desktopMediaRequested.connect(lambda request: request.cancel())
-        if hasattr(page, "fileSystemAccessRequested"):
-            page.fileSystemAccessRequested.connect(lambda request: request.reject())
+        PermissionService.deny_page(page, lambda: self._closed)
         session = QtSession(task_id, profile, page)
         self._sessions[session_id] = session
         page.loadStarted.connect(lambda: self._started(session_id))
@@ -186,12 +176,12 @@ class QtBrowserBackend(QObject):
         session = self._session(session_id)
         qurl = navigation_url(url)
         session.loading, session.load_success = True, None
-        session.page.setUrl(qurl)
+        self.navigation.navigate(session.page, qurl)
         return self.inspect(session_id)
 
     def stop(self, session_id):
         session = self._session(session_id)
-        session.page.triggerAction(QWebEnginePage.WebAction.Stop)
+        self.navigation.action(session.page, "stop")
         session.loading, session.load_success = False, False
         return self.inspect(session_id)
 
@@ -212,7 +202,7 @@ class QtBrowserBackend(QObject):
             if not sip.isdeleted(view):
                 sip.delete(view)
         session.page.blockSignals(True)
-        session.page.triggerAction(QWebEnginePage.WebAction.Stop)
+        self.navigation.action(session.page, "stop")
         sip.delete(session.page)
         sip.delete(session.profile)
 

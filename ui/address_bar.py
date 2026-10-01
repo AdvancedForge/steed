@@ -23,6 +23,7 @@ class AddressBar(QWidget):
     reload_requested = pyqtSignal()
     home_requested = pyqtSignal()
     passwords_requested = pyqtSignal()
+    reset_zoom_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -70,12 +71,17 @@ class AddressBar(QWidget):
         self.passwords_btn = QPushButton("Passwords")
         self.passwords_btn.setToolTip("KeePassXC passwords (Ctrl+Shift+L to fill)")
         self.passwords_btn.clicked.connect(self.passwords_requested.emit)
+        self.zoom_btn = QPushButton("100%")
+        self.zoom_btn.setToolTip("Reset page zoom (Ctrl+0)")
+        self.zoom_btn.setMaximumWidth(70)
+        self.zoom_btn.clicked.connect(self.reset_zoom_requested.emit)
 
         layout.addWidget(self.back_btn)
         layout.addWidget(self.forward_btn)
         layout.addWidget(self.reload_btn)
         layout.addWidget(self.home_btn)
         layout.addWidget(self.address_input)
+        layout.addWidget(self.zoom_btn)
         layout.addWidget(self.passwords_btn)
 
     def _on_return_pressed(self) -> None:

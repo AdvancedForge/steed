@@ -12,6 +12,7 @@ for current progress and remaining work.
 - [Google sign-in](#google-sign-in)
 - [Usage](#usage)
 - [Keyboard shortcuts](#keyboard-shortcuts)
+- [Find in page and zoom](#find-in-page-and-zoom)
 - [KeePassXC setup](#third-party-password-managers)
 - [Profiles and stored data](#profiles-and-stored-data)
 - [Tabs and groups](#tabs-and-groups)
@@ -110,6 +111,13 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 - `Ctrl+J`: Downloads
 - `Ctrl+R` or `F5`: Reload the current tab
 - `Ctrl+L`: Focus and select the address bar
+- `Ctrl+F`: Open find in page and select the current query
+- `Enter`, `F3`, or `Ctrl+G`: Next match (`Enter` while the find input is focused)
+- `Shift+Enter`, `Shift+F3`, or `Ctrl+Shift+G`: Previous match
+- `Escape`: Close an open find bar
+- `Ctrl++` or `Ctrl+=`: Zoom in
+- `Ctrl+-`: Zoom out
+- `Ctrl+0`: Reset zoom to 100%
 - `Ctrl+Shift+L`: Fill a matching KeePassXC login (choose an entry if several match)
 - `Ctrl+,`: Settings
 - `Ctrl+Q`: Close the window
@@ -130,6 +138,10 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 - Ad Blocking...
 - Settings...
 - Exit
+
+**Edit Menu:** Find in Page, Find Next, Find Previous.
+
+**View Menu:** Zoom In, Zoom Out, Reset Zoom.
 
 **Profile Menu:**
 
@@ -159,6 +171,18 @@ Dark mode is available in **File → Settings**.
 
 Site permissions (camera, microphone, location, notifications, screen sharing) are
 asked per request and default to deny. Nothing is remembered between requests.
+
+### Find in page and zoom
+
+Press **Ctrl+F**, type a query, and use Enter or the Next/Previous buttons to
+move through matches. The bar shows the current match and total count, or
+**No matches**. Enable **Match case** for an exact-case search. Escape closes the
+bar and clears page highlighting. Switching tabs searches the active document;
+switching profiles clears the query. Searches refresh after page navigation.
+
+Zoom applies to the active tab, from 25% to 500%. Use the View menu or the
+shortcuts above. The percentage beside the address bar resets zoom when clicked.
+New tabs start at 100%; zoom levels are not saved across restart.
 
 ### Address Suggestions
 
@@ -330,13 +354,17 @@ Browser/
 │   ├── task_store.py       # SQLite tasks, append-only events, restart recovery
 │   ├── command_broker.py   # Named commands dispatched on the Qt thread
 │   ├── browser_backend.py  # Backend interface and independent private Qt pages
+│   ├── navigation_service.py # Shared navigation, find, and zoom operations
+│   ├── permission_service.py # Modern/legacy permission responses and task denial
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
+│   ├── find_bar.py        # Debounced page search and match navigation
 │   ├── tab_bar.py         # Tab bar widget with group context menu
 │   ├── cookie_dialog.py   # Cookie viewer
 │   ├── download_dialog.py # Download list with pause/resume/cancel/open
+│   ├── media_dialog.py    # One-shot screen/window share picker
 │   ├── password_dialog.py # KeePassXC connection, login picker, fill/save actions
 │   ├── adblock_dialog.py  # Filtering toggle, exceptions, list updates
 │   ├── group_dialog.py    # Tab group management
@@ -403,7 +431,14 @@ the last working rules.
 
 ## Internal task services
 
-The first A1 foundation is available to trusted in-process Python clients through
+Ordinary tabs and private task pages use `services/navigation_service.py` for
+navigation and `services/permission_service.py` for permission wiring and
+lifetime checks. Browser prompts stay in the UI; task pages deny permissions.
+The application-owned `DownloadManager` receives a destination-picker callback
+from the registry instead of opening dialogs itself. A manager with no provider
+declines downloads. Task downloads remain disabled until scoped grants exist.
+
+The A1 foundation is available to trusted in-process Python clients through
 `window.profile_manager.registry.tasks`. It is initialized only on demand and
 shared across windows using the same application registry. This is a developer
 API; no agent endpoint, task UI, or MCP tools are exposed yet. Task-scoped grants
@@ -489,17 +524,28 @@ filling still need user verification.
 
 ## Verification record
 
-Current browser/A1 checks (October 1, 2026): all 120 regressions passed on Qt
+Current browser/A1 checks (October 1, 2026): all 132 regressions passed on Qt
 6.11.2, including four new task-storage checks and six real-Qt task-service
 checks. The deterministic client exercised navigation without a view, attachment
 to the same page, completion, task/cookie isolation, worker dispatch, queued
 cancellation, restart recovery, shared-window lifetime, and write-failure
 handling. The combined suite required one shared QApplication to avoid a native
 WebEngine crash when a later test class recreated the application.
+The latest checks also cover find match counts, direction and case, navigation,
+profile-query isolation, stale callbacks, fullscreen restoration, zoom shortcuts
+and bounds, injected download destinations, invalidated permissions, task
+permission denial, and exactly-once screen-share cleanup. Ordinary tabs and
+private task pages use the shared navigation and permission services.
 Startup/render/shutdown and local Google-login HTTPS smoke checks, desktop-entry
 validation, Ruff, formatting, and whitespace checks passed. The user authorized
 proceeding with remaining manual follow-ups recorded in the roadmap. Password
 improvements are deferred.
+
+One initial full-suite attempt exited with a native WebEngine segmentation fault
+during its first test. The same test passed with crash diagnostics enabled, and
+the subsequent full 132-test suite and startup smoke passed. No cause was
+established; this is recorded as an intermittent native failure, not a confirmed
+fix.
 
 ### Earlier implementation checks
 
@@ -557,14 +603,14 @@ The Steed application-menu entry was installed on the development machine.
 ## Planned architecture
 
 The following is the target design. The [internal task foundation](#internal-task-services)
-has started; full agent features, generic extension support, and bookmarks remain
+is implemented; full agent features, generic extension support, and bookmarks remain
 future work. Implementation order and status live in [ROADMAP.md](ROADMAP.md).
 
 ### Agent framework
 
-#### A1. Capability services and task storage — in progress
+#### A1. Capability services and task storage — implemented
 
-- Incrementally extract profiles, sessions, navigation, downloads, permission handling, and persistence from the UI coordinator.
+- Reusable profiles, sessions, navigation, downloads, permission handling, and persistence; dialogs remain in the UI.
 - Keep engine operations on the Qt thread; dispatch through a command broker.
 - Introduce a backend interface for session creation, navigation, inspection, actions, and view attachment; implement Qt only initially.
 - Application-owned SQLite stores task records and an append-only event journal; retain existing profile/config compatibility.

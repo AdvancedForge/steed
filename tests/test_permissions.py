@@ -9,6 +9,7 @@ from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWidgets import QMessageBox
 
 from browser_window import BrowserWindow, QWebEnginePermission
+from services.permission_service import PermissionService
 
 
 class PermissionTests(unittest.TestCase):
@@ -76,6 +77,40 @@ class PermissionTests(unittest.TestCase):
         permission.isValid.return_value = False
         BrowserWindow._on_permission_requested(self.window, permission)
         self.window._ask_permission.assert_not_called()
+        permission.grant.assert_not_called()
+        permission.deny.assert_not_called()
+
+    def test_request_invalidated_during_prompt_receives_no_response(self):
+        permission = Mock()
+        permission.isValid.side_effect = [True, False]
+        BrowserWindow._on_permission_requested(self.window, permission)
+        self.window._ask_permission.assert_called_once()
+        permission.grant.assert_not_called()
+        permission.deny.assert_not_called()
+
+    def test_task_policy_denies_permission_and_capture_requests(self):
+        page = Mock()
+        PermissionService.deny_page(page, lambda: False)
+        permission = Mock()
+        page.permissionRequested.connect.call_args.args[0](permission)
+        permission.deny.assert_called_once()
+        permission.grant.assert_not_called()
+        desktop = Mock()
+        page.desktopMediaRequested.connect.call_args.args[0](desktop)
+        desktop.cancel.assert_called_once()
+        filesystem = Mock()
+        page.fileSystemAccessRequested.connect.call_args.args[0](filesystem)
+        filesystem.reject.assert_called_once()
+
+    def test_shutdown_during_prompt_receives_no_response(self):
+        permission = Mock()
+
+        def decide(*args):
+            self.window._closing = True
+            return True
+
+        self.window._ask_permission.side_effect = decide
+        BrowserWindow._on_permission_requested(self.window, permission)
         permission.grant.assert_not_called()
         permission.deny.assert_not_called()
 

@@ -9,6 +9,7 @@ browsing profiles and direct KeePassXC password management.
 - Separate profiles and an incognito search profile.
 - Saved tab sessions, tab groups, and recently closed tab restoration.
 - Address suggestions from per-profile browsing history.
+- Find in page with match counts and per-tab page zoom.
 - Cookie controls, a global-cookie baseline, downloads, and ad blocking.
 - In-browser KeePassXC login selection, filling, and explicit saving.
 - A desktop launcher, dark mode, and familiar navigation shortcuts.
@@ -36,9 +37,9 @@ KeePassXC; see the [setup guide](DOCUMENTATION.md#third-party-password-managers)
 
 Browser essentials are implemented and covered by automated checks. Remaining
 manual checks are tracked in the roadmap; the user has authorized proceeding.
-The first agent-service foundation is in development: task storage, a Qt command
-broker, and independent private pages. External-agent access, bookmarks, and
-generic extension support are planned.
+The agent-service foundation includes task storage, a Qt command broker,
+independent private pages, and reusable browser services. Task permissions,
+external-agent access, bookmarks, and generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,
   troubleshooting, development checks, and technical design.

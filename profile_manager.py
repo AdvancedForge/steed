@@ -21,7 +21,9 @@ from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
 from password_manager import PasswordManager
 from services.command_broker import require_owner_thread
+from services.navigation_service import NavigationService
 from services.task_service import TaskService
+from ui.download_dialog import choose_download_destination
 from utils import get_profile_path, sanitize_profile_name
 from webengine import configure_web_settings
 
@@ -52,7 +54,10 @@ class ProfileRegistry(QObject):
         self.global_fingerprints = None
         self.owners = set()
         self._tasks = None
-        self.downloads = DownloadManager(config, self)
+        self.navigation = NavigationService(self)
+        self.downloads = DownloadManager(
+            config, self, destination_picker=choose_download_destination
+        )
         self.passwords = PasswordManager(config, self)
         self.adblock = AdBlocker(config, self)
         self.global_profile = self.create(

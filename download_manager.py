@@ -7,7 +7,6 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QObject, QUrl, pyqtSignal
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QFileDialog
 
 from utils import load_json, save_json
 
@@ -30,8 +29,9 @@ class DownloadRecord:
 class DownloadManager(QObject):
     changed = pyqtSignal()
 
-    def __init__(self, config, parent=None):
+    def __init__(self, config, parent=None, *, destination_picker=None):
         super().__init__(parent)
+        self.destination_picker = destination_picker
         self.history_file = config.config_dir / "downloads.json"
         self.records = {}
         self.requests = {}
@@ -60,7 +60,11 @@ class DownloadManager(QObject):
         parent = view.window() if view else None
         suggested = Path(request.suggestedFileName()).name or "download"
         try:
-            path, _ = QFileDialog.getSaveFileName(parent, "Save Download", suggested)
+            path = (
+                self.destination_picker(suggested, parent)
+                if self.destination_picker is not None
+                else ""
+            )
         except Exception:
             logger.exception("Could not ask where to save %s", suggested)
             path = ""

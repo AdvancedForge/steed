@@ -1,7 +1,6 @@
 """Main browser window."""
 
 import logging
-from urllib.parse import quote
 from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
@@ -14,15 +13,10 @@ from PyQt6.QtWebEngineCore import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
-    QDialog,
-    QHBoxLayout,
     QInputDialog,
-    QLabel,
-    QListWidget,
     QMainWindow,
     QMenu,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QStatusBar,
     QVBoxLayout,
@@ -32,12 +26,15 @@ from PyQt6.QtWidgets import (
 from config import Config
 from cookie_manager import CookieManager
 from profile_manager import ProfileManager
+from services.permission_service import PermissionService
 from tab_manager import ClosedTabHistory, TabManager, TabState
 from ui.adblock_dialog import AdBlockDialog
 from ui.address_bar import AddressBar
 from ui.cookie_dialog import CookieDialog
 from ui.download_dialog import DownloadDialog
+from ui.find_bar import FindBar
 from ui.group_dialog import GroupDialog
+from ui.media_dialog import DesktopMediaDialog
 from ui.password_dialog import PasswordDialog
 from ui.settings_dialog import SettingsDialog
 from ui.tab_bar import TabBar
@@ -138,6 +135,7 @@ class BrowserWindow(QMainWindow):
         self.config = self.profile_manager.config
         self.download_manager = self.profile_manager.registry.downloads
         self.adblock = self.profile_manager.registry.adblock
+        self.navigation = self.profile_manager.registry.navigation
         self.tab_manager = None
         self.cookie_manager = None
         self.history = None
@@ -263,6 +261,36 @@ class BrowserWindow(QMainWindow):
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+        edit_menu = menubar.addMenu("Edit")
+        self.find_action = QAction("Find in Page...", self)
+        self.find_action.setShortcut(QKeySequence("Ctrl+F"))
+        self.find_action.triggered.connect(self._open_find)
+        edit_menu.addAction(self.find_action)
+        next_match = QAction("Find Next", self)
+        next_match.setShortcuts([QKeySequence("F3"), QKeySequence("Ctrl+G")])
+        next_match.triggered.connect(lambda: self.find_bar.find_next())
+        edit_menu.addAction(next_match)
+        previous_match = QAction("Find Previous", self)
+        previous_match.setShortcuts(
+            [QKeySequence("Shift+F3"), QKeySequence("Ctrl+Shift+G")]
+        )
+        previous_match.triggered.connect(lambda: self.find_bar.find_next(True))
+        edit_menu.addAction(previous_match)
+        view_menu = menubar.addMenu("View")
+        self.zoom_in_action = QAction("Zoom In", self)
+        self.zoom_in_action.setShortcuts(
+            [QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")]
+        )
+        self.zoom_in_action.triggered.connect(lambda: self._zoom(1))
+        view_menu.addAction(self.zoom_in_action)
+        self.zoom_out_action = QAction("Zoom Out", self)
+        self.zoom_out_action.setShortcut(QKeySequence("Ctrl+-"))
+        self.zoom_out_action.triggered.connect(lambda: self._zoom(-1))
+        view_menu.addAction(self.zoom_out_action)
+        self.zoom_reset_action = QAction("Reset Zoom", self)
+        self.zoom_reset_action.setShortcut(QKeySequence("Ctrl+0"))
+        self.zoom_reset_action.triggered.connect(lambda: self._zoom())
+        view_menu.addAction(self.zoom_reset_action)
         # Profile menu
         profile_menu = menubar.addMenu("Profile")
         new_profile_action = QAction("New Profile...", self)
@@ -338,7 +366,11 @@ class BrowserWindow(QMainWindow):
         self.address_bar.reload_requested.connect(self._reload)
         self.address_bar.home_requested.connect(self._go_home)
         self.address_bar.passwords_requested.connect(lambda: self._open_passwords())
+        self.address_bar.reset_zoom_requested.connect(lambda: self._zoom())
         layout.addWidget(self.address_bar)
+        self.find_bar = FindBar(self.navigation)
+        self.find_bar.closed.connect(self._focus_page)
+        layout.addWidget(self.find_bar)
         # Tab container
         self.tab_container = QWidget()
         self.tab_container.setSizePolicy(
@@ -401,6 +433,8 @@ class BrowserWindow(QMainWindow):
             self._switch_to_profile(profile)
 
     def _switch_to_profile(self, profile_name: str):
+        self.find_bar.close_find(clear_query=True)
+        self.find_bar.set_page(None)
         # Save current tabs
         if self.tab_manager:
             self._save_current_tabs()
@@ -541,6 +575,8 @@ class BrowserWindow(QMainWindow):
         tab.titleChanged.connect(lambda t: self._on_tab_title_changed(tab, t))
         tab.loadProgress.connect(lambda p: self._on_load_progress(tab, p))
         tab.loadFinished.connect(lambda ok: self._on_load_finished(tab, ok))
+        if hasattr(tab.page(), "zoomFactorChanged"):
+            tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
         # Determine insertion index
         if index is None:
             index = self.current_tab_index + 1
@@ -552,7 +588,7 @@ class BrowserWindow(QMainWindow):
         self._sync_tab_group_labels()
 
         # Start loading only after signals and tab bookkeeping are ready.
-        tab.setUrl(qurl)
+        self.navigation.navigate(tab, qurl)
 
         if not self._restoring_tabs:
             self._save_current_tabs()
@@ -627,6 +663,8 @@ class BrowserWindow(QMainWindow):
             t.setVisible(i == index)
         # Update address bar and navigation buttons
         cur = self.tabs[index]
+        self.find_bar.set_page(cur.page())
+        self._update_zoom()
         self.address_bar.set_url(cur.url().toString())
         self.address_bar.set_back_enabled(cur.history().canGoBack())
         self.address_bar.set_forward_enabled(cur.history().canGoForward())
@@ -639,35 +677,43 @@ class BrowserWindow(QMainWindow):
         self._navigate_tab_to_url(self.tabs[self.current_tab_index], url_text)
 
     def _navigate_tab_to_url(self, tab: BrowserTab, url_text: str):
-        tab.setUrl(self._text_to_qurl(url_text))
+        self.navigation.navigate(tab, self._text_to_qurl(url_text))
 
     def _text_to_qurl(self, url_text: str) -> QUrl:
-        url_text = (url_text or "").strip()
-        if url_text.startswith(("http://", "https://", "file://", "about:")):
-            return QUrl(url_text)
-        if " " not in url_text and (
-            "." in url_text or url_text.startswith(("localhost", "["))
-        ):
-            scheme = (
-                "http"
-                if url_text.startswith(("localhost", "127.", "[::1]"))
-                else "https"
-            )
-            return QUrl(f"{scheme}://{url_text}")
         search = self.config.get("search_engine", "https://www.google.com/search?q=")
-        return QUrl(f"{search}{quote(url_text, safe='')}")
+        return self.navigation.address_url(url_text, search)
 
     def _go_back(self):
         if self.tabs:
-            self.tabs[self.current_tab_index].back()
+            self.navigation.action(self.tabs[self.current_tab_index], "back")
 
     def _go_forward(self):
         if self.tabs:
-            self.tabs[self.current_tab_index].forward()
+            self.navigation.action(self.tabs[self.current_tab_index], "forward")
 
     def _reload(self):
         if self.tabs:
-            self.tabs[self.current_tab_index].reload()
+            self.navigation.action(self.tabs[self.current_tab_index], "reload")
+
+    def _open_find(self):
+        if not self._closing and self.tabs:
+            self.find_bar.set_page(self.tabs[self.current_tab_index].page())
+            self.find_bar.open_find()
+
+    def _focus_page(self):
+        if not self._closing and self.tabs:
+            self.tabs[self.current_tab_index].setFocus()
+
+    def _zoom(self, direction=0):
+        if not self._closing and self.tabs:
+            self.navigation.zoom(self.tabs[self.current_tab_index], direction)
+            self._update_zoom()
+
+    def _update_zoom(self):
+        if not self._closing and self.tabs:
+            percent = round(self.tabs[self.current_tab_index].zoomFactor() * 100)
+            self.address_bar.zoom_btn.setText(f"{percent}%")
+            self.zoom_reset_action.setText(f"Reset Zoom ({percent}%)")
 
     def _refresh_address_history(self):
         self.address_bar.set_history(self.history.entries())
@@ -736,6 +782,7 @@ class BrowserWindow(QMainWindow):
             return
         if tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
+            self.find_bar.page_loaded()
         if ok:
             self.history.record(tab.url().toString(), tab.title())
             self.adblock.apply_cosmetic(tab)
@@ -807,55 +854,27 @@ class BrowserWindow(QMainWindow):
 
     # ---------- Permission & Download ----------
     def _connect_page_signals(self, page):
-        if QWebEnginePermission is not None and hasattr(page, "permissionRequested"):
-            page.permissionRequested.connect(self._on_permission_requested)
-        else:
-            page.featurePermissionRequested.connect(
-                lambda origin, feature: self._on_feature_permission_requested(
-                    page, origin, feature
-                )
-            )
+        PermissionService.connect_page(
+            page,
+            self._on_permission_requested,
+            self._on_feature_permission_requested,
+            self._on_desktop_media_requested,
+            modern_available=QWebEnginePermission is not None,
+        )
         page.fullScreenRequested.connect(self._on_fullscreen_requested)
-        if hasattr(page, "desktopMediaRequested"):
-            page.desktopMediaRequested.connect(self._on_desktop_media_requested)
 
     def _on_permission_requested(self, permission: QWebEnginePermission):
-        if self._closing or not permission.isValid():
-            return
-        allowed = self._ask_permission(permission.origin(), permission.permissionType())
-        if self._closing or not permission.isValid():
-            return
-        if allowed:
-            permission.grant()
-        else:
-            permission.deny()
+        PermissionService.respond(
+            permission, self._ask_permission, lambda: self._closing
+        )
 
     def _on_feature_permission_requested(self, page, origin, feature):
-        if self._closing or sip.isdeleted(page):
-            return
-        allowed = self._ask_permission(origin, feature)
-        if self._closing or sip.isdeleted(page):
-            return
-        policy = QWebEnginePage.PermissionPolicy
-        page.setFeaturePermission(
-            origin,
-            feature,
-            policy.PermissionGrantedByUser
-            if allowed
-            else policy.PermissionDeniedByUser,
+        PermissionService.respond_legacy(
+            page, origin, feature, self._ask_permission, lambda: self._closing
         )
 
     def _ask_permission(self, origin, feature):
-        feature_names = {
-            "MediaAudioCapture": "Microphone",
-            "MediaVideoCapture": "Camera",
-            "MediaAudioVideoCapture": "Microphone and Camera",
-            "DesktopVideoCapture": "Screen Share",
-            "DesktopAudioVideoCapture": "Screen Share with Audio",
-            "Notifications": "Notifications",
-            "Geolocation": "Location",
-        }
-        name = feature_names.get(feature.name, "Unknown")
+        name = PermissionService.feature_name(feature)
         reply = QMessageBox.question(
             self,
             "Permission Request",
@@ -1056,6 +1075,8 @@ class BrowserWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        self.find_bar.close_find(clear_query=True)
+        self.find_bar.set_page(None)
         if self._password_dialog is not None:
             self._password_dialog.reject()
         if self.history is not None:
@@ -1107,6 +1128,7 @@ class BrowserWindow(QMainWindow):
             "menubar": self.menuBar().isVisible() if self.menuBar() else True,
             "tabbar": self.tab_bar.isVisible(),
             "address": self.address_bar.isVisible(),
+            "find": self.find_bar.isVisible(),
             "status": self.status_bar.isVisible() if self.statusBar() else True,
         }
 
@@ -1114,6 +1136,7 @@ class BrowserWindow(QMainWindow):
             self.menuBar().setVisible(False)
         self.tab_bar.setVisible(False)
         self.address_bar.setVisible(False)
+        self.find_bar.hide()
         if self.statusBar():
             self.statusBar().setVisible(False)
 
@@ -1135,6 +1158,8 @@ class BrowserWindow(QMainWindow):
             self.menuBar().setVisible(self._saved_vis.get("menubar", True))
         self.tab_bar.setVisible(self._saved_vis.get("tabbar", True))
         self.address_bar.setVisible(self._saved_vis.get("address", True))
+        self.find_bar.setVisible(self._saved_vis.get("find", False))
+        self.find_bar.page_loaded()
         if self.statusBar():
             self.statusBar().setVisible(self._saved_vis.get("status", True))
 
@@ -1184,76 +1209,16 @@ class BrowserWindow(QMainWindow):
             logger.warning("Declining overlapping desktop media request")
             request.cancel()
             return
-        # Keep it alive while dialog is open
         self._pending_desktop_request = request
-
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Choose what to share")
-        dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
-
-        layout = QVBoxLayout(dlg)
-
-        screens_model = request.screensModel()
-        windows_model = request.windowsModel()
-
-        layout.addWidget(QLabel("Screens:"))
-        screens_list = QListWidget()
-        for r in range(screens_model.rowCount()):
-            screens_list.addItem(str(screens_model.data(screens_model.index(r, 0))))
-        layout.addWidget(screens_list)
-
-        layout.addWidget(QLabel("Windows:"))
-        windows_list = QListWidget()
-        for r in range(windows_model.rowCount()):
-            windows_list.addItem(str(windows_model.data(windows_model.index(r, 0))))
-        layout.addWidget(windows_list)
-
-        btns = QHBoxLayout()
-        share_screen = QPushButton("Share selected screen")
-        share_window = QPushButton("Share selected window")
-        cancel = QPushButton("Cancel")
-        btns.addWidget(share_screen)
-        btns.addWidget(share_window)
-        btns.addStretch(1)
-        btns.addWidget(cancel)
-        layout.addLayout(btns)
-
-        # Disable buttons if nothing available
-        share_screen.setEnabled(screens_model.rowCount() > 0)
-        share_window.setEnabled(windows_model.rowCount() > 0)
-
-        def do_cancel():
-            pending, self._pending_desktop_request = (
-                self._pending_desktop_request,
-                None,
-            )
-            if pending is not None:
-                pending.cancel()
-
-        def do_screen():
-            row = screens_list.currentRow()
-            if row >= 0 and self._pending_desktop_request:
-                idx = screens_model.index(row, 0)
-                self._pending_desktop_request.selectScreen(idx)
-                self._pending_desktop_request = None
-                dlg.accept()
-
-        def do_window():
-            row = windows_list.currentRow()
-            if row >= 0 and self._pending_desktop_request:
-                idx = windows_model.index(row, 0)
-                self._pending_desktop_request.selectWindow(idx)
-                self._pending_desktop_request = None
-                dlg.accept()
-
-        cancel.clicked.connect(dlg.reject)
-        dlg.rejected.connect(do_cancel)
-        share_screen.clicked.connect(do_screen)
-        share_window.clicked.connect(do_window)
-
+        dialog = None
         try:
-            dlg.exec()
+            dialog = DesktopMediaDialog(request, self)
+            dialog.exec()
         finally:
-            # Any dismissal path must resolve the request: escaping the dialog
-            # or closing it must never leave a pending share outstanding.
-            do_cancel()
+            # Resolve escaping, closing, constructor errors, and execution errors.
+            if dialog is not None:
+                dialog.cancel_pending()
+                dialog.deleteLater()
+            else:
+                request.cancel()
+            self._pending_desktop_request = None

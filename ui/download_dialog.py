@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QMessageBox,
     QPushButton,
@@ -13,6 +14,12 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
 )
+
+
+def choose_download_destination(suggested, parent=None):
+    """UI adapter; managers can instead receive a noninteractive destination."""
+    path, _ = QFileDialog.getSaveFileName(parent, "Save Download", suggested)
+    return path
 
 
 class DownloadDialog(QDialog):
