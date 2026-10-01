@@ -359,6 +359,8 @@ Browser/
 │   ├── permission_service.py # Modern/legacy permission responses and task denial
 │   ├── task_policy.py      # Exact scopes, expiry, and thread-safe request budgets
 │   ├── task_client.py      # Task-bound client command facade
+│   ├── page_inspector.py   # Asynchronous snapshots and opaque target validation
+│   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
 ├── ui/
@@ -381,6 +383,8 @@ Browser/
 │   ├── test_task_store.py # Atomic task storage, journal, and recovery checks
 │   ├── test_task_policy.py # Origin, action, network, and concurrent budget checks
 │   ├── test_task_services.py # Deterministic client and real private-page checks
+│   ├── test_task_profiles.py # Existing storage, reservations, and revocation checks
+│   ├── test_page_inspection.py # Content consent, extraction, stale targets, and async cleanup
 │   ├── qt_test_support.py # Shared QApplication and deferred fixture cleanup
 │   ├── test_password_manager.py # Encrypted protocol and pairing regressions
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
@@ -455,6 +459,9 @@ a scope but cannot approve it through the command broker.
 Worker threads can submit commands; handlers and engine operations execute on
 the Qt application thread. Never block that thread on `future.result()` before
 completion. Use callbacks or wait from a worker while Qt's event loop runs.
+Deferred handlers are flattened into that same Future; inspection completes
+after the engine reply rather than returning a nested Future. Broker shutdown
+rejects running deferred replies and cancels undispatched commands.
 Cancellation discards queued work; stopping an already-dispatched navigation is
 a separate command.
 
@@ -476,6 +483,8 @@ running inside the application. External transport authentication remains A4 wor
 | `session.open` | `task_id`, optional `profile="private"`; requires approval, returns a session snapshot |
 | `session.navigate` | `task_id`, `session_id`, `url`; dispatches GET navigation |
 | `session.inspect` | `task_id`, `session_id`; URL/title/load metadata only |
+| `page.inspect` | `task_id`, `session_id`; explicit `read` grant, returns a structured page snapshot |
+| `page.target` | `task_id`, `session_id`, `snapshot_id`, `target_id`; validates an observed target and returns its description |
 | `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
 | `session.attach` | `task_id`, `session_id`; returns a Qt view of the existing page |
 
@@ -515,7 +524,59 @@ Scopes match exact HTTP/HTTPS origins, including scheme and port; subdomains and
 redirect destinations need their own entries. Credentials, wildcards, and origin
 paths are rejected. `about:blank` is allowed without adding an origin. File
 destinations cannot currently be granted. Only
-`navigate`, metadata `inspect`, and view `attach` are supported actions.
+`navigate`, metadata `inspect`, content `read`, and view `attach` are supported actions.
+The default action list remains `navigate`, `inspect`, and `attach`; content
+access must be requested separately.
+
+### Read-only page inspection
+
+Add `"read"` to a proposed grant's `actions` before requesting approval. The
+approval screen discloses that readable text and control labels will be shared
+with the task client, including on signed-in pages. Existing metadata-only grants
+cannot call `page.inspect` or `page.target`. No cloud provider receives this data
+through the current implementation; external-agent transport and provider
+disclosure permissions remain future milestones.
+
+After successful loading, call `page.inspect` through the task-bound client. It
+returns a `PageSnapshot` with a unique snapshot ID, session/task IDs, URL/title,
+navigation revision, source (`rendered_dom`), frame snapshots, and limitations.
+Each readable frame contains bounded text and target descriptions: opaque target
+ID, frame ID, kind/role, label, enabled/read-only state, link URL when supported,
+candidate operations, and constraints. Candidate operations describe controls;
+they do not authorize or execute actions. All current candidates report
+`actions_not_implemented`.
+
+Pass a snapshot ID and its target ID to `page.target` to validate that reference.
+Only the most recent inspection for a session is retained. Navigation, frame URL
+or document changes, observed DOM mutations, removed/replaced nodes, and a newer inspection
+invalidate old references. The navigation revision alone is not a DOM revision;
+the snapshot ID and browser-side document/node checks enforce freshness.
+Unknown targets and cross-task/session references fail. These checks establish
+the foundation for later actions; no clicking, entry, selection, or file action
+command is exposed yet.
+
+Inspection uses fixed browser code in Qt's
+[isolated application world](https://doc.qt.io/qt-6.11/qwebenginescript.html#ScriptWorldId-enum).
+Clients cannot supply scripts or selectors. Document JavaScript stays disabled;
+the reader changes no DOM content. It omits input/select/textarea values, editable
+text, and hidden/script/style content. These omissions do not classify arbitrary
+visible page text as safe: site text and labels remain untrusted data.
+
+Results contain at most 32,000 text characters, 200 targets, and 16 frames, with a
+12,000-node traversal budget and a five-second engine timeout. Labels and link
+URLs are bounded too. Same-origin frames and readable `srcdoc` frames are
+inspected. Cross-origin/sandboxed or unready frames report
+`frame_inaccessible_or_not_ready`; shadow DOM and canvas content are not inspected.
+Truncation and unsupported content are reported, not silently presented as a
+complete page.
+
+The read permission and live grant are checked at dispatch and before returning
+content. Revocation, expiry, navigation, stop, renderer termination, supersession,
+and session shutdown reject interrupted reads; late callbacks cannot revive them.
+An inspection event records counts, identifiers, revision, and limitations before
+content is returned. Page text, labels, form values, and full snapshots are not
+written to the task journal. A failed evidence write rejects the result and
+disables task commands.
 
 ### Existing signed-in task profiles
 
@@ -591,9 +652,9 @@ end too. Pages, commands, and approved authority are never
 restored/replayed. An asynchronous journal write failure disables further task
 commands and emits `service.failed`; cleanup still disposes engine resources.
 
-DOM inspection, active document execution, form/file actions, and watch/takeover
-controls remain future work. Existing-profile grants currently support the same
-restricted document retrieval and metadata operations as private task pages.
+Active document execution, form/file actions, and watch/takeover controls remain
+future work. Existing-profile grants support the same restricted retrieval,
+metadata operations, and explicitly approved content reads as private task pages.
 
 ## Development checks
 
@@ -631,7 +692,7 @@ filling still need user verification.
 
 ## Verification record
 
-Current browser/A1/A2 checks (October 1, 2026): all 172 regressions passed on Qt
+Current browser/A1/A2/A3 checks (October 1, 2026): all 188 regressions passed on Qt
 6.11.2, including four new task-storage checks and six real-Qt task-service
 checks. The deterministic client exercised navigation without a view, attachment
 to the same page, completion, task/cookie isolation, worker dispatch, queued
@@ -648,7 +709,7 @@ validation, Ruff, formatting, and whitespace checks passed. The user authorized
 proceeding with remaining manual follow-ups recorded in the roadmap. Password
 improvements are deferred.
 
-A2 adds nine policy checks, four storage checks, twelve real-Qt service checks,
+Initial A2 verification added nine policy checks, four storage checks, twelve real-Qt service checks,
 fourteen existing-profile checks, and a browser menu failure check to the previous
 132-check suite. Coverage includes pending/denied
 authority, client identity, origin/profile/action/file rejection, native redirect
@@ -665,6 +726,20 @@ revocation guards, expiry, ad filtering, shared-window shutdown order, and
 journal/setup failure cleanup. These checks establish fixture behavior, not
 real-account compatibility. Task document scripts and file operations remain
 unavailable.
+
+A3's read-only stage adds fourteen inspection/broker checks, one explicit-content
+policy check, and one signed-in read/approval check to the 172-test baseline.
+Real Qt fixtures verify extraction without a view, field-value/editable-text
+omission, control descriptions, readable same-origin frames, inaccessible frame
+limits, output bounds, unchanged DOM, stale/replaced/forged targets, cross-task
+denial, timeout, supersession, revocation, callback-time expiry, deferred worker
+replies, shutdown, and journal failure without content disclosure. The full
+188-test suite, startup smoke, Google compatibility smoke, lint/format, and
+whitespace checks passed. Controlled page actions and full SPA workflows remain
+unimplemented; these results apply to the read-only stage.
+The content-access disclosure was rendered with a synthetic existing-profile
+request and visually inspected. All fourteen focused inspection checks passed
+again after tightening string and label traversal bounds.
 
 During A1 verification, one full-suite attempt exited with a native WebEngine segmentation fault
 during its first test. The same test passed with crash diagnostics enabled, and
@@ -758,7 +833,12 @@ operations. The following describes the full target scope.
 - This is a browser capability boundary, not an OS sandbox for external agents; tools accessed outside it cannot be controlled.
 - Acceptance: cross-task/profile/destination/grant attempts fail before controlled execution.
 
-#### A3. Text-first inspection and deterministic actions — pending
+#### A3. Text-first inspection and deterministic actions — in progress
+
+Read-only snapshots, explicit content grants, bounded extraction, and opaque
+target validation are implemented. Controlled actions, active-page permissions,
+native input semantics, file grants, and full SPA/form workflows remain pending.
+The following describes the complete milestone target.
 
 Prefer authorized app/API connectors, then public document retrieval, then live JS-enabled pages. Visual inspection is optional or user-requested. A session owns QWebEnginePage independently of a view; attach the same page on watch/takeover. Invisible pages may still need JS, layout, and Chromium resources.
 

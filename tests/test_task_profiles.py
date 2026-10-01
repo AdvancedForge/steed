@@ -397,6 +397,39 @@ class TaskProfileTests(unittest.TestCase):
             self.assertIn("Site changes persist", details)
             self.assertIn("entire profile", details)
             self.assertIn("background", details)
+            self.assertIn("URL/title metadata only", details)
         finally:
             dialog.reject()
             sip.delete(dialog)
+
+    def test_signed_in_page_content_requires_a_read_grant_and_stays_out_of_the_journal(
+        self,
+    ):
+        seed = self.page()
+        self.load(seed, "/cookie")
+        sip.delete(seed)
+        task = self.command("task.create", objective="Read signed-in fixture")
+        requested = self.request(
+            task.task_id, profile="existing:work", actions=["navigate", "read"]
+        )
+        dialog = TaskDialog(self.service)
+        try:
+            self.assertIn(
+                "readable page text and control labels", dialog.details.toPlainText()
+            )
+        finally:
+            dialog.reject()
+            sip.delete(dialog)
+        self.service.approve_grant(task.task_id, requested.grant_id)
+        opened = self.command(
+            "session.open", task_id=task.task_id, profile="existing:work"
+        )
+        self.navigate(task.task_id, opened.session_id, "/signed-in-read")
+        snapshot = self.command(
+            "page.inspect", task_id=task.task_id, session_id=opened.session_id
+        )
+        self.assertIn("Independent page", snapshot.frames[0].text)
+        self.assertIn(("/signed-in-read", "task_cookie=fixture"), self.requests)
+        self.assertNotIn(
+            "Independent page", repr(self.service.store.events(task.task_id))
+        )

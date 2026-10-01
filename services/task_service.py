@@ -1,6 +1,7 @@
 """Application-owned task authority; clients request but never approve grants."""
 
 import time
+from concurrent.futures import Future
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -67,6 +68,8 @@ class TaskService(QObject):
                 "session.open": self._open_session,
                 "session.navigate": self._navigate,
                 "session.inspect": self._inspect,
+                "page.inspect": self._inspect_page,
+                "page.target": self._inspect_target,
                 "session.stop": self._stop,
                 "session.attach": self._attach,
                 "session.close": self._close_session,
@@ -260,6 +263,83 @@ class TaskService(QObject):
         self._owned(task_id, session_id)
         self._authorize(task_id, "inspect")
         return self.backend.inspect(session_id)
+
+    def _inspect_page(self, task_id, session_id):
+        self._owned(task_id, session_id)
+        grant = self._authorize(task_id, "read")
+        self.store.record_event(
+            task_id, "page.inspect_requested", {"session_id": session_id}
+        )
+        source = self.backend.inspect_page(session_id)
+
+        def evidence(snapshot):
+            return {
+                "session_id": session_id,
+                "snapshot_id": snapshot.snapshot_id,
+                "revision": snapshot.revision,
+                "frame_count": len(snapshot.frames),
+                "target_count": sum(len(frame.targets) for frame in snapshot.frames),
+                "text_characters": sum(len(frame.text) for frame in snapshot.frames),
+                "limitations": snapshot.limitations,
+            }
+
+        return self._read_result(
+            task_id, session_id, grant, source, "page.inspected", evidence
+        )
+
+    def _inspect_target(self, task_id, session_id, snapshot_id, target_id):
+        self._owned(task_id, session_id)
+        grant = self._authorize(task_id, "read")
+        source = self.backend.inspect_target(session_id, snapshot_id, target_id)
+        return self._read_result(
+            task_id,
+            session_id,
+            grant,
+            source,
+            "page.target_checked",
+            lambda target: {
+                "session_id": session_id,
+                "snapshot_id": snapshot_id,
+                "target_id": target.target_id,
+            },
+        )
+
+    def _read_result(self, task_id, session_id, grant, source, kind, evidence):
+        result = Future()
+
+        def completed(source):
+            if result.done():
+                return
+            try:
+                value = source.result()
+                self._usable()
+                self._owned(task_id, session_id)
+                grant.check("read")
+            except Exception as error:
+                result.set_exception(error)
+                if not self._closed and not self.failure:
+                    try:
+                        self.store.record_event(
+                            task_id,
+                            "page.read_failed",
+                            {
+                                "session_id": session_id,
+                                "reason": getattr(error, "code", "read_failed"),
+                            },
+                        )
+                    except Exception:
+                        self._fatal()
+            else:
+                try:
+                    self.store.record_event(task_id, kind, evidence(value))
+                except Exception as error:
+                    result.set_exception(error)
+                    self._fatal()
+                else:
+                    result.set_result(value)
+
+        source.add_done_callback(completed)
+        return result
 
     def _stop(self, task_id, session_id):
         # Cleanup always remains available, even without an active grant.

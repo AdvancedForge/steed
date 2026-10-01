@@ -117,6 +117,16 @@ class TaskPolicyTests(unittest.TestCase):
                 grant.check(action, **arguments)
         self.assertEqual(grant.operations, 0)
 
+    def test_page_content_reading_needs_explicit_authority(self):
+        metadata = LiveGrant(self.scope())
+        metadata.check("inspect")
+        with self.assertRaises(TaskPermissionError):
+            metadata.check("read")
+        reader = LiveGrant(self.scope(actions=["read"]))
+        reader.check("read", url="https://example.org/article")
+        with self.assertRaises(TaskPermissionError):
+            reader.check("navigate", url="https://example.org")
+
     def test_expiration_and_revocation_block_both_command_and_engine_paths(self):
         now = [20.0]
         grant = LiveGrant(self.scope(duration_seconds=2), clock=lambda: now[0])

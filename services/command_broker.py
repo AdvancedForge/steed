@@ -1,7 +1,7 @@
 """Queue named internal commands onto the Qt application thread."""
 
 import threading
-from concurrent.futures import Future
+from concurrent.futures import Future, InvalidStateError
 from copy import deepcopy
 
 from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
@@ -47,21 +47,46 @@ class CommandBroker(QObject):
         require_owner_thread(self)
         command, arguments, future = request
         with self._lock:
-            self._pending.discard(future)
             closed = self._closed
         if closed:
             future.cancel()
             return
         if not future.set_running_or_notify_cancel():
+            with self._lock:
+                self._pending.discard(future)
             return
         try:
             if command not in self._handlers:
                 raise ValueError("Unsupported internal command")
             result = self._handlers[command](**arguments)
         except Exception as error:
-            future.set_exception(error)
+            self._complete(future, error=error)
         else:
-            future.set_result(result)
+            if isinstance(result, Future):
+                result.add_done_callback(lambda source: self._resolved(future, source))
+            else:
+                self._complete(future, result=result)
+
+    def _resolved(self, future, source):
+        try:
+            result = source.result()
+        except Exception as error:
+            self._complete(future, error=error)
+        else:
+            self._complete(future, result=result)
+
+    def _complete(self, future, *, result=None, error=None):
+        with self._lock:
+            self._pending.discard(future)
+        if future.done():
+            return
+        try:
+            if error is not None:
+                future.set_exception(error)
+            else:
+                future.set_result(result)
+        except InvalidStateError:
+            pass  # A concurrent completion or shutdown already settled it.
 
     def close(self):
         require_owner_thread(self)
@@ -70,4 +95,5 @@ class CommandBroker(QObject):
             pending = list(self._pending)
             self._pending.clear()
         for future in pending:
-            future.cancel()
+            if not future.cancel() and not future.done():
+                self._complete(future, error=RuntimeError("Command broker is closed"))

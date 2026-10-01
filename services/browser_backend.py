@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import QApplication, QWidget
 
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
+from services.page_inspector import PageInspectionError, PageInspector
 from services.permission_service import PermissionService
 from services.task_policy import LiveGrant
 
@@ -42,6 +43,8 @@ class BrowserBackend(Protocol):
     ) -> SessionSnapshot: ...
     def navigate(self, session_id: str, url: str) -> SessionSnapshot: ...
     def inspect(self, session_id: str) -> SessionSnapshot: ...
+    def inspect_page(self, session_id: str): ...
+    def inspect_target(self, session_id: str, snapshot_id: str, target_id: str): ...
     def stop(self, session_id: str) -> SessionSnapshot: ...
     def attach_view(
         self, session_id: str, parent: QWidget | None = None
@@ -157,6 +160,7 @@ class QtBrowserBackend(QObject):
             raise RuntimeError("Qt browser backends require the application thread")
         self._sessions: dict[str, QtSession] = {}
         self.navigation = NavigationService(self)
+        self.inspector = PageInspector(self)
         self._closed = False
         self.profile_provider = profile_provider
 
@@ -218,21 +222,28 @@ class QtBrowserBackend(QObject):
         self._sessions[session_id] = session
         page.loadStarted.connect(lambda: self._started(session_id))
         page.loadFinished.connect(lambda ok: self._finished(session_id, ok))
-        page.urlChanged.connect(lambda url: self._updated(session_id))
+        page.urlChanged.connect(lambda url: self._url_changed(session_id))
         page.titleChanged.connect(lambda title: self._updated(session_id))
-        page.renderProcessTerminated.connect(
-            lambda *_: self._finished(session_id, False)
-        )
+        page.renderProcessTerminated.connect(lambda *_: self._terminated(session_id))
         return self.inspect(session_id)
 
     def _updated(self, session_id):
         if session_id in self._sessions and not self._closed:
             self.changed.emit(self.inspect(session_id))
 
+    def _url_changed(self, session_id):
+        self.inspector.invalidate(session_id)
+        self._updated(session_id)
+
+    def _terminated(self, session_id):
+        self.inspector.invalidate(session_id, "renderer_terminated")
+        self._finished(session_id, False)
+
     def _started(self, session_id):
         if session_id not in self._sessions:
             return
         session = self._sessions[session_id]
+        self.inspector.invalidate(session_id)
         session.revision += 1
         session.loading, session.load_success = True, None
         self._updated(session_id)
@@ -260,15 +271,44 @@ class QtBrowserBackend(QObject):
         session = self._session(session_id)
         session.grant.check("navigate", url=url)
         qurl = navigation_url(url)
+        self.inspector.invalidate(session_id)
         session.loading, session.load_success = True, None
         self.navigation.navigate(session.page, qurl)
         return self.inspect(session_id)
 
     def stop(self, session_id):
         session = self._session(session_id)
+        self.inspector.invalidate(session_id, "session_stopped")
         self.navigation.action(session.page, "stop")
         session.loading, session.load_success = False, False
         return self.inspect(session_id)
+
+    def _read_context(self, session_id):
+        session = self._session(session_id)
+        if session.loading or session.load_success is not True:
+            raise PageInspectionError("page_not_ready")
+        session.grant.check("read", url=session.page.url().toString())
+        revision = session.revision
+
+        def validate():
+            current = self._session(session_id)
+            current.grant.check("read", url=current.page.url().toString())
+            if current.revision != revision or current.loading:
+                raise PageInspectionError("stale_snapshot")
+
+        return session, validate
+
+    def inspect_page(self, session_id):
+        session, validate = self._read_context(session_id)
+        return self.inspector.inspect(
+            self.inspect(session_id), session.page, session.grant, validate
+        )
+
+    def inspect_target(self, session_id, snapshot_id, target_id):
+        session, validate = self._read_context(session_id)
+        return self.inspector.target(
+            session_id, session.page, snapshot_id, target_id, validate
+        )
 
     def attach_view(self, session_id, parent=None):
         session = self._session(session_id)
@@ -284,6 +324,7 @@ class QtBrowserBackend(QObject):
 
     def close_session(self, session_id):
         session = self._session(session_id)
+        self.inspector.invalidate(session_id, "session_closed", discard=True)
         self._sessions.pop(session_id)
         for view in session.views:
             if not sip.isdeleted(view):

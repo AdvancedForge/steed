@@ -9,7 +9,7 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 1, 2026
 
-Browser essentials now include Ctrl+F find in page and per-tab zoom. All 172
+Browser essentials now include Ctrl+F find in page and per-tab zoom. All 188
 regression checks, the startup/render/shutdown smoke check, and the
 local Google-login HTTPS smoke check passed on Qt 6.11.2. Launcher validation,
 Ruff, formatting, and whitespace checks also passed.
@@ -17,7 +17,8 @@ Ruff, formatting, and whitespace checks also passed.
 The user reports few complaints during daily use and authorized proceeding after
 the checks available to the assistant. A1 is implemented, and A2 supports private
 and exclusive existing-profile grants. File and active-page authority will be
-implemented alongside their A3 operations.
+implemented alongside their A3 operations. A3 has started with read-only content
+inspection and stale-target validation; controlled page actions remain next.
 Real-account login
 persistence, third-party Google sign-in, hardware permission flows, and ordinary
 site usability remain follow-up checks; no automated fixture establishes those
@@ -46,7 +47,7 @@ checks does not establish the unverified manual results below.
 The user authorized proceeding with these manual follow-ups recorded. Resolve
 any browser blocker found during continued use alongside A1 work.
 
-- [x] Run the complete regression suite (172 checks), startup smoke,
+- [x] Run the complete regression suite (188 checks), startup smoke,
   local Google-login smoke, launcher validation, and lint/format checks.
 
 - [ ] Launch from the applications menu; check graphics, navigation, search,
@@ -92,7 +93,8 @@ daily-use workflow; they do not automatically block the agent milestones.
 Keep Python, PyQt6, and Qt WebEngine initially, with replaceable engine/provider
 interfaces. Prefer text and structured state; support watching, takeover,
 resume, revocation, and cancellation. A1 is implemented; A2 supports private and
-existing-profile grants for the current backend. A3–A7 remain pending.
+existing-profile grants for the current backend. A3 is in progress; A4–A7 remain
+pending.
 
 ### A1. Browser services and task storage — implemented
 
@@ -162,9 +164,39 @@ Acceptance target: cross-task, profile, destination, and grant violations fail
 before execution. Private and existing-profile document workflows are verified;
 successful file workflows and active-document execution remain unsupported.
 
-### A3. Page inspection and actions
+### A3. Page inspection and actions — in progress
 
-Expose structured snapshots and revision-bound target handles with deterministic
+Implemented the initial read-only stage:
+
+- `page.inspect` requires an explicit `read` grant; existing metadata grants do
+  not gain content access. It returns bounded text, frame provenance, and control
+  descriptions with labels, roles, enabled/read-only states, and constraints.
+- `page.target` checks browser-issued references against their session and most
+  recent snapshot. Navigation, DOM/frame changes, replacement nodes, and a new
+  inspection invalidate older references. Clients cannot supply scripts or selectors.
+- Fixed inspection code runs in an isolated application context while document
+  scripts stay disabled. Input values and editable text are omitted; page text
+  remains untrusted. The journal stores evidence counts and identifiers, not the
+  returned text or labels.
+- Reads are asynchronous and bounded. Permissions are checked again before
+  disclosure; timeouts, revocation, shutdown, and journal failures reject pending
+  results. Same-origin frames are inspected; inaccessible frames, shadow DOM,
+  canvas content, and truncation have explicit limitations.
+
+Verification: fourteen new inspection/broker regressions plus content-permission
+and signed-in-read checks passed as part of the complete 188-test suite.
+Startup/render/shutdown and local Google compatibility smoke checks also passed.
+Fixtures verify extraction without a view, value omission, frame boundaries,
+DOM replacement, forged/stale references, timeouts, revocation, callback-time
+expiry, concurrent reads, worker completion, shutdown, and failed evidence writes.
+
+Next: deterministic target-based navigation and controlled activation, entry,
+selection, scrolling, and waits. Add separate grants for active document scripts,
+form effects, uploads, and download destinations alongside those operations.
+Native input semantics and observed action outcomes still need implementation;
+full form/SPA workflows have not been verified.
+
+Target: expose structured snapshots and revision-bound target handles with deterministic
 navigation, form, upload, and download actions. Acceptance: static pages, forms,
 SPAs, frames, and DOM replacement work with observed results; unsupported cases
 request takeover or return clear limitations.
