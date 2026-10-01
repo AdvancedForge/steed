@@ -32,6 +32,7 @@ class Config:
             "search_engine": "https://www.duckduckgo.com/?q=",
             "dark_mode": False,
             "restore_tabs_on_startup": True,
+            "google_login_compatibility": True,
             "window_width": 1200,
             "window_height": 800,
             "global_cookie_sharing_mode": "on_switch",  # "on_switch" or "all_profiles"

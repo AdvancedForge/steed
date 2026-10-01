@@ -89,6 +89,8 @@ Global cookies are a shared baseline, not unconditional replacements:
 
 - Apply overrides at profile creation/startup, including incognito; remove the outdated hardcoded Chrome default.
 - Clearing an override restores the engine's actual default. Display the effective UA.
+- Google account sign-in now has a default-enabled, account-host Firefox User-Agent workaround based on qutebrowser. A page-level interceptor preserves profile ad filtering. GET redirects are restarted with the destination's header; POSTs are not replayed. Local HTTPS acceptance is covered by `tests/smoke_google_login.py` on Qt 6.11; live account acceptance remains pending.
+- The system Qt 6.4.2 runtime stalled during the HTTPS fixture after account-host GET redirects. Use the pinned virtual environment for the live login gate.
 - Verify newly created/existing profiles, settings changes, and restart.
 - Manually test Google account login and third-party Google sign-in. UA spoofing is not a guarantee: Google may reject embedded browsers separately.
 - If a required login is impossible on Qt, record the exact failure and revisit the engine before further dependent work. External-browser connector OAuth does not log websites into the Qt browser.
