@@ -40,7 +40,11 @@ from ui.download_dialog import DownloadDialog
 from ui.group_dialog import GroupDialog
 from ui.settings_dialog import SettingsDialog
 from ui.tab_bar import TabBar
-from webengine import configure_web_settings
+from webengine import (
+    SiteCompatibilityInterceptor,
+    configure_web_settings,
+    google_login_user_agent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,34 @@ class BrowserPage(QWebEnginePage):
     the browser is not a debugging tool for remote pages.
     """
 
+    def __init__(self, profile, parent=None, config=None):
+        super().__init__(profile, parent)
+        self.site_compatibility = SiteCompatibilityInterceptor(config, self)
+        self.setUrlRequestInterceptor(self.site_compatibility)
+
+    def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        compatibility = self.site_compatibility
+        if (
+            compatibility.enabled
+            and is_main_frame
+            and navigation_type == QWebEnginePage.NavigationType.NavigationTypeRedirect
+            and compatibility.last_main_method == b"GET"
+            and (
+                google_login_user_agent(url) is not None
+                or google_login_user_agent(compatibility.last_main_url) is not None
+            )
+        ):
+            # Qt can retain the previous host's UA or revert to the profile UA
+            # on redirects. Start a fresh GET so the target's header is applied.
+            # Never replay a POST: doing so would lose its body or duplicate it.
+            def follow_redirect():
+                if not sip.isdeleted(self):
+                    self.setUrl(url)
+
+            QTimer.singleShot(0, follow_redirect)
+            return False
+        return True
+
 
 class BrowserTab(QWebEngineView):
     """Represents a single browser tab."""
@@ -72,7 +104,9 @@ class BrowserTab(QWebEngineView):
         self.group = None
         self.group_id = None
         self.tab_id = uuid4().hex
-        page = BrowserPage(profile, self)
+        page = BrowserPage(
+            profile, self, config=window.config if window is not None else None
+        )
         self.setPage(page)
         settings = self.settings()
         configure_web_settings(settings)

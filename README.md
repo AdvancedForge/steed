@@ -92,6 +92,16 @@ QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" .venv/bin/python main.py
 
 The browser preserves explicit Chromium options and enables PipeWire screen capture without forcing a graphics backend.
 
+### Google sign-in
+
+Google sign-in compatibility is enabled by default in **File → Settings**. It sends a Firefox User-Agent to `https://accounts.google.com/`, following [qutebrowser's account-host workaround](https://github.com/qutebrowser/qutebrowser/issues/5182). Other sites use your configured/default User-Agent. Main-page GET redirects into or out of the account host are restarted to avoid Qt losing the per-site header; POST requests are never replayed.
+
+Restart with `.venv/bin/python main.py`, then open `https://accounts.google.com/` and sign in normally. The compatibility setting takes precedence over the global User-Agent override for this host. Reload sign-in tabs after changing the setting.
+
+Local HTTPS tests verify redirects, form bodies, and the opt-out on the pinned Qt 6.11 runtime. A real account login still needs manual verification: [Google can restrict embedded-browser sign-ins](https://support.google.com/accounts/answer/7675428), and this workaround cannot guarantee acceptance for every account. External-browser OAuth does not create a signed-in web session in this browser.
+
+The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use the project's virtual environment for Google sign-in; older-Qt startup compatibility does not establish login compatibility.
+
 ## Usage
 
 ### Keyboard Shortcuts
@@ -179,6 +189,7 @@ Configuration is stored in `~/.custom_browser/config.json`. You can edit this fi
 - `window_width`: Default window width
 - `window_height`: Default window height
 - `user_agent_override`: Replacement user agent; empty restores the engine default
+- `google_login_compatibility`: Account-host User-Agent workaround (enabled by default)
 - `global_cookie_sharing_mode`: `on_switch` or `all_profiles`
 - `global_cookie_sharing_apply_on_startup`: Whether global cookies are reconciled automatically
 - `adblock_enabled`: Enable network blocking and cosmetic filtering
@@ -224,13 +235,14 @@ Browser/
 │   ├── test_browser.py    # Regression suite (needs Qt)
 │   ├── test_features.py   # Pure policy/filtering checks
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
+│   ├── smoke_google_login.py # Local HTTPS login-compatibility check (manual)
 │   └── profile_restart.py # Two-process cookie persistence check (manual)
 ├── pyproject.toml         # Ruff lint/format configuration
 ├── requirements-dev.txt
 └── requirements.txt
 ```
 
-The last two files are runnable scripts rather than unittest modules, so
+The smoke and profile-restart files are runnable scripts rather than unittest modules, so
 `unittest discover` does not collect them; run them directly as shown below.
 
 ## Technical Details
@@ -256,9 +268,12 @@ For headless Linux checks:
 ```bash
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python -m unittest discover -s tests -v
 QT_QPA_PLATFORM=offscreen python tests/smoke_browser.py
+QT_QPA_PLATFORM=offscreen python tests/smoke_google_login.py
 ```
 
 Tests use temporary profiles and local content. Chromium still needs to initialize its process sandbox; a restricted container may require running the tests outside that container's sandbox.
+
+The Google compatibility smoke check also needs `openssl`. It uses a temporary loopback HTTPS server, maps the Google account host to that server for this test process, and trusts only its generated certificate key. It never contacts Google or uses an account.
 
 ## Existing limitations
 

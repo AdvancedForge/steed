@@ -63,6 +63,16 @@ class SettingsDialog(QDialog):
         effective.setWordWrap(True)
         form.addRow("Current effective User-Agent:", effective)
 
+        self.google_login_compatibility = QCheckBox()
+        self.google_login_compatibility.setChecked(
+            bool(self.config.get("google_login_compatibility", True))
+        )
+        self.google_login_compatibility.setToolTip(
+            "Use a Firefox User-Agent for Google's sign-in host only. "
+            "Reload the sign-in page after changing this setting."
+        )
+        form.addRow("Google sign-in compatibility:", self.google_login_compatibility)
+
         self.global_cookie_mode = QComboBox()
         self.global_cookie_mode.addItems(["on_switch", "all_profiles"])
         self.global_cookie_mode.setCurrentText(
@@ -96,6 +106,7 @@ class SettingsDialog(QDialog):
                 "restore_tabs_on_startup": self.restore_tabs.isChecked(),
                 "dark_mode": self.dark_mode.isChecked(),
                 "user_agent_override": self.user_agent.text().strip(),
+                "google_login_compatibility": self.google_login_compatibility.isChecked(),
                 "global_cookie_sharing_mode": self.global_cookie_mode.currentText(),
                 "global_cookie_sharing_apply_on_startup": self.global_cookie_apply_startup.isChecked(),
             }

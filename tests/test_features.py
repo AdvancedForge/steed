@@ -5,9 +5,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from PyQt6.QtCore import QUrl
 from PyQt6.QtNetwork import QNetworkCookie
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineUrlRequestInfo
 
-from ad_blocker import AdBlocker, FilterEngine
+from ad_blocker import AdBlocker, FilterEngine, FilterInterceptor
+from browser_window import BrowserPage
 from config import Config
 from cookie_sharing import CookieSharing, cookie_key
 from cookie_snapshot import (
@@ -21,6 +24,11 @@ from cookie_snapshot import (
 from download_manager import DownloadManager
 from tab_manager import ClosedTabHistory, TabState
 from utils import load_json, save_json
+from webengine import (
+    GOOGLE_LOGIN_USER_AGENT,
+    SiteCompatibilityInterceptor,
+    google_login_user_agent,
+)
 
 
 def cookie(value=b"global", domain=".example.org"):
@@ -155,6 +163,104 @@ class FeatureTests(unittest.TestCase):
         home.start()
         self.addCleanup(home.stop)
         self.config = Config()
+
+    def test_google_login_compatibility_matches_only_https_account_host(self):
+        for url, expected in (
+            ("https://accounts.google.com/signin", GOOGLE_LOGIN_USER_AGENT),
+            ("https://ACCOUNTS.GOOGLE.COM/", GOOGLE_LOGIN_USER_AGENT),
+            ("http://accounts.google.com/", None),
+            ("https://accounts.google.com.evil.example/", None),
+            ("https://sub.accounts.google.com/", None),
+            ("https://accounts.google.com@evil.example/", None),
+            ("https://mail.google.com/", None),
+            ("https://example.org/?next=https://accounts.google.com/", None),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(google_login_user_agent(QUrl(url)), expected)
+
+    def test_google_login_compatibility_is_independent_of_adblock_settings(self):
+        with patch("ad_blocker.QNetworkAccessManager"):
+            service = AdBlocker(self.config)
+        service.engine = Mock()
+        service.engine.blocked.return_value = False
+        interceptor = FilterInterceptor(service)
+        compatibility = SiteCompatibilityInterceptor(self.config)
+        info = Mock()
+        info.requestUrl.return_value = QUrl("https://accounts.google.com/signin")
+        info.requestMethod.return_value = b"GET"
+        info.firstPartyUrl.return_value = QUrl("https://accounts.google.com/")
+        info.resourceType.return_value = (
+            QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMainFrame
+        )
+        for enabled, exceptions in (
+            (True, []),
+            (False, []),
+            (True, ["accounts.google.com"]),
+        ):
+            with self.subTest(enabled=enabled, exceptions=exceptions):
+                self.config.update(
+                    {"adblock_enabled": enabled, "adblock_exceptions": exceptions}
+                )
+                info.reset_mock()
+                interceptor.interceptRequest(info)
+                compatibility.interceptRequest(info)
+                info.setHttpHeader.assert_called_once_with(
+                    b"User-Agent", GOOGLE_LOGIN_USER_AGENT
+                )
+        # A settings change must affect the next request without reattaching
+        # the interceptor or overriding the profile's global User-Agent.
+        self.config.set("google_login_compatibility", False)
+        info.reset_mock()
+        interceptor.interceptRequest(info)
+        compatibility.interceptRequest(info)
+        info.setHttpHeader.assert_not_called()
+
+    def test_google_compatibility_keeps_network_filtering_active(self):
+        with patch("ad_blocker.QNetworkAccessManager"):
+            service = AdBlocker(self.config)
+        service.engine = Mock()
+        service.engine.blocked.return_value = True
+        interceptor = FilterInterceptor(service)
+        info = Mock()
+        info.requestUrl.return_value = QUrl("https://fixture-ads.example/advert.js")
+        info.firstPartyUrl.return_value = QUrl("https://example.org/")
+        info.resourceType.return_value = (
+            QWebEngineUrlRequestInfo.ResourceType.ResourceTypeScript
+        )
+        interceptor.interceptRequest(info)
+        info.setHttpHeader.assert_not_called()
+        info.block.assert_called_once_with(True)
+
+    def test_google_get_redirect_is_deferred_with_target_url(self):
+        page = Mock(spec=BrowserPage)
+        page.site_compatibility = SiteCompatibilityInterceptor(self.config)
+        page.site_compatibility.last_main_method = b"GET"
+        target = QUrl("https://accounts.google.com/signin?continue=fixture")
+        with patch("browser_window.QTimer.singleShot") as timer:
+            accepted = BrowserPage.acceptNavigationRequest(
+                page, target, QWebEnginePage.NavigationType.NavigationTypeRedirect, True
+            )
+        self.assertFalse(accepted)
+        with patch("browser_window.sip.isdeleted", return_value=False):
+            timer.call_args.args[1]()
+        page.setUrl.assert_called_once_with(target)
+
+    def test_google_post_redirect_and_subframe_are_not_replayed(self):
+        page = Mock(spec=BrowserPage)
+        page.site_compatibility = SiteCompatibilityInterceptor(self.config)
+        target = QUrl("https://accounts.google.com/signin")
+        for method, is_main_frame in ((b"POST", True), (b"GET", False)):
+            with self.subTest(method=method, is_main_frame=is_main_frame):
+                page.site_compatibility.last_main_method = method
+                with patch("browser_window.QTimer.singleShot") as timer:
+                    accepted = BrowserPage.acceptNavigationRequest(
+                        page,
+                        target,
+                        QWebEnginePage.NavigationType.NavigationTypeRedirect,
+                        is_main_frame,
+                    )
+                self.assertTrue(accepted)
+                timer.assert_not_called()
 
     def test_fast_cached_filter_compilation_is_installed(self):
         rules = ["||fixture-ads.example^"]
