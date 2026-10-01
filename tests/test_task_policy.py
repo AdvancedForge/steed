@@ -69,6 +69,21 @@ class TaskPolicyTests(unittest.TestCase):
             grant.request("http://127.0.0.1:8001/path"), "origin_out_of_scope"
         )
 
+    def test_edit_and_scroll_are_explicit_without_form_or_script_authority(self):
+        ordinary = LiveGrant(self.scope())
+        for action in ("edit", "scroll"):
+            with self.subTest(action=action), self.assertRaises(TaskPermissionError):
+                ordinary.check(action)
+        grant = LiveGrant(self.scope(actions=["navigate", "read", "edit", "scroll"]))
+        grant.check("edit")
+        grant.check("scroll")
+        self.assertEqual(
+            grant.request("https://example.org/form", b"POST"), "method_out_of_scope"
+        )
+        for action in ("submit", "scripts", "upload", "download"):
+            with self.subTest(action=action), self.assertRaises(ValueError):
+                self.scope(actions=[action])
+
     def test_invalid_scope_fields_profiles_actions_and_budgets_are_rejected(self):
         for changes in (
             {"profile": "global"},

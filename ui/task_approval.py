@@ -19,6 +19,8 @@ ACTION_LABELS = {
     "inspect": "See page addresses and titles",
     "read": "Read page text and control labels",
     "attach": "Show task pages in a browser view",
+    "edit": "Change text, choices, checkboxes and radio buttons",
+    "scroll": "Scroll task pages",
 }
 
 

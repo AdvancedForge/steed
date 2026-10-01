@@ -360,7 +360,8 @@ Browser/
 │   ├── task_policy.py      # Exact scopes, expiry, and thread-safe request budgets
 │   ├── task_network.py     # Private per-target service-worker bypass adapter
 │   ├── task_client.py      # Task-bound client command facade
-│   ├── page_inspector.py   # Asynchronous snapshots and opaque target validation
+│   ├── page_inspector.py   # Asynchronous snapshots, validation, and fixed actions
+│   ├── page_actions.py     # Bounded action inputs and value-free receipts
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
@@ -388,6 +389,7 @@ Browser/
 │   ├── test_task_profiles.py # Concurrent profiles, worker bypass, and revocation
 │   ├── test_task_approval.py # Automatic popups, queueing, and explicit decisions
 │   ├── test_page_inspection.py # Content consent, extraction, stale targets, and async cleanup
+│   ├── test_page_actions.py # Edits, native text events, scrolling, waits, and receipts
 │   ├── qt_test_support.py # Shared QApplication and deferred fixture cleanup
 │   ├── test_password_manager.py # Encrypted protocol and pairing regressions
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
@@ -488,6 +490,10 @@ running inside the application. External transport authentication remains A4 wor
 | `session.inspect` | `task_id`, `session_id`; URL/title/load metadata only |
 | `page.inspect` | `task_id`, `session_id`; explicit `read` grant, returns a structured page snapshot |
 | `page.target` | `task_id`, `session_id`, `snapshot_id`, `target_id`; validates an observed target and returns its description |
+| `page.navigate` | `task_id`, `session_id`, `snapshot_id`, `target_id`; follows a validated link and reports the load outcome |
+| `page.act` | `task_id`, `session_id`, `snapshot_id`, `target_id`, `operation`, optional `text`/`index`; requires `read` + `edit`, returns a control-change receipt |
+| `page.scroll` | `task_id`, `session_id`, `snapshot_id`, optional `frame_id`, `dx`, `dy`; requires `read` + `scroll`, returns observed offsets |
+| `page.wait` | `task_id`, `session_id`, optional `condition`, `text`, `timeout_ms`; requires `read`, returns an observed match, timeout, or load failure |
 | `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
 | `session.attach` | `task_id`, `session_id`; returns a Qt view of the existing page |
 
@@ -515,8 +521,9 @@ Requests made before a window opens wait for one. A client only submits
 `grant.request`; approval is never available through its command handle.
 Then submit `session.open` through the client. Use the returned `session_id` for
 navigation and inspection; omit `task_id` when using the bound handle.
-Navigation dispatch is not load completion: wait for a snapshot with
-`loading=False` and check `load_success`. `tests/test_task_services.py` demonstrates
+Navigation dispatch is not load completion: use `page.wait` with `condition="ready"`
+under a read grant, or wait for metadata with `loading=False` and check
+`load_success`. `tests/test_task_services.py` demonstrates
 the complete workflow with a real local HTTP fixture, without AI or an account.
 
 By default, each session owns a separate off-the-record profile. Its page survives closing
@@ -532,16 +539,18 @@ Scopes match exact HTTP/HTTPS origins, including scheme and port; subdomains and
 redirect destinations need their own entries. Credentials, wildcards, and origin
 paths are rejected. `about:blank` is allowed without adding an origin. File
 destinations cannot currently be granted. Only
-`navigate`, metadata `inspect`, content `read`, and view `attach` are supported actions.
-The default action list remains `navigate`, `inspect`, and `attach`; content
-access must be requested separately.
+`navigate`, metadata `inspect`, content `read`, view `attach`, control `edit`,
+and `scroll` are supported actions. The default action list remains `navigate`,
+`inspect`, and `attach`; content, edits, and scrolling need explicit approval.
+An edit grant does not authorize submission, POST, active scripts, or file actions.
 
 ### Read-only page inspection
 
 Add `"read"` to a proposed grant's `actions` before requesting approval. The
 approval screen discloses that readable text and control labels will be shared
 with the task client, including on signed-in pages. Existing metadata-only grants
-cannot call `page.inspect`, `page.target`, or `page.navigate`. No cloud provider receives this data
+cannot call `page.inspect`, `page.target`, `page.navigate`, `page.act`, `page.scroll`,
+or `page.wait`. No cloud provider receives this data
 through the current implementation; external-agent transport and provider
 disclosure permissions remain future milestones.
 
@@ -551,15 +560,18 @@ navigation revision, source (`rendered_dom`), frame snapshots, and limitations.
 Each readable frame contains bounded text and target descriptions: opaque target
 ID, frame ID, kind/role, label, enabled/read-only state, link URL when supported,
 candidate operations, and constraints. Candidate operations describe controls;
-they do not authorize or execute actions. Controls other than links report `actions_not_implemented`.
+they do not authorize or execute actions. Buttons/submission, custom controls,
+specialized input types, and multiple selection report explicit constraints.
+Option labels and values remain omitted; current selection uses an index.
 
 Pass a snapshot ID and its target ID to `page.target` to validate that reference.
 Only the most recent inspection for a session is retained. Navigation, frame URL
 or document changes, observed DOM mutations, removed/replaced nodes, and a newer inspection
 invalidate old references. The navigation revision alone is not a DOM revision;
 the snapshot ID and browser-side document/node checks enforce freshness.
-Unknown targets and cross-task/session references fail. `page.navigate` uses a validated link reference; clicking controls, entry,
-selection, and file actions remain pending.
+Unknown targets and cross-task/session references fail. Every completed edit or
+scroll attempt also invalidates references, including changes to value/checked
+properties that do not produce DOM mutations. File actions remain pending.
 
 Inspection uses fixed browser code in Qt's
 [isolated application world](https://doc.qt.io/qt-6.11/qwebenginescript.html#ScriptWorldId-enum).
@@ -615,6 +627,84 @@ Request and outcome evidence must be saved before dispatch and return respective
 failed journal writes disable task commands. Labels and returned page text remain
 outside the journal. Loaded means document load completion, not application-level
 success; scripts and full SPA/form workflows remain unsupported.
+
+### Controlled edits and scrolling
+
+Request `"read"` and `"edit"` to change supported controls; request `"read"` and
+`"scroll"` to scroll. The approval popup and management dialog disclose these
+actions. Existing grants keep their original authority. Example control entry:
+
+```python
+client.submit(
+    "page.act",
+    session_id=session_id,
+    snapshot_id=snapshot.snapshot_id,
+    target_id=field.target_id,
+    operation="enter",
+    text="Example text",
+)
+```
+
+Use a fresh `page.inspect` after each completed attempt. The browser checks node
+identity, document/frame state, visibility, enabled/read-only state, and live
+authority before dispatch and receipt. Supported operations:
+
+| Operation | Supported controls and input | Semantics |
+| --- | --- | --- |
+| `enter` | Text, search, email, URL, telephone inputs and textareas; `text` only, up to 4,096 UTF-16 units | Focus/select the resolved control, then Chromium's editing command; trusted input events, undo, and field length limits are verified on Qt 6.11.2 |
+| `activate` | Checkbox/radio inputs; no additional input | HTML activation via `click()` and its default control behavior; the initiating click is synthetic, not a physical pointer gesture |
+| `select` | Single-selection native selects; `index` from 0 to 999 | Set selected index and emit synthetic input/change events; absent/disabled options and multiple selection fail |
+
+The text editor uses the deprecated `document.execCommand` API through fixed
+browser code, verified on the pinned engine. See Chromium's
+[editing implementation](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/editing/commands/editor_command.cc)
+and the [HTML activation specification](https://html.spec.whatwg.org/multipage/interaction.html#activation-behavior).
+No arbitrary commands, scripts, selectors, or protocol operations are exposed.
+These semantics do not establish compatibility with JS handlers, custom widgets,
+or SPA workflows. Password/file fields, specialized inputs, buttons/form
+submission, and contenteditable controls remain unavailable. Scriptless edits
+change the task page's DOM; they do not submit the form or update another tab's
+controls, even when those tabs share the profile.
+
+`PageActionResult` reports action/session/reference IDs, operation, revision,
+observed `changed` state, input semantics, and `status`: `applied`, `no_change`,
+`constrained`, or `unsupported`. It can include checked state, selected index,
+text-match confirmation, or scroll offsets; it never includes field text or
+option values. Length limits or engine sanitization can return `constrained`;
+unsupported editing can return `unsupported`, rather than claiming success.
+
+To scroll a snapshot's main frame, submit `page.scroll` with `snapshot_id` and
+`dy=400`; optional `frame_id` selects an inspected readable frame. `dx`/`dy` are
+integer CSS-pixel offsets bounded to ±10,000. Fixed CSSOM scrolling returns the
+observed position and whether it changed; an edge can return `no_change`.
+Network requests caused by scrolling still use the original scope and budget.
+
+Only one controlled action runs per session. Stop, superseding navigation,
+renderer termination, close, revocation, expiry, or timeout reject interrupted
+receipts. A request gets a journaled action ID before dispatch, and the outcome
+must be saved before returning it. Entered text and option values never enter
+these events. Already dispatched work may have happened despite an interrupted
+receipt; inspect state before retrying. No rollback is promised.
+
+### Bounded state waits
+
+`page.wait` needs `read`, spends one operation, and supports two conditions:
+
+- `ready` (default): wait for current loading to finish; returns `matched` or
+  `load_failed`. It reports the actual URL/revision, not application-level success.
+- `text`: provide a literal, case-sensitive `text` of 1–256 characters; poll
+  normalized readable frame text after successful loading. Field values and
+  inaccessible content remain omitted. Returned limitations make incomplete
+  observation explicit; a timeout does not prove text is absent from the whole page.
+
+`timeout_ms` defaults to 5,000 and is bounded to 1–10,000. Both conditions return
+`timed_out` on deadline. `PageWaitResult` contains session, condition, status,
+URL/revision, and limitations; the query and page text are excluded from receipts
+and journal events. Text waits refresh inspection and invalidate old references.
+They allow DOM changes while waiting; navigation, stop, a control action, renderer
+termination, or session shutdown interrupts them. Revocation/expiry checks also
+apply before returning results. Only one wait runs per session, and a wait cannot
+start during a controlled action. Waiting does not spend network budget by itself.
 
 ### Existing signed-in task profiles
 
@@ -734,6 +824,29 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+A3 control/wait stage (October 1, 2026): the complete 224-test suite passed on
+Qt 6.11.2. Nineteen new action/wait regressions plus explicit-permission and
+shared-profile checks verify trusted text input and undo, field limits, clearing,
+checkbox/radio state, selection by index, rejected sensitive/unsupported controls,
+freshness after edits, readable child frames, observed scrolling, ready/text
+waits, bounded timeout, superseding loads, interruption/revocation, delayed
+callback expiry, and request/receipt journal failures. User controls and document
+scripts stayed independent while sharing the task's signed-in profile. No entered
+text or wait query was written to the journal. Existing browser checks passed.
+
+The implementation uses Chromium editing commands and documented HTML/DOM
+control semantics. It does not establish physical pointer/native-select gestures,
+submission, script-enabled forms, SPA behavior, or real-account compatibility.
+Startup/render/shutdown passed on a diagnostic rerun after one headless fixture
+process exited natively (139); the cause remains unknown. Local Google HTTPS
+compatibility, Ruff, formatting, whitespace, and local documentation-link checks
+passed. This does not replace manual desktop acceptance.
+
+An exploratory temporary DevTools focus-emulation probe also terminated a fixture
+process natively; that path is absent from the implementation. No cause or fix
+is claimed for either native exit. The shipped action paths passed the suite above.
+
 
 Latest collaborative-profile/navigation update (October 1, 2026): the complete
 198-test suite passed, followed by 44 focused checks after adding five further
@@ -899,9 +1012,10 @@ operations. The following describes the full target scope.
 #### A3. Text-first inspection and deterministic actions — in progress
 
 Read-only snapshots, explicit content grants, bounded extraction, and opaque
-target validation and observed link navigation are implemented. Other controlled
-actions, active-page permissions,
-native input semantics, file grants, and full SPA/form workflows remain pending.
+target validation, observed link navigation, scriptless control edits, scrolling,
+and bounded waits are implemented. Text editing events/undo are verified on the
+pinned engine. Native pointer/selection semantics, submission and active-page
+permissions, file grants, and full SPA/form workflows remain pending.
 The following describes the complete milestone target.
 
 Prefer authorized app/API connectors, then public document retrieval, then live JS-enabled pages. Visual inspection is optional or user-requested. A session owns QWebEnginePage independently of a view; attach the same page on watch/takeover. Invisible pages may still need JS, layout, and Chromium resources.

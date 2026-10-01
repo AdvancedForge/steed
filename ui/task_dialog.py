@@ -147,6 +147,12 @@ class TaskDialog(QDialog):
                 )
                 + f"Actions: {', '.join(scope['actions']) or 'None'}\n"
                 + (
+                    "Control changes: text entry, selection by index, and checkbox/radio activation. "
+                    "Form submission and active document scripts are unavailable.\n"
+                    if "edit" in scope["actions"]
+                    else ""
+                )
+                + (
                     "Content access: readable page text and control labels are shared with "
                     "the task client. Form values and editable text are omitted.\n"
                     if "read" in scope["actions"]

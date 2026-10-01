@@ -208,16 +208,7 @@ class PageInspector(QObject):
 
     def target(self, session_id, page, snapshot_id, target_id, validate):
         require_owner_thread(self)
-        state = self._states.get(session_id)
-        if (
-            state is None
-            or state.snapshot is None
-            or state.snapshot.snapshot_id != snapshot_id
-        ):
-            raise PageInspectionError("stale_snapshot")
-        if not isinstance(target_id, str) or target_id not in state.targets:
-            raise PageInspectionError("target_unknown")
-        node_id, descriptor = state.targets[target_id]
+        node_id, descriptor = self._target_reference(session_id, snapshot_id, target_id)
 
         def consume(data):
             if data.get("valid") is not True:
@@ -227,11 +218,74 @@ class PageInspector(QObject):
         return self._run(
             session_id,
             page,
-            {
-                "mode": "target",
-                "snapshot_id": snapshot_id,
-                "node_id": node_id,
-            },
+            {"mode": "target", "snapshot_id": snapshot_id, "node_id": node_id},
             validate,
             consume,
         )
+
+    def _snapshot_state(self, session_id, snapshot_id):
+        state = self._states.get(session_id)
+        if (
+            state is None
+            or state.snapshot is None
+            or state.snapshot.snapshot_id != snapshot_id
+        ):
+            raise PageInspectionError("stale_snapshot")
+        return state
+
+    def _target_reference(self, session_id, snapshot_id, target_id):
+        state = self._snapshot_state(session_id, snapshot_id)
+        if not isinstance(target_id, str) or target_id not in state.targets:
+            raise PageInspectionError("target_unknown")
+        return state.targets[target_id]
+
+    def act(self, session_id, page, snapshot_id, target_id, arguments, validate):
+        node_id, descriptor = self._target_reference(session_id, snapshot_id, target_id)
+        if (
+            not descriptor.enabled
+            or descriptor.read_only
+            or arguments["operation"] not in descriptor.operations
+            or descriptor.kind
+            not in ("input", "textarea", "select", "checkbox", "radio")
+        ):
+            raise PageInspectionError("control_unsupported")
+        return self._mutation(
+            session_id,
+            page,
+            {
+                "mode": "act",
+                "snapshot_id": snapshot_id,
+                "node_id": node_id,
+                **arguments,
+            },
+            validate,
+        )
+
+    def scroll(self, session_id, page, snapshot_id, frame_id, arguments, validate):
+        state = self._snapshot_state(session_id, snapshot_id)
+        if frame_id is None:
+            frame_id = state.snapshot.frames[0].frame_id
+        frame = next((f for f in state.snapshot.frames if f.frame_id == frame_id), None)
+        if frame is None or frame.limitations:
+            raise PageInspectionError("frame_unavailable")
+        result = self._mutation(
+            session_id,
+            page,
+            {
+                "mode": "scroll",
+                "snapshot_id": snapshot_id,
+                "frame_id": frame_id,
+                **arguments,
+            },
+            validate,
+        )
+        return frame_id, result
+
+    def _mutation(self, session_id, page, request, validate):
+        result = self._run(session_id, page, request, validate, lambda data: data)
+        # Values/checked/selection properties do not necessarily create DOM
+        # mutations. Every completed attempt invalidates references explicitly.
+        result.add_done_callback(
+            lambda _: self.invalidate(session_id, "action_completed")
+        )
+        return result

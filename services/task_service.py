@@ -5,11 +5,13 @@ from concurrent.futures import Future
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from PyQt6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, pyqtSignal
 
 from services.browser_backend import BrowserBackend, QtBrowserBackend, navigation_url
 from services.command_broker import CommandBroker, require_owner_thread
+from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
 from services.task_client import TaskClient
 from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
@@ -72,6 +74,9 @@ class TaskService(QObject):
                 "page.inspect": self._inspect_page,
                 "page.target": self._inspect_target,
                 "page.navigate": self._navigate_target,
+                "page.act": self._act,
+                "page.scroll": self._scroll,
+                "page.wait": self._wait,
                 "session.stop": self._stop,
                 "session.attach": self._attach,
                 "session.close": self._close_session,
@@ -302,7 +307,18 @@ class TaskService(QObject):
             },
         )
 
-    def _read_result(self, task_id, session_id, grant, source, kind, evidence):
+    def _read_result(
+        self,
+        task_id,
+        session_id,
+        grant,
+        source,
+        kind,
+        evidence,
+        *,
+        failure_kind="page.read_failed",
+        failure_details=None,
+    ):
         result = Future()
 
         def completed(source):
@@ -319,10 +335,11 @@ class TaskService(QObject):
                     try:
                         self.store.record_event(
                             task_id,
-                            "page.read_failed",
+                            failure_kind,
                             {
                                 "session_id": session_id,
                                 "reason": getattr(error, "code", "read_failed"),
+                                **(failure_details or {}),
                             },
                         )
                     except Exception:
@@ -423,6 +440,120 @@ class TaskService(QObject):
         self.store.record_event(task_id, "session.stopped", asdict(snapshot))
         return snapshot
 
+    def _action_authority(self, task_id, session_id, action):
+        self._owned(task_id, session_id)
+        grant = self._authorize(task_id, action)
+        try:
+            grant.check("read")
+        except TaskPermissionError as error:
+            self._deny(task_id, error.code)
+        return grant
+
+    def _act(
+        self,
+        task_id,
+        session_id,
+        snapshot_id,
+        target_id,
+        operation,
+        text=None,
+        index=None,
+    ):
+        arguments = action_arguments(operation, text=text, index=index)
+        grant = self._action_authority(task_id, session_id, "edit")
+        action_id = uuid4().hex
+        # Record identifiers/operation only: entered text and option values are
+        # never persisted as arguments, success receipts, or error messages.
+        return self._start_action(
+            task_id,
+            session_id,
+            grant,
+            action_id,
+            {
+                "action_id": action_id,
+                "session_id": session_id,
+                "snapshot_id": snapshot_id,
+                "target_id": target_id,
+                "operation": operation,
+            },
+            lambda: self.backend.act(
+                session_id, action_id, snapshot_id, target_id, arguments
+            ),
+        )
+
+    def _scroll(self, task_id, session_id, snapshot_id, frame_id=None, dx=0, dy=0):
+        arguments = scroll_arguments(dx, dy)
+        grant = self._action_authority(task_id, session_id, "scroll")
+        action_id = uuid4().hex
+        return self._start_action(
+            task_id,
+            session_id,
+            grant,
+            action_id,
+            {
+                "action_id": action_id,
+                "session_id": session_id,
+                "snapshot_id": snapshot_id,
+                "frame_id": frame_id,
+                "operation": "scroll",
+            },
+            lambda: self.backend.scroll(
+                session_id, action_id, snapshot_id, frame_id, arguments
+            ),
+        )
+
+    def _start_action(self, task_id, session_id, grant, action_id, evidence, dispatch):
+        try:
+            self.store.record_event(task_id, "page.action_requested", evidence)
+        except Exception:
+            self._fatal(defer_broker_close=True)
+            raise
+        try:
+            source = dispatch()
+        except Exception as error:
+            try:
+                self.store.record_event(
+                    task_id,
+                    "page.action_failed",
+                    {
+                        "session_id": session_id,
+                        "action_id": action_id,
+                        "reason": getattr(error, "code", "action_failed"),
+                    },
+                )
+            except Exception:
+                self._fatal()
+                raise
+            raise
+        return self._read_result(
+            task_id,
+            session_id,
+            grant,
+            source,
+            "page.action_finished",
+            asdict,
+            failure_kind="page.action_failed",
+            failure_details={"action_id": action_id},
+        )
+
+    def _wait(self, task_id, session_id, condition="ready", text=None, timeout_ms=5000):
+        wait_arguments(condition, text, timeout_ms)
+        self._owned(task_id, session_id)
+        grant = self._authorize(task_id, "read")
+        self.store.record_event(
+            task_id,
+            "page.wait_requested",
+            {
+                "session_id": session_id,
+                "condition": condition,
+                "timeout_ms": timeout_ms,
+            },
+        )
+        source = self.backend.wait(session_id, condition, text, timeout_ms)
+        return self._read_result(
+            task_id, session_id, grant, source, "page.wait_finished", asdict
+        )
+
     def _attach(self, task_id, session_id):
         self._owned(task_id, session_id)
         self._authorize(task_id, "attach")
@@ -494,7 +625,7 @@ class TaskService(QObject):
         except Exception:
             self._fatal()
 
-    def _fatal(self, message=None):
+    def _fatal(self, message=None, *, defer_broker_close=False):
         if self.failure:
             return
         self.failure = (
@@ -503,7 +634,12 @@ class TaskService(QObject):
         for _, grant in self._grants.values():
             grant.end("journal_failure")
         self._timer.stop()
-        self.broker.close()
+        if defer_broker_close:
+            # Let the currently dispatching handler publish its original write
+            # error. Authority is already frozen and _usable() denies mutations.
+            QTimer.singleShot(0, self.broker.close)
+        else:
+            self.broker.close()
         # Delete native pages after the engine's current signal callback returns.
         QTimer.singleShot(0, lambda: None if self._closed else self._discard_sessions())
         self.failed.emit(self.failure)

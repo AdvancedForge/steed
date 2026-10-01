@@ -47,6 +47,7 @@ class TaskProfileTests(unittest.TestCase):
         self.pages = []
         self.windows = []
         self.requests.clear()
+        type(self).page_fixtures = {}
 
     def tearDown(self):
         for page in self.pages:
@@ -138,6 +139,54 @@ class TaskProfileTests(unittest.TestCase):
         self.wait_for(lambda: bool(values))
         self.assertEqual(values, ["signed-in"])
         self.assertIn(("/after-finish", "task_cookie=fixture"), self.requests)
+
+    def test_shared_profile_control_edits_preserve_user_controls_and_scripts(self):
+        type(self).page_fixtures["/edit"] = (
+            b'<input id="field" aria-label="Field" value="INITIAL_SECRET">'
+        )
+        self.manager.switch_to_profile("work")
+        user = self.page()
+        self.load(user, "/edit")
+        changed = []
+        user.runJavaScript(
+            "document.getElementById('field').value='USER_SECRET';true", changed.append
+        )
+        self.wait_for(lambda: bool(changed))
+        task = self.command("task.create", objective="Edit a synthetic control")
+        grant = self.request(
+            task.task_id, profile="existing:work", actions=["navigate", "read", "edit"]
+        )
+        self.service.approve_grant(task.task_id, grant.grant_id)
+        opened = self.command(
+            "session.open", task_id=task.task_id, profile="existing:work"
+        )
+        self.navigate(task.task_id, opened.session_id, "/edit")
+        snapshot = self.command(
+            "page.inspect", task_id=task.task_id, session_id=opened.session_id
+        )
+        client = self.service.client(task.task_id)
+        future = client.submit(
+            "page.act",
+            session_id=opened.session_id,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=snapshot.frames[0].targets[0].target_id,
+            operation="enter",
+            text="TASK_SECRET",
+        )
+        self.wait_for(future.done)
+        self.assertTrue(future.result().text_matches)
+        values = []
+        user.runJavaScript("document.getElementById('field').value", values.append)
+        self.wait_for(lambda: bool(values))
+        self.assertEqual(values, ["USER_SECRET"])
+        self.assertNotIn("SECRET", repr(self.service.store.events(task.task_id)))
+        self.service.revoke_grant(task.task_id, grant.grant_id)
+        self.assertFalse(sip.isdeleted(user))
+        self.assertTrue(
+            user.settings().testAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptEnabled
+            )
+        )
 
     def test_user_and_multiple_tasks_share_a_busy_profile_with_independent_grants(self):
         self.manager.switch_to_profile("work")

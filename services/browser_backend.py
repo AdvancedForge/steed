@@ -20,6 +20,13 @@ from PyQt6.QtWidgets import QApplication, QWidget
 
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
+from services.page_actions import (
+    PageActionResult,
+    PageWaitResult,
+    action_arguments,
+    scroll_arguments,
+    wait_arguments,
+)
 from services.page_inspector import PageInspectionError, PageInspector
 from services.permission_service import PermissionService
 from services.task_network import TaskNetwork
@@ -56,6 +63,9 @@ class BrowserBackend(Protocol):
     def inspect_page(self, session_id: str): ...
     def inspect_target(self, session_id: str, snapshot_id: str, target_id: str): ...
     def navigate_observed(self, session_id: str, url: str): ...
+    def act(self, session_id, action_id, snapshot_id, target_id, arguments): ...
+    def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments): ...
+    def wait(self, session_id, condition, text, timeout_ms): ...
     def stop(self, session_id: str) -> SessionSnapshot: ...
     def attach_view(
         self, session_id: str, parent: QWidget | None = None
@@ -165,6 +175,7 @@ class QtSession:
     network: TaskNetwork | None = None
     pending_navigation: Future | None = None
     pending_action: Future | None = None
+    waits: set[Future] = field(default_factory=set)
 
 
 class QtBrowserBackend(QObject):
@@ -267,6 +278,7 @@ class QtBrowserBackend(QObject):
         if session_id in self._sessions:
             session = self._sessions[session_id]
             self._cancel_action(session, "renderer_terminated")
+            self._cancel_waits(session, "renderer_terminated")
             if session.network is not None:
                 session.network._fail()
         self._finished(session_id, False)
@@ -302,6 +314,7 @@ class QtBrowserBackend(QObject):
     def navigate(self, session_id, url):
         session = self._session(session_id)
         self._cancel_action(session, "navigation_superseded")
+        self._cancel_waits(session, "navigation_superseded")
         return self._navigate(session_id, url)
 
     def _navigate(self, session_id, url):
@@ -335,6 +348,7 @@ class QtBrowserBackend(QObject):
         """Report the observed load outcome, rather than dispatch as success."""
         session = self._session(session_id)
         self._cancel_action(session, "navigation_superseded")
+        self._cancel_waits(session, "navigation_superseded")
         result = Future()
         session.pending_action = result
         timer = QTimer(self)
@@ -440,6 +454,7 @@ class QtBrowserBackend(QObject):
         session = self._session(session_id)
         self._cancel_navigation(session)
         self._cancel_action(session, "session_stopped")
+        self._cancel_waits(session, "session_stopped")
         self.inspector.invalidate(session_id, "session_stopped")
         self.navigation.action(session.page, "stop")
         session.loading, session.load_success = False, False
@@ -454,6 +469,11 @@ class QtBrowserBackend(QObject):
         pending = session.pending_action
         if pending is not None and not pending.done():
             pending.set_exception(PageInspectionError(reason))
+
+    def _cancel_waits(self, session, reason):
+        for pending in tuple(session.waits):
+            if not pending.done():
+                pending.set_exception(PageInspectionError(reason))
 
     def _read_context(self, session_id):
         session = self._session(session_id)
@@ -482,6 +502,160 @@ class QtBrowserBackend(QObject):
             session_id, session.page, snapshot_id, target_id, validate
         )
 
+    def _edit_context(self, session_id, action):
+        session, validate_read = self._read_context(session_id)
+        if session.pending_action is not None:
+            raise PageInspectionError("action_in_progress")
+        session.grant.check(action)
+        self._cancel_waits(session, "action_started")
+
+        def validate():
+            validate_read()
+            session.grant.check(action)
+
+        return session, validate
+
+    def act(self, session_id, action_id, snapshot_id, target_id, arguments):
+        arguments = action_arguments(**arguments)
+        session, validate = self._edit_context(session_id, "edit")
+        source = self.inspector.act(
+            session_id, session.page, snapshot_id, target_id, arguments, validate
+        )
+        return self._action_result(
+            session_id, action_id, arguments["operation"], source, target_id=target_id
+        )
+
+    def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments):
+        arguments = scroll_arguments(**arguments)
+        session, validate = self._edit_context(session_id, "scroll")
+        frame_id, source = self.inspector.scroll(
+            session_id, session.page, snapshot_id, frame_id, arguments, validate
+        )
+        return self._action_result(
+            session_id, action_id, "scroll", source, frame_id=frame_id
+        )
+
+    def _action_result(self, session_id, action_id, operation, source, **reference):
+        session = self._session(session_id)
+        result = Future()
+        session.pending_action = result
+
+        def finished(source):
+            if result.done():
+                return
+            try:
+                data = source.result()
+                position = data.get("scroll_position")
+                if position is not None:
+                    data["scroll_position"] = tuple(position)
+                result.set_result(
+                    PageActionResult(
+                        session_id,
+                        action_id,
+                        operation,
+                        revision=session.revision,
+                        **reference,
+                        **data,
+                    )
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def cleanup(_):
+            if session.pending_action is result:
+                session.pending_action = None
+
+        result.add_done_callback(cleanup)
+        source.add_done_callback(finished)
+        return result
+
+    def wait(self, session_id, condition, text=None, timeout_ms=5000):
+        wait_arguments(condition, text, timeout_ms)
+        session = self._session(session_id)
+        session.grant.check("read")
+        if session.pending_action is not None or session.waits:
+            raise PageInspectionError("action_in_progress")
+        if condition == "text" and (
+            session.loading or session.load_success is not True
+        ):
+            raise PageInspectionError("page_not_ready")
+        result = Future()
+        session.waits.add(result)
+        poll = QTimer(self)
+        poll.setSingleShot(True)
+        deadline = QTimer(self)
+        deadline.setSingleShot(True)
+        revision = session.revision
+        limitations = ()
+        reading = None
+
+        def cleanup(_):
+            session.waits.discard(result)
+            poll.stop()
+            deadline.stop()
+            poll.deleteLater()
+            deadline.deleteLater()
+            if reading is not None and not reading.done():
+                self.inspector.invalidate(session_id, "wait_finished")
+
+        def finish(status):
+            if result.done():
+                return
+            metadata = self.inspect(session_id)
+            result.set_result(
+                PageWaitResult(
+                    session_id,
+                    condition,
+                    status,
+                    metadata.url,
+                    metadata.revision,
+                    limitations,
+                )
+            )
+
+        def inspected(source):
+            nonlocal limitations
+            if result.done():
+                return
+            try:
+                snapshot = source.result()
+                limitations = snapshot.limitations
+                if any(text in frame.text for frame in snapshot.frames):
+                    finish("matched")
+                else:
+                    poll.start(100)
+            except Exception as error:
+                result.set_exception(error)
+
+        def tick():
+            nonlocal reading
+            if result.done():
+                return
+            try:
+                self._session(session_id)
+                session.grant.check(
+                    "read", url=session.page.url().toString() or "about:blank"
+                )
+                if condition == "ready":
+                    if not session.loading and session.load_success is not None:
+                        finish("matched" if session.load_success else "load_failed")
+                    else:
+                        poll.start(50)
+                else:
+                    if session.revision != revision:
+                        raise PageInspectionError("stale_snapshot")
+                    reading = self.inspect_page(session_id)
+                    reading.add_done_callback(inspected)
+            except Exception as error:
+                result.set_exception(error)
+
+        poll.timeout.connect(tick)
+        deadline.timeout.connect(lambda: finish("timed_out"))
+        result.add_done_callback(cleanup)
+        deadline.start(timeout_ms)
+        tick()
+        return result
+
     def attach_view(self, session_id, parent=None):
         session = self._session(session_id)
         session.grant.check("attach")
@@ -500,6 +674,7 @@ class QtBrowserBackend(QObject):
         self._sessions.pop(session_id)
         self._cancel_navigation(session)
         self._cancel_action(session, "session_closed")
+        self._cancel_waits(session, "session_closed")
         for view in session.views:
             if not sip.isdeleted(view):
                 sip.delete(view)

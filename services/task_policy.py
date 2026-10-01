@@ -11,7 +11,9 @@ from PyQt6.QtCore import QUrl
 
 from utils import sanitize_profile_name
 
-SUPPORTED_ACTIONS = frozenset({"navigate", "inspect", "read", "attach"})
+SUPPORTED_ACTIONS = frozenset(
+    {"navigate", "inspect", "read", "attach", "edit", "scroll"}
+)
 
 
 def task_profile_name(selector):
