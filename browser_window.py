@@ -1,6 +1,7 @@
 """Main browser window."""
 
 import logging
+import sqlite3
 from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
@@ -38,6 +39,7 @@ from ui.media_dialog import DesktopMediaDialog
 from ui.password_dialog import PasswordDialog
 from ui.settings_dialog import SettingsDialog
 from ui.tab_bar import TabBar
+from ui.task_dialog import TaskDialog
 from webengine import (
     SiteCompatibilityInterceptor,
     configure_web_settings,
@@ -261,6 +263,9 @@ class BrowserWindow(QMainWindow):
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+        task_action = QAction("Task Permissions...", self)
+        task_action.triggered.connect(self._open_tasks)
+        file_menu.insertAction(exit_action, task_action)
         edit_menu = menubar.addMenu("Edit")
         self.find_action = QAction("Find in Page...", self)
         self.find_action.setShortcut(QKeySequence("Ctrl+F"))
@@ -699,6 +704,21 @@ class BrowserWindow(QMainWindow):
         if not self._closing and self.tabs:
             self.find_bar.set_page(self.tabs[self.current_tab_index].page())
             self.find_bar.open_find()
+
+    def _open_tasks(self):
+        if not self._closing:
+            try:
+                dialog = TaskDialog(self.profile_manager.registry.tasks, self)
+            except (OSError, ValueError, RuntimeError, sqlite3.Error):
+                logger.error("Could not open task permissions")
+                QMessageBox.warning(
+                    self,
+                    "Task Permissions",
+                    "Task permissions could not be opened. Check that the task database is available and supported.",
+                )
+                return
+            dialog.exec()
+            dialog.deleteLater()
 
     def _focus_page(self):
         if not self._closing and self.tabs:

@@ -38,8 +38,9 @@ KeePassXC; see the [setup guide](DOCUMENTATION.md#third-party-password-managers)
 Browser essentials are implemented and covered by automated checks. Remaining
 manual checks are tracked in the roadmap; the user has authorized proceeding.
 The agent-service foundation includes task storage, a Qt command broker,
-independent private pages, and reusable browser services. Task permissions,
-external-agent access, bookmarks, and generic extension support are planned.
+independent private pages, reusable browser services, and user-approved task
+permissions. Task browsing currently retrieves documents in private profiles.
+External-agent access, bookmarks, and generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,
   troubleshooting, development checks, and technical design.

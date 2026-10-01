@@ -1,5 +1,6 @@
 """A deterministic client drives real Qt task pages without AI or accounts."""
 
+import sqlite3
 import tempfile
 import threading
 import time
@@ -9,12 +10,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from PyQt6 import sip
-from PyQt6.QtCore import QCoreApplication, QEvent, QThread
+from PyQt6.QtCore import QCoreApplication, QEvent, QThread, QUrl
+from PyQt6.QtWebEngineCore import QWebEngineHttpRequest
+from PyQt6.QtWidgets import QMessageBox
 from qt_test_support import application, keep_directory
 
 from browser_window import BrowserWindow
 from config import Config
+from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
+from ui.task_dialog import TaskDialog
 
 
 class TaskServiceTests(unittest.TestCase):
@@ -27,6 +32,21 @@ class TaskServiceTests(unittest.TestCase):
             def do_GET(self):
                 cls.requests.append((self.path, self.headers.get("Cookie", "")))
                 payload = b"<html><title>Task fixture</title><body>Independent page</body></html>"
+                denied = f"http://localhost:{cls.server.server_port}"
+                if self.path in ("/redirect-out", "/redirect-resource"):
+                    self.send_response(302)
+                    self.send_header("Location", denied + "/forbidden-redirect")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                if self.path == "/scope-page":
+                    payload = (
+                        f'<html><title>Scoped page</title><img src="{denied}/forbidden-image">'
+                        f'<iframe src="{denied}/forbidden-frame"></iframe>'
+                        '<img src="/redirect-resource">'
+                        f'<script>document.title="Script ran"; fetch("{denied}/forbidden-script")</script>'
+                        "</html>"
+                    ).encode()
                 if self.path == "/slow":
                     time.sleep(0.3)
                 self.send_response(200)
@@ -34,11 +54,20 @@ class TaskServiceTests(unittest.TestCase):
                 self.send_header("Content-Length", str(len(payload)))
                 if self.path == "/cookie":
                     self.send_header("Set-Cookie", "task_cookie=fixture; Path=/")
+                if self.path == "/download":
+                    self.send_header(
+                        "Content-Disposition", 'attachment; filename="task-fixture.bin"'
+                    )
                 self.end_headers()
                 try:
                     self.wfile.write(payload)
                 except (BrokenPipeError, ConnectionResetError):
                     pass
+
+            def do_POST(self):
+                cls.requests.append(("POST " + self.path, ""))
+                self.send_response(204)
+                self.end_headers()
 
             def log_message(self, *args):
                 pass
@@ -82,8 +111,321 @@ class TaskServiceTests(unittest.TestCase):
 
     def task_session(self):
         task = self.command("task.create", objective="Read the local fixture")
+        requested = self.command(
+            "grant.request",
+            task_id=task.task_id,
+            scope={"origins": [self.origin], "allow_private_network": True},
+        )
+        self.service.approve_grant(task.task_id, requested.grant_id)
         snapshot = self.command("session.open", task_id=task.task_id)
         return task.task_id, snapshot.session_id
+
+    def request(self, task_id, **changes):
+        scope = {"origins": [self.origin], "allow_private_network": True}
+        scope.update(changes)
+        return self.command("grant.request", task_id=task_id, scope=scope)
+
+    def test_client_cannot_execute_without_approval_or_approve_its_own_request(self):
+        task = self.command("task.create", objective="Pending approval")
+        requested = self.request(task.task_id)
+        with patch.object(self.service.backend, "open_session") as opened:
+            with self.assertRaises(TaskPermissionError) as error:
+                self.command("session.open", task_id=task.task_id)
+            self.assertEqual(error.exception.code, "approval_required")
+            opened.assert_not_called()
+        with self.assertRaises(ValueError):
+            self.command(
+                "grant.approve", task_id=task.task_id, grant_id=requested.grant_id
+            )
+        self.assertEqual(
+            self.service.store.grant(task.task_id, requested.grant_id).status,
+            "requested",
+        )
+        self.service.deny_grant(task.task_id, requested.grant_id)
+        with self.assertRaises(TaskPermissionError):
+            self.command("session.open", task_id=task.task_id)
+
+    def test_scope_violations_are_journaled_before_backend_dispatch(self):
+        task_id, session_id = self.task_session()
+        with patch.object(self.service.backend, "navigate") as navigate:
+            with self.assertRaises(TaskPermissionError) as error:
+                self.command(
+                    "session.navigate",
+                    task_id=task_id,
+                    session_id=session_id,
+                    url=f"http://localhost:{self.server.server_port}/forbidden?secret=fixture",
+                )
+            self.assertEqual(error.exception.code, "origin_out_of_scope")
+            navigate.assert_not_called()
+        with patch.object(self.service.backend, "open_session") as opened:
+            with self.assertRaises(TaskPermissionError):
+                self.command("session.open", task_id=task_id, profile="global")
+            opened.assert_not_called()
+        with self.assertRaises(ValueError):
+            self.request(
+                self.command("task.create", objective="File attempt").task_id,
+                file_destinations=[str(Path(self.directory.name) / "forbidden")],
+            )
+        events = self.service.store.events(task_id)
+        denied = [event for event in events if event.kind == "permission.denied"]
+        self.assertEqual(
+            [e.payload["reason"] for e in denied],
+            ["origin_out_of_scope", "profile_out_of_scope"],
+        )
+        self.assertNotIn("secret", repr(events))
+        self.assertFalse((Path(self.directory.name) / "forbidden").exists())
+
+    def test_engine_blocks_redirects_frames_resources_and_post_from_attached_view(self):
+        task_id, session_id = self.task_session()
+        before = len(self.requests)
+        self.command(
+            "session.navigate",
+            task_id=task_id,
+            session_id=session_id,
+            url=self.origin + "/scope-page",
+        )
+        self.wait_for(
+            lambda: self.service.backend.inspect(session_id).load_success is True
+        )
+        self.wait_for(
+            lambda: any(
+                event.kind == "permission.denied"
+                for event in self.service.store.events(task_id)
+            )
+        )
+        self.assertEqual(self.service.backend.inspect(session_id).title, "Scoped page")
+        self.assertTrue(
+            any(path == "/redirect-resource" for path, _ in self.requests[before:])
+        )
+        self.assertFalse(any("forbidden" in path for path, _ in self.requests[before:]))
+        self.command(
+            "session.navigate",
+            task_id=task_id,
+            session_id=session_id,
+            url=self.origin + "/redirect-out",
+        )
+        self.wait_for(
+            lambda: self.service.backend.inspect(session_id).load_success is False
+        )
+        view = self.command("session.attach", task_id=task_id, session_id=session_id)
+        request = QWebEngineHttpRequest(QUrl(self.origin + "/forbidden-post"))
+        request.setMethod(QWebEngineHttpRequest.Method.Post)
+        request.setPostData(b"fixture=value")
+        view.page().load(request)
+        self.wait_for(
+            lambda: any(
+                event.payload.get("reason") == "method_out_of_scope"
+                for event in self.service.store.events(task_id)
+            )
+        )
+        self.assertFalse(any("forbidden" in path for path, _ in self.requests[before:]))
+
+    def test_ui_approves_exact_scope_and_revokes_before_queued_navigation(self):
+        task = self.command("task.create", objective="UI approval")
+        requested = self.request(task.task_id)
+        dialog = TaskDialog(self.service)
+        try:
+            self.assertTrue(dialog.approve_button.isEnabled())
+            self.assertIn(self.origin, dialog.details.toPlainText())
+            self.assertIn("DNS routes are not pinned", dialog.details.toPlainText())
+            dialog.approve_button.click()
+            self.assertEqual(
+                self.service.store.grant(task.task_id, requested.grant_id).status,
+                "approved",
+            )
+            opened = self.command("session.open", task_id=task.task_id)
+            page = self.service.backend._sessions[opened.session_id].page
+            queued = self.service.broker.submit(
+                "session.navigate",
+                task_id=task.task_id,
+                session_id=opened.session_id,
+                url=self.origin,
+            )
+            dialog.revoke_button.click()
+            self.wait_for(queued.done)
+            with self.assertRaises(TaskPermissionError):
+                queued.result()
+            self.assertTrue(sip.isdeleted(page))
+            self.assertEqual(self.service.store.get(task.task_id).status, "cancelled")
+            self.assertEqual(
+                self.service.store.grant(task.task_id, requested.grant_id).status,
+                "revoked",
+            )
+        finally:
+            dialog.reject()
+            sip.delete(dialog)
+
+    def test_expiry_cancels_task_and_closes_page_without_another_command(self):
+        now = [100.0]
+        self.service._clock = lambda: now[0]
+        task = self.command("task.create", objective="Expires")
+        requested = self.request(task.task_id, duration_seconds=1)
+        self.service.approve_grant(task.task_id, requested.grant_id)
+        opened = self.command("session.open", task_id=task.task_id)
+        page = self.service.backend._sessions[opened.session_id].page
+        now[0] = 101.0
+        self.wait_for(lambda: sip.isdeleted(page))
+        self.assertEqual(self.service.store.get(task.task_id).status, "cancelled")
+        self.assertEqual(
+            self.service.store.grant(task.task_id, requested.grant_id).status, "expired"
+        )
+
+    def test_operation_and_session_budgets_deny_before_execution(self):
+        task = self.command("task.create", objective="Bounded task")
+        requested = self.request(task.task_id, max_operations=2)
+        self.service.approve_grant(task.task_id, requested.grant_id)
+        opened = self.command("session.open", task_id=task.task_id)
+        with patch.object(self.service.backend, "open_session") as create:
+            with self.assertRaises(TaskPermissionError):
+                self.command("session.open", task_id=task.task_id)
+            create.assert_not_called()
+        with patch.object(self.service.backend, "navigate") as navigate:
+            with self.assertRaises(TaskPermissionError):
+                self.command(
+                    "session.navigate",
+                    task_id=task.task_id,
+                    session_id=opened.session_id,
+                    url=self.origin,
+                )
+            navigate.assert_not_called()
+        self.assertEqual(self.service.store.get(task.task_id).status, "cancelled")
+        self.assertEqual(
+            self.service.store.grant(task.task_id, requested.grant_id).status,
+            "exhausted",
+        )
+
+    def test_grant_failure_cannot_install_live_authority_and_revocation_failure_stops_engine(
+        self,
+    ):
+        task = self.command("task.create", objective="Approval write failure")
+        requested = self.request(task.task_id)
+        with patch.object(
+            self.service.store, "_append", side_effect=OSError("fixture disk")
+        ):
+            with self.assertRaises(OSError):
+                self.service.approve_grant(task.task_id, requested.grant_id)
+        self.assertNotIn(task.task_id, self.service._grants)
+        self.assertEqual(
+            self.service.store.grant(task.task_id, requested.grant_id).status,
+            "requested",
+        )
+        self.service.approve_grant(task.task_id, requested.grant_id)
+        opened = self.command("session.open", task_id=task.task_id)
+        page = self.service.backend._sessions[opened.session_id].page
+        with patch.object(
+            self.service.store, "resolve_grant", side_effect=OSError("fixture disk")
+        ):
+            with self.assertRaises(OSError):
+                self.service.revoke_grant(task.task_id, requested.grant_id)
+        self.assertTrue(sip.isdeleted(page))
+        self.assertTrue(self.service.failure)
+
+    def test_task_cancel_rejects_queued_work_and_keeps_other_task_alive(self):
+        first, session_id = self.task_session()
+        second, other_id = self.task_session()
+        first_page = self.service.backend._sessions[session_id].page
+        second_page = self.service.backend._sessions[other_id].page
+        queued = self.service.broker.submit(
+            "session.navigate", task_id=first, session_id=session_id, url=self.origin
+        )
+        self.service.cancel_task(first)
+        self.wait_for(queued.done)
+        with self.assertRaises(TaskPermissionError):
+            queued.result()
+        self.assertTrue(sip.isdeleted(first_page))
+        self.assertFalse(sip.isdeleted(second_page))
+        self.command(
+            "session.navigate", task_id=second, session_id=other_id, url=self.origin
+        )
+        self.wait_for(
+            lambda: self.service.backend.inspect(other_id).load_success is True
+        )
+
+    def test_bound_client_cannot_impersonate_or_enumerate_other_tasks(self):
+        first, session_id = self.task_session()
+        second, other_id = self.task_session()
+        client = self.service.client(first)
+        requests = [
+            client.submit("session.inspect", task_id=second, session_id=other_id),
+            client.submit("session.inspect", session_id=other_id),
+            client.submit("task.list"),
+            client.submit("grant.approve", grant_id="unused"),
+        ]
+        for future in requests:
+            self.wait_for(future.done)
+            with self.assertRaises(TaskPermissionError):
+                future.result()
+        status = client.submit("task.status")
+        self.wait_for(status.done)
+        self.assertEqual(status.result().task_id, first)
+        inspected = client.submit("session.inspect", session_id=session_id)
+        self.wait_for(inspected.done)
+        self.assertEqual(inspected.result().session_id, session_id)
+
+    def test_network_request_budget_closes_page_and_cancels_task(self):
+        task = self.command("task.create", objective="Network budget")
+        requested = self.request(task.task_id, max_requests=1)
+        self.service.approve_grant(task.task_id, requested.grant_id)
+        opened = self.command("session.open", task_id=task.task_id)
+        page = self.service.backend._sessions[opened.session_id].page
+        self.command(
+            "session.navigate",
+            task_id=task.task_id,
+            session_id=opened.session_id,
+            url=self.origin + "/scope-page",
+        )
+        self.wait_for(lambda: sip.isdeleted(page))
+        self.assertEqual(self.service.store.get(task.task_id).status, "cancelled")
+        self.assertEqual(
+            self.service.store.grant(task.task_id, requested.grant_id).status,
+            "exhausted",
+        )
+        events = self.service.store.events(task.task_id)
+        self.assertTrue(
+            any(e.payload.get("reason") == "request_budget_exhausted" for e in events)
+        )
+
+    def test_ui_handles_sqlite_approval_failure_without_granting_authority(self):
+        task = self.command("task.create", objective="UI disk failure")
+        requested = self.request(task.task_id)
+        dialog = TaskDialog(self.service)
+        try:
+            with (
+                patch.object(
+                    self.service.store,
+                    "_append",
+                    side_effect=sqlite3.OperationalError("fixture disk"),
+                ),
+                patch.object(QMessageBox, "warning") as warning,
+            ):
+                dialog.approve_button.click()
+            warning.assert_called_once()
+            self.assertEqual(
+                self.service.store.grant(task.task_id, requested.grant_id).status,
+                "requested",
+            )
+            self.assertNotIn(task.task_id, self.service._grants)
+            self.assertTrue(dialog.approve_button.isEnabled())
+        finally:
+            dialog.reject()
+            sip.delete(dialog)
+
+    def test_task_download_is_cancelled_without_destination_or_file_write(self):
+        task_id, session_id = self.task_session()
+        states = []
+        profile = self.service.backend._sessions[session_id].profile
+        profile.downloadRequested.connect(
+            lambda request: states.append(request.state().name)
+        )
+        self.command(
+            "session.navigate",
+            task_id=task_id,
+            session_id=session_id,
+            url=self.origin + "/download",
+        )
+        self.wait_for(lambda: bool(states))
+        self.assertEqual(states, ["DownloadCancelled"])
+        self.assertFalse((Path(self.directory.name) / "task-fixture.bin").exists())
 
     def test_client_navigates_without_a_view_attaches_same_page_and_finishes(self):
         task_id, session_id = self.task_session()
@@ -126,7 +468,7 @@ class TaskServiceTests(unittest.TestCase):
             "task.completed",
         ):
             self.assertIn(expected, kinds)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(PermissionError):
             self.command("session.open", task_id=task_id)
 
     def test_worker_commands_run_on_qt_thread_and_queued_cancellation_has_no_effect(
@@ -173,7 +515,7 @@ class TaskServiceTests(unittest.TestCase):
             arguments = {"task_id": second, "session_id": session_id}
             if operation == "session.navigate":
                 arguments["url"] = self.origin
-            with self.assertRaises(ValueError):
+            with self.assertRaises(PermissionError):
                 self.command(operation, **arguments)
         for url in (
             "file:///etc/passwd",
@@ -308,6 +650,13 @@ class TaskServiceTests(unittest.TestCase):
                 self.assertIs(shared, second.profile_manager.registry.tasks)
                 task = shared.broker.submit("task.create", objective="Shared lifetime")
                 self.wait_for(task.done)
+                requested = shared.broker.submit(
+                    "grant.request",
+                    task_id=task.result().task_id,
+                    scope={"origins": []},
+                )
+                self.wait_for(requested.done)
+                shared.approve_grant(task.result().task_id, requested.result().grant_id)
                 opened = shared.broker.submit(
                     "session.open", task_id=task.result().task_id
                 )

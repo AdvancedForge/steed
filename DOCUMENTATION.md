@@ -135,6 +135,7 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 - Passwords...
 - Fill Login
 - Downloads...
+- Task Permissions...: Review, approve, deny, revoke, or cancel task requests
 - Ad Blocking...
 - Settings...
 - Exit
@@ -356,6 +357,8 @@ Browser/
 │   ├── browser_backend.py  # Backend interface and independent private Qt pages
 │   ├── navigation_service.py # Shared navigation, find, and zoom operations
 │   ├── permission_service.py # Modern/legacy permission responses and task denial
+│   ├── task_policy.py      # Exact scopes, expiry, and thread-safe request budgets
+│   ├── task_client.py      # Task-bound client command facade
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
 ├── ui/
@@ -365,6 +368,7 @@ Browser/
 │   ├── cookie_dialog.py   # Cookie viewer
 │   ├── download_dialog.py # Download list with pause/resume/cancel/open
 │   ├── media_dialog.py    # One-shot screen/window share picker
+│   ├── task_dialog.py     # Trusted task-grant review and cancellation
 │   ├── password_dialog.py # KeePassXC connection, login picker, fill/save actions
 │   ├── adblock_dialog.py  # Filtering toggle, exceptions, list updates
 │   ├── group_dialog.py    # Tab group management
@@ -375,6 +379,7 @@ Browser/
 │   ├── test_features.py   # Pure policy/filtering checks
 │   ├── test_history.py    # History persistence and private-session checks
 │   ├── test_task_store.py # Atomic task storage, journal, and recovery checks
+│   ├── test_task_policy.py # Origin, action, network, and concurrent budget checks
 │   ├── test_task_services.py # Deterministic client and real private-page checks
 │   ├── qt_test_support.py # Shared QApplication and deferred fixture cleanup
 │   ├── test_password_manager.py # Encrypted protocol and pairing regressions
@@ -436,13 +441,15 @@ navigation and `services/permission_service.py` for permission wiring and
 lifetime checks. Browser prompts stay in the UI; task pages deny permissions.
 The application-owned `DownloadManager` receives a destination-picker callback
 from the registry instead of opening dialogs itself. A manager with no provider
-declines downloads. Task downloads remain disabled until scoped grants exist.
+declines downloads. Task file actions remain disabled until destination grants
+and deterministic file operations are implemented.
 
-The A1 foundation is available to trusted in-process Python clients through
+The task service is available to trusted in-process Python controllers through
 `window.profile_manager.registry.tasks`. It is initialized only on demand and
 shared across windows using the same application registry. This is a developer
-API; no agent endpoint, task UI, or MCP tools are exposed yet. Task-scoped grants
-must be implemented before exposing it to external agents.
+API; no agent endpoint or MCP tools are exposed yet. **File → Task Permissions**
+provides user approval, denial, revocation, and cancellation. A client can propose
+a scope but cannot approve it through the command broker.
 
 `service.broker.submit(name, **arguments)` returns a `concurrent.futures.Future`.
 Worker threads can submit commands; handlers and engine operations execute on
@@ -451,20 +458,46 @@ completion. Use callbacks or wait from a worker while Qt's event loop runs.
 Cancellation discards queued work; stopping an already-dispatched navigation is
 a separate command.
 
+The application controller creates a task, then calls `service.client(task_id)`
+on the Qt thread to issue a task-bound handle. `client.submit(name, **arguments)`
+supplies the task ID automatically and rejects impersonation and management
+commands. Give clients these handles; reserve the raw `service.broker` for trusted
+application management. Neither interface is a sandbox for arbitrary Python
+running inside the application. External transport authentication remains A4 work.
+
 | Command | Arguments / result |
 | --- | --- |
 | `task.create` | `objective`; returns a task record |
 | `task.status`, `task.list` | `task_id` for status; records for list |
 | `task.events` | `task_id`, optional `after` sequence and `limit`; ordered events |
 | `task.finish` | `task_id`, optional terminal `status`; closes owned sessions |
-| `session.open` | `task_id`; returns a session snapshot |
+| `grant.request` | `task_id`, `scope`; records a pending request, without authority |
+| `grant.list` | `task_id`; task grant records, including decisions |
+| `session.open` | `task_id`, optional `profile="private"`; requires approval, returns a session snapshot |
 | `session.navigate` | `task_id`, `session_id`, `url`; dispatches GET navigation |
 | `session.inspect` | `task_id`, `session_id`; URL/title/load metadata only |
 | `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
 | `session.attach` | `task_id`, `session_id`; returns a Qt view of the existing page |
 
-For example, submit `task.create` with an objective, obtain its `task_id`, then
-submit `session.open`. Use the returned `session_id` for navigation and inspection.
+For example, submit `task.create` with an objective, obtain its `task_id`, issue a
+bound client, and use that client to submit `grant.request` with this scope:
+
+```json
+{
+  "origins": ["https://example.org"],
+  "actions": ["navigate", "inspect", "attach"],
+  "profile": "private",
+  "allow_private_network": true,
+  "duration_seconds": 600,
+  "max_operations": 100,
+  "max_requests": 1000,
+  "max_sessions": 1
+}
+```
+
+Open **File → Task Permissions**, review the scope, and approve the request.
+Then submit `session.open` through the client. Use the returned `session_id` for
+navigation and inspection; omit `task_id` when using the bound handle.
 Navigation dispatch is not load completion: wait for a snapshot with
 `loading=False` and check `load_success`. `tests/test_task_services.py` demonstrates
 the complete workflow with a real local HTTP fixture, without AI or an account.
@@ -472,21 +505,55 @@ the complete workflow with a real local HTTP fixture, without AI or an account.
 Each session owns a separate off-the-record profile. Its page survives closing
 an attached view, and a new view attaches to the same page. Task completion or
 the last browser window closing disposes pages before their profiles. Downloads,
-file selection, and site permissions are disabled for these initial task pages.
-Navigation accepts HTTP/HTTPS without embedded credentials, plus `about:blank`.
-URL validation and journal persistence happen before navigation dispatch.
+file selection, site permissions, scripts, workers, WebSockets, external URL
+schemes, and the built-in PDF viewer are unavailable in current task pages.
+Ordinary browser tabs retain their existing settings. Task browsing currently
+supports document retrieval with GET/HEAD; these methods can still cause website
+effects, so the grant is not a guarantee that a site is read-only.
+
+Scopes match exact HTTP/HTTPS origins, including scheme and port; subdomains and
+redirect destinations need their own entries. Credentials, wildcards, and origin
+paths are rejected. `about:blank` is allowed without adding an origin. Named
+persistent profiles and file destinations cannot currently be granted. Only
+`navigate`, metadata `inspect`, and view `attach` are supported actions.
+
+`allow_private_network=false` permits public literal IP addresses only. Private
+addresses and all DNS hostnames require `true`, explicitly disclosed in the
+approval dialog. The [Qt request-info API](https://doc.qt.io/qt-6.11/qwebengineurlrequestinfo.html)
+provides URLs but no resolved peer address; Steed therefore treats a DNS name's
+network route as unverified. Allowing this flag still restricts requests to the
+listed origins; it does not add other sites or ports. There is no DNS pinning,
+OS/network sandbox, or control over tools used outside this application.
+
+Approval installs an immutable live grant only after its journal transaction
+commits. Command checks happen at dispatch, and a profile-wide
+[Qt request interceptor](https://doc.qt.io/qt-6.11/qwebengineurlrequestinterceptor.html)
+also checks page requests and request budgets. It uses live policy without
+calling engine objects or SQLite from its callback. Denials record reason codes;
+denied URL queries are excluded from those events. Broader access requires a new
+task/request and user approval. Stop, close, and terminal task transitions remain
+available for cleanup without spending operation budget.
+
+Revocation, expiry, and exhausted budgets cancel the task and dispose its pages.
+Expiry uses a monotonic deadline, checked on requests/commands and by a Qt timer.
+Queued mutations then fail their authority checks. Cancellation cannot undo a
+request already sent to a website. Controller approval/denial/revocation methods
+are Qt-thread methods deliberately absent from the client command surface.
 
 `tasks.sqlite` has owner-only permissions. It persists objectives, task states,
-URLs/titles, and event metadata; private engine cookies/storage stay in memory.
+URLs/titles, grant scopes/decisions, and event metadata; private engine
+cookies/storage stay in memory. Schema 2 upgrades the original task database
+without replacing its journal.
 Task state transitions and their events are transactional. SQL triggers prevent
 updating/deleting journal entries. Active tasks become `interrupted` when the
-service shuts down or starts after an interruption. Pages and commands are never
+service shuts down or starts after an interruption; pending and approved grants
+end too. Pages, commands, and approved authority are never
 restored/replayed. An asynchronous journal write failure disables further task
 commands and emits `service.failed`; cleanup still disposes engine resources.
 
-DOM inspection, form actions, persistent-profile grants, task downloads, and
-watch/takeover controls remain future work. Existing browser-tab navigation,
-downloads, and permission handling still need incremental service extraction.
+DOM inspection, active page execution, form/file actions, persistent-profile
+grants, and watch/takeover controls remain future work. Signed-in task profiles
+need verified scoped request routing before they can share existing user storage.
 
 ## Development checks
 
@@ -524,7 +591,7 @@ filling still need user verification.
 
 ## Verification record
 
-Current browser/A1 checks (October 1, 2026): all 132 regressions passed on Qt
+Current browser/A1/A2 checks (October 1, 2026): all 157 regressions passed on Qt
 6.11.2, including four new task-storage checks and six real-Qt task-service
 checks. The deterministic client exercised navigation without a view, attachment
 to the same page, completion, task/cookie isolation, worker dispatch, queued
@@ -541,7 +608,18 @@ validation, Ruff, formatting, and whitespace checks passed. The user authorized
 proceeding with remaining manual follow-ups recorded in the roadmap. Password
 improvements are deferred.
 
-One initial full-suite attempt exited with a native WebEngine segmentation fault
+A2 adds eight policy checks, four storage checks, twelve real-Qt service checks,
+and a browser menu failure check to the previous 132-check suite. Coverage includes pending/denied
+authority, client identity, origin/profile/action/file rejection, native redirect
+and resource interception, POST blocking, cancelled task downloads, UI approval
+and revocation, expiry without further commands, concurrent request budgets,
+queued-work rejection, database migration, restart recovery, and SQLite approval
+failure handling. The new approval dialog was rendered with a synthetic request
+and visually inspected; this is separate from manual desktop acceptance.
+Current task pages support private document retrieval;
+persistent profiles, active scripts, and file operations remain unavailable.
+
+During A1 verification, one full-suite attempt exited with a native WebEngine segmentation fault
 during its first test. The same test passed with crash diagnostics enabled, and
 the subsequent full 132-test suite and startup smoke passed. No cause was
 established; this is recorded as an intermittent native failure, not a confirmed
@@ -616,7 +694,12 @@ future work. Implementation order and status live in [ROADMAP.md](ROADMAP.md).
 - Application-owned SQLite stores task records and an append-only event journal; retain existing profile/config compatibility.
 - Acceptance: a deterministic test client operates a task session with no AI or external framework.
 
-#### A2. Sessions and grants — pending
+#### A2. Sessions and grants — in progress
+
+Private-task grants, user review, origin/action/budget enforcement, cancellation,
+and durable decision records are implemented. Persistent-profile routing and
+grants for later file/active-page capabilities remain to be implemented and
+verified. The following describes the full target scope.
 
 - Task-owned pages, grant, artifacts, history, and lifecycle exist independently of visible tabs.
 - Default to a separate off-the-record task profile. Explicitly authorized persistent profiles share their existing cookies/storage; disclose that boundary.

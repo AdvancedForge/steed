@@ -1,0 +1,236 @@
+"""Immutable task scopes and thread-safe live authority for engine callbacks."""
+
+import ipaddress
+import math
+import threading
+import time
+from dataclasses import asdict, dataclass
+from urllib.parse import urlsplit
+
+from PyQt6.QtCore import QUrl
+
+SUPPORTED_ACTIONS = frozenset({"navigate", "inspect", "attach"})
+
+
+class TaskPermissionError(PermissionError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(f"Task permission denied: {code}")
+
+
+def origin_url(value: str) -> str:
+    """Canonical exact origin; never accept credentials, paths, or wildcards."""
+    if not isinstance(value, str) or not value or any(c.isspace() for c in value):
+        raise ValueError("Provide an exact HTTP/HTTPS origin")
+    url = QUrl(value, QUrl.ParsingMode.StrictMode)
+    if (
+        not url.isValid()
+        or url.scheme() not in ("http", "https")
+        or not url.host()
+        or url.userName()
+        or url.password()
+        or url.path() not in ("", "/")
+        or url.hasQuery()
+        or url.hasFragment()
+        or "*" in url.host()
+    ):
+        raise ValueError("Provide an exact origin without credentials or a path")
+    host = url.host().lower()
+    raw_host = urlsplit(value).hostname or ""
+    if raw_host.startswith("0x") or all(c in "0123456789." for c in raw_host):
+        try:
+            ipaddress.ip_address(raw_host)
+        except ValueError:
+            raise ValueError("Use a canonical IP address") from None
+    if host.endswith(".") or "%" in host:
+        raise ValueError("Use a canonical hostname without a trailing dot or zone")
+    try:
+        host = ipaddress.ip_address(host).compressed
+    except ValueError:
+        # Chromium interprets these as IPs, unlike Python's ipaddress module.
+        if host.startswith("0x") or all(c in "0123456789." for c in host):
+            raise ValueError("Use a canonical IP address") from None
+        host = host.encode("idna").decode("ascii")
+    if ":" in host:
+        host = f"[{host}]"
+    port = url.port(443 if url.scheme() == "https" else 80)
+    if not 1 <= port <= 65535:
+        raise ValueError("Invalid origin port")
+    suffix = "" if port == (443 if url.scheme() == "https" else 80) else f":{port}"
+    return f"{url.scheme()}://{host}{suffix}"
+
+
+def network_needs_permission(origin):
+    """DNS names need explicit permission until Qt can pin resolved routes."""
+    host = urlsplit(origin).hostname
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return not address.is_global
+
+
+@dataclass(frozen=True)
+class TaskScope:
+    origins: tuple[str, ...]
+    actions: tuple[str, ...] = ("navigate", "inspect", "attach")
+    profile: str = "private"
+    allow_private_network: bool = False
+    duration_seconds: int = 600
+    max_operations: int = 100
+    max_requests: int = 1000
+    max_sessions: int = 1
+
+    @classmethod
+    def parse(cls, values):
+        if not isinstance(values, dict):
+            raise ValueError("Provide a task scope object")
+        unknown = set(values) - set(cls.__dataclass_fields__)
+        if unknown:
+            raise ValueError("Unknown scope fields")
+        raw = values.get("origins", [])
+        if not isinstance(raw, (tuple, list)) or len(raw) > 100:
+            raise ValueError("Provide at most 100 exact origins")
+        origins = tuple(sorted({origin_url(value) for value in raw}))
+        actions = values.get("actions", ("navigate", "inspect", "attach"))
+        if (
+            not isinstance(actions, (tuple, list))
+            or any(not isinstance(action, str) for action in actions)
+            or not set(actions) <= SUPPORTED_ACTIONS
+        ):
+            raise ValueError("Unsupported task action")
+        profile = values.get("profile", "private")
+        if profile != "private":
+            raise ValueError("Only private task profiles are currently supported")
+        private = values.get("allow_private_network", False)
+        if not isinstance(private, bool):
+            raise ValueError("Network permission must be a boolean")
+        for origin in origins:
+            if not private and network_needs_permission(origin):
+                raise ValueError(
+                    "Private addresses and DNS hostnames require explicit network permission"
+                )
+        numbers = {}
+        for field, default, maximum in (
+            ("duration_seconds", 600, 86400),
+            ("max_operations", 100, 10000),
+            ("max_requests", 1000, 100000),
+            ("max_sessions", 1, 10),
+        ):
+            value = values.get(field, default)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 1 <= value <= maximum
+            ):
+                raise ValueError(f"Invalid {field}")
+            numbers[field] = value
+        return cls(origins, tuple(sorted(set(actions))), profile, private, **numbers)
+
+    def payload(self):
+        return asdict(self)
+
+
+class LiveGrant:
+    """No engine/store calls under the lock; usable from Chromium interception."""
+
+    def __init__(self, scope: TaskScope, *, clock=time.monotonic):
+        self.scope = scope
+        self._clock = clock
+        self.deadline = clock() + scope.duration_seconds
+        if not math.isfinite(self.deadline):
+            raise ValueError("Invalid grant clock")
+        self._lock = threading.Lock()
+        self._ended = ""
+        self.operations = 0
+        self.requests = 0
+
+    def end(self, reason):
+        with self._lock:
+            if not self._ended:
+                self._ended = reason
+
+    def reason(self):
+        with self._lock:
+            return self._reason()
+
+    def _reason(self):
+        if not self._ended and self._clock() >= self.deadline:
+            self._ended = "expired"
+        return self._ended
+
+    def check(self, action, *, url=None, profile="private", destination=None):
+        with self._lock:
+            reason = self._reason()
+            if reason:
+                raise TaskPermissionError(reason)
+            if profile != self.scope.profile:
+                raise TaskPermissionError("profile_out_of_scope")
+            if destination is not None:
+                raise TaskPermissionError("file_actions_unavailable")
+            if action != "open" and action not in self.scope.actions:
+                raise TaskPermissionError("action_out_of_scope")
+            if url is not None:
+                reason = self._url_reason(url)
+                if reason:
+                    raise TaskPermissionError(reason)
+
+    def _url_reason(self, value):
+        if value == "about:blank":
+            return ""
+        url = QUrl(value, QUrl.ParsingMode.StrictMode)
+        if (
+            not url.isValid()
+            or url.scheme() not in ("http", "https")
+            or url.userName()
+            or url.password()
+        ):
+            return "unsupported_url"
+        url.setPath("")
+        url.setQuery(None)
+        url.setFragment(None)
+        try:
+            origin = origin_url(url.toString())
+        except ValueError:
+            return "unsupported_url"
+        if origin not in self.scope.origins:
+            return "origin_out_of_scope"
+        if not self.scope.allow_private_network and network_needs_permission(origin):
+            return "network_out_of_scope"
+        return ""
+
+    def consume_operation(self):
+        with self._lock:
+            reason = self._reason()
+            if reason:
+                raise TaskPermissionError(reason)
+            if self.operations >= self.scope.max_operations:
+                self._ended = "operation_budget_exhausted"
+                raise TaskPermissionError(self._ended)
+            self.operations += 1
+
+    def request(self, url, method=b"GET"):
+        with self._lock:
+            reason = self._reason()
+            if not reason and "navigate" not in self.scope.actions:
+                reason = "action_out_of_scope"
+            if not reason and method not in (b"GET", b"HEAD"):
+                reason = "method_out_of_scope"
+            if not reason:
+                reason = self._url_reason(url)
+            if not reason:
+                if self.requests >= self.scope.max_requests:
+                    self._ended = reason = "request_budget_exhausted"
+                else:
+                    self.requests += 1
+            return reason
+
+    def navigation(self, url):
+        with self._lock:
+            return self._reason() or (
+                "action_out_of_scope"
+                if "navigate" not in self.scope.actions
+                else self._url_reason(url)
+            )
