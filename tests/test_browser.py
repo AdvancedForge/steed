@@ -18,7 +18,8 @@ from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtTest import QSignalSpy, QTest
 from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest
-from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QDialog, QFileDialog, QMessageBox
+from qt_test_support import application, keep_directory
 from test_password_manager import KeePassXCProtocolFixture
 
 from ad_blocker import FilterEngine
@@ -113,9 +114,7 @@ class StartupTests(unittest.TestCase):
 class BrowserTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
-        cls.app = QApplication.instance() or QApplication(["browser-tests"])
-        cls.app.setQuitOnLastWindowClosed(False)
+        cls.app = application()
         cls.directories = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -174,18 +173,14 @@ class BrowserTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # Chromium finishes background storage work as the application shuts
-        # down. Keep temporary profile directories until that work is joined.
-        sip.delete(cls.app)
         cls.server.shutdown()
         cls.server.server_close()
         cls.server_thread.join()
-        for directory in cls.directories:
-            directory.cleanup()
 
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.directories.append(self.directory)
+        keep_directory(self.directory)
         self.home_patch = patch(
             "pathlib.Path.home", return_value=Path(self.directory.name)
         )

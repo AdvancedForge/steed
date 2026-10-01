@@ -20,6 +20,7 @@ for current progress and remaining work.
 - [Configuration](#configuration)
 - [Project structure](#project-structure)
 - [Engine and storage internals](#engine-and-storage-internals)
+- [Internal task services](#internal-task-services)
 - [Development checks](#development-checks)
 - [Verification record](#verification-record)
 - [Current limitations](#current-limitations)
@@ -298,7 +299,8 @@ The same directory also holds browser-managed state, which is not configuration:
 archived profiles, and per-profile `tabs.json`, `groups.json`, `history.json`,
 `password_manager.json`, and
 `cookie_inheritance.json`. The inheritance journal stores hashes, never cookie
-values.
+values. Internal task services create `tasks.sqlite` on first use to store task
+metadata and their event journal.
 
 ## Project Structure
 
@@ -324,6 +326,11 @@ Browser/
 ├── config.py               # Configuration management
 ├── utils.py                # Atomic JSON, profile path helpers
 ├── webengine.py            # Shared engine settings
+├── services/
+│   ├── task_store.py       # SQLite tasks, append-only events, restart recovery
+│   ├── command_broker.py   # Named commands dispatched on the Qt thread
+│   ├── browser_backend.py  # Backend interface and independent private Qt pages
+│   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
@@ -339,6 +346,9 @@ Browser/
 │   ├── test_permissions.py # Permission API compatibility checks
 │   ├── test_features.py   # Pure policy/filtering checks
 │   ├── test_history.py    # History persistence and private-session checks
+│   ├── test_task_store.py # Atomic task storage, journal, and recovery checks
+│   ├── test_task_services.py # Deterministic client and real private-page checks
+│   ├── qt_test_support.py # Shared QApplication and deferred fixture cleanup
 │   ├── test_password_manager.py # Encrypted protocol and pairing regressions
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
 │   ├── smoke_google_login.py # Local HTTPS login-compatibility check (manual)
@@ -391,6 +401,58 @@ so an immediate cached-worker result is not lost. Request interception does not
 perform network updates or expensive list compilation. Failed updates preserve
 the last working rules.
 
+## Internal task services
+
+The first A1 foundation is available to trusted in-process Python clients through
+`window.profile_manager.registry.tasks`. It is initialized only on demand and
+shared across windows using the same application registry. This is a developer
+API; no agent endpoint, task UI, or MCP tools are exposed yet. Task-scoped grants
+must be implemented before exposing it to external agents.
+
+`service.broker.submit(name, **arguments)` returns a `concurrent.futures.Future`.
+Worker threads can submit commands; handlers and engine operations execute on
+the Qt application thread. Never block that thread on `future.result()` before
+completion. Use callbacks or wait from a worker while Qt's event loop runs.
+Cancellation discards queued work; stopping an already-dispatched navigation is
+a separate command.
+
+| Command | Arguments / result |
+| --- | --- |
+| `task.create` | `objective`; returns a task record |
+| `task.status`, `task.list` | `task_id` for status; records for list |
+| `task.events` | `task_id`, optional `after` sequence and `limit`; ordered events |
+| `task.finish` | `task_id`, optional terminal `status`; closes owned sessions |
+| `session.open` | `task_id`; returns a session snapshot |
+| `session.navigate` | `task_id`, `session_id`, `url`; dispatches GET navigation |
+| `session.inspect` | `task_id`, `session_id`; URL/title/load metadata only |
+| `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
+| `session.attach` | `task_id`, `session_id`; returns a Qt view of the existing page |
+
+For example, submit `task.create` with an objective, obtain its `task_id`, then
+submit `session.open`. Use the returned `session_id` for navigation and inspection.
+Navigation dispatch is not load completion: wait for a snapshot with
+`loading=False` and check `load_success`. `tests/test_task_services.py` demonstrates
+the complete workflow with a real local HTTP fixture, without AI or an account.
+
+Each session owns a separate off-the-record profile. Its page survives closing
+an attached view, and a new view attaches to the same page. Task completion or
+the last browser window closing disposes pages before their profiles. Downloads,
+file selection, and site permissions are disabled for these initial task pages.
+Navigation accepts HTTP/HTTPS without embedded credentials, plus `about:blank`.
+URL validation and journal persistence happen before navigation dispatch.
+
+`tasks.sqlite` has owner-only permissions. It persists objectives, task states,
+URLs/titles, and event metadata; private engine cookies/storage stay in memory.
+Task state transitions and their events are transactional. SQL triggers prevent
+updating/deleting journal entries. Active tasks become `interrupted` when the
+service shuts down or starts after an interruption. Pages and commands are never
+restored/replayed. An asynchronous journal write failure disables further task
+commands and emits `service.failed`; cleanup still disposes engine resources.
+
+DOM inspection, form actions, persistent-profile grants, task downloads, and
+watch/takeover controls remain future work. Existing browser-tab navigation,
+downloads, and permission handling still need incremental service extraction.
+
 ## Development checks
 
 ```bash
@@ -411,6 +473,11 @@ python tests/smoke_password_manager.py
 
 Tests use temporary profiles and local content. Chromium still needs to initialize its process sandbox; a restricted container may require running the tests outside that container's sandbox.
 
+Qt unittest classes use `tests/qt_test_support.py` to share one QApplication
+throughout the process. Register profile fixture directories with
+`keep_directory()` so they are removed only after final engine shutdown. Do not
+destroy and recreate QApplication between test classes using WebEngine.
+
 The Google compatibility smoke check also needs `openssl`. It uses a temporary loopback HTTPS server, maps the Google account host to that server for this test process, and trusts only its generated certificate key. It never contacts Google or uses an account.
 
 The optional password-manager smoke check needs `keepassxc` and `keepassxc-cli`.
@@ -421,6 +488,20 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+Current browser/A1 checks (October 1, 2026): all 120 regressions passed on Qt
+6.11.2, including four new task-storage checks and six real-Qt task-service
+checks. The deterministic client exercised navigation without a view, attachment
+to the same page, completion, task/cookie isolation, worker dispatch, queued
+cancellation, restart recovery, shared-window lifetime, and write-failure
+handling. The combined suite required one shared QApplication to avoid a native
+WebEngine crash when a later test class recreated the application.
+Startup/render/shutdown and local Google-login HTTPS smoke checks, desktop-entry
+validation, Ruff, formatting, and whitespace checks passed. The user authorized
+proceeding with remaining manual follow-ups recorded in the roadmap. Password
+improvements are deferred.
+
+### Earlier implementation checks
 
 These are recorded checks from earlier implementation work, not a fresh run of
 the entire suite. Live desktop checks still pending are tracked in the
@@ -447,7 +528,7 @@ not been exposed.
 
 Verification: 71 tests passed, including real Chromium request/cosmetic filtering, nested/srcdoc frame hiding and reload exceptions, filter compilation and immediate cached-worker outcomes, fullscreen enter/exit and repeated requests, completed file downloads, cookie scope and exact-path deletion, global update/logout, shared-window lifetime, a two-process persistent-cookie restart, persisted-cookie enumeration through the DevTools adapter, the startup-sharing flag in all-profiles mode, abandoned-download-dialog cancellation, shutdown confirmation when active downloads are genuinely at risk, and cookie-snapshot refresh scheduling, bounded recovery, and stale-response rejection. Repeated runs were used to confirm the suite is stable rather than merely green once. Ruff lint/format checks, whitespace checks, and the real-entry-point startup/render/shutdown smoke test also passed with Qt 6.11.2.
 
-The final audit's four findings are fixed: fullscreen requests now follow their requested state; cookie inspection retries timeouts, bounds target errors, and ignores obsolete responses; cached filter compilation starts only after its completion handlers and service state are ready; and cosmetic filtering injects document-specific CSS into accessible same-origin frames rather than only the parent page. The manual acceptance gate remains pending in [ROADMAP.md](ROADMAP.md#browser-acceptance-checklist).
+The final audit's four findings are fixed: fullscreen requests now follow their requested state; cookie inspection retries timeouts, bounds target errors, and ignores obsolete responses; cached filter compilation starts only after its completion handlers and service state are ready; and cosmetic filtering injects document-specific CSS into accessible same-origin frames rather than only the parent page. Manual follow-ups are recorded in [ROADMAP.md](ROADMAP.md#browser-acceptance-checklist).
 
 Two further defects were found and fixed while stabilizing that coverage, both affecting B2 in ways the previous suite did not observe:
 
@@ -475,13 +556,13 @@ The Steed application-menu entry was installed on the development machine.
 
 ## Planned architecture
 
-The following is a design reference for future work. Agent features, generic
-extension support, and bookmarks are not implemented. Implementation order and
-status live in [ROADMAP.md](ROADMAP.md).
+The following is the target design. The [internal task foundation](#internal-task-services)
+has started; full agent features, generic extension support, and bookmarks remain
+future work. Implementation order and status live in [ROADMAP.md](ROADMAP.md).
 
 ### Agent framework
 
-#### A1. Capability services and task storage — pending
+#### A1. Capability services and task storage — in progress
 
 - Incrementally extract profiles, sessions, navigation, downloads, permission handling, and persistence from the UI coordinator.
 - Keep engine operations on the Qt thread; dispatch through a command broker.

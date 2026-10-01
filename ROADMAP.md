@@ -9,9 +9,16 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 1, 2026
 
-Browser essentials and recent daily-use improvements are implemented with
-automated checks. The next work is desktop acceptance and fixes found during
-normal use. Agent implementation has not started.
+Browser essentials and recent daily-use improvements are implemented. All 120
+regression checks (110 existing plus ten task-service checks), the startup/render/shutdown smoke check, and the
+local Google-login HTTPS smoke check passed on Qt 6.11.2. Launcher validation,
+Ruff, formatting, and whitespace checks also passed.
+
+The user reports few complaints during daily use and authorized proceeding after
+the checks available to the assistant. A1 is now in progress. Real-account login
+persistence, third-party Google sign-in, hardware permission flows, and ordinary
+site usability remain follow-up checks; no automated fixture establishes those
+results. Password improvements remain deferred at the user's request.
 
 | Area | Progress | Remaining work |
 | --- | --- | --- |
@@ -28,11 +35,15 @@ normal use. Agent implementation has not started.
 
 Detailed results and test scope are recorded in the
 [verification record](DOCUMENTATION.md#verification-record). Passing automated
-checks does not complete the manual acceptance gate.
+checks does not establish the unverified manual results below.
 
 ## Browser acceptance checklist
 
-Complete this gate and resolve browser blockers before starting A1/A2.
+The user authorized proceeding with these manual follow-ups recorded. Resolve
+any browser blocker found during continued use alongside A1 work.
+
+- [x] Run the complete regression suite (120 checks), startup smoke,
+  local Google-login smoke, launcher validation, and lint/format checks.
 
 - [ ] Launch from the applications menu; check graphics, navigation, search,
   media permissions, multiple windows, and clean shutdown.
@@ -62,23 +73,43 @@ KeePassXC pairing was not covered by the seeded synthetic-vault smoke check.
 These are pending enhancements. Move them earlier when needed for a concrete
 daily-use workflow; they do not automatically block the agent milestones.
 
-- **Password convenience:** automatic save prompts, updating existing entries,
-  iframe/shadow-root forms, TOTP, and passkeys.
+- **Password convenience — deferred:** automatic save prompts, updating existing
+  entries, iframe/shadow-root forms, TOTP, and passkeys. Revisit when the user
+  wants to improve the password workflow.
 - **Extensions:** per-profile import, enable/disable/remove, startup restoration,
   and action popups. Investigate the official Bitwarden package crash on the
   tested Qt 6.11 runtime before presenting it as supported. Start with Manifest
   V3 and verify Qt's limits.
 - **Bookmarks:** per-profile folders, search, editing, and HTML import/export.
 
-## Agent collaboration milestones — not started
+## Agent collaboration milestones
 
 Keep Python, PyQt6, and Qt WebEngine initially, with replaceable engine/provider
 interfaces. Prefer text and structured state; support watching, takeover,
-resume, revocation, and cancellation. Each milestone below is pending.
+resume, revocation, and cancellation. A1 has started; A2–A7 remain pending.
 
-### A1. Browser services and task storage
+### A1. Browser services and task storage — in progress
 
-Extract reusable browser services, dispatch Qt operations through a command
+Implemented the first service foundation under `services/`: private SQLite task
+records and an append-only event journal, a named-command broker dispatching on
+the Qt thread, a replaceable backend interface, and independent off-the-record
+Qt pages. A deterministic local client opens/navigates/inspects a session,
+attaches a view to the same page, and finishes the task. Services initialize on
+demand and are shared until the last browser owner closes. Interrupted tasks
+are recorded without replaying pages or commands.
+
+Verification: four transactional storage checks and six real-Qt service checks
+passed as part of the full 120-test suite. Coverage includes view-independent
+navigation, same-page view attachment, task/cookie isolation, Qt-thread dispatch,
+queued cancellation, append-only events, restart/shutdown recovery, and journal
+failure handling. Qt test classes share one QApplication for the process to
+avoid reinitializing WebEngine after application destruction.
+
+Remaining A1 work: incrementally route existing tab navigation, downloads, and
+permission coordination through reusable services. The current API is internal
+only; task grants and external-agent access are not implemented.
+
+Target: extract reusable browser services, dispatch Qt operations through a command
 broker, define a backend interface, and store tasks/events in application-owned
 SQLite. Acceptance: a deterministic client operates a task session without AI.
 

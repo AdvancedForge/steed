@@ -20,6 +20,8 @@ from cookie_sharing import CookieSharing, cookie_key, fingerprint
 from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
 from password_manager import PasswordManager
+from services.command_broker import require_owner_thread
+from services.task_service import TaskService
 from utils import get_profile_path, sanitize_profile_name
 from webengine import configure_web_settings
 
@@ -49,6 +51,7 @@ class ProfileRegistry(QObject):
         self.snapshot_disagreements = 0
         self.global_fingerprints = None
         self.owners = set()
+        self._tasks = None
         self.downloads = DownloadManager(config, self)
         self.passwords = PasswordManager(config, self)
         self.adblock = AdBlocker(config, self)
@@ -70,6 +73,14 @@ class ProfileRegistry(QObject):
             config, self.global_profile, self, observe_global=False
         )
         self.refresh_settings()
+
+    @property
+    def tasks(self):
+        """Initialize task infrastructure only when an internal client uses it."""
+        require_owner_thread(self)
+        if self._tasks is None:
+            self._tasks = TaskService(self.config.config_dir / "tasks.sqlite", self)
+        return self._tasks
 
     def create(self, name, directory):
         fresh = not directory.exists()
@@ -199,6 +210,11 @@ class ProfileRegistry(QObject):
         if self.owners:
             return
         self.sharing.closed = True
+        if self._tasks is not None:
+            try:
+                self._tasks.close()
+            except Exception:
+                logger.error("Could not persist task shutdown; sessions were disposed")
         self.passwords.close()
         for history in self.histories.values():
             history.close()
