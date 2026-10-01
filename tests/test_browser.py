@@ -15,11 +15,11 @@ from unittest.mock import Mock, patch
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
-from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest, QWebEnginePermission
+from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest
 from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 
 from ad_blocker import FilterEngine
-from browser_window import BrowserWindow
+from browser_window import BrowserWindow, QWebEnginePermission
 from config import Config
 from cookie_manager import CookieInfo
 from cookie_sharing import cookie_site, delete_exact
@@ -734,6 +734,7 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(bar.groups, {})
         bar.deleteLater()
 
+    @unittest.skipIf(QWebEnginePermission is None, "Requires Qt 6.8 permissions")
     def test_permission_response_uses_request_object(self):
         permission = Mock()
         permission.permissionType.return_value = (

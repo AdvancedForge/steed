@@ -4,13 +4,12 @@ import logging
 from urllib.parse import quote
 from uuid import uuid4
 
-from PyQt6 import sip
+from PyQt6 import QtWebEngineCore, sip
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
     QWebEnginePage,
-    QWebEnginePermission,
     QWebEngineSettings,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -44,6 +43,9 @@ from ui.tab_bar import TabBar
 from webengine import configure_web_settings
 
 logger = logging.getLogger(__name__)
+
+# Qt versions before 6.8 expose permissions through QWebEnginePage.Feature.
+QWebEnginePermission = getattr(QtWebEngineCore, "QWebEnginePermission", None)
 
 # Enough to merge a redirect chain or a SPA's boot sequence into one write.
 TAB_SAVE_DEBOUNCE_MS = 750
@@ -453,9 +455,7 @@ class BrowserWindow(QMainWindow):
         profile = self.profile_manager.current_profile
         tab = BrowserTab(profile, self.tab_container, self)
         self.tab_layout.addWidget(tab)
-        tab.page().permissionRequested.connect(self._on_permission_requested)
-        tab.page().fullScreenRequested.connect(self._on_fullscreen_requested)
-        tab.page().desktopMediaRequested.connect(self._on_desktop_media_requested)
+        self._connect_page_signals(tab.page())
 
         tab.urlChanged.connect(lambda u: self._on_tab_url_changed(tab, u))
         tab.titleChanged.connect(lambda t: self._on_tab_title_changed(tab, t))
@@ -686,31 +686,64 @@ class BrowserWindow(QMainWindow):
         self._sync_tab_group_labels()
 
     # ---------- Permission & Download ----------
+    def _connect_page_signals(self, page):
+        if QWebEnginePermission is not None and hasattr(page, "permissionRequested"):
+            page.permissionRequested.connect(self._on_permission_requested)
+        else:
+            page.featurePermissionRequested.connect(
+                lambda origin, feature: self._on_feature_permission_requested(
+                    page, origin, feature
+                )
+            )
+        page.fullScreenRequested.connect(self._on_fullscreen_requested)
+        if hasattr(page, "desktopMediaRequested"):
+            page.desktopMediaRequested.connect(self._on_desktop_media_requested)
+
     def _on_permission_requested(self, permission: QWebEnginePermission):
         if self._closing or not permission.isValid():
             return
-        permission_type = QWebEnginePermission.PermissionType
-        feature_names = {
-            permission_type.MediaAudioCapture: "Microphone",
-            permission_type.MediaVideoCapture: "Camera",
-            permission_type.MediaAudioVideoCapture: "Microphone and Camera",
-            permission_type.DesktopVideoCapture: "Screen Share",
-            permission_type.DesktopAudioVideoCapture: "Screen Share with Audio",
-            permission_type.Notifications: "Notifications",
-            permission_type.Geolocation: "Location",
-        }
-        name = feature_names.get(permission.permissionType(), "Unknown")
-        reply = QMessageBox.question(
-            self,
-            "Permission Request",
-            f"{permission.origin().toString()} requests {name}. Allow?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
+        allowed = self._ask_permission(permission.origin(), permission.permissionType())
+        if self._closing or not permission.isValid():
+            return
+        if allowed:
             permission.grant()
         else:
             permission.deny()
+
+    def _on_feature_permission_requested(self, page, origin, feature):
+        if self._closing or sip.isdeleted(page):
+            return
+        allowed = self._ask_permission(origin, feature)
+        if self._closing or sip.isdeleted(page):
+            return
+        policy = QWebEnginePage.PermissionPolicy
+        page.setFeaturePermission(
+            origin,
+            feature,
+            policy.PermissionGrantedByUser
+            if allowed
+            else policy.PermissionDeniedByUser,
+        )
+
+    def _ask_permission(self, origin, feature):
+        feature_names = {
+            "MediaAudioCapture": "Microphone",
+            "MediaVideoCapture": "Camera",
+            "MediaAudioVideoCapture": "Microphone and Camera",
+            "DesktopVideoCapture": "Screen Share",
+            "DesktopAudioVideoCapture": "Screen Share with Audio",
+            "Notifications": "Notifications",
+            "Geolocation": "Location",
+        }
+        name = feature_names.get(feature.name, "Unknown")
+        reply = QMessageBox.question(
+            self,
+            "Permission Request",
+            f"{origin.toString()} requests {name}. Allow?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
 
     # ---------- Tab Group UI ----------
     def _handle_group_rename_request(self, tab_index: int):
