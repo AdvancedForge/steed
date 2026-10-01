@@ -64,3 +64,15 @@ class PageWaitResult:
     url: str
     revision: int
     limitations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FormSubmissionResult:
+    session_id: str
+    action_id: str
+    target_id: str
+    status: str
+    revision: int
+    url: str
+    request_authorized: bool
+    site_effects: str = "unknown"

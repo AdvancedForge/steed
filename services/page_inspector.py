@@ -33,6 +33,8 @@ class TargetDescriptor:
     href: str | None
     operations: tuple[str, ...]
     constraints: tuple[str, ...]
+    form_action: str | None = None
+    form_method: str | None = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +168,8 @@ class PageInspector(QObject):
                         target["href"],
                         tuple(target["operations"]),
                         tuple(target["constraints"]),
+                        target.get("form_action"),
+                        target.get("form_method"),
                     )
                     targets[target_id] = (target["node_id"], descriptor)
                     descriptors.append(descriptor)
@@ -238,6 +242,29 @@ class PageInspector(QObject):
         if not isinstance(target_id, str) or target_id not in state.targets:
             raise PageInspectionError("target_unknown")
         return state.targets[target_id]
+
+    def submission_request(self, session_id, snapshot_id, target_id):
+        node_id, descriptor = self._target_reference(session_id, snapshot_id, target_id)
+        if not descriptor.enabled or "submit" not in descriptor.operations:
+            raise PageInspectionError("form_unsupported")
+        return {
+            "mode": "form",
+            "snapshot_id": snapshot_id,
+            "node_id": node_id,
+            "state_key": self._states[session_id].state_key,
+        }
+
+    def prepare_submission(self, session_id, page, request, validate):
+        return self._run(session_id, page, request, validate, lambda data: data)
+
+    def dispatch_submission(self, page, request, expected, received):
+        # The intentional navigation invalidates inspection references. Its
+        # receipt is owned by the backend's load observer, not the read queue.
+        script = INSPECTION_SCRIPT.replace(
+            "/* REQUEST */",
+            json.dumps({**request, "mode": "submit", "expected": expected}),
+        )
+        page.runJavaScript(script, INSPECTION_WORLD, received)
 
     def act(self, session_id, page, snapshot_id, target_id, arguments, validate):
         node_id, descriptor = self._target_reference(session_id, snapshot_id, target_id)

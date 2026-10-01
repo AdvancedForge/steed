@@ -148,9 +148,16 @@ class TaskDialog(QDialog):
                 + f"Actions: {', '.join(scope['actions']) or 'None'}\n"
                 + (
                     "Control changes: text entry, selection by index, and checkbox/radio activation. "
-                    "Form submission and active document scripts are unavailable.\n"
+                    "Active document scripts are unavailable.\n"
                     if "edit" in scope["actions"]
                     else ""
+                )
+                + (
+                    "Submission: native GET/POST forms can change account data and send "
+                    "current fields, including hidden site tokens. Password/file forms, "
+                    "child frames, new windows and multipart forms are unavailable.\n"
+                    if "submit" in scope["actions"]
+                    else "Form submission is unavailable.\n"
                 )
                 + (
                     "Content access: readable page text and control labels are shared with "
@@ -159,7 +166,12 @@ class TaskDialog(QDialog):
                     else "Content access: URL/title metadata only; page text is not shared.\n"
                 )
                 + f"Network permission: {network}\n"
-                + "Network methods: GET and HEAD. These methods can still have effects on a website.\n"
+                + (
+                    "Network methods: GET/HEAD, plus one bound POST per approved form action. "
+                    if "submit" in scope["actions"]
+                    else "Network methods: GET/HEAD. "
+                )
+                + "Requests can have effects on a website.\n"
                 + f"Duration: {scope['duration_seconds']} seconds after approval\n"
                 + f"Operation limit: {scope['max_operations']}\n"
                 + f"Network request limit: {scope['max_requests']}\n"

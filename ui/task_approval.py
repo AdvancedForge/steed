@@ -21,6 +21,7 @@ ACTION_LABELS = {
     "attach": "Show task pages in a browser view",
     "edit": "Change text, choices, checkboxes and radio buttons",
     "scroll": "Scroll task pages",
+    "submit": "Submit forms on these sites (can change account data)",
 }
 
 
@@ -74,7 +75,13 @@ class TaskApprovalDialog(QDialog):
                 else ""
             )
             + "Task scripts, uploads and downloads are unavailable. "
-            "You can revoke access in File → Task Permissions."
+            + (
+                "Forms send their current fields, including hidden site tokens. "
+                "Password and file forms are unavailable. "
+                if "submit" in scope["actions"]
+                else ""
+            )
+            + "You can revoke access in File → Task Permissions."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)

@@ -10,10 +10,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 1, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-224-test suite passed, including nineteen control-action/wait checks, explicit
-edit/scroll policy checks, and concurrent-profile control isolation.
-Startup/render/shutdown and local Google HTTPS smoke checks passed on Qt 6.11.2.
-One headless startup attempt exited natively; the diagnostic rerun passed.
+244-test suite passed, including eighteen form/ticket checks, submission popup
+disclosure, signed-in concurrent-profile submission, and existing control/wait checks.
+Startup/render/shutdown passed on Qt 6.11.2; local Google HTTPS passed on retry.
+The first Google fixture attempt exited natively during `QWebEngineProfile`
+creation. A prior startup attempt also exited natively; its diagnostic rerun passed.
 Track that intermittent exit separately from desktop acceptance. Ruff, formatting,
 and whitespace checks passed. Launcher validation passed
 during the previous browser checks.
@@ -23,38 +24,43 @@ the checks available to the assistant. A1 is implemented, and A2 supports privat
 and concurrently shared existing-profile grants, with automatic approval popups.
 File and active-page authority will be implemented alongside their A3 operations.
 A3 includes content inspection, stale-target validation, observed link navigation,
-scriptless control edits, scrolling, and bounded waits. Submission, active
-document scripts, file actions, and complete form/SPA acceptance remain next.
+scriptless control edits, native form submission, scrolling, and bounded waits.
+Active document scripts, file actions, and complete form/SPA acceptance remain next.
 Real-account login persistence, third-party Google sign-in, hardware permission
 flows, and ordinary site usability remain follow-up checks; no automated fixture
 establishes those results. Password improvements remain deferred at the user's request.
 
 ### Resume checkpoint
 
-**A3 remains in progress: inspection, link navigation, scriptless control edits,
-scrolling, and bounded waits are implemented.** Resumed from roadmap commit
-`abc7c54`; the prior inspection/navigation implementation is `46c60a0`.
+**A3 remains in progress: native form submission is implemented alongside
+inspection, link navigation, scriptless edits, scrolling, and bounded waits.**
+Resumed from control-action commit `4e90899`; earlier checkpoint `abc7c54`.
 
 - **Completed:** automatic approval popups; concurrent user/task profiles with
   separate grants; bounded inspection and stale-reference checks; observed link
   navigation; text entry with Chromium editor events/undo; checkbox/radio
-  activation; selection by index; bounded frame scrolling and ready/text waits.
+  activation; selection by index; bounded frame scrolling and ready/text waits;
+  explicit main-document GET/POST form submission with native validation and
+  submitter overrides, a one-use network ticket, and observed outcomes.
 - **Authority:** edits need explicit `read` + `edit`; scrolling needs `read` +
-  `scroll`; waits need `read`. Old grants retain their scope. Document scripts,
-  form submission/POST, sensitive/file fields, and custom controls stay unavailable.
-- **Next task:** define and enforce form-submission authority and observed form
-  outcomes. Then tackle active scripts/SPA behavior and native pointer/selection
+  `scroll`; waits need `read`; submission needs `read` + `navigate` + `submit`.
+  Old grants retain their scope. General POST, document scripts, sensitive/file
+  forms, child-frame/multipart forms, and custom controls stay unavailable.
+- **Next task:** tackle active scripts/SPA behavior and native pointer/selection
   semantics, with local fixtures and explicit limitations. Add destination grants
   alongside uploads/downloads; do not mark A3 complete before its full acceptance.
 - **Resume points:** `services/browser_backend.py`, `services/page_inspector.py`,
   `services/page_inspection.js`, `services/page_actions.py`, `services/task_service.py`,
-  and `tests/test_page_actions.py`. Preserve concurrent user browsing, exact site
-  scopes, stale-reference rejection, and request/receipt persistence.
-- **Validation saved:** complete 224-test suite passed on Qt 6.11.2. Text editing
-  generated trusted input events and supported undo; activation/selection use
-  the documented HTML/DOM semantics. Startup smoke passed on a diagnostic retry
-  after an intermittent native exit; its cause remains unresolved. Google HTTPS
-  smoke and lint/format passed. See the
+  `services/form_submission.py`, and `tests/test_page_forms.py`. Preserve concurrent
+  user browsing, exact site scopes, stale-reference rejection, and request/receipt persistence.
+- **Validation saved:** complete 244-test suite passed on Qt 6.11.2. Native forms
+  preserve validation, hidden fields, submitter overrides, and user POST access;
+  redirect replay, late mutation/expiry, and failed evidence writes are covered.
+  Text editing generated trusted input events and supported undo. Current startup
+  smoke passed; Google HTTPS passed on retry after a native profile-creation exit.
+  Its diagnostic is `/tmp/steed-form-google-smoke.log`; the retry result is
+  `/tmp/steed-form-google-retry.log`. Intermittent native exits remain unresolved.
+  The approval popup was rendered/visually checked; lint/format passed. See the
   [verification record](DOCUMENTATION.md#verification-record) for limits and smoke results.
 - **Still pending:** full A3 form/SPA/file acceptance, later A2 authority, A4
   external-agent/MCP access, and A5–A7. Password improvements stay deferred.
@@ -83,7 +89,7 @@ checks does not establish the unverified manual results below.
 The user authorized proceeding with these manual follow-ups recorded. Resolve
 any browser blocker found during continued use alongside A1 work.
 
-- [x] Run the complete regression suite (224 checks), startup smoke,
+- [x] Run the complete regression suite (244 checks), startup smoke,
   local Google-login smoke, launcher validation, and lint/format checks.
 
 - [ ] Launch from the applications menu; check graphics, navigation, search,
@@ -182,7 +188,8 @@ Implemented for the current task backend:
   rename/archive/delete remain blocked while tasks hold it; user switching,
   pop-outs, downloads, password operations, and cookie inspection continue.
 - Private/DNS network access needs explicit permission. Document scripts, new
-  workers, WebSockets, file actions, and non-GET/HEAD methods are unavailable.
+  workers, WebSockets, and file actions are unavailable. GET/HEAD remain ordinary
+  retrieval methods; POST requires a one-use, explicitly approved native-form action.
   Shared-profile task pages bypass existing service workers through a private
   per-target adapter; user workers retain ordinary behavior. Setup failure
   denies task navigation. Storage changes persist and are disclosed.
@@ -205,7 +212,7 @@ successful file workflows and active-document execution remain unsupported.
 
 ### A3. Page inspection and actions — in progress
 
-Implemented inspection, navigation, and scriptless control actions:
+Implemented inspection, navigation, scriptless control actions, and native forms:
 
 - `page.inspect` requires an explicit `read` grant; existing metadata grants do
   not gain content access. It returns bounded text, frame provenance, and control
@@ -229,7 +236,7 @@ Implemented inspection, navigation, and scriptless control actions:
 - `page.act` requires `read` + `edit`. It supports text entry, checkbox/radio
   activation, and native-select choice by index. Text uses Chromium's editor
   with trusted input events, undo, and length limits; activation/selection have
-  explicit HTML/DOM semantics. Buttons/submission, sensitive/file fields,
+  explicit HTML/DOM semantics. Generic buttons, sensitive/file fields,
   specialized inputs, contenteditable, and custom controls remain unsupported.
 - `page.scroll` requires `read` + `scroll` and a current frame snapshot; it
   returns observed offsets. `page.wait` uses read authority and bounded ready/text
@@ -238,16 +245,27 @@ Implemented inspection, navigation, and scriptless control actions:
   Requests and receipts have action IDs; entered text, option values, and wait
   queries stay outside the journal. Live permission checks, timeout, cancellation,
   shutdown, and failed evidence writes cannot become successful receipts.
+- `page.submit` requires `read` + `navigate` + `submit`. Native validation and
+  submitter overrides apply to main-document, same-window URL-encoded GET/POST
+  forms. A per-page one-use ticket binds destination/method; arbitrary POST and
+  POST redirect replay are denied. Password/file, child-frame, multipart, popup,
+  and script-handled forms remain unsupported. User tabs keep ordinary POST access.
+- Form receipts report validation/load/timeout outcomes and leave site effects
+  unknown. No automatic retry is performed. Action bodies/field values stay out
+  of the journal; URL evidence stores origins and omits potentially reflected titles.
 
-Verification: all 224 regressions passed. Nineteen new control/wait checks plus
-new policy and shared-profile checks cover editor events/undo, constrained entry,
+Verification: all 244 regressions passed. Eighteen form/ticket checks plus new
+shared-profile and popup checks cover native GET/POST serialization, required
+fields/validation overrides, submitter destinations/methods, named controls,
+one-use method/destination binding, redirect boundaries, stale and last-moment
+mutations, callback expiry, stop/revocation, deadlines, and request/receipt failures.
+Existing control/wait checks cover editor events/undo, constrained entry,
 clearing, activation, selection, unsupported controls, stale references, readable
 child frames, scrolling, waits and deadlines, superseding loads, cancellation,
 callback-time expiry, revocation, and request/receipt failures. Existing inspection,
 navigation, profile, popup, and daily-browser regressions also passed.
 
-Next: explicit form-submission authority and observed outcomes, followed by
-active-document/SPA permissions and native pointer/selection behavior. Add
+Next: active-document/SPA permissions and native pointer/selection behavior. Add
 upload/download destination grants alongside file operations. Full form/SPA/file
 acceptance remains pending.
 

@@ -12,7 +12,7 @@ from PyQt6.QtCore import QUrl
 from utils import sanitize_profile_name
 
 SUPPORTED_ACTIONS = frozenset(
-    {"navigate", "inspect", "read", "attach", "edit", "scroll"}
+    {"navigate", "inspect", "read", "attach", "edit", "scroll", "submit"}
 )
 
 
@@ -231,12 +231,16 @@ class LiveGrant:
                 raise TaskPermissionError(self._ended)
             self.operations += 1
 
-    def request(self, url, method=b"GET"):
+    def request(self, url, method=b"GET", *, submission=False):
         with self._lock:
             reason = self._reason()
             if not reason and "navigate" not in self.scope.actions:
                 reason = "action_out_of_scope"
-            if not reason and method not in (b"GET", b"HEAD"):
+            if not reason and submission and "submit" not in self.scope.actions:
+                reason = "action_out_of_scope"
+            if not reason and method not in (
+                (b"GET", b"POST") if submission else (b"GET", b"HEAD")
+            ):
                 reason = "method_out_of_scope"
             if not reason:
                 reason = self._url_reason(url)
