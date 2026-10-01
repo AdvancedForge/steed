@@ -22,7 +22,27 @@ Status vocabulary: **pending**, **in progress**, **implemented — verification 
 
 ## Current handoff — September 30, 2026
 
-The seven browser essentials below are implemented, with automated verification. The manual daily-use gate remains pending, especially Google login. Agent implementation has not started; extensions and bookmarks remain non-blocking later work. The user requested a stopping point here and will continue later.
+The seven browser essentials below are implemented, with automated verification. The manual daily-use gate remains pending. Agent implementation has not started; extensions and bookmarks remain non-blocking later work. The user requested a stopping point here and will continue later.
+
+October 1 update: the user reports Google account sign-in appears to work after the account-host compatibility fix. This verifies the reported account attempt; sign-in persistence after restart and third-party “Sign in with Google” remain unconfirmed. Local HTTPS redirects, POST bodies, and opt-out passed on Qt 6.11.2; the older system Qt 6.4.2 fixture stalled. Use the project virtual environment for the remaining login checks.
+
+October 1 daily-use additions: Ctrl+R/F5 reload the active tab and Ctrl+L selects
+the address bar. History suggestions match URLs and titles, retain up to 1,000
+unique successful web visits per profile, survive ordinary-profile restarts,
+and remain memory-only in incognito. Windows share history within a profile;
+**File → Clear Browsing History...** clears its visits and suggestions.
+KeePassXC Auto-Type is the initial documented password-manager workflow for the
+current X11 desktop; window titles expose the active hostname for matching,
+independently of page titles. No manager preference was given. A live vault
+workflow and extension-based autofill remain unverified; credentials stay in
+the external manager. See the README for setup.
+
+Verification for these additions: four history storage tests and six focused
+Qt browser checks passed, covering reload shortcuts from page/address focus,
+completion navigation, shared-window/private-profile isolation, successful
+visit recording, hostname matching, and profile rename persistence. Five
+existing profile-switching/shutdown checks also passed. Ruff lint/format and
+whitespace checks passed. Desktop Auto-Type remains a manual check.
 
 Verification: 71 tests passed, including real Chromium request/cosmetic filtering, nested/srcdoc frame hiding and reload exceptions, filter compilation and immediate cached-worker outcomes, fullscreen enter/exit and repeated requests, completed file downloads, cookie scope and exact-path deletion, global update/logout, shared-window lifetime, a two-process persistent-cookie restart, persisted-cookie enumeration through the DevTools adapter, the startup-sharing flag in all-profiles mode, abandoned-download-dialog cancellation, shutdown confirmation when active downloads are genuinely at risk, and cookie-snapshot refresh scheduling, bounded recovery, and stale-response rejection. Repeated runs were used to confirm the suite is stable rather than merely green once. Ruff lint/format checks, whitespace checks, and the real-entry-point startup/render/shutdown smoke test also passed with Qt 6.11.2.
 
@@ -50,10 +70,12 @@ Manual acceptance checklist before A1:
 - [ ] Launch on the normal desktop and verify graphics, navigation, search, media permissions, multiple windows, and clean shutdown.
 - [ ] Reopen closed tabs repeatedly, switch profiles, and verify independent histories and restored groups/positions.
 - [ ] Test real global and separate profile logins, restart, logout, explicit deletion, and confirmed global-baseline reset.
-- [ ] Verify UA settings after restart; test Google account login and third-party Google sign-in. Record the exact error if either fails.
+- [x] Google account sign-in: user reports it appears to work after the compatibility fix (October 1, 2026).
+- [ ] Verify UA settings and signed-in session persistence after restart; test third-party Google sign-in. Record the exact error if either fails.
 - [ ] Download a real file; check progress, pause/resume where supported, cancellation, opening/revealing files, and active-download shutdown confirmation.
 - [ ] Update full filter lists, test ordinary sites, and verify exceptions after reload.
 - [ ] Test filtered cookie deletion and tab-group operations during normal use.
+- [ ] Try history suggestions, Ctrl+R/F5, Ctrl+L, and KeePassXC Auto-Type on the desktop.
 
 Next step: complete this checklist and resolve any browser blockers, then start A1/A2. Do not mark the agent framework complete or bypass the agreed browser gate.
 
@@ -89,7 +111,7 @@ Global cookies are a shared baseline, not unconditional replacements:
 
 - Apply overrides at profile creation/startup, including incognito; remove the outdated hardcoded Chrome default.
 - Clearing an override restores the engine's actual default. Display the effective UA.
-- Google account sign-in now has a default-enabled, account-host Firefox User-Agent workaround based on qutebrowser. A page-level interceptor preserves profile ad filtering. GET redirects are restarted with the destination's header; POSTs are not replayed. Local HTTPS acceptance is covered by `tests/smoke_google_login.py` on Qt 6.11; live account acceptance remains pending.
+- Google account sign-in now has a default-enabled, account-host Firefox User-Agent workaround based on qutebrowser. A page-level interceptor preserves profile ad filtering. GET redirects are restarted with the destination's header; POSTs are not replayed. Local HTTPS acceptance is covered by `tests/smoke_google_login.py` on Qt 6.11. The user reports account sign-in appears to work (October 1); restart persistence and third-party sign-in remain unconfirmed.
 - The system Qt 6.4.2 runtime stalled during the HTTPS fixture after account-host GET redirects. Use the pinned virtual environment for the live login gate.
 - Verify newly created/existing profiles, settings changes, and restart.
 - Manually test Google account login and third-party Google sign-in. UA spoofing is not a guarantee: Google may reject embedded browsers separately.

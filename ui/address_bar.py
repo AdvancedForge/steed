@@ -1,7 +1,17 @@
 """Address bar widget."""
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QWidget
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QStandardItem, QStandardItemModel
+from PyQt6.QtWidgets import QCompleter, QHBoxLayout, QLineEdit, QPushButton, QWidget
+
+from browsing_history import HistoryEntry
+
+
+class HistoryCompleter(QCompleter):
+    """Display titles and URLs, but always complete to a URL."""
+
+    def pathFromIndex(self, index):
+        return index.data(Qt.ItemDataRole.UserRole) or ""
 
 
 class AddressBar(QWidget):
@@ -35,7 +45,7 @@ class AddressBar(QWidget):
         self.forward_btn.clicked.connect(self.forward_requested.emit)
 
         self.reload_btn = QPushButton("↻")
-        self.reload_btn.setToolTip("Reload")
+        self.reload_btn.setToolTip("Reload (Ctrl+R / F5)")
         self.reload_btn.setMaximumWidth(40)
         self.reload_btn.clicked.connect(self.reload_requested.emit)
 
@@ -48,6 +58,14 @@ class AddressBar(QWidget):
         self.address_input = QLineEdit()
         self.address_input.setPlaceholderText("Enter URL or search...")
         self.address_input.returnPressed.connect(self._on_return_pressed)
+        self.history_model = QStandardItemModel(self)
+        self.completer = HistoryCompleter(self.history_model, self)
+        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.completer.setMaxVisibleItems(10)
+        self.address_input.setCompleter(self.completer)
+        self.completer.activated[str].connect(self.url_changed.emit)
 
         layout.addWidget(self.back_btn)
         layout.addWidget(self.forward_btn)
@@ -64,6 +82,18 @@ class AddressBar(QWidget):
     def set_url(self, url: str) -> None:
         """Set the URL in the address bar."""
         self.address_input.setText(url)
+
+    def set_history(self, entries: list[HistoryEntry]) -> None:
+        self.completer.popup().hide()
+        self.history_model.clear()
+        for entry in entries:
+            item = QStandardItem(f"{entry.title} — {entry.url}")
+            item.setData(entry.url, Qt.ItemDataRole.UserRole)
+            self.history_model.appendRow(item)
+
+    def focus_address(self) -> None:
+        self.address_input.setFocus()
+        self.address_input.selectAll()
 
     def set_back_enabled(self, enabled: bool) -> None:
         """Enable/disable back button."""
