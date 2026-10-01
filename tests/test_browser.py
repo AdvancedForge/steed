@@ -828,6 +828,37 @@ class BrowserTests(unittest.TestCase):
             self.window._on_desktop_media_requested(request)
         request.cancel.assert_called_once()
 
+    def test_media_picker_selected_source_is_not_cancelled_on_cleanup(self):
+        for screen in (True, False):
+            with self.subTest(screen=screen):
+                request = Mock()
+                request.screensModel.return_value.rowCount.return_value = 1
+                request.windowsModel.return_value.rowCount.return_value = 1
+
+                def select_source(dialog, screen=screen):
+                    items = dialog.screens_list if screen else dialog.windows_list
+                    button = dialog.share_screen if screen else dialog.share_window
+                    items.setCurrentRow(0)
+                    button.click()
+                    return QDialog.DialogCode.Accepted
+
+                with patch.object(QDialog, "exec", select_source):
+                    self.window._on_desktop_media_requested(request)
+                selected = request.selectScreen if screen else request.selectWindow
+                selected.assert_called_once()
+                request.cancel.assert_not_called()
+                self.assertIsNone(self.window._pending_desktop_request)
+
+    def test_media_picker_construction_failure_cancels_request(self):
+        request = Mock()
+        with patch(
+            "browser_window.DesktopMediaDialog", side_effect=RuntimeError("no picker")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "no picker"):
+                self.window._on_desktop_media_requested(request)
+        request.cancel.assert_called_once()
+        self.assertIsNone(self.window._pending_desktop_request)
+
     def test_global_cookie_all_profiles_path(self):
         manager = self.window.profile_manager
         cookie = QNetworkCookie(b"session", b"test")
@@ -872,6 +903,146 @@ class BrowserTests(unittest.TestCase):
             QTest.keyClick(active, Qt.Key.Key_F5)
         self.assertEqual(reload.call_count, 3)
         other.assert_not_called()
+
+    def _find_fixture(self, html="<p>Alpha alpha ALPHA</p>"):
+        self.window.show()
+        self.window.activateWindow()
+        self.wait_for(self.window.isActiveWindow)
+        page = self.window.tabs[self.window.current_tab_index].page()
+        finished = QSignalSpy(page.loadFinished)
+        page.setHtml(
+            f"<html><title>Find fixture</title><body>{html}</body></html>",
+            QUrl(self.origin),
+        )
+        self.wait_for(lambda: len(finished) > 0)
+        self.window.tabs[self.window.current_tab_index].setFocus()
+        QTest.keyClick(
+            self.window.tabs[self.window.current_tab_index],
+            Qt.Key.Key_F,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        self.assertTrue(self.window.find_bar.isVisible())
+        self.assertTrue(self.window.find_bar.input.hasFocus())
+        return self.window.find_bar
+
+    def test_find_in_page_shortcuts_counts_direction_case_and_escape(self):
+        bar = self._find_fixture()
+        QTest.keyClicks(bar.input, "alpha")
+        self.wait_for(lambda: bar.result_label.text() == "1 of 3")
+        QTest.keyClick(bar.input, Qt.Key.Key_Return)
+        self.wait_for(lambda: bar.result_label.text() == "2 of 3")
+        QTest.keyClick(bar.input, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier)
+        self.wait_for(lambda: bar.result_label.text() == "1 of 3")
+        QTest.keyClick(bar.input, Qt.Key.Key_F3)
+        self.wait_for(lambda: bar.result_label.text() == "2 of 3")
+        QTest.keyClick(bar.input, Qt.Key.Key_F3, Qt.KeyboardModifier.ShiftModifier)
+        self.wait_for(lambda: bar.result_label.text() == "1 of 3")
+        bar.match_case.setChecked(True)
+        self.wait_for(lambda: bar.result_label.text() == "1 of 1")
+        bar.input.setText("absent-word")
+        self.wait_for(lambda: bar.result_label.text() == "No matches")
+        bar.input.clear()
+        self.assertEqual(bar.result_label.text(), "")
+        self.assertFalse(bar.next_button.isEnabled())
+        page = self.window.tabs[self.window.current_tab_index]
+        page.setFocus()
+        QTest.keyClick(page, Qt.Key.Key_Escape)
+        self.assertFalse(bar.isVisible())
+
+    def test_find_in_page_follows_active_tab_navigation_and_clears_on_profile_switch(
+        self,
+    ):
+        bar = self._find_fixture()
+        bar.input.setText("alpha")
+        self.wait_for(lambda: bar.result_label.text() == "1 of 3")
+        self.window._new_tab("about:blank")
+        page = self.window.tabs[self.window.current_tab_index].page()
+        finished = QSignalSpy(page.loadFinished)
+        page.setHtml("<p>alpha alpha</p>", QUrl(self.origin))
+        self.wait_for(lambda: len(finished) > 0 and bar.result_label.text() == "1 of 2")
+        self.window._switch_tab(0)
+        self.wait_for(lambda: bar.result_label.text() in ("1 of 3", "2 of 3", "3 of 3"))
+        page = self.window.tabs[0].page()
+        finished = QSignalSpy(page.loadFinished)
+        page.setHtml("<p>No matching text</p>", QUrl(self.origin))
+        self.wait_for(
+            lambda: len(finished) > 0 and bar.result_label.text() == "No matches"
+        )
+        self.window._switch_to_profile("search")
+        self.assertFalse(bar.isVisible())
+        self.assertEqual(bar.input.text(), "")
+
+    def test_find_in_page_hides_for_fullscreen_and_restores_search(self):
+        bar = self._find_fixture()
+        bar.input.setText("alpha")
+        self.wait_for(lambda: bar.result_label.text() == "1 of 3")
+        self.window._enter_fullscreen()
+        self.assertFalse(bar.isVisible())
+        self.window._exit_fullscreen()
+        self.assertTrue(bar.isVisible())
+        self.wait_for(lambda: bar.result_label.text().endswith("of 3"))
+
+    def test_find_in_page_discards_late_results_after_query_change_and_close(self):
+        bar = self._find_fixture()
+        callbacks = []
+
+        def delayed(page, text, **options):
+            if text:
+                callbacks.append((text, options["callback"]))
+
+        with patch.object(self.window.navigation, "find", side_effect=delayed):
+            bar.input.setText("first-query")
+            bar.find_next()
+            bar.input.setText("second-query")
+            bar.find_next()
+            callbacks[0][1](True)
+            self.app.processEvents()
+            self.assertEqual(callbacks[-1][0], "second-query")
+            self.assertEqual(bar.result_label.text(), "Searching…")
+            callbacks[-1][1](False)
+            self.app.processEvents()
+            self.assertEqual(bar.result_label.text(), "No matches")
+            bar.find_next()
+            bar.close_find()
+            callbacks[-1][1](True)
+            self.app.processEvents()
+            self.assertEqual(bar.result_label.text(), "")
+
+    def test_zoom_shortcuts_active_tab_limits_reset_and_toolbar(self):
+        self.window._new_tab(self.local_page)
+        active, inactive = self.window.tabs[1], self.window.tabs[0]
+        self.window.show()
+        self.window.activateWindow()
+        self.wait_for(self.window.isActiveWindow)
+        self.window.address_bar.focus_address()
+        QTest.keyClick(
+            self.window.address_bar.address_input,
+            Qt.Key.Key_Equal,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        self.assertAlmostEqual(active.zoomFactor(), 1.1)
+        self.assertEqual(self.window.address_bar.zoom_btn.text(), "110%")
+        active.setFocus()
+        QTest.keyClick(active, Qt.Key.Key_Plus, Qt.KeyboardModifier.ControlModifier)
+        self.assertAlmostEqual(active.zoomFactor(), 1.25)
+        QTest.keyClick(active, Qt.Key.Key_Minus, Qt.KeyboardModifier.ControlModifier)
+        self.assertAlmostEqual(active.zoomFactor(), 1.1)
+        self.assertAlmostEqual(inactive.zoomFactor(), 1.0)
+        self.window._switch_tab(0)
+        self.assertEqual(self.window.address_bar.zoom_btn.text(), "100%")
+        self.window._switch_tab(1)
+        self.assertEqual(self.window.address_bar.zoom_btn.text(), "110%")
+        active.setFocus()
+        QTest.keyClick(active, Qt.Key.Key_0, Qt.KeyboardModifier.ControlModifier)
+        self.assertAlmostEqual(active.zoomFactor(), 1.0)
+        for _ in range(30):
+            self.window._zoom(1)
+        self.assertAlmostEqual(active.zoomFactor(), 5.0)
+        for _ in range(30):
+            self.window._zoom(-1)
+        self.assertAlmostEqual(active.zoomFactor(), 0.25)
+        self.window.address_bar.zoom_btn.click()
+        self.assertAlmostEqual(active.zoomFactor(), 1.0)
 
     def test_history_completion_matches_title_and_enter_navigates_once(self):
         address = self.window.address_bar

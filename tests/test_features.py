@@ -3,6 +3,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from PyQt6.QtCore import QUrl
@@ -417,34 +418,58 @@ class FeatureTests(unittest.TestCase):
         self.assertRegex(VERIFIED_AGAINST_QT, r"^\d+\.\d+\.\d+$")
 
     def test_download_abandoned_prompt_cancels_and_cleans_up(self):
-        manager = DownloadManager(self.config)
+        manager = DownloadManager(self.config, destination_picker=lambda *_: "")
         request = Mock()
         request.page.return_value = None
         request.suggestedFileName.return_value = "abandoned.bin"
-        with patch(
-            "download_manager.QFileDialog.getSaveFileName", return_value=("", "")
-        ):
-            manager.handle(request, "default")
+        manager.handle(request, "default")
         request.cancel.assert_called_once()
         request.deleteLater.assert_called_once()
         self.assertEqual(manager.records, {})
         self.assertEqual(manager.requests, {})
 
     def test_download_dialog_failure_still_cancels_request(self):
-        manager = DownloadManager(self.config)
+        picker = Mock(side_effect=RuntimeError("no file dialog"))
+        manager = DownloadManager(self.config, destination_picker=picker)
         request = Mock()
         request.page.return_value = None
         request.suggestedFileName.return_value = "boom.bin"
-        with (
-            patch(
-                "download_manager.QFileDialog.getSaveFileName",
-                side_effect=RuntimeError("no file dialog"),
-            ),
-            self.assertLogs("download_manager", level="ERROR"),
-        ):
+        with self.assertLogs("download_manager", level="ERROR"):
             manager.handle(request, "default")
         request.cancel.assert_called_once()
         self.assertEqual(manager.records, {})
+
+    def test_download_without_destination_provider_is_declined(self):
+        manager = DownloadManager(self.config)
+        request = Mock()
+        request.page.return_value = None
+        request.suggestedFileName.return_value = "file.bin"
+        manager.handle(request, "default")
+        request.cancel.assert_called_once()
+        request.accept.assert_not_called()
+        self.assertEqual(manager.records, {})
+
+    def test_download_injected_destination_owns_request_until_completion(self):
+        path = self.config.config_dir / "chosen.bin"
+        picker = Mock(return_value=str(path))
+        manager = DownloadManager(self.config, destination_picker=picker)
+        request = Mock()
+        request.page.return_value = None
+        request.suggestedFileName.return_value = "../../site.bin"
+        request.receivedBytes.return_value = 4
+        request.totalBytes.return_value = 4
+        request.state.return_value = SimpleNamespace(name="DownloadCompleted")
+        request.isPaused.return_value = False
+        manager.handle(request, "work")
+        picker.assert_called_once_with("site.bin", None)
+        request.setDownloadDirectory.assert_called_once_with(str(path.parent))
+        request.setDownloadFileName.assert_called_once_with("chosen.bin")
+        request.accept.assert_called_once()
+        request.cancel.assert_not_called()
+        record = next(iter(manager.records.values()))
+        self.assertEqual(record.state, "DownloadCompleted")
+        self.assertEqual(record.path, str(path))
+        self.assertEqual(load_json(manager.history_file)[0]["received"], 4)
 
     def test_closed_sharing_does_not_enable_new_profiles(self):
         config = self.config
