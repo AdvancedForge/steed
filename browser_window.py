@@ -438,6 +438,11 @@ class BrowserWindow(QMainWindow):
             self._switch_to_profile(profile)
 
     def _switch_to_profile(self, profile_name: str):
+        try:
+            self.profile_manager.registry.check_user_profile(profile_name)
+        except ValueError as error:
+            QMessageBox.warning(self, "Profile in use", str(error))
+            return
         self.find_bar.close_find(clear_query=True)
         self.find_bar.set_page(None)
         # Save current tabs
@@ -537,6 +542,11 @@ class BrowserWindow(QMainWindow):
             self._pop_out_profile_named(profile)
 
     def _pop_out_profile_named(self, profile: str):
+        try:
+            self.profile_manager.registry.check_user_profile(profile)
+        except ValueError as error:
+            QMessageBox.warning(self, "Profile in use", str(error))
+            return
         win = BrowserWindow(profile_name=profile)
         win.show()
         self._child_windows.append(win)

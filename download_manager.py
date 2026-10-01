@@ -52,8 +52,15 @@ class DownloadManager(QObject):
 
     def attach(self, profile, name):
         profile.downloadRequested.connect(
-            lambda request, n=name: self.handle(request, n)
+            lambda request, n=name, p=profile: self._profile_download(request, n, p)
         )
+
+    def _profile_download(self, request, name, profile):
+        # Gate before the ordinary handler can open a destination dialog.
+        if getattr(profile, "task_restricted", False) is True:
+            request.cancel()
+            return
+        self.handle(request, name)
 
     def handle(self, request, profile):
         view = QWebEngineView.forPage(request.page()) if request.page() else None

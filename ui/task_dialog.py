@@ -27,9 +27,9 @@ class TaskDialog(QDialog):
         self.resize(800, 600)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Review task requests before approving access. Task browsing uses a "
-            "separate private profile. Scripts, signed-in profiles, and file actions "
-            "are currently unavailable. Revoking access cancels the task."
+            "Review task requests before approving access. Existing profiles need "
+            "exclusive task access; switch away in every window before approval. "
+            "Task scripts and file actions are unavailable. Revoking access cancels the task."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -133,6 +133,18 @@ class TaskDialog(QDialog):
             self.details.setPlainText(
                 f"Task: {task.task_id}\n"
                 f"Profile: {scope['profile']}\n"
+                + "Origins:\n"
+                + ("\n".join(scope["origins"]) or "about:blank only")
+                + "\n"
+                + (
+                    "Storage: existing cookies, cached responses, and site storage are shared. "
+                    "Site changes persist and may change your signed-in session. "
+                    "The network scope and budget apply to the entire profile, including background requests. "
+                    "Background workers may already exist; task document scripts stay disabled. "
+                    "After the task ends, network access stays blocked until you select this profile for ordinary browsing.\n"
+                    if scope["profile"] != "private"
+                    else "Storage: a separate private profile for each session.\n"
+                )
                 + f"Actions: {', '.join(scope['actions']) or 'None'}\n"
                 + f"Network permission: {network}\n"
                 + "Network methods: GET and HEAD. These methods can still have effects on a website.\n"
@@ -141,8 +153,6 @@ class TaskDialog(QDialog):
                 + f"Network request limit: {scope['max_requests']}\n"
                 + f"Session limit: {scope['max_sessions']}\n"
                 + f"Expires: {grant.expires_at or 'Not approved'}\n"
-                + "Origins:\n"
-                + ("\n".join(scope["origins"]) or "about:blank only")
                 + "\nClient objective (preview): "
                 + json.dumps(task.objective[:256], ensure_ascii=False)
             )
@@ -166,8 +176,9 @@ class TaskDialog(QDialog):
                     "revoke": self.service.revoke_grant,
                 }
                 methods[operation](task.task_id, grant.grant_id)
+        except ValueError as error:
+            QMessageBox.warning(self, "Task Permissions", str(error))
         except (
-            ValueError,
             PermissionError,
             KeyError,
             RuntimeError,

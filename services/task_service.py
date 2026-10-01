@@ -27,6 +27,7 @@ class TaskService(QObject):
         backend: BrowserBackend | None = None,
         *,
         clock=time.monotonic,
+        profiles=None,
     ):
         super().__init__(parent)
         require_owner_thread(self)
@@ -34,7 +35,14 @@ class TaskService(QObject):
         if app is None or QThread.currentThread() != app.thread():
             raise RuntimeError("Task services require the Qt application thread")
         self.store = TaskStore(path)
-        self.backend = backend if backend is not None else QtBrowserBackend(self)
+        self.profiles = profiles
+        self.backend = (
+            backend
+            if backend is not None
+            else QtBrowserBackend(
+                self, profile_provider=profiles.task_profile if profiles else None
+            )
+        )
         self._clock = clock
         self._sessions = {}
         self._grants = {}
@@ -101,6 +109,10 @@ class TaskService(QObject):
     def _request_grant(self, task_id, scope):
         self._active(task_id)
         scope = TaskScope.parse(scope)
+        if scope.profile != "private":
+            if self.profiles is None:
+                raise ValueError("Existing profiles require the application registry")
+            self.profiles.validate_task_profile(scope.profile)
         result = self.store.request_grant(task_id, scope.payload())
         self.changed.emit()
         return result
@@ -118,10 +130,30 @@ class TaskService(QObject):
         expires = (
             datetime.now(timezone.utc) + timedelta(seconds=scope.duration_seconds)
         ).isoformat()
-        record = self.store.resolve_grant(
-            task_id, grant_id, "approved", expires_at=expires
-        )
-        self._grants[task_id] = (grant_id, grant)
+        existing = scope.profile != "private"
+        if existing:
+            if self.profiles is None:
+                raise ValueError("Existing profiles require the application registry")
+            self.profiles.reserve_task_profile(task_id, scope.profile)
+        try:
+            record = self.store.resolve_grant(
+                task_id, grant_id, "approved", expires_at=expires
+            )
+            self._grants[task_id] = (grant_id, grant)
+            if existing:
+                self.profiles.activate_task_profile(
+                    task_id, grant, self.backend.blocked.emit
+                )
+        except Exception:
+            grant.end("approval_failed")
+            if task_id in self._grants:
+                self._fatal(
+                    "Task profile access could not be initialized; "
+                    "task commands are disabled."
+                )
+            elif existing:
+                self.profiles.release_task_profiles(task_id)
+            raise
         self.changed.emit()
         return record
 
@@ -172,6 +204,8 @@ class TaskService(QObject):
         return grant
 
     def _open_session(self, task_id, profile="private"):
+        if not isinstance(profile, str):
+            self._deny(task_id, "profile_out_of_scope")
         grant = self._authorize(task_id, "open", profile=profile)
         if (
             sum(owner == task_id for owner in self._sessions.values())
@@ -268,6 +302,8 @@ class TaskService(QObject):
             if task_id is None or owner == task_id:
                 self._sessions.pop(session_id)
                 self.backend.close_session(session_id)
+        if self.profiles is not None:
+            self.profiles.release_task_profiles(task_id)
 
     def _end_authority(self, task_id, reason):
         live = self._grants.pop(task_id, None)
@@ -303,10 +339,12 @@ class TaskService(QObject):
         except Exception:
             self._fatal()
 
-    def _fatal(self):
+    def _fatal(self, message=None):
         if self.failure:
             return
-        self.failure = "Task journal is unavailable; task commands are disabled."
+        self.failure = (
+            message or "Task journal is unavailable; task commands are disabled."
+        )
         for _, grant in self._grants.values():
             grant.end("journal_failure")
         self._timer.stop()
@@ -335,4 +373,6 @@ class TaskService(QObject):
             try:
                 self.backend.close()
             finally:
+                if self.profiles is not None:
+                    self.profiles.release_task_profiles()
                 self.store.close()

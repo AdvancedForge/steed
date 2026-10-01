@@ -72,6 +72,14 @@ class TaskPolicyTests(unittest.TestCase):
     def test_invalid_scope_fields_profiles_actions_and_budgets_are_rejected(self):
         for changes in (
             {"profile": "global"},
+            {"profile": "existing:global"},
+            {"profile": "existing:search"},
+            {"profile": "existing:../work"},
+            {"profile": "existing: work"},
+            {"profile": "existing:"},
+            {"profile": "existing:a\nwork"},
+            {"profile": "existing:a\u202ework"},
+            {"profile": None},
             {"actions": ["upload"]},
             {"file_destinations": ["/tmp/a"]},
             {"actions": "navigate"},
@@ -84,6 +92,17 @@ class TaskPolicyTests(unittest.TestCase):
         ):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 self.scope(**changes)
+
+    def test_named_profile_selector_is_explicit_and_stays_bound_to_its_grant(self):
+        grant = LiveGrant(self.scope(profile="existing:work"))
+        grant.check("open", profile="existing:work")
+        grant.check("navigate", url="https://example.org")
+        for selector in ("private", "work", "existing:other"):
+            with (
+                self.subTest(selector=selector),
+                self.assertRaises(TaskPermissionError),
+            ):
+                grant.check("open", profile=selector)
 
     def test_actions_profile_and_file_destination_fail_before_consumption(self):
         grant = LiveGrant(self.scope(actions=["inspect"]))

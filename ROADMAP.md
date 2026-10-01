@@ -9,14 +9,15 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 1, 2026
 
-Browser essentials now include Ctrl+F find in page and per-tab zoom. All 157
+Browser essentials now include Ctrl+F find in page and per-tab zoom. All 172
 regression checks, the startup/render/shutdown smoke check, and the
 local Google-login HTTPS smoke check passed on Qt 6.11.2. Launcher validation,
 Ruff, formatting, and whitespace checks also passed.
 
 The user reports few complaints during daily use and authorized proceeding after
-the checks available to the assistant. A1 is implemented, and A2's private-task
-permission layer is implemented. Broader A2 profile grants remain in progress.
+the checks available to the assistant. A1 is implemented, and A2 supports private
+and exclusive existing-profile grants. File and active-page authority will be
+implemented alongside their A3 operations.
 Real-account login
 persistence, third-party Google sign-in, hardware permission flows, and ordinary
 site usability remain follow-up checks; no automated fixture establishes those
@@ -45,7 +46,7 @@ checks does not establish the unverified manual results below.
 The user authorized proceeding with these manual follow-ups recorded. Resolve
 any browser blocker found during continued use alongside A1 work.
 
-- [x] Run the complete regression suite (157 checks), startup smoke,
+- [x] Run the complete regression suite (172 checks), startup smoke,
   local Google-login smoke, launcher validation, and lint/format checks.
 
 - [ ] Launch from the applications menu; check graphics, navigation, search,
@@ -90,8 +91,8 @@ daily-use workflow; they do not automatically block the agent milestones.
 
 Keep Python, PyQt6, and Qt WebEngine initially, with replaceable engine/provider
 interfaces. Prefer text and structured state; support watching, takeover,
-resume, revocation, and cancellation. A1 is implemented; A2 has private-task
-grants, with persistent-profile support remaining. A3–A7 remain pending.
+resume, revocation, and cancellation. A1 is implemented; A2 supports private and
+existing-profile grants for the current backend. A3–A7 remain pending.
 
 ### A1. Browser services and task storage — implemented
 
@@ -124,7 +125,7 @@ SQLite. Acceptance: a deterministic client operates a task session without AI.
 
 ### A2. Task sessions and permissions — in progress
 
-Implemented for the current private-task backend:
+Implemented for the current task backend:
 
 - Pending scopes gain authority only through **File → Task Permissions** approval.
   Clients have task-bound handles and cannot approve themselves or impersonate
@@ -135,25 +136,31 @@ Implemented for the current private-task backend:
 - SQLite grant decisions and journal events commit atomically. Restart ends
   authority without replay. Revocation, cancellation, expiry, and exhausted
   budgets close pages and reject queued mutations.
-- Private/DNS network access needs explicit permission. Scripts, workers,
-  WebSockets, persistent task profiles, file actions, and non-GET/HEAD methods
-  are unavailable. These restrictions apply to task pages.
+- Existing-profile grants share signed-in cookies/storage with exclusive access.
+  Windows, downloads, password operations, and other tasks must release that
+  profile before approval. Switching, pop-outs, and profile mutation remain
+  blocked for the grant's lifetime. An ended network guard stays installed until
+  the user resumes ordinary browsing.
+- Private/DNS network access needs explicit permission. Document scripts, new
+  workers, WebSockets, file actions, and non-GET/HEAD methods are unavailable.
+  Existing service workers may execute; their network requests use the same
+  profile-wide scope and budget. Storage changes persist and are disclosed.
 
-Verification: eight policy checks, eight storage checks, and eighteen real-Qt
-service checks, including UI approval and SQLite failure handling, plus a browser
+Verification: nine policy checks, eight storage checks, eighteen real-Qt
+service checks, and fourteen existing-profile checks, including a seeded service
+worker's denied cross-origin fetch and setup/journal failures, plus a browser
 menu failure check. Full browser regressions and startup smoke passed; a synthetic
 approval dialog was rendered and visually inspected. Manual desktop use remains a
 desktop follow-up.
 
-Remaining A2 work: persistent-profile grants need verified scoped request routing
-before a task can share existing signed-in storage. Destination-specific file
-grants must accompany A3's file operations; active page execution needs its own
+Remaining A2 work: destination-specific file grants must accompany A3's file
+operations; active document execution needs its own
 scope enforcement. Unsupported authority remains rejected. External tools and
 transports belong to later milestones.
 
 Acceptance target: cross-task, profile, destination, and grant violations fail
-before execution. Private-task grant enforcement meets this target; successful
-persistent-profile/file workflows have not been implemented or verified.
+before execution. Private and existing-profile document workflows are verified;
+successful file workflows and active-document execution remain unsupported.
 
 ### A3. Page inspection and actions
 
