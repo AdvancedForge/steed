@@ -705,6 +705,41 @@ class BrowserTests(unittest.TestCase):
         )
         self.assertTrue(service.cache.exists())
 
+    def test_quick_switch_available_before_first_profile_switch(self):
+        manager = self.window.profile_manager
+        self.assertEqual(manager.current_profile_name, "default")
+        actions = self.window.profile_shortcuts_menu.actions()
+        self.assertEqual(
+            [action.text() for action in actions],
+            ["default (Ctrl+Shift+1)", "global (Ctrl+Shift+2)"],
+        )
+        # A new window must list profiles that already exist, without switching.
+        manager.create_profile("work")
+        second = BrowserWindow()
+        try:
+            actions = second.profile_shortcuts_menu.actions()
+            self.assertEqual(
+                [action.text() for action in actions],
+                [
+                    "default (Ctrl+Shift+1)",
+                    "global (Ctrl+Shift+2)",
+                    "work (Ctrl+Shift+3)",
+                ],
+            )
+            second.show()
+            second.activateWindow()
+            self.wait_for(second.isActiveWindow)
+            second.address_bar.focus_address()
+            QTest.keyClick(
+                second.address_bar.address_input,
+                Qt.Key.Key_3,
+                Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+            )
+            self.app.processEvents()
+            self.assertEqual(second.profile_manager.current_profile_name, "work")
+        finally:
+            second.close()
+
     def test_tabs_and_profile_switching(self):
         self.window._new_tab(self.local_page, "Codec")
         self.window.tabs[-1].group = "Media"
@@ -826,7 +861,7 @@ class BrowserTests(unittest.TestCase):
         active, inactive = self.window.tabs[1], self.window.tabs[0]
         self.window.show()
         self.window.activateWindow()
-        self.app.processEvents()
+        self.wait_for(self.window.isActiveWindow)
         with (
             patch.object(active, "reload") as reload,
             patch.object(inactive, "reload") as other,
