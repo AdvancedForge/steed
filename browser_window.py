@@ -163,6 +163,8 @@ class BrowserWindow(QMainWindow):
         # Connect profile signals
         self.profile_manager.profile_changed.connect(self._on_profile_changed)
         self.profile_manager.profiles_updated.connect(self._update_profile_shortcuts)
+        # The initial profile was selected before the menu/signals existed.
+        self._update_profile_shortcuts()
         # Initialize profile and managers
         self._initialize_profile(self.profile_manager.current_profile_name)
         # Restore or create initial tab
@@ -501,6 +503,9 @@ class BrowserWindow(QMainWindow):
         self._child_windows.append(win)
 
     def _update_profile_shortcuts(self):
+        for action in self.profile_shortcuts_menu.actions():
+            self.removeAction(action)
+            action.deleteLater()
         self.profile_shortcuts_menu.clear()
         profiles = self.profile_manager.list_profiles()
         for i, name in enumerate(profiles[:9]):
@@ -508,6 +513,7 @@ class BrowserWindow(QMainWindow):
             action.setShortcut(QKeySequence(f"Ctrl+Shift+{i + 1}"))
             action.triggered.connect(lambda checked, n=name: self._switch_to_profile(n))
             self.profile_shortcuts_menu.addAction(action)
+            self.addAction(action)
 
     # ---------- Tab handling ----------
     def _new_tab(

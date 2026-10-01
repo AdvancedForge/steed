@@ -76,6 +76,25 @@ python main.py
 
 You can also run `.venv/bin/python main.py` directly. Running `python3 main.py` without activating the environment may use a different PyQt installation.
 
+### Launch without a terminal
+
+After installing dependencies, register this checkout in your Linux application
+menu once:
+
+```bash
+.venv/bin/python install_launcher.py
+```
+
+Open **Steed** from the applications menu, and pin it to your panel if desired.
+The launcher runs with `Terminal=false`, so no terminal needs to stay open.
+It uses this checkout's `.venv` and works regardless of the desktop's working
+directory. No root access or standalone executable build is needed.
+
+The executable `steed` in the project directory also starts the browser directly.
+Keep the checkout and `.venv` in place; if you move them, run the installer again
+from the new location. To remove the menu entry, delete `steed.desktop` from
+`${XDG_DATA_HOME:-$HOME/.local/share}/applications/`.
+
 ### Graphics troubleshooting
 
 The browser lets Qt select its graphics backend. Older versions forced `--use-gl=desktop`, which can abort with `--use-gl=desktop is not supported with the current configuration`.
