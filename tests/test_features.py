@@ -10,6 +10,7 @@ from PyQt6.QtNetwork import QNetworkCookie
 from ad_blocker import FilterEngine
 from config import Config
 from cookie_sharing import CookieSharing, cookie_key
+from cookie_snapshot import VERIFIED_AGAINST_QT, CookieSnapshot
 from download_manager import DownloadManager
 from tab_manager import ClosedTabHistory, TabState
 from utils import load_json, save_json
@@ -20,6 +21,59 @@ def cookie(value=b"global", domain=".example.org"):
     result.setDomain(domain)
     result.setPath("/")
     return result
+
+
+class CookieSnapshotPolicyTests(unittest.TestCase):
+    """Refresh scheduling, which no longer waits on a live engine."""
+
+    def snapshot(self):
+        snapshot = CookieSnapshot.__new__(CookieSnapshot)
+        snapshot.closed = False
+        snapshot.ready = True
+        snapshot.pending = False
+        snapshot.dirty = False
+        snapshot.attempts = 0
+        snapshot.revision = 0
+        snapshot.request_revision = 0
+        snapshot.retries = 0
+        snapshot.cooldowns = 0
+        snapshot.timeouts = 0
+        snapshot.timed_out = False
+        snapshot.retryable_error = False
+        snapshot.skipped_partitioned = 0
+        snapshot.frontend = Mock()
+        snapshot.timer = Mock()
+        snapshot.loaded = Mock()
+        snapshot.failed = Mock()
+        return snapshot
+
+    def test_refresh_requested_during_a_pending_run_is_not_dropped(self):
+        """Qt reports a cookie overwrite while a run is still in flight.
+
+        Dropping that request loses the update with nothing left to retrigger
+        it, which is how an overwritten global cookie stayed stale forever.
+        """
+        snapshot = self.snapshot()
+        snapshot.pending = True
+        snapshot.dirty = False
+        CookieSnapshot.refresh(snapshot)
+        self.assertTrue(snapshot.dirty, "a queued refresh must be recorded")
+
+    def test_stale_result_is_discarded_when_a_change_overtook_it(self):
+        snapshot = self.snapshot()
+        snapshot.pending = True
+        snapshot.dirty = True
+        snapshot.revision = 2
+        snapshot.request_revision = 1
+        with patch.object(
+            CookieSnapshot, "refresh", lambda self: setattr(self, "requeued", True)
+        ):
+            CookieSnapshot.accept_result(snapshot, {"cookies": []})
+        self.assertTrue(
+            getattr(snapshot, "requeued", False),
+            "a result that lost the race must trigger another run",
+        )
+        self.assertFalse(snapshot.pending, "the run must no longer be pending")
 
 
 class FeatureTests(unittest.TestCase):
@@ -136,6 +190,71 @@ class FeatureTests(unittest.TestCase):
         self.assertEqual(store.setCookie.call_count, 1)
         sharing.enable("work")
         self.assertEqual(store.setCookie.call_count, 2)
+
+    def test_cookie_snapshot_records_build_identity(self):
+        """The snapshot path relies on private Chromium internals.
+
+        Record the engine version it was last confirmed against so a Qt upgrade
+        review knows exactly what to re-verify.
+        """
+        self.assertRegex(VERIFIED_AGAINST_QT, r"^\d+\.\d+\.\d+$")
+
+    def test_download_abandoned_prompt_cancels_and_cleans_up(self):
+        manager = DownloadManager(self.config)
+        request = Mock()
+        request.page.return_value = None
+        request.suggestedFileName.return_value = "abandoned.bin"
+        with patch(
+            "download_manager.QFileDialog.getSaveFileName", return_value=("", "")
+        ):
+            manager.handle(request, "default")
+        request.cancel.assert_called_once()
+        request.deleteLater.assert_called_once()
+        self.assertEqual(manager.records, {})
+        self.assertEqual(manager.requests, {})
+
+    def test_download_dialog_failure_still_cancels_request(self):
+        manager = DownloadManager(self.config)
+        request = Mock()
+        request.page.return_value = None
+        request.suggestedFileName.return_value = "boom.bin"
+        with (
+            patch(
+                "download_manager.QFileDialog.getSaveFileName",
+                side_effect=RuntimeError("no file dialog"),
+            ),
+            self.assertLogs("download_manager", level="ERROR"),
+        ):
+            manager.handle(request, "default")
+        request.cancel.assert_called_once()
+        self.assertEqual(manager.records, {})
+
+    def test_closed_sharing_does_not_enable_new_profiles(self):
+        config = self.config
+        config.update(
+            {
+                "global_cookie_sharing_mode": "all_profiles",
+                "global_cookie_sharing_apply_on_startup": True,
+            }
+        )
+        sharing = CookieSharing(config, Mock())
+        sharing.register("work", Mock(), config.profiles_dir / "work", fresh=True)
+        sharing.closed = True
+        sharing.enable("work")
+        self.assertEqual(sharing.enabled, set(), "a closed registry must not resume")
+        self.assertEqual(sharing.states["work"]["inherited"], {})
+
+    def test_cookie_sharing_reconcile_stops_when_closed(self):
+        sharing, store = self.sharing()
+        sharing.global_added(cookie())
+        sharing.closed = True
+        sharing.enabled.clear()
+        before = store.setCookie.call_count
+        sharing.reconcile("work")
+        sharing.use_global("work", "example.org")
+        sharing.enable("work")
+        self.assertEqual(store.setCookie.call_count, before)
+        self.assertEqual(sharing.enabled, set())
 
     def test_download_restart_marks_unfinished_interrupted(self):
         save_json(

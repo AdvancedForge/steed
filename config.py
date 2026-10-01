@@ -15,6 +15,9 @@ class Config:
         self.profiles_dir = self.config_dir / "profiles"
         self._ensure_directories()
         self._config = self._load_config()
+        # Bumped on every write so hot paths can cache derived values and still
+        # notice a change without re-reading the whole configuration.
+        self.revision = 0
 
     def _ensure_directories(self) -> None:
         """Create necessary directories if they don't exist."""
@@ -52,11 +55,13 @@ class Config:
     def set(self, key: str, value: Any) -> None:
         """Set a configuration value."""
         self._config[key] = value
+        self.revision += 1
         self.save_config()
 
     def update(self, values: dict[str, Any]) -> None:
         """Save a set of preference changes with one disk write."""
         self._config.update(values)
+        self.revision += 1
         self.save_config()
 
     @property

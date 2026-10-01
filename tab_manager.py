@@ -49,9 +49,6 @@ class ClosedTabHistory:
         history = self._profiles.get(profile, [])
         return history.pop() if history else None
 
-    def clear(self, profile: str) -> None:
-        self._profiles.pop(profile, None)
-
     def available(self, profile: str) -> bool:
         return bool(self._profiles.get(profile))
 
@@ -59,7 +56,6 @@ class ClosedTabHistory:
 class TabManager(QObject):
     """Saves/restores tabs to <profile_dir>/tabs.json"""
 
-    tab_state_changed = pyqtSignal(int)
     group_data_updated = pyqtSignal()
 
     def __init__(self, profile_dir: Path, parent: QObject | None = None) -> None:

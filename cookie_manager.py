@@ -20,20 +20,6 @@ class CookieInfo:
         self.is_secure = cookie.isSecure()
         self.is_http_only = cookie.isHttpOnly()
 
-    def to_dict(self) -> dict:
-        """Convert to dictionary."""
-        return {
-            "name": self.name,
-            "value": self.value,
-            "domain": self.domain,
-            "path": self.path,
-            "expiration": self.expiration_date.toString()
-            if self.expiration_date.isValid()
-            else None,
-            "secure": self.is_secure,
-            "http_only": self.is_http_only,
-        }
-
 
 class CookieManager(QObject):
     """Manages cookies for a profile."""

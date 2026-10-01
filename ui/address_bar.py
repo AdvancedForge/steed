@@ -65,10 +65,6 @@ class AddressBar(QWidget):
         """Set the URL in the address bar."""
         self.address_input.setText(url)
 
-    def get_url(self) -> str:
-        """Get the current URL text."""
-        return self.address_input.text()
-
     def set_back_enabled(self, enabled: bool) -> None:
         """Enable/disable back button."""
         self.back_btn.setEnabled(enabled)

@@ -24,14 +24,22 @@ Status vocabulary: **pending**, **in progress**, **implemented — verification 
 
 The seven browser essentials below are implemented, with automated verification. The manual daily-use gate remains pending, especially Google login. Agent implementation has not started; extensions and bookmarks remain non-blocking later work. The user requested a stopping point here and will continue later.
 
-Verification: 44 tests passed, including real Chromium request/cosmetic filtering, filter compilation, completed file downloads, cookie scope and exact-path deletion, global update/logout, shared-window lifetime, and a two-process persistent-cookie restart. Ruff lint/format checks, whitespace checks, and the real-entry-point startup/render/shutdown smoke test also passed with Qt 6.11.2.
+Verification: 59 tests passed, including real Chromium request/cosmetic filtering, filter compilation, completed file downloads, cookie scope and exact-path deletion, global update/logout, shared-window lifetime, a two-process persistent-cookie restart, persisted-cookie enumeration through the DevTools adapter, the startup-sharing flag in all-profiles mode, abandoned-download-dialog cancellation, shutdown confirmation when active downloads are genuinely at risk, and cookie-snapshot refresh scheduling. Repeated runs were used to confirm the suite is stable rather than merely green once. Ruff lint/format checks, whitespace checks, and the real-entry-point startup/render/shutdown smoke test also passed with Qt 6.11.2.
+
+Two further defects were found and fixed while stabilizing that coverage, both affecting B2 in ways the previous suite did not observe:
+
+- A stale enumeration of a destination profile arriving after the browser's own copy made `target_added` treat the old value as a local edit. That permanently marked the site locally controlled, which then suppressed the next global logout.
+- A refresh requested while an inspection was still in flight was dropped. Qt reports a cookie *overwrite* while the previous run is pending, so overwriting a global cookie left the shared baseline permanently stale with nothing left to re-trigger a read. Queued refreshes are now recorded and re-run, and the global snapshot is re-inspected until two consecutive readings agree.
+
+Refreshes are also debounced and the DevTools SDK module is cached on the frontend page, which removed the repeated module load that dominated each enumeration.
 
 Implementation notes for the next session:
 
-- Qt 6.11's `loadAllCookies` path does not report already-persisted cookies reliably in the tested runtime. `cookie_snapshot.py` uses a private, in-process DevTools frontend to obtain authoritative snapshots; no remote debugging listener is opened. This engine-specific adapter needs regression testing when Qt is upgraded. Snapshots reject concurrent-change races and omit unsupported partitioned identities from viewing/sharing.
+- Qt 6.11's `loadAllCookies` path does not report already-persisted cookies reliably in the tested runtime. `cookie_snapshot.py` uses a private, in-process DevTools frontend to obtain authoritative snapshots; no remote debugging listener is opened. Global-cookie state and the cookie viewer's load path both depend on this adapter, so a regression test now asserts that a known persisted cookie is enumerated and that the viewer lists it. `VERIFIED_AGAINST_QT` records the confirmed engine version; re-run those tests when Qt is upgraded. Snapshots reject concurrent-change races, coalesce writes that land mid-inspection, re-run rather than drop a refresh requested while one is in flight, and omit unsupported partitioned identities from viewing/sharing. One enumeration still costs seconds because the adapter is inherently a full protocol round trip; that is why the cookie tests observe the store's own signals where they are not specifically testing the adapter.
 - Existing profiles deliberately do not accept previously unobserved global cookies automatically. Their pre-existing cookies stay local. Use **Cookies → Use Global Cookies for This Site** for an explicit baseline reset. New empty stores can inherit automatically; restarted stores reconcile confirmed inherited identities and explicit site opt-ins.
 - Selected deletion expires the exact cookie identity rather than using Qt's broad name/URL deletion filter. Explicit deletion protects against reinheritance. A reset after Clear All enables only the chosen site, not all sites.
-- Ad blocking starts with a small bootstrap list. Use **File → Ad Blocking → Download / Update EasyList and EasyPrivacy** for full lists. Network rules and supported CSS hiding are implemented; scriptlets and resource redirects are not enabled. Updates preserve the last working rules on failure.
+- Ad blocking starts with a small bootstrap list. Use **File → Ad Blocking → Download / Update EasyList and EasyPrivacy** for full lists. Network rules and supported CSS hiding are implemented; scriptlets and resource redirects are not enabled. Updates preserve the last working rules on failure. Cached full lists are compiled on a worker thread at startup rather than blocking the first window; the browser opens with bootstrap rules and upgrades when compilation finishes.
+- `global_cookie_sharing_apply_on_startup` now gates all-profiles mode as well as on-switch mode. Previously the checkbox had no effect once sharing was set to all profiles, which could overwrite local logins on every launch.
 - Profiles share engine instances across windows. Incognito data lives until the owning application registry closes, not merely until a profile switch. Profile archival is recoverable under `~/.custom_browser/deleted_profiles/`; active profiles cannot be renamed/archived.
 - Download history persists only non-incognito metadata; unfinished entries become interrupted on restart. Downloads are never automatically reopened or restarted.
 
@@ -50,6 +58,8 @@ Next step: complete this checklist and resolve any browser blockers, then start 
 ## 1. Browser essentials — prerequisite gate
 
 ### B1. Recently closed tabs — implemented — verification pending
+
+Note: a window always keeps one tab, so the final tab is neither closable nor restorable. Restoring into a collapsed group expands it deliberately so the restored tab stays visible.
 
 - Maintain bounded, memory-only closed-tab history per profile.
 - Restore URL, title, insertion position, and group through the menu and Ctrl+Shift+T.

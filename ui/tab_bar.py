@@ -48,11 +48,6 @@ class TabBar(QWidget):
         layout.addWidget(self.tab_bar)
         layout.addWidget(self.new_tab_btn)
 
-    def add_tab(self, title: str = "New Tab") -> int:
-        index = self.tab_bar.addTab(title)
-        self.groups[index] = self.groups.get(index)
-        return index
-
     def insert_tab(self, index: int, title: str = "New Tab") -> int:
         index = max(0, min(index, self.tab_bar.count()))
         groups = [self.groups.get(i) for i in range(self.tab_bar.count())]
@@ -136,10 +131,6 @@ class TabBar(QWidget):
     def get_current_index(self) -> int:
         """Get the current tab index."""
         return self.tab_bar.currentIndex()
-
-    def get_tab_count(self) -> int:
-        """Get the number of tabs."""
-        return self.tab_bar.count()
 
     def _on_internal_tab_moved(self, from_idx: int, to_idx: int) -> None:
         # Update groups mapping to match visual order

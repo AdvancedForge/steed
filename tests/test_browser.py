@@ -22,7 +22,7 @@ from ad_blocker import FilterEngine
 from browser_window import BrowserWindow
 from config import Config
 from cookie_manager import CookieInfo
-from cookie_sharing import cookie_site
+from cookie_sharing import cookie_site, delete_exact
 from main import configure_chromium_flags
 from tab_manager import TabManager, TabState
 from ui.cookie_dialog import CookieDialog
@@ -182,8 +182,16 @@ class BrowserTests(unittest.TestCase):
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.home_patch.stop()
 
-    def wait_for(self, predicate, timeout=8):
-        deadline = time.monotonic() + timeout
+    # Chromium warm-up plus the DevTools cookie snapshot costs several seconds
+    # on a cold engine, so the default budget is generous on purpose.
+    SNAPSHOT_TIMEOUT = 30
+
+    # Budget for an assertion that must observe a complete engine round trip
+    # while other windows from earlier tests are still shutting down.
+    SNAPSHOT_ROUND_TRIP = 120
+
+    def wait_for(self, predicate, timeout=None):
+        deadline = time.monotonic() + (timeout or self.SNAPSHOT_TIMEOUT)
         while time.monotonic() < deadline:
             self.app.processEvents()
             if predicate():
@@ -252,6 +260,121 @@ class BrowserTests(unittest.TestCase):
         self.assertFalse(sip.isdeleted(profile))
         self.window.close()
         self.assertTrue(sip.isdeleted(profile))
+
+    def test_startup_sharing_flag_gates_all_profiles_mode(self):
+        """The startup checkbox must also gate all-profiles sharing.
+
+        Otherwise the preference looks functional while inheritance is applied
+        anyway, which can overwrite local logins on every launch.
+        """
+        manager = self.window.profile_manager
+        registry = manager.registry
+        self.window.config.update(
+            {
+                "global_cookie_sharing_mode": "all_profiles",
+                "global_cookie_sharing_apply_on_startup": False,
+            }
+        )
+        manager.refresh_settings()
+        self.assertFalse(registry.sharing_applies_to_all())
+        self.assertEqual(registry.sharing.enabled, set())
+        self.window.config.set("global_cookie_sharing_apply_on_startup", True)
+        manager.refresh_settings()
+        self.assertTrue(registry.sharing_applies_to_all())
+        self.assertIn("default", registry.sharing.enabled)
+
+    def test_adblock_settings_change_is_visible_to_request_path(self):
+        service = self.window.adblock
+        self.assertTrue(service.applies("https://fixture.example/page"))
+        self.window.config.set("adblock_enabled", False)
+        self.assertFalse(
+            service.applies("https://fixture.example/page"),
+            "config writes must invalidate the cached request-path state",
+        )
+        self.window.config.set("adblock_enabled", True)
+        self.window.config.set("adblock_exceptions", ["fixture.example"])
+        self.assertTrue(service.host_excluded("fixture.example"))
+        self.assertTrue(service.host_excluded("www.fixture.example"))
+        self.assertFalse(service.host_excluded("notfixture.example"))
+        self.assertFalse(service.applies("https://fixture.example/page"))
+
+    def test_last_tab_is_not_closable(self):
+        window = self.window
+        self.assertEqual(len(window.tabs), 1)
+        window._close_tab(0)
+        self.assertEqual(len(window.tabs), 1)
+        self.assertFalse(window.restore_tab_action.isEnabled())
+
+    def test_restoring_into_collapsed_group_expands_it_deliberately(self):
+        window = self.window
+        window._new_tab(self.local_page)
+        window._new_tab(self.local_page)
+        window._set_tab_group_existing(1, "Work")
+        window._set_tab_group_existing(2, "Work")
+        group_id = window.tabs[1].group_id
+        window._close_tab(2)
+        window.toggle_group(group_id)
+        self.assertTrue(window.tab_manager.groups[group_id].collapsed)
+        window._restore_closed_tab()
+        self.assertFalse(
+            window.tab_manager.groups[group_id].collapsed,
+            "a restored tab must not stay hidden inside a collapsed group",
+        )
+        restored = next(t for t in window.tabs if t.group_id == group_id)
+        self.assertTrue(
+            window.tab_bar.tab_bar.isTabVisible(window.tabs.index(restored))
+        )
+
+    def test_shutdown_confirms_active_downloads_only_for_last_window(self):
+        """Closing must ask exactly when this window's close ends the downloads."""
+        second = BrowserWindow()
+        self.assertIs(
+            second.download_manager,
+            self.window.download_manager,
+            "windows on one registry share download state",
+        )
+        with (
+            patch.object(self.window.download_manager, "active", return_value=["key"]),
+            patch.object(
+                QMessageBox, "question", return_value=QMessageBox.StandardButton.No
+            ) as question,
+        ):
+            self.window.close()
+        self.assertFalse(
+            question.called,
+            "another window keeps the shared downloads running, so nothing is cancelled",
+        )
+        # The last window closes every remaining owner, so it must ask; declining
+        # leaves the window open and its downloads intact.
+        with (
+            patch.object(self.window.download_manager, "active", return_value=["key"]),
+            patch.object(
+                QMessageBox, "question", return_value=QMessageBox.StandardButton.No
+            ) as question,
+        ):
+            second.close()
+        self.assertTrue(
+            question.called, "the last window must ask before cancelling downloads"
+        )
+        self.assertFalse(second._closing, "declining must abort the close")
+
+    def test_overlapping_media_picker_declines_second_request(self):
+        """A second request while the picker is open must be declined, not lost."""
+        first = Mock()
+        first.screensModel.return_value.rowCount.return_value = 0
+        first.windowsModel.return_value.rowCount.return_value = 0
+        second = Mock()
+
+        def hold_dialog(dialog):
+            self.window._on_desktop_media_requested(second)
+            dialog.reject()
+            return QDialog.DialogCode.Rejected
+
+        with patch.object(QDialog, "exec", hold_dialog):
+            self.window._on_desktop_media_requested(first)
+        second.cancel.assert_called_once()
+        first.cancel.assert_called_once()
+        self.assertIsNone(self.window._pending_desktop_request)
 
     def test_user_agent_applies_at_creation_and_clear_restores_default(self):
         manager = self.window.profile_manager
@@ -400,15 +523,44 @@ class BrowserTests(unittest.TestCase):
         nested = QNetworkCookie(root)
         nested.setPath("/nested")
         nested.setValue(b"nested")
-        store.setCookie(root, QUrl("http://paths-fixture.example"))
-        store.setCookie(nested, QUrl("http://paths-fixture.example/nested"))
-        self.wait_for(lambda: len(manager.cookies) == 2)
-        target = next(c for c in manager.cookies if c.path == "/nested")
-        self.window.profile_manager.protect_cookie_deletion([target.cookie])
-        manager.delete_cookie(target)
-        self.wait_for(lambda: len(manager.cookies) == 1)
-        self.assertEqual(manager.cookies[0].path, "/")
-        self.assertEqual(manager.cookies[0].value, "root")
+        # Mirror the store's own signals instead of CookieManager: the manager
+        # re-reads through the private DevTools adapter, whose enumeration costs
+        # seconds, and this test covers exact-path deletion rather than that
+        # adapter. Qt's signals are authoritative for cookies written here.
+        seen = {}
+
+        def record(cookie):
+            seen[(bytes(cookie.name()), cookie.domain(), cookie.path())] = bytes(
+                cookie.value()
+            )
+
+        def forget(cookie):
+            seen.pop((bytes(cookie.name()), cookie.domain(), cookie.path()), None)
+
+        store.cookieAdded.connect(record)
+        store.cookieRemoved.connect(forget)
+
+        def nested_paths():
+            return {path for (name, _, path) in seen if name == b"same_name"}
+
+        try:
+            store.setCookie(root, QUrl("http://paths-fixture.example"))
+            store.setCookie(nested, QUrl("http://paths-fixture.example/nested"))
+            self.wait_for(lambda: nested_paths() == {"/", "/nested"})
+            self.window.profile_manager.protect_cookie_deletion([nested])
+            delete_exact(store, nested)
+            self.wait_for(lambda: nested_paths() == {"/"})
+            self.assertEqual(
+                seen[(b"same_name", ".paths-fixture.example", "/")],
+                b"root",
+                "deleting /nested must not remove the same name on /",
+            )
+        finally:
+            # Disconnect while the store is still alive; tearDown deletes the
+            # profile afterwards, so a deferred disconnect would touch freed
+            # engine objects.
+            store.cookieAdded.disconnect(record)
+            store.cookieRemoved.disconnect(forget)
 
     def test_real_download_completes_and_empty_save_cancels(self):
         destination = Path(self.directory.name) / "fixture.bin"
@@ -490,8 +642,8 @@ class BrowserTests(unittest.TestCase):
 
     def test_group_order_follows_tab_order(self):
         bar = TabBar()
-        for name in ("A", "B", "C"):
-            bar.add_tab(name)
+        for index, name in enumerate(("A", "B", "C")):
+            bar.insert_tab(index, name)
         bar.set_tab_group(0, "First")
         bar.set_tab_group(2, "Last")
         bar.tab_bar.moveTab(0, 2)
@@ -557,6 +709,42 @@ class BrowserTests(unittest.TestCase):
         self.window.close()
         self.assertTrue(all(sip.isdeleted(page) for page in pages))
         self.assertTrue(all(sip.isdeleted(profile) for profile in profiles))
+
+    def test_cookie_snapshot_enumerates_persisted_cookies(self):
+        """The DevTools snapshot adapter is load-bearing for B2 and B6.
+
+        It is a private-API path, so a Qt upgrade that breaks it must fail
+        loudly here instead of silently emptying the cookie viewer.
+        """
+        manager = self.window.cookie_manager
+        self.assertIsNotNone(manager.snapshot, "viewer must use the snapshot path")
+        store = manager.cookie_store
+        persisted = QNetworkCookie(b"snapshot_probe", b"stored")
+        persisted.setDomain(".snapshot-fixture.example")
+        persisted.setPath("/")
+        store.setCookie(persisted, QUrl("http://snapshot-fixture.example"))
+        self.wait_for(lambda: any(c.name == "snapshot_probe" for c in manager.cookies))
+        reported = next(c for c in manager.cookies if c.name == "snapshot_probe")
+        self.assertEqual(reported.domain, ".snapshot-fixture.example")
+        self.assertEqual(reported.value, "stored")
+        self.assertEqual(reported.path, "/")
+
+    def test_cookie_viewer_opens_with_stored_cookies(self):
+        """Opening the viewer must list existing cookies, not only live ones."""
+        store = self.window.cookie_manager.cookie_store
+        stored = QNetworkCookie(b"viewer_probe", b"persisted")
+        stored.setDomain(".viewer-fixture.example")
+        stored.setPath("/")
+        store.setCookie(stored, QUrl("http://viewer-fixture.example"))
+        manager = self.window.cookie_manager
+        self.wait_for(lambda: any(c.name == "viewer_probe" for c in manager.cookies))
+        dialog = CookieDialog(manager, self.window)
+        self.wait_for(lambda: dialog.table.rowCount() > 0)
+        names = {
+            dialog.table.item(row, 1).text() for row in range(dialog.table.rowCount())
+        }
+        self.assertIn("viewer_probe", names)
+        dialog.accept()
 
     def test_closing_twice_preserves_saved_session(self):
         tabs_file = self.window.tab_manager.tabs_file
