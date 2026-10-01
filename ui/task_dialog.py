@@ -146,6 +146,12 @@ class TaskDialog(QDialog):
                     else "Storage: a separate private profile for each session.\n"
                 )
                 + f"Actions: {', '.join(scope['actions']) or 'None'}\n"
+                + (
+                    "Content access: readable page text and control labels are shared with "
+                    "the task client. Form values and editable text are omitted.\n"
+                    if "read" in scope["actions"]
+                    else "Content access: URL/title metadata only; page text is not shared.\n"
+                )
                 + f"Network permission: {network}\n"
                 + "Network methods: GET and HEAD. These methods can still have effects on a website.\n"
                 + f"Duration: {scope['duration_seconds']} seconds after approval\n"

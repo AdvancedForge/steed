@@ -15,6 +15,8 @@ CLIENT_COMMANDS = frozenset(
         "session.open",
         "session.navigate",
         "session.inspect",
+        "page.inspect",
+        "page.target",
         "session.attach",
         "session.stop",
         "session.close",

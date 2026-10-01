@@ -32,6 +32,7 @@ class TaskServiceTests(unittest.TestCase):
             def do_GET(self):
                 cls.requests.append((self.path, self.headers.get("Cookie", "")))
                 payload = b"<html><title>Task fixture</title><body>Independent page</body></html>"
+                payload = getattr(cls, "page_fixtures", {}).get(self.path, payload)
                 denied = f"http://localhost:{cls.server.server_port}"
                 if self.path in ("/redirect-out", "/redirect-resource"):
                     self.send_response(302)
