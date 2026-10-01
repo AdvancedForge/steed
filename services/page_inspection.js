@@ -3,8 +3,33 @@
     "use strict";
     const request = /* REQUEST */;
     const fail = code => JSON.stringify({error: code});
+    const submission = node => {
+        const doc = node.ownerDocument, win = doc.defaultView, form = node.form;
+        if (!form || win !== window || node.type !== "submit" ||
+            !["BUTTON", "INPUT"].includes(node.tagName)) return {error: "form_unsupported"};
+        if (node.matches(":disabled") || node.getAttribute("aria-disabled") === "true" ||
+            !node.getClientRects().length || win.getComputedStyle(node).visibility !== "visible")
+            return {error: "target_not_editable"};
+        // Named form controls can shadow action/method/elements/checkValidity.
+        const native = property => Object.getOwnPropertyDescriptor(win.HTMLFormElement.prototype, property).get.call(form);
+        const override = (attribute, property, fallback) => node.hasAttribute(attribute) ? node[property] : fallback;
+        const action = new URL(override("formaction", "formAction", native("action")) || doc.URL, doc.baseURI);
+        const method = override("formmethod", "formMethod", native("method")).toUpperCase();
+        const enctype = override("formenctype", "formEnctype", native("enctype"));
+        const target = override("formtarget", "formTarget", native("target") || doc.querySelector("base[target]")?.target || "");
+        if (!["http:", "https:"].includes(action.protocol) || action.username || action.password || action.href.length > 2048)
+            return {error: "form_destination_unsupported"};
+        if (!["GET", "POST"].includes(method) || enctype !== "application/x-www-form-urlencoded" ||
+            !["", "_self"].includes(target)) return {error: "form_unsupported"};
+        const elements = native("elements");
+        if (elements.length > 200) return {error: "form_control_limit"};
+        for (const control of elements) {
+            if (["password", "file"].includes(control.type)) return {error: "sensitive_form_unsupported"};
+        }
+        return {url: action.href, method};
+    };
     try {
-        if (["target", "act", "scroll"].includes(request.mode)) {
+        if (["target", "act", "scroll", "form", "submit"].includes(request.mode)) {
             const state = globalThis[request.state_key];
             if (!state || state.snapshot_id !== request.snapshot_id) return fail("stale_snapshot");
             for (const frame of state.frames) {
@@ -24,6 +49,20 @@
             }
             const target = state.targets.get(request.node_id);
             if (!target || !target.node.isConnected) return fail("stale_snapshot");
+            if (["form", "submit"].includes(request.mode)) {
+                const node = target.node, info = submission(node);
+                if (info.error) return fail(info.error);
+                if (request.mode === "form") return JSON.stringify(info);
+                if (info.url !== request.expected.url || info.method !== request.expected.method)
+                    return fail("stale_snapshot");
+                const form = node.form, win = node.ownerDocument.defaultView;
+                const noValidate = Object.getOwnPropertyDescriptor(win.HTMLFormElement.prototype, "noValidate").get.call(form);
+                if (!noValidate && !node.formNoValidate &&
+                    !win.HTMLFormElement.prototype.checkValidity.call(form))
+                    return JSON.stringify({status: "validation_failed"});
+                win.HTMLFormElement.prototype.requestSubmit.call(form, node);
+                return JSON.stringify({status: "submitted"});
+            }
             if (request.mode === "act") {
                 const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
                 const style = win.getComputedStyle(node);
@@ -170,7 +209,7 @@
                 const tag = node.tagName.toLowerCase(), type = clean(node.getAttribute("type"), 32).toLowerCase();
                 if ((tag === "iframe" || tag === "frame") && frameElements.length < 16) frameElements.push(node);
                 const role = clean(node.getAttribute("role"), 64).toLowerCase();
-                let kind = "", operations = [], href = null;
+                let kind = "", operations = [], href = null, formAction = null, formMethod = null;
                 const constraints = [];
                 if (tag === "a" && node.hasAttribute("href")) {
                     kind = "link";
@@ -192,7 +231,16 @@
                     kind = "custom"; constraints.push("custom_control_unsupported");
                 }
                 if (kind) {
-                    if (kind === "button") constraints.push("form_or_script_actions_unavailable");
+                    if (kind === "button") {
+                        const info = submission(node);
+                        if (!info.error) {
+                            operations = ["submit"];
+                            const destination = new URL(info.url);
+                            destination.search = ""; destination.hash = "";
+                            formAction = destination.href; formMethod = info.method;
+                        }
+                        else { operations = []; constraints.push(info.error); }
+                    }
                     if (kind === "input" && !["text", "search", "email", "url", "tel", "password", "file"].includes(node.type))
                         constraints.push("control_unsupported");
                     if (kind === "select" && node.multiple) constraints.push("multiple_selection_unsupported");
@@ -206,7 +254,7 @@
                         state.targets.set(nodeId, {node});
                         frame.targets.push({node_id: nodeId, kind, role: role || kind,
                             label: labelFor(node, doc, win), enabled, read_only: readOnly, href,
-                            operations, constraints});
+                            operations, constraints, form_action: formAction, form_method: formMethod});
                         remainingTargets--;
                     }
                 }

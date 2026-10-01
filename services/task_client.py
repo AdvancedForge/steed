@@ -19,6 +19,7 @@ CLIENT_COMMANDS = frozenset(
         "page.target",
         "page.navigate",
         "page.act",
+        "page.submit",
         "page.scroll",
         "page.wait",
         "session.attach",

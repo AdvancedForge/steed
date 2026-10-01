@@ -362,6 +362,7 @@ Browser/
 │   ├── task_client.py      # Task-bound client command facade
 │   ├── page_inspector.py   # Asynchronous snapshots, validation, and fixed actions
 │   ├── page_actions.py     # Bounded action inputs and value-free receipts
+│   ├── form_submission.py  # Per-page submission tickets and journal URL privacy
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
@@ -390,6 +391,7 @@ Browser/
 │   ├── test_task_approval.py # Automatic popups, queueing, and explicit decisions
 │   ├── test_page_inspection.py # Content consent, extraction, stale targets, and async cleanup
 │   ├── test_page_actions.py # Edits, native text events, scrolling, waits, and receipts
+│   ├── test_page_forms.py   # Form authority, validation, redirects, and outcomes
 │   ├── qt_test_support.py # Shared QApplication and deferred fixture cleanup
 │   ├── test_password_manager.py # Encrypted protocol and pairing regressions
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
@@ -492,6 +494,7 @@ running inside the application. External transport authentication remains A4 wor
 | `page.target` | `task_id`, `session_id`, `snapshot_id`, `target_id`; validates an observed target and returns its description |
 | `page.navigate` | `task_id`, `session_id`, `snapshot_id`, `target_id`; follows a validated link and reports the load outcome |
 | `page.act` | `task_id`, `session_id`, `snapshot_id`, `target_id`, `operation`, optional `text`/`index`; requires `read` + `edit`, returns a control-change receipt |
+| `page.submit` | `task_id`, `session_id`, `snapshot_id`, `target_id`; requires `read` + `navigate` + `submit`, returns an observed native-form outcome |
 | `page.scroll` | `task_id`, `session_id`, `snapshot_id`, optional `frame_id`, `dx`, `dy`; requires `read` + `scroll`, returns observed offsets |
 | `page.wait` | `task_id`, `session_id`, optional `condition`, `text`, `timeout_ms`; requires `read`, returns an observed match, timeout, or load failure |
 | `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
@@ -532,16 +535,18 @@ the last browser window closing disposes pages before their profiles. Downloads,
 file selection, site permissions, document scripts, new workers, WebSockets, external URL
 schemes, and the built-in PDF viewer are unavailable in current task pages.
 Ordinary browser tabs retain their existing settings. Task browsing currently
-supports document retrieval with GET/HEAD; these methods can still cause website
-effects, so the grant is not a guarantee that a site is read-only.
+supports document retrieval with GET/HEAD and explicitly authorized native form
+submission. Even GET/HEAD can cause website effects; a grant does not establish
+that a site is read-only. POST is allowed only through a bound, one-use form ticket.
 
 Scopes match exact HTTP/HTTPS origins, including scheme and port; subdomains and
 redirect destinations need their own entries. Credentials, wildcards, and origin
 paths are rejected. `about:blank` is allowed without adding an origin. File
 destinations cannot currently be granted. Only
 `navigate`, metadata `inspect`, content `read`, view `attach`, control `edit`,
-and `scroll` are supported actions. The default action list remains `navigate`,
-`inspect`, and `attach`; content, edits, and scrolling need explicit approval.
+`scroll`, and form `submit` are supported actions. The default action list remains
+`navigate`, `inspect`, and `attach`; content, edits, scrolling, and submission need
+explicit approval.
 An edit grant does not authorize submission, POST, active scripts, or file actions.
 
 ### Read-only page inspection
@@ -549,7 +554,7 @@ An edit grant does not authorize submission, POST, active scripts, or file actio
 Add `"read"` to a proposed grant's `actions` before requesting approval. The
 approval screen discloses that readable text and control labels will be shared
 with the task client, including on signed-in pages. Existing metadata-only grants
-cannot call `page.inspect`, `page.target`, `page.navigate`, `page.act`, `page.scroll`,
+cannot call `page.inspect`, `page.target`, `page.navigate`, `page.act`, `page.submit`, `page.scroll`,
 or `page.wait`. No cloud provider receives this data
 through the current implementation; external-agent transport and provider
 disclosure permissions remain future milestones.
@@ -560,8 +565,9 @@ navigation revision, source (`rendered_dom`), frame snapshots, and limitations.
 Each readable frame contains bounded text and target descriptions: opaque target
 ID, frame ID, kind/role, label, enabled/read-only state, link URL when supported,
 candidate operations, and constraints. Candidate operations describe controls;
-they do not authorize or execute actions. Buttons/submission, custom controls,
-specialized input types, and multiple selection report explicit constraints.
+they do not authorize or execute actions. Supported native submit buttons report
+`submit`, a query/fragment-free `form_action`, and `form_method`; custom controls,
+unsupported forms, specialized input types, and multiple selection report constraints.
 Option labels and values remain omitted; current selection uses an index.
 
 Pass a snapshot ID and its target ID to `page.target` to validate that reference.
@@ -661,8 +667,8 @@ browser code, verified on the pinned engine. See Chromium's
 and the [HTML activation specification](https://html.spec.whatwg.org/multipage/interaction.html#activation-behavior).
 No arbitrary commands, scripts, selectors, or protocol operations are exposed.
 These semantics do not establish compatibility with JS handlers, custom widgets,
-or SPA workflows. Password/file fields, specialized inputs, buttons/form
-submission, and contenteditable controls remain unavailable. Scriptless edits
+or SPA workflows. Password/file fields, specialized inputs, generic buttons,
+and contenteditable controls remain unavailable to `page.act`. Scriptless edits
 change the task page's DOM; they do not submit the form or update another tab's
 controls, even when those tabs share the profile.
 
@@ -685,6 +691,64 @@ receipts. A request gets a journaled action ID before dispatch, and the outcome
 must be saved before returning it. Entered text and option values never enter
 these events. Already dispatched work may have happened despite an interrupted
 receipt; inspect state before retrying. No rollback is promised.
+
+### Explicit form submission
+
+Request `"read"`, `"navigate"`, and `"submit"` before using `page.submit`.
+The ordinary Approve/Deny popup explains that submission can change account data
+and send current fields, including hidden site tokens. `edit` alone never grants
+submission; `submit` alone never grants reading or editing. Existing grants retain
+their original actions. The form destination must belong to the approved origins.
+
+Inspect the loaded page, choose a target whose operations include `submit`, then:
+
+```python
+client.submit(
+    "page.submit",
+    session_id=session_id,
+    snapshot_id=snapshot.snapshot_id,
+    target_id=submit_button.target_id,
+)
+```
+
+Steed resolves the browser-issued target, rechecks its document and live form,
+then uses native [`requestSubmit`](https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#dom-form-requestsubmit).
+Required-field validation and the chosen button's action, method, target,
+encoding, and validation overrides apply. Native serialization includes successful
+controls, hidden tokens, and the chosen submit button; field values are not returned
+by inspection. Controls named `action`, `method`, or `checkValidity` cannot shadow
+the browser's native form checks. Every completed attempt invalidates references.
+
+Current support is main-document, same-window HTTP/HTTPS GET or POST with
+`application/x-www-form-urlencoded` encoding and at most 200 native form controls.
+Forms containing password/file controls, child-frame forms, multipart/plain-text
+forms, dialog methods, image submitters, and new-window/named targets are unavailable.
+Document scripts remain disabled, so script-handled forms and SPAs need later work.
+This does not add password-manager integration to tasks.
+
+One per-page ticket binds the destination and method to a dispatch. The interceptor
+checks main-frame resource type, grant lifetime, origin, and request budget; it never
+exports the request body. General POST requests and a second POST through a
+307/308 redirect are denied. GET redirects after submission retain ordinary origin
+and budget checks. Qt retains its form navigation classification on those redirects;
+the separate navigation gate rejects unsolicited second form submissions.
+User tabs on the same profile retain their ordinary submission behavior.
+
+`FormSubmissionResult` includes action/session/target IDs, revision, destination
+origin, `request_authorized`, and status: `validation_failed`, `loaded`, `load_failed`,
+or `timed_out`. Authorization means the network gate allowed a request, not that the
+server received it. `site_effects` remains `unknown`: a loaded document does not
+confirm an account change, and a failed/interrupted receipt does not prove nothing
+happened. Stop, expiry, revocation, renderer failure, and journal failure interrupt
+pending work. There is no automatic retry or rollback.
+
+Requests commit their action ID before dispatch; receipts commit before disclosure.
+Journal URL evidence now stores origins only and omits page titles, since result
+paths, queries, fragments, and titles can reflect submitted values. Submission
+receipts also expose origins only. Authorized live inspection and normal navigation/
+wait receipts still return actual URLs and page content; sites may echo submitted
+values there. Form values, hidden tokens, and request bodies are never copied into
+action events. Existing journal records are not rewritten.
 
 ### Bounded state waits
 
@@ -824,6 +888,31 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+A3 form-submission stage (October 1, 2026): all 244 regressions passed on Qt 6.11.2
+in 115.758 seconds (`/tmp/steed-form-full.log`). Eighteen new form/ticket checks
+and new shared-profile/popup checks cover native GET/POST serialization, hidden
+fields, submitter overrides, required-field validation, named-control shadowing,
+exact one-use authority, redirect checks and POST replay denial, stale/last-moment
+DOM changes, late expiry, stop/revocation, missing-load deadlines, and request/
+receipt journal failures. Signed-in task POST and concurrent user POST retained
+their cookies and ordinary user behavior. Form/result secrets stayed out of the
+journal; native validation failures sent no request. The prior direct-POST
+denial behavior also passed after separating general requests from form tickets.
+These local fixtures do not establish real-account changes, script-driven forms,
+SPA behavior, or interactive desktop compatibility. Historical native exits below
+remain unresolved.
+
+Startup/render/shutdown passed (`/tmp/steed-form-startup-smoke.log`). The form
+approval popup was rendered and visually checked at 480×420 with readable scope,
+site list, notices, and Approve/Deny buttons (`/tmp/steed-form-approval.png`).
+Ruff, formatting, whitespace, and thirteen local documentation links passed.
+The first local Google HTTPS smoke process exited natively (139) during the first
+persistent `QWebEngineProfile` construction at `profile_manager.py:142`, before
+task/form operations. The fault trace is `/tmp/steed-form-google-smoke.log`.
+The identical diagnostic retry passed HTTPS redirects, POSTs, and compatibility
+opt-out (`/tmp/steed-form-google-retry.log`). This adds another occurrence to the
+intermittent headless startup issue; no root cause or fix is claimed.
 
 A3 control/wait stage (October 1, 2026): the complete 224-test suite passed on
 Qt 6.11.2. Nineteen new action/wait regressions plus explicit-permission and
@@ -1012,9 +1101,9 @@ operations. The following describes the full target scope.
 #### A3. Text-first inspection and deterministic actions — in progress
 
 Read-only snapshots, explicit content grants, bounded extraction, and opaque
-target validation, observed link navigation, scriptless control edits, scrolling,
+target validation, observed link navigation, scriptless control edits, form submission, scrolling,
 and bounded waits are implemented. Text editing events/undo are verified on the
-pinned engine. Native pointer/selection semantics, submission and active-page
+pinned engine. Native pointer/selection semantics and active-page
 permissions, file grants, and full SPA/form workflows remain pending.
 The following describes the complete milestone target.
 

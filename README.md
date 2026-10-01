@@ -43,8 +43,8 @@ permissions. Task browsing retrieves documents in private profiles or explicitly
 approved existing profiles alongside your tabs, with approval popups and limits on
 sites and budgets.
 Page inspection returns bounded text and validated references. Task clients can
-follow links, edit supported controls, scroll, and wait for page state with
-explicit permissions. Form submission, active scripts, and file actions remain
+follow links, edit supported controls, submit supported forms, scroll, and wait
+for page state with explicit permissions. Active scripts and file actions remain
 planned.
 External-agent access, bookmarks, and generic extension support are planned.
 

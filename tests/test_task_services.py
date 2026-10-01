@@ -83,8 +83,24 @@ class TaskServiceTests(unittest.TestCase):
 
             def do_POST(self):
                 cls.requests.append(("POST " + self.path, ""))
-                self.send_response(204)
+                body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                if hasattr(cls, "posted"):
+                    cls.posted.append((self.path, body, self.headers.get("Cookie", "")))
+                if self.path == "/submitted-slow":
+                    time.sleep(0.3)
+                status, location, payload = getattr(cls, "post_responses", {}).get(
+                    self.path, (204, None, b"")
+                )
+                self.send_response(status)
+                if location is not None:
+                    self.send_header("Location", location)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
+                try:
+                    self.wfile.write(payload)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
 
             def log_message(self, *args):
                 pass

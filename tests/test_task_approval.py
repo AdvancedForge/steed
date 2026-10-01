@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import test_task_profiles as profiles
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLabel
 
 from browser_window import BrowserWindow
 
@@ -46,6 +47,25 @@ class TaskApprovalTests(unittest.TestCase):
         dialog.approve_button.click()
         self.assertEqual(self.service.store.grant(task_id, grant_id).status, "approved")
         self.assertEqual(window.profile_manager.current_profile_name, "work")
+
+    def test_form_permission_discloses_site_changes_and_hidden_fields(self):
+        self.window()
+        task = self.command("task.create", objective="Submit a synthetic form")
+        grant = self.request(
+            task.task_id,
+            profile="existing:work",
+            actions=["navigate", "read", "submit"],
+        )
+        dialog = self.popup()
+        text = " ".join(label.text() for label in dialog.findChildren(QLabel))
+        self.assertIn("can change account data", text)
+        self.assertIn("hidden site tokens", text)
+        self.assertIn("Password and file forms are unavailable", text)
+        self.assertEqual(
+            self.service.store.grant(task.task_id, grant.grant_id).status, "requested"
+        )
+        dialog.deny_button.click()
+        self.assertNotIn(task.task_id, self.service._grants)
 
     def test_requests_wait_for_a_window_and_are_presented_one_at_a_time(self):
         first_id, first_grant = self.named_request()

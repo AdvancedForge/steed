@@ -1,5 +1,6 @@
 """Replaceable session backend with private or collaboratively shared profiles."""
 
+import json
 import threading
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -19,8 +20,10 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from services.command_broker import require_owner_thread
+from services.form_submission import SubmissionTicket, journal_origin
 from services.navigation_service import NavigationService
 from services.page_actions import (
+    FormSubmissionResult,
     PageActionResult,
     PageWaitResult,
     action_arguments,
@@ -64,6 +67,7 @@ class BrowserBackend(Protocol):
     def inspect_target(self, session_id: str, snapshot_id: str, target_id: str): ...
     def navigate_observed(self, session_id: str, url: str): ...
     def act(self, session_id, action_id, snapshot_id, target_id, arguments): ...
+    def submit_form(self, session_id, action_id, snapshot_id, target_id): ...
     def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments): ...
     def wait(self, session_id, condition, text, timeout_ms): ...
     def stop(self, session_id: str) -> SessionSnapshot: ...
@@ -101,11 +105,17 @@ class TaskPage(QWebEnginePage):
         self.report_blocked = blocked
         self.is_task_page = True
         self.network_ready = True
+        self.submission = SubmissionTicket(grant)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
         if not self.network_ready and url.toString() != "about:blank":
             return False
         reason = self.grant.navigation(url.toString())
+        if (
+            not reason
+            and navigation_type == self.NavigationType.NavigationTypeFormSubmitted
+        ):
+            reason = self.submission.navigation(url.toString(), is_main_frame)
         if reason:
             self.report_blocked(reason)
         return not reason
@@ -126,13 +136,14 @@ class TaskPage(QWebEnginePage):
 class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
     """Scope redirects/resources without Qt/store lookups in network callbacks."""
 
-    def __init__(self, grant, blocked, parent, fallback=None):
+    def __init__(self, grant, blocked, parent, fallback=None, *, submission=None):
         super().__init__(parent)
         self.grant = grant
         self.report_blocked = blocked
         self._reported = set()
         self._lock = threading.Lock()
         self.fallback = fallback
+        self.submission = submission
 
     def interceptRequest(self, info):
         resource = QWebEngineUrlRequestInfo.ResourceType
@@ -142,13 +153,16 @@ class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
             resource.ResourceTypeServiceWorker,
             getattr(resource, "ResourceTypeWebSocket", None),
         )
-        reason = (
-            "active_content_unavailable"
-            if info.resourceType() in forbidden
-            else self.grant.request(
-                info.requestUrl().toString(), bytes(info.requestMethod())
+        url, method = info.requestUrl().toString(), bytes(info.requestMethod())
+        form = info.navigationType() == info.NavigationType.NavigationTypeFormSubmitted
+        if info.resourceType() in forbidden:
+            reason = "active_content_unavailable"
+        elif self.submission is not None and form:
+            reason = self.submission.request(
+                url, method, info.resourceType() == resource.ResourceTypeMainFrame
             )
-        )
+        else:
+            reason = self.grant.request(url, method)
         if reason:
             info.block(True)
             # Bound journal traffic from a page repeatedly making denied requests.
@@ -220,14 +234,18 @@ class QtBrowserBackend(QObject):
         def report(reason):
             self.blocked.emit(task_id, reason)
 
+        page = TaskPage(profile, self, grant, report)
         if owns_profile:
-            interceptor = TaskRequestInterceptor(grant, report, profile)
+            interceptor = TaskRequestInterceptor(
+                grant, report, profile, submission=page.submission
+            )
             profile.setUrlRequestInterceptor(interceptor)
             profile.task_interceptor = interceptor
             profile.downloadRequested.connect(lambda request: request.cancel())
-        page = TaskPage(profile, self, grant, report)
         if not owns_profile:
-            interceptor = TaskRequestInterceptor(grant, report, page)
+            interceptor = TaskRequestInterceptor(
+                grant, report, page, submission=page.submission
+            )
             page.setUrlRequestInterceptor(interceptor)
             page.task_interceptor = interceptor
             page.network_ready = False
@@ -534,6 +552,107 @@ class QtBrowserBackend(QObject):
         return self._action_result(
             session_id, action_id, "scroll", source, frame_id=frame_id
         )
+
+    def submit_form(self, session_id, action_id, snapshot_id, target_id):
+        """Authorize one native submission and observe its document load."""
+        session, validate = self._edit_context(session_id, "submit")
+        session.grant.check("navigate")
+        if session.network is not None:
+            session.network.validate()
+        request = self.inspector.submission_request(session_id, snapshot_id, target_id)
+        result = Future()
+        session.pending_action = result
+        ticket = session.page.submission
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        dispatched = False
+        previous_revision = session.revision
+
+        def outcome(status):
+            if result.done():
+                return
+            try:
+                session.grant.check("submit")
+                session.grant.check("read")
+                if session.network is not None:
+                    session.network.validate()
+            except Exception as error:
+                result.set_exception(error)
+                return
+            result.set_result(
+                FormSubmissionResult(
+                    session_id,
+                    action_id,
+                    target_id,
+                    status,
+                    session.revision,
+                    journal_origin(session.page.url().toString()),
+                    ticket.authorized(),
+                )
+            )
+
+        def finished(ok):
+            if dispatched and session.revision > previous_revision:
+                outcome("loaded" if ok and ticket.authorized() else "load_failed")
+
+        def expire():
+            if result.done():
+                return
+            outcome("timed_out")
+            self.stop(session_id)
+
+        def cleanup(_):
+            ticket.clear()
+            timer.stop()
+            timer.deleteLater()
+            session.page.loadFinished.disconnect(finished)
+            if session.pending_action is result:
+                session.pending_action = None
+            self.inspector.invalidate(session_id, "submission_completed")
+
+        def received(raw):
+            if result.done():
+                return
+            try:
+                session.grant.check("submit")
+                if not isinstance(raw, str) or len(raw) > 4096:
+                    raise PageInspectionError("submission_outcome_unknown")
+                data = json.loads(raw)
+                if "error" in data:
+                    raise PageInspectionError(data["error"])
+                if data.get("status") == "validation_failed":
+                    outcome("validation_failed")
+                elif data.get("status") != "submitted":
+                    raise PageInspectionError("submission_outcome_unknown")
+            except Exception as error:
+                result.set_exception(error)
+
+        def prepared(source):
+            nonlocal dispatched
+            if result.done():
+                return
+            try:
+                expected = source.result()
+                validate()
+                if session.network is not None:
+                    session.network.validate()
+                ticket.arm(expected["url"], expected["method"])
+                dispatched = True
+                timer.start(self.navigation_timeout_ms)
+                self.inspector.dispatch_submission(
+                    session.page, request, expected, received
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        session.page.loadFinished.connect(finished)
+        timer.timeout.connect(expire)
+        result.add_done_callback(cleanup)
+        source = self.inspector.prepare_submission(
+            session_id, session.page, request, validate
+        )
+        source.add_done_callback(prepared)
+        return result
 
     def _action_result(self, session_id, action_id, operation, source, **reference):
         session = self._session(session_id)

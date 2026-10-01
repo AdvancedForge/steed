@@ -11,6 +11,7 @@ from PyQt6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, pyqtSig
 
 from services.browser_backend import BrowserBackend, QtBrowserBackend, navigation_url
 from services.command_broker import CommandBroker, require_owner_thread
+from services.form_submission import journal_origin
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
 from services.task_client import TaskClient
@@ -75,6 +76,7 @@ class TaskService(QObject):
                 "page.target": self._inspect_target,
                 "page.navigate": self._navigate_target,
                 "page.act": self._act,
+                "page.submit": self._submit,
                 "page.scroll": self._scroll,
                 "page.wait": self._wait,
                 "session.stop": self._stop,
@@ -235,10 +237,19 @@ class TaskService(QObject):
             return
         try:
             self.store.record_event(
-                snapshot.task_id, "session.updated", asdict(snapshot)
+                snapshot.task_id, "session.updated", self._metadata_evidence(snapshot)
             )
         except Exception:
             self._fatal()
+
+    @staticmethod
+    def _metadata_evidence(snapshot):
+        data = asdict(snapshot)
+        if "url" in data:
+            data["url"] = journal_origin(data["url"])
+        if "title" in data:
+            data["title"] = ""
+        return data
 
     def _network_blocked(self, task_id, reason):
         if self._closed or self.failure or task_id not in self._grants:
@@ -258,7 +269,7 @@ class TaskService(QObject):
         self.store.record_event(
             task_id,
             "session.navigation_requested",
-            {"session_id": session_id, "url": url},
+            {"session_id": session_id, "url": journal_origin(url)},
         )
         return self.backend.navigate(session_id, url)
 
@@ -402,7 +413,10 @@ class TaskService(QObject):
                     grant,
                     navigated,
                     "page.navigation_finished",
-                    lambda outcome: {**asdict(outcome), "target_id": target_id},
+                    lambda outcome: {
+                        **self._metadata_evidence(outcome),
+                        "target_id": target_id,
+                    },
                 )
                 receipt.add_done_callback(completed)
             except Exception as error:
@@ -437,7 +451,9 @@ class TaskService(QObject):
         # Cleanup always remains available, even without an active grant.
         self._owned(task_id, session_id)
         snapshot = self.backend.stop(session_id)
-        self.store.record_event(task_id, "session.stopped", asdict(snapshot))
+        self.store.record_event(
+            task_id, "session.stopped", self._metadata_evidence(snapshot)
+        )
         return snapshot
 
     def _action_authority(self, task_id, session_id, action):
@@ -502,6 +518,30 @@ class TaskService(QObject):
             ),
         )
 
+    def _submit(self, task_id, session_id, snapshot_id, target_id):
+        grant = self._action_authority(task_id, session_id, "submit")
+        try:
+            grant.check("navigate")
+        except TaskPermissionError as error:
+            self._deny(task_id, error.code)
+        action_id = uuid4().hex
+        return self._start_action(
+            task_id,
+            session_id,
+            grant,
+            action_id,
+            {
+                "action_id": action_id,
+                "session_id": session_id,
+                "snapshot_id": snapshot_id,
+                "target_id": target_id,
+                "operation": "submit",
+            },
+            lambda: self.backend.submit_form(
+                session_id, action_id, snapshot_id, target_id
+            ),
+        )
+
     def _start_action(self, task_id, session_id, grant, action_id, evidence, dispatch):
         try:
             self.store.record_event(task_id, "page.action_requested", evidence)
@@ -551,7 +591,12 @@ class TaskService(QObject):
         )
         source = self.backend.wait(session_id, condition, text, timeout_ms)
         return self._read_result(
-            task_id, session_id, grant, source, "page.wait_finished", asdict
+            task_id,
+            session_id,
+            grant,
+            source,
+            "page.wait_finished",
+            self._metadata_evidence,
         )
 
     def _attach(self, task_id, session_id):

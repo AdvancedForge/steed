@@ -80,7 +80,14 @@ class TaskPolicyTests(unittest.TestCase):
         self.assertEqual(
             grant.request("https://example.org/form", b"POST"), "method_out_of_scope"
         )
-        for action in ("submit", "scripts", "upload", "download"):
+        with self.assertRaises(TaskPermissionError):
+            ordinary.check("submit")
+        explicit = LiveGrant(self.scope(actions=["navigate", "read", "submit"]))
+        explicit.check("submit")
+        self.assertEqual(
+            explicit.request("https://example.org/form", b"POST"), "method_out_of_scope"
+        )
+        for action in ("scripts", "upload", "download"):
             with self.subTest(action=action), self.assertRaises(ValueError):
                 self.scope(actions=[action])
 

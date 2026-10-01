@@ -48,6 +48,8 @@ class TaskProfileTests(unittest.TestCase):
         self.windows = []
         self.requests.clear()
         type(self).page_fixtures = {}
+        type(self).post_responses = {}
+        type(self).posted = []
 
     def tearDown(self):
         for page in self.pages:
@@ -187,6 +189,59 @@ class TaskProfileTests(unittest.TestCase):
                 QWebEngineSettings.WebAttribute.JavascriptEnabled
             )
         )
+
+    def test_shared_profile_submission_preserves_user_post_and_signed_in_cookie(self):
+        self.manager.switch_to_profile("work")
+        user = self.page()
+        self.load(user, "/cookie")
+        type(self).page_fixtures["/form"] = (
+            b'<form method="post" action="/task-form">'
+            b'<input name="message" value="TASK_SECRET"><button>Send</button></form>'
+        )
+        type(self).post_responses = {
+            "/task-form": (200, None, b"<p>Task result</p>"),
+            "/user-form": (200, None, b"<p>User result</p>"),
+        }
+        task = self.command("task.create", objective="Submit a synthetic form")
+        grant = self.request(
+            task.task_id,
+            profile="existing:work",
+            actions=["navigate", "read", "submit"],
+        )
+        self.service.approve_grant(task.task_id, grant.grant_id)
+        opened = self.command(
+            "session.open", task_id=task.task_id, profile="existing:work"
+        )
+        self.navigate(task.task_id, opened.session_id, "/form")
+        snapshot = self.command(
+            "page.inspect", task_id=task.task_id, session_id=opened.session_id
+        )
+        future = self.service.client(task.task_id).submit(
+            "page.submit",
+            session_id=opened.session_id,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=snapshot.frames[0].targets[-1].target_id,
+        )
+        self.wait_for(future.done)
+        self.assertEqual(future.result().status, "loaded")
+        self.assertIn(
+            ("/task-form", b"message=TASK_SECRET", "task_cookie=fixture"), self.posted
+        )
+        self.assertNotIn("TASK_SECRET", repr(self.service.store.events(task.task_id)))
+        request = QWebEngineHttpRequest(QUrl(self.origin + "/user-form"))
+        request.setMethod(QWebEngineHttpRequest.Method.Post)
+        request.setPostData(b"USER_SECRET")
+        finished = []
+        user.loadFinished.connect(finished.append)
+        user.load(request)
+        self.wait_for(lambda: bool(finished))
+        self.assertTrue(finished[-1])
+        self.assertIn(
+            ("/user-form", b"USER_SECRET", "task_cookie=fixture"), self.posted
+        )
+        self.service.revoke_grant(task.task_id, grant.grant_id)
+        self.assertFalse(sip.isdeleted(user))
+        self.load(user, "/after-revoke")
 
     def test_user_and_multiple_tasks_share_a_busy_profile_with_independent_grants(self):
         self.manager.switch_to_profile("work")
