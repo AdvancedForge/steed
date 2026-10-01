@@ -38,6 +38,7 @@ from ui.address_bar import AddressBar
 from ui.cookie_dialog import CookieDialog
 from ui.download_dialog import DownloadDialog
 from ui.group_dialog import GroupDialog
+from ui.password_dialog import PasswordDialog
 from ui.settings_dialog import SettingsDialog
 from ui.tab_bar import TabBar
 from webengine import (
@@ -145,6 +146,7 @@ class BrowserWindow(QMainWindow):
         self._restoring_tabs = False
         self.closed_tabs = ClosedTabHistory()
         self._child_windows: list[BrowserWindow] = []
+        self._password_dialog = None
         self.setup_window()
         self.setup_menus()
         self.setup_ui()
@@ -229,6 +231,15 @@ class BrowserWindow(QMainWindow):
         clear_history_action = QAction("Clear Browsing History...", self)
         clear_history_action.triggered.connect(self._clear_browsing_history)
         file_menu.addAction(clear_history_action)
+        passwords_action = QAction("Passwords...", self)
+        passwords_action.triggered.connect(lambda: self._open_passwords())
+        file_menu.addAction(passwords_action)
+        fill_login_action = QAction("Fill Login", self)
+        fill_login_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
+        fill_login_action.triggered.connect(
+            lambda: self._open_passwords(auto_fill=True)
+        )
+        file_menu.addAction(fill_login_action)
         downloads_action = QAction("Downloads...", self)
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(
@@ -324,6 +335,7 @@ class BrowserWindow(QMainWindow):
         self.address_bar.forward_requested.connect(self._go_forward)
         self.address_bar.reload_requested.connect(self._reload)
         self.address_bar.home_requested.connect(self._go_home)
+        self.address_bar.passwords_requested.connect(lambda: self._open_passwords())
         layout.addWidget(self.address_bar)
         # Tab container
         self.tab_container = QWidget()
@@ -666,6 +678,27 @@ class BrowserWindow(QMainWindow):
             == QMessageBox.StandardButton.Yes
         ):
             self.history.clear()
+
+    def _open_passwords(self, auto_fill=False):
+        if self._closing or not self.tabs:
+            return
+        if self._password_dialog is not None:
+            self._password_dialog.raise_()
+            return
+        dialog = PasswordDialog(
+            self.profile_manager.registry.passwords,
+            self.profile_manager.current_profile_name,
+            self.tabs[self.current_tab_index].page(),
+            self,
+            auto_fill=auto_fill,
+        )
+        self._password_dialog = dialog
+        try:
+            dialog.exec()
+        finally:
+            dialog.reject()
+            dialog.deleteLater()
+            self._password_dialog = None
 
     def _go_home(self):
         home = self.config.get("home_page", "https://www.google.com")
@@ -1017,6 +1050,8 @@ class BrowserWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        if self._password_dialog is not None:
+            self._password_dialog.reject()
         if self.history is not None:
             self.history.changed.disconnect(self._refresh_address_history)
 

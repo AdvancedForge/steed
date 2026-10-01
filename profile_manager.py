@@ -19,6 +19,7 @@ from config import Config
 from cookie_sharing import CookieSharing, cookie_key, fingerprint
 from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
+from password_manager import PasswordManager
 from utils import get_profile_path, sanitize_profile_name
 from webengine import configure_web_settings
 
@@ -49,6 +50,7 @@ class ProfileRegistry(QObject):
         self.global_fingerprints = None
         self.owners = set()
         self.downloads = DownloadManager(config, self)
+        self.passwords = PasswordManager(config, self)
         self.adblock = AdBlocker(config, self)
         self.global_profile = self.create(
             "global", config.config_dir / "global_profile"
@@ -197,6 +199,7 @@ class ProfileRegistry(QObject):
         if self.owners:
             return
         self.sharing.closed = True
+        self.passwords.close()
         for history in self.histories.values():
             history.close()
         self.histories.clear()
@@ -301,6 +304,8 @@ class ProfileManager(QObject):
         if name in ("global", "search", "default"):
             return False
         if any(o.current_profile_name == name for o in self.registry.owners):
+            return False
+        if self.registry.passwords.busy(name):
             return False
         profile = self._profiles.get(name)
         if profile is not None:

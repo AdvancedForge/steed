@@ -22,6 +22,7 @@ class AddressBar(QWidget):
     forward_requested = pyqtSignal()
     reload_requested = pyqtSignal()
     home_requested = pyqtSignal()
+    passwords_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -66,12 +67,16 @@ class AddressBar(QWidget):
         self.completer.setMaxVisibleItems(10)
         self.address_input.setCompleter(self.completer)
         self.completer.activated[str].connect(self.url_changed.emit)
+        self.passwords_btn = QPushButton("Passwords")
+        self.passwords_btn.setToolTip("KeePassXC passwords (Ctrl+Shift+L to fill)")
+        self.passwords_btn.clicked.connect(self.passwords_requested.emit)
 
         layout.addWidget(self.back_btn)
         layout.addWidget(self.forward_btn)
         layout.addWidget(self.reload_btn)
         layout.addWidget(self.home_btn)
         layout.addWidget(self.address_input)
+        layout.addWidget(self.passwords_btn)
 
     def _on_return_pressed(self) -> None:
         """Handle return key press."""
