@@ -42,8 +42,10 @@ independent private pages, reusable browser services, and user-approved task
 permissions. Task browsing retrieves documents in private profiles or explicitly
 approved existing profiles alongside your tabs, with approval popups and limits on
 sites and budgets.
-Read-only page inspection now returns bounded text, control descriptions, and
-references that can be checked for staleness, under a separate content permission.
+Page inspection returns bounded text and validated references. Task clients can
+follow links, edit supported controls, scroll, and wait for page state with
+explicit permissions. Form submission, active scripts, and file actions remain
+planned.
 External-agent access, bookmarks, and generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,

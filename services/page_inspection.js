@@ -4,7 +4,7 @@
     const request = /* REQUEST */;
     const fail = code => JSON.stringify({error: code});
     try {
-        if (request.mode === "target") {
+        if (["target", "act", "scroll"].includes(request.mode)) {
             const state = globalThis[request.state_key];
             if (!state || state.snapshot_id !== request.snapshot_id) return fail("stale_snapshot");
             for (const frame of state.frames) {
@@ -12,8 +12,61 @@
                 if (frame.dirty || frame.window.document !== frame.document ||
                     frame.document.URL !== frame.url) return fail("stale_snapshot");
             }
+            if (request.mode === "scroll") {
+                const frame = state.frames.find(f => f.frame_id === request.frame_id);
+                if (!frame) return fail("frame_unavailable");
+                const win = frame.window, before = [win.scrollX, win.scrollY];
+                win.scrollBy({left: request.dx, top: request.dy, behavior: "instant"});
+                const position = [Math.round(win.scrollX), Math.round(win.scrollY)];
+                const changed = before[0] !== position[0] || before[1] !== position[1];
+                return JSON.stringify({status: changed ? "applied" : "no_change", changed,
+                    input_semantics: "cssom_scroll", scroll_position: position});
+            }
             const target = state.targets.get(request.node_id);
             if (!target || !target.node.isConnected) return fail("stale_snapshot");
+            if (request.mode === "act") {
+                const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
+                const style = win.getComputedStyle(node);
+                if (node.matches(":disabled") || node.getAttribute("aria-disabled") === "true" ||
+                    node.hasAttribute("readonly") || node.getAttribute("aria-readonly") === "true" ||
+                    !node.getClientRects().length || style.visibility !== "visible") return fail("target_not_editable");
+                const tag = node.tagName.toLowerCase(), type = node.type;
+                if (request.operation === "enter") {
+                    if (!(tag === "textarea" || (tag === "input" && ["text", "search", "email", "url", "tel"].includes(type))))
+                        return fail("control_unsupported");
+                    const before = node.value;
+                    node.focus({preventScroll: true}); node.select();
+                    if (doc.activeElement !== node) return fail("focus_unavailable");
+                    const accepted = doc.execCommand(request.text ? "insertText" : "delete", false, request.text);
+                    const changed = node.value !== before, matches = node.value === request.text;
+                    return JSON.stringify({status: matches ? (changed ? "applied" : "no_change") :
+                        (accepted ? "constrained" : "unsupported"), changed,
+                        input_semantics: "chromium_editing_command", text_matches: matches});
+                }
+                if (request.operation === "activate") {
+                    if (tag !== "input" || !["checkbox", "radio"].includes(type)) return fail("control_unsupported");
+                    const before = node.checked;
+                    node.click();
+                    const changed = node.checked !== before;
+                    return JSON.stringify({status: changed ? "applied" : "no_change", changed,
+                        input_semantics: "html_activation", checked: node.checked});
+                }
+                if (request.operation === "select") {
+                    if (tag !== "select" || node.multiple) return fail("control_unsupported");
+                    const option = node.options[request.index];
+                    if (!option || option.disabled || option.closest("optgroup")?.disabled) return fail("option_unavailable");
+                    const before = node.selectedIndex;
+                    node.selectedIndex = request.index;
+                    const changed = node.selectedIndex !== before;
+                    if (changed) {
+                        node.dispatchEvent(new win.Event("input", {bubbles: true}));
+                        node.dispatchEvent(new win.Event("change", {bubbles: true}));
+                    }
+                    return JSON.stringify({status: changed ? "applied" : "no_change", changed,
+                        input_semantics: "dom_selection", selected_index: node.selectedIndex});
+                }
+                return fail("operation_unsupported");
+            }
             return JSON.stringify({valid: true});
         }
 
@@ -97,7 +150,7 @@
             if (origin !== "about:blank" && !allowed.has(origin)) {
                 frame.limitations.push("frame_origin_out_of_scope"); return;
             }
-            const tracked = {window: win, document: doc, url, dirty: false};
+            const tracked = {window: win, document: doc, url, frame_id: frameId, dirty: false};
             tracked.observer = new win.MutationObserver(() => { tracked.dirty = true; });
             tracked.observer.observe(doc, {subtree: true, childList: true, characterData: true, attributes: true});
             state.frames.push(tracked);
@@ -139,7 +192,10 @@
                     kind = "custom"; constraints.push("custom_control_unsupported");
                 }
                 if (kind) {
-                    if (kind !== "link") constraints.push("actions_not_implemented");
+                    if (kind === "button") constraints.push("form_or_script_actions_unavailable");
+                    if (kind === "input" && !["text", "search", "email", "url", "tel", "password", "file"].includes(node.type))
+                        constraints.push("control_unsupported");
+                    if (kind === "select" && node.multiple) constraints.push("multiple_selection_unsupported");
                     if (remainingTargets <= 0) limitations.add("targets_truncated");
                     else {
                         const enabled = !node.matches(":disabled") && node.getAttribute("aria-disabled") !== "true";
