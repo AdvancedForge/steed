@@ -1,18 +1,26 @@
 """Replaceable session backend, initially implemented with private Qt pages."""
 
+import threading
 from dataclasses import dataclass, field
 from typing import Protocol
 from uuid import uuid4
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, QThread, QUrl, pyqtSignal
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PyQt6.QtCore import QObject, Qt, QThread, QUrl, pyqtSignal
+from PyQt6.QtWebEngineCore import (
+    QWebEnginePage,
+    QWebEngineProfile,
+    QWebEngineSettings,
+    QWebEngineUrlRequestInfo,
+    QWebEngineUrlRequestInterceptor,
+)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
 from services.permission_service import PermissionService
+from services.task_policy import LiveGrant
 
 
 @dataclass(frozen=True)
@@ -27,9 +35,11 @@ class SessionSnapshot:
 
 
 class BrowserBackend(Protocol):
-    """Internal interface; DOM inspection/actions and grants are later milestones."""
+    """Internal interface; each engine session must receive approved authority."""
 
-    def open_session(self, task_id: str) -> SessionSnapshot: ...
+    def open_session(
+        self, task_id: str, *, grant: LiveGrant, profile: str = "private"
+    ) -> SessionSnapshot: ...
     def navigate(self, session_id: str, url: str) -> SessionSnapshot: ...
     def inspect(self, session_id: str) -> SessionSnapshot: ...
     def stop(self, session_id: str) -> SessionSnapshot: ...
@@ -61,18 +71,16 @@ def navigation_url(url: str) -> QUrl:
 class TaskPage(QWebEnginePage):
     """Suppress dialogs, uploads, and unsupported main-document schemes."""
 
+    def __init__(self, profile, parent, grant, blocked):
+        super().__init__(profile, parent)
+        self.grant = grant
+        self.report_blocked = blocked
+
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
-        if not is_main_frame:
-            return url.scheme() in ("http", "https", "about", "data", "blob")
-        return (
-            url.isValid()
-            and not url.userName()
-            and not url.password()
-            and (
-                (url.scheme() in ("http", "https") and bool(url.host()))
-                or url.toString() == "about:blank"
-            )
-        )
+        reason = self.grant.navigation(url.toString())
+        if reason:
+            self.report_blocked(reason)
+        return not reason
 
     def chooseFiles(self, mode, old_files, accepted_mime_types):
         return []
@@ -87,11 +95,47 @@ class TaskPage(QWebEnginePage):
         return False, ""
 
 
+class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
+    """Profile-wide scope covers redirects/resources without Qt/store lookups."""
+
+    def __init__(self, grant, blocked, parent):
+        super().__init__(parent)
+        self.grant = grant
+        self.report_blocked = blocked
+        self._reported = set()
+        self._lock = threading.Lock()
+
+    def interceptRequest(self, info):
+        resource = QWebEngineUrlRequestInfo.ResourceType
+        forbidden = (
+            resource.ResourceTypeWorker,
+            resource.ResourceTypeSharedWorker,
+            resource.ResourceTypeServiceWorker,
+            getattr(resource, "ResourceTypeWebSocket", None),
+        )
+        reason = (
+            "active_content_unavailable"
+            if info.resourceType() in forbidden
+            else self.grant.request(
+                info.requestUrl().toString(), bytes(info.requestMethod())
+            )
+        )
+        if reason:
+            info.block(True)
+            # Bound journal traffic from a page repeatedly making denied requests.
+            with self._lock:
+                fresh = reason not in self._reported
+                self._reported.add(reason)
+            if fresh:
+                self.report_blocked(reason)
+
+
 @dataclass
 class QtSession:
     task_id: str
     profile: QWebEngineProfile
     page: TaskPage
+    grant: LiveGrant
     views: list[QWebEngineView] = field(default_factory=list)
     revision: int = 0
     loading: bool = False
@@ -100,6 +144,7 @@ class QtSession:
 
 class QtBrowserBackend(QObject):
     changed = pyqtSignal(object)
+    blocked = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -118,19 +163,45 @@ class QtBrowserBackend(QObject):
             raise KeyError("Unknown session")
         return self._sessions[session_id]
 
-    def open_session(self, task_id):
+    def open_session(self, task_id, *, grant, profile="private"):
         require_owner_thread(self)
         if self._closed:
             raise RuntimeError("Browser backend is closed")
+        grant.check("open", profile=profile)
         session_id = uuid4().hex
         # An unnamed profile is off the record, separate from user/global profiles.
         profile = QWebEngineProfile(self)
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+        settings = profile.settings()
+        settings.setUnknownUrlSchemePolicy(
+            QWebEngineSettings.UnknownUrlSchemePolicy.DisallowUnknownUrlSchemes
+        )
+        # Current scopes authorize document retrieval, not active page execution.
+        for attribute in (
+            QWebEngineSettings.WebAttribute.JavascriptEnabled,
+            QWebEngineSettings.WebAttribute.DnsPrefetchEnabled,
+            QWebEngineSettings.WebAttribute.HyperlinkAuditingEnabled,
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls,
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
+            QWebEngineSettings.WebAttribute.PluginsEnabled,
+            QWebEngineSettings.WebAttribute.PdfViewerEnabled,
+        ):
+            settings.setAttribute(attribute, False)
+
+        def report(reason):
+            self.blocked.emit(task_id, reason)
+
+        interceptor = TaskRequestInterceptor(grant, report, profile)
+        profile.setUrlRequestInterceptor(interceptor)
+        profile.task_interceptor = interceptor
         profile.downloadRequested.connect(lambda request: request.cancel())
-        page = TaskPage(profile, self)
+        page = TaskPage(profile, self, grant, report)
         page.setAudioMuted(True)
+        page.fullScreenRequested.connect(lambda request: request.reject())
+        page.registerProtocolHandlerRequested.connect(lambda request: request.reject())
+        page.selectClientCertificate.connect(lambda selection: selection.selectNone())
         PermissionService.deny_page(page, lambda: self._closed)
-        session = QtSession(task_id, profile, page)
+        session = QtSession(task_id, profile, page, grant)
         self._sessions[session_id] = session
         page.loadStarted.connect(lambda: self._started(session_id))
         page.loadFinished.connect(lambda ok: self._finished(session_id, ok))
@@ -174,6 +245,7 @@ class QtBrowserBackend(QObject):
 
     def navigate(self, session_id, url):
         session = self._session(session_id)
+        session.grant.check("navigate", url=url)
         qurl = navigation_url(url)
         session.loading, session.load_success = True, None
         self.navigation.navigate(session.page, qurl)
@@ -187,10 +259,12 @@ class QtBrowserBackend(QObject):
 
     def attach_view(self, session_id, parent=None):
         session = self._session(session_id)
+        session.grant.check("attach")
         session.views = [view for view in session.views if not sip.isdeleted(view)]
         if session.views:
             return session.views[0]
         view = QWebEngineView(parent)
+        view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         view.setPage(session.page)
         session.views.append(view)
         return view

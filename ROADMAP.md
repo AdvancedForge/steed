@@ -9,13 +9,15 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 1, 2026
 
-Browser essentials now include Ctrl+F find in page and per-tab zoom. All 132
+Browser essentials now include Ctrl+F find in page and per-tab zoom. All 157
 regression checks, the startup/render/shutdown smoke check, and the
 local Google-login HTTPS smoke check passed on Qt 6.11.2. Launcher validation,
 Ruff, formatting, and whitespace checks also passed.
 
 The user reports few complaints during daily use and authorized proceeding after
-the checks available to the assistant. A1 is implemented; A2 is next. Real-account login
+the checks available to the assistant. A1 is implemented, and A2's private-task
+permission layer is implemented. Broader A2 profile grants remain in progress.
+Real-account login
 persistence, third-party Google sign-in, hardware permission flows, and ordinary
 site usability remain follow-up checks; no automated fixture establishes those
 results. Password improvements remain deferred at the user's request.
@@ -43,7 +45,7 @@ checks does not establish the unverified manual results below.
 The user authorized proceeding with these manual follow-ups recorded. Resolve
 any browser blocker found during continued use alongside A1 work.
 
-- [x] Run the complete regression suite (132 checks), startup smoke,
+- [x] Run the complete regression suite (157 checks), startup smoke,
   local Google-login smoke, launcher validation, and lint/format checks.
 
 - [ ] Launch from the applications menu; check graphics, navigation, search,
@@ -88,7 +90,8 @@ daily-use workflow; they do not automatically block the agent milestones.
 
 Keep Python, PyQt6, and Qt WebEngine initially, with replaceable engine/provider
 interfaces. Prefer text and structured state; support watching, takeover,
-resume, revocation, and cancellation. A1 is implemented; A2–A7 remain pending.
+resume, revocation, and cancellation. A1 is implemented; A2 has private-task
+grants, with persistent-profile support remaining. A3–A7 remain pending.
 
 ### A1. Browser services and task storage — implemented
 
@@ -112,18 +115,45 @@ handling. Download lifetime is application-owned, with an injected destination
 picker; screen-sharing and download dialogs remain UI components. Regressions
 cover invalidated permissions, shutdown during prompts, task permission denial,
 destination-provider failures, and exactly-once share selection/cancellation.
-The current API is internal only; task grants and external-agent access are not
-implemented. A2 will add explicit task grants before external exposure.
+The current API is internal only. A2 adds task grants; external-agent access
+remains pending.
 
 Target: extract reusable browser services, dispatch Qt operations through a command
 broker, define a backend interface, and store tasks/events in application-owned
 SQLite. Acceptance: a deterministic client operates a task session without AI.
 
-### A2. Task sessions and permissions
+### A2. Task sessions and permissions — in progress
 
-Create task-owned pages independent of tabs, default to off-the-record profiles,
-and enforce explicit task grants through all mutation paths. Acceptance:
-cross-task, profile, destination, and grant violations fail before execution.
+Implemented for the current private-task backend:
+
+- Pending scopes gain authority only through **File → Task Permissions** approval.
+  Clients have task-bound handles and cannot approve themselves or impersonate
+  another task.
+- Exact origins, supported actions, session counts, monotonic expiry, operation
+  budgets, and request budgets are checked at dispatch and in the engine.
+  Redirects, frames, and resources stay inside the approved network scope.
+- SQLite grant decisions and journal events commit atomically. Restart ends
+  authority without replay. Revocation, cancellation, expiry, and exhausted
+  budgets close pages and reject queued mutations.
+- Private/DNS network access needs explicit permission. Scripts, workers,
+  WebSockets, persistent task profiles, file actions, and non-GET/HEAD methods
+  are unavailable. These restrictions apply to task pages.
+
+Verification: eight policy checks, eight storage checks, and eighteen real-Qt
+service checks, including UI approval and SQLite failure handling, plus a browser
+menu failure check. Full browser regressions and startup smoke passed; a synthetic
+approval dialog was rendered and visually inspected. Manual desktop use remains a
+desktop follow-up.
+
+Remaining A2 work: persistent-profile grants need verified scoped request routing
+before a task can share existing signed-in storage. Destination-specific file
+grants must accompany A3's file operations; active page execution needs its own
+scope enforcement. Unsupported authority remains rejected. External tools and
+transports belong to later milestones.
+
+Acceptance target: cross-task, profile, destination, and grant violations fail
+before execution. Private-task grant enforcement meets this target; successful
+persistent-profile/file workflows have not been implemented or verified.
 
 ### A3. Page inspection and actions
 

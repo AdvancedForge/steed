@@ -95,3 +95,68 @@ class TaskStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.transition(task.task_id, "invented")
         self.assertEqual(len(self.store.events(task.task_id)), 1)
+
+    def test_grant_decisions_and_terminal_task_cleanup_are_atomic(self):
+        task = self.store.create("Grant transaction")
+        with patch.object(self.store, "_append", side_effect=OSError("disk")):
+            with self.assertRaises(OSError):
+                self.store.request_grant(task.task_id, {"origins": []})
+        self.assertEqual(self.store.grants(task.task_id), [])
+        grant = self.store.request_grant(task.task_id, {"origins": []})
+        with self.assertRaises(ValueError):
+            self.store.request_grant(task.task_id, {"origins": []})
+        with patch.object(self.store, "_append", side_effect=OSError("disk")):
+            with self.assertRaises(OSError):
+                self.store.resolve_grant(task.task_id, grant.grant_id, "approved")
+        self.assertEqual(
+            self.store.grant(task.task_id, grant.grant_id).status, "requested"
+        )
+        self.store.resolve_grant(
+            task.task_id, grant.grant_id, "approved", expires_at="fixture"
+        )
+        with patch.object(self.store, "_append", side_effect=OSError("disk")):
+            with self.assertRaises(OSError):
+                self.store.transition(task.task_id, "cancelled")
+        self.assertEqual(
+            self.store.grant(task.task_id, grant.grant_id).status, "approved"
+        )
+        self.assertEqual(self.store.get(task.task_id).status, "created")
+        self.store.transition(task.task_id, "completed")
+        self.assertEqual(self.store.grant(task.task_id, grant.grant_id).status, "ended")
+
+    def test_restart_ends_pending_and_approved_grants_without_restoring_authority(self):
+        for status in ("requested", "approved"):
+            task = self.store.create(status)
+            grant = self.store.request_grant(task.task_id, {"origins": []})
+            if status == "approved":
+                self.store.resolve_grant(task.task_id, grant.grant_id, status)
+        self.store.close()
+        self.store = TaskStore(self.path)
+        self.assertEqual({grant.status for grant in self.store.grants()}, {"ended"})
+        self.assertEqual(
+            {task.status for task in self.store.list_tasks()}, {"interrupted"}
+        )
+        self.assertEqual(self.store.events(task.task_id)[-1].kind, "task.interrupted")
+
+    def test_grant_cannot_be_resolved_under_another_task(self):
+        first, second = self.store.create("First"), self.store.create("Second")
+        grant = self.store.request_grant(first.task_id, {"origins": []})
+        with self.assertRaises(KeyError):
+            self.store.resolve_grant(second.task_id, grant.grant_id, "approved")
+        self.assertEqual(
+            self.store.grant(first.task_id, grant.grant_id).status, "requested"
+        )
+
+    def test_schema_one_migrates_with_existing_journal_intact(self):
+        task = self.store.create("Original A1 database")
+        self.store.transition(task.task_id, "completed")
+        events = self.store.events(task.task_id)
+        self.store.close()
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("DROP TABLE grants")
+            connection.execute("PRAGMA user_version = 1")
+        self.store = TaskStore(self.path)
+        self.assertEqual(self.store.events(task.task_id), events)
+        self.assertEqual(self.store.grants(), [])
+        with sqlite3.connect(self.path) as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 2)

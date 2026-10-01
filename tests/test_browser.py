@@ -2,6 +2,7 @@
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -112,6 +113,21 @@ class StartupTests(unittest.TestCase):
 
 
 class BrowserTests(unittest.TestCase):
+    def test_task_permissions_menu_reports_storage_failure_without_crashing(self):
+        with (
+            patch(
+                "profile_manager.TaskService",
+                side_effect=sqlite3.OperationalError("fixture unavailable"),
+            ),
+            patch("browser_window.TaskDialog") as dialog,
+            patch.object(QMessageBox, "warning") as warning,
+            self.assertLogs("browser_window", level="ERROR"),
+        ):
+            self.window._open_tasks()
+        warning.assert_called_once()
+        dialog.assert_not_called()
+        self.assertIsNone(self.window.profile_manager.registry._tasks)
+
     @classmethod
     def setUpClass(cls):
         cls.app = application()

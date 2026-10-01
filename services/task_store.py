@@ -30,6 +30,16 @@ class TaskEvent:
     created_at: str
 
 
+@dataclass(frozen=True)
+class TaskGrant:
+    grant_id: str
+    task_id: str
+    scope: dict
+    status: str
+    created_at: str
+    expires_at: str
+
+
 def timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -48,7 +58,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1):
+        if version not in (0, 1, 2):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -76,7 +86,19 @@ class TaskStore:
                 CREATE TRIGGER IF NOT EXISTS events_no_delete
                     BEFORE DELETE ON events BEGIN
                     SELECT RAISE(ABORT, 'Task events are append-only'); END;
-                PRAGMA user_version = 1;
+                CREATE TABLE IF NOT EXISTS grants (
+                    grant_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES tasks(task_id),
+                    scope TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN (
+                        'requested', 'approved', 'denied', 'revoked', 'expired',
+                        'exhausted', 'ended')),
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS grants_one_live_per_task
+                    ON grants(task_id) WHERE status IN ('requested', 'approved');
+                PRAGMA user_version = 2;
             """)
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():
@@ -117,6 +139,81 @@ class TaskStore:
             self._append(task_id, "task.created", {})
         return self.get(task_id)
 
+    def request_grant(self, task_id, scope) -> TaskGrant:
+        if self.get(task_id).status not in ACTIVE_STATUSES:
+            raise ValueError("Task is no longer active")
+        if any(
+            grant.status in ("requested", "approved") for grant in self.grants(task_id)
+        ):
+            raise ValueError("This task already has a pending or approved grant")
+        grant_id = uuid4().hex
+        with self._db:
+            self._db.execute(
+                "INSERT INTO grants(grant_id, task_id, scope, status, created_at) "
+                "VALUES (?, ?, ?, 'requested', ?)",
+                (
+                    grant_id,
+                    task_id,
+                    json.dumps(scope, sort_keys=True, allow_nan=False),
+                    timestamp(),
+                ),
+            )
+            self._append(
+                task_id, "grant.requested", {"grant_id": grant_id, "scope": scope}
+            )
+        return self.grant(task_id, grant_id)
+
+    def grant(self, task_id, grant_id) -> TaskGrant:
+        self.get(task_id)
+        row = self._db.execute(
+            "SELECT * FROM grants WHERE task_id = ? AND grant_id = ?",
+            (task_id, grant_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError("Grant does not belong to this task")
+        values = dict(row)
+        values["scope"] = json.loads(values["scope"])
+        return TaskGrant(**values)
+
+    def grants(self, task_id=None) -> list[TaskGrant]:
+        self._check()
+        if task_id is not None:
+            self.get(task_id)
+        rows = self._db.execute(
+            "SELECT task_id, grant_id FROM grants "
+            + ("WHERE task_id = ? " if task_id is not None else "")
+            + "ORDER BY created_at, grant_id",
+            (task_id,) if task_id is not None else (),
+        ).fetchall()
+        return [self.grant(row["task_id"], row["grant_id"]) for row in rows]
+
+    def resolve_grant(self, task_id, grant_id, status, *, expires_at="", reason=""):
+        grant = self.grant(task_id, grant_id)
+        allowed = {
+            "requested": {"approved", "denied", "ended"},
+            "approved": {"revoked", "expired", "exhausted", "ended"},
+        }
+        if status not in allowed.get(grant.status, set()):
+            raise ValueError("Invalid grant state transition")
+        if self.get(task_id).status not in ACTIVE_STATUSES:
+            raise ValueError("Task is no longer active")
+        with self._db:
+            self._resolve_grant(grant, status, expires_at=expires_at, reason=reason)
+        return self.grant(task_id, grant_id)
+
+    def _resolve_grant(self, grant, status, *, expires_at="", reason=""):
+        self._db.execute(
+            "UPDATE grants SET status = ?, expires_at = ? WHERE grant_id = ?",
+            (status, expires_at or grant.expires_at, grant.grant_id),
+        )
+        self._append(
+            grant.task_id,
+            f"grant.{status}",
+            {"grant_id": grant.grant_id, "reason": reason}
+            if reason
+            else {"grant_id": grant.grant_id},
+        )
+
     def get(self, task_id: str) -> TaskRecord:
         self._check()
         row = self._db.execute(
@@ -144,6 +241,10 @@ class TaskStore:
         if current.status not in ACTIVE_STATUSES or status == "created":
             raise ValueError("Invalid task state transition")
         with self._db:
+            if status in TERMINAL_STATUSES:
+                for grant in self.grants(task_id):
+                    if grant.status in ("requested", "approved"):
+                        self._resolve_grant(grant, "ended", reason=status)
             self._db.execute(
                 "UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ?",
                 (status, timestamp(), task_id),
