@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
-from PyQt6.QtWebEngineCore import QWebEnginePermission
+from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest, QWebEnginePermission
 from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 
 from ad_blocker import FilterEngine
@@ -125,6 +125,21 @@ class BrowserTests(unittest.TestCase):
                         "[Adblock Plus 2.0]\n" + "||fixture-ads.example^\n" * 20
                     ).encode()
                     content_type = "text/plain"
+                elif self.path == "/frames":
+                    payload = (
+                        '<html><body><div class="advert">Main ad</div>'
+                        '<iframe id="child" src="/frame"></iframe>'
+                        '<iframe id="inline" srcdoc="<div class=inline-ad>Inline ad</div>"></iframe>'
+                        f'<iframe id="cross" src="http://localhost:{self.server.server_port}/frame"></iframe>'
+                        "</body></html>"
+                    ).encode()
+                    content_type = "text/html"
+                elif self.path == "/frame":
+                    payload = b'<html><body><div class="frame-ad">Frame ad</div><iframe src="/nested"></iframe></body></html>'
+                    content_type = "text/html"
+                elif self.path == "/nested":
+                    payload = b'<html><body><div class="nested-ad">Nested ad</div></body></html>'
+                    content_type = "text/html"
                 else:
                     payload = b'<html><head><title>Fixture</title></head><body><div class="advert">Ad</div><div>Content</div><script src="/advert.js"></script></body></html>'
                     content_type = "text/html"
@@ -328,6 +343,7 @@ class BrowserTests(unittest.TestCase):
     def test_shutdown_confirms_active_downloads_only_for_last_window(self):
         """Closing must ask exactly when this window's close ends the downloads."""
         second = BrowserWindow()
+        self.addCleanup(second.close)
         self.assertIs(
             second.download_manager,
             self.window.download_manager,
@@ -607,6 +623,70 @@ class BrowserTests(unittest.TestCase):
         self.wait_for(lambda: bool(loaded))
         self.assertTrue(self.javascript("window.adLoaded === true"))
 
+    def load_frame_fixture(self):
+        self.window.adblock.engine = FilterEngine(
+            [
+                "127.0.0.1##.advert",
+                "##.frame-ad",
+                "##.nested-ad",
+                "##.inline-ad",
+            ]
+        )
+        loaded = []
+        self.window.tabs[0].loadFinished.connect(loaded.append)
+        self.window.tabs[0].setUrl(QUrl(self.origin + "/frames"))
+        self.wait_for(lambda: any(loaded))
+
+    def test_cosmetic_hiding_applies_to_nested_and_srcdoc_frames(self):
+        self.load_frame_fixture()
+        script = """(() => {
+            const child = document.querySelector('#child').contentDocument;
+            const nested = child?.querySelector('iframe')?.contentDocument;
+            const inline = document.querySelector('#inline').contentDocument;
+            if (!nested || !inline) return [];
+            const display = (doc, selector) => doc.defaultView.getComputedStyle(doc.querySelector(selector)).display;
+            return [display(document, '.advert'), display(child, '.frame-ad'),
+                    display(nested, '.nested-ad'), display(inline, '.inline-ad')];
+        })();"""
+        self.wait_for(lambda: self.javascript(script) == ["none"] * 4)
+        self.assertTrue(
+            self.javascript("document.querySelector('#cross').contentDocument === null")
+        )
+        # Generic rules discovered in a child belong to that document only.
+        parent_css = self.javascript(
+            "document.getElementById('__custom_browser_adblock').textContent"
+        )
+        self.assertNotIn(".frame-ad", parent_css)
+        self.assertNotIn(".nested-ad", parent_css)
+
+    def test_cosmetic_frame_exception_takes_effect_after_reload(self):
+        self.load_frame_fixture()
+        self.wait_for(
+            lambda: self.javascript(
+                "document.querySelector('#child').contentDocument.getElementById('__custom_browser_adblock') !== null"
+            )
+        )
+        self.window.config.set("adblock_exceptions", ["127.0.0.1"])
+        loaded = []
+        self.window.tabs[0].loadFinished.connect(loaded.append)
+        self.window.tabs[0].reload()
+        self.wait_for(lambda: any(loaded))
+        self.assertEqual(
+            self.javascript("""(() => {
+                const child = document.querySelector('#child').contentDocument;
+                const nested = child.querySelector('iframe').contentDocument;
+                return [document, child, nested].map(doc => doc.getElementById('__custom_browser_adblock') === null);
+            })();"""),
+            [True, True, True],
+        )
+        self.assertNotEqual(
+            self.javascript("""(() => {
+                const child = document.querySelector('#child').contentDocument;
+                return child.defaultView.getComputedStyle(child.querySelector('.frame-ad')).display;
+            })();"""),
+            "none",
+        )
+
     def test_filter_list_update_compiles_in_worker(self):
         service = self.window.adblock
         with patch("ad_blocker.SOURCES", (self.origin + "/filters",)):
@@ -666,6 +746,37 @@ class BrowserTests(unittest.TestCase):
             self.window._on_permission_requested(permission)
         permission.grant.assert_called_once()
         permission.deny.assert_not_called()
+
+    def test_fullscreen_enter_and_exit_follow_requested_state(self):
+        request = Mock(spec=QWebEngineFullScreenRequest)
+        initial_state = self.window.windowState()
+        request.toggleOn.return_value = True
+        self.window._on_fullscreen_requested(request)
+        self.assertTrue(self.window._was_fullscreen)
+        request.toggleOn.return_value = False
+        self.window._on_fullscreen_requested(request)
+        self.assertFalse(self.window._was_fullscreen)
+        self.assertEqual(self.window.windowState(), initial_state)
+        self.assertEqual(request.accept.call_count, 2)
+        request.reject.assert_not_called()
+
+    def test_repeated_fullscreen_entry_does_not_toggle_off(self):
+        request = Mock(spec=QWebEngineFullScreenRequest)
+        request.toggleOn.return_value = True
+        self.window._on_fullscreen_requested(request)
+        saved_geometry = self.window._saved_geometry
+        self.window._on_fullscreen_requested(request)
+        self.assertTrue(self.window._was_fullscreen)
+        self.assertEqual(self.window._saved_geometry, saved_geometry)
+        self.window._exit_fullscreen()
+
+    def test_fullscreen_exit_while_normal_is_harmless(self):
+        request = Mock(spec=QWebEngineFullScreenRequest)
+        request.toggleOn.return_value = False
+        self.window._on_fullscreen_requested(request)
+        self.assertFalse(self.window._was_fullscreen)
+        request.accept.assert_called_once()
+        request.reject.assert_not_called()
 
     def test_media_picker_cancel_calls_request_once(self):
         request = Mock()

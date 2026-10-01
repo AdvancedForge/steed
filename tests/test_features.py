@@ -7,10 +7,17 @@ from unittest.mock import Mock, patch
 
 from PyQt6.QtNetwork import QNetworkCookie
 
-from ad_blocker import FilterEngine
+from ad_blocker import AdBlocker, FilterEngine
 from config import Config
 from cookie_sharing import CookieSharing, cookie_key
-from cookie_snapshot import VERIFIED_AGAINST_QT, CookieSnapshot
+from cookie_snapshot import (
+    COOLDOWN_MS,
+    MAX_COOLDOWN_RETRIES,
+    MAX_POLL_ATTEMPTS,
+    MAX_TIMEOUT_RETRIES,
+    VERIFIED_AGAINST_QT,
+    CookieSnapshot,
+)
 from download_manager import DownloadManager
 from tab_manager import ClosedTabHistory, TabState
 from utils import load_json, save_json
@@ -33,6 +40,7 @@ class CookieSnapshotPolicyTests(unittest.TestCase):
         snapshot.pending = False
         snapshot.dirty = False
         snapshot.attempts = 0
+        snapshot.request_id = 0
         snapshot.revision = 0
         snapshot.request_revision = 0
         snapshot.retries = 0
@@ -75,6 +83,69 @@ class CookieSnapshotPolicyTests(unittest.TestCase):
         )
         self.assertFalse(snapshot.pending, "the run must no longer be pending")
 
+    def test_target_unavailable_retries_are_bounded(self):
+        snapshot = self.snapshot()
+        with patch("cookie_snapshot.QTimer.singleShot") as scheduled:
+            for attempt in range(MAX_COOLDOWN_RETRIES + 1):
+                snapshot.refresh()
+                snapshot.accept_result({"error": "Inspection target unavailable"})
+                self.assertEqual(
+                    scheduled.call_count, min(attempt + 1, MAX_COOLDOWN_RETRIES)
+                )
+            self.assertEqual(snapshot.failed.emit.call_count, 1)
+            self.assertFalse(snapshot.pending)
+
+    def test_timeouts_retry_then_report_failure(self):
+        snapshot = self.snapshot()
+        with patch("cookie_snapshot.QTimer.singleShot") as scheduled:
+            snapshot.refresh()
+            for attempt in range(MAX_TIMEOUT_RETRIES + 1):
+                snapshot.attempts = MAX_POLL_ATTEMPTS
+                snapshot.poll()
+                self.assertFalse(snapshot.pending)
+                if attempt < MAX_TIMEOUT_RETRIES:
+                    self.assertEqual(scheduled.call_count, attempt + 1)
+                    delay, callback = scheduled.call_args.args
+                    self.assertEqual(delay, COOLDOWN_MS)
+                    snapshot.failed.emit.assert_not_called()
+                    callback()
+                    self.assertTrue(snapshot.pending)
+                else:
+                    self.assertEqual(scheduled.call_count, MAX_TIMEOUT_RETRIES)
+                    snapshot.failed.emit.assert_called_once()
+
+    def test_success_resets_recovery_budgets(self):
+        snapshot = self.snapshot()
+        snapshot.cooldowns = MAX_COOLDOWN_RETRIES
+        snapshot.timeouts = MAX_TIMEOUT_RETRIES
+        snapshot.retryable_error = True
+        snapshot.refresh()
+        snapshot.accept_result({"cookies": []})
+        self.assertEqual(snapshot.cooldowns, 0)
+        self.assertEqual(snapshot.timeouts, 0)
+        self.assertFalse(snapshot.retryable_error)
+        snapshot.loaded.emit.assert_called_once_with([])
+
+    def test_timeout_callback_does_not_restart_closed_snapshot(self):
+        snapshot = self.snapshot()
+        snapshot.timed_out = True
+        snapshot.timeouts = 1
+        snapshot.closed = True
+        snapshot._resume_after_cooldown()
+        snapshot.frontend.runJavaScript.assert_not_called()
+
+    def test_late_poll_response_cannot_complete_a_new_request(self):
+        snapshot = self.snapshot()
+        snapshot.refresh()
+        old_request = snapshot.request_id
+        snapshot.pending = False  # The old inspection timed out.
+        snapshot.refresh()
+        snapshot.accept_result({"cookies": []}, old_request)
+        self.assertTrue(snapshot.pending)
+        snapshot.loaded.emit.assert_not_called()
+        snapshot.accept_result({"cookies": []}, snapshot.request_id)
+        snapshot.loaded.emit.assert_called_once_with([])
+
 
 class FeatureTests(unittest.TestCase):
     def setUp(self):
@@ -84,6 +155,46 @@ class FeatureTests(unittest.TestCase):
         home.start()
         self.addCleanup(home.stop)
         self.config = Config()
+
+    def test_fast_cached_filter_compilation_is_installed(self):
+        rules = ["||fixture-ads.example^"]
+        save_json(self.config.config_dir / "filter_lists.json", rules)
+        bootstrap, cached = Mock(), Mock()
+
+        def immediate_worker(*, target, daemon):
+            return Mock(start=target)
+
+        with (
+            patch("ad_blocker.FilterEngine", side_effect=[bootstrap, cached]),
+            patch("ad_blocker.threading.Thread", side_effect=immediate_worker),
+            patch("ad_blocker.QNetworkAccessManager"),
+        ):
+            service = AdBlocker(self.config)
+        self.assertIs(service.engine, cached)
+        self.assertFalse(service.compiling)
+        self.assertFalse(service.updating)
+        self.assertIn("1 rules loaded", service.status)
+
+    def test_fast_cached_filter_failure_keeps_bootstrap_and_allows_update(self):
+        save_json(self.config.config_dir / "filter_lists.json", ["||fixture^"])
+        bootstrap = Mock()
+
+        def immediate_worker(*, target, daemon):
+            return Mock(start=target)
+
+        with (
+            patch(
+                "ad_blocker.FilterEngine",
+                side_effect=[bootstrap, ValueError("Invalid cached list")],
+            ),
+            patch("ad_blocker.threading.Thread", side_effect=immediate_worker),
+            patch("ad_blocker.QNetworkAccessManager"),
+        ):
+            service = AdBlocker(self.config)
+        self.assertIs(service.engine, bootstrap)
+        self.assertFalse(service.compiling)
+        self.assertFalse(service.updating)
+        self.assertEqual(service.status, "Invalid cached list")
 
     def sharing(self, fresh=True):
         sharing = CookieSharing(self.config, Mock())

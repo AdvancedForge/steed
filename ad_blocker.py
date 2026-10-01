@@ -110,8 +110,6 @@ class AdBlocker(QObject):
         self.engine = FilterEngine(BOOTSTRAP)
         self.compiling = False
         self._pending_rules = cached if valid else None
-        if valid:
-            self._compile_async(cached, self.status)
         self.count = 0
         self.network = QNetworkAccessManager(self)
         self.replies: list[QNetworkReply] = []
@@ -124,6 +122,10 @@ class AdBlocker(QObject):
         self._refresh_exceptions()
         self.compiled.connect(self.install)
         self.compilation_failed.connect(self.fail)
+        # Initialize state and connect both outcomes before starting a worker:
+        # even a tiny cached list can finish before __init__ returns.
+        if valid:
+            self._compile_async(cached, self.status)
 
     def _compile_async(self, rules, success_status):
         """Compile rules off the GUI thread and install them via the event loop."""
@@ -284,8 +286,7 @@ class AdBlocker(QObject):
         from PyQt6 import sip
 
         url = tab.url().toString()
-        host = QUrl(url).host().lower()
-        if not host or self.host_excluded(host) or not self._apply_enabled:
+        if not self.applies(url):
             return
 
         def apply(data):
@@ -293,41 +294,70 @@ class AdBlocker(QObject):
                 sip.isdeleted(tab)
                 or tab.url().toString() != url
                 or not isinstance(data, dict)
-                or self.host_excluded(host)
+                or not self.applies(url)
             ):
                 return
-            selectors = self.engine.selectors(
-                url, data.get("classes", []), data.get("ids", [])
-            )
-            css = "\n".join(
-                selector + " {display:none!important;}" for selector in selectors
-            )
+            styles = []
+            for document in data.get("documents", []):
+                document_url = document["url"]
+                if not self.applies(document_url):
+                    continue
+                selectors = self.engine.selectors(
+                    document_url, document["classes"], document["ids"]
+                )
+                styles.append(
+                    {
+                        "path": document["path"],
+                        "documentUrl": document["documentUrl"],
+                        "css": "\n".join(
+                            selector + " {display:none!important;}"
+                            for selector in selectors
+                        ),
+                    }
+                )
             script = """(() => {
-                let style = document.getElementById('__custom_browser_adblock');
-                if (!style) { style = document.createElement('style'); style.id = '__custom_browser_adblock'; (document.head || document.documentElement).appendChild(style); }
-                style.textContent = CSS;
-            })();""".replace("CSS", json.dumps(css))
+                for (const entry of STYLES) {
+                    try {
+                        let doc = document;
+                        for (const index of entry.path) {
+                            doc = doc.querySelectorAll('iframe,frame')[index]?.contentDocument;
+                            if (!doc) break;
+                        }
+                        // A frame may have navigated since collection. Never
+                        // apply the old document's rules to a different page.
+                        if (!doc || doc.URL !== entry.documentUrl) continue;
+                        let style = doc.getElementById('__custom_browser_adblock');
+                        if (!style) {
+                            style = doc.createElement('style');
+                            style.id = '__custom_browser_adblock';
+                            (doc.head || doc.documentElement).appendChild(style);
+                        }
+                        style.textContent = entry.css;
+                    } catch (error) { /* cross-origin or removed frame */ }
+                }
+            })();""".replace("STYLES", json.dumps(styles))
             tab.page().runJavaScript(script, 1)
 
         # Collect from the main frame and every same-origin subframe so
         # cosmetic rules also apply inside iframes. Cross-origin frames cannot
         # be inspected; that limitation is reported rather than worked around.
         script = """(() => {
-            const collect = doc => {
+            const documents = [];
+            const collect = (doc, path, parentUrl) => {
+                if (documents.length >= 32 || path.length > 8) return;
+                // about:blank/srcdoc inherit their containing page's origin.
+                const url = doc.URL.startsWith('about:') ? parentUrl : doc.URL;
                 const elements = [...doc.querySelectorAll('[class],[id]')].slice(0, 3000);
-                return {classes:[...new Set(elements.flatMap(e => [...e.classList]))], ids:elements.map(e => e.id).filter(Boolean)};
+                documents.push({path, url, documentUrl:doc.URL,
+                    classes:[...new Set(elements.flatMap(e => [...e.classList]))],
+                    ids:elements.map(e => e.id).filter(Boolean)});
+                [...doc.querySelectorAll('iframe,frame')].forEach((frame, index) => {
+                    try {
+                        if (frame.contentDocument) collect(frame.contentDocument, [...path, index], url);
+                    } catch (error) { /* cross-origin: not inspectable */ }
+                });
             };
-            const own = collect(document);
-            let frames = [];
-            for (const frame of document.querySelectorAll('iframe')) {
-                try {
-                    if (!frame.contentDocument) continue;
-                    const nested = collect(frame.contentDocument);
-                    own.classes.push(...nested.classes);
-                    own.ids.push(...nested.ids);
-                    frames.push(...frame.contentDocument.querySelectorAll('iframe'));
-                } catch (error) { /* cross-origin: not inspectable */ }
-            }
-            return own;
+            collect(document, [], document.URL);
+            return {documents};
         })();"""
         tab.page().runJavaScript(script, 1, apply)
