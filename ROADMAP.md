@@ -18,14 +18,37 @@ during the previous browser checks.
 
 The user reports few complaints during daily use and authorized proceeding after
 the checks available to the assistant. A1 is implemented, and A2 supports private
-and concurrently shared existing-profile grants, with automatic approval popups. File and active-page authority will be
-implemented alongside their A3 operations. A3 has started with read-only content
-inspection, stale-target validation, and observed link navigation; other controlled
-page actions remain next.
-Real-account login
-persistence, third-party Google sign-in, hardware permission flows, and ordinary
-site usability remain follow-up checks; no automated fixture establishes those
-results. Password improvements remain deferred at the user's request.
+and concurrently shared existing-profile grants, with automatic approval popups.
+File and active-page authority will be implemented alongside their A3 operations.
+A3 includes read-only content inspection, stale-target validation, and observed
+link navigation; other controlled page actions remain next.
+Real-account login persistence, third-party Google sign-in, hardware permission
+flows, and ordinary site usability remain follow-up checks; no automated fixture
+establishes those results. Password improvements remain deferred at the user's request.
+
+### Resume checkpoint
+
+Work stopped at **A3: inspection and link navigation implemented; remaining
+controlled actions pending**. The implementation is committed and pushed as
+`46c60a0` (`permission popups, same-profile tasks, page link navigation`), following
+`67ef0b1` (read-only inspection). No further feature work started at this checkpoint.
+
+- **Completed:** automatic approval popups; concurrent user/task profiles with
+  separate grants; bounded page inspection; stale-target validation; observed
+  link navigation, including anchors; cancellation and evidence failure handling.
+- **Next task:** continue A3 with controlled activation, text entry, selection,
+  scrolling, and waits. Define authority for form effects and active scripts
+  before enabling them; verify native input and observed outcomes with local
+  fixtures. Add file/destination grants alongside upload/download operations.
+- **Resume points:** `services/browser_backend.py`, `services/page_inspector.py`,
+  `services/task_service.py`, and `tests/test_page_inspection.py`. Preserve
+  task-specific limits while the user and other tasks share the same profile.
+- **Validation saved:** full 198-test run, then all 44 final focused checks;
+  203 tests now exist. Startup/Google HTTPS smoke checks and lint/format passed.
+  See the [verification record](DOCUMENTATION.md#verification-record) for scope.
+- **Still pending:** complete A3 form/SPA/file acceptance, later A2 authority,
+  external-agent/MCP access (A4), and A5–A7. Password improvements stay deferred;
+  real-account collaboration and desktop checks remain manual follow-ups.
 
 | Area | Progress | Remaining work |
 | --- | --- | --- |
@@ -132,7 +155,8 @@ SQLite. Acceptance: a deterministic client operates a task session without AI.
 
 Implemented for the current task backend:
 
-- Pending scopes gain authority only through **File → Task Permissions** approval.
+- Pending scopes gain authority only through user approval in the automatic
+  popup or **File → Task Permissions**.
   Clients have task-bound handles and cannot approve themselves or impersonate
   another task.
 - Exact origins, supported actions, session counts, monotonic expiry, operation
@@ -154,9 +178,9 @@ Implemented for the current task backend:
   denies task navigation. Storage changes persist and are disclosed.
 
 Verification: policy/storage/service regressions and sixteen shared-profile
-checks, plus four automatic-popup checks, including task worker bypass without disabling user workers,
-concurrent profiles, selective revocation, and setup/journal failures, plus a browser
-menu failure check. Full browser regressions and startup smoke passed; a synthetic
+checks, plus four automatic-popup checks. Coverage includes task worker bypass
+without disabling user workers, concurrent profiles, selective revocation,
+setup/journal failures, and a browser menu failure check. Full browser regressions and startup smoke passed; a synthetic
 approval dialog was rendered and visually inspected. Manual desktop use remains a
 desktop follow-up.
 
@@ -188,6 +212,10 @@ Implemented inspection and initial navigation actions:
   results. Same-origin frames are inspected; inaccessible frames, shadow DOM,
   canvas content, and truncation have explicit limitations.
 
+- `page.navigate` follows a validated link target with explicit read/navigation
+  authority. It returns an observed load outcome; stale references, blocked
+  redirects, timeout, cancellation, and evidence failures cannot become success.
+
 Verification: the original inspection/broker checks passed in the complete
 198-test suite. All twenty-four current inspection/navigation checks passed in
 the final 44-check task run, including observed outcomes, fragment jumps, long-link
@@ -197,12 +225,9 @@ Fixtures verify extraction without a view, value omission, frame boundaries,
 DOM replacement, forged/stale references, timeouts, revocation, callback-time
 expiry, concurrent reads, worker completion, shutdown, and failed evidence writes.
 
-- `page.navigate` follows a validated link target with explicit read/navigation
-  authority. It returns an observed load outcome; stale references, blocked
-  redirects, timeout, cancellation, and evidence failures cannot become success.
-
-Next: controlled activation, entry, selection, scrolling, and waits. Add separate grants for active document scripts,
-form effects, uploads, and download destinations alongside those operations.
+Next: controlled activation, entry, selection, scrolling, and waits. Add separate
+grants for active document scripts, form effects, uploads, and download
+destinations alongside those operations.
 Native input semantics and observed action outcomes still need implementation;
 full form/SPA workflows have not been verified.
 
