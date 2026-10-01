@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, QUrl, pyqtSignal
+from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
@@ -15,13 +15,20 @@ from PyQt6.QtWidgets import QApplication
 
 from ad_blocker import AdBlocker
 from config import Config
-from cookie_sharing import CookieSharing, cookie_key
+from cookie_sharing import CookieSharing, cookie_key, fingerprint
 from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
 from utils import get_profile_path, sanitize_profile_name
 from webengine import configure_web_settings
 
 logger = logging.getLogger(__name__)
+
+# How many follow-up inspections confirm a still-changing global store before
+# the reading is accepted as settled.
+MAX_SNAPSHOT_DISAGREEMENTS = 3
+
+# Delay before the confirming inspection, so a burst of writes can finish first.
+SNAPSHOT_SETTLE_MS = 250
 
 
 class ProfileRegistry(QObject):
@@ -36,6 +43,8 @@ class ProfileRegistry(QObject):
         self.bootstrap_pages = {}
         self.snapshots = {}
         self.defaults = {}
+        self.snapshot_disagreements = 0
+        self.global_fingerprints = None
         self.owners = set()
         self.downloads = DownloadManager(config, self)
         self.adblock = AdBlocker(config, self)
@@ -108,6 +117,36 @@ class ProfileRegistry(QObject):
                 self.sharing.global_added(cookie)
             else:
                 self.sharing.target_added(name, cookie)
+        if name == "global":
+            self._confirm_global_snapshot(cookies)
+
+    def _confirm_global_snapshot(self, cookies):
+        """Re-inspect until the global store stops changing.
+
+        Qt does not report a cookie *overwrite* through cookieAdded, so a
+        snapshot is the only way to see an updated value — and nothing triggers
+        another snapshot when the overwrite itself was silent. The global profile
+        is the shared baseline, so a stale reading silently leaves every profile
+        on the old account. Each result is therefore confirmed by a follow-up
+        inspection; the loop stops as soon as two consecutive readings agree, or
+        once the bound is reached.
+        """
+        observed = {
+            cookie_key(cookie): fingerprint(cookie)
+            for cookie in cookies
+            if cookie_key(cookie) is not None
+        }
+        previous = self.global_fingerprints
+        self.global_fingerprints = observed
+        if previous is None or previous == observed:
+            return  # First reading, or the store has settled.
+        if self.snapshot_disagreements >= MAX_SNAPSHOT_DISAGREEMENTS:
+            self.snapshot_disagreements = 0
+            return
+        self.snapshot_disagreements += 1
+        snapshot = self.snapshots.get("global")
+        if snapshot is not None:
+            QTimer.singleShot(SNAPSHOT_SETTLE_MS, snapshot.refresh)
 
     def get(self, name):
         if name == "search":
@@ -120,11 +159,25 @@ class ProfileRegistry(QObject):
         override = self.config.get("user_agent_override", "").strip()
         for name, profile in {**self.profiles, "search": self.search_profile}.items():
             profile.setHttpUserAgent(override or self.defaults[name])
-        if self.config.get("global_cookie_sharing_mode", "on_switch") == "all_profiles":
+        self.adblock.refresh_settings()
+        if self.sharing_applies_to_all():
             for name in self.sharing.profiles:
                 self.sharing.enable(name)
         else:
             self.sharing.enabled.clear()
+
+    def sharing_applies_to_all(self):
+        """Whether every profile shares global cookies right now.
+
+        The startup flag governs reconciliation performed while a profile is
+        being opened, so it must gate all-profiles mode as well; otherwise the
+        checkbox appears to work but inheritance is applied anyway.
+        """
+        return self.config.get(
+            "global_cookie_sharing_mode", "on_switch"
+        ) == "all_profiles" and self.config.get(
+            "global_cookie_sharing_apply_on_startup", True
+        )
 
     def release(self, owner):
         self.owners.discard(owner)
@@ -182,8 +235,6 @@ class ProfileManager(QObject):
             return self.config.config_dir / "global_profile"
         return get_profile_path(self.config.profiles_dir, name)
 
-    get_profile_data_path = get_profile_path
-
     def get_profile(self, name):
         return self.registry.get(sanitize_profile_name(name))
 
@@ -196,7 +247,7 @@ class ProfileManager(QObject):
         ):
             return False
         self.get_profile(name)
-        if self.config.get("global_cookie_sharing_mode", "on_switch") == "all_profiles":
+        if self.registry.sharing_applies_to_all():
             self.registry.sharing.enable(name)
         self.registry.profiles_updated.emit()
         return True
@@ -205,17 +256,14 @@ class ProfileManager(QObject):
         name = sanitize_profile_name(name)
         self.current_profile_name = name
         self.current_profile = self.get_profile(name)
-        if name not in ("global", "search") and (
-            not startup
-            or self.config.get("global_cookie_sharing_apply_on_startup", True)
-        ):
-            sharing = self.registry.sharing
-            if (
-                self.config.get("global_cookie_sharing_mode", "on_switch")
-                == "all_profiles"
-            ):
+        apply_on_startup = self.config.get(
+            "global_cookie_sharing_apply_on_startup", True
+        )
+        if name not in ("global", "search") and (not startup or apply_on_startup):
+            if self.registry.sharing_applies_to_all():
                 self.propagate_global_cookies_to_all_profiles()
             else:
+                sharing = self.registry.sharing
                 sharing.enabled = {
                     o.current_profile_name
                     for o in self.registry.owners
@@ -245,10 +293,13 @@ class ProfileManager(QObject):
                 for w in QApplication.allWidgets()
             ):
                 return False
-            snapshot = self.registry.snapshots.pop(name)
-            snapshot.close()
-            sip.delete(snapshot.frontend)
-            sip.delete(self.registry.bootstrap_pages.pop(name))
+            snapshot = self.registry.snapshots.pop(name, None)
+            if snapshot is not None:
+                snapshot.close()
+                sip.delete(snapshot.frontend)
+            page = self.registry.bootstrap_pages.pop(name, None)
+            if page is not None:
+                sip.delete(page)
             sip.delete(profile)
             del self._profiles[name]
             self.registry.sharing.profiles.pop(name, None)
@@ -293,12 +344,13 @@ class ProfileManager(QObject):
     def is_search_profile(self, name=None):
         return (name or self.current_profile_name) == "search"
 
-    def is_global_profile(self, name=None):
-        return (name or self.current_profile_name) == "global"
-
     def refresh_settings(self):
         self.registry.refresh_settings()
-        if self.config.get("global_cookie_sharing_mode", "on_switch") == "all_profiles":
+        if not self.config.get("global_cookie_sharing_apply_on_startup", True):
+            # Automatic reconciliation is switched off. Sharing stays inactive
+            # until the user switches profile or opts a site back in.
+            return
+        if self.registry.sharing_applies_to_all():
             self.propagate_global_cookies_to_all_profiles()
         for owner in self.registry.owners:
             if owner.current_profile_name in self.registry.sharing.profiles:

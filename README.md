@@ -43,13 +43,13 @@ A Python desktop browser built with PyQt6 and Qt WebEngine, with profile managem
 
 Existing profiles are migrated conservatively: pre-existing cookies remain local rather than being overwritten by the global profile. **Cookies → Use Global Cookies for This Site** explicitly resets the current site's baseline, after confirmation. Local changes/deletions prevent automatic reinheritance. Cookie sharing does not copy local storage or guarantee a complete signed-in session.
 
-Qt 6.11 persisted-cookie enumeration uses a private in-process inspection adapter; no remote debugging port is opened. Partitioned cookies are omitted from viewing/sharing because Qt's cookie type cannot preserve their identity; bulk clear still operates on the engine store.
+Qt 6.11 persisted-cookie enumeration uses a private in-process inspection adapter; no remote debugging port is opened. Partitioned cookies are omitted from viewing/sharing because Qt's cookie type cannot preserve their identity; bulk clear still operates on the engine store. Because that adapter depends on undocumented Chromium internals, a Qt upgrade can break it — `cookie_snapshot.VERIFIED_AGAINST_QT` records the version it was last confirmed against, and the regression suite fails if enumeration stops working.
 
 ### Downloads and Ad Blocking
 
 Open **File → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history. Interrupted downloads are not automatically restarted.
 
-Open **File → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, or add host-name exceptions. Initial bootstrap rules are limited; download the full lists for broader coverage. Reload pages after changing exceptions. Scriptlets and resource redirects are not enabled; unsupported filters are not presented as full uBlock compatibility.
+Open **File → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, or add host-name exceptions. Only a small bootstrap rule set ships with the browser; download the full lists for broader coverage. Rule compilation runs off the GUI thread, and a failed update keeps the last working rules. Network blocking applies immediately, while cosmetic (CSS) hiding is re-applied on page load — reload pages after changing exceptions. Same-origin iframes are covered; cross-origin frames cannot be inspected. Scriptlets and resource redirects are not enabled, and unsupported filters are not presented as full uBlock compatibility.
 
 The full browser-first and agent-framework plan, current status, and manual acceptance checklist are in [ROADMAP.md](ROADMAP.md). Agent implementation has not started.
 
@@ -97,9 +97,12 @@ The browser preserves explicit Chromium options and enables PipeWire screen capt
 ### Keyboard Shortcuts
 
 - `Ctrl+T`: New tab
-- `Ctrl+W`: Close current tab
+- `Ctrl+W`: Close current tab (the window always keeps one tab)
+- `Ctrl+Shift+T`: Restore the most recently closed tab for this profile
 - `Ctrl+Shift+N`: Open search profile in a separate window (incognito)
 - `Ctrl+Shift+0`: Switch the current window to search profile
+- `Ctrl+Shift+1` … `Ctrl+Shift+9`: Switch to the Nth profile
+- `Ctrl+J`: Downloads
 - `Ctrl+,`: Settings
 - `Ctrl+Q`: Close the window
 
@@ -108,21 +111,41 @@ The browser preserves explicit Chromium options and enables PipeWire screen capt
 **File Menu:**
 
 - New Tab
+- Restore Closed Tab
 - Close Tab
+- Downloads...
+- Ad Blocking...
+- Settings...
 - Exit
 
 **Profile Menu:**
 
-- Switch Profile: Change to a different profile
-- New Profile: Create a new profile
-- Search Profile (Incognito): Open incognito mode
+- New Profile...
+- Switch Profile...
+- Pop out Profile...: Open a profile in a second window
+- Rename Profile...
+- Delete Profile...: Archives a profile (recoverable)
+- Pop Out Search Profile (Incognito)
+- Switch to Search Profile (Incognito)
+- Quick Switch: Per-profile shortcuts
+
+**Tab Groups Menu:**
+
+- Manage Tab Groups...
+
+Individual tabs also expose **Set Group…**, **Set to existing**, **Clear Group**, and
+**Collapse / Expand Group** from their context menu.
 
 **Cookies Menu:**
 
-- View Cookies: Open cookie manager dialog
+- View Cookies...: Open cookie manager dialog
 - Clear All Cookies: Delete all cookies for current profile
+- Use Global Cookies for This Site...: Reset the current site's baseline
 
 Dark mode is available in **File → Settings**.
+
+Site permissions (camera, microphone, location, notifications, screen sharing) are
+asked per request and default to deny. Nothing is remembered between requests.
 
 ### Creating and Switching Profiles
 
@@ -155,7 +178,18 @@ Configuration is stored in `~/.custom_browser/config.json`. You can edit this fi
 - `restore_tabs_on_startup`: Restore tabs when opening a profile
 - `window_width`: Default window width
 - `window_height`: Default window height
+- `user_agent_override`: Replacement user agent; empty restores the engine default
 - `global_cookie_sharing_mode`: `on_switch` or `all_profiles`
+- `global_cookie_sharing_apply_on_startup`: Whether global cookies are reconciled automatically
+- `adblock_enabled`: Enable network blocking and cosmetic filtering
+- `adblock_exceptions`: Host names excluded from filtering
+
+The same directory also holds browser-managed state, which is not configuration:
+`downloads.json`, `filter_lists.json`, `global_cookie_deletions.json`, the
+`profiles/` and `global_profile/` storage directories, `deleted_profiles/` for
+archived profiles, and per-profile `tabs.json`, `groups.json`, and
+`cookie_inheritance.json`. The inheritance journal stores hashes, never cookie
+values.
 
 ## Framework 12 Optimizations
 
@@ -166,23 +200,38 @@ High-DPI scaling uses Qt's pass-through rounding policy. Hardware acceleration f
 ```
 Browser/
 ├── main.py                 # Entry point
-├── browser_window.py       # Main window UI
-├── profile_manager.py      # Profile management
-├── tab_manager.py          # Tab save/restore
-├── cookie_manager.py       # Cookie handling
+├── browser_window.py       # Main window UI (tab/profile/permission coordination)
+├── profile_manager.py      # Profiles plus the application-owned engine registry
+├── tab_manager.py          # Tab save/restore, closed-tab history, tab groups
+├── cookie_manager.py       # Cookie viewing and deletion for one profile
+├── cookie_sharing.py       # Global-cookie baseline, provenance, re-inheritance guards
+├── cookie_snapshot.py      # Private in-process DevTools cookie enumeration
+├── download_manager.py     # Shared download lifetime and persistent history
+├── ad_blocker.py           # Request interception and cosmetic filtering
 ├── config.py               # Configuration management
-├── utils.py                # Utility functions
+├── utils.py                # Atomic JSON, profile path helpers
 ├── webengine.py            # Shared engine settings
+├── codec_test.html         # Local media/codec fixture
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
-│   ├── tab_bar.py         # Tab bar widget
+│   ├── tab_bar.py         # Tab bar widget with group context menu
 │   ├── cookie_dialog.py   # Cookie viewer
+│   ├── download_dialog.py # Download list with pause/resume/cancel/open
+│   ├── adblock_dialog.py  # Filtering toggle, exceptions, list updates
+│   ├── group_dialog.py    # Tab group management
 │   └── settings_dialog.py # Preferences dialog
-├── tests/                 # Regression tests and startup smoke check
+├── tests/
+│   ├── test_browser.py    # Regression suite (needs Qt)
+│   ├── test_features.py   # Pure policy/filtering checks
+│   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
+│   └── profile_restart.py # Two-process cookie persistence check (manual)
 ├── pyproject.toml         # Ruff lint/format configuration
 ├── requirements-dev.txt
 └── requirements.txt
 ```
+
+The last two files are runnable scripts rather than unittest modules, so
+`unittest discover` does not collect them; run them directly as shown below.
 
 ## Technical Details
 
@@ -214,10 +263,12 @@ Tests use temporary profiles and local content. Chromium still needs to initiali
 ## Existing limitations
 
 - Real Google login and normal-desktop daily use still require manual verification. Google can reject embedded browsers independently of the user-agent override.
-- Global-cookie inheritance intentionally preserves unknown/local ownership and excludes partitioned identities; it is not full browser-session synchronization.
+- Global-cookie inheritance intentionally preserves unknown/local ownership and excludes partitioned identities; it is not full browser-session synchronization. With `global_cookie_sharing_apply_on_startup` disabled, sharing stays inactive until you switch profile or opt a site back in.
 - Ad blocking requires downloading full lists for broad coverage and does not enable scriptlets or resource redirects.
 - Active profiles must be switched away from in every window before rename/archive. Archived profile data is recoverable under `~/.custom_browser/deleted_profiles/`.
 - Tab sessions are saved per profile; the most recently saved window supplies that profile's restored session.
+- A window always keeps at least one tab, so the final tab cannot be closed or restored.
+- Site permissions are per request and never remembered.
 
 ## Future Enhancements
 

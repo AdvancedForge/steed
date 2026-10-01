@@ -50,7 +50,7 @@ def delete_exact(store, cookie):
 
 
 class CookieSharing(QObject):
-    def __init__(self, config, global_profile, parent=None, observe_global=True):
+    def __init__(self, config, global_profile, parent=None, observe_global=False):
         super().__init__(parent)
         self.config = config
         self.global_profile = global_profile
@@ -71,6 +71,10 @@ class CookieSharing(QObject):
             and all(isinstance(key, str) for key in deleted)
             else set()
         )
+        # Qt's global-store signals cannot distinguish partitioned identities or
+        # report overwrite notifications, so the application confirms global
+        # cookies through an authoritative snapshot instead. observe_global stays
+        # available for callers that only need live additions.
         store = global_profile.cookieStore()
         if observe_global:
             store.cookieAdded.connect(self.global_added)
@@ -112,9 +116,12 @@ class CookieSharing(QObject):
         save_json(self.paths[name], self.states[name])
 
     def enable(self, name):
-        if name in self.profiles:
-            self.enabled.add(name)
-            self.reconcile(name)
+        # A registry being torn down must not resume writing cookies from a
+        # reconcile that was already in flight.
+        if self.closed or name not in self.profiles or name not in self.states:
+            return
+        self.enabled.add(name)
+        self.reconcile(name)
 
     def local(self, name, domain):
         state = self.states[name]
@@ -162,8 +169,14 @@ class CookieSharing(QObject):
             return
         self.observed[name][key] = QNetworkCookie(cookie)
         digest = fingerprint(cookie)
-        pending = self.pending[name].get(key)
-        if pending == digest:
+        if key in self.pending[name]:
+            expected = self.pending[name][key]
+            if expected != digest:
+                # A write we issued is still in flight and this observation holds
+                # some other value. Enumeration can return the previous value
+                # after the new one landed, so this is a stale read of our own
+                # change, never evidence that the user edited this cookie.
+                return
             self.pending[name].pop(key, None)
             self.states[name]["inherited"][key] = digest
             self.save(name)
@@ -204,7 +217,13 @@ class CookieSharing(QObject):
 
     def copy(self, name, cookie):
         key, domain = cookie_key(cookie), cookie_site(cookie)
-        if key is None or name not in self.enabled or self.local(name, domain):
+        if (
+            self.closed
+            or key is None
+            or name not in self.enabled
+            or name not in self.states
+            or self.local(name, domain)
+        ):
             return
         current = self.observed[name].get(key)
         digest = fingerprint(cookie)
@@ -233,6 +252,8 @@ class CookieSharing(QObject):
         self.profiles[name].cookieStore().setCookie(copy, origin)
 
     def reconcile(self, name):
+        if self.closed or name not in self.observed:
+            return
         for key, cookie in list(self.observed[name].items()):
             if (
                 key in self.deleted
@@ -256,6 +277,8 @@ class CookieSharing(QObject):
                 self.mark_local(name, cookie_site(cookie))
 
     def use_global(self, name, domain):
+        if self.closed or name not in self.states:
+            return
         domain = domain.lower().strip().lstrip(".")
         state = self.states[name]
         state["local_sites"] = [

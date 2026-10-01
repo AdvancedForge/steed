@@ -1,5 +1,6 @@
 """Shared download lifetime and bounded persistent history."""
 
+import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -9,6 +10,8 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QFileDialog
 
 from utils import load_json, save_json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -56,9 +59,17 @@ class DownloadManager(QObject):
         view = QWebEngineView.forPage(request.page()) if request.page() else None
         parent = view.window() if view else None
         suggested = Path(request.suggestedFileName()).name or "download"
-        path, _ = QFileDialog.getSaveFileName(parent, "Save Download", suggested)
+        try:
+            path, _ = QFileDialog.getSaveFileName(parent, "Save Download", suggested)
+        except Exception:
+            logger.exception("Could not ask where to save %s", suggested)
+            path = ""
         if not path:
+            # An abandoned prompt must cancel the request explicitly, otherwise
+            # the engine keeps the connection open with nowhere to write.
             request.cancel()
+            request.deleteLater()
+            self.changed.emit()
             return
         path = str(Path(path).absolute())
         request.setDownloadDirectory(str(Path(path).parent))
@@ -76,9 +87,12 @@ class DownloadManager(QObject):
             request.isPausedChanged,
         ):
             signal.connect(lambda *args, k=key: self.refresh(k))
+        # Drop the record before accept(): the engine may destroy the request
+        # synchronously on accept, and that teardown must not race refresh().
         request.destroyed.connect(lambda: self.request_destroyed(key))
         request.accept()
-        self.refresh(key)
+        if key in self.requests:
+            self.refresh(key)
         self.save()
 
     def refresh(self, key):

@@ -49,7 +49,9 @@ class AdBlockDialog(QDialog):
         self.status.setText(
             f"{self.service.status}\nBlocked requests this session: {self.service.count:,}"
         )
-        self.update_button.setEnabled(not self.service.updating)
+        self.update_button.setEnabled(
+            not self.service.updating and not self.service.compiling
+        )
 
     def save(self):
         hosts = sorted(
@@ -62,4 +64,5 @@ class AdBlockDialog(QDialog):
         self.service.config.update(
             {"adblock_enabled": self.enabled.isChecked(), "adblock_exceptions": hosts}
         )
+        self.service.refresh_settings()
         self.accept()

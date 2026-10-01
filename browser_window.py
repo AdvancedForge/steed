@@ -5,10 +5,9 @@ from urllib.parse import quote
 from uuid import uuid4
 
 from PyQt6 import sip
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWebEngineCore import (
-    QWebEngineDownloadRequest,
     QWebEngineFullScreenRequest,
     QWebEnginePage,
     QWebEnginePermission,
@@ -46,13 +45,17 @@ from webengine import configure_web_settings
 
 logger = logging.getLogger(__name__)
 
+# Enough to merge a redirect chain or a SPA's boot sequence into one write.
+TAB_SAVE_DEBOUNCE_MS = 750
+
 
 class BrowserPage(QWebEnginePage):
-    """Forward page console messages to the application's logging system."""
+    """Keep page console output out of the application's own logs.
 
-    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
-        logger.info("[JS:%s] %s:%s %s", level, sourceID, lineNumber, message)
-        super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
+    Page-controlled text must not reach the terminal log: a site could inject
+    newlines or escape sequences and forge log entries. Messages are dropped;
+    the browser is not a debugging tool for remote pages.
+    """
 
 
 class BrowserTab(QWebEngineView):
@@ -74,8 +77,10 @@ class BrowserTab(QWebEngineView):
         settings.setAttribute(
             QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, False
         )
+        # Local pages must not be able to read remote content. Nothing in the
+        # browser needs it: the bundled codec fixture is self-contained.
         settings.setAttribute(
-            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False
         )
         settings.setAttribute(settings.WebAttribute.ScreenCaptureEnabled, True)
 
@@ -109,6 +114,8 @@ class BrowserWindow(QMainWindow):
         self.apply_dark_mode()
 
         self._was_fullscreen = False
+        self._pending_desktop_request = None
+        self._tab_save_pending = False
         self._saved_window_state = None
         self._saved_geometry = None
         self._saved_vis = {}
@@ -130,7 +137,7 @@ class BrowserWindow(QMainWindow):
             self.cookie_manager.close()
         if self.tab_manager is not None:
             self.tab_manager.deleteLater()
-        profile_path = self.profile_manager.get_profile_data_path(profile_name)
+        profile_path = self.profile_manager.get_profile_path(profile_name)
         self.tab_manager = TabManager(profile_path, self)
         profile = self.profile_manager.get_profile(profile_name)
 
@@ -138,9 +145,6 @@ class BrowserWindow(QMainWindow):
         self.cookie_manager = CookieManager(profile, self, snapshot)
         # Connect signals for tab groups
         if self.tab_manager:
-            self.tab_manager.tab_state_changed.connect(
-                self._update_tab_bar_group_display
-            )
             self.tab_manager.group_data_updated.connect(
                 self._refresh_all_tab_bar_groups
             )
@@ -476,6 +480,8 @@ class BrowserWindow(QMainWindow):
             return tab
 
     def _close_tab(self, index: int):
+        # The final tab is never closed: this window always keeps one page and
+        # the application cannot lose its last tab bar.
         if len(self.tabs) <= 1 or not 0 <= index < len(self.tabs):
             return
         active = self.tabs[self.current_tab_index]
@@ -487,8 +493,8 @@ class BrowserWindow(QMainWindow):
             tab.tab_id,
             tab.group_id,
         )
-        self.closed_tabs.push(self.profile_manager.current_profile_name, state, index)
-        self.restore_tab_action.setEnabled(True)
+        profile_name = self.profile_manager.current_profile_name
+        self.closed_tabs.push(profile_name, state, index)
         self.tab_bar.remove_tab(index)
         self._dispose_tab(tab)
         self.current_tab_index = (
@@ -497,6 +503,7 @@ class BrowserWindow(QMainWindow):
         self._switch_tab(self.current_tab_index)
         self._save_current_tabs()
         self._sync_tab_group_labels()
+        self.restore_tab_action.setEnabled(self.closed_tabs.available(profile_name))
 
     def _close_current_tab(self):
         self._close_tab(self.current_tab_index)
@@ -512,8 +519,12 @@ class BrowserWindow(QMainWindow):
             tab.group = state.group
             tab.group_id = state.group_id
             tab.tab_id = state.tab_id
-            if state.group_id in self.tab_manager.groups:
-                self.tab_manager.groups[state.group_id].collapsed = False
+            # A collapsed group hides all but its first tab; restoring into one
+            # would keep the new tab invisible, so expand it deliberately.
+            group = self.tab_manager.groups.get(state.group_id)
+            if group is not None and group.collapsed:
+                group.collapsed = False
+                self.tab_manager.save_groups()
             self._sync_tab_group_labels()
             self._save_current_tabs()
         self.restore_tab_action.setEnabled(self.closed_tabs.available(profile))
@@ -608,13 +619,29 @@ class BrowserWindow(QMainWindow):
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
         if ok:
             self.adblock.apply_cosmetic(tab)
+        self._schedule_tab_save()
+
+    def _schedule_tab_save(self):
+        """Coalesce the per-navigation save into one write per burst.
+
+        Every finished page load used to fsync tabs.json; a redirect chain or a
+        SPA's initial load chain would write several times for no benefit.
+        """
+        if self._tab_save_pending or self._closing:
+            return
+        self._tab_save_pending = True
+        QTimer.singleShot(TAB_SAVE_DEBOUNCE_MS, self._flush_tab_save)
+
+    def _flush_tab_save(self):
+        self._tab_save_pending = False
         self._save_current_tabs()
 
     def _save_current_tabs(self):
         if self._restoring_tabs or self.profile_manager.is_search_profile():
             return
         states = []
-        self._normalize_groups()
+        if self._normalize_groups():
+            self.tab_manager.save_groups()
         for tab in self.tabs:
             group = tab.group
             url = tab.url().toString() or tab.page().requestedUrl().toString()
@@ -685,11 +712,6 @@ class BrowserWindow(QMainWindow):
         else:
             permission.deny()
 
-    def _on_download_requested(self, download: QWebEngineDownloadRequest):
-        self.download_manager.handle(
-            download, self.profile_manager.current_profile_name
-        )
-
     # ---------- Tab Group UI ----------
     def _handle_group_rename_request(self, tab_index: int):
         name, ok = QInputDialog.getText(self, "Tab Group", "Group name:")
@@ -706,6 +728,7 @@ class BrowserWindow(QMainWindow):
             group.collapsed = False
             self.tabs[tab_index].group = group.name
             self.tabs[tab_index].group_id = group.group_id
+            self.tab_manager.save_groups()
             self._sync_tab_group_labels()
             self._save_current_tabs()
 
@@ -718,7 +741,7 @@ class BrowserWindow(QMainWindow):
         self._save_current_tabs()
 
     def _sync_tab_group_labels(self):
-        self._normalize_groups()
+        dirty = self._normalize_groups()
         self.tab_bar.available_groups = [
             group.name for group in self.tab_manager.groups.values()
         ]
@@ -737,17 +760,32 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.tab_bar.blockSignals(was_blocked)
         if self.tabs and self.current_tab_index not in visible_indices:
             self._switch_tab(visible_indices[0])
-        self.tab_manager.save_groups()
+        if dirty:
+            # Only write when something actually changed: this runs on every
+            # label refresh, and an fsync per navigation is needless I/O.
+            self.tab_manager.save_groups()
 
     def _normalize_groups(self):
+        """Reconcile tab labels with stored groups; report whether it changed.
+
+        This runs on a read path, so it must not write to disk unless a group
+        was actually created, renamed, or dropped.
+        """
+        changed = False
         for tab in self.tabs:
             if tab.group_id in self.tab_manager.groups:
-                tab.group = self.tab_manager.groups[tab.group_id].name
+                name = self.tab_manager.groups[tab.group_id].name
+                if tab.group != name:
+                    tab.group = name
+                    changed = True
             elif tab.group_id is not None:
                 tab.group = None
                 tab.group_id = None
+                changed = True
             elif tab.group:
                 tab.group_id = self.tab_manager.ensure_group(tab.group).group_id
+                changed = True
+        return changed
 
     def rename_group(self, group_id, name):
         if any(
@@ -759,18 +797,21 @@ class BrowserWindow(QMainWindow):
             )
             return False
         self.tab_manager.groups[group_id].name = name
+        self.tab_manager.save_groups()
         self._sync_tab_group_labels()
         self._save_current_tabs()
         return True
 
     def delete_group(self, group_id):
         self.tab_manager.groups.pop(group_id, None)
+        self.tab_manager.save_groups()
         self._sync_tab_group_labels()
         self._save_current_tabs()
 
     def toggle_group(self, group_id):
         group = self.tab_manager.groups[group_id]
         group.collapsed = not group.collapsed
+        self.tab_manager.save_groups()
         self._sync_tab_group_labels()
 
     def _toggle_named_group(self, name):
@@ -789,10 +830,6 @@ class BrowserWindow(QMainWindow):
 
     def _manage_tab_groups(self):
         GroupDialog(self).exec()
-
-    def _toggle_dark_mode(self, enabled: bool):
-        self.config.dark_mode = enabled
-        self.apply_dark_mode()
 
     def _view_cookies(self):
         if not self.cookie_manager:
@@ -816,14 +853,10 @@ class BrowserWindow(QMainWindow):
             self.cookie_manager.clear_all_cookies()
 
     # ---------- Tab Bar group display updates ----------
-    def _update_tab_bar_group_display(self, index: int):
-        if self.tab_manager and 0 <= index < len(self.tab_manager.tab_states):
-            state = self.tab_manager.tab_states[index]
-            self.tab_bar.set_tab_group(index, state.group)
-
     def _refresh_all_tab_bar_groups(self):
-        for i in range(len(self.tabs)):
-            self._update_tab_bar_group_display(i)
+        # Live tabs are the source of truth for labels; saved state can lag
+        # behind the window that most recently wrote it.
+        self._sync_tab_group_labels()
 
     @staticmethod
     def _dispose_tab(tab: BrowserTab) -> None:
@@ -845,6 +878,10 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             event.accept()
             return
+        # Downloads are shared by every window on this registry, so the decision is
+        # "will closing this window cancel live downloads?" That is true exactly
+        # when every owner is being closed; otherwise the remaining window keeps
+        # them running and there is nothing to confirm.
         closing_owners = {self.profile_manager}
         pending_windows = list(self._child_windows)
         while pending_windows:
@@ -894,12 +931,16 @@ class BrowserWindow(QMainWindow):
         event.accept()
 
     def _on_fullscreen_requested(self, request: QWebEngineFullScreenRequest):
+        # Accept only a genuine toggle. A non-toggle request has no source of
+        # truth for enter versus exit, so declining it is safer than guessing.
+        if not request.toggleOn():
+            request.deny()
+            return
         request.accept()
-
-        if request.toggleOn():
-            self._enter_fullscreen()
-        else:
+        if self._was_fullscreen:
             self._exit_fullscreen()
+        else:
+            self._enter_fullscreen()
 
     def _enter_fullscreen(self):
         if self._was_fullscreen:
@@ -982,8 +1023,13 @@ class BrowserWindow(QMainWindow):
             self.profile_manager.use_global_cookies(domain)
 
     def _on_desktop_media_requested(self, request):
-        logger.debug("Desktop media requested")
-
+        # One picker can be open at a time. A second request while it is up must
+        # be declined explicitly, or it would silently overwrite the slot and
+        # hang until Chromium timed it out.
+        if self._pending_desktop_request is not None:
+            logger.warning("Declining overlapping desktop media request")
+            request.cancel()
+            return
         # Keep it alive while dialog is open
         self._pending_desktop_request = request
 
@@ -1023,9 +1069,12 @@ class BrowserWindow(QMainWindow):
         share_window.setEnabled(windows_model.rowCount() > 0)
 
         def do_cancel():
-            if self._pending_desktop_request is not None:
-                self._pending_desktop_request.cancel()
-            self._pending_desktop_request = None
+            pending, self._pending_desktop_request = (
+                self._pending_desktop_request,
+                None,
+            )
+            if pending is not None:
+                pending.cancel()
 
         def do_screen():
             row = screens_list.currentRow()
@@ -1048,4 +1097,9 @@ class BrowserWindow(QMainWindow):
         share_screen.clicked.connect(do_screen)
         share_window.clicked.connect(do_window)
 
-        dlg.exec()
+        try:
+            dlg.exec()
+        finally:
+            # Any dismissal path must resolve the request: escaping the dialog
+            # or closing it must never leave a pending share outstanding.
+            do_cancel()

@@ -163,23 +163,44 @@ class CookieDialog(QDialog):
 
     def delete_sites(self):
         rows = {item.row() for item in self.table.selectedItems()}
-        sites = {self.displayed_cookies[row].domain.lstrip(".").lower() for row in rows}
-        if not sites:
+        # Capture the cookie objects before the confirmation runs a nested event
+        # loop that may reorder the displayed rows.
+        cookies = [
+            self.displayed_cookies[row]
+            for row in sorted(rows)
+            if 0 <= row < len(self.displayed_cookies)
+        ]
+        if not cookies:
             return
+        sites = sorted({cookie.domain.lstrip(".").lower() for cookie in cookies})
+        # Site deletion deliberately spans the whole store, including rows the
+        # current filter hides; say so instead of silently widening the action.
+        extra = [
+            cookie
+            for cookie in self.manager.get_all_cookies()
+            if any(
+                cookie.domain.lower().lstrip(".").endswith("." + site)
+                or cookie.domain.lower().lstrip(".") == site
+                for site in sites
+            )
+            and cookie not in cookies
+        ]
         reply = QMessageBox.question(
             self,
             "Delete Site Cookies",
-            "Delete cookies for these domains and their subdomains?\n"
-            + "\n".join(sorted(sites)),
+            "Delete all cookies for these domains and their subdomains"
+            + (
+                f" ({len(cookies) + len(extra)} cookies, including filtered rows)?"
+                if extra
+                else "?"
+            )
+            + "\n"
+            + "\n".join(sites),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            cookies = [
-                cookie
-                for site in sites
-                for cookie in self.manager.get_cookies_for_domain(site)
-            ]
+            cookies += extra
             self.protect_deletion([cookie.cookie for cookie in cookies])
             for cookie in cookies:
                 self.manager.delete_cookie(cookie)

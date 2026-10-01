@@ -35,7 +35,7 @@ class FilterEngine:
     """Compile off the request path; serialize access to the Rust binding."""
 
     def __init__(self, rules):
-        filters = adblock.FilterSet(debug=True)
+        filters = adblock.FilterSet()
         filters.add_filters(rules)
         self.engine = adblock.Engine(filters, optimize=True)
         self.lock = threading.RLock()
@@ -65,21 +65,23 @@ class FilterInterceptor(QWebEngineUrlRequestInterceptor):
         self.service = service
 
     def interceptRequest(self, info):
-        source = info.firstPartyUrl().toString()
-        if info.requestUrl().scheme() not in (
-            "http",
-            "https",
-        ) or not self.service.applies(source):
+        request_url = info.requestUrl()
+        scheme = request_url.scheme()
+        if not self.service.applies_now() or scheme not in ("http", "https"):
             return
-        resource = info.resourceType().name.removeprefix("ResourceType").lower()
+        # Exception match on the host string directly; no QUrl per request.
+        if self.service.host_excluded(request_url.host()):
+            return
+        source = info.firstPartyUrl().toString()
+        resource_type = info.resourceType().name.removeprefix("ResourceType").lower()
         resource = {
             "mainframe": "document",
             "subframe": "subdocument",
             "xhr": "xmlhttprequest",
-        }.get(resource, resource)
-        if self.service.engine.blocked(info.requestUrl().toString(), source, resource):
+        }.get(resource_type, resource_type)
+        if self.service.engine.blocked(request_url.toString(), source, resource):
             info.block(True)
-            self.blocked.emit(info.requestUrl().host())
+            self.blocked.emit(request_url.host())
 
 
 class AdBlocker(QObject):
@@ -97,39 +99,105 @@ class AdBlocker(QObject):
             and cached
             and all(isinstance(r, str) for r in cached)
         )
-        self.engine = FilterEngine(cached if valid else BOOTSTRAP)
         self.status = (
             "Cached filter lists loaded"
             if valid
             else "Bootstrap rules only; update filter lists for full coverage"
         )
+        # A full EasyList compile takes seconds, so it never runs on the GUI
+        # thread. Start with the cheap bootstrap rules and swap in the cached
+        # list once a worker finishes.
+        self.engine = FilterEngine(BOOTSTRAP)
+        self.compiling = False
+        self._pending_rules = cached if valid else None
+        if valid:
+            self._compile_async(cached, self.status)
         self.count = 0
         self.network = QNetworkAccessManager(self)
-        self.replies = []
+        self.replies: list[QNetworkReply] = []
         self.payloads = []
         self.updating = False
+        # Request interception must not touch config, JSON, or QUrl per request.
+        self._apply_enabled = True
+        self._apply_exceptions: tuple[str, ...] = ()
+        self._apply_revision = -1
+        self._refresh_exceptions()
         self.compiled.connect(self.install)
         self.compilation_failed.connect(self.fail)
+
+    def _compile_async(self, rules, success_status):
+        """Compile rules off the GUI thread and install them via the event loop."""
+        self.compiling = True
+        self.status = "Compiling filter lists..."
+        self.changed.emit()
+
+        def compile_rules():
+            try:
+                engine = FilterEngine(rules)
+            except Exception as error:
+                try:
+                    self.compilation_failed.emit(str(error))
+                except RuntimeError:
+                    pass  # Application was closed while compilation ran.
+                return
+            try:
+                self.compiled.emit(engine, rules)
+            except RuntimeError:
+                pass  # Application was closed while compilation ran.
+
+        threading.Thread(target=compile_rules, daemon=True).start()
 
     def attach(self, profile):
         interceptor = FilterInterceptor(self, profile)
         interceptor.blocked.connect(self.note_blocked)
         profile.setUrlRequestInterceptor(interceptor)
 
+    def _refresh_exceptions(self, force=False):
+        """Recompute the per-request cache from configuration.
+
+        The request path only compares an integer revision, so any direct config
+        write still takes effect without re-parsing the exception list.
+        """
+        revision = getattr(self.config, "revision", 0)
+        if not force and revision == self._apply_revision:
+            return
+        self._apply_revision = revision
+        raw = self.config.get("adblock_exceptions", [])
+        if isinstance(raw, list):
+            sites = {
+                site.strip().lower().lstrip(".")
+                for site in raw
+                if isinstance(site, str)
+            }
+        else:
+            sites = set()
+        self._apply_enabled = bool(self.config.get("adblock_enabled", True))
+        self._apply_exceptions = tuple(sorted(sites))
+        self._apply_revision = revision
+
+    def applies_now(self):
+        """Cheap request-path gate; the caller still checks the host.
+
+        Also refreshes the cached exceptions, so interceptRequest can rely on
+        _apply_enabled and host_excluded without re-reading configuration.
+        """
+        self._refresh_exceptions()
+        return self._apply_enabled
+
     def applies(self, url):
+        self._refresh_exceptions()
+        if not self._apply_enabled:
+            return False
         host = QUrl(url).host().lower()
-        exceptions = self.config.get("adblock_exceptions", [])
-        exceptions = (
-            [site for site in exceptions if isinstance(site, str)]
-            if isinstance(exceptions, list)
-            else []
-        )
-        return bool(
-            self.config.get("adblock_enabled", True)
-            and host
-            and not any(
-                host == site or host.endswith("." + site) for site in exceptions
-            )
+        return bool(host) and not self.host_excluded(host)
+
+    def host_excluded(self, host):
+        """Exception check for an already-known host; avoids building a QUrl."""
+        self._refresh_exceptions()
+        if not self._apply_enabled or not host:
+            return False
+        return any(
+            host == site or host.endswith("." + site) for site in self._apply_exceptions
         )
 
     def note_blocked(self, host):
@@ -137,13 +205,18 @@ class AdBlocker(QObject):
         self.changed.emit()
 
     def update(self):
-        if self.updating:
+        if self.updating or self.compiling:
             return
         self.updating = True
         self.payloads = []
         self.status = "Downloading filter lists..."
         self.changed.emit()
         self.fetch(0)
+
+    def refresh_settings(self):
+        """Re-read toggles after the settings or ad-blocking dialog changes them."""
+        self._refresh_exceptions(force=True)
+        self.changed.emit()
 
     def fetch(self, index):
         if index == len(SOURCES):
@@ -155,17 +228,7 @@ class AdBlocker(QObject):
                 for line in payload.splitlines()
                 if line.strip() and not line.startswith(("!", "["))
             ]
-
-            def compile_rules():
-                try:
-                    self.compiled.emit(FilterEngine(rules), rules)
-                except Exception as error:
-                    try:
-                        self.compilation_failed.emit(str(error))
-                    except RuntimeError:
-                        pass  # Application was closed while compilation ran.
-
-            threading.Thread(target=compile_rules, daemon=True).start()
+            self._compile_async(rules, None)
             return
         request = QNetworkRequest(QUrl(SOURCES[index]))
         request.setTransferTimeout(20_000)
@@ -176,7 +239,8 @@ class AdBlocker(QObject):
         )
 
         def finished():
-            self.replies.remove(reply)
+            if reply in self.replies:
+                self.replies.remove(reply)
             if reply.error() != QNetworkReply.NetworkError.NoError:
                 self.fail("Filter download failed; previous rules retained.")
             else:
@@ -195,17 +259,23 @@ class AdBlocker(QObject):
         reply.finished.connect(finished)
 
     def install(self, engine, rules):
-        try:
-            save_json(self.cache, rules)
-        except OSError:
-            self.fail("Could not save updated rules; previous rules retained.")
-            return
+        self.compiling = False
+        self._pending_rules = None
+        if self.updating:
+            # Compiled rules are always written back to the same cache file.
+            try:
+                save_json(self.cache, rules)
+            except OSError:
+                self.fail("Could not save updated rules; previous rules retained.")
+                return
         self.engine = engine
         self.updating = False
         self.status = f"{len(rules):,} rules loaded; network and CSS hiding supported (scriptlets/redirects not enabled)"
         self.changed.emit()
 
     def fail(self, message):
+        self.compiling = False
+        self._pending_rules = None
         self.updating = False
         self.status = message
         self.changed.emit()
@@ -214,15 +284,16 @@ class AdBlocker(QObject):
         from PyQt6 import sip
 
         url = tab.url().toString()
-        if not self.applies(url):
+        host = QUrl(url).host().lower()
+        if not host or self.host_excluded(host) or not self._apply_enabled:
             return
 
         def apply(data):
             if (
                 sip.isdeleted(tab)
                 or tab.url().toString() != url
-                or not self.applies(url)
                 or not isinstance(data, dict)
+                or self.host_excluded(host)
             ):
                 return
             selectors = self.engine.selectors(
@@ -238,11 +309,25 @@ class AdBlocker(QObject):
             })();""".replace("CSS", json.dumps(css))
             tab.page().runJavaScript(script, 1)
 
-        tab.page().runJavaScript(
-            """(() => {
-            const elements = [...document.querySelectorAll('[class],[id]')].slice(0, 3000);
-            return {classes:[...new Set(elements.flatMap(e => [...e.classList]))], ids:elements.map(e => e.id).filter(Boolean)};
-        })();""",
-            1,
-            apply,
-        )
+        # Collect from the main frame and every same-origin subframe so
+        # cosmetic rules also apply inside iframes. Cross-origin frames cannot
+        # be inspected; that limitation is reported rather than worked around.
+        script = """(() => {
+            const collect = doc => {
+                const elements = [...doc.querySelectorAll('[class],[id]')].slice(0, 3000);
+                return {classes:[...new Set(elements.flatMap(e => [...e.classList]))], ids:elements.map(e => e.id).filter(Boolean)};
+            };
+            const own = collect(document);
+            let frames = [];
+            for (const frame of document.querySelectorAll('iframe')) {
+                try {
+                    if (!frame.contentDocument) continue;
+                    const nested = collect(frame.contentDocument);
+                    own.classes.push(...nested.classes);
+                    own.ids.push(...nested.ids);
+                    frames.push(...frame.contentDocument.querySelectorAll('iframe'));
+                } catch (error) { /* cross-origin: not inspectable */ }
+            }
+            return own;
+        })();"""
+        tab.page().runJavaScript(script, 1, apply)
