@@ -1,2 +1,2 @@
-# Optional stdio adapter; browser runtime does not import the MCP SDK.
+# Optional stdio/HTTP adapter; browser runtime does not import the MCP SDK.
 mcp==1.30.0

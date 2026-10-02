@@ -7,10 +7,11 @@ execution, and evidence; external agents provide planning and generation.
 See [DOCUMENTATION.md](DOCUMENTATION.md) for setup and implementation details,
 including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
-## Current work — October 1, 2026
+## Current work — October 2, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-274-test suite passed, including native-input checks, capability discovery, local
+290-test suite passed, including HTTP session/credential/lifecycle tests,
+native-input checks, capability discovery, local
 agent transport/lifecycle checks, and a shared-profile
 focus/control-isolation check, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown and local Google HTTPS smoke checks passed on Qt 6.11.2.
@@ -28,7 +29,7 @@ A3 includes content inspection, stale-target validation, observed link navigatio
 scriptless control edits, native form submission, scrolling, and bounded waits.
 Active document scripts are deferred following the bounded engine assessment;
 file actions and complete form/SPA acceptance remain pending. A4 now includes
-opt-in local IPC and a working stdio MCP adapter for current task operations.
+opt-in local IPC and working stdio/HTTP MCP adapters for current task operations.
 Real-account login persistence, third-party Google sign-in, hardware permission
 flows, and ordinary site usability remain follow-up checks; no automated fixture
 establishes those results. Password improvements remain deferred at the user's request.
@@ -37,8 +38,9 @@ establishes those results. Password improvements remain deferred at the user's r
 
 **A3 remains in progress: native keyboard activation/selection and native form
 submission are implemented alongside inspection, links, edits, scrolling, and waits.**
-**A4 is in progress: external stdio clients can use those existing operations.**
-Resumed from native-networking commit `1cd031f`; preceding safeguards/audit
+**A4 is in progress: external stdio and HTTP clients can use those operations.**
+Continued from basic MCP commit `d663fc5`, following native-networking commit
+`1cd031f`; preceding safeguards/audit
 commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
 
 - **Completed:** automatic approval popups; concurrent user/task profiles with
@@ -111,10 +113,28 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   discovery supplying the shared-profile selector. The full suite passed
   280 tests in 135.526 seconds (`/tmp/steed-context-full.log`); startup, lint,
   formatting, whitespace and local documentation links also passed.
-- **Next task:** extend A4 with authenticated loopback Streamable HTTP and
-  transport-specific cancellation/lifecycle tests. Watch/takeover and reconnect
-  remain future work. A3 file destinations/actions and pointer/custom controls
-  can progress independently of the deferred engine work.
+- **HTTP MCP implemented:** the optional adapter binds only `127.0.0.1` and
+  publishes generated per-client bearer credentials in a private endpoint file.
+  Each credential-bound MCP session owns a separate browser connection/task;
+  the same tools, Qt broker and approval popups apply. Website origins and
+  foreign-credential session access are rejected. DELETE, explicit operation
+  cancellation, idle expiry and shutdown close owned connections. HTTP socket
+  disconnect alone is not task cancellation. Disabling browser access shuts
+  down the adapter, removes its endpoint file, and invalidates its credentials.
+  An SDK client passed the shared-profile form workflow over both transports;
+  independent raw clients passed discovery, task reuse and ownership checks.
+  The HTTP raw client also completed approved document reading and DELETE
+  cancelled its next active task/page without disrupting the SDK client.
+  Thirteen focused adapter checks and the full 290-test suite passed in
+  142.947 seconds (`/tmp/steed-http-full.log`). Both transport smoke checks,
+  startup/render/shutdown, lint/format/whitespace, 46 local links and `pip check`
+  passed. One HTTP smoke run hit the known native Qt startup exit (139) before
+  HTTP checks and passed on identical retry; that issue remains unresolved.
+  See [HTTP setup](DOCUMENTATION.md#http-connection).
+- **Next task:** add watching and user takeover of the same task-owned page,
+  with explicit attach permission and control/lifecycle checks. Reconnect/resume
+  and broader client compatibility remain future work. A3 file destinations/actions
+  and pointer/custom controls can progress independently of the deferred engine work.
 - **Future script acceptance:** obtain a compatible embedded engine/native hook and integrate
   trusted connection/worker policy delivery before document code executes.
   Chrome's native policy starts at 152; installed Qt embeds 140 and the latest
@@ -169,8 +189,8 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   requests, ownership, denial evidence, last-owner shutdown, and sequential tasks
   requiring fresh approval. Real-entry-point startup/render/shutdown passed
   (`/tmp/steed-mcp-startup.log`). Lint/format/whitespace and 45 local links passed.
-- **Still pending:** full A3 form/SPA/file acceptance, later A2 authority, A4
-  HTTP transport and full interoperability, and A5–A7. Password improvements stay deferred.
+- **Still pending:** full A3 form/SPA/file acceptance, later A2 authority, broader A4
+  interoperability/recovery, and A5–A7. Password improvements stay deferred.
   Real-account collaboration and interactive desktop checks remain follow-ups.
 
 | Area | Progress | Remaining work |
@@ -244,7 +264,7 @@ interfaces. Prefer text and structured state; support watching, takeover,
 resume, revocation, and cancellation. A1 is implemented; A2 supports private and
 existing-profile grants for the current backend. A3 and A4 are in progress;
 A5–A7 remain pending. Scripted tasks are deferred; supported operations are now
-available to external stdio clients.
+available to external stdio and HTTP clients.
 
 ### A1. Browser services and task storage — implemented
 
@@ -422,18 +442,22 @@ request takeover or return clear limitations.
 
 ### A4. Framework-neutral MCP
 
-**In progress.** Optional `agent_mcp.py` uses the official Python SDK over stdio
+**In progress; both core transports implemented.** Optional `agent_mcp.py` uses
+the official Python SDK over stdio and authenticated loopback Streamable HTTP
 and connects to an opted-in running browser through private authenticated local
 IPC. Twenty published input schemas expose current task operations, capability
 and selected-profile discovery, structured results, and browser-assigned identity.
 User approval is required; shared-profile collaboration, cancellation, isolation,
-and evidence were tested with an SDK client and an independently implemented JSON-RPC client
-on MCP 2025-11-25. See [setup](DOCUMENTATION.md#local-agent-access-mcp).
+and evidence were tested with an SDK client and an independent JSON-RPC client
+on MCP 2025-11-25 over both transports. HTTP sessions are credential-bound and
+own separate browser connections; cancellation/termination/expiry remove owned
+task access. See [setup](DOCUMENTATION.md#local-agent-access-mcp).
 
-Remaining: authenticated loopback Streamable HTTP, other protocol/client checks,
-reconnect/resume and watch/takeover, and future artifact/search/connector tools.
+Remaining: other protocol/client checks, reconnect/resume and watch/takeover,
+and future artifact/search/connector tools.
 Acceptance: two independent MCP clients work through both transports without
-framework-specific browser code. Stdio is implemented; full A4 is not complete.
+framework-specific browser code. Core transport checks passed; full A4 is not
+complete.
 
 ### A5. Optional search and classification
 
