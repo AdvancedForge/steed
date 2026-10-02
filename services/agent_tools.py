@@ -276,8 +276,12 @@ TOOLS = (
     ),
     tool(
         "worker.run",
-        "Execute one owned staged Python package in a local Linux sandbox after exact package approval in trusted UI. Stdlib only, no direct network/host files/subprocesses. Typed file/artifact/app operations need their separate task permissions and declared app capabilities. Stable request IDs never replay a run, including failure or restart.",
-        {"extension_id": string(64), "request_id": string(64)},
+        "Execute one owned staged Python package in a local Linux sandbox after exact package and environment approval in trusted UI. Choose stdlib (default) or the optional maintained documents bundle for PDF/XLSX/images; discover installation with worker.capabilities first. No direct network/host files/subprocesses or runtime installation. Typed file/artifact/app operations need separate task permissions and declared app capabilities. Stable request IDs never replay a run, including failure or restart.",
+        {
+            "extension_id": string(64),
+            "request_id": string(64),
+            "runtime": {**string(16), "enum": ["stdlib", "documents"]},
+        },
         ("extension_id", "request_id"),
     ),
     tool(

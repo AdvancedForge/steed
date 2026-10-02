@@ -2,11 +2,14 @@
 
 import base64
 import hashlib
+import io
 import json
 import sqlite3
 import tempfile
 import time
 import unittest
+import zipfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +17,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import application
 
+from services import worker_bundle
 from services.connectors import ConnectorOutcome, ConnectorRegistry, ConnectorTool
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
@@ -509,7 +513,189 @@ for command, args in [
             db.execute("PRAGMA user_version=11")
         self.service = TaskService(self.path)
         self.assertEqual(
-            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 12
+            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 13
         )
         self.assertEqual(len(self.service.workspace.list(self.client.task_id)), 2)
         self.assertEqual(self.service.workers.store.list(self.client.task_id), [])
+
+    def test_missing_bundle_rejects_request_without_journal_failure_or_fallback(self):
+        package = self.package("pass")
+        with patch.object(
+            worker_bundle, "BUNDLE_ROOT", Path(self.directory.name) / "absent"
+        ):
+            with self.assertRaisesRegex(ValueError, "not_installed"):
+                self.call(
+                    "worker.run",
+                    extension_id=package["extension_id"],
+                    request_id="docs",
+                    runtime="documents",
+                )
+        self.assertFalse(self.service.failure)
+        self.assertFalse(self.service.workers.jobs)
+        self.assertEqual(self.service.workers.store.list(self.client.task_id), [])
+
+    def test_changed_environment_needs_new_approval_and_does_not_inherit_remembered_choice(
+        self,
+    ):
+        package = self.package("pass")
+        first = self.request(package)
+        self.approve(remember=True)
+        self.assertEqual(self.settle().state, "succeeded")
+        changed = replace(worker_bundle.environment(), sha256="0" * 64)
+        with patch("services.worker_manager.environment", return_value=changed):
+            second = self.request(package, "changed")
+        self.assertEqual(second.state, "awaiting_approval")
+        self.assertNotEqual(first.environment_sha256, second.environment_sha256)
+        with self.assertRaisesRegex(ValueError, "environment changed"):
+            self.approve("changed")
+        self.assertFalse(self.service.workers.jobs)
+
+    def test_document_runtime_requires_distinct_popup_and_stable_id_binds_runtime(self):
+        try:
+            worker_bundle.require_installed(worker_bundle.environment("documents"))
+        except worker_bundle.BundleError:
+            self.skipTest("Optional document bundle not installed")
+        package = self.package("pass")
+        self.request(package)
+        self.approve(remember=True)
+        self.assertEqual(self.settle().state, "succeeded")
+        with self.assertRaisesRegex(ValueError, "runtime"):
+            self.call(
+                "worker.run",
+                extension_id=package["extension_id"],
+                request_id="run-1",
+                runtime="documents",
+            )
+        pending = self.call(
+            "worker.run",
+            extension_id=package["extension_id"],
+            request_id="docs",
+            runtime="documents",
+        )
+        self.assertEqual(pending.state, "awaiting_approval")
+        dialog = WorkerApprovalDialog(
+            self.service, self.service.store.get(self.client.task_id), pending
+        )
+        self.assertIn("environment", dialog.remember.text())
+        dialog.show()
+        self.app.processEvents()
+        dialog.grab().save("/tmp/steed-document-worker-approval.png")
+        dialog.allow_button.click()
+        self.assertEqual(self.settle("docs").state, "succeeded")
+
+    def test_real_document_outputs_are_retained_with_environment_bound_receipt(self):
+        try:
+            worker_bundle.require_installed(worker_bundle.environment("documents"))
+        except worker_bundle.BundleError:
+            self.skipTest("Optional document bundle not installed")
+        package = self.package("""
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from openpyxl import Workbook
+from PIL import Image
+from steed_worker import store_file
+out = BytesIO()
+pdf = canvas.Canvas(out)
+pdf.drawString(72,720,'Synthetic Steed report')
+pdf.save()
+store_file('report.pdf', out.getvalue(), 'application/pdf')
+out = BytesIO()
+sheet = Workbook()
+sheet.active.append(['Steed',42])
+sheet.save(out)
+store_file('report.xlsx', out.getvalue(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+out = BytesIO()
+Image.new('RGB',(16,16),'blue').save(out,format='PNG')
+store_file('report.png', out.getvalue(), 'image/png')
+""")
+        pending = self.call(
+            "worker.run",
+            extension_id=package["extension_id"],
+            request_id="docs",
+            runtime="documents",
+        )
+        self.assertEqual(pending.state, "awaiting_approval")
+        self.approve("docs")
+        receipt = self.settle("docs")
+        self.assertEqual(receipt.state, "succeeded", receipt)
+        self.assertEqual(receipt.runtime, "documents")
+        self.assertEqual(
+            receipt.environment_sha256, worker_bundle.environment("documents").sha256
+        )
+        files = {
+            f.name: self.service.workspace.bytes(self.client.task_id, f.file_id)
+            for f in self.service.workspace.list(self.client.task_id)
+            if f.name.startswith("report.")
+        }
+        self.assertTrue(files["report.pdf"].startswith(b"%PDF-"))
+        self.assertIn(b"%%EOF", files["report.pdf"])
+        self.assertTrue(files["report.png"].startswith(b"\x89PNG\r\n\x1a\n"))
+        with zipfile.ZipFile(io.BytesIO(files["report.xlsx"])) as archive:
+            xml = archive.read("xl/worksheets/sheet1.xml")
+            self.assertIn(b"Steed", xml)
+            self.assertIn(b"<v>42</v>", xml)
+        self.assertNotIn(
+            "Synthetic Steed report",
+            repr(self.service.store.events(self.client.task_id)),
+        )
+
+    def test_wheel_tampering_after_approval_fails_before_generated_code_or_rpc(self):
+        env = worker_bundle.environment("documents")
+        root = Path(self.directory.name) / "bundles"
+        target = root / env.name
+        target.mkdir(parents=True)
+        for wheel in env.wheels:
+            (target / wheel["filename"]).write_bytes(b"x" * wheel["size"])
+        package = self.package("raise RuntimeError('must not execute')")
+        with patch.object(worker_bundle, "BUNDLE_ROOT", root):
+            self.call(
+                "worker.run",
+                extension_id=package["extension_id"],
+                request_id="docs",
+                runtime="documents",
+            )
+            self.approve("docs")
+            receipt = self.settle("docs")
+        self.assertEqual(receipt.state, "failed")
+        self.assertEqual(receipt.reason, "worker_bundle_invalid")
+        self.assertEqual(receipt.rpc_count, 0)
+        self.assertFalse(self.service.failure)
+
+    def test_schema_12_migration_keeps_legacy_receipts_and_discards_legacy_approvals(
+        self,
+    ):
+        package = self.package("pass")
+        receipt = self.request(package)
+        self.approve(remember=True)
+        self.assertEqual(self.settle().state, "succeeded")
+        grant_id = self.service._grants[self.client.task_id][0]
+        events = self.service.store.events(self.client.task_id)
+        self.service.close()
+        sip.delete(self.service)
+        with sqlite3.connect(self.path) as db:
+            db.execute("ALTER TABLE worker_runs DROP COLUMN runtime")
+            db.execute("ALTER TABLE worker_runs DROP COLUMN environment_sha256")
+            db.execute("DROP TABLE worker_package_approvals")
+            db.execute(
+                "CREATE TABLE worker_package_approvals(task_id TEXT,grant_id TEXT,package_sha256 TEXT,PRIMARY KEY(task_id,grant_id,package_sha256))"
+            )
+            db.execute(
+                "INSERT INTO worker_package_approvals VALUES (?,?,?)",
+                (self.client.task_id, grant_id, receipt.package_sha256),
+            )
+            db.execute("PRAGMA user_version=12")
+        self.service = TaskService(self.path)
+        retained = self.service.workers.store.get(self.client.task_id, "run-1")
+        self.assertEqual(retained.state, "succeeded")
+        self.assertEqual(retained.package_sha256, receipt.package_sha256)
+        self.assertEqual(retained.runtime, "stdlib")
+        self.assertEqual(retained.environment_sha256, "")
+        self.assertEqual(
+            self.service.store.events(self.client.task_id)[: len(events)], events
+        )
+        self.assertEqual(
+            self.service.store._db.execute(
+                "SELECT count(*) FROM worker_package_approvals"
+            ).fetchone()[0],
+            0,
+        )

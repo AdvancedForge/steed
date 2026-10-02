@@ -15,13 +15,16 @@ CREATE TABLE IF NOT EXISTS worker_runs (
     rpc_count INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    runtime TEXT NOT NULL DEFAULT 'stdlib',
+    environment_sha256 TEXT NOT NULL DEFAULT '',
     PRIMARY KEY(task_id,request_id)
 );
 CREATE TABLE IF NOT EXISTS worker_package_approvals (
     task_id TEXT NOT NULL REFERENCES tasks(task_id),
     grant_id TEXT NOT NULL REFERENCES grants(grant_id),
     package_sha256 TEXT NOT NULL,
-    PRIMARY KEY(task_id,grant_id,package_sha256)
+    environment_sha256 TEXT NOT NULL,
+    PRIMARY KEY(task_id,grant_id,package_sha256,environment_sha256)
 );
 """
 
@@ -38,6 +41,8 @@ class WorkerReceipt:
     rpc_count: int
     created_at: str
     updated_at: str
+    runtime: str
+    environment_sha256: str
 
     @property
     def request_key(self):
@@ -76,12 +81,12 @@ class WorkerStore:
             )
         ]
 
-    def create(self, task_id, request_id, package):
+    def create(self, task_id, request_id, package, environment):
         self.store.get(task_id)
         now = datetime.now(timezone.utc).isoformat()
         with self.store._db:
             self.store._db.execute(
-                "INSERT INTO worker_runs VALUES (?,?,?,?,?,'awaiting_approval','',0,?,?)",
+                "INSERT INTO worker_runs VALUES (?,?,?,?,?,'awaiting_approval','',0,?,?,?,?)",
                 (
                     task_id,
                     request_id,
@@ -90,12 +95,19 @@ class WorkerStore:
                     package["manifest"]["entrypoint"],
                     now,
                     now,
+                    environment.runtime,
+                    environment.sha256,
                 ),
             )
             self.store._append(
                 task_id,
                 "worker.requested",
-                {"request_id": request_id, "package_sha256": package["package_sha256"]},
+                {
+                    "request_id": request_id,
+                    "package_sha256": package["package_sha256"],
+                    "runtime": environment.runtime,
+                    "environment_sha256": environment.sha256,
+                },
             )
         return self.get(task_id, request_id)
 
@@ -125,12 +137,12 @@ class WorkerStore:
     def pending(self, task_id):
         return [r for r in self.list(task_id) if r.state == "awaiting_approval"]
 
-    def remembered(self, task_id, grant_id, digest):
+    def remembered(self, task_id, grant_id, digest, environment_sha256):
         self.store.get(task_id)
         return (
             self.store._db.execute(
-                "SELECT 1 FROM worker_package_approvals WHERE task_id=? AND grant_id=? AND package_sha256=?",
-                (task_id, grant_id, digest),
+                "SELECT 1 FROM worker_package_approvals WHERE task_id=? AND grant_id=? AND package_sha256=? AND environment_sha256=?",
+                (task_id, grant_id, digest, environment_sha256),
             ).fetchone()
             is not None
         )
@@ -142,8 +154,13 @@ class WorkerStore:
         with self.store._db:
             if remember:
                 self.store._db.execute(
-                    "INSERT OR IGNORE INTO worker_package_approvals VALUES (?,?,?)",
-                    (task_id, grant_id, record.package_sha256),
+                    "INSERT OR IGNORE INTO worker_package_approvals VALUES (?,?,?,?)",
+                    (
+                        task_id,
+                        grant_id,
+                        record.package_sha256,
+                        record.environment_sha256,
+                    ),
                 )
             self.store._db.execute(
                 "UPDATE worker_runs SET state='running',updated_at=? WHERE task_id=? AND request_id=?",
@@ -156,6 +173,8 @@ class WorkerStore:
                     "request_id": request_id,
                     "package_sha256": record.package_sha256,
                     "remember": remember,
+                    "runtime": record.runtime,
+                    "environment_sha256": record.environment_sha256,
                 },
             )
         return self.get(task_id, request_id)

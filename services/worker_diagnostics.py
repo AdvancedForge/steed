@@ -7,6 +7,7 @@ from PyQt6.QtCore import QObject, QTimer
 
 from services.command_broker import require_owner_thread
 from services.local_worker import MAX_RPC, MAX_WORKERS, WALL_SECONDS, run_worker
+from services.worker_bundle import BundleError, environment, require_installed
 
 PROBE_SOURCE = b"""
 import errno
@@ -42,6 +43,37 @@ else:
 Path('/work/check').write_bytes(b'isolated scratch')
 assert Path('/tmp/check').read_bytes() == b'isolated scratch'
 """
+
+DOCUMENT_PROBE = (
+    PROBE_SOURCE
+    + b"""
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from openpyxl import Workbook, load_workbook
+from PIL import Image
+from defusedxml.ElementTree import fromstring
+pdf = BytesIO()
+page = canvas.Canvas(pdf)
+page.drawString(72, 720, 'Steed sandbox document check')
+page.save()
+assert pdf.getvalue().startswith(b'%PDF-')
+sheet = Workbook()
+sheet.active['A1'] = 'Steed'
+xlsx = BytesIO()
+sheet.save(xlsx)
+assert load_workbook(BytesIO(xlsx.getvalue())).active['A1'].value == 'Steed'
+png = BytesIO()
+Image.new('RGB', (8, 8), 'blue').save(png, format='PNG')
+assert Image.open(BytesIO(png.getvalue())).size == (8, 8)
+assert fromstring('<safe/>').tag == 'safe'
+try:
+    Path('/dependencies/PIL/__init__.py').write_bytes(b'changed')
+except OSError:
+    pass
+else:
+    raise AssertionError('dependencies are writable')
+"""
+)
 
 
 def diagnostic_report(available, reason=""):
@@ -119,6 +151,54 @@ class WorkerDiagnostics(QObject):
                 outcome.state == "succeeded",
                 "" if outcome.state == "succeeded" else "sandbox_unavailable",
             )
+            standard = environment()
+            result["environments"] = [
+                {
+                    **standard.metadata(),
+                    "available": result["available"],
+                    "reason": result["reason"],
+                }
+            ]
+            documents = None
+            try:
+                documents = environment("documents")
+                require_installed(documents)
+                if not result["available"]:
+                    raise BundleError("sandbox_unavailable")
+                outcome = run_worker(
+                    {"check.py": DOCUMENT_PROBE},
+                    "check.py",
+                    self.cancelled,
+                    reject_rpc,
+                    timeout=10,
+                    environment=documents,
+                )
+                result["environments"].append(
+                    {
+                        **documents.metadata(),
+                        "available": outcome.state == "succeeded",
+                        "reason": ""
+                        if outcome.state == "succeeded"
+                        else "worker_bundle_check_failed",
+                    }
+                )
+            except BundleError as error:
+                result["environments"].append(
+                    {
+                        "runtime": "documents",
+                        **(documents.metadata() if documents is not None else {}),
+                        "available": False,
+                        "reason": str(error),
+                    }
+                )
+            except Exception:
+                result["environments"].append(
+                    {
+                        "runtime": "documents",
+                        "available": False,
+                        "reason": "worker_bundle_check_failed",
+                    }
+                )
         except Exception:
             result = diagnostic_report(False, "sandbox_unavailable")
         self._result.set_result(result)

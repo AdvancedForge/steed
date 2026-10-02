@@ -1,9 +1,8 @@
-"""Bounded, network-isolated stdlib Python worker with a typed pipe broker."""
+"""Bounded, network-isolated Python worker with a typed pipe broker."""
 
 import json
 import os
 import selectors
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,6 +16,8 @@ from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 
 from services.agent_tools import REQUEST_LIMIT
 from services.task_workspace import unique_object, workspace_name
+from services.worker_bundle import BundleError, materialize, runtime_sources
+from services.worker_bundle import environment as resolve_environment
 
 MAX_WORKERS = 2
 WALL_SECONDS = 20
@@ -35,7 +36,7 @@ class WorkerStopped(RuntimeError):
     pass
 
 
-def worker_command(package, sdk, entrypoint):
+def worker_command(package, sdk, entrypoint, dependencies=None):
     """No environment, home, credentials, session bus, host temp or socket mounts."""
     workspace_name(entrypoint)
     if not entrypoint.endswith(".py"):
@@ -101,6 +102,10 @@ def worker_command(package, sdk, entrypoint):
         "--ro-bind",
         str(sdk),
         "/sdk",
+    ]
+    if dependencies is not None:
+        args += ["--ro-bind", str(dependencies), "/dependencies"]
+    args += [
         "--chdir",
         "/work",
         "--",
@@ -114,9 +119,18 @@ def worker_command(package, sdk, entrypoint):
     return args
 
 
-def run_worker(files, entrypoint, cancelled, request, *, timeout=WALL_SECONDS):
+def run_worker(
+    files, entrypoint, cancelled, request, *, timeout=WALL_SECONDS, environment=None
+):
     """No Qt/SQLite calls here; request bridges to the owner-thread authority."""
     deadline, count, ready = time.monotonic() + timeout, 0, False
+    trusted = runtime_sources()
+    if (
+        environment is not None
+        and resolve_environment(environment.runtime, trusted_sources=trusted).sha256
+        != environment.sha256
+    ):
+        return WorkerOutcome("failed", "worker_environment_changed")
     with tempfile.TemporaryDirectory(prefix="steed-worker-") as directory:
         root = Path(directory)
         package, sdk = root / "package", root / "sdk"
@@ -127,11 +141,21 @@ def run_worker(files, entrypoint, cancelled, request, *, timeout=WALL_SECONDS):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
             target.chmod(0o400)
-        source = Path(__file__).parent
-        shutil.copyfile(source / "worker_sdk.py", sdk / "steed_worker.py")
-        shutil.copyfile(source / "worker_bootstrap.py", sdk / "bootstrap.py")
+        (sdk / "steed_worker.py").write_bytes(trusted["worker_sdk.py"])
+        (sdk / "bootstrap.py").write_bytes(trusted["worker_bootstrap.py"])
+        dependencies = None
+        if environment is not None and environment.wheels:
+            dependencies = root / "dependencies"
+            try:
+                materialize(environment, dependencies, cancelled)
+            except (BundleError, OSError, ValueError):
+                return WorkerOutcome("failed", "worker_bundle_invalid")
+        if cancelled.is_set():
+            return WorkerOutcome("cancelled", "cancelled")
+        if time.monotonic() >= deadline:
+            return WorkerOutcome("failed", "worker_timeout")
         process = subprocess.Popen(
-            worker_command(package, sdk, entrypoint),
+            worker_command(package, sdk, entrypoint, dependencies),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -240,7 +264,9 @@ def run_worker(files, entrypoint, cancelled, request, *, timeout=WALL_SECONDS):
 class LocalWorkerJob(QObject):
     requested = pyqtSignal(object, object)
 
-    def __init__(self, files, entrypoint, callback, finished, parent):
+    def __init__(
+        self, files, entrypoint, callback, finished, parent, *, environment=None
+    ):
         super().__init__(parent)
         self.cancelled = threading.Event()
         self.result = Future()
@@ -250,6 +276,7 @@ class LocalWorkerJob(QObject):
         self.timer.setInterval(50)
         self.timer.timeout.connect(self.poll)
         self.files, self.entrypoint = files, entrypoint
+        self.environment = environment
         self.thread = threading.Thread(target=self.run, daemon=True)
 
     def start(self):
@@ -273,7 +300,13 @@ class LocalWorkerJob(QObject):
 
     def run(self):
         try:
-            result = run_worker(self.files, self.entrypoint, self.cancelled, self.rpc)
+            result = run_worker(
+                self.files,
+                self.entrypoint,
+                self.cancelled,
+                self.rpc,
+                environment=self.environment,
+            )
         except Exception:
             result = WorkerOutcome("failed", "local_worker_unavailable")
         self.files = {}

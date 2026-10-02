@@ -63,7 +63,7 @@ async def sdk_transport(discovery, endpoint):
             yield reader, writer, None
 
 
-async def workspace_workflow(call, destination):
+async def workspace_workflow(call, destination, require_documents=False):
     """Same typed workflow over independently implemented protocol clients."""
 
     async def upload(name, data):
@@ -167,6 +167,77 @@ async def workspace_workflow(call, destination):
             request_id="generate-zip",
         )
     )["state"] == "succeeded"
+    if require_documents:
+        setup = await call("worker.capabilities")
+        assert any(
+            e["runtime"] == "documents" and e["available"]
+            for e in setup["environments"]
+        ), setup
+        await upload(
+            "documents.py",
+            b"""
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from openpyxl import Workbook
+from PIL import Image
+from steed_worker import store_file
+out = BytesIO()
+pdf = canvas.Canvas(out)
+pdf.drawString(72,720,'Steed protocol fixture')
+pdf.save()
+store_file('report.pdf',out.getvalue(),'application/pdf')
+out = BytesIO()
+sheet = Workbook()
+sheet.active.append(['Steed',42])
+sheet.save(out)
+store_file('report.xlsx',out.getvalue(),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+out = BytesIO()
+Image.new('RGB',(16,16),'blue').save(out,format='PNG')
+store_file('report.png',out.getvalue(),'image/png')
+""",
+        )
+        manifest = await upload(
+            "documents.json",
+            json.dumps(
+                {
+                    "version": 1,
+                    "name": "document-fixture",
+                    "entrypoint": "documents.py",
+                    "files": ["documents.py"],
+                    "capabilities": [],
+                }
+            ).encode(),
+        )
+        package = await call(
+            "workspace.stage_extension", manifest_id=manifest["file_id"]
+        )
+        receipt = await call(
+            "worker.run",
+            extension_id=package["extension_id"],
+            request_id="documents",
+            runtime="documents",
+        )
+        deadline = time.monotonic() + 10
+        while receipt["state"] in {"awaiting_approval", "running", "cancelling"}:
+            assert time.monotonic() < deadline, receipt
+            await asyncio.sleep(0.02)
+            receipt = await call("worker.status", request_id="documents")
+        assert receipt["state"] == "succeeded" and receipt["runtime"] == "documents", (
+            receipt
+        )
+        assert len(receipt["environment_sha256"]) == 64
+        files = {f["name"]: f for f in await call("workspace.list")}
+        outputs = {}
+        for name in ("report.pdf", "report.xlsx", "report.png"):
+            result = await call("workspace.read", file_id=files[name]["file_id"])
+            outputs[name] = base64.b64decode(result["data_base64"])
+        assert (
+            outputs["report.pdf"].startswith(b"%PDF-")
+            and b"%%EOF" in outputs["report.pdf"]
+        )
+        assert outputs["report.png"].startswith(b"\x89PNG\r\n\x1a\n")
+        with zipfile.ZipFile(io.BytesIO(outputs["report.xlsx"])) as archive:
+            assert b"<v>42</v>" in archive.read("xl/worksheets/sheet1.xml")
 
 
 async def sdk_client(
@@ -264,7 +335,9 @@ async def sdk_client(
             while (await call("grant.list"))[0]["status"] != "approved":
                 assert time.monotonic() < deadline, "Approval fixture timed out"
                 await asyncio.sleep(0.02)
-            await workspace_workflow(call, destination + "-workspace")
+            await workspace_workflow(
+                call, destination + "-workspace", shared["require_documents"]
+            )
             shared["sdk_binary_export_and_staged_extension"] = True
             session = await call("session.open", profile=context["profile_selector"])
             session_id = session["session_id"]
@@ -686,7 +759,13 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     async def workspace_call(command, **arguments):
         return call(command, **arguments)
 
-    asyncio.run(workspace_workflow(workspace_call, shared["raw_workspace_destination"]))
+    asyncio.run(
+        workspace_workflow(
+            workspace_call,
+            shared["raw_workspace_destination"],
+            shared["require_documents"],
+        )
+    )
     shared["raw_binary_export_and_staged_extension"] = True
     session = call("session.open")
     call(
@@ -1004,13 +1083,13 @@ def raw_http_client(endpoint, foreign_session, foreign_http_session, origin, sha
                 pass
 
 
-def check(transport="stdio"):
+def check(transport="stdio", require_documents=False):
     case = TaskProfileTests("runTest")
     case.setUpClass()
     case.setUp()
     worker = None
     http_process = None
-    shared, errors = {}, []
+    shared, errors = {"require_documents": require_documents}, []
     revoke, revoked = threading.Event(), threading.Event()
     try:
         window = BrowserWindow()
@@ -1117,7 +1196,11 @@ def check(transport="stdio"):
                     shared.get("raw_recovery_task"),
                 )
                 if isinstance(dialog, WorkerApprovalDialog):
-                    assert "generated.zip" in dialog.source.toPlainText()
+                    assert (
+                        "generated.zip" in dialog.source.toPlainText()
+                        or require_documents
+                        and "report.pdf" in dialog.source.toPlainText()
+                    )
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-worker-{transport}-preview.png")
                     dialog.allow_button.click()  # Only the trusted synthetic fixture.
@@ -1284,4 +1367,10 @@ def check(transport="stdio"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transport", choices=("stdio", "http"), default="stdio")
-    check(parser.parse_args().transport)
+    parser.add_argument(
+        "--documents",
+        action="store_true",
+        help="Require the installed document bundle and generate PDF/XLSX/PNG through both protocol clients",
+    )
+    args = parser.parse_args()
+    check(args.transport, args.documents)

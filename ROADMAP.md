@@ -9,12 +9,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 2, 2026
 
+Document bundle milestone: the optional maintained `documents-v1` worker creates
+PDFs, XLSX spreadsheets and images. Its pinned wheels live outside browser Python;
+each run verifies/copies them into a read-only sandbox mount. Package approvals
+also bind the selected environment. Install once with
+`.venv/bin/python install_worker_bundle.py`, then refresh Workers setup discovery.
+
 Local-worker milestone: approved agent-built Python packages generate attachments
 and compose existing app adapters through the task broker. The automatic package
 popup shows source, hash, app capabilities and limits, defaults to Deny, and can
 remember the exact package for the current task/grant. Bubblewrap namespaces,
 read-only mounts, hard limits and a seccomp allowlist apply before source runs.
-No direct networking, credential mounts, subprocesses or dependency installation.
+No direct networking, credential mounts, subprocesses or runtime dependency installation.
 Workers has retained receipts, review and cancellation; stable IDs never replay.
 See [worker usage](DOCUMENTATION.md#running-an-agent-built-local-worker).
 
@@ -187,7 +193,7 @@ establishes those results. Password improvements remain deferred at the user's r
   tasks without recovery too. Browser startup, screenshot inspection, Ruff/format,
   whitespace and local documentation links passed. Synthetic state/files only.
 
-- **Latest engineering checkpoint — worker setup diagnostics:** agents discover
+- **Earlier engineering checkpoint — worker setup diagnostics:** agents discover
   actual local-worker readiness and limits before uploading packages through
   `worker.capabilities`. One cached fixed background check per browser run uses
   no task data/accounts, creates no grant and consumes no task budget. Trusted
@@ -203,15 +209,39 @@ establishes those results. Password improvements remain deferred at the user's r
   shutdown passed. Ruff/format, whitespace, dependencies and local doc links passed.
   All account data, profiles and file effects were synthetic.
 
-- **Next major engineering decision — worker dependencies:** standard-library
-  workers are usable, but advanced generators need a library policy. Recommend
-  a small optional maintained PDF/XLSX/image bundle first, with pinned/hash-checked
-  wheels, an isolated read-only dependency mount and environment-bound code
-  approvals. Alternative: user-reviewed exact per-task dependencies with additional
-  environment, storage and recovery machinery. See the
-  [concrete dependency proposal](DOCUMENTATION.md#worker-dependency-decision).
-  Neither package installation nor runtime network/source-build authority is enabled.
-  Shared Google registration remains deferred and does not block this choice.
+- **Latest engineering checkpoint — document worker bundle:** the user chose
+  the optional maintained bundle. `documents-v1` adds pinned ReportLab/openpyxl/
+  Pillow plus exact transitive dependencies, without changing browser dependencies.
+  The installer downloads hashed binary wheels and checks real sandbox generation;
+  runs verify/copy them into a read-only mount off the Qt thread. Schema 13 binds
+  receipts and remembered decisions to both source and environment hashes.
+  Changed runtime/version needs new approval, tampered wheels fail before execution,
+  and unavailable bundle support leaves stdlib usable. Agent discovery and trusted
+  approval/receipt UI expose the chosen environment. See
+  [bundle setup](DOCUMENTATION.md#worker-dependency-decision).
+  Google registration stays deferred; no arbitrary task installations/build tools
+  or direct worker networking are enabled.
+  Acceptance: **679 regressions passed in 314.002 seconds**, 61 focused worker
+  checks passed in 12.902 seconds, ten final store/migration checks and eleven
+  upload checks passed. SDK and independent raw clients generated actual PDF,
+  XLSX and PNG files through approved source over both stdio and authenticated
+  HTTP MCP. Native document self-check and browser startup/render/shutdown passed;
+  approval previews were inspected. Ruff/format, dependency health, wheel-lock
+  consistency, whitespace and local doc links passed. The earlier full run hit
+  `native_input_unavailable` in one existing upload check; focused and final full
+  checks passed, so native desktop acceptance remains tracked independently.
+  All profiles, files and account effects were synthetic.
+
+- **Next major engineering decision — agent-built providers:** document generation
+  and composition of trusted app tools are available. Adding a new external service
+  requires a network/authentication trust boundary. Recommend user-reviewed,
+  versioned declarative connector recipes interpreted by Steed's trusted broker,
+  with credentials outside generated code and a bounded read-only REST first stage.
+  Alternative: custom sandboxed HTTP adapters behind a credential gateway, with
+  broader protocol support and additional policy/lifecycle work. See the
+  [concrete proposal](DOCUMENTATION.md#new-provider-integration-decision).
+  Implementation waits for this architecture choice; Google registration remains
+  deferred independently.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
@@ -886,14 +916,15 @@ packages through owned immutable workspace files. User-selected input snapshots
 are separate from host filesystem access; exact download grants cover agent
 exports. The Workspace panel exposes provenance, hash, state, user export/deletion
 and staged package capability requests. Staging grants nothing; execution uses
-separate task/package approval and a stdlib-only isolated local worker.
+separate task/package/environment approval and an isolated local worker with stdlib
+or the optional maintained PDF/XLSX/image bundle.
 Limits are 8 MiB/file and 50 names/32 MiB/task. Sending/uploading exported files
 continues to require its own permission. User-selected workspace-file recovery
 is implemented; async local storage remains future work.
 
 Implemented: local execution, resource budgets, broker-only data/app access,
 credential separation, durable receipts, revocation/cleanup and adversarial checks.
-Remaining: package dependencies/build tools, reusable installation/versioning/removal,
+Remaining: arbitrary dependencies/build tools, reusable installation/versioning/removal,
 trusted effect mapping and credential/HTTP policy for new providers, and broader
 recovery. Acceptance: an agent creates a useful missing generator/integration,
 the user sees its actual requested capabilities, and isolated execution cannot

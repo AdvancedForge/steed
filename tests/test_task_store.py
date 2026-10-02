@@ -160,8 +160,24 @@ class TaskStoreTests(unittest.TestCase):
         self.assertEqual(self.store.grants(), [])
         with sqlite3.connect(self.path) as connection:
             self.assertEqual(
-                connection.execute("PRAGMA user_version").fetchone()[0], 12
+                connection.execute("PRAGMA user_version").fetchone()[0], 13
             )
+
+    def test_partially_added_worker_columns_can_finish_migration(self):
+        task = self.store.create("Interrupted dependency-environment migration")
+        self.store.transition(task.task_id, "completed")
+        events = self.store.events(task.task_id)
+        self.store.close()
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("ALTER TABLE worker_runs DROP COLUMN environment_sha256")
+            connection.execute("PRAGMA user_version=12")
+        self.store = TaskStore(self.path)
+        self.assertEqual(self.store.events(task.task_id), events)
+        columns = {
+            r[1] for r in self.store._db.execute("PRAGMA table_info(worker_runs)")
+        }
+        self.assertIn("runtime", columns)
+        self.assertIn("environment_sha256", columns)
 
     def test_ui_tail_selects_recent_task_scoped_and_filtered_events(self):
         first, second = self.store.create("First"), self.store.create("Second")

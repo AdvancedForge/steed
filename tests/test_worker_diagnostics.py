@@ -24,6 +24,12 @@ class WorkerDiagnosticsTests(unittest.TestCase):
 
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
+        self.bundle_root = patch(
+            "services.worker_bundle.BUNDLE_ROOT",
+            Path(self.directory.name) / "absent-bundle",
+        )
+        self.bundle_root.start()
+        self.addCleanup(self.bundle_root.stop)
         self.path = Path(self.directory.name) / "tasks.sqlite"
         self.service = TaskService(self.path)
         self.task = self.service._create("Inspect worker support")
@@ -54,6 +60,32 @@ class WorkerDiagnosticsTests(unittest.TestCase):
         self.assertEqual(self.service.workspace.list(self.task.task_id), [])
         self.assertEqual(self.service.workers.store.list(self.task.task_id), [])
         self.assertEqual(self.service._sessions, {})
+        documents = next(
+            e for e in metadata["environments"] if e["runtime"] == "documents"
+        )
+        self.assertFalse(documents["available"])
+        self.assertEqual(documents["reason"], "worker_bundle_not_installed")
+        self.assertIn("reportlab", documents["libraries"])
+
+    def test_optional_bundle_probe_failure_does_not_disable_standard_library(self):
+
+        # Install-presence check is synthetic; sandbox failures stay content-free.
+        with (
+            patch("services.worker_diagnostics.require_installed"),
+            patch(
+                "services.worker_diagnostics.run_worker",
+                side_effect=[WorkerOutcome("succeeded"), OSError("PRIVATE_DETAIL")],
+            ),
+        ):
+            metadata = self.result(self.client.submit("worker.capabilities"))
+        self.assertTrue(metadata["available"])
+        documents = next(
+            e for e in metadata["environments"] if e["runtime"] == "documents"
+        )
+        self.assertFalse(documents["available"])
+        self.assertEqual(documents["reason"], "worker_bundle_check_failed")
+        self.assertNotIn("PRIVATE_DETAIL", repr(metadata))
+        self.assertFalse(self.service.failure)
 
     def test_probe_failure_is_sanitized_and_cached_without_host_fallback(self):
         with patch(
