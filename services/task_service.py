@@ -38,6 +38,7 @@ from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
 from services.task_recovery import MAX_RECOVERY_ARTIFACTS, recovery_snapshot
 from services.task_store import ACTIVE_STATUSES, TERMINAL_STATUSES, TaskStore
 from services.task_workspace import MAX_FILE_BYTES, TaskWorkspace
+from services.worker_manager import WorkerManager
 
 
 class TaskService(QObject):
@@ -86,6 +87,7 @@ class TaskService(QObject):
         self._actor = ContextVar("task_user_actor", default="agent")
         self._closed = False
         self.failure = ""
+        self.workers = WorkerManager(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -113,6 +115,18 @@ class TaskService(QObject):
                 "workspace.read": self._workspace_read,
                 "workspace.export": self._workspace_export,
                 "workspace.stage_extension": self._workspace_stage_extension,
+                "worker.run": lambda task_id, extension_id, request_id: (
+                    self._worker_action(
+                        self.workers.run, task_id, extension_id, request_id
+                    )
+                ),
+                "worker.status": lambda task_id, request_id: self._worker_action(
+                    self.workers.status, task_id, request_id
+                ),
+                "worker.list": lambda task_id: self._worker_action(
+                    self.workers.list, task_id
+                ),
+                "worker.cancel": self._worker_cancel,
                 "app.list_tools": self._app_tools,
                 "app.call_tool": self._app_call,
                 "app.status": self._app_status,
@@ -422,11 +436,44 @@ class TaskService(QObject):
         require_owner_thread(self)
         self._usable()
         try:
+            self.workers.deleting(task_id, file_id)
             self.workspace.delete(task_id, file_id)
         except (sqlite3.Error, OSError):
             self._fatal(defer_broker_close=True)
             raise
         self.changed.emit()
+
+    def _worker_cancel(self, task_id, request_id):
+        self._usable()
+        self._active(task_id)
+        return self._worker_action(self.workers.cancel, task_id, request_id)
+
+    def cancel_worker(self, task_id, request_id):
+        """Trusted UI may stop a retained task's running worker."""
+        require_owner_thread(self)
+        self._usable()
+        return self._worker_action(self.workers.cancel, task_id, request_id)
+
+    def _worker_action(self, operation, *args, **kwargs):
+        require_owner_thread(self)
+        self._usable()
+        try:
+            return operation(*args, **kwargs)
+        except TaskPermissionError:
+            raise
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+
+    def resolve_worker(self, task_id, request_id, *, approve=False, remember=False):
+        """Trusted UI package decision; deliberately absent from the broker."""
+        return self._worker_action(
+            self.workers.resolve,
+            task_id,
+            request_id,
+            approve=approve,
+            remember=remember,
+        )
 
     def clear_app_results(self, task_id, request_ids=None):
         """Only trusted browser UI clears retained results; clients cannot erase evidence."""
@@ -1884,6 +1931,7 @@ class TaskService(QObject):
         live = self._grants.pop(task_id, None)
         if live:
             live[1].end(status)
+        self.workers.cancel_task(task_id)
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):
@@ -1952,6 +2000,7 @@ class TaskService(QObject):
         for job in self._connector_jobs.values():
             job.cancelled.set()
             job.timer.stop()
+        self.workers.stop_all()
         self._timer.stop()
         if defer_broker_close:
             # Let the currently dispatching handler publish its original write
@@ -1978,6 +2027,7 @@ class TaskService(QObject):
                 if task.status in ACTIVE_STATUSES:
                     self._finish_task(task.task_id, "interrupted")
         finally:
+            self.workers.close()
             self._grants.clear()
             self._sessions.clear()
             try:

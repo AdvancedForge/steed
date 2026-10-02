@@ -27,6 +27,15 @@ class CommandBroker(QObject):
 
     def submit(self, command: str, **arguments) -> Future:
         """Thread-safe entry point. Never wait on its Future from the Qt thread."""
+        return self._enqueue(command, arguments, None)
+
+    def submit_guarded(self, command: str, guard, **arguments) -> Future:
+        """Trusted callback checked at dispatch; never exposed across external IPC."""
+        if not callable(guard):
+            raise ValueError("Provide a trusted dispatch guard")
+        return self._enqueue(command, arguments, guard)
+
+    def _enqueue(self, command, arguments, guard):
         future = Future()
         # Callers cannot mutate a queued command's arguments after submission.
         try:
@@ -39,13 +48,13 @@ class CommandBroker(QObject):
                 future.set_exception(RuntimeError("Command broker is closed"))
                 return future
             self._pending.add(future)
-            self._submitted.emit((command, arguments, future))
+            self._submitted.emit((command, arguments, future, guard))
         return future
 
     @pyqtSlot(object)
     def _dispatch(self, request):
         require_owner_thread(self)
-        command, arguments, future = request
+        command, arguments, future, guard = request
         with self._lock:
             closed = self._closed
         if closed:
@@ -56,6 +65,8 @@ class CommandBroker(QObject):
                 self._pending.discard(future)
             return
         try:
+            if guard is not None:
+                guard()
             if command not in self._handlers:
                 raise ValueError("Unsupported internal command")
             result = self._handlers[command](**arguments)

@@ -1,4 +1,4 @@
-"""Owned binary/source files and staged extension declarations; never execute code."""
+"""Owned binary/source files; staging itself grants no execution authority."""
 
 import base64
 import binascii
@@ -379,3 +379,34 @@ class TaskWorkspace:
                 item["requested_capabilities"] = data["capabilities"]
             result.append(item)
         return result
+
+    def package(self, task_id, extension_id):
+        """Revalidate the manifest and every pinned source before execution."""
+        self.store.get(task_id)
+        row = self.store._db.execute(
+            "SELECT * FROM workspace_extensions WHERE task_id=? AND extension_id=?",
+            (task_id, extension_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError("Package does not belong to this task")
+        checked = self.stage_extension(task_id, row["manifest_id"])
+        if checked["package_sha256"] != row["package_sha256"]:
+            raise ValueError("Package identity changed")
+        manifest = json.loads(self.bytes(task_id, row["manifest_id"]))
+        selected = json.loads(row["files"])
+        return {
+            **checked,
+            "manifest": manifest,
+            "file_ids": [row["manifest_id"], *[f["file_id"] for f in selected]],
+            "files": {f["name"]: self.bytes(task_id, f["file_id"]) for f in selected},
+        }
+
+    def package_file_ids(self, task_id, extension_id):
+        self.store.get(task_id)
+        row = self.store._db.execute(
+            "SELECT manifest_id,files FROM workspace_extensions WHERE task_id=? AND extension_id=?",
+            (task_id, extension_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError("Package does not belong to this task")
+        return [row[0], *[item["file_id"] for item in json.loads(row[1])]]

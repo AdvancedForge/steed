@@ -31,6 +31,7 @@ from test_task_profiles import TaskProfileTests
 from browser_window import BrowserWindow
 from ui.task_dialog import TaskDialog
 from ui.task_recovery import TaskRecoveryDialog
+from ui.worker_approval import WorkerApprovalDialog
 
 
 @asynccontextmanager
@@ -115,6 +116,57 @@ async def workspace_workflow(call, destination):
     package = await call("workspace.stage_extension", manifest_id=manifest["file_id"])
     assert package["status"] == "staged" and not package["executable"]
     assert len(await call("workspace.list")) == 3
+    await upload(
+        "generator.py",
+        b"from steed_worker import store_file\n"
+        b"import io, zipfile\n"
+        b"out = io.BytesIO()\n"
+        b"with zipfile.ZipFile(out, 'w') as archive:\n"
+        b"    archive.writestr('report.csv', 'name,value\\nSteed,1\\n')\n"
+        b"store_file('generated.zip', out.getvalue(), 'application/zip')\n",
+    )
+    runnable_manifest = await upload(
+        "generator.json",
+        json.dumps(
+            {
+                "version": 1,
+                "name": "fixture-generator",
+                "entrypoint": "generator.py",
+                "files": ["generator.py"],
+                "capabilities": [],
+            }
+        ).encode(),
+    )
+    runnable = await call(
+        "workspace.stage_extension", manifest_id=runnable_manifest["file_id"]
+    )
+    receipt = await call(
+        "worker.run", extension_id=runnable["extension_id"], request_id="generate-zip"
+    )
+    deadline = time.monotonic() + 10
+    while receipt["state"] in {"awaiting_approval", "running", "cancelling"}:
+        assert time.monotonic() < deadline, receipt
+        await asyncio.sleep(0.02)
+        receipt = await call("worker.status", request_id="generate-zip")
+    assert receipt["state"] == "succeeded", receipt
+    output = next(
+        f for f in await call("workspace.list") if f["name"] == "generated.zip"
+    )
+    content = await call("workspace.read", file_id=output["file_id"])
+    import io
+    import zipfile
+
+    with zipfile.ZipFile(
+        io.BytesIO(base64.b64decode(content["data_base64"]))
+    ) as archive:
+        assert archive.read("report.csv") == b"name,value\nSteed,1\n"
+    assert (
+        await call(
+            "worker.run",
+            extension_id=runnable["extension_id"],
+            request_id="generate-zip",
+        )
+    )["state"] == "succeeded"
 
 
 async def sdk_client(
@@ -176,6 +228,7 @@ async def sdk_client(
                         "upload",
                         "artifact",
                         "workspace",
+                        "worker",
                         "app",
                     ],
                     "duration_seconds": 120,
@@ -582,6 +635,7 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
                 "artifact",
                 "app",
                 "workspace",
+                "worker",
                 "download",
             ],
             "download_destinations": [shared["raw_workspace_destination"]],
@@ -1031,7 +1085,13 @@ def check(transport="stdio"):
                     shared.get("sdk_recovery_task"),
                     shared.get("raw_recovery_task"),
                 )
-                if isinstance(dialog, TaskRecoveryDialog):
+                if isinstance(dialog, WorkerApprovalDialog):
+                    assert "generated.zip" in dialog.source.toPlainText()
+                    assert dialog.deny_button.isDefault()
+                    dialog.grab().save(f"/tmp/steed-worker-{transport}-preview.png")
+                    dialog.allow_button.click()  # Only the trusted synthetic fixture.
+                    shared["worker_package_popup"] = True
+                elif isinstance(dialog, TaskRecoveryDialog):
                     original = (
                         shared["task_id"]
                         if dialog.task_id == shared.get("sdk_recovery_task")

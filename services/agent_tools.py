@@ -88,10 +88,11 @@ SCOPE = schema(
                     "upload",
                     "artifact",
                     "workspace",
+                    "worker",
                     "app",
                 ],
             },
-            "maxItems": 12,
+            "maxItems": 13,
         },
         "profile": string(140),
         "allow_private_network": {
@@ -272,6 +273,28 @@ TOOLS = (
         "Start a task owned by this connection. Finish any current task first; new tasks need fresh permissions.",
         {"objective": string(1000)},
         ("objective",),
+    ),
+    tool(
+        "worker.run",
+        "Execute one owned staged Python package in a local Linux sandbox after exact package approval in trusted UI. Stdlib only, no direct network/host files/subprocesses. Typed file/artifact/app operations need their separate task permissions and declared app capabilities. Stable request IDs never replay a run, including failure or restart.",
+        {"extension_id": string(64), "request_id": string(64)},
+        ("extension_id", "request_id"),
+    ),
+    tool(
+        "worker.status",
+        "Read an owned execution receipt with current worker permission. App effects have separate provider receipts.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
+        "worker.list",
+        "List owned worker execution receipts with current worker permission. No source bytes or credentials are included.",
+    ),
+    tool(
+        "worker.cancel",
+        "Cancel an owned local worker and its pending app requests. Cancellation cannot undo dispatched external writes.",
+        {"request_id": string(64)},
+        ("request_id",),
     ),
     tool("task.status", "Read this connection's task status."),
     tool(

@@ -33,6 +33,7 @@ ACTION_LABELS = {
     "upload": "Send the listed local files to the listed upload sites",
     "artifact": "Save and read task notes/drafts here (kept after the task ends)",
     "workspace": "Create and read task files, including inputs you explicitly share; stage custom integration source (no host-folder access, execution or network permission)",
+    "worker": "Request custom Python execution; each exact package needs separate approval (no direct network, host files or subprocesses)",
     "app": "Use the exact app tools/destinations below (results kept here)",
 }
 
@@ -132,6 +133,14 @@ class TaskApprovalDialog(QDialog):
             layout.addWidget(
                 QLabel(f"Up to {scope['max_upload_bytes']:,} staged bytes per page.")
             )
+        if "worker" in scope["actions"]:
+            worker_notice = WrappedLabel(
+                "Python standard library only. Each run: up to 20 seconds, 10 CPU "
+                "seconds and 512 MiB memory; at most two workers at once. Code can "
+                "use only the file/draft/app operations separately listed in this request."
+            )
+            worker_notice.setWordWrap(True)
+            layout.addWidget(worker_notice)
         if scope.get("connector_permissions"):
             layout.addWidget(QLabel("Allowed app operations:"))
             apps = QPlainTextEdit(
@@ -310,6 +319,10 @@ class TaskApprovalQueue(QObject):
                         (task, review)
                         for review in self.service.app_reviews.pending(task.task_id)
                     )
+                    pending.extend(
+                        (task, receipt)
+                        for receipt in self.service.workers.store.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -336,17 +349,29 @@ class TaskApprovalQueue(QObject):
             if key in self.deferred:
                 continue
             from services.connector_reviews import AppReview
+            from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
+            from ui.worker_approval import WorkerApprovalDialog
 
-            dialog = (
-                AppReviewDialog(self.service, task, grant, parent)
-                if isinstance(grant, AppReview)
-                else (
-                    TaskApprovalDialog(self.service, task, grant, parent)
-                    if grant
-                    else TaskRecoveryDialog(self.service, task, parent)
+            try:
+                dialog = (
+                    AppReviewDialog(self.service, task, grant, parent)
+                    if isinstance(grant, AppReview)
+                    else WorkerApprovalDialog(self.service, task, grant, parent)
+                    if isinstance(grant, WorkerReceipt)
+                    else (
+                        TaskApprovalDialog(self.service, task, grant, parent)
+                        if grant
+                        else TaskRecoveryDialog(self.service, task, parent)
+                    )
                 )
-            )
+            except (ValueError, KeyError):
+                # Unavailable source/review remains manageable through trusted UI.
+                self.deferred.add(key)
+                continue
+            except (OSError, sqlite3.Error):
+                self.service._fatal()
+                return
             self.dialog = dialog
             dialog.finished.connect(lambda result, gid=key: self._finished(result, gid))
             dialog.show()
@@ -354,10 +379,11 @@ class TaskApprovalQueue(QObject):
 
     def request_key(self, task, item):
         from services.connector_reviews import AppReview
+        from services.worker_store import WorkerReceipt
 
         return (
             item.request_key
-            if isinstance(item, AppReview)
+            if isinstance(item, (AppReview, WorkerReceipt))
             else item.grant_id
             if item
             else "recovery:" + task.task_id
