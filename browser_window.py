@@ -1153,6 +1153,11 @@ class BrowserWindow(QMainWindow):
         for win in self._child_windows:
             win.close()
 
+        from ui.task_watch import TaskWatchDialog
+
+        for watcher in self.findChildren(TaskWatchDialog):
+            watcher.close()
+
         if self.cookie_manager is not None:
             self.cookie_manager.close()
             self.cookie_manager = None

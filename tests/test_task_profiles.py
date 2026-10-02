@@ -68,6 +68,46 @@ class TaskProfileTests(unittest.TestCase):
         grant = self.request(task.task_id, profile="existing:work")
         return task.task_id, grant.grant_id
 
+    def test_closing_watch_parent_returns_control_without_closing_shared_task_profile(
+        self,
+    ):
+        first, second = BrowserWindow(), BrowserWindow()
+        self.windows.extend((first, second))
+        first._switch_to_profile("work")
+        task = self.command(
+            "task.create", objective="Collaborate on a shared-profile page"
+        )
+        grant = self.request(
+            task.task_id,
+            profile="existing:work",
+            actions=["navigate", "inspect", "read", "attach", "edit"],
+        )
+        self.service.approve_grant(task.task_id, grant.grant_id)
+        opened = self.command(
+            "session.open", task_id=task.task_id, profile="existing:work"
+        )
+        self.navigate(task.task_id, opened.session_id, "/fixture")
+        with patch("profile_manager.QApplication.activeWindow", return_value=first):
+            self.command(
+                "session.watch", task_id=task.task_id, session_id=opened.session_id
+            )
+        watch = self.service._watchers[opened.session_id]
+        self.assertIs(watch.parent(), first)
+        page = watch.view.page()
+        self.assertIs(page.profile(), self.profile)
+        self.service.take_control(task.task_id, opened.session_id, watch.control_key)
+        first.close()
+        self.assertFalse(self.service._controls)
+        self.assertNotIn(opened.session_id, self.service._watchers)
+        self.assertFalse(sip.isdeleted(page))
+        self.assertFalse(sip.isdeleted(self.profile))
+        self.assertEqual(
+            self.command(
+                "session.inspect", task_id=task.task_id, session_id=opened.session_id
+            ).control_owner,
+            "agent",
+        )
+
     def named_session(self):
         task_id, grant_id = self.named_request()
         self.service.approve_grant(task_id, grant_id)

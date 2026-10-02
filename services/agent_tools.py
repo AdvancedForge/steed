@@ -209,6 +209,12 @@ TOOLS = (
         tuple(TARGET),
     ),
     tool(
+        "session.watch",
+        "Show this task's existing page in a read-only browser window with attach permission. Only the user can take/return control; inspect session metadata for control_owner.",
+        SESSION,
+        ("session_id",),
+    ),
+    tool(
         "page.scroll",
         "Scroll an observed frame with read/scroll permission.",
         {

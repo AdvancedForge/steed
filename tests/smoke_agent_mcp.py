@@ -99,6 +99,7 @@ async def sdk_client(discovery, origin, shared, revoke, revoked, endpoint=None):
                         "navigate",
                         "inspect",
                         "read",
+                        "attach",
                         "edit",
                         "submit",
                         "scroll",
@@ -144,6 +145,34 @@ async def sdk_client(discovery, origin, shared, revoke, revoked, endpoint=None):
 
             link = await target("Open form")
             await call("page.navigate", **link)
+            await call("session.watch", session_id=session_id)
+            old_field = await target("Message")
+            shared["takeover_requested"] = True
+            deadline = time.monotonic() + 15
+            while not shared.get("user_control_taken"):
+                assert time.monotonic() < deadline, "User takeover fixture timed out"
+                await asyncio.sleep(0.02)
+            assert (await call("session.inspect", session_id=session_id))[
+                "control_owner"
+            ] == "user"
+            paused = await client.call_tool(
+                "steed_page_inspect", {"session_id": session_id}
+            )
+            assert (
+                paused.isError
+                and paused.structuredContent["error"]["code"] == "user_control_active"
+            )
+            shared["agent_blocked_during_takeover"] = True
+            shared["return_requested"] = True
+            while not shared.get("user_control_returned"):
+                assert time.monotonic() < deadline, "User return fixture timed out"
+                await asyncio.sleep(0.02)
+            stale_handoff = await client.call_tool("steed_page_target", old_field)
+            assert (
+                stale_handoff.isError
+                and stale_handoff.structuredContent["error"]["code"] == "stale_snapshot"
+            )
+            shared["handoff_stale_refs_denied"] = True
             field = await target("Message")
             edited = await call(
                 "page.act", **field, operation="enter", text="SYNTHETIC_MCP_VALUE"
@@ -160,6 +189,7 @@ async def sdk_client(discovery, origin, shared, revoke, revoked, endpoint=None):
             events = await call("task.events")
             assert "SYNTHETIC_MCP_VALUE" not in json.dumps(events)
             assert "FORM_PRIVATE" not in json.dumps(events)
+            assert "SYNTHETIC_USER_HANDOFF" not in json.dumps(events)
             assert any(event["kind"] == "page.action_finished" for event in events)
             shared["form_completed"] = True
             revoke.set()
@@ -462,6 +492,7 @@ def check(transport="stdio"):
         worker.start()
         deadline = time.monotonic() + 60
         user_posted = False
+        user_edit_started = False
         while worker.is_alive() and time.monotonic() < deadline:
             case.app.processEvents()
             dialog = case.registry.task_approvals.dialog
@@ -474,6 +505,40 @@ def check(transport="stdio"):
                 dialog.approve_button.click()  # Trusted synthetic fixture only.
                 shared["approval_popup"] = True
             session_id = shared.get("session_id")
+            watcher = case.service._watchers.get(session_id)
+            if (
+                shared.get("takeover_requested")
+                and not shared.get("user_control_taken")
+                and watcher is not None
+            ):
+                if not watcher.owns_control():
+                    watcher.take_button.click()  # Trusted synthetic user only.
+                elif not watcher._busy and not user_edit_started:
+                    index = next(
+                        i
+                        for i in range(watcher.targets.count())
+                        if watcher.targets.itemData(i).label == "Message"
+                    )
+                    watcher.targets.setCurrentIndex(index)
+                    watcher.text.setText("SYNTHETIC_USER_HANDOFF")
+                    watcher.action_buttons["enter"].click()
+                    user_edit_started = True
+                elif not watcher._busy and user_edit_started:
+                    assert not watcher.error.text(), watcher.error.text()
+                    assert (
+                        watcher.view.page()
+                        is case.service.backend._sessions[session_id].page
+                    )
+                    watcher.grab().save(f"/tmp/steed-watch-{transport}-preview.png")
+                    shared["user_control_taken"] = True
+            if (
+                shared.get("return_requested")
+                and not shared.get("user_control_returned")
+                and watcher is not None
+            ):
+                watcher.return_button.click()
+                assert not watcher.owns_control()
+                shared["user_control_returned"] = True
             if session_id in case.service.backend._sessions and not user_posted:
                 task_page = case.service.backend._sessions[session_id].page
                 assert task_page.profile() is user.profile() is case.profile

@@ -4,6 +4,7 @@ import json
 import sqlite3
 
 from PyQt6.QtWidgets import (
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -46,6 +47,13 @@ class TaskDialog(QDialog):
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
         layout.addWidget(self.details)
+        watching = QHBoxLayout()
+        self.sessions = QComboBox()
+        self.watch_button = QPushButton("Watch Page")
+        self.watch_button.clicked.connect(self.watch_page)
+        watching.addWidget(self.sessions)
+        watching.addWidget(self.watch_button)
+        layout.addLayout(watching)
         buttons = QHBoxLayout()
         self.approve_button = QPushButton("Approve Request")
         self.deny_button = QPushButton("Deny Request")
@@ -120,6 +128,25 @@ class TaskDialog(QDialog):
             bool(active and grant and grant.status == "approved")
         )
         self.cancel_button.setEnabled(bool(active))
+        selected_session = self.sessions.currentData()
+        self.sessions.clear()
+        if active:
+            for session_id, owner in self.service._sessions.items():
+                if owner == task.task_id:
+                    state = self.service.backend.inspect(session_id)
+                    self.sessions.addItem(state.url, session_id)
+            index = self.sessions.findData(selected_session)
+            if index >= 0:
+                self.sessions.setCurrentIndex(index)
+        self.watch_button.setEnabled(
+            bool(
+                active
+                and grant
+                and grant.status == "approved"
+                and "attach" in grant.scope["actions"]
+                and self.sessions.count()
+            )
+        )
         if self.service.failure:
             self.details.setPlainText(self.service.failure)
         elif grant:
@@ -215,3 +242,19 @@ class TaskDialog(QDialog):
                 "The task or permission changed, or its journal could not be saved. Review the current state before trying again.",
             )
         self.refresh()
+
+    def watch_page(self):
+        selected = self.selection()
+        session_id = self.sessions.currentData()
+        if not selected or not session_id:
+            return
+        try:
+            self.service._watch(selected[0].task_id, session_id)
+        except Exception:
+            QMessageBox.warning(
+                self,
+                "Task Page",
+                "The page could not be opened. Check its permission and current task state.",
+            )
+        else:
+            self.accept()

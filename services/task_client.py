@@ -25,6 +25,7 @@ CLIENT_COMMANDS = frozenset(
         "page.scroll",
         "page.wait",
         "session.attach",
+        "session.watch",
         "session.stop",
         "session.close",
     }

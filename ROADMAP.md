@@ -10,11 +10,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 2, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-290-test suite passed, including HTTP session/credential/lifecycle tests,
-native-input checks, capability discovery, local
-agent transport/lifecycle checks, and a shared-profile
-focus/control-isolation check, plus existing form, popup, and browser regressions.
-Current startup/render/shutdown and local Google HTTPS smoke checks passed on Qt 6.11.2.
+308-test suite passed in 146.577 seconds (`/tmp/steed-watch-full.log`), including
+watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
+capability discovery, local agent transport/lifecycle checks, and shared-profile
+focus/control-isolation, plus existing form, popup, and browser regressions.
+Current startup/render/shutdown passed on Qt 6.11.2
+(`/tmp/steed-watch-startup.log`); the preceding local Google HTTPS check passed.
 The previous form-stage Google fixture exited natively during `QWebEngineProfile`
 creation before passing on retry. An earlier startup fixture also exited natively.
 Track that intermittent exit separately from desktop acceptance. Ruff, formatting,
@@ -28,8 +29,10 @@ File and active-page authority will be implemented alongside their A3 operations
 A3 includes content inspection, stale-target validation, observed link navigation,
 scriptless control edits, native form submission, scrolling, and bounded waits.
 Active document scripts are deferred following the bounded engine assessment;
-file actions and complete form/SPA acceptance remain pending. A4 now includes
+file actions and complete form/SPA acceptance remain pending. A4 includes
 opt-in local IPC and working stdio/HTTP MCP adapters for current task operations.
+A7 is in progress: users can watch the same task page, take control through
+supported actions, and return it with edits preserved and old references invalidated.
 Real-account login persistence, third-party Google sign-in, hardware permission
 flows, and ordinary site usability remain follow-up checks; no automated fixture
 establishes those results. Password improvements remain deferred at the user's request.
@@ -39,7 +42,9 @@ establishes those results. Password improvements remain deferred at the user's r
 **A3 remains in progress: native keyboard activation/selection and native form
 submission are implemented alongside inspection, links, edits, scrolling, and waits.**
 **A4 is in progress: external stdio and HTTP clients can use those operations.**
-Continued from basic MCP commit `d663fc5`, following native-networking commit
+**A7 is in progress: same-page watch and scoped user handoff are implemented.**
+Continued from HTTP MCP commit `8266c37`, following basic MCP commit `d663fc5`
+and native-networking commit
 `1cd031f`; preceding safeguards/audit
 commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
 
@@ -90,7 +95,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   [assessment](DOCUMENTATION.md#bounded-engine-feasibility-assessment).
 - **Local MCP implemented:** File → Enable Local Agent Access opts in for this
   run. A private authenticated Unix socket connects the optional official-SDK
-  stdio adapter to the running Qt process. Twenty published tool schemas use
+  stdio adapter to the running Qt process. Twenty-one published tool schemas use
   connection-bound active-task identity and the existing broker/grant checks. Clients
   cannot approve or adopt other tasks. Disconnect, timeout, disabling access,
   journal failure and browser shutdown remove access and dispose owned pages.
@@ -131,10 +136,30 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   passed. One HTTP smoke run hit the known native Qt startup exit (139) before
   HTTP checks and passed on identical retry; that issue remains unresolved.
   See [HTTP setup](DOCUMENTATION.md#http-connection).
-- **Next task:** add watching and user takeover of the same task-owned page,
-  with explicit attach permission and control/lifecycle checks. Reconnect/resume
-  and broader client compatibility remain future work. A3 file destinations/actions
-  and pointer/custom controls can progress independently of the deferred engine work.
+- **Watch and user handoff implemented:** explicit `attach` permission opens a
+  nonmodal view of the existing page via Task Permissions or `steed_session_watch`.
+  Watching leaves the agent running; Take Control waits for idle, blocks agent
+  page operations/reads, and routes supported user actions through the same scoped
+  broker. Return preserves page/profile state and invalidates old references.
+  Closing an idle view returns control; closing during a pending user mutation
+  cancels the task. Revocation, expiry, cancellation, and shutdown close views/pages.
+  Direct rendered-page input remains blocked; website scripts, custom controls,
+  and password/file forms remain unavailable. Sixteen watch regressions passed,
+  including queued/in-flight access, stale handles/keys, journal failure, Escape,
+  direct deletion, and reopening before deferred deletion. A shared-window check
+  verifies closing the watch's parent returns control while retaining the task's
+  shared profile. Both MCP transport fixtures passed user edit/return and
+  continued agent form completion alongside ordinary user POST.
+  The full suite passed 308 tests in 146.577 seconds; startup/render/shutdown,
+  Ruff/formatting/whitespace, 47 local documentation links, and `pip check` passed.
+  The synthetic handoff window was visually inspected. No native startup exit was
+  observed in this stage; the intermittent exit recorded above remains unresolved.
+  See [handoff usage](DOCUMENTATION.md#watching-and-taking-control).
+- **Next task:** A2/A3 destination-specific download permissions and task download
+  actions, with observed receipts, cancellation, and shared-profile isolation.
+  Uploads follow after download lifecycle is established. Reconnect/resume,
+  broader client compatibility, and remaining A7 activity/artifact/styling work
+  stay pending; website scripts remain deferred.
 - **Future script acceptance:** obtain a compatible embedded engine/native hook and integrate
   trusted connection/worker policy delivery before document code executes.
   Chrome's native policy starts at 152; installed Qt embeds 140 and the latest
@@ -151,6 +176,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   `services/form_submission.py`, `services/task_input.py`, `services/task_network.py`,
   `services/engine_capabilities.py`, `services/task_client.py`,
   `agent_mcp.py`, `services/agent_gateway.py`, `services/agent_tools.py`,
+  `ui/task_watch.py`, `ui/task_dialog.py`, `tests/test_task_watch.py`,
   `tests/test_agent_gateway.py`, `tests/test_agent_access_ui.py`, `tests/smoke_agent_mcp.py`,
   `tests/test_page_actions.py`, `tests/test_page_forms.py`,
   `tests/smoke_task_active_content.py`, `tests/smoke_task_native_policy.py`,
@@ -190,7 +216,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   requiring fresh approval. Real-entry-point startup/render/shutdown passed
   (`/tmp/steed-mcp-startup.log`). Lint/format/whitespace and 45 local links passed.
 - **Still pending:** full A3 form/SPA/file acceptance, later A2 authority, broader A4
-  interoperability/recovery, and A5–A7. Password improvements stay deferred.
+  interoperability/recovery, A5–A6, and remaining A7 work. Password improvements stay deferred.
   Real-account collaboration and interactive desktop checks remain follow-ups.
 
 | Area | Progress | Remaining work |
@@ -262,8 +288,8 @@ daily-use workflow; they do not automatically block the agent milestones.
 Keep Python, PyQt6, and Qt WebEngine initially, with replaceable engine/provider
 interfaces. Prefer text and structured state; support watching, takeover,
 resume, revocation, and cancellation. A1 is implemented; A2 supports private and
-existing-profile grants for the current backend. A3 and A4 are in progress;
-A5–A7 remain pending. Scripted tasks are deferred; supported operations are now
+existing-profile grants for the current backend. A3, A4, and A7 are in progress;
+A5–A6 remain pending. Scripted tasks are deferred; supported operations are now
 available to external stdio and HTTP clients.
 
 ### A1. Browser services and task storage — implemented
@@ -445,7 +471,7 @@ request takeover or return clear limitations.
 **In progress; both core transports implemented.** Optional `agent_mcp.py` uses
 the official Python SDK over stdio and authenticated loopback Streamable HTTP
 and connects to an opted-in running browser through private authenticated local
-IPC. Twenty published input schemas expose current task operations, capability
+IPC. Twenty-one published input schemas expose current task operations, capability
 and selected-profile discovery, structured results, and browser-assigned identity.
 User approval is required; shared-profile collaboration, cancellation, isolation,
 and evidence were tested with an SDK client and an independent JSON-RPC client
@@ -453,7 +479,7 @@ on MCP 2025-11-25 over both transports. HTTP sessions are credential-bound and
 own separate browser connections; cancellation/termination/expiry remove owned
 task access. See [setup](DOCUMENTATION.md#local-agent-access-mcp).
 
-Remaining: other protocol/client checks, reconnect/resume and watch/takeover,
+Remaining: other protocol/client checks, reconnect/resume,
 and future artifact/search/connector tools.
 Acceptance: two independent MCP clients work through both transports without
 framework-specific browser code. Core transport checks passed; full A4 is not
@@ -473,6 +499,14 @@ cancellation, and reconciliation of uncertain writes. Acceptance: mock document
 and email services pass before connecting real accounts.
 
 ### A7. Collaboration interface and styling
+
+**In progress.** Same-page watch and scoped user handoff are implemented.
+The nonmodal window offers observed links, supported fields, form submission,
+and scrolling with the task's existing permissions. Agent operations pause during
+user control; returning control preserves edits and requires fresh references.
+Closing/reopening, revocation, concurrent shared-window lifetime, and both MCP
+transport handoffs passed synthetic fixture checks. Full direct page input,
+custom controls, activity/artifact presentation, and styling remain pending.
 
 Show tasks, authority, activity, artifacts, and evidence. Support watching,
 exclusive takeover, resume, and cancellation. Add validated declarative chrome

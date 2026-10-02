@@ -47,7 +47,8 @@ follow links, edit supported controls, submit supported forms, scroll, and wait
 for page state with explicit permissions. Active scripts and file actions remain
 planned.
 Optional local MCP access over stdio or authenticated local HTTP connects clients
-to the running browser's task capabilities. See
+to the running browser's task capabilities. You can watch a task's page, take
+control through supported actions, and return it to the agent. See
 [agent setup](DOCUMENTATION.md#local-agent-access-mcp).
 Bookmarks and generic extension support are planned.
 
