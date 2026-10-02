@@ -22,12 +22,13 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from mock_app_connector import register_mock_apps
-from PyQt6.QtCore import QUrl
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineHttpRequest, QWebEngineSettings
 from test_task_profiles import TaskProfileTests
 
 from browser_window import BrowserWindow
 from ui.task_dialog import TaskDialog
+from ui.task_recovery import TaskRecoveryDialog
 
 
 @asynccontextmanager
@@ -355,6 +356,62 @@ async def sdk_client(
                 and denied.structuredContent["error"]["code"] == "task_inactive"
             )
             shared["cancellation_denied_further_access"] = True
+            followup = await call(
+                "task.start", objective="Continue explicitly selected drafts"
+            )
+            shared["sdk_recovery_task"] = followup["task_id"]
+            await call("task.recover")
+            deadline = time.monotonic() + 15
+            while (await call("task.recovery"))["status"] == "requested":
+                assert time.monotonic() < deadline, "Recovery picker timed out"
+                await asyncio.sleep(0.02)
+            recovery = await call("task.recovery")
+            assert (
+                recovery["status"] == "approved"
+                and recovery["source_task_id"] == task["task_id"]
+            )
+            await call(
+                "grant.request",
+                scope={
+                    "actions": ["artifact", "app"],
+                    "connector_permissions": [
+                        {
+                            "connector": "documents",
+                            "tool": "create",
+                            "effect": "write",
+                            "destination": "synthetic-workspace",
+                        }
+                    ],
+                },
+            )
+            while (await call("grant.list"))[0]["status"] != "approved":
+                assert time.monotonic() < deadline, "Fresh recovery approval timed out"
+                await asyncio.sleep(0.02)
+            copied = next(
+                item
+                for item in await call("artifact.list")
+                if item["sha256"] == artifact["sha256"]
+            )
+            assert copied["artifact_id"] != artifact["artifact_id"]
+            assert (await call("artifact.read", artifact_id=copied["artifact_id"]))[
+                "content"
+            ] == "SYNTHETIC_RETAINED_DRAFT"
+            replay = await client.call_tool(
+                "steed_app_call_tool",
+                {
+                    **document_args,
+                    "request_id": "recovery-document",
+                    "artifact_id": copied["artifact_id"],
+                },
+            )
+            assert (
+                replay.isError
+                and replay.structuredContent["error"]["code"]
+                == "recovery_write_already_recorded"
+            )
+            await call("task.finish")
+            shared["sdk_user_selected_recovery"] = True
+            shared["sdk_recovery_write_not_replayed"] = True
 
 
 def raw_workflow(request, notify, foreign_session, origin, shared):
@@ -503,6 +560,58 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     shared["independent_raw_app_workflow"] = True
     result = request("tools/call", {"name": "steed_task_finish", "arguments": {}})
     assert not result["isError"]
+    followup = call("task.start", objective="Independent archived-task follow-up")
+    shared["raw_recovery_task"] = followup["task_id"]
+    call("task.recover")
+    deadline = time.monotonic() + 15
+    while call("task.recovery")["status"] == "requested":
+        assert time.monotonic() < deadline, "Independent recovery picker timed out"
+        time.sleep(0.02)
+    assert call("task.recovery")["source_task_id"] == shared["raw_approval_task"]
+    call(
+        "grant.request",
+        scope={
+            "actions": ["artifact", "app"],
+            "connector_permissions": [
+                {
+                    "connector": "email",
+                    "tool": "send",
+                    "effect": "send",
+                    "destination": "fixture@example.test",
+                }
+            ],
+        },
+    )
+    while call("grant.list")[0]["status"] != "approved":
+        assert time.monotonic() < deadline, "Independent fresh approval timed out"
+        time.sleep(0.02)
+    copied = next(
+        item for item in call("artifact.list") if item["sha256"] == email["sha256"]
+    )
+    assert copied["artifact_id"] != email["artifact_id"]
+    assert (
+        "Synthetic document reference"
+        in call("artifact.read", artifact_id=copied["artifact_id"])["content"]
+    )
+    replay = request(
+        "tools/call",
+        {
+            "name": "steed_app_call_tool",
+            "arguments": {
+                **email_args,
+                "request_id": "recovery-email",
+                "artifact_id": copied["artifact_id"],
+            },
+        },
+    )
+    assert (
+        replay["isError"]
+        and replay["structuredContent"]["error"]["code"]
+        == "recovery_write_already_recorded"
+    )
+    call("task.finish")
+    shared["raw_user_selected_recovery"] = True
+    shared["raw_recovery_write_not_replayed"] = True
     return True
 
 
@@ -767,8 +876,26 @@ def check(transport="stdio"):
                 assert dialog.task_id in (
                     shared["task_id"],
                     shared.get("raw_approval_task"),
+                    shared.get("sdk_recovery_task"),
+                    shared.get("raw_recovery_task"),
                 )
-                dialog.approve_button.click()  # Trusted synthetic fixture only.
+                if isinstance(dialog, TaskRecoveryDialog):
+                    original = (
+                        shared["task_id"]
+                        if dialog.task_id == shared.get("sdk_recovery_task")
+                        else shared["raw_approval_task"]
+                    )
+                    dialog.source.setCurrentIndex(dialog.source.findData(original))
+                    for index in range(dialog.artifacts.count()):
+                        dialog.artifacts.item(index).setCheckState(
+                            Qt.CheckState.Checked
+                        )
+                    dialog.grab().save(f"/tmp/steed-recovery-{transport}-preview.png")
+                    dialog.share.click()  # Trusted synthetic user selection only.
+                else:
+                    if dialog.task_id == shared["task_id"]:
+                        dialog.remember.setCurrentIndex(1)
+                    dialog.approve_button.click()  # Trusted synthetic fixture only.
                 shared["approval_popup"] = True
             session_id = shared.get("session_id")
             watcher = case.service._watchers.get(session_id)

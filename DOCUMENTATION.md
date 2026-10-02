@@ -24,6 +24,7 @@ for current progress and remaining work.
 - [Engine and storage internals](#engine-and-storage-internals)
 - [Internal task services](#internal-task-services)
 - [Remembering agent approvals](#remembering-agent-approvals)
+- [Continuing previous work](#continuing-previous-work)
 - [Google app connections](#google-app-connections)
 - [Local agent access (MCP)](#local-agent-access-mcp)
 - [Development checks](#development-checks)
@@ -386,6 +387,7 @@ Browser/
 │   ├── agent_gateway.py    # Opt-in private IPC, connection ownership and cleanup
 │   ├── agent_tools.py      # Published tool schemas and browser-side validation
 │   ├── task_store.py       # SQLite tasks, append-only events, restart recovery
+│   ├── task_recovery.py    # Bounded follow-up snapshots and persistence schema
 │   ├── command_broker.py   # Named commands dispatched on the Qt thread
 │   ├── browser_backend.py  # Task pages, profile sharing, and observed navigation
 │   ├── engine_capabilities.py # Implemented authority and native-policy prerequisites
@@ -533,7 +535,7 @@ account identity requiring fresh approval. Profile rules follow renames, but not
 deletion/recreation under the same name. Saved lists retain their original labels.
 
 Rules and their grant provenance are journaled atomically in `tasks.sqlite`
-(schema 5). Restart preserves rules but interrupts tasks and never restores old
+(schema 6). Restart preserves rules but interrupts tasks and never restores old
 grants or retries operations. Approval management remains trusted browser UI;
 agent tools cannot create, broaden or remove rules. Website choices are separate.
 
@@ -565,6 +567,8 @@ its transport identity is also bound to the credential that initialized it.
 | `task.capabilities` | `task_id`; backend/engine versions, supported actions, and website-script availability |
 | `task.events` | `task_id`, optional `after` sequence and `limit`; ordered events |
 | `task.finish` | `task_id`, optional terminal `status`; closes owned sessions |
+| `task.recover` | `task_id`; asks the user to select a finished/interrupted source and drafts before grants or work; returns recovery status |
+| `task.recovery` | `task_id`; status and only the historical context explicitly shared by the user; does not restore authority |
 | `artifact.store` | `task_id`, `title`, `content`, optional `format` and `source_events`; explicit `artifact` permission, returns immutable draft metadata |
 | `artifact.list`, `artifact.read` | `task_id`, plus `artifact_id` for read; artifact permission, returns owned metadata or text |
 | `app.list_tools` | `task_id`; configured tool descriptions/effects, no grant or credentials |
@@ -1200,8 +1204,11 @@ adapter therefore never retries an uncertain create. Gmail send-only scope canno
 verify a lost send acknowledgement, so its receipt remains uncertain and has no
 automatic reconciliation. Check Gmail **Sent** before sending another email. The
 stable `Message-ID` helps manual identification and is not an idempotency guarantee.
-Current recovery still requires the original active task/grant; archived-task
-recovery with fresh approval remains planned.
+Read-only provider reconciliation still requires the original active task/grant;
+probing an archived receipt through a fresh task remains future work. Selected
+drafts and historical receipt summaries can already be shared with a new task
+using [task recovery](#continuing-previous-work), which blocks matching historical
+writes rather than resending them.
 
 Real Google consent and writes have not been exercised with your account. Synthetic
 OAuth/API tests validate the request shapes, identity checks and uncertainty rules;
@@ -1639,7 +1646,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 33 input schemas. Names follow the internal command
+Tool discovery publishes 35 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -1701,6 +1708,57 @@ expiry, completion, disabling access, and last-window shutdown dispose owned
 pages and close their watch windows. Cancellation cannot undo an effect already
 sent to a website. Shared-profile cookies/storage follow the existing profile's
 normal lifetime.
+
+### Continuing previous work
+
+Recovery starts a new follow-up task; it never reopens an old task, adopts its
+connection, restores pages/grants or dispatches an old operation.
+
+1. Have the agent call `steed_task_start`, then `steed_task_recover` before
+   requesting a grant or doing work. It cannot enumerate archives or supply a
+   source task ID. The browser opens a nonmodal **Continue previous work?** picker.
+2. Select a finished, cancelled, failed or interrupted task. Check up to ten
+   drafts to share; none are selected by default. Clicking a draft previews its
+   plain text. The evidence checkbox shares prior permission scope, up to 50
+   activity entries, the selected drafts' recorded source inspections and app
+   receipt summaries. Receipt text is limited to 512 characters with an explicit
+   truncation flag. Source profile/scope is historical information only.
+3. Click **Share Selected Material**, or **Deny** to disclose nothing. Closing or
+   Escape leaves the request pending; reopen it in **File → Task Permissions →
+   Recovery → Choose Recovery Material…**. This tab also shows retained context.
+4. The agent polls `steed_task_recovery`. After approval it receives only the
+   selected context and new artifact IDs. Draft bodies still require a fresh
+   `artifact` grant; use `steed_artifact_list`/`steed_artifact_read` after approval.
+   Original draft IDs and source-event/target references belong to the old task
+   and cannot be used as current observations.
+5. Request the current sites, profile, actions and app destinations as usual.
+   Recovered tasks always show a fresh access prompt, even when a saved rule
+   would cover the request. Open fresh pages and inspect again before acting.
+
+Copies have independent IDs and lifetime. Deleting an original draft does not
+delete shared copies. Imports, source provenance, evidence and write protections
+commit together in `tasks.sqlite` schema 6. Copies are checked against their
+stored UTF-8 byte count/content hash. Selection is bounded to ten drafts, the
+context to 128 KiB and ancestry to 32 tasks. Oversized evidence can be omitted.
+Restart interrupts follow-ups and ends pending pickers; another follow-up needs
+another user selection and fresh approval.
+
+Before a new app mutation, Steed compares its connector, tool, effect, exact
+destination and body hash with writes recorded in the selected task's ancestry.
+A matching completed or uncertain call raises `recovery_write_already_recorded`
+before dispatch, even with a new request ID or a recreated identical draft.
+Deleting the original draft or omitting evidence does not remove that protection.
+Current receipt outcomes are checked; calls confirmed `not_applied` or cancelled
+before dispatch can be attempted under the new grant. Normal duplicate request-ID
+protection still applies within the new task.
+
+This is a bounded check for identical app requests, not general provider
+idempotency: changed bodies, different connectors/destinations, independent tasks
+and website form effects cannot be identified as the same intent. No historical
+action is automatically replayed. Review uncertain outcomes in the original
+**Apps** panel or provider UI. Archived read-only provider probes and deliberate
+repeat-write overrides are not implemented; Gmail remains send-only with manual
+verification. Historical text and provider results remain untrusted.
 
 ### Results and connection limits
 
@@ -1800,6 +1858,27 @@ It saves `/tmp/steed-google-connections.png` and `/tmp/steed-google-approval.png
 Neither optional SDK nor SecretStorage is needed for this synthetic smoke.
 
 ## Verification record
+
+Safe task follow-up stage (October 2, 2026): **479 tests passed in 253.137 seconds**
+(`/tmp/steed-recovery-final-full.log`), including nineteen recovery regressions,
+the automatic recovery/access popup sequence and external connection isolation.
+Coverage includes selected-draft disclosure, fresh access despite saved approvals,
+source provenance, atomic rollback, checksum failures, schema-5 migration,
+selection/context/ancestry limits, restart, deleted originals, recreated bodies,
+current ancestral receipt outcomes, valid new work after a denied duplicate and
+storage failures that freeze authority. No old pages or grants are resumed.
+
+SDK and independent JSON-RPC clients each completed source selection, fresh
+approval, retained-draft reads and historical-write denial over both transports
+(`/tmp/steed-recovery-mcp-stdio-final.log`, `/tmp/steed-recovery-mcp-http-final.log`).
+The mock provider still recorded exactly two documents and two emails across the
+two clients; follow-ups added no writes. Shared-profile/user POST, watch/handoff,
+uploads/downloads, cancellation and cleanup checks passed in those workflows.
+The recovery picker was visually inspected using synthetic drafts and receipts.
+Startup/render/shutdown passed on Qt 6.11.2 (`/tmp/steed-recovery-startup.log`);
+Ruff, formatting, whitespace, dependency and 31 local documentation-link checks
+passed. Real accounts/keyrings and hardware were not used. Historical provider
+probes through fresh tasks remain outside this checkpoint.
 
 Permission/setup usability stage (October 2, 2026): the complete **458-test suite
 passed in 247.049 seconds** (`/tmp/steed-permissions-acceptance.log`). New regressions
@@ -2389,8 +2468,10 @@ reconciliation passed mock document/email MCP workflows over both Steed transpor
 Google Docs/Gmail mappings and user-owned desktop OAuth/Secret Service setup are
 implemented; registries stay empty until accounts are configured. See
 [current app operations](#browser-managed-application-operations) and
-[Google setup](#google-app-connections). Real-account acceptance, additional providers,
-archived-task recovery and agent-managed mode remain pending.
+[Google setup](#google-app-connections). User-selected follow-ups with fresh access
+and historical app-write protections are implemented; see
+[task recovery](#continuing-previous-work). Real-account acceptance, additional
+providers, archived provider probes and agent-managed mode remain pending.
 
 - Browser-mediated mode: MCP gateway enforces grants, logs activity, handles cancellation, and records results.
 - Agent-managed mode: direct external connections; clearly disclose absent browser visibility/enforcement.

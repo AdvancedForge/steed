@@ -17,6 +17,12 @@ from services.task_artifacts import (
     TaskArtifact,
     artifact_input,
 )
+from services.task_recovery import (
+    MAX_RECOVERY_ARTIFACTS,
+    MAX_RECOVERY_BYTES,
+    MAX_RECOVERY_DEPTH,
+    RECOVERY_SCHEMA,
+)
 
 ACTIVE_STATUSES = frozenset({"created", "running"})
 TERMINAL_STATUSES = frozenset({"completed", "cancelled", "interrupted", "failed"})
@@ -68,7 +74,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3, 4, 5):
+        if version not in (0, 1, 2, 3, 4, 5, 6):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -122,10 +128,11 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 5;
+                PRAGMA user_version = 6;
             """
                 + CONNECTOR_SCHEMA
                 + RULE_SCHEMA
+                + RECOVERY_SCHEMA
             )
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():
@@ -363,6 +370,10 @@ class TaskStore:
             raise ValueError("Invalid task state transition")
         with self._db:
             if status in TERMINAL_STATUSES:
+                self._db.execute(
+                    "UPDATE task_recoveries SET status = 'ended' WHERE task_id = ? AND status = 'requested'",
+                    (task_id,),
+                )
                 for grant in self.grants(task_id):
                     if grant.status in ("requested", "approved"):
                         self._resolve_grant(grant, "ended", reason=status)
@@ -374,6 +385,209 @@ class TaskStore:
                 task_id, f"task.{status}", {"reason": reason} if reason else {}
             )
         return self.get(task_id)
+
+    def recovery(self, task_id):
+        self.get(task_id)
+        row = self._db.execute(
+            "SELECT * FROM task_recoveries WHERE task_id = ?", (task_id,)
+        ).fetchone()
+        if row is None:
+            return {"status": "none"}
+        if len(row["snapshot"].encode("utf-8")) > MAX_RECOVERY_BYTES:
+            raise ValueError("Invalid retained recovery size")
+        snapshot = json.loads(row["snapshot"])
+        if not isinstance(snapshot, dict):
+            raise ValueError("Invalid retained recovery context")
+        return {
+            "status": row["status"],
+            "source_task_id": row["source_task_id"],
+            "context": snapshot,
+        }
+
+    def request_recovery(self, task_id):
+        if (
+            self.get(task_id).status != "created"
+            or self.grants(task_id)
+            or self.artifacts(task_id)
+        ):
+            raise ValueError("Request recovery before grants or work")
+        current = self.recovery(task_id)
+        if current["status"] != "none":
+            return current
+        with self._db:
+            self._db.execute(
+                "INSERT INTO task_recoveries(task_id, status, created_at) VALUES (?, 'requested', ?)",
+                (task_id, timestamp()),
+            )
+            self._append(task_id, "recovery.requested", {})
+        return self.recovery(task_id)
+
+    def recovery_ancestors(self, task_id):
+        ancestors, current = [], task_id
+        while current is not None:
+            if current in ancestors or len(ancestors) >= MAX_RECOVERY_DEPTH:
+                raise ValueError("Recovery chain exceeds its limit")
+            ancestors.append(current)
+            current = self.recovery(current).get("source_task_id")
+        return ancestors
+
+    def events_by_sequence(self, task_id, sequences):
+        self.get(task_id)
+        if not sequences:
+            return []
+        if len(sequences) > 200:
+            raise ValueError("Too many recovery source events")
+        rows = self._db.execute(
+            "SELECT * FROM events WHERE task_id = ? AND sequence IN ("
+            + ",".join("?" for _ in sequences)
+            + ") ORDER BY sequence",
+            (task_id, *sequences),
+        )
+        return [
+            TaskEvent(
+                row["sequence"],
+                task_id,
+                row["kind"],
+                json.loads(row["payload"]),
+                row["created_at"],
+            )
+            for row in rows
+        ]
+
+    def artifact_digest(self, task_id, artifact_id):
+        if not artifact_id:
+            return ""
+        try:
+            return self.artifact(task_id, artifact_id, include_content=False).sha256
+        except KeyError:
+            # Deleting a draft must not erase the evidence that its body was sent.
+            for event in self.recent_events(
+                task_id, limit=1000, kinds=("artifact.stored", "artifact.imported")
+            ):
+                if event.payload.get("artifact_id") == artifact_id:
+                    return event.payload.get("sha256", "")
+        return ""
+
+    def approve_recovery(self, task_id, source_task_id, artifacts, snapshot, effects):
+        if (
+            self.get(task_id).status != "created"
+            or self.grants(task_id)
+            or self.artifacts(task_id)
+            or self.recovery(task_id)["status"] != "requested"
+        ):
+            raise ValueError("Recovery request is no longer available")
+        if self.get(source_task_id).status not in TERMINAL_STATUSES:
+            raise ValueError("Choose a finished or interrupted task")
+        if any(artifact.task_id != source_task_id for artifact in artifacts):
+            raise ValueError("Recovery draft belongs to another task")
+        if (
+            len(artifacts) > MAX_RECOVERY_ARTIFACTS
+            or len(self.recovery_ancestors(source_task_id)) >= MAX_RECOVERY_DEPTH
+        ):
+            raise ValueError("Recovery selection exceeds its limit")
+        imported = []
+        with self._db:
+            for artifact in artifacts:
+                artifact_id, now = uuid4().hex, timestamp()
+                self._db.execute(
+                    "INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        artifact_id,
+                        task_id,
+                        artifact.title,
+                        artifact.format,
+                        artifact.byte_count,
+                        artifact.sha256,
+                        "[]",
+                        now,
+                        artifact.content,
+                    ),
+                )
+                imported.append(
+                    {
+                        "artifact_id": artifact_id,
+                        "source_artifact_id": artifact.artifact_id,
+                        "source_events": list(artifact.source_events),
+                        "sha256": artifact.sha256,
+                    }
+                )
+                self._append(
+                    task_id,
+                    "artifact.imported",
+                    {
+                        "artifact_id": artifact_id,
+                        "source_task_id": source_task_id,
+                        "source_artifact_id": artifact.artifact_id,
+                        "sha256": artifact.sha256,
+                        "byte_count": artifact.byte_count,
+                    },
+                )
+            snapshot = {**snapshot, "imported_artifacts": imported}
+            encoded = json.dumps(snapshot, ensure_ascii=False, allow_nan=False)
+            if len(encoded.encode("utf-8")) > MAX_RECOVERY_BYTES:
+                raise ValueError(
+                    "Recovery snapshot exceeds 128 KiB; omit evidence or reduce the selection"
+                )
+            self._db.execute(
+                "UPDATE task_recoveries SET status = 'approved', source_task_id = ?, snapshot = ? WHERE task_id = ?",
+                (
+                    source_task_id,
+                    encoded,
+                    task_id,
+                ),
+            )
+            for source, receipt, digest in effects:
+                self._db.execute(
+                    "INSERT INTO recovery_effects VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        task_id,
+                        source,
+                        receipt.request_id,
+                        receipt.connector,
+                        receipt.tool,
+                        receipt.effect,
+                        receipt.destination,
+                        digest,
+                    ),
+                )
+            self._append(
+                task_id,
+                "recovery.approved",
+                {
+                    "source_task_id": source_task_id,
+                    "artifact_count": len(imported),
+                    "evidence_included": snapshot["evidence_included"],
+                },
+            )
+        return self.recovery(task_id)
+
+    def deny_recovery(self, task_id):
+        if (
+            self.get(task_id).status not in ACTIVE_STATUSES
+            or self.recovery(task_id)["status"] != "requested"
+        ):
+            raise ValueError("Recovery request is no longer pending")
+        with self._db:
+            self._db.execute(
+                "UPDATE task_recoveries SET status = 'denied' WHERE task_id = ?",
+                (task_id,),
+            )
+            self._append(task_id, "recovery.denied", {})
+
+    def recovery_effects(self, task_id, request):
+        self.get(task_id)
+        digest = request.artifact.sha256 if request.artifact else ""
+        return self._db.execute(
+            "SELECT source_task_id, request_id FROM recovery_effects WHERE task_id = ? AND connector = ? AND tool = ? AND effect = ? AND destination = ? AND (sha256 = '' OR sha256 = ?)",
+            (
+                task_id,
+                request.connector,
+                request.tool,
+                request.effect,
+                request.destination,
+                digest,
+            ),
+        ).fetchall()
 
     def record_event(self, task_id: str, kind: str, payload: dict):
         self.get(task_id)
