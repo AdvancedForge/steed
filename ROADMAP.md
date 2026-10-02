@@ -10,7 +10,8 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 1, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-251-test suite passed, including six new native-input checks and a shared-profile
+274-test suite passed, including native-input checks, capability discovery, local
+agent transport/lifecycle checks, and a shared-profile
 focus/control-isolation check, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown and local Google HTTPS smoke checks passed on Qt 6.11.2.
 The previous form-stage Google fixture exited natively during `QWebEngineProfile`
@@ -25,7 +26,9 @@ and concurrently shared existing-profile grants, with automatic approval popups.
 File and active-page authority will be implemented alongside their A3 operations.
 A3 includes content inspection, stale-target validation, observed link navigation,
 scriptless control edits, native form submission, scrolling, and bounded waits.
-Active document scripts, file actions, and complete form/SPA acceptance remain next.
+Active document scripts are deferred following the bounded engine assessment;
+file actions and complete form/SPA acceptance remain pending. A4 now includes
+opt-in local IPC and a working stdio MCP adapter for current task operations.
 Real-account login persistence, third-party Google sign-in, hardware permission
 flows, and ordinary site usability remain follow-up checks; no automated fixture
 establishes those results. Password improvements remain deferred at the user's request.
@@ -34,7 +37,9 @@ establishes those results. Password improvements remain deferred at the user's r
 
 **A3 remains in progress: native keyboard activation/selection and native form
 submission are implemented alongside inspection, links, edits, scrolling, and waits.**
-Resumed from safeguards/audit commit `47ba170`; prior native-input commit `c23c6ce`.
+**A4 is in progress: external stdio clients can use those existing operations.**
+Resumed from native-networking commit `1cd031f`; preceding safeguards/audit
+commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
 
 - **Completed:** automatic approval popups; concurrent user/task profiles with
   separate grants; bounded inspection and stale-reference checks; observed link
@@ -62,25 +67,78 @@ Resumed from safeguards/audit commit `47ba170`; prior native-input commit `c23c6
   A `Connection-Allowlist` header did not contain RTC on bundled Chromium
   140.0.7339.225. Ordinary concurrent user networking remains available.
   Prototype code lives only in tests; scripts remain unsupported in the app.
-- **Next task:** resolve native engine support for RTC connection enforcement
-  or define stronger isolation that preserves collaborative profiles. Use
-  `tests/smoke_task_native_policy.py --require-containment` as the first gate;
-  dropping packets or rewriting constructor APIs alone is insufficient.
-  Then validate arbitrary documents, response bytes/cookies/policies, cross-process
-  frames, adapter loss and revocation. Keep script-enabled forms denied until handler/
-  serialized-body authority is enforceable. HTTP filtering, CSP worker rules,
-  or JavaScript constructor wrappers alone do not meet this acceptance condition.
+- **Engine decision completed:** select native per-document connection policy
+  inside the same embedded engine/profile. A separate Chromium 153 diagnostic
+  blocks unapproved fetch/WebSocket traffic, fresh-realm/shared workers, STUN UDP,
+  and TURN/TCP while ordinary tabs retain networking and actual shared cookies/
+  live storage. Cross-process frames, control-session detachment, and task disposal
+  passed. This is engine feasibility, not an installed Steed backend. External
+  task processes cannot share the actual `QWebEngineProfile`; profile-wide network
+  restrictions would affect user tabs. Neither alternative meets this design.
+- **Capability discovery implemented:** task-bound `task.capabilities` reports
+  engine versions and implemented actions without a grant or page creation.
+  Engine upgrades alone never confer script authority; Qt currently reports
+  `engine_upgrade_required`, and newer candidates still require native integration.
+- **Engine work deferred:** no compatible packaged build or maintainable small
+  backport was established. Qt's upcoming separate WebEngine 6.140 release still
+  uses Chromium 140; complete connection policy spans browser, renderer, network
+  service, context lifetime and recovery. No engine fork/build or migration was
+  started. Revisit native support when a maintained build or reproducible bounded
+  integration is available; website scripts remain unavailable. See the
+  [assessment](DOCUMENTATION.md#bounded-engine-feasibility-assessment).
+- **Local MCP implemented:** File → Enable Local Agent Access opts in for this
+  run. A private authenticated Unix socket connects the optional official-SDK
+  stdio adapter to the running Qt process. Twenty published tool schemas use
+  connection-bound active-task identity and the existing broker/grant checks. Clients
+  cannot approve or adopt other tasks. Disconnect, timeout, disabling access,
+  journal failure and browser shutdown remove access and dispose owned pages.
+  Two independent clients completed a synthetic shared-profile workflow with
+  nonmodal approval, observed edits/form submission, user POST, cancellation,
+  and cross-task denial. This is stdio acceptance, not the full A4 milestone.
+  A completed/cancelled task can be followed by a new task on the same connection;
+  it gets a fresh identity and requires new approval.
+- **Live desktop MCP check passed:** an SDK client used the running browser's
+  `codex test` profile with user-approved Wikipedia read/navigation access,
+  inspected Python's article, followed its observed Guido van Rossum link,
+  inspected that article and finished. Public-site browsing is verified;
+  authenticated-site workflows remain unchecked.
+- **Profile discovery added:** `steed_browser_context` reports the active or
+  last-used window and exact profile selector before permission is requested.
+  No page data is exposed; incognito/global are unavailable for shared sessions.
+  Existing grants never follow later profile switches. The running browser needs
+  a normal restart to expose this tool.
+  Nineteen focused gateway/UI checks and the two-client MCP smoke passed, with
+  discovery supplying the shared-profile selector. The full suite passed
+  280 tests in 135.526 seconds (`/tmp/steed-context-full.log`); startup, lint,
+  formatting, whitespace and local documentation links also passed.
+- **Next task:** extend A4 with authenticated loopback Streamable HTTP and
+  transport-specific cancellation/lifecycle tests. Watch/takeover and reconnect
+  remain future work. A3 file destinations/actions and pointer/custom controls
+  can progress independently of the deferred engine work.
+- **Future script acceptance:** obtain a compatible embedded engine/native hook and integrate
+  trusted connection/worker policy delivery before document code executes.
+  Chrome's native policy starts at 152; installed Qt embeds 140 and the latest
+  checked PyQt wheel remains 6.11.2. Updating current dependencies is insufficient.
+  Validate arbitrary documents, response bytes/streaming/cookies/existing policies,
+  exact scopes, redirects, initial and cross-process frames, adapter failure and
+  revocation in the real shared-profile backend. The passing external diagnostic
+  is a reference gate; the bundled-engine gate remains failing. Keep script-enabled
+  forms denied until handler/serialized-body authority is enforceable.
   Native pointer gestures/custom controls remain pending. Add destination grants
   alongside uploads/downloads; do not mark A3 complete before its full acceptance.
 - **Resume points:** `services/browser_backend.py`, `services/page_inspector.py`,
   `services/page_inspection.js`, `services/page_actions.py`, `services/task_service.py`,
   `services/form_submission.py`, `services/task_input.py`, `services/task_network.py`,
+  `services/engine_capabilities.py`, `services/task_client.py`,
+  `agent_mcp.py`, `services/agent_gateway.py`, `services/agent_tools.py`,
+  `tests/test_agent_gateway.py`, `tests/test_agent_access_ui.py`, `tests/smoke_agent_mcp.py`,
   `tests/test_page_actions.py`, `tests/test_page_forms.py`,
-  `tests/smoke_task_active_content.py`, and `tests/smoke_task_native_policy.py`.
+  `tests/smoke_task_active_content.py`, `tests/smoke_task_native_policy.py`,
+  `tests/smoke_native_connection_policy.py`, and `tests/chromium_pipe.py`.
   Preserve concurrent
   user browsing, exact site scopes, stale-reference rejection, and request/receipt persistence.
-- **Validation saved:** complete 253-test suite passed on Qt 6.11.2 in 143.111
-  seconds (`/tmp/steed-active-full.log`); the loopback audit and 20 form checks
+- **Validation saved:** complete 274-test suite passed on Qt 6.11.2 in 162.856
+  seconds (`/tmp/steed-mcp-final.log`); the preceding loopback audit and 20 form checks
   passed (`/tmp/steed-active-audit.log`, `/tmp/steed-active-forms.log`). Audit success
   means its controls ran, not that script networking is contained. New regressions
   verify enabled scripts before/during preflight send no form request. Native keys
@@ -97,8 +155,22 @@ Resumed from safeguards/audit commit `47ba170`; prior native-input commit `c23c6
   The expanded baseline and four native-policy comparisons also completed;
   the containment gate correctly exits 1 for TURN/TCP. See
   [native networking prototype](DOCUMENTATION.md#native-networking-prototype).
+  The Chromium 153 native-policy diagnostic passed all containment, shared-profile,
+  cross-process-frame, detachment, and disposal checks
+  (`/tmp/steed-native-connection-policy.log`); five capability checks passed
+  (`/tmp/steed-capabilities-focused.log`). See the selected
+  [engine direction](DOCUMENTATION.md#active-script-engine-decision).
+- **External validation saved:** two independent stdio clients passed the
+  shared-profile form/cancellation fixture on MCP 2025-11-25
+  (`/tmp/steed-agent-mcp-smoke.log`). Eleven focused transport/UI checks passed
+  (`/tmp/steed-agent-focused.log`); last-owner teardown coverage was added to the
+  full suite. Optional SDK dependencies passed `pip check`.
+  The final 16 gateway/UI/adapter regressions include private discovery, malformed
+  requests, ownership, denial evidence, last-owner shutdown, and sequential tasks
+  requiring fresh approval. Real-entry-point startup/render/shutdown passed
+  (`/tmp/steed-mcp-startup.log`). Lint/format/whitespace and 45 local links passed.
 - **Still pending:** full A3 form/SPA/file acceptance, later A2 authority, A4
-  external-agent/MCP access, and A5–A7. Password improvements stay deferred.
+  HTTP transport and full interoperability, and A5–A7. Password improvements stay deferred.
   Real-account collaboration and interactive desktop checks remain follow-ups.
 
 | Area | Progress | Remaining work |
@@ -124,7 +196,7 @@ checks does not establish the unverified manual results below.
 The user authorized proceeding with these manual follow-ups recorded. Resolve
 any browser blocker found during continued use alongside A1 work.
 
-- [x] Run the complete regression suite (251 checks), startup smoke,
+- [x] Run the complete regression suite (274 checks), startup smoke,
   local Google-login smoke, launcher validation, and lint/format checks.
 
 - [ ] Launch from the applications menu; check graphics, navigation, search,
@@ -170,8 +242,9 @@ daily-use workflow; they do not automatically block the agent milestones.
 Keep Python, PyQt6, and Qt WebEngine initially, with replaceable engine/provider
 interfaces. Prefer text and structured state; support watching, takeover,
 resume, revocation, and cancellation. A1 is implemented; A2 supports private and
-existing-profile grants for the current backend. A3 is in progress; A4–A7 remain
-pending.
+existing-profile grants for the current backend. A3 and A4 are in progress;
+A5–A7 remain pending. Scripted tasks are deferred; supported operations are now
+available to external stdio clients.
 
 ### A1. Browser services and task storage — implemented
 
@@ -295,11 +368,13 @@ Implemented inspection, navigation, scriptless control actions, and native forms
   Failed adapters, interruption, and focus drift fail closed. User pages keep
   their controls/focus, workers, POST access, and profile ownership.
 
-Verification: all 251 regressions passed. Six native-input checks and a
+Verification: all 274 regressions passed. Five capability checks cover version
+eligibility without script authority, unknown versions, discovery without grants/
+pages, task identity/lifetime, and alternate-backend limitations. Six native-input checks and a
 shared-profile control/focus check cover trusted events, viewless viewport setup,
 child frames, unavailable option skipping, unchanged choices, bounded batches,
 focus drift, deadlines/interruption, adapter loss, and frontend/profile teardown.
-Eighteen form/ticket checks plus
+Twenty form/ticket checks plus
 shared-profile and popup checks cover native GET/POST serialization, required
 fields/validation overrides, submitter destinations/methods, named controls,
 one-use method/destination binding, redirect boundaries, stale and last-moment
@@ -323,10 +398,18 @@ STUN packets, but TURN/TCP still connects outside scope. Connection-Allowlist
 did not contain RTC on the bundled Chromium 140 engine. The required-containment
 gate exits 1 for that known gap; prototype changes are test-only.
 
-Next: establish native RTC connection enforcement or stronger isolation before
-enabling scripts/SPA behavior. Then verify response semantics, cross-process
-child contexts and failure/revocation paths. The existing shared-profile model
-and user networking must remain available.
+Engine decision: native document connection policy on Chromium 153 passed the
+loopback gate, including TURN/TCP, cross-process frames, control detachment, task
+disposal, and ordinary tabs with shared cookies/live storage. Select this approach
+inside the actual shared embedded engine; the external diagnostic is test-only.
+Task clients can discover implemented actions through `task.capabilities`.
+
+Deferred: obtain compatible embedded native-policy support, then integrate trusted
+delivery and verify response semantics and all frame/failure/revocation paths.
+Bundled Chromium 140 is insufficient; newer version eligibility alone does not
+enable website scripts. The existing shared-profile model and user networking
+must remain available. See the
+[engine decision](DOCUMENTATION.md#active-script-engine-decision).
 Keep scripted forms denied until their body/handler authority is enforceable.
 Native pointer gestures/custom controls remain pending. Add
 upload/download destination grants alongside file operations. Full form/SPA/file
@@ -339,9 +422,18 @@ request takeover or return clear limitations.
 
 ### A4. Framework-neutral MCP
 
-Provide stdio adapters and authenticated loopback Streamable HTTP, restricted
-local IPC, published schemas, and structured results. Acceptance: two independent
-MCP clients work through both transports without framework-specific browser code.
+**In progress.** Optional `agent_mcp.py` uses the official Python SDK over stdio
+and connects to an opted-in running browser through private authenticated local
+IPC. Twenty published input schemas expose current task operations, capability
+and selected-profile discovery, structured results, and browser-assigned identity.
+User approval is required; shared-profile collaboration, cancellation, isolation,
+and evidence were tested with an SDK client and an independently implemented JSON-RPC client
+on MCP 2025-11-25. See [setup](DOCUMENTATION.md#local-agent-access-mcp).
+
+Remaining: authenticated loopback Streamable HTTP, other protocol/client checks,
+reconnect/resume and watch/takeover, and future artifact/search/connector tools.
+Acceptance: two independent MCP clients work through both transports without
+framework-specific browser code. Stdio is implemented; full A4 is not complete.
 
 ### A5. Optional search and classification
 

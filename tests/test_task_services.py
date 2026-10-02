@@ -395,6 +395,41 @@ class TaskServiceTests(unittest.TestCase):
         self.wait_for(inspected.done)
         self.assertEqual(inspected.result().session_id, session_id)
 
+    def test_capability_discovery_needs_no_grant_and_creates_no_session(self):
+        task = self.command("task.create", objective="Discover available operations")
+        client = self.service.client(task.task_id)
+        before = self.service.store.events(task.task_id)
+        with patch.object(self.service.backend, "open_session") as opened:
+            future = client.submit("task.capabilities")
+            self.wait_for(future.done)
+            report = future.result()
+            self.assertEqual(report.backend, "qt_webengine")
+            self.assertFalse(report.website_scripts)
+            self.assertNotIn("scripts", report.supported_actions)
+            opened.assert_not_called()
+        self.assertEqual(self.service._sessions, {})
+        self.assertEqual(self.service.store.grants(task.task_id), [])
+        self.assertEqual(self.service.store.events(task.task_id), before)
+
+    def test_capability_query_checks_identity_lifetime_and_backend(self):
+        first = self.command("task.create", objective="First discovery")
+        second = self.command("task.create", objective="Other discovery")
+        client = self.service.client(first.task_id)
+        future = client.submit("task.capabilities", task_id=second.task_id)
+        self.wait_for(future.done)
+        with self.assertRaises(TaskPermissionError) as error:
+            future.result()
+        self.assertEqual(error.exception.code, "task_identity_mismatch")
+        with patch.object(self.service.backend, "capabilities", None):
+            with self.assertRaisesRegex(RuntimeError, "capability report unavailable"):
+                self.command("task.capabilities", task_id=first.task_id)
+        self.service.cancel_task(first.task_id)
+        future = client.submit("task.capabilities")
+        self.wait_for(future.done)
+        with self.assertRaises(TaskPermissionError) as error:
+            future.result()
+        self.assertEqual(error.exception.code, "task_inactive")
+
     def test_network_request_budget_closes_page_and_cancels_task(self):
         task = self.command("task.create", objective="Network budget")
         requested = self.request(task.task_id, max_requests=1)
