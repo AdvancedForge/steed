@@ -6,6 +6,8 @@ approval bypass, accounts, real profiles, or external website requests are used.
 
 import argparse
 import asyncio
+import base64
+import hashlib
 import json
 import select
 import sqlite3
@@ -60,6 +62,61 @@ async def sdk_transport(discovery, endpoint):
             yield reader, writer, None
 
 
+async def workspace_workflow(call, destination):
+    """Same typed workflow over independently implemented protocol clients."""
+
+    async def upload(name, data):
+        item = await call(
+            "workspace.begin",
+            name=name,
+            media_type="application/octet-stream",
+            byte_count=len(data),
+            sha256=hashlib.sha256(data).hexdigest(),
+        )
+        for offset in range(0, len(data), 32768):
+            arguments = {
+                "file_id": item["file_id"],
+                "offset": offset,
+                "data_base64": base64.b64encode(data[offset : offset + 32768]).decode(),
+            }
+            await call("workspace.write", **arguments)
+            await call("workspace.write", **arguments)
+        return await call("workspace.seal", file_id=item["file_id"])
+
+    data = bytes(range(256)) * 140
+    item = await upload("attachment.bin", data)
+    observed = []
+    for offset in range(0, len(data), 32768):
+        chunk = await call("workspace.read", file_id=item["file_id"], offset=offset)
+        observed.append(base64.b64decode(chunk["data_base64"]))
+    assert b"".join(observed) == data
+    await call("workspace.export", file_id=item["file_id"], destination=destination)
+    assert Path(destination).read_bytes() == data
+    await upload("main.py", b"raise RuntimeError('staged source must never run')")
+    manifest = await upload(
+        "extension.json",
+        json.dumps(
+            {
+                "version": 1,
+                "name": "fixture-helper",
+                "entrypoint": "main.py",
+                "files": ["main.py"],
+                "capabilities": [
+                    {
+                        "connector": "email",
+                        "tool": "send",
+                        "effect": "send",
+                        "destination": "unapproved@example.test",
+                    }
+                ],
+            }
+        ).encode(),
+    )
+    package = await call("workspace.stage_extension", manifest_id=manifest["file_id"])
+    assert package["status"] == "staged" and not package["executable"]
+    assert len(await call("workspace.list")) == 3
+
+
 async def sdk_client(
     discovery, origin, shared, revoke, revoked, destination, source, endpoint=None
 ):
@@ -71,6 +128,7 @@ async def sdk_client(
             shared["protocol_version"] = initialized.protocolVersion
             names = {tool.name for tool in (await client.list_tools()).tools}
             assert "steed_page_submit" in names
+            assert "steed_workspace_stage_extension" in names
             assert "steed_grant_approve" not in names
 
             async def call(command, **arguments):
@@ -117,11 +175,12 @@ async def sdk_client(
                         "download",
                         "upload",
                         "artifact",
+                        "workspace",
                         "app",
                     ],
                     "duration_seconds": 120,
                     "max_operations": 500,
-                    "download_destinations": [destination],
+                    "download_destinations": [destination, destination + "-workspace"],
                     "max_download_bytes": 1024 * 1024,
                     "upload_sources": [source],
                     "upload_origins": [origin],
@@ -146,6 +205,8 @@ async def sdk_client(
             while (await call("grant.list"))[0]["status"] != "approved":
                 assert time.monotonic() < deadline, "Approval fixture timed out"
                 await asyncio.sleep(0.02)
+            await workspace_workflow(call, destination + "-workspace")
+            shared["sdk_binary_export_and_staged_extension"] = True
             session = await call("session.open", profile=context["profile_selector"])
             session_id = session["session_id"]
             shared["session_id"] = session_id
@@ -514,7 +575,16 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         scope={
             "origins": [origin],
             "allow_private_network": True,
-            "actions": ["navigate", "inspect", "read", "artifact", "app"],
+            "actions": [
+                "navigate",
+                "inspect",
+                "read",
+                "artifact",
+                "app",
+                "workspace",
+                "download",
+            ],
+            "download_destinations": [shared["raw_workspace_destination"]],
             "max_operations": 500,
             "connector_permissions": [
                 {
@@ -536,6 +606,12 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     while call("grant.list")[0]["status"] != "approved":
         assert time.monotonic() < deadline
         time.sleep(0.02)
+
+    async def workspace_call(command, **arguments):
+        return call(command, **arguments)
+
+    asyncio.run(workspace_workflow(workspace_call, shared["raw_workspace_destination"]))
+    shared["raw_binary_export_and_staged_extension"] = True
     session = call("session.open")
     call(
         "session.navigate",
@@ -882,6 +958,9 @@ def check(transport="stdio"):
         register_mock_apps(case.service.connectors, app_state)
         upload_source = Path(case.directory.name) / "mcp-upload.txt"
         upload_source.write_bytes(b"SYNTHETIC_MCP_UPLOAD_BYTES")
+        shared["raw_workspace_destination"] = str(
+            Path(case.directory.name) / "raw-workspace.bin"
+        )
         discovery = case.registry.agent_gateway.discovery
         endpoint = None
         if transport == "http":

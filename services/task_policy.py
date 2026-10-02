@@ -25,6 +25,7 @@ SUPPORTED_ACTIONS = frozenset(
         "download",
         "upload",
         "artifact",
+        "workspace",
         "app",
     }
 )

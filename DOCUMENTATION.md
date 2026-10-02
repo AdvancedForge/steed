@@ -25,6 +25,7 @@ for current progress and remaining work.
 - [Internal task services](#internal-task-services)
 - [Remembering agent approvals](#remembering-agent-approvals)
 - [Continuing previous work](#continuing-previous-work)
+- [Generated files and custom integration packages](#generated-files-and-custom-integration-packages)
 - [Google app connections](#google-app-connections)
 - [Local agent access (MCP)](#local-agent-access-mcp)
 - [Development checks](#development-checks)
@@ -1006,6 +1007,97 @@ Draft** asks for confirmation and removes the stored draft with a content-free
 receipt; this trusted user action is unavailable to agents. It does not promise
 forensic erasure from SQLite journals, free pages or external copies.
 
+### Generated files and custom integration packages
+
+Agents can supply arbitrary file formats through a task-owned workspace: PDFs,
+spreadsheets, images, archives and source code all use the same byte interface.
+Steed stores and exports those bytes; the connected agent supplies the generator
+and its dependencies. This milestone does not add a built-in Python/shell runtime.
+
+For users, open **File → Task Permissions → Workspace**, then select the task:
+
+1. **Share File With Task…** selects one regular local file. Its snapshot becomes
+   readable by the connected agent while that task has approved `workspace`
+   permission. Sharing may disclose its contents to the agent's model provider.
+   Host folders, other task files and browser credentials are not included.
+2. Select a generated or shared file to see its name, source, type, state, size
+   and SHA-256. Contents are not rendered or executed in this panel.
+3. **Export Selected File…** saves a sealed file to a new filename, including
+   after completion or restart. Existing filenames and symlink paths are rejected.
+4. **Delete Selected File** defaults to No and clears the retained bytes after
+   confirmation. Packages depending on the file become unavailable. Exported
+   copies and the content-free journal remain; forensic SQLite erasure is not promised.
+
+For agents, request `workspace` in `steed_grant_request.scope.actions`. It is
+independent of page reading, text artifacts, app connections and file transfers.
+Each call consumes an operation. Use these tools in order:
+
+| Tool | Arguments and behavior |
+| --- | --- |
+| `steed_workspace_begin` | `name`, `media_type`, `byte_count`, lowercase `sha256`; matching declarations resume the same ID. |
+| `steed_workspace_write` | `file_id`, next byte `offset`, canonical `data_base64`; identical written chunks can be repeated safely. |
+| `steed_workspace_seal` | `file_id`; verifies declared length/hash and makes bytes immutable. |
+| `steed_workspace_list` | Owned metadata, including `generated`/`user_shared` provenance. |
+| `steed_workspace_read` | `file_id`, optional `offset`/`limit`; bounded base64 plus `eof`. |
+| `steed_workspace_export` | `file_id`, exact `destination`; also requires approved `download` permission for that filename and size. |
+| `steed_workspace_stage_extension` | `manifest_id`; pins owned sealed source and reports requested access, granting and running nothing. |
+
+Limits: **8 MiB/file, 50 names and 32 MiB reserved/task**, with 32 KiB decoded
+chunks. Uploading the maximum file takes at least 258 operations, so request an
+appropriate budget. Names are normalized relative paths, never host filesystem
+paths. Deleted names remain reserved; a different revision needs a new name.
+Data and metadata commit with content-free events in schema-10 `tasks.sqlite`.
+Local bytes are plaintext in this owner-only database. Restart retains bytes but
+ends all old task authority; retained-file export/deletion is a trusted user action.
+Recovery currently shares selected text drafts/evidence, not workspace files.
+
+Export publication checks live permission again, avoids following parent symlinks
+and never overwrites. A journal failure before publication prevents export; failure
+to record completion can leave the published file, ends task service authority,
+and must not be treated as proof of non-export. Sharing and exporting bounded
+regular files currently use the Qt thread, so slow local storage can briefly pause UI.
+Sending/uploading exported files still requires the corresponding independent
+site/app permission. Gmail attachments are not implemented by this workspace.
+
+To stage a custom integration, seal its source files and a UTF-8 JSON manifest
+(maximum 16 KiB). For example:
+
+```json
+{
+  "version": 1,
+  "name": "custom-helper",
+  "entrypoint": "main.py",
+  "files": ["main.py", "README.md"],
+  "capabilities": []
+}
+```
+
+All listed source names must identify distinct sealed files in the same task;
+the entrypoint must appear in that list. Up to 20 source files and 20 exact
+requested capability records are allowed. Each capability declares `connector`,
+`tool`, `effect` and `destination`, following existing app-scope syntax. These
+are untrusted requests; the trusted adapter registry determines actual effects.
+Duplicate manifest keys/capabilities, traversal, missing/unsealed sources and
+changed hashes are rejected. Staging is repeatable by manifest ID and pins source
+IDs/hashes. The Workspace panel shows package identity and requested access.
+**Staged packages cannot run, register tools, obtain credentials or grant access.**
+There is no agent endpoint for importing host paths, deleting files or activating code.
+
+Meta's [Muse architecture](https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse)
+describes an isolated agent runtime, separate credential services and privileged
+brokers for user-data access. The useful pattern for Steed is to keep executable
+agent code outside the browser while retaining typed, permission-checked operations
+and user-selected data sharing. Steed has not implemented Muse's VM or taint tracking.
+
+The next decision is runtime deployment: a local sandboxed worker or a dedicated
+VM. A local Bubblewrap 0.9.0 bootstrap succeeded on this development machine with
+namespaces isolated, no home mount and no network. That is a feasibility check,
+not an implemented extension sandbox. The [Bubblewrap maintainers](https://github.com/containers/bubblewrap/blob/main/README.md)
+state that its caller must define the security policy. Before execution, Steed
+needs restricted mounts/environment/IPC, resource limits, process cleanup,
+capability-bound broker access and hostile-code acceptance. A VM adds a separate
+kernel boundary but brings image distribution, updates and higher resource costs.
+
 ### Browser-managed application operations
 
 The gateway and recovery rules are implemented and tested against synthetic
@@ -1794,7 +1886,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 36 input schemas. Names follow the internal command
+Tool discovery publishes 43 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -2059,6 +2151,30 @@ It saves `/tmp/steed-google-document-receipts.png` and
 establish real account, consent, certificate or desktop-keyring acceptance.
 
 ## Verification record
+
+Generated-file/custom integration groundwork (October 2, 2026): **590 tests passed
+in 255.599 seconds** (`/tmp/steed-workspace-full.log`), plus twenty-one final focused
+workspace checks (`/tmp/steed-workspace-focused-final.log`). Coverage includes
+arbitrary binary fidelity, chunk retries, bounded declarations/reads, integrity,
+task isolation, live/revoked permission, exact export paths and size, symlink rejection,
+user-selected snapshots, retained user export/deletion, schema-9 migration,
+rollback and inert package declarations. Both independent MCP clients passed
+binary upload/read/export and package staging over stdio and HTTP, alongside the
+existing browser/connector/recovery workflows (`/tmp/steed-workspace-stdio.log`,
+`/tmp/steed-workspace-http.log`). The first HTTP attempt caught a grant-schema
+length limit; the schema was corrected. The first stdio attempt hit the tracked
+native Qt startup exit 139; the identical retry passed.
+
+The Workspace user-picker fixture passed (`/tmp/steed-workspace-ui.log`), and its
+final plain-language layout was inspected (`/tmp/steed-task-workspace.png`).
+Run it with the headless prefix and `.venv/bin/python tests/smoke_task_workspace.py`.
+The Google HTTP review/recovery fixture and startup/render/shutdown passed
+(`/tmp/steed-workspace-google.log`, `/tmp/steed-workspace-startup.log`). Ruff/format
+and whitespace checks, dependencies and 74 local documentation links passed.
+Files, account data and credentials were synthetic;
+real-account/desktop acceptance remains pending. Bubblewrap 0.9.0 launched a
+harmless isolated process with no home/network; no generated source was executed.
+The isolated runtime remains a design decision, not a tested Steed feature.
 
 Reviewed document-edit stage (October 2, 2026): **568 tests passed in 254.019
 seconds** (`/tmp/steed-reviews-full.log`), plus fifteen final focused proposal regressions

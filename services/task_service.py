@@ -1,7 +1,10 @@
 """Application-owned task authority; clients request but never approve grants."""
 
+import hashlib
+import os
 import re
 import sqlite3
+import stat
 import time
 from concurrent.futures import Future
 from contextvars import ContextVar
@@ -29,9 +32,11 @@ from services.page_actions import action_arguments, scroll_arguments, wait_argum
 from services.page_inspector import PageInspectionError
 from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
+from services.task_downloads import DownloadDestination
 from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
 from services.task_recovery import MAX_RECOVERY_ARTIFACTS, recovery_snapshot
 from services.task_store import ACTIVE_STATUSES, TERMINAL_STATUSES, TaskStore
+from services.task_workspace import MAX_FILE_BYTES, TaskWorkspace
 
 
 class TaskService(QObject):
@@ -60,6 +65,7 @@ class TaskService(QObject):
         self.connectors = connectors if connectors is not None else ConnectorRegistry()
         self.connector_store = ConnectorStore(self.store)
         self.app_reviews = ConnectorReviews(self.store)
+        self.workspace = TaskWorkspace(self.store)
         self._connector_jobs = {}
         self.connector_timeout_ms = connector_timeout_ms
         self.profiles = profiles
@@ -98,6 +104,13 @@ class TaskService(QObject):
                 "artifact.store": self._store_artifact,
                 "artifact.list": self._list_artifacts,
                 "artifact.read": self._read_artifact,
+                "workspace.begin": self._workspace_begin,
+                "workspace.write": self._workspace_write,
+                "workspace.seal": self._workspace_seal,
+                "workspace.list": self._workspace_list,
+                "workspace.read": self._workspace_read,
+                "workspace.export": self._workspace_export,
+                "workspace.stage_extension": self._workspace_stage_extension,
                 "app.list_tools": self._app_tools,
                 "app.call_tool": self._app_call,
                 "app.status": self._app_status,
@@ -250,6 +263,168 @@ class TaskService(QObject):
         self._usable()
         self._active(task_id)
         return self.connectors.describe()
+
+    def _workspace_run(self, task_id, method, *args):
+        self._authorize(task_id, "workspace")
+        try:
+            result = getattr(self.workspace, method)(task_id, *args)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        self.changed.emit()
+        return result
+
+    def _workspace_event(self, task_id, kind, payload):
+        try:
+            self.store.record_event(task_id, kind, payload)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+
+    def _workspace_begin(self, task_id, name, media_type, byte_count, sha256):
+        return self._workspace_run(
+            task_id, "begin", name, media_type, byte_count, sha256
+        )
+
+    def _workspace_write(self, task_id, file_id, offset, data_base64):
+        return self._workspace_run(task_id, "write", file_id, offset, data_base64)
+
+    def _workspace_seal(self, task_id, file_id):
+        return self._workspace_run(task_id, "seal", file_id)
+
+    def _workspace_list(self, task_id):
+        return self._workspace_run(task_id, "list")
+
+    def _workspace_read(self, task_id, file_id, offset=0, limit=32768):
+        return self._workspace_run(task_id, "read", file_id, offset, limit)
+
+    def _workspace_stage_extension(self, task_id, manifest_id):
+        return self._workspace_run(task_id, "stage_extension", manifest_id)
+
+    def _workspace_export(self, task_id, file_id, destination):
+        grant = self._authorize(task_id, "workspace")
+        grant.check("download", destination=destination)
+        item = self.workspace.get(task_id, file_id)
+        if (
+            item.status != "sealed"
+            or item.expected_bytes > grant.scope.max_download_bytes
+        ):
+            raise ValueError("Export a sealed file within the approved download size")
+        data = self.workspace.bytes(task_id, file_id)
+        self._publish_workspace(
+            task_id,
+            item,
+            data,
+            destination,
+            before_publish=lambda: grant.check("download", destination=destination),
+        )
+        return {
+            "file_id": file_id,
+            "destination": destination,
+            "byte_count": item.expected_bytes,
+            "sha256": item.sha256,
+        }
+
+    def _publish_workspace(
+        self, task_id, item, data, destination, *, before_publish=lambda: None
+    ):
+        target = DownloadDestination(destination)
+        try:
+            fd = os.open(
+                "payload",
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=target.stage_fd,
+            )
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+            self._workspace_event(
+                task_id,
+                "workspace.export_requested",
+                {"file_id": item.file_id, "sha256": item.sha256},
+            )
+            before_publish()
+            target.publish(item.expected_bytes, MAX_FILE_BYTES)
+        finally:
+            target.close()
+        self._workspace_event(
+            task_id,
+            "workspace.exported",
+            {"file_id": item.file_id, "sha256": item.sha256},
+        )
+        self.changed.emit()
+
+    def export_workspace_file(self, task_id, file_id, destination):
+        """Trusted user picker only; no task authority is needed for retained files."""
+        require_owner_thread(self)
+        self._usable()
+        item = self.workspace.get(task_id, file_id)
+        if item.status != "sealed":
+            raise ValueError("Seal the file before exporting")
+        self._publish_workspace(
+            task_id, item, self.workspace.bytes(task_id, file_id), destination
+        )
+
+    def import_workspace_file(self, task_id, path):
+        """Trusted user file picker only; no caller-selected path broker endpoint."""
+        require_owner_thread(self)
+        grant = self._authorize(task_id, "workspace")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
+                raise ValueError("Share a regular file of at most 8 MiB")
+            data = source.read(MAX_FILE_BYTES + 1)
+        if len(data) != info.st_size:
+            raise ValueError("The file changed while being shared")
+        grant.check("workspace")
+        try:
+            return self._store_shared_file(task_id, path, data)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+
+    def _store_shared_file(self, task_id, path, data):
+        item = self.workspace.begin(
+            task_id,
+            Path(path).name,
+            "application/octet-stream",
+            len(data),
+            hashlib.sha256(data).hexdigest(),
+        )
+        import base64
+
+        if item.status == "building":
+            for offset in range(0, len(data), 32768):
+                self.workspace.write(
+                    task_id,
+                    item.file_id,
+                    offset,
+                    base64.b64encode(data[offset : offset + 32768]).decode("ascii"),
+                )
+        self.workspace.seal(task_id, item.file_id)
+        with self.store._db:
+            self.store._db.execute(
+                "UPDATE workspace_files SET source='user_shared' WHERE file_id=?",
+                (item.file_id,),
+            )
+            self.store._append(
+                task_id,
+                "workspace.file_shared",
+                {"file_id": item.file_id, "byte_count": len(data)},
+            )
+        self.changed.emit()
+        return self.workspace.get(task_id, item.file_id)
+
+    def delete_workspace_file(self, task_id, file_id):
+        require_owner_thread(self)
+        self._usable()
+        try:
+            self.workspace.delete(task_id, file_id)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        self.changed.emit()
 
     def clear_app_results(self, task_id, request_ids=None):
         """Only trusted browser UI clears retained results; clients cannot erase evidence."""

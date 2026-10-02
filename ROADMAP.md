@@ -98,7 +98,7 @@ establishes those results. Password improvements remain deferred at the user's r
   startup/render/shutdown, Ruff/format, dependencies and local documentation links
   passed. Fixtures used temporary state and synthetic accounts; real Google and
   desktop acceptance remains pending.
-- **Document-edit decision accepted and implemented:** user-reviewed proposals
+- **Document-edit decision accepted and implemented** (`c734b65`): user-reviewed proposals
   by default, with a separately named reusable direct-edit permission. Schema-9
   previews, automatic before/after popups, default Deny, exact revision/draft
   binding, private-preview scrubbing and read-only edit recovery are implemented.
@@ -107,13 +107,29 @@ establishes those results. Password improvements remain deferred at the user's r
   Acceptance: **568 regressions passed**, focused proposal and existing Google
   checks passed, and the local HTTP fixture applied exactly one reviewed replacement
   with lost-response recovery. The actual before/after popup was inspected.
-- **Next engineering work:** general generated attachments and extension package
-  groundwork. Agents should be able to supply arbitrary file formats/source code
-  through owned immutable files without hardwired generators. Muse research points
-  toward private workspaces, credential separation and broker-controlled data access.
-  Running untrusted generated integration code requires a separately isolated
-  runtime with controlled filesystem/network access; choosing that boundary is
-  a major engineering decision, not permission to load code into the browser.
+- **Generated files/custom integration groundwork implemented:** schema-10
+  task-owned binary files, chunked transfer, hash/size sealing, exact approved
+  exports, explicitly user-selected input snapshots and retained user export/deletion.
+  Seven new MCP tools work with both independent clients over stdio and HTTP.
+  Custom source packages pin a manifest and owned sealed files; requested access
+  is visible but grants nothing. No package runs or registers tools.
+  See [workspace usage and limits](DOCUMENTATION.md#generated-files-and-custom-integration-packages).
+  Acceptance: **590 tests passed in 255.599 seconds**, twenty-one final workspace
+  checks, both MCP transports/clients, user sharing/export UI, Google HTTP review/
+  recovery and startup/render/shutdown passed. Ruff/format and diff checks passed.
+  The first stdio run hit the tracked Qt startup exit 139; retry passed. All inputs
+  and account acceptance were synthetic. Real desktop/account acceptance is pending.
+- **Next major engineering decision:** choose the isolated runtime for generated
+  code. Recommendation: a local sandboxed worker, with all account/browser access
+  through Steed's broker, no direct credential/profile/home-directory mounts, and
+  networking initially disabled. Alternative: a dedicated VM with a separate
+  kernel, greater memory/storage needs and an image/update lifecycle. Bubblewrap
+  0.9.0 launched an isolated no-home/no-network process on this machine; this
+  establishes feasibility only. Execution still needs mount/IPC/environment policy,
+  resource limits, capability-bound RPC, cleanup and adversarial acceptance.
+  This decision affects dependencies, installation and the isolation guarantee;
+  generated-code execution remains unavailable until it is accepted and built.
+  No rebuild of daily browsing is required for either option.
   Existing user-created file/folder selection also needs a separate Drive-only
   Picker consent/credential flow with verified account binding; no broader OAuth
   scopes or credential migration have been introduced. Broader provider access,
@@ -773,6 +789,24 @@ Show tasks, authority, activity, artifacts, and evidence. Support watching,
 exclusive takeover, resume, and cancellation. Add validated declarative chrome
 styling with rollback and recovery. Acceptance: takeover preserves the same page,
 stale snapshots are rejected, and malformed styling recovers safely.
+
+### A8. Generated files and agent-built integrations
+
+**Groundwork implemented.** Agents can supply arbitrary byte formats and source
+packages through owned immutable workspace files. User-selected input snapshots
+are separate from host filesystem access; exact download grants cover agent
+exports. The Workspace panel exposes provenance, hash, state, user export/deletion
+and staged package capability requests. All package declarations remain inert.
+Limits are 8 MiB/file and 50 names/32 MiB/task. Sending/uploading exported files
+continues to require its own permission. Workspace-file recovery and async local
+storage are future improvements.
+
+Remaining: runtime deployment decision, isolated execution/build tools, dependencies
+and resource budgets, broker-only data/credential access, package activation/versioning/
+removal, trusted effect mapping for new integrations, audit/recovery and adversarial
+fixtures. Acceptance: an agent creates a useful missing generator/integration,
+the user sees its actual requested capabilities, and isolated execution cannot
+read unshared files, obtain host credentials, bypass app permissions or outlive revocation.
 
 ## End-to-end validation and rollout — pending
 
