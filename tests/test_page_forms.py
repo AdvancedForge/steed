@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import test_page_inspection as inspection
 from PyQt6.QtCore import QUrl
-from PyQt6.QtWebEngineCore import QWebEngineHttpRequest
+from PyQt6.QtWebEngineCore import QWebEngineHttpRequest, QWebEngineSettings
 
 from services.form_submission import SubmissionTicket
 from services.page_inspector import PageInspectionError
@@ -331,6 +331,55 @@ class PageFormTests(unittest.TestCase):
         ):
             with self.assertRaises(TaskPermissionError):
                 self.submit(task_id, session_id)
+        self.assertEqual(self.posted, [])
+
+    def test_script_enabled_forms_cannot_arm_a_submission_ticket(self):
+        task_id, _, session_id, page = self.opened()
+        snapshot = self.inspect(task_id, session_id)
+        page.settings().setAttribute(
+            QWebEngineSettings.WebAttribute.JavascriptEnabled, True
+        )
+        with patch.object(
+            self.service.backend.inspector, "prepare_submission"
+        ) as prepare:
+            with self.assertRaises(PageInspectionError) as error:
+                self.submit(task_id, session_id, snapshot)
+        self.assertEqual(error.exception.code, "scripted_submission_unavailable")
+        prepare.assert_not_called()
+        self.assertIsNone(page.submission.destination)
+        self.assertEqual(self.posted, [])
+
+    def test_scripts_enabled_during_preflight_cannot_dispatch(self):
+        task_id, _, session_id, page = self.opened()
+        original = self.service.backend.inspector.prepare_submission
+
+        def enable_scripts(*args):
+            source = original(*args)
+            # Register before backend's dispatch callback, simulating a future
+            # settings change between preparation and ticket authorization.
+            source.add_done_callback(
+                lambda _: page.settings().setAttribute(
+                    QWebEngineSettings.WebAttribute.JavascriptEnabled, True
+                )
+            )
+            return source
+
+        with (
+            patch.object(
+                self.service.backend.inspector,
+                "prepare_submission",
+                side_effect=enable_scripts,
+            ),
+            patch.object(
+                self.service.backend.inspector, "dispatch_submission"
+            ) as dispatch,
+        ):
+            with self.assertRaises(PageInspectionError) as error:
+                self.submit(task_id, session_id)
+        self.assertEqual(error.exception.code, "scripted_submission_unavailable")
+        dispatch.assert_not_called()
+        self.assertIsNone(page.submission.destination)
+        self.assertIsNone(self.service.backend._sessions[session_id].pending_action)
         self.assertEqual(self.posted, [])
 
     def test_named_controls_do_not_shadow_native_form_properties(self):

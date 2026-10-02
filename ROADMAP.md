@@ -34,7 +34,7 @@ establishes those results. Password improvements remain deferred at the user's r
 
 **A3 remains in progress: native keyboard activation/selection and native form
 submission are implemented alongside inspection, links, edits, scrolling, and waits.**
-Resumed from form-submission commit `9c51d97`; earlier control commit `4e90899`.
+Resumed from native-input commit `c23c6ce`; prior form commit `9c51d97`.
 
 - **Completed:** automatic approval popups; concurrent user/task profiles with
   separate grants; bounded inspection and stale-reference checks; observed link
@@ -47,17 +47,32 @@ Resumed from form-submission commit `9c51d97`; earlier control commit `4e90899`.
   `scroll`; waits need `read`; submission needs `read` + `navigate` + `submit`.
   Old grants retain their scope. General POST, document scripts, sensitive/file
   forms, child-frame/multipart forms, and custom controls stay unavailable.
-- **Next task:** define and test active-script networking and submission boundaries
-  before enabling scripts/SPA behavior. Include worker/blob contexts, WebSocket/
-  WebRTC transports, and submit-handler mutations; preserve user-page networking.
+- **Boundary audit completed:** a loopback-only experiment verifies scriptless
+  task controls and concurrent user networking. Forced website scripts exposed
+  an existing-profile blob shared-worker origin bypass and WebRTC STUN traffic
+  outside the HTTP filter in both profile modes. A fixture CSP blocked workers
+  but its `webrtc` directive was unrecognized; STUN still reached the receiver.
+  Native submission now rejects enabled document scripts before preparation and
+  immediately before ticket authorization. No website-script grant was added.
+- **Next task:** prototype a native per-task boundary for shared workers and
+  non-HTTP transports before enabling scripts/SPA behavior. Validate arbitrary
+  documents, fresh iframe realms, adapter failure and revocation while preserving
+  concurrent user networking. Keep script-enabled forms denied until handler/
+  serialized-body authority is enforceable. HTTP filtering, CSP worker rules,
+  or JavaScript constructor wrappers alone do not meet this acceptance condition.
   Native pointer gestures/custom controls remain pending. Add destination grants
   alongside uploads/downloads; do not mark A3 complete before its full acceptance.
 - **Resume points:** `services/browser_backend.py`, `services/page_inspector.py`,
   `services/page_inspection.js`, `services/page_actions.py`, `services/task_service.py`,
   `services/form_submission.py`, `services/task_input.py`, `services/task_network.py`,
-  `tests/test_page_actions.py`, and `tests/test_page_forms.py`. Preserve concurrent
+  `tests/test_page_actions.py`, `tests/test_page_forms.py`, and
+  `tests/smoke_task_active_content.py`. Preserve concurrent
   user browsing, exact site scopes, stale-reference rejection, and request/receipt persistence.
-- **Validation saved:** complete 251-test suite passed on Qt 6.11.2. Native keys
+- **Validation saved:** complete 253-test suite passed on Qt 6.11.2 in 143.111
+  seconds (`/tmp/steed-active-full.log`); the loopback audit and 20 form checks
+  passed (`/tmp/steed-active-audit.log`, `/tmp/steed-active-forms.log`). Audit success
+  means its controls ran, not that script networking is contained. New regressions
+  verify enabled scripts before/during preflight send no form request. Native keys
   generate trusted events, support readable child frames, skip unavailable choices,
   and stop on focus drift, deadlines, and adapter loss. Native forms
   preserve validation, hidden fields, submitter overrides, and user POST access;
@@ -281,8 +296,17 @@ child frames, scrolling, waits and deadlines, superseding loads, cancellation,
 callback-time expiry, revocation, and request/receipt failures. Existing inspection,
 navigation, profile, popup, and daily-browser regressions also passed.
 
-Next: enforce active-document networking/submission boundaries before enabling
-scripts and SPA behavior. Native pointer gestures/custom controls remain pending. Add
+Active-content audit: synthetic forced-script pages expose a shared-worker scope
+bypass on existing profiles and WebRTC STUN outside the HTTP filter in both modes.
+Scriptless controls pass; concurrent user networking remains available. Fixture
+CSP stops shared workers but not STUN. Submission now checks that document scripts
+are disabled before preparation and ticket authorization; two regressions pass.
+See [audit details](DOCUMENTATION.md#active-content-networking-audit).
+
+Next: establish native per-task worker/non-HTTP enforcement before enabling
+scripts and SPA behavior; verify child contexts and failure/revocation paths.
+Keep scripted forms denied until their body/handler authority is enforceable.
+Native pointer gestures/custom controls remain pending. Add
 upload/download destination grants alongside file operations. Full form/SPA/file
 acceptance remains pending.
 
