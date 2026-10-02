@@ -456,7 +456,7 @@ class TaskRecoveryTests(unittest.TestCase):
             database.execute("PRAGMA user_version = 5")
         self.service = TaskService(self.path, connectors=self.registry)
         self.assertEqual(
-            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 6
+            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 7
         )
         task = self.followup(source, draft)
         self.approve(task)

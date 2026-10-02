@@ -115,6 +115,7 @@ class ConnectorRegistry:
                 "description": t.description,
                 "requires_artifact": t.requires_artifact,
                 "can_reconcile": t.reconcile is not None,
+                "reconcile_effect": "read" if t.reconcile is not None else None,
             }
             for _, t in sorted(self._tools.items())
         ]
@@ -122,9 +123,16 @@ class ConnectorRegistry:
     def check_scope(self, scope):
         for permission in scope.connector_permissions:
             definition = self.get(permission.connector, permission.tool)
-            if definition.effect != permission.effect:
+            read_probe = (
+                permission.effect == "read" and definition.reconcile is not None
+            )
+            if definition.effect != permission.effect and not read_probe:
                 raise ValueError("App effect differs from trusted tool configuration")
-            if definition.requires_artifact and "artifact" not in scope.actions:
+            if (
+                definition.requires_artifact
+                and not read_probe
+                and "artifact" not in scope.actions
+            ):
                 raise ValueError("This app tool needs artifact permission")
             if definition.validate_destination is not None:
                 definition.validate_destination(permission.destination)
@@ -157,13 +165,24 @@ class ConnectorCancellation(threading.Event):
 class ConnectorJob(QObject):
     finished = pyqtSignal(object)
 
-    def __init__(self, definition, request, grant, callback, parent, *, probe=False):
+    def __init__(
+        self,
+        definition,
+        request,
+        grant,
+        callback,
+        parent,
+        *,
+        probe=False,
+        probe_request=None,
+    ):
         super().__init__(parent)
         self.definition, self.request, self.grant = definition, request, grant
         self.cancelled = ConnectorCancellation(
             grant, request, artifact=definition.requires_artifact and not probe
         )
         self.probe = probe
+        self.probe_request = probe_request
         self.dispatched = False
         self.finished.connect(callback, Qt.ConnectionType.QueuedConnection)
         self.timer = QTimer(self)
@@ -191,7 +210,8 @@ class ConnectorJob(QObject):
             try:
                 result = (
                     self.definition.reconcile(
-                        ConnectorProbe(
+                        self.probe_request
+                        or ConnectorProbe(
                             self.request.request_id,
                             self.request.destination,
                             self.request.operation_id,

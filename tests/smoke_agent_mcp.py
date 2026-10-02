@@ -338,10 +338,7 @@ async def sdk_client(
             await call("app.call_tool", **email_args)
             assert (await app_result("uncertain-email"))["state"] == "uncertain"
             assert (await call("app.call_tool", **email_args))["state"] == "uncertain"
-            await call("app.reconcile", request_id="uncertain-email")
-            assert (await app_result("uncertain-email"))["state"] == "succeeded"
             shared["mock_document_email_completed"] = True
-            shared["uncertain_email_reconciled_without_replay"] = True
             revoke.set()
             deadline = time.monotonic() + 15
             while not revoked.is_set():
@@ -380,7 +377,13 @@ async def sdk_client(
                             "tool": "create",
                             "effect": "write",
                             "destination": "synthetic-workspace",
-                        }
+                        },
+                        {
+                            "connector": "email",
+                            "tool": "send",
+                            "effect": "read",
+                            "destination": "fixture@example.test",
+                        },
                     ],
                 },
             )
@@ -396,6 +399,22 @@ async def sdk_client(
             assert (await call("artifact.read", artifact_id=copied["artifact_id"]))[
                 "content"
             ] == "SYNTHETIC_RETAINED_DRAFT"
+            await call(
+                "app.reconcile_history",
+                source_request_id="uncertain-email",
+                request_id="archived-email",
+            )
+            checked = await app_result("archived-email")
+            assert checked["state"] == "succeeded" and checked["effect"] == "read"
+            assert (
+                await call(
+                    "app.reconcile_history",
+                    source_request_id="uncertain-email",
+                    request_id="archived-email",
+                )
+            ) == checked
+            shared["uncertain_email_reconciled_without_replay"] = True
+            shared["sdk_archived_read_only_probe"] = True
             replay = await client.call_tool(
                 "steed_app_call_tool",
                 {
@@ -555,8 +574,6 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     call("app.call_tool", **email_args)
     assert app_result("uncertain-email")["state"] == "uncertain"
     assert call("app.call_tool", **email_args)["state"] == "uncertain"
-    call("app.reconcile", request_id="uncertain-email")
-    assert app_result("uncertain-email")["state"] == "succeeded"
     shared["independent_raw_app_workflow"] = True
     result = request("tools/call", {"name": "steed_task_finish", "arguments": {}})
     assert not result["isError"]
@@ -578,7 +595,13 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
                     "tool": "send",
                     "effect": "send",
                     "destination": "fixture@example.test",
-                }
+                },
+                {
+                    "connector": "email",
+                    "tool": "send",
+                    "effect": "read",
+                    "destination": "fixture@example.test",
+                },
             ],
         },
     )
@@ -593,6 +616,14 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         "Synthetic document reference"
         in call("artifact.read", artifact_id=copied["artifact_id"])["content"]
     )
+    call(
+        "app.reconcile_history",
+        source_request_id="uncertain-email",
+        request_id="archived-email",
+    )
+    checked = app_result("archived-email")
+    assert checked["state"] == "succeeded" and checked["effect"] == "read"
+    shared["raw_archived_read_only_probe"] = True
     replay = request(
         "tools/call",
         {

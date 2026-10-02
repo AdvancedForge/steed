@@ -38,9 +38,10 @@ ACTION_LABELS = {
 
 def app_description(service, permission):
     try:
-        return service.connectors.get(
-            permission["connector"], permission["tool"]
-        ).description
+        definition = service.connectors.get(permission["connector"], permission["tool"])
+        if permission["effect"] == "read" and definition.effect != "read":
+            return "Check a previous result (read only): " + definition.description
+        return definition.description
     except ValueError:
         return "App connection is no longer available."
 
@@ -143,7 +144,9 @@ class TaskApprovalDialog(QDialog):
             apps.setMaximumHeight(180)
             layout.addWidget(apps)
             app_notice = WrappedLabel(
-                "App tools may send drafts or change external data. Only listed "
+                "Read-only app access to the listed tools and destinations."
+                if all(p["effect"] == "read" for p in scope["connector_permissions"])
+                else "App tools may send drafts or change external data. Only listed "
                 "destinations are allowed. Dispatched writes can still happen after cancellation."
             )
             app_notice.setWordWrap(True)

@@ -9,13 +9,22 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 2, 2026
 
+Archived receipt milestone: a fresh follow-up can check a user-shared uncertain
+app receipt with exact **read-only** account/tool/destination permission. Checks
+have their own durable receipt and cancellation/budget lifecycle, but use the
+original provider operation identity. Confirmed evidence updates the original
+receipt atomically without restoring old grants or resending writes. Google Docs
+support this; Gmail stays send-only. SDK and independent clients passed both MCP
+transports; the restarted synthetic Google HTTP flow recorded exactly one Doc and
+one email. See [archived receipt checks](DOCUMENTATION.md#checking-an-archived-app-receipt).
+
 Safe follow-up milestone: agents can request a browser picker for an archived task
 and selected drafts/evidence. No archive enumeration or client-selected source is
 exposed. Imports preserve provenance with new IDs and require fresh grants, even
 when saved approvals exist. Ancestral app-call guards block matching completed or
 uncertain writes before dispatch, including recreated drafts and deleted originals.
 Both independent MCP clients completed selection/approval/no-replay workflows over
-stdio and HTTP. Historical provider probes still require a separate implementation;
+stdio and HTTP. Archived read-only provider probes are now implemented;
 Gmail stays send-only. See [task recovery](DOCUMENTATION.md#continuing-previous-work).
 
 Permission/setup usability milestone: both website and agent prompts now offer
@@ -29,12 +38,15 @@ First-time Cloud registration still needs user-owned setup. Validation is record
 in [DOCUMENTATION.md](DOCUMENTATION.md#verification-record).
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-479-test suite passed in 253.137 seconds (`/tmp/steed-recovery-final-full.log`), including
+501-test suite passed in 245.296 seconds (`/tmp/steed-archived-final-full.log`),
+with twenty-two final targeted checks passing after the in-flight absence guard
+(`/tmp/steed-archived-focused-final.log`). Coverage includes
 scoped uploads/downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-recovery-startup.log`); the preceding local Google HTTPS check passed.
+(`/tmp/steed-archived-startup.log`); the synthetic Google HTTP/OAuth check passed
+(`/tmp/steed-archived-google.log`).
 Actual Chromium notification requests passed once/saved/forget/private behavior
 (`/tmp/steed-site-native.log`); synthetic Google API and both MCP transports passed.
 The artifact HTTP fixture hit the tracked native startup exit 139; identical retry
@@ -68,15 +80,16 @@ establishes those results. Password improvements remain deferred at the user's r
 
 ### Resume checkpoint
 
-- **Latest engineering checkpoint:** safe user-selected follow-ups, independent
-  copied drafts and bounded evidence, schema-6 persistence, fresh approval and
-  ancestral write protection. Agent tools are `steed_task_recover` and
-  `steed_task_recovery`; **Task Permissions → Recovery** manages pending requests.
-- **Next engineering follow-up:** read-only probing of an archived app receipt
-  under a fresh exact grant, with durable ownership/cancellation and no mutation
-  replay. This is not implemented by material recovery. Deliberate repeat-write
-  overrides, additional providers, active website scripts and real-account
-  acceptance remain separate work. Keep original inactive tasks and grants closed.
+- **Latest engineering checkpoint:** archived app receipt checks under fresh exact
+  read-only grants, independent owned probe receipts, schema-7 source mappings,
+  atomic confirmation and late-worker protection. Use `steed_app_reconcile_history`
+  after user-selected recovery; **Task Permissions → Apps** shows Previous rows.
+  Inactive tasks/grants remain closed, and mutation callbacks are never replayed.
+- **Next engineering follow-up:** bounded user controls for retained provider
+  result text while preserving request identity, append-only evidence and historical
+  write protection. Additional provider/destination mappings and agent-managed
+  mode remain separate milestones. Real-account acceptance needs user-owned Google
+  setup and explicit approval; active website scripts still need native engine support.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
@@ -98,8 +111,8 @@ edits, scrolling, and waits.**
 **A6 is in progress: mock-tested scoped gateway and uncertain-write recovery.**
 Autonomous milestones: scoped downloads `229cfe4`, task activity/receipts `6ad9b1a`,
 scoped uploads `027a860`, retained task artifacts `333965c`, scoped app operations
-`21790d3`, Google connections `db9e209`, and the permission/setup usability checkpoint
-described above.
+`21790d3`, Google connections `db9e209`, permission/setup usability `7122e9a`,
+safe material recovery `a34fee5`, and the archived receipt checkpoint described above.
 Continued from watch/control commit `045b706`,
 following HTTP MCP commit `8266c37`
 and basic MCP commit `d663fc5`
@@ -156,7 +169,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   [assessment](DOCUMENTATION.md#bounded-engine-feasibility-assessment).
 - **Local MCP implemented:** File → Enable Local Agent Access opts in for this
   run. A private authenticated Unix socket connects the optional official-SDK
-  stdio adapter to the running Qt process. Thirty-five published tool schemas use
+  stdio adapter to the running Qt process. Thirty-six published tool schemas use
   connection-bound active-task identity and the existing broker/grant checks. Clients
   cannot approve or adopt other tasks. Disconnect, timeout, disabling access,
   journal failure and browser shutdown remove access and dispose owned pages.
@@ -639,7 +652,7 @@ request takeover or return clear limitations.
 **In progress; both core transports implemented.** Optional `agent_mcp.py` uses
 the official Python SDK over stdio and authenticated loopback Streamable HTTP
 and connects to an opted-in running browser through private authenticated local
-IPC. Thirty-five published input schemas expose current task operations, capability
+IPC. Thirty-six published input schemas expose current task operations, capability
 and selected-profile discovery, structured results, and browser-assigned identity.
 User approval is required; shared-profile collaboration, cancellation, isolation,
 and evidence were tested with an SDK client and an independent JSON-RPC client
@@ -676,9 +689,12 @@ The provider-neutral factory/account system also passes a synthetic second-provi
 test. See [Google setup](DOCUMENTATION.md#google-app-connections).
 
 User-selected material recovery with fresh approval and matching historical-write
-protection is implemented. Remaining: real Google acceptance, additional providers,
-folder selection/editing, archived read-only provider probes, broader result retention and
-agent-managed mode. Gmail uncertain-send recovery deliberately stays manual with
+protection is implemented. Archived receipts now support exact read-only checks
+under fresh authority, with independently owned receipts and atomic confirmation.
+Google HTTP acceptance after restart recorded one Doc/email with no repeat mutation;
+both independent MCP clients passed over both transports. Remaining: real Google
+acceptance, additional providers, folder selection/editing, broader result retention
+and agent-managed mode. Gmail uncertain-send recovery deliberately stays manual with
 send-only OAuth access. A shared production OAuth client/publishing model needs
 separate user judgment. Acceptance of the gateway/Google adapter is synthetic;
 real-account acceptance remains pending.

@@ -30,11 +30,13 @@ from services.google_connector import GoogleConnector, connect_google  # noqa: E
 from services.task_service import TaskService  # noqa: E402
 from ui.app_connections import AppConnectionsDialog  # noqa: E402
 from ui.task_approval import TaskApprovalDialog  # noqa: E402
+from ui.task_dialog import TaskDialog  # noqa: E402
 
 
 def check():
     app = application()
     wire, documents, messages, authorization = [], [], [], {}
+    lookup_enabled = False
 
     class Handler(BaseHTTPRequestHandler):
         def reply(self, data):
@@ -117,7 +119,9 @@ def check():
                 query = parse_qs(urlsplit(self.path).query)
                 assert documents[0]["appProperties"]["steed_operation"] in query["q"][0]
                 assert "'root' in parents" in query["q"][0]
-                self.reply({"files": [{"id": "synthetic-doc"}]})
+                self.reply(
+                    {"files": [{"id": "synthetic-doc"}] if lookup_enabled else []}
+                )
             else:
                 raise AssertionError("Unexpected fixture lookup")
 
@@ -262,12 +266,12 @@ def check():
             resolve(client.submit("app.reconcile", request_id="document"))
             wait_for(lambda: not service._connector_jobs)
             document = resolve(client.submit("app.status", request_id="document"))
-            assert document.state == "succeeded"
+            assert document.state == "uncertain"
             email = resolve(
                 client.submit(
                     "artifact.store",
                     title="Synthetic document link",
-                    content=document.reference,
+                    content="https://docs.google.com/document/d/synthetic-doc/edit",
                 )
             )
             args = {
@@ -296,6 +300,8 @@ def check():
             service = None
             before = list(wire)
             reopened = TaskService(root / "tasks.sqlite", connectors=manager.connectors)
+            service = reopened
+            manager.task_service = reopened
             assert (
                 reopened.connector_store.get(task.task_id, "email").state == "uncertain"
             )
@@ -304,11 +310,92 @@ def check():
                 == "SYNTHETIC_RESEARCH_DRAFT"
             )
             assert not reopened._grants and not reopened._connector_jobs
+            assert wire == before  # Restart performed no provider I/O.
+            lookup_enabled = True
+            followup = reopened._create("Check the archived synthetic document")
+            reopened._request_recovery(followup.task_id)
+            reopened.approve_recovery(followup.task_id, task.task_id, [], evidence=True)
+            grant = reopened._request_grant(
+                followup.task_id,
+                {
+                    "actions": ["app"],
+                    "connector_permissions": [
+                        {
+                            "connector": account.connector,
+                            "tool": "create_document",
+                            "effect": "read",
+                            "destination": "drive:root",
+                        }
+                    ],
+                },
+            )
+            assert grant.status == "requested"
+            approval = TaskApprovalDialog(reopened, followup, grant)
+            approval.show()
+            app.processEvents()
+            approval.grab().save("/tmp/steed-archived-read-approval.png")
+            approval.close()
+            sip.delete(approval)
+            reopened.approve_grant(followup.task_id, grant.grant_id)
+            probe_client = reopened.client(followup.task_id)
+            resolve(
+                probe_client.submit(
+                    "app.reconcile_history",
+                    source_request_id="document",
+                    request_id="archived-document",
+                )
+            )
+            wait_for(lambda: not reopened._connector_jobs)
+            checked = resolve(
+                probe_client.submit("app.status", request_id="archived-document")
+            )
+            assert checked.state == "succeeded" and checked.effect == "read"
+            assert checked.operation_id != document.operation_id
+            assert (
+                reopened.connector_store.get(task.task_id, "document").state
+                == "succeeded"
+            )
+            assert (
+                reopened.connector_store.get(task.task_id, "email").state == "uncertain"
+            )
+            try:
+                resolve(
+                    probe_client.submit(
+                        "app.reconcile_history",
+                        source_request_id="email",
+                        request_id="archived-email",
+                    )
+                )
+            except ValueError as error:
+                assert "no read-only" in str(error)
+            else:
+                raise AssertionError("Gmail send must not acquire mailbox lookup")
+            assert len(documents) == len(messages) == 1
+            assert [item for item in wire[len(before) :] if item[0] == "POST"] == []
+            panel = TaskDialog(reopened)
+            row = next(
+                i
+                for i, (item, _) in enumerate(panel._rows)
+                if item.task_id == followup.task_id
+            )
+            panel.table.selectRow(row)
+            panel.panels.setCurrentIndex(
+                next(
+                    i
+                    for i in range(panel.panels.count())
+                    if panel.panels.tabText(i) == "Apps"
+                )
+            )
+            panel.show()
+            app.processEvents()
+            panel.grab().save("/tmp/steed-archived-receipts.png")
+            panel.close()
+            sip.delete(panel)
             reopened.close()
             sip.delete(reopened)
-            assert wire == before
+            service = None
             print(
-                "Synthetic OAuth, real HTTP payloads, scoped Docs/Gmail, lost acknowledgements, read-only Doc recovery and restart passed; exactly one document/email, no replay."
+                "Synthetic OAuth, real HTTP payloads, scoped Docs/Gmail, lost acknowledgements, fresh read-only archived Doc recovery after restart passed; exactly one document/email, no replay or mailbox lookup."
             )
     finally:
         if service is not None:

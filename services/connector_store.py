@@ -25,6 +25,15 @@ CONNECTOR_SCHEMA = """
         updated_at TEXT NOT NULL,
         PRIMARY KEY(task_id, request_id)
     );
+    CREATE TABLE IF NOT EXISTS connector_probes (
+        task_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        source_task_id TEXT NOT NULL,
+        source_request_id TEXT NOT NULL,
+        PRIMARY KEY(task_id, request_id),
+        FOREIGN KEY(task_id, request_id) REFERENCES connector_calls(task_id, request_id),
+        FOREIGN KEY(source_task_id, source_request_id) REFERENCES connector_calls(task_id, request_id)
+    );
 """
 
 
@@ -95,7 +104,15 @@ class ConnectorStore:
             )
         ]
 
-    def create(self, task_id, request, fingerprint):
+    def probe_source(self, task_id, request_id):
+        self.get(task_id, request_id)
+        row = self.store._db.execute(
+            "SELECT source_task_id, source_request_id FROM connector_probes WHERE task_id = ? AND request_id = ?",
+            (task_id, request_id),
+        ).fetchone()
+        return tuple(row) if row is not None else None
+
+    def create(self, task_id, request, fingerprint, *, source=None):
         if len(self.list(task_id)) >= 50:
             raise ValueError("Task app receipt limit reached")
         now = datetime.now(timezone.utc).isoformat()
@@ -116,6 +133,11 @@ class ConnectorStore:
                     now,
                 ),
             )
+            if source is not None:
+                self.store._db.execute(
+                    "INSERT INTO connector_probes VALUES (?, ?, ?, ?)",
+                    (task_id, request.request_id, *source),
+                )
             self.store._append(
                 task_id,
                 "app.requested",
@@ -129,7 +151,25 @@ class ConnectorStore:
         return self.get(task_id, request.request_id)
 
     def update(self, task_id, request_id, state, *, reference="", text="", reason=""):
-        self.get(task_id, request_id)
+        with self.store._db:
+            self._update(task_id, request_id, state, reference, text, reason)
+        return self.get(task_id, request_id)
+
+    def finish_probe(
+        self, task_id, request_id, state, *, reference="", text="", reason=""
+    ):
+        """Keep the probe and any confirmed source outcome in one transaction."""
+        source = self.probe_source(task_id, request_id)
+        with self.store._db:
+            self._update(task_id, request_id, state, reference, text, reason)
+            if source and state in {"succeeded", "not_applied"}:
+                original = self.get(*source)
+                if original.state in {"uncertain", "reconciling"}:
+                    self._update(*source, state, reference, text, "read_only_followup")
+        return self.get(task_id, request_id)
+
+    def _update(self, task_id, request_id, state, reference, text, reason):
+        previous = self.get(task_id, request_id)
         if state not in {
             "requested",
             "dispatched",
@@ -141,20 +181,23 @@ class ConnectorStore:
             "uncertain",
         }:
             raise ValueError("Invalid app receipt state")
-        with self.store._db:
-            self.store._db.execute(
-                "UPDATE connector_calls SET state = ?, reference = ?, text = ?, reason = ?, updated_at = ? WHERE task_id = ? AND request_id = ?",
-                (
-                    state,
-                    reference,
-                    text,
-                    reason,
-                    datetime.now(timezone.utc).isoformat(),
-                    task_id,
-                    request_id,
-                ),
-            )
-            self.store._append(
-                task_id, "app." + state, {"request_id": request_id, "reason": reason}
-            )
-        return self.get(task_id, request_id)
+        if (
+            previous.state in {"succeeded", "not_applied"}
+            and previous.reason == "read_only_followup"
+        ):
+            return  # An older worker cannot erase independently confirmed evidence.
+        self.store._db.execute(
+            "UPDATE connector_calls SET state = ?, reference = ?, text = ?, reason = ?, updated_at = ? WHERE task_id = ? AND request_id = ?",
+            (
+                state,
+                reference,
+                text,
+                reason,
+                datetime.now(timezone.utc).isoformat(),
+                task_id,
+                request_id,
+            ),
+        )
+        self.store._append(
+            task_id, "app." + state, {"request_id": request_id, "reason": reason}
+        )

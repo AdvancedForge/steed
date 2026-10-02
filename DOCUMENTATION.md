@@ -535,7 +535,7 @@ account identity requiring fresh approval. Profile rules follow renames, but not
 deletion/recreation under the same name. Saved lists retain their original labels.
 
 Rules and their grant provenance are journaled atomically in `tasks.sqlite`
-(schema 6). Restart preserves rules but interrupts tasks and never restores old
+(schema 7). Restart preserves rules but interrupts tasks and never restores old
 grants or retries operations. Approval management remains trusted browser UI;
 agent tools cannot create, broaden or remove rules. Website choices are separate.
 
@@ -1090,9 +1090,10 @@ grants. Recovery stays observable even if a provider acknowledgement was lost.
 In **File → Task Permissions → Apps**, review owned destinations, states, request
 IDs, references and result text, cancel a running operation, or reconcile an
 uncertain result while its original task/grant remains active. Finished/interrupted
-receipts remain readable by the user. Reconciliation of archived tasks with fresh
-approval, result-retention controls and additional real providers remain follow-ups.
-A client cannot adopt another task's ledger.
+receipts remain readable by the user. Shared archived receipts can also be checked
+under a fresh read-only grant; see [archived receipt checks](#checking-an-archived-app-receipt).
+Result-retention controls and additional real providers remain follow-ups. A client
+cannot adopt another task's ledger.
 
 ### Google app connections
 
@@ -1204,11 +1205,11 @@ adapter therefore never retries an uncertain create. Gmail send-only scope canno
 verify a lost send acknowledgement, so its receipt remains uncertain and has no
 automatic reconciliation. Check Gmail **Sent** before sending another email. The
 stable `Message-ID` helps manual identification and is not an idempotency guarantee.
-Read-only provider reconciliation still requires the original active task/grant;
-probing an archived receipt through a fresh task remains future work. Selected
-drafts and historical receipt summaries can already be shared with a new task
-using [task recovery](#continuing-previous-work), which blocks matching historical
-writes rather than resending them.
+A fresh task can check a user-shared archived Google Doc receipt with exact
+read-only permission using [archived receipt checks](#checking-an-archived-app-receipt).
+The lookup uses the original account/root/operation ID; it does not need draft
+bytes or write permission. Gmail remains send-only and requires manual checking.
+[Task recovery](#continuing-previous-work) keeps matching historical writes blocked.
 
 Real Google consent and writes have not been exercised with your account. Synthetic
 OAuth/API tests validate the request shapes, identity checks and uncertainty rules;
@@ -1646,7 +1647,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 35 input schemas. Names follow the internal command
+Tool discovery publishes 36 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -1737,7 +1738,7 @@ connection, restores pages/grants or dispatches an old operation.
 
 Copies have independent IDs and lifetime. Deleting an original draft does not
 delete shared copies. Imports, source provenance, evidence and write protections
-commit together in `tasks.sqlite` schema 6. Copies are checked against their
+commit together in `tasks.sqlite` schema 7. Copies are checked against their
 stored UTF-8 byte count/content hash. Selection is bounded to ten drafts, the
 context to 128 KiB and ancestry to 32 tasks. Oversized evidence can be omitted.
 Restart interrupts follow-ups and ends pending pickers; another follow-up needs
@@ -1749,16 +1750,53 @@ A matching completed or uncertain call raises `recovery_write_already_recorded`
 before dispatch, even with a new request ID or a recreated identical draft.
 Deleting the original draft or omitting evidence does not remove that protection.
 Current receipt outcomes are checked; calls confirmed `not_applied` or cancelled
-before dispatch can be attempted under the new grant. Normal duplicate request-ID
-protection still applies within the new task.
+before dispatch can be attempted under a new write grant only after the original
+worker has ended. Normal duplicate request-ID protection still applies within
+the new task.
 
 This is a bounded check for identical app requests, not general provider
 idempotency: changed bodies, different connectors/destinations, independent tasks
 and website form effects cannot be identified as the same intent. No historical
 action is automatically replayed. Review uncertain outcomes in the original
-**Apps** panel or provider UI. Archived read-only provider probes and deliberate
-repeat-write overrides are not implemented; Gmail remains send-only with manual
-verification. Historical text and provider results remain untrusted.
+**Apps** panel or provider UI. Shared archived receipts support the read-only
+checks below; deliberate repeat-write overrides are not implemented. Gmail remains
+send-only with manual verification. Historical text and provider results remain untrusted.
+
+### Checking an archived app receipt
+
+1. Start a new task and call `steed_task_recover` before requesting access. In the
+   popup, choose the **original task** and include its evidence/receipt summaries.
+   Draft selection is optional for a receipt check.
+2. Poll `steed_task_recovery`. Pick an uncertain receipt from its shared
+   `context.app_receipts`; callers cannot enumerate other archives or choose a
+   foreign source task. Use `steed_app_list_tools` to check `can_reconcile` and
+   `reconcile_effect` (`read`). Unsupported tools require manual verification.
+3. Request `actions: ["app"]` with the source receipt's exact `connector`, `tool`
+   and `destination`, and **`effect: "read"`**. Steed shows a fresh approval popup.
+   Checking a previous write needs no draft, artifact or mutation permission.
+4. Call `steed_app_reconcile_history` with `source_request_id` from the shared
+   receipt and a new stable `request_id` for the check. Poll `steed_app_status`
+   using the **new** request ID. Duplicate IDs return the same receipt. Cancel
+   via `steed_app_cancel`; an uncertain check can be checked again with
+   `steed_app_reconcile` after its worker ends.
+
+The new task owns the check, its budget, live grant and receipt. The trusted
+lookup callback receives the **original** provider operation ID, original request
+ID and destination, with no draft body. Its original write callback is never
+called. The old task stays finished/interrupted and its grants stay ended.
+
+Confirmed outcomes update the new receipt and unresolved original receipt in
+one transaction. A failed/empty lookup, timeout, cancellation or restart leaves
+original uncertainty intact. A `not_applied` report while the original worker
+is running stays uncertain until that worker ends. Late older workers cannot erase
+independently confirmed evidence. Restart retains source mappings without replaying provider
+requests. Google Drive's absent search result never proves `not_applied`.
+
+**File → Task Permissions → Apps** shows shared receipts as **Previous** rows.
+Select an uncertain row and use **Reconcile Uncertain Result** after fresh read
+approval. The new check appears as a separate READ receipt. Archived receipts of
+checks themselves are not original provider operations: choose the original task
+when checking again. Gmail send has no read-only lookup; use **Sent** manually.
 
 ### Results and connection limits
 
@@ -1851,13 +1889,42 @@ filling still need user verification.
 The Google connector smoke uses synthetic desktop-client credentials, an in-memory
 secret store and a local HTTP fixture. It exercises the real OAuth callback/PKCE
 and API request code while routing its fixed Google endpoints only to that fixture.
-It checks draft → Doc → email, lost TCP acknowledgements, read-only Doc recovery,
-stable receipts, no duplicate writes and restart without grants/replay. It does
+It checks draft → Doc → email, lost TCP acknowledgements, empty read-only lookup,
+stable receipts, restart without grants/replay and a fresh read-only archived Doc
+check using the original operation property. It does
 not contact Google or test HTTPS certificates, a real desktop keyring or consent UI.
-It saves `/tmp/steed-google-connections.png` and `/tmp/steed-google-approval.png`.
+It saves `/tmp/steed-google-connections.png`, `/tmp/steed-google-approval.png`,
+`/tmp/steed-archived-read-approval.png` and `/tmp/steed-archived-receipts.png`.
 Neither optional SDK nor SecretStorage is needed for this synthetic smoke.
 
 ## Verification record
+
+Archived app receipt stage (October 2, 2026): the full **501-test suite passed
+in 245.296 seconds** (`/tmp/steed-archived-final-full.log`). After the final guard
+against an absence report while the original worker is running, all twenty-two
+focused regressions passed in 2.250 seconds
+(`/tmp/steed-archived-focused-final.log`). Coverage includes
+original provider/request identity, fresh read-only authority without draft access,
+exact destinations, unshared/foreign receipts, unsupported lookup methods, stable
+request IDs, cancellation before/during dispatch, account disconnect, timeouts,
+operation limits, late-worker confirmation, atomic rollback and schema-6 migration.
+Restart preserves probe mappings without network activity, old grants or write replay.
+
+SDK and independent JSON-RPC clients each checked archived uncertain receipts
+under fresh read permissions over both MCP transports
+(`/tmp/steed-archived-mcp-stdio.log`, `/tmp/steed-archived-mcp-http.log`). Mock writes
+remained exactly two documents and two emails across the clients. Historical-write
+denial, selected draft reads, shared-profile user browsing/POST, watch/handoff,
+uploads/downloads, cancellation and cleanup checks also passed.
+
+The synthetic Google HTTP/OAuth fixture passed lost acknowledgements, an empty
+lookup that stays uncertain, restart with no provider I/O, fresh read-only lookup
+using the original Drive property, and manual-only Gmail handling
+(`/tmp/steed-archived-google.log`). It recorded exactly one document and one email.
+The read approval and Previous/READ receipt UI were visually inspected.
+Startup/render/shutdown passed on Qt 6.11.2 (`/tmp/steed-archived-startup.log`).
+Ruff, formatting, whitespace, dependency and 32 local documentation-link checks
+passed. No real accounts, desktop keyrings or hardware were exercised.
 
 Safe task follow-up stage (October 2, 2026): **479 tests passed in 253.137 seconds**
 (`/tmp/steed-recovery-final-full.log`), including nineteen recovery regressions,
@@ -2471,7 +2538,7 @@ implemented; registries stay empty until accounts are configured. See
 [Google setup](#google-app-connections). User-selected follow-ups with fresh access
 and historical app-write protections are implemented; see
 [task recovery](#continuing-previous-work). Real-account acceptance, additional
-providers, archived provider probes and agent-managed mode remain pending.
+providers, broader result-retention controls and agent-managed mode remain pending.
 
 - Browser-mediated mode: MCP gateway enforces grants, logs activity, handles cancellation, and records results.
 - Agent-managed mode: direct external connections; clearly disclose absent browser visibility/enforcement.

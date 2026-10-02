@@ -179,6 +179,12 @@ TOOLS = (
         ("request_id",),
     ),
     tool(
+        "app.reconcile_history",
+        "Check an uncertain receipt explicitly shared through task.recover. Request fresh app permission with the source receipt's exact connector/tool/destination and effect read (no artifact or write authority needed). Only trusted read-only reconciliation callbacks run, using the original operation identity. Give this probe its own stable request_id, poll app.status, and cancel with app.cancel. Unsupported tools, including Gmail send, require manual checking; no original write is resent.",
+        {"source_request_id": string(64), "request_id": string(64)},
+        ("source_request_id", "request_id"),
+    ),
+    tool(
         "artifact.store",
         "Retain an immutable task note/draft with artifact permission. Text is agent-generated, not verified. Sources are this task's page.inspected event sequences; content stays out of activity logs. Up to 16 KiB UTF-8 per artifact, 50 artifacts/512 KiB per task.",
         {
