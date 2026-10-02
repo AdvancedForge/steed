@@ -885,10 +885,11 @@ private task pages, with the corresponding explicit permissions.
 `tests/smoke_task_active_content.py` deliberately enables JavaScript in synthetic
 task pages to identify missing boundaries. The application and grant API still
 keep website scripts unavailable. This experiment uses temporary profiles,
-loopback HTTP/WebSocket destinations and a UDP STUN receiver, without real
+loopback HTTP/WebSocket destinations, a UDP STUN receiver, and a TURN/TCP
+connection listener, without real
 accounts or external services. It requires working local TCP/UDP networking.
 
-The Qt 6.11.2 results are:
+The Qt 6.11.2 / Chromium 140.0.7339.225 baseline results are:
 
 | Probe | Private task with forced scripts | Existing-profile task with forced scripts |
 | --- | --- | --- |
@@ -897,11 +898,13 @@ The Qt 6.11.2 results are:
 | General POST | Blocked | Blocked |
 | Blob dedicated-worker fetch to unapproved origin | Blocked | Blocked |
 | Blob shared-worker fetch to unapproved origin | Blocked | **Reached fixture** |
+| Shared worker constructed through a fresh `about:blank` iframe | Blocked | **Reached fixture** |
 | Unapproved WebSocket handshake | Blocked | Blocked |
 | WebRTC STUN packets to another port | **Reached UDP receiver** | **Reached UDP receiver** |
+| WebRTC TURN/TCP connection to another port | **Reached TCP listener** | **Reached TCP listener** |
 
-Both scriptless task controls produced no tested active-content requests or UDP
-packets. Ordinary user pages reached all positive-control destinations, including
+Both scriptless task controls produced no tested active-content requests, UDP
+packets, or TURN/TCP connections. Ordinary user pages reached all positive-control destinations, including
 while a task shared their profile. These measurements cover the specific fixtures,
 not every transport, redirect, realm, or Chromium version.
 
@@ -918,6 +921,53 @@ child contexts and non-HTTP transports without restricting concurrent user tabs.
 Keep script-enabled forms denied until serialized-body/handler semantics have a
 separate enforceable design. A new script authority must explicitly describe
 website code's access to the selected profile's storage and account state.
+
+### Native networking prototype
+
+`tests/smoke_task_native_policy.py` reuses the audit with experimental per-target
+Chromium controls in the isolated task frontend. It is not imported by the
+application and does not introduce a website-script grant. Its results on the
+bundled engine are:
+
+| Candidate | Fresh-iframe/shared workers | STUN UDP | TURN/TCP connection |
+| --- | --- | --- | --- |
+| `Fetch.continueResponse` adding worker CSP, 100% packet loss, zero latency | Existing-profile worker reached fixture | Reached receiver | Reached listener |
+| `Fetch.fulfillRequest` with worker CSP, 100% packet loss, zero latency | Blocked | Reached receiver | Reached listener |
+| `Fetch.fulfillRequest` with worker CSP, 100% packet loss, 1 ms latency | Blocked | Blocked | **Reached listener** |
+| Fulfillment with worker CSP and `Connection-Allowlist`, no packet loss | Blocked | Reached receiver | Reached listener |
+
+Ordinary user positive controls, including concurrent browsing on the task's
+profile, remained available. The prototype coordinates interception through the
+frontend SDK because registering another Fetch dispatcher raced its default
+response continuation. Private pages are initialized before attaching the
+frontend so a protocol target exists. Fulfillment retrieves/replaces fixture
+bodies; production acceptance still needs byte/encoding preservation, streaming,
+existing response policy/cookies, redirects, cross-process frames, and adapter
+failure/revocation tests. Its size check runs after native buffering and is not
+a response-memory boundary.
+
+The [Chromium protocol](https://raw.githubusercontent.com/ChromeDevTools/devtools-protocol/master/pdl/domains/Network.pdl)
+describes WebRTC packet-loss emulation, but the measured TCP connection proves
+that dropping payloads is insufficient for Steed's exact-origin authority.
+The newer [Connection Allowlist design](https://chromium.googlesource.com/chromium/src/+/main/docs/connection_allowlist_design.md)
+includes native WebRTC restrictions. The prototype tries
+`Connection-Allowlist: (response-origin);webrtc=block`; it did not contain RTC
+on the bundled engine. A compatible engine/native hook or stronger isolation
+must pass the networking gate before active-script support can proceed.
+
+Run the native prototype and its comparisons from the activated virtual environment:
+
+```bash
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_native_policy.py
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_native_policy.py --delivery continue --latency-ms 0
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_native_policy.py --connection-allowlist --packet-loss 0 --latency-ms 0
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_native_policy.py --require-containment
+```
+
+Normal runs exit zero when audit controls complete, even when containment fails.
+`--require-containment` exits nonzero when a tested route escapes; it currently
+fails because TURN/TCP reaches the unapproved listener. A future passing result
+covers these fixtures only and does not establish full active-script acceptance.
 
 ## Development checks
 
@@ -960,6 +1010,23 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+A3 native networking prototype stage (October 1, 2026): the expanded baseline
+audit passed (`/tmp/steed-native-policy-baseline.log`). Response continuation and
+fulfillment comparisons, plus the connection-allowlist header probe, completed
+on Qt 6.11.2 / Chromium 140.0.7339.225 (`/tmp/steed-native-policy-continue.log`,
+`/tmp/steed-native-policy-fulfill.log`, `/tmp/steed-native-policy-allowlist.log`,
+`/tmp/steed-native-policy-zero-latency.log`).
+Fulfillment blocked shared workers, including a fresh iframe constructor, and
+1 ms/100% packet loss stopped the observed STUN packets. Holding fulfillment
+and packet loss fixed while removing latency restored the observed STUN traffic.
+Every candidate still
+allowed an unapproved TURN/TCP connection; the required-containment gate
+therefore exited 1 as intended (`/tmp/steed-native-policy-gate.log`). Scriptless
+controls and ordinary concurrent user networking passed. These are test-only
+prototypes; runtime behavior and permissions were not expanded. The prior
+253-regression full-suite result remains the production baseline; no production
+code changed in this stage. Lint, formatting and whitespace checks passed.
 
 A3 active-content boundary stage (October 1, 2026): the loopback audit completed
 on Qt 6.11.2 (`/tmp/steed-active-audit.log`), identifying the shared-worker and
