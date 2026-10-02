@@ -2,6 +2,7 @@
 
 import sqlite3
 import unittest
+from concurrent.futures import Future
 from unittest.mock import patch
 
 import test_page_inspection as inspection
@@ -127,6 +128,51 @@ class PageActionTests(unittest.TestCase):
             with self.assertRaises(PageInspectionError):
                 self.act(task_id, session_id, "Choice", "select", index=index)
 
+    def test_activation_uses_trusted_keyboard_and_control_events_without_a_view(self):
+        task_id, _, session_id, page = self.opened()
+        self.script(
+            page,
+            "window.events=[];const node=document.querySelector('[aria-label=Check]');for(const name of ['keydown','keyup','click','input','change'])node.addEventListener(name,e=>events.push({type:e.type,trusted:e.isTrusted}));true",
+        )
+        outcome = self.act(task_id, session_id, "Check", "activate")
+        self.assertEqual(outcome.input_semantics, "chromium_keyboard")
+        self.assertTrue(outcome.checked)
+        events = self.evaluate(page, "events")
+        self.assertEqual(
+            {e["type"] for e in events},
+            {"keydown", "keyup", "click", "input", "change"},
+        )
+        self.assertTrue(all(e["trusted"] for e in events))
+        self.assertEqual(self.service.backend._sessions[session_id].views, [])
+        self.assertFalse(
+            page.settings().testAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptEnabled
+            )
+        )
+
+    def test_selection_uses_trusted_events_and_skips_disabled_options(self):
+        task_id, _, session_id, page = self.opened()
+        self.script(
+            page,
+            "window.events=[];const node=document.querySelector('[aria-label=Choice]');node.innerHTML='<option disabled>Hidden secret</option><option>A</option><optgroup disabled><option>Disabled group secret</option></optgroup><option>B</option>';node.selectedIndex=1;for(const name of ['input','change'])node.addEventListener(name,e=>events.push({type:e.type,trusted:e.isTrusted}));true",
+        )
+        outcome = self.act(task_id, session_id, "Choice", "select", index=3)
+        self.assertEqual(outcome.selected_index, 3)
+        self.assertEqual(outcome.input_semantics, "chromium_keyboard")
+        events = self.evaluate(page, "events")
+        self.assertTrue(events)
+        self.assertTrue(all(e["trusted"] for e in events))
+        self.assertEqual(
+            self.act(task_id, session_id, "Choice", "select", index=1).selected_index, 1
+        )
+        self.script(page, "events=[];true")
+        self.assertEqual(
+            self.act(task_id, session_id, "Choice", "select", index=1).status,
+            "no_change",
+        )
+        self.assertEqual(self.evaluate(page, "events"), [])
+        self.assertNotIn("secret", repr(self.service.store.events(task_id)))
+
     def test_sensitive_disabled_special_and_submit_controls_remain_unsupported(self):
         task_id, _, session_id, _ = self.opened()
         for label, operation, arguments in (
@@ -142,6 +188,120 @@ class PageActionTests(unittest.TestCase):
             with self.subTest(label=label), self.assertRaises(PageInspectionError):
                 self.act(task_id, session_id, label, operation, **arguments)
         self.assertFalse(any("must-not-submit" in path for path, _ in self.requests))
+
+    def test_native_input_in_readable_child_frames_uses_the_focused_document(self):
+        task_id, _, session_id, page = self.opened()
+        self.load(
+            session_id,
+            page,
+            '<iframe srcdoc="&lt;input aria-label=Child type=checkbox&gt;&lt;select aria-label=Choice&gt;&lt;option&gt;A&lt;/option&gt;&lt;option&gt;B&lt;/option&gt;&lt;/select&gt;"></iframe>',
+        )
+        for label, operation, arguments in (
+            ("Child", "activate", {}),
+            ("Choice", "select", {"index": 1}),
+        ):
+            snapshot = self.inspect(task_id, session_id)
+            target = next(
+                t
+                for frame in snapshot.frames
+                for t in frame.targets
+                if t.label == label
+            )
+            outcome = self.command(
+                "page.act",
+                task_id=task_id,
+                session_id=session_id,
+                snapshot_id=snapshot.snapshot_id,
+                target_id=target.target_id,
+                operation=operation,
+                **arguments,
+            )
+            self.assertEqual(outcome.status, "applied")
+            self.assertEqual(outcome.input_semantics, "chromium_keyboard")
+        self.assertTrue(
+            self.evaluate(
+                page,
+                "document.querySelector('iframe').contentDocument.querySelector('input').checked",
+            )
+        )
+
+    def test_native_input_stop_timeout_and_late_reply_cannot_publish_success(self):
+        task_id, _, session_id, page = self.opened()
+        self.act(task_id, session_id, "Check", "activate")
+        network = self.service.backend._sessions[session_id].network
+        for stop in (True, False):
+            with self.subTest(stop=stop):
+                snapshot = self.inspect(task_id, session_id)
+                target = next(
+                    t for t in snapshot.frames[0].targets if t.label == "Check"
+                )
+                pending = Future()
+                self.service.backend.input_timeout_ms = 50
+                with patch.object(
+                    network.input, "keys", return_value=pending
+                ) as dispatched:
+                    result = self.service.broker.submit(
+                        "page.act",
+                        task_id=task_id,
+                        session_id=session_id,
+                        snapshot_id=snapshot.snapshot_id,
+                        target_id=target.target_id,
+                        operation="activate",
+                    )
+                    self.wait_for(lambda: dispatched.called)
+                    if stop:
+                        self.command(
+                            "session.stop", task_id=task_id, session_id=session_id
+                        )
+                    self.wait_for(result.done)
+                    with self.assertRaises(PageInspectionError):
+                        result.result()
+                self.assertTrue(pending.done())
+                self.assertIsInstance(pending.exception(), PageInspectionError)
+                if stop:
+                    self.load(session_id, page, FIXTURE)
+
+    def test_native_adapter_loss_fails_closed_before_keyboard_dispatch(self):
+        task_id, _, session_id, _ = self.opened()
+        self.act(task_id, session_id, "Check", "activate")
+        network = self.service.backend._sessions[session_id].network
+        network._fail()
+        with patch.object(network.input, "keys") as dispatched:
+            with self.assertRaises((RuntimeError, PageInspectionError)):
+                self.act(task_id, session_id, "Check", "activate")
+        dispatched.assert_not_called()
+
+    def test_selection_rechecks_target_focus_between_bounded_key_batches(self):
+        task_id, _, session_id, page = self.opened()
+        self.script(
+            page,
+            "document.querySelector('select').innerHTML=Array.from({length:60},(_,i)=>'<option>Choice '+i+'</option>').join('');true",
+        )
+        self.act(task_id, session_id, "Check", "activate")
+        network = self.service.backend._sessions[session_id].network
+        original = network.input.keys
+        batches = []
+
+        def keys(names, validate, **options):
+            source = original(names, validate, **options)
+            if names:
+                batches.append(names)
+                source.add_done_callback(
+                    lambda _: page.runJavaScript(
+                        "document.getElementById('text').focus();true", INSPECTION_WORLD
+                    )
+                )
+            return source
+
+        with patch.object(network.input, "keys", side_effect=keys):
+            with self.assertRaises(PageInspectionError) as error:
+                self.act(task_id, session_id, "Choice", "select", index=40)
+        self.assertEqual(error.exception.code, "focus_unavailable")
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(len(batches[0]), 32)
+        self.assertNotEqual(
+            self.evaluate(page, "document.querySelector('select').selectedIndex"), 40
+        )
 
     def test_old_grants_do_not_gain_edit_or_scroll_authority(self):
         task_id, _, session_id, _ = self.opened(actions=["navigate", "read"])

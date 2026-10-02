@@ -190,6 +190,64 @@ class TaskProfileTests(unittest.TestCase):
             )
         )
 
+    def test_shared_profile_native_keys_preserve_user_controls_and_focus_state(self):
+        self.manager.switch_to_profile("work")
+        type(self).page_fixtures["/native"] = (
+            b'<input id="field" value="USER_SECRET"><input type="checkbox" aria-label="Check">'
+        )
+        user = self.page()
+        self.load(user, "/native")
+        original_focus = []
+        user.runJavaScript(
+            "document.getElementById('field').focus();document.hasFocus()",
+            original_focus.append,
+        )
+        self.wait_for(lambda: bool(original_focus))
+        task = self.command("task.create", objective="Change a synthetic checkbox")
+        grant = self.request(
+            task.task_id, profile="existing:work", actions=["navigate", "read", "edit"]
+        )
+        self.service.approve_grant(task.task_id, grant.grant_id)
+        opened = self.command(
+            "session.open", task_id=task.task_id, profile="existing:work"
+        )
+        self.navigate(task.task_id, opened.session_id, "/native")
+        snapshot = self.command(
+            "page.inspect", task_id=task.task_id, session_id=opened.session_id
+        )
+        outcome = self.command(
+            "page.act",
+            task_id=task.task_id,
+            session_id=opened.session_id,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=snapshot.frames[0].targets[-1].target_id,
+            operation="activate",
+        )
+        self.assertTrue(outcome.checked)
+        self.assertEqual(outcome.input_semantics, "chromium_keyboard")
+        values = []
+        user.runJavaScript(
+            "({value:document.getElementById('field').value,checked:document.querySelector('[type=checkbox]').checked,focused:document.hasFocus()})",
+            values.append,
+        )
+        self.wait_for(lambda: bool(values))
+        self.assertEqual(
+            values[0],
+            {"value": "USER_SECRET", "checked": False, "focused": original_focus[0]},
+        )
+        session = self.service.backend._sessions[opened.session_id]
+        self.assertTrue(session.network.frontend_profile.isOffTheRecord())
+        self.assertIsNot(session.network.frontend_profile, self.profile)
+        frontend, frontend_profile = (
+            session.network.frontend,
+            session.network.frontend_profile,
+        )
+        self.service.revoke_grant(task.task_id, grant.grant_id)
+        self.assertTrue(sip.isdeleted(frontend))
+        self.assertTrue(sip.isdeleted(frontend_profile))
+        self.assertFalse(sip.isdeleted(user))
+        self.load(user, "/after-native")
+
     def test_shared_profile_submission_preserves_user_post_and_signed_in_cookie(self):
         self.manager.switch_to_profile("work")
         user = self.page()

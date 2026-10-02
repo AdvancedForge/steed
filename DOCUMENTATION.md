@@ -359,6 +359,7 @@ Browser/
 │   ├── permission_service.py # Modern/legacy permission responses and task denial
 │   ├── task_policy.py      # Exact scopes, expiry, and thread-safe request budgets
 │   ├── task_network.py     # Private per-target service-worker bypass adapter
+│   ├── task_input.py       # Fixed native keyboard events and task focus emulation
 │   ├── task_client.py      # Task-bound client command facade
 │   ├── page_inspector.py   # Asynchronous snapshots, validation, and fixed actions
 │   ├── page_actions.py     # Bounded action inputs and value-free receipts
@@ -658,14 +659,35 @@ authority before dispatch and receipt. Supported operations:
 | Operation | Supported controls and input | Semantics |
 | --- | --- | --- |
 | `enter` | Text, search, email, URL, telephone inputs and textareas; `text` only, up to 4,096 UTF-16 units | Focus/select the resolved control, then Chromium's editing command; trusted input events, undo, and field length limits are verified on Qt 6.11.2 |
-| `activate` | Checkbox/radio inputs; no additional input | HTML activation via `click()` and its default control behavior; the initiating click is synthetic, not a physical pointer gesture |
-| `select` | Single-selection native selects; `index` from 0 to 999 | Set selected index and emit synthetic input/change events; absent/disabled options and multiple selection fail |
+| `activate` | Checkbox/radio inputs; no additional input | Focus the resolved control and send native Space down/up; browser-generated keyboard/click/input/change events are trusted |
+| `select` | Single-selection native selects; `index` from 0 to 999 | Native Home/ArrowDown keys skip unavailable choices; observe the actual index; absent/disabled/hidden options and multiple selection fail |
 
 The text editor uses the deprecated `document.execCommand` API through fixed
 browser code, verified on the pinned engine. See Chromium's
 [editing implementation](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/editing/commands/editor_command.cc)
 and the [HTML activation specification](https://html.spec.whatwg.org/multipage/interaction.html#activation-behavior).
 No arbitrary commands, scripts, selectors, or protocol operations are exposed.
+Checkbox/radio and selection receipts use `input_semantics="chromium_keyboard"`.
+Fixed [`Input.dispatchKeyEvent`](https://chromedevtools.github.io/devtools-protocol/1-3/Input/#method-dispatchKeyEvent)
+commands run through an in-process Qt frontend with separate off-the-record
+storage. Shared-profile pages reuse their worker-bypass adapter; private pages
+initialize it on first native control use. No public debug listener is opened.
+Task-only focus emulation starts before focusing the resolved control and ends
+after observation. It does not activate a desktop window or focus another tab.
+An unattached page with a zero-sized viewport gets a fixed 1280×800 virtual
+viewport, retained for the task page; a page with an existing viewport keeps it.
+This changes the task's layout without creating a visible window. Readable child
+frames use the focused document. Pointer gestures and custom widgets remain pending.
+
+Selection uses at most 32 keys per batch and rechecks the target, focus, document,
+and live grant between batches. It can generate events for intermediate choices;
+an unchanged selection sends no selection keys. The complete native action is
+bounded to ten seconds, including adapter setup; individual input batches have
+five-second deadlines. Protocol acknowledgement alone is insufficient: the browser
+observes checked/selected state before returning. A mismatch returns `unsupported`;
+adapter loss, stale state, focus drift, timeout, and cancellation reject the action.
+There is no synthetic-click/selection fallback or automatic retry.
+
 These semantics do not establish compatibility with JS handlers, custom widgets,
 or SPA workflows. Password/file fields, specialized inputs, generic buttons,
 and contenteditable controls remain unavailable to `page.act`. Scriptless edits
@@ -889,6 +911,23 @@ filling still need user verification.
 
 ## Verification record
 
+A3 native keyboard stage (October 1, 2026): all 251 regressions passed on Qt 6.11.2
+in 141.614 seconds (`/tmp/steed-native-full.log`). Six new input checks and a new
+shared-profile check verify trusted keyboard/click/input/change events, viewless
+task rendering with a virtual viewport, readable child-frame focus, disabled
+option/optgroup skipping, unchanged selections, focus checks between bounded
+batches, timeout/stop with late responses, and adapter loss. Ordinary user values,
+checkbox state, and focus stayed independent on the shared profile; revocation
+destroyed the private frontend before its profile and left the user page alive.
+Existing form, worker-bypass, permission, journal, and daily-browser tests passed.
+Website JavaScript permission and physical pointer/custom-control behavior remain
+unimplemented. No external-agent connection or cloud provider was introduced.
+Startup/render/shutdown and local Google HTTPS redirects/POSTs/opt-out passed
+(`/tmp/steed-native-startup.log`, `/tmp/steed-native-google.log`). Ruff, formatting,
+whitespace, and thirteen local documentation links passed. The prior native Qt
+startup/profile-creation exits below remain unresolved; these passing runs do not
+establish a root cause or fix.
+
 A3 form-submission stage (October 1, 2026): all 244 regressions passed on Qt 6.11.2
 in 115.758 seconds (`/tmp/steed-form-full.log`). Eighteen new form/ticket checks
 and new shared-profile/popup checks cover native GET/POST serialization, hidden
@@ -1103,8 +1142,12 @@ operations. The following describes the full target scope.
 Read-only snapshots, explicit content grants, bounded extraction, and opaque
 target validation, observed link navigation, scriptless control edits, form submission, scrolling,
 and bounded waits are implemented. Text editing events/undo are verified on the
-pinned engine. Native pointer/selection semantics and active-page
+pinned engine. Native keyboard activation/selection are implemented. Pointer
+gestures and active-page
 permissions, file grants, and full SPA/form workflows remain pending.
+Website JavaScript remains ungranted: the next stage must cover background
+network transports/workers and submit-handler mutations with tested enforcement
+before enabling scripts. No JavaScript wrappers alone establish that boundary.
 The following describes the complete milestone target.
 
 Prefer authorized app/API connectors, then public document retrieval, then live JS-enabled pages. Visual inspection is optional or user-requested. A session owns QWebEnginePage independently of a view; attach the same page on watch/takeover. Invisible pages may still need JS, layout, and Chromium resources.
