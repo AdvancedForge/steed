@@ -267,6 +267,10 @@ class PageInspector(QObject):
         page.runJavaScript(script, INSPECTION_WORLD, received)
 
     def act(self, session_id, page, snapshot_id, target_id, arguments, validate):
+        request = self.input_request(session_id, snapshot_id, target_id, arguments)
+        return self._mutation(session_id, page, {**request, "mode": "act"}, validate)
+
+    def input_request(self, session_id, snapshot_id, target_id, arguments):
         node_id, descriptor = self._target_reference(session_id, snapshot_id, target_id)
         if (
             not descriptor.enabled
@@ -276,16 +280,11 @@ class PageInspector(QObject):
             not in ("input", "textarea", "select", "checkbox", "radio")
         ):
             raise PageInspectionError("control_unsupported")
-        return self._mutation(
-            session_id,
-            page,
-            {
-                "mode": "act",
-                "snapshot_id": snapshot_id,
-                "node_id": node_id,
-                **arguments,
-            },
-            validate,
+        return {"snapshot_id": snapshot_id, "node_id": node_id, **arguments}
+
+    def input_phase(self, session_id, page, request, mode, validate):
+        return self._run(
+            session_id, page, {**request, "mode": mode}, validate, lambda data: data
         )
 
     def scroll(self, session_id, page, snapshot_id, frame_id, arguments, validate):

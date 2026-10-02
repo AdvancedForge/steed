@@ -1,4 +1,4 @@
-"""Private, version-specific worker bypass for a shared-profile task page.
+"""Private, version-specific worker bypass and task input frontend.
 
 Verified against Qt 6.11.2, like cookie_snapshot.py. No debug listener or caller
 scripts are exposed. Keep the frontend attached: detaching resets target policy.
@@ -8,7 +8,9 @@ from concurrent.futures import Future
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtWebEngineCore import QWebEnginePage
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+
+from services.task_input import TaskInput
 
 PREPARE_SCRIPT = """
 window.__steedTaskNetwork = null;
@@ -41,8 +43,13 @@ class TaskNetwork(QObject):
         self.attempts = 0
         self.started = False
         self.healthy = False
-        self.frontend = QWebEnginePage(page.profile(), self)
+        # The bundled DevTools frontend has its own off-the-record storage;
+        # task HTTP filters never need exceptions for its internal assets.
+        self.frontend_profile = QWebEngineProfile(self)
+        self.frontend = QWebEnginePage(self.frontend_profile, self)
+        self.input = TaskInput(self)
         self.frontend.loadFinished.connect(self._loaded)
+        self.frontend.renderProcessTerminated.connect(lambda *_: self._fail())
         self.timer = QTimer(self)
         self.timer.setInterval(100)
         self.timer.timeout.connect(self._poll)
@@ -60,6 +67,7 @@ class TaskNetwork(QObject):
 
     def _fail(self):
         self.healthy = False
+        self.input.cancel("native_input_unavailable")
         self.page.network_ready = False
         self.page.triggerAction(QWebEnginePage.WebAction.Stop)
         self.timer.stop()
@@ -94,3 +102,4 @@ class TaskNetwork(QObject):
         self._fail()
         self.page.setDevToolsPage(None)
         sip.delete(self.frontend)
+        sip.delete(self.frontend_profile)

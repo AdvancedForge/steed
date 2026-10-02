@@ -29,7 +29,7 @@
         return {url: action.href, method};
     };
     try {
-        if (["target", "act", "scroll", "form", "submit"].includes(request.mode)) {
+        if (["target", "act", "scroll", "form", "submit", "input_layout", "input_prepare", "input_check", "input_observe"].includes(request.mode)) {
             const state = globalThis[request.state_key];
             if (!state || state.snapshot_id !== request.snapshot_id) return fail("stale_snapshot");
             for (const frame of state.frames) {
@@ -49,6 +49,39 @@
             }
             const target = state.targets.get(request.node_id);
             if (!target || !target.node.isConnected) return fail("stale_snapshot");
+            if (request.mode === "input_layout") return JSON.stringify({viewport_needed: innerWidth <= 0 || innerHeight <= 0});
+            if (["input_prepare", "input_check", "input_observe"].includes(request.mode)) {
+                const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
+                const tag = node.tagName.toLowerCase(), type = node.type;
+                if (node.matches(":disabled") || node.getAttribute("aria-disabled") === "true" ||
+                    node.hasAttribute("readonly") || node.getAttribute("aria-readonly") === "true" ||
+                    !node.getClientRects().length || win.getComputedStyle(node).visibility !== "visible")
+                    return fail("target_not_editable");
+                if (request.mode !== "input_prepare" && doc.activeElement !== node) return fail("focus_unavailable");
+                if (request.mode === "input_check") return JSON.stringify({valid: true});
+                if (request.operation === "activate" && tag === "input" && ["checkbox", "radio"].includes(type)) {
+                    if (request.mode === "input_observe") return JSON.stringify({checked: node.checked});
+                    node.focus({preventScroll: true});
+                    if (doc.activeElement !== node) return fail("focus_unavailable");
+                    return JSON.stringify({before: node.checked, keys: ["space"], radio: type === "radio"});
+                }
+                if (request.operation === "select" && tag === "select" && !node.multiple) {
+                    if (request.mode === "input_observe") return JSON.stringify({selected_index: node.selectedIndex});
+                    const option = node.options[request.index];
+                    const available = opt => !opt.disabled && !opt.closest("optgroup")?.disabled &&
+                        !opt.hidden && win.getComputedStyle(opt).display !== "none";
+                    if (!option || !available(option)) return fail("option_unavailable");
+                    const keys = [];
+                    if (node.selectedIndex !== request.index) {
+                        keys.push("home");
+                        for (let i = 0; i < request.index; i++) if (available(node.options[i])) keys.push("down");
+                    }
+                    node.focus({preventScroll: true});
+                    if (doc.activeElement !== node) return fail("focus_unavailable");
+                    return JSON.stringify({before: node.selectedIndex, keys});
+                }
+                return fail("control_unsupported");
+            }
             if (["form", "submit"].includes(request.mode)) {
                 const node = target.node, info = submission(node);
                 if (info.error) return fail(info.error);
@@ -81,28 +114,6 @@
                     return JSON.stringify({status: matches ? (changed ? "applied" : "no_change") :
                         (accepted ? "constrained" : "unsupported"), changed,
                         input_semantics: "chromium_editing_command", text_matches: matches});
-                }
-                if (request.operation === "activate") {
-                    if (tag !== "input" || !["checkbox", "radio"].includes(type)) return fail("control_unsupported");
-                    const before = node.checked;
-                    node.click();
-                    const changed = node.checked !== before;
-                    return JSON.stringify({status: changed ? "applied" : "no_change", changed,
-                        input_semantics: "html_activation", checked: node.checked});
-                }
-                if (request.operation === "select") {
-                    if (tag !== "select" || node.multiple) return fail("control_unsupported");
-                    const option = node.options[request.index];
-                    if (!option || option.disabled || option.closest("optgroup")?.disabled) return fail("option_unavailable");
-                    const before = node.selectedIndex;
-                    node.selectedIndex = request.index;
-                    const changed = node.selectedIndex !== before;
-                    if (changed) {
-                        node.dispatchEvent(new win.Event("input", {bubbles: true}));
-                        node.dispatchEvent(new win.Event("change", {bubbles: true}));
-                    }
-                    return JSON.stringify({status: changed ? "applied" : "no_change", changed,
-                        input_semantics: "dom_selection", selected_index: node.selectedIndex});
                 }
                 return fail("operation_unsupported");
             }

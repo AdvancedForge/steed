@@ -2,6 +2,7 @@
 
 import json
 import threading
+import time
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -207,6 +208,7 @@ class QtBrowserBackend(QObject):
         self._closed = False
         self.profile_provider = profile_provider
         self.navigation_timeout_ms = 15000
+        self.input_timeout_ms = 10000
 
     def _session(self, session_id):
         require_owner_thread(self)
@@ -536,12 +538,192 @@ class QtBrowserBackend(QObject):
     def act(self, session_id, action_id, snapshot_id, target_id, arguments):
         arguments = action_arguments(**arguments)
         session, validate = self._edit_context(session_id, "edit")
-        source = self.inspector.act(
-            session_id, session.page, snapshot_id, target_id, arguments, validate
-        )
+        if arguments["operation"] == "enter":
+            source = self.inspector.act(
+                session_id, session.page, snapshot_id, target_id, arguments, validate
+            )
+        else:
+            source = self._native_control(
+                session_id, snapshot_id, target_id, arguments, validate
+            )
         return self._action_result(
             session_id, action_id, arguments["operation"], source, target_id=target_id
         )
+
+    def _native_control(self, session_id, snapshot_id, target_id, arguments, validate):
+        session = self._session(session_id)
+        request = self.inspector.input_request(
+            session_id, snapshot_id, target_id, arguments
+        )
+        if session.network is None:
+            session.network = TaskNetwork(session.page, self)
+        network = session.network
+        result = Future()
+        deadline = QTimer(self)
+        deadline.setSingleShot(True)
+        before = None
+        keys = []
+        active = None
+        settle = QTimer(self)
+        settle.setSingleShot(True)
+        observe_deadline = 0
+
+        def cleanup(_):
+            deadline.stop()
+            deadline.deleteLater()
+            settle.stop()
+            settle.deleteLater()
+            if active is not None and not active.done():
+                active.set_exception(PageInspectionError("native_input_cancelled"))
+            network.input.release_focus()
+            self.inspector.invalidate(session_id, "action_completed")
+
+        def expire():
+            if not result.done():
+                result.set_exception(PageInspectionError("native_input_timeout"))
+
+        def observed(source):
+            if result.done():
+                return
+            try:
+                data = source.result()
+                key = (
+                    "checked"
+                    if arguments["operation"] == "activate"
+                    else "selected_index"
+                )
+                changed = data[key] != before
+                expected = (
+                    (True if request.get("radio") else not before)
+                    if key == "checked"
+                    else arguments["index"]
+                )
+                if data[key] != expected and time.monotonic() < observe_deadline:
+                    settle.start(20)
+                    return
+                status = "applied" if changed else "no_change"
+                if data[key] != expected:
+                    status = "unsupported"
+                result.set_result(
+                    {
+                        **data,
+                        "status": status,
+                        "changed": changed,
+                        "input_semantics": "chromium_keyboard",
+                    }
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def batch(index):
+            nonlocal active, observe_deadline
+            if result.done():
+                return
+            try:
+                validate()
+                network.validate()
+                if index >= len(keys):
+                    observe_deadline = time.monotonic() + 0.2
+                    observe()
+                else:
+                    active = self.inspector.input_phase(
+                        session_id, session.page, request, "input_check", validate
+                    )
+                    active.add_done_callback(lambda source: checked(source, index))
+            except Exception as error:
+                result.set_exception(error)
+
+        def checked(source, index):
+            nonlocal active
+            if result.done():
+                return
+            try:
+                source.result()
+                validate()
+                network.validate()
+                active = network.input.keys(keys[index : index + 32], validate)
+                active.add_done_callback(lambda source: advanced(source, index + 32))
+            except Exception as error:
+                result.set_exception(error)
+
+        def observe():
+            nonlocal active
+            if not result.done():
+                active = self.inspector.input_phase(
+                    session_id, session.page, request, "input_observe", validate
+                )
+                active.add_done_callback(observed)
+
+        def advanced(source, index):
+            if result.done():
+                return
+            try:
+                source.result()
+                batch(index)
+            except Exception as error:
+                result.set_exception(error)
+
+        def prepared(source):
+            nonlocal before, keys
+            if result.done():
+                return
+            try:
+                data = source.result()
+                before, keys = data["before"], data["keys"]
+                request["radio"] = data.get("radio", False)
+                batch(0)
+            except Exception as error:
+                result.set_exception(error)
+
+        def ready(source):
+            nonlocal active
+            if result.done():
+                return
+            try:
+                source.result()
+                validate()
+                network.validate()
+                active = self.inspector.input_phase(
+                    session_id, session.page, request, "input_layout", validate
+                )
+                active.add_done_callback(layout)
+            except Exception as error:
+                result.set_exception(error)
+
+        def layout(source):
+            nonlocal active
+            if result.done():
+                return
+            try:
+                data = source.result()
+                active = network.input.keys(
+                    [], validate, viewport=data["viewport_needed"]
+                )
+                active.add_done_callback(focused)
+            except Exception as error:
+                result.set_exception(error)
+
+        def focused(source):
+            nonlocal active
+            if result.done():
+                return
+            try:
+                source.result()
+                validate()
+                network.validate()
+                active = self.inspector.input_phase(
+                    session_id, session.page, request, "input_prepare", validate
+                )
+                active.add_done_callback(prepared)
+            except Exception as error:
+                result.set_exception(error)
+
+        result.add_done_callback(cleanup)
+        deadline.timeout.connect(expire)
+        settle.timeout.connect(observe)
+        deadline.start(self.input_timeout_ms)
+        network.ready.add_done_callback(ready)
+        return result
 
     def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments):
         arguments = scroll_arguments(**arguments)
@@ -683,6 +865,8 @@ class QtBrowserBackend(QObject):
         def cleanup(_):
             if session.pending_action is result:
                 session.pending_action = None
+            if not source.done():
+                source.set_exception(PageInspectionError("action_cancelled"))
 
         result.add_done_callback(cleanup)
         source.add_done_callback(finished)
