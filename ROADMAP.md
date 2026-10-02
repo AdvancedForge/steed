@@ -34,7 +34,7 @@ establishes those results. Password improvements remain deferred at the user's r
 
 **A3 remains in progress: native keyboard activation/selection and native form
 submission are implemented alongside inspection, links, edits, scrolling, and waits.**
-Resumed from native-input commit `c23c6ce`; prior form commit `9c51d97`.
+Resumed from safeguards/audit commit `47ba170`; prior native-input commit `c23c6ce`.
 
 - **Completed:** automatic approval popups; concurrent user/task profiles with
   separate grants; bounded inspection and stale-reference checks; observed link
@@ -54,10 +54,20 @@ Resumed from native-input commit `c23c6ce`; prior form commit `9c51d97`.
   but its `webrtc` directive was unrecognized; STUN still reached the receiver.
   Native submission now rejects enabled document scripts before preparation and
   immediately before ticket authorization. No website-script grant was added.
-- **Next task:** prototype a native per-task boundary for shared workers and
-  non-HTTP transports before enabling scripts/SPA behavior. Validate arbitrary
-  documents, fresh iframe realms, adapter failure and revocation while preserving
-  concurrent user networking. Keep script-enabled forms denied until handler/
+- **Native prototype completed:** saved response-policy and packet-loss
+  experiments, fresh-iframe worker and TURN/TCP controls, and an executable
+  containment gate. Native response fulfillment with worker CSP blocked the
+  tested shared workers; 1 ms/100% packet loss stopped observed STUN packets.
+  TURN/TCP still established an unapproved connection in every candidate.
+  A `Connection-Allowlist` header did not contain RTC on bundled Chromium
+  140.0.7339.225. Ordinary concurrent user networking remains available.
+  Prototype code lives only in tests; scripts remain unsupported in the app.
+- **Next task:** resolve native engine support for RTC connection enforcement
+  or define stronger isolation that preserves collaborative profiles. Use
+  `tests/smoke_task_native_policy.py --require-containment` as the first gate;
+  dropping packets or rewriting constructor APIs alone is insufficient.
+  Then validate arbitrary documents, response bytes/cookies/policies, cross-process
+  frames, adapter loss and revocation. Keep script-enabled forms denied until handler/
   serialized-body authority is enforceable. HTTP filtering, CSP worker rules,
   or JavaScript constructor wrappers alone do not meet this acceptance condition.
   Native pointer gestures/custom controls remain pending. Add destination grants
@@ -65,8 +75,9 @@ Resumed from native-input commit `c23c6ce`; prior form commit `9c51d97`.
 - **Resume points:** `services/browser_backend.py`, `services/page_inspector.py`,
   `services/page_inspection.js`, `services/page_actions.py`, `services/task_service.py`,
   `services/form_submission.py`, `services/task_input.py`, `services/task_network.py`,
-  `tests/test_page_actions.py`, `tests/test_page_forms.py`, and
-  `tests/smoke_task_active_content.py`. Preserve concurrent
+  `tests/test_page_actions.py`, `tests/test_page_forms.py`,
+  `tests/smoke_task_active_content.py`, and `tests/smoke_task_native_policy.py`.
+  Preserve concurrent
   user browsing, exact site scopes, stale-reference rejection, and request/receipt persistence.
 - **Validation saved:** complete 253-test suite passed on Qt 6.11.2 in 143.111
   seconds (`/tmp/steed-active-full.log`); the loopback audit and 20 form checks
@@ -83,6 +94,9 @@ Resumed from native-input commit `c23c6ce`; prior form commit `9c51d97`.
   unresolved; their form-stage diagnostic is `/tmp/steed-form-google-smoke.log`.
   The approval popup was visually checked in the form stage; lint/format passed. See the
   [verification record](DOCUMENTATION.md#verification-record) for limits and smoke results.
+  The expanded baseline and four native-policy comparisons also completed;
+  the containment gate correctly exits 1 for TURN/TCP. See
+  [native networking prototype](DOCUMENTATION.md#native-networking-prototype).
 - **Still pending:** full A3 form/SPA/file acceptance, later A2 authority, A4
   external-agent/MCP access, and A5–A7. Password improvements stay deferred.
   Real-account collaboration and interactive desktop checks remain follow-ups.
@@ -303,8 +317,16 @@ CSP stops shared workers but not STUN. Submission now checks that document scrip
 are disabled before preparation and ticket authorization; two regressions pass.
 See [audit details](DOCUMENTATION.md#active-content-networking-audit).
 
-Next: establish native per-task worker/non-HTTP enforcement before enabling
-scripts and SPA behavior; verify child contexts and failure/revocation paths.
+Native prototype: response fulfillment with worker CSP prevents the tested
+shared-worker/fresh-iframe origin bypass. Packet loss with 1 ms latency stops
+STUN packets, but TURN/TCP still connects outside scope. Connection-Allowlist
+did not contain RTC on the bundled Chromium 140 engine. The required-containment
+gate exits 1 for that known gap; prototype changes are test-only.
+
+Next: establish native RTC connection enforcement or stronger isolation before
+enabling scripts/SPA behavior. Then verify response semantics, cross-process
+child contexts and failure/revocation paths. The existing shared-profile model
+and user networking must remain available.
 Keep scripted forms denied until their body/handler authority is enforceable.
 Native pointer gestures/custom controls remain pending. Add
 upload/download destination grants alongside file operations. Full form/SPA/file
