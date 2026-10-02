@@ -14,7 +14,9 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 from services.task_store import TERMINAL_STATUSES
@@ -32,7 +34,7 @@ class TaskRecoveryDialog(QDialog):
         intro = QLabel(
             "New task: "
             + task.objective[:256]
-            + "\nChoose exactly what to share. This creates independent draft copies. The agent will still request fresh permissions for its work; saved approvals will not bypass that request. Pages, old grants and writes are never resumed."
+            + "\nChoose exactly what to share. This creates independent draft/file copies. The agent will still request fresh permissions; saved approvals will not bypass that request. Pages, old grants, code approvals and writes are never resumed."
         )
         intro.setTextFormat(Qt.TextFormat.PlainText)
         intro.setWordWrap(True)
@@ -49,13 +51,33 @@ class TaskRecoveryDialog(QDialog):
         self.scope.setTextFormat(Qt.TextFormat.PlainText)
         self.scope.setWordWrap(True)
         layout.addWidget(self.scope)
-        layout.addWidget(QLabel("Choose up to ten drafts (none selected by default):"))
+        selections = QTabWidget()
+        self.materials = selections
+        layout.addWidget(selections)
+        drafts = QWidget()
+        draft_layout = QVBoxLayout(drafts)
+        draft_layout.addWidget(
+            QLabel("Choose up to ten drafts (none selected by default):")
+        )
         self.artifacts = QListWidget()
         self.artifacts.currentItemChanged.connect(self.preview_artifact)
-        layout.addWidget(self.artifacts)
+        draft_layout.addWidget(self.artifacts)
         self.preview = QPlainTextEdit()
         self.preview.setReadOnly(True)
-        layout.addWidget(self.preview)
+        draft_layout.addWidget(self.preview)
+        selections.addTab(drafts, "Drafts")
+        files = QWidget()
+        file_layout = QVBoxLayout(files)
+        file_layout.addWidget(
+            QLabel("Choose up to ten sealed files, up to 32 MiB total (none selected):")
+        )
+        self.files = QListWidget()
+        self.files.currentItemChanged.connect(self.preview_file)
+        file_layout.addWidget(self.files)
+        self.file_preview = QPlainTextEdit()
+        self.file_preview.setReadOnly(True)
+        file_layout.addWidget(self.file_preview)
+        selections.addTab(files, "Files")
         self.evidence = QCheckBox(
             "Share prior permission scope, activity and app receipt summaries"
         )
@@ -66,7 +88,7 @@ class TaskRecoveryDialog(QDialog):
         self.evidence_preview.setMaximumHeight(100)
         layout.addWidget(self.evidence_preview)
         notice = QLabel(
-            "Drafts and evidence are untrusted historical text. Imported draft bodies require artifact permission. Matching completed or uncertain app writes remain blocked, even if receipt sharing is unchecked. Deleting an original draft does not delete a shared copy."
+            "Sharing can disclose selected material to the agent's model provider. Draft bodies need artifact permission; files need workspace permission. Files are copied as data: packages must be staged and approved again to run. Matching completed or uncertain app writes stay blocked. Deleting an original does not delete a shared copy."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -104,6 +126,8 @@ class TaskRecoveryDialog(QDialog):
     def refresh_source(self):
         self.artifacts.clear()
         self.preview.clear()
+        self.files.clear()
+        self.file_preview.clear()
         source = self.source.currentData()
         self.share.setEnabled(source is not None)
         if source is None:
@@ -129,6 +153,16 @@ class TaskRecoveryDialog(QDialog):
             self.artifacts.addItem(item)
         if self.artifacts.count():
             self.artifacts.setCurrentRow(0)
+        for file in self.service.workspace.list(source):
+            if file.status != "sealed":
+                continue
+            item = QListWidgetItem(f"{file.name} ({file.byte_count:,} bytes)")
+            item.setData(Qt.ItemDataRole.UserRole, file.file_id)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.files.addItem(item)
+        if self.files.count():
+            self.files.setCurrentRow(0)
         receipts = self.service.connector_store.list(source)
         self.evidence_preview.setPlainText(
             "App receipts:\n"
@@ -160,6 +194,22 @@ class TaskRecoveryDialog(QDialog):
         except (KeyError, OSError, sqlite3.Error):
             self.preview.setPlainText("This draft is no longer available.")
 
+    def preview_file(self, current, previous):
+        self.file_preview.clear()
+        if current is None:
+            return
+        try:
+            item = self.service.workspace.get(
+                self.source.currentData(), current.data(Qt.ItemDataRole.UserRole)
+            )
+            self.file_preview.setPlainText(
+                f"Name: {item.name}\nType: {item.media_type}\n"
+                f"Size: {item.byte_count:,} bytes\nSource: {item.source}\nSHA-256: {item.sha256}\n"
+                "The file is copied without rendering or executing its contents."
+            )
+        except (KeyError, OSError, sqlite3.Error):
+            self.file_preview.setPlainText("This file is no longer available.")
+
     def decide(self, allow):
         try:
             if allow:
@@ -173,6 +223,11 @@ class TaskRecoveryDialog(QDialog):
                     self.source.currentData(),
                     selected,
                     evidence=self.evidence.isChecked(),
+                    file_ids=[
+                        self.files.item(index).data(Qt.ItemDataRole.UserRole)
+                        for index in range(self.files.count())
+                        if self.files.item(index).checkState() == Qt.CheckState.Checked
+                    ],
                 )
             else:
                 self.service.deny_recovery(self.task_id)
@@ -185,7 +240,7 @@ class TaskRecoveryDialog(QDialog):
             sqlite3.Error,
         ):
             self.error.setText(
-                "Could not share this material. Choose a finished task and at most ten existing drafts; large evidence may need to be omitted."
+                "Could not share this material. Choose a finished task, up to ten existing drafts and ten sealed files (32 MiB total); large evidence may need to be omitted."
             )
             return
         self.done(QDialog.DialogCode.Accepted)

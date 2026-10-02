@@ -718,6 +718,13 @@ class TaskDialog(QDialog):
                 f"SHA-256: {item.sha256}",
                 "File contents are not rendered or executed here.",
             ]
+            recovery = self.service.store.recovery(task.task_id)
+            for imported in recovery.get("context", {}).get("imported_files", []):
+                if imported["file_id"] == item.file_id:
+                    lines.append(
+                        "Shared from previous task: " + recovery["source_task_id"]
+                    )
+                    lines.append("Original file ID: " + imported["source_file_id"])
         if available:
             for package in self.service.workspace.extensions(task.task_id):
                 lines.append(

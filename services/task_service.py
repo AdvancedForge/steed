@@ -35,7 +35,11 @@ from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
 from services.task_downloads import DownloadDestination
 from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
-from services.task_recovery import MAX_RECOVERY_ARTIFACTS, recovery_snapshot
+from services.task_recovery import (
+    MAX_RECOVERY_ARTIFACTS,
+    MAX_RECOVERY_FILES,
+    recovery_snapshot,
+)
 from services.task_store import ACTIVE_STATUSES, TERMINAL_STATUSES, TaskStore
 from services.task_workspace import MAX_FILE_BYTES, TaskWorkspace
 from services.worker_manager import WorkerManager
@@ -185,8 +189,10 @@ class TaskService(QObject):
         self._active(task_id)
         return self.store.recovery(task_id)
 
-    def approve_recovery(self, task_id, source_task_id, artifact_ids, *, evidence=True):
-        """Trusted user selection discloses only chosen drafts and bounded evidence."""
+    def approve_recovery(
+        self, task_id, source_task_id, artifact_ids, *, evidence=True, file_ids=()
+    ):
+        """Trusted selection discloses only chosen drafts, files and bounded evidence."""
         require_owner_thread(self)
         self._usable()
         if (
@@ -195,9 +201,15 @@ class TaskService(QObject):
             or any(not isinstance(value, str) for value in artifact_ids)
             or len(set(artifact_ids)) != len(artifact_ids)
             or type(evidence) is not bool
-            or (not artifact_ids and not evidence)
+            or not isinstance(file_ids, (list, tuple))
+            or len(file_ids) > MAX_RECOVERY_FILES
+            or any(not isinstance(value, str) for value in file_ids)
+            or len(set(file_ids)) != len(file_ids)
+            or (not artifact_ids and not file_ids and not evidence)
         ):
-            raise ValueError("Select at most ten drafts and/or retained evidence")
+            raise ValueError(
+                "Select at most ten drafts, ten files and/or retained evidence"
+            )
         if self.store.get(source_task_id).status not in TERMINAL_STATUSES:
             raise ValueError("Choose a finished or interrupted task")
         try:
@@ -227,7 +239,7 @@ class TaskService(QObject):
                 if receipt.effect != "read"
             ]
             result = self.store.approve_recovery(
-                task_id, source_task_id, artifacts, snapshot, effects
+                task_id, source_task_id, artifacts, snapshot, effects, file_ids
             )
         except (sqlite3.Error, OSError):
             self._fatal()

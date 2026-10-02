@@ -481,10 +481,12 @@ async def sdk_client(
                 recovery["status"] == "approved"
                 and recovery["source_task_id"] == task["task_id"]
             )
+            assert len(recovery["context"]["imported_files"]) == 1
+            assert recovery["context"]["imported_files"][0]["name"] == "generated.zip"
             await call(
                 "grant.request",
                 scope={
-                    "actions": ["artifact", "app"],
+                    "actions": ["artifact", "app", "workspace"],
                     "connector_permissions": [
                         {
                             "connector": "documents",
@@ -509,6 +511,13 @@ async def sdk_client(
                 for item in await call("artifact.list")
                 if item["sha256"] == artifact["sha256"]
             )
+            recovered_file = recovery["context"]["imported_files"][0]
+            chunk = await call("workspace.read", file_id=recovered_file["file_id"])
+            assert (
+                hashlib.sha256(base64.b64decode(chunk["data_base64"])).hexdigest()
+                == recovered_file["sha256"]
+            )
+            shared["sdk_recovered_generated_attachment"] = True
             assert copied["artifact_id"] != artifact["artifact_id"]
             assert (await call("artifact.read", artifact_id=copied["artifact_id"]))[
                 "content"
@@ -733,11 +742,13 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     while call("task.recovery")["status"] == "requested":
         assert time.monotonic() < deadline, "Independent recovery picker timed out"
         time.sleep(0.02)
-    assert call("task.recovery")["source_task_id"] == shared["raw_approval_task"]
+    recovery = call("task.recovery")
+    assert recovery["source_task_id"] == shared["raw_approval_task"]
+    assert len(recovery["context"]["imported_files"]) == 1
     call(
         "grant.request",
         scope={
-            "actions": ["artifact", "app"],
+            "actions": ["artifact", "app", "workspace"],
             "connector_permissions": [
                 {
                     "connector": "email",
@@ -760,6 +771,13 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     copied = next(
         item for item in call("artifact.list") if item["sha256"] == email["sha256"]
     )
+    recovered_file = recovery["context"]["imported_files"][0]
+    chunk = call("workspace.read", file_id=recovered_file["file_id"])
+    assert (
+        hashlib.sha256(base64.b64decode(chunk["data_base64"])).hexdigest()
+        == recovered_file["sha256"]
+    )
+    shared["raw_recovered_generated_attachment"] = True
     assert copied["artifact_id"] != email["artifact_id"]
     assert (
         "Synthetic document reference"
@@ -1102,6 +1120,10 @@ def check(transport="stdio"):
                         dialog.artifacts.item(index).setCheckState(
                             Qt.CheckState.Checked
                         )
+                    for index in range(dialog.files.count()):
+                        item = dialog.files.item(index)
+                        if item.text().startswith("generated.zip "):
+                            item.setCheckState(Qt.CheckState.Checked)
                     dialog.grab().save(f"/tmp/steed-recovery-{transport}-preview.png")
                     dialog.share.click()  # Trusted synthetic user selection only.
                 else:

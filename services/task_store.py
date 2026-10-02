@@ -23,9 +23,10 @@ from services.task_recovery import (
     MAX_RECOVERY_ARTIFACTS,
     MAX_RECOVERY_BYTES,
     MAX_RECOVERY_DEPTH,
+    MAX_RECOVERY_FILES,
     RECOVERY_SCHEMA,
 )
-from services.task_workspace import WORKSPACE_SCHEMA
+from services.task_workspace import WORKSPACE_SCHEMA, TaskWorkspace
 from services.worker_store import WORKER_SCHEMA
 
 ACTIVE_STATUSES = frozenset({"created", "running"})
@@ -424,6 +425,7 @@ class TaskStore:
             self.get(task_id).status != "created"
             or self.grants(task_id)
             or self.artifacts(task_id)
+            or TaskWorkspace(self).list(task_id)
         ):
             raise ValueError("Request recovery before grants or work")
         current = self.recovery(task_id)
@@ -483,11 +485,14 @@ class TaskStore:
                     return event.payload.get("sha256", "")
         return ""
 
-    def approve_recovery(self, task_id, source_task_id, artifacts, snapshot, effects):
+    def approve_recovery(
+        self, task_id, source_task_id, artifacts, snapshot, effects, file_ids=()
+    ):
         if (
             self.get(task_id).status != "created"
             or self.grants(task_id)
             or self.artifacts(task_id)
+            or TaskWorkspace(self).list(task_id)
             or self.recovery(task_id)["status"] != "requested"
         ):
             raise ValueError("Recovery request is no longer available")
@@ -497,6 +502,10 @@ class TaskStore:
             raise ValueError("Recovery draft belongs to another task")
         if (
             len(artifacts) > MAX_RECOVERY_ARTIFACTS
+            or not isinstance(file_ids, (list, tuple))
+            or len(file_ids) > MAX_RECOVERY_FILES
+            or any(not isinstance(value, str) for value in file_ids)
+            or len(set(file_ids)) != len(file_ids)
             or len(self.recovery_ancestors(source_task_id)) >= MAX_RECOVERY_DEPTH
         ):
             raise ValueError("Recovery selection exceeds its limit")
@@ -537,7 +546,14 @@ class TaskStore:
                         "byte_count": artifact.byte_count,
                     },
                 )
-            snapshot = {**snapshot, "imported_artifacts": imported}
+            imported_files = TaskWorkspace(self)._import_selected(
+                task_id, source_task_id, file_ids
+            )
+            snapshot = {
+                **snapshot,
+                "imported_artifacts": imported,
+                "imported_files": imported_files,
+            }
             encoded = json.dumps(snapshot, ensure_ascii=False, allow_nan=False)
             if len(encoded.encode("utf-8")) > MAX_RECOVERY_BYTES:
                 raise ValueError(
@@ -571,6 +587,7 @@ class TaskStore:
                 {
                     "source_task_id": source_task_id,
                     "artifact_count": len(imported),
+                    "file_count": len(imported_files),
                     "evidence_included": snapshot["evidence_included"],
                 },
             )
