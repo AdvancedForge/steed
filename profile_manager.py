@@ -21,6 +21,7 @@ from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
 from password_manager import PasswordManager
 from services.agent_gateway import AgentGateway
+from services.app_connections import AppConnections
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
 from services.task_policy import task_profile_name
@@ -59,6 +60,7 @@ class ProfileRegistry(QObject):
         self.owners = set()
         self.last_active_owner = None
         self._tasks = None
+        self._app_connections = None
         self.agent_gateway = None
         self.task_profiles = {}
         self.navigation = NavigationService(self)
@@ -87,13 +89,26 @@ class ProfileRegistry(QObject):
         self.refresh_settings()
 
     @property
+    def app_connections(self):
+        require_owner_thread(self)
+        if self._app_connections is None:
+            self._app_connections = AppConnections(
+                self.config.config_dir / "app_accounts.json", self
+            )
+        return self._app_connections
+
+    @property
     def tasks(self):
         """Initialize task infrastructure only when an internal client uses it."""
         require_owner_thread(self)
         if self._tasks is None:
             self._tasks = TaskService(
-                self.config.config_dir / "tasks.sqlite", self, profiles=self
+                self.config.config_dir / "tasks.sqlite",
+                self,
+                profiles=self,
+                connectors=self.app_connections.connectors,
             )
+            self.app_connections.task_service = self._tasks
             self.task_approvals = TaskApprovalQueue(self, self._tasks)
             self._tasks.failed.connect(lambda _: self.set_agent_access(False))
         return self._tasks
@@ -321,6 +336,8 @@ class ProfileRegistry(QObject):
             return
         self.set_agent_access(False)
         self.sharing.closed = True
+        if self._app_connections is not None:
+            self._app_connections.close()
         if self._tasks is not None:
             try:
                 self._tasks.close()

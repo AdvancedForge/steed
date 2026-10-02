@@ -2,3 +2,4 @@
 __pycache__/
 *.py[cod]
 .ruff_cache/
+client_secret_*.apps.googleusercontent.com.json

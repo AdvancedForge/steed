@@ -1,4 +1,4 @@
-"""Trusted connector definitions and bounded worker jobs; no real providers bundled."""
+"""Trusted connector definitions and bounded worker jobs."""
 
 import threading
 from dataclasses import dataclass
@@ -60,6 +60,7 @@ class ConnectorTool:
     requires_artifact: bool
     execute: object
     reconcile: object = None
+    validate_destination: object = None
 
 
 class ConnectorRegistry:
@@ -76,6 +77,10 @@ class ConnectorRegistry:
             or type(definition.requires_artifact) is not bool
             or not callable(definition.execute)
             or (definition.reconcile is not None and not callable(definition.reconcile))
+            or (
+                definition.validate_destination is not None
+                and not callable(definition.validate_destination)
+            )
         ):
             raise ValueError("Invalid trusted connector tool")
         if (
@@ -95,6 +100,11 @@ class ConnectorRegistry:
         if (connector, tool) not in self._tools:
             raise ValueError("Connector tool is not configured")
         return self._tools[connector, tool]
+
+    def unregister(self, connector):
+        """Trusted account settings only; existing job definitions remain immutable."""
+        connector_name(connector)
+        self._tools = {k: v for k, v in self._tools.items() if k[0] != connector}
 
     def describe(self):
         return [
@@ -116,6 +126,32 @@ class ConnectorRegistry:
                 raise ValueError("App effect differs from trusted tool configuration")
             if definition.requires_artifact and "artifact" not in scope.actions:
                 raise ValueError("This app tool needs artifact permission")
+            if definition.validate_destination is not None:
+                definition.validate_destination(permission.destination)
+
+
+class ConnectorCancellation(threading.Event):
+    """Cooperative providers recheck authority before each HTTP request."""
+
+    def __init__(self, grant, request, *, artifact=False):
+        super().__init__()
+        self.grant, self.request, self.artifact = grant, request, artifact
+
+    def is_set(self):
+        if not super().is_set():
+            try:
+                self.grant.check(
+                    "app",
+                    connector=self.request.connector,
+                    tool=self.request.tool,
+                    effect=self.request.effect,
+                    destination=self.request.destination,
+                )
+                if self.artifact:
+                    self.grant.check("artifact")
+            except Exception:
+                self.set()
+        return super().is_set()
 
 
 class ConnectorJob(QObject):
@@ -124,7 +160,9 @@ class ConnectorJob(QObject):
     def __init__(self, definition, request, grant, callback, parent, *, probe=False):
         super().__init__(parent)
         self.definition, self.request, self.grant = definition, request, grant
-        self.cancelled = threading.Event()
+        self.cancelled = ConnectorCancellation(
+            grant, request, artifact=definition.requires_artifact and not probe
+        )
         self.probe = probe
         self.dispatched = False
         self.finished.connect(callback, Qt.ConnectionType.QueuedConnection)

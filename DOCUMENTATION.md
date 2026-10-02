@@ -943,15 +943,16 @@ forensic erasure from SQLite journals, free pages or external copies.
 ### Browser-managed application operations
 
 The gateway and recovery rules are implemented and tested against synthetic
-document/email MCP services. **No real provider or account setup is bundled yet.**
-`steed_app_list_tools` therefore returns an empty list in the default browser.
+document/email MCP services and Google API fixtures. Google account setup and
+trusted Docs/Gmail mappings are bundled; [connect an account](#google-app-connections)
+to enable them. `steed_app_list_tools` returns an empty list until accounts are configured.
 It requires an active task, but no grant or page. External agents cannot register
 connectors, choose endpoints or change credential configuration.
 
 Trusted browser code can supply a `ConnectorRegistry` to `TaskService`, registering
 immutable `ConnectorTool` definitions with a fixed effect (`read`, `write`, `send`,
 `delete`, `spend`), description, artifact requirement, worker `execute` callback and
-optional read-only `reconcile` callback. Remote tool annotations do not set risk;
+optional read-only `reconcile` and destination-validation callbacks. Remote tool annotations do not set risk;
 the mock server deliberately claims writes are read-only to test this distinction.
 Adapters receive a typed destination and owned draft, not arbitrary client JSON,
 URLs, credential paths or recipient arrays. Concrete adapters must validate and
@@ -1024,8 +1025,112 @@ In **File → Task Permissions → Apps**, review owned destinations, states, re
 IDs, references and result text, cancel a running operation, or reconcile an
 uncertain result while its original task/grant remains active. Finished/interrupted
 receipts remain readable by the user. Reconciliation of archived tasks with fresh
-approval, result-retention controls, real credential storage/setup and concrete
-provider mappings remain follow-ups. A client cannot adopt another task's ledger.
+approval, result-retention controls and additional real providers remain follow-ups.
+A client cannot adopt another task's ledger.
+
+### Google app connections
+
+Google is the first real provider adapter. The same account store, provider factory,
+approval gateway and receipt format can support Microsoft 365 and other trusted
+MCP/API adapters. Those additional adapters are not bundled yet; a synthetic second
+provider verifies that account setup and task policy do not depend on Google.
+
+To configure Google:
+
+1. Install the optional dependency in Steed's virtual environment:
+   `.venv/bin/python -m pip install -r requirements-apps.txt`.
+   Your Linux desktop needs a working Secret Service keyring, such as GNOME
+   Keyring or a Secret Service provider you already use. Steed has no plaintext
+   credential fallback. This is separate from KeePassXC website-password pairing.
+2. In your Google Cloud project, enable **Google Drive API** for documents and/or
+   **Gmail API** for sending. Configure the OAuth consent screen; for an external
+   testing app, add your Google account as a test user. Follow Google's
+   [consent setup](https://developers.google.com/workspace/guides/configure-oauth-consent).
+3. Create an OAuth client with application type **Desktop app** and download its
+   client JSON. Use a project/client you control; Steed does not bundle a shared
+   production client. The import ignores endpoints supplied by the JSON and uses
+   fixed Google HTTPS endpoints. Google's [desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)
+   describes client creation and the system-browser/loopback flow.
+4. Open **File → App Connections**, choose the JSON, select **Create Google Docs**
+   and/or **Send Gmail**, and click **Connect Account**. Unlock the desktop keyring
+   if prompted. Finish consent in your system browser, select the intended Google
+   account, then return to Steed. Use a system browser supported by Google's OAuth
+   flow; if Steed is your default and authorization is refused, temporarily select
+   Firefox/Chrome as your default browser for setup. Steed does not extract cookies
+   from your tabs or perform this consent inside its embedded WebEngine.
+5. The connected account and enabled tools appear in App Connections. Enable
+   local agent access as usual. Agents discover the account-specific connector
+   through `steed_app_list_tools`, request exact app permissions, retain a draft
+   with `steed_artifact_store`, and send its ID to `steed_app_call_tool`. Connecting
+   an account alone never approves a task.
+6. Approve the task popup only for the account, tool and destination you intend.
+   Review results in **File → Task Permissions → Apps** and drafts in **Artifacts**.
+   **Disconnect / Remove Credentials** disables the connection, denies pending
+   requests and revokes active grants using it before attempting keyring deletion.
+   If the keyring is locked, unlock it and retry removal; the connection stays disabled.
+
+The requested OAuth scopes are `openid` and `email` for account identity, plus
+`drive.file` for documents and/or `gmail.send` for sending. Google defines
+[Drive file access](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)
+as app-created/selected file access and [Gmail send](https://developers.google.com/workspace/gmail/api/auth/scopes)
+as send-only access. Steed does not request inbox-reading or whole-Drive access.
+Google external apps in Testing issue refresh tokens that expire after seven days
+for these non-basic scopes; reconnect when needed. See Google's
+[token expiration rules](https://developers.google.com/identity/protocols/oauth2#expiration).
+
+| Tool | Exact destination | Behavior |
+| --- | --- | --- |
+| `google_<connection-id>.create_document` | `drive:root` | Create a new Google Doc in that account's My Drive; draft title becomes its name and draft content is imported as plain text. |
+| `google_<connection-id>.send_email` | `email:recipient@example.com` | Send one plain-text email; draft title becomes its subject and content becomes its body. |
+
+Use the actual connector ID returned by discovery, not the placeholder above.
+Mailbox destinations accept a single ASCII address with a lowercase domain;
+display names, recipient lists and header injection are rejected before approval.
+Local-part case, dots and plus tags remain exact. Arbitrary Drive folders, shared
+drives, editing existing documents, rich text, attachments and mailbox reads are
+not implemented. Markdown drafts are sent/imported as literal plain text. Drive
+[upload conversion](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
+creates the document and imports its text in one multipart request; no second
+content write or broad Docs permission is needed.
+
+Connections use immutable provider/subject identities and a new opaque connector
+ID on every reconnect, including the same account. Account names and capabilities
+live in private `~/.custom_browser/app_accounts.json`; OAuth client credentials,
+refresh/access tokens and scopes live in Linux Secret Service. No token/client
+path is sent to agents or written to task events. On first use after startup and
+on refresh, Steed checks Google's authenticated userinfo subject and email, saves rotated
+credentials before writes and fails closed on mismatch or unavailable credentials.
+Short-lived access tokens are cached in memory; locking the keyring does not erase
+an already cached token. Disconnect disables its use in Steed. Disablement also
+prevents refresh workers from restoring removed credentials. Disconnect does not
+revoke Google's server-side OAuth consent or undo external effects; manage that
+consent separately in your Google Account's third-party connections.
+
+Setup, keyring prompts and API calls run in workers. OAuth uses a random loopback
+port, state verification and PKCE; setup waits up to three minutes for consent.
+Requests have ten-second socket timeouts, bounded JSON responses and no redirects
+or automatic retries. Cooperative adapters check task authority/cancellation
+before each request; a dispatched request can still finish after cancellation.
+Provider API calls use the connector operation budget, not browser-page request
+accounting. A fresh write normally needs token refresh, identity verification and
+one mutation; cached-token writes need one mutation. OAuth setup is user-owned,
+outside task grants.
+
+Google Docs attach the browser's operation ID as a private Drive app property.
+Read-only recovery searches that property in the original account/root destination;
+one unique result confirms success. Empty, multiple or incomplete results remain
+uncertain: indexing delay, file moves/deletion and provider failure cannot prove
+non-creation. Workspace documents cannot use Drive's pre-generated IDs; the
+adapter therefore never retries an uncertain create. Gmail send-only scope cannot
+verify a lost send acknowledgement, so its receipt remains uncertain and has no
+automatic reconciliation. Check Gmail **Sent** before sending another email. The
+stable `Message-ID` helps manual identification and is not an idempotency guarantee.
+Current recovery still requires the original active task/grant; archived-task
+recovery with fresh approval remains planned.
+
+Real Google consent and writes have not been exercised with your account. Synthetic
+OAuth/API tests validate the request shapes, identity checks and uncertainty rules;
+real-account acceptance needs your configured client and explicit task approval.
 
 ### Scoped task uploads
 
@@ -1568,6 +1673,7 @@ QT_QPA_PLATFORM=offscreen python tests/smoke_google_login.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_active_content.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --transport http
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_google_connector.py
 python tests/smoke_password_manager.py
 ```
 
@@ -1609,7 +1715,32 @@ It does not exercise the interactive pairing dialog or access an existing vault.
 The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
+The Google connector smoke uses synthetic desktop-client credentials, an in-memory
+secret store and a local HTTP fixture. It exercises the real OAuth callback/PKCE
+and API request code while routing its fixed Google endpoints only to that fixture.
+It checks draft → Doc → email, lost TCP acknowledgements, read-only Doc recovery,
+stable receipts, no duplicate writes and restart without grants/replay. It does
+not contact Google or test HTTPS certificates, a real desktop keyring or consent UI.
+It saves `/tmp/steed-google-connections.png` and `/tmp/steed-google-approval.png`.
+Neither optional SDK nor SecretStorage is needed for this synthetic smoke.
+
 ## Verification record
+
+Google connection stage (October 2, 2026): the full 413-test suite passed in
+245.201 seconds (`/tmp/steed-google-full.log`). Thirty-nine new checks cover account
+identity/storage, setup/PKCE/state, tokens/scopes/rotation, destination validation,
+plain-text request mapping, uncertain writes, cancellation/disconnect, trusted UI
+and provider extensibility. Final account/provider/gateway/UI checks passed 58
+tests in 2.626 seconds (`/tmp/steed-google-focused-identity-final.log`). The local HTTP
+workflow passed (`/tmp/steed-google-http-identity-final.log`), applying exactly one
+synthetic document/email despite lost acknowledgements, with read-only Doc recovery
+and no restart replay. Independent SDK/JSON-RPC MCP workflows passed over stdio
+and HTTP (`/tmp/steed-google-mcp-stdio.log`, `/tmp/steed-google-mcp-http.log`), and
+ordinary startup/render/shutdown passed (`/tmp/steed-google-startup.log`). Account/scope
+UI previews were checked. Ruff, formatting, dependencies and whitespace passed.
+Final metadata-size and account-label checks passed the focused suite too.
+Real Google OAuth, account writes and desktop keyring acceptance remain pending;
+no real account was connected.
 
 Connector gateway stage (October 2, 2026): the full 374-test suite passed in 225.006
 seconds (`/tmp/steed-connectors-full.log`). Nineteen focused checks passed in 1.142
@@ -2146,9 +2277,11 @@ Acceptance: held-out comparisons against deterministic-only inspection measure c
 The trusted connector gateway, exact tool/effect/destination scopes, worker limits,
 immutable-draft binding, durable request identity, observed receipts and read-only
 reconciliation passed mock document/email MCP workflows over both Steed transports.
-Default registries have no real account/provider. See
-[current app operations](#browser-managed-application-operations). Provider account
-setup, OS credentials, archived-task recovery and agent-managed mode remain pending.
+Google Docs/Gmail mappings and user-owned desktop OAuth/Secret Service setup are
+implemented; registries stay empty until accounts are configured. See
+[current app operations](#browser-managed-application-operations) and
+[Google setup](#google-app-connections). Real-account acceptance, additional providers,
+archived-task recovery and agent-managed mode remain pending.
 
 - Browser-mediated mode: MCP gateway enforces grants, logs activity, handles cancellation, and records results.
 - Agent-managed mode: direct external connections; clearly disclose absent browser visibility/enforcement.
@@ -2183,7 +2316,8 @@ An SDK client and independent JSON-RPC client each passed this workflow over bot
 Steed transports using synthetic page sources and mock document/email MCP providers.
 Each client retained source-linked drafts, created one document, sent its reference
 only to an approved synthetic recipient, and reconciled a lost acknowledgement
-without resending. Real provider/account setup and acceptance remain pending.
+without resending. Google account setup is implemented with synthetic acceptance;
+real-account checks and additional provider adapters remain pending.
 
 The external agent obtains a scoped task grant, searches/inspects sources, generates its own document, stores it with references/provenance, creates a document through an approved connector, sends only to authorized recipients, and returns document references/receipts/unresolved limitations. Browser-side generation is not required.
 

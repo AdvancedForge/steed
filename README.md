@@ -51,10 +51,12 @@ scripts remain planned.
 Optional local MCP access over stdio or authenticated local HTTP connects clients
 to the running browser's task capabilities. You can watch a task's page, take
 control through supported actions, and return it to the agent. Task notes and
-drafts can be retained with explicit permission and reviewed later. A scoped app
-connector gateway is verified against mock document/email services; real account
-setup is the next integration step. See
-[agent setup](DOCUMENTATION.md#local-agent-access-mcp).
+drafts can be retained with explicit permission and reviewed later. Optional Google
+Docs/Gmail connections use desktop-keyring credentials and scoped task approvals;
+synthetic workflows pass, with real-account verification pending. The connection
+system supports additional provider adapters. See
+[agent setup](DOCUMENTATION.md#local-agent-access-mcp) and
+[Google setup](DOCUMENTATION.md#google-app-connections).
 Bookmarks and generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,

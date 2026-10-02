@@ -192,6 +192,8 @@ class TaskService(QObject):
             )
         definition = self.connectors.get(connector, tool)
         destination_name(destination)
+        if definition.validate_destination is not None:
+            definition.validate_destination(destination)
         request = ConnectorRequest(
             request_id, connector, tool, definition.effect, destination, None
         )
@@ -480,6 +482,7 @@ class TaskService(QObject):
         scope = TaskScope.parse(record.scope)
         if record.status != "requested":
             raise ValueError("Only a pending request can be approved")
+        self.connectors.check_scope(scope)
         grant = LiveGrant(scope, clock=self._clock)
         expires = (
             datetime.now(timezone.utc) + timedelta(seconds=scope.duration_seconds)
@@ -524,6 +527,23 @@ class TaskService(QObject):
         live[1].end("revoked")
         self._end_authority(task_id, "revoked")
         return self.store.grant(task_id, grant_id)
+
+    def disconnect_connector(self, connector):
+        """Trusted account settings end matching authority before removing tools."""
+        require_owner_thread(self)
+        self._usable()
+        for task in self.store.list_tasks():
+            for record in self.store.grants(task.task_id):
+                if record.status == "requested" and any(
+                    p["connector"] == connector
+                    for p in record.scope.get("connector_permissions", [])
+                ):
+                    self.deny_grant(task.task_id, record.grant_id)
+        for task_id, (grant_id, live) in list(self._grants.items()):
+            if any(p.connector == connector for p in live.scope.connector_permissions):
+                self.revoke_grant(task_id, grant_id)
+        self.connectors.unregister(connector)
+        self.changed.emit()
 
     def cancel_task(self, task_id):
         require_owner_thread(self)

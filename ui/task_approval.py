@@ -33,6 +33,15 @@ ACTION_LABELS = {
 }
 
 
+def app_description(service, permission):
+    try:
+        return service.connectors.get(
+            permission["connector"], permission["tool"]
+        ).description
+    except ValueError:
+        return "App connection is no longer available."
+
+
 class WrappedLabel(QLabel):
     """Keep complete wrapped text visible inside the scrollable scope."""
 
@@ -114,13 +123,14 @@ class TaskApprovalDialog(QDialog):
         if scope.get("connector_permissions"):
             layout.addWidget(QLabel("Allowed app operations:"))
             apps = QPlainTextEdit(
-                "\n".join(
-                    f"{p['effect'].upper()}: {p['connector']}.{p['tool']} → {p['destination']}"
+                "\n\n".join(
+                    f"{p['effect'].upper()}: {app_description(service, p)}"
+                    + f"\nDestination: {p['destination']}"
                     for p in scope["connector_permissions"]
                 )
             )
             apps.setReadOnly(True)
-            apps.setMaximumHeight(110)
+            apps.setMaximumHeight(180)
             layout.addWidget(apps)
             app_notice = WrappedLabel(
                 "App tools may send drafts or change external data. Only listed "
@@ -162,6 +172,15 @@ class TaskApprovalDialog(QDialog):
             f"network requests and {scope['max_sessions']} sessions.\n"
             "GET/HEAD requests can have website effects. DNS routes are not pinned.\n"
             "Form values and editable text are omitted from page reads."
+            + (
+                "\nApp tool identifiers:\n"
+                + "\n".join(
+                    f"{p['connector']}.{p['tool']}"
+                    for p in scope["connector_permissions"]
+                )
+                if scope.get("connector_permissions")
+                else ""
+            )
         )
         self.limits.setWordWrap(True)
         self.limits.setSizePolicy(

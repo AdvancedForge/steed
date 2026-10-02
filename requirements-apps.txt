@@ -1,0 +1,2 @@
+# Optional Google app connections; credentials use the Linux Secret Service.
+SecretStorage==3.5.0
