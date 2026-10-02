@@ -26,6 +26,7 @@ for current progress and remaining work.
 - [Remembering agent approvals](#remembering-agent-approvals)
 - [Continuing previous work](#continuing-previous-work)
 - [Generated files and custom integration packages](#generated-files-and-custom-integration-packages)
+- [Running an agent-built local worker](#running-an-agent-built-local-worker)
 - [Google app connections](#google-app-connections)
 - [Local agent access (MCP)](#local-agent-access-mcp)
 - [Development checks](#development-checks)
@@ -387,6 +388,10 @@ Browser/
 ├── services/
 │   ├── agent_gateway.py    # Opt-in private IPC, connection ownership and cleanup
 │   ├── agent_tools.py      # Published tool schemas and browser-side validation
+│   ├── local_worker.py     # Isolated subprocess, bounded pipe protocol and Qt bridge
+│   ├── worker_bootstrap.py # In-sandbox limits/seccomp installed before source imports
+│   ├── worker_manager.py   # Exact package decisions and live typed broker checks
+│   ├── worker_store.py     # Durable worker receipts and task-bound package choices
 │   ├── task_store.py       # SQLite tasks, append-only events, restart recovery
 │   ├── task_recovery.py    # Bounded follow-up snapshots and persistence schema
 │   ├── command_broker.py   # Named commands dispatched on the Qt thread
@@ -572,6 +577,9 @@ its transport identity is also bound to the credential that initialized it.
 | `task.recovery` | `task_id`; status and only the historical context explicitly shared by the user; does not restore authority |
 | `artifact.store` | `task_id`, `title`, `content`, optional `format` and `source_events`; explicit `artifact` permission, returns immutable draft metadata |
 | `artifact.list`, `artifact.read` | `task_id`, plus `artifact_id` for read; artifact permission, returns owned metadata or text |
+| `worker.run` | `task_id`, `extension_id`, stable `request_id`; worker permission, requests trusted exact-package approval before isolated execution |
+| `worker.status`, `worker.list` | `task_id`, plus `request_id` for status; current worker permission, returns owned execution receipts |
+| `worker.cancel` | `task_id`, `request_id`; stops an owned worker without spending a cleanup operation |
 | `app.list_tools` | `task_id`; configured tool descriptions/effects, no grant or credentials |
 | `app.call_tool` | `task_id`, `connector`, `tool`, `request_id`, `destination`, optional `artifact_id`; exact app permission, starts a call and returns its durable receipt |
 | `app.status`, `app.cancel`, `app.reconcile` | `task_id`, `request_id`; owned receipt lookup, cooperative cancellation or read-only reconciliation |
@@ -1011,8 +1019,9 @@ forensic erasure from SQLite journals, free pages or external copies.
 
 Agents can supply arbitrary file formats through a task-owned workspace: PDFs,
 spreadsheets, images, archives and source code all use the same byte interface.
-Steed stores and exports those bytes; the connected agent supplies the generator
-and its dependencies. This milestone does not add a built-in Python/shell runtime.
+Steed stores and exports those bytes. Agents can supply bytes they already generated,
+or build a [local Python worker](#running-an-agent-built-local-worker) to create a
+missing generator or integration using supported app tools.
 
 For users, open **File → Task Permissions → Workspace**, then select the task:
 
@@ -1080,8 +1089,10 @@ are untrusted requests; the trusted adapter registry determines actual effects.
 Duplicate manifest keys/capabilities, traversal, missing/unsealed sources and
 changed hashes are rejected. Staging is repeatable by manifest ID and pins source
 IDs/hashes. The Workspace panel shows package identity and requested access.
-**Staged packages cannot run, register tools, obtain credentials or grant access.**
-There is no agent endpoint for importing host paths, deleting files or activating code.
+**Staging grants no execution or app authority.** Running a package requires the
+separate task and exact-package approvals below. Packages cannot register trusted
+tools or obtain credentials. Agents cannot import host paths, delete retained files
+or approve their own code.
 
 Meta's [Muse architecture](https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse)
 describes an isolated agent runtime, separate credential services and privileged
@@ -1089,14 +1100,119 @@ brokers for user-data access. The useful pattern for Steed is to keep executable
 agent code outside the browser while retaining typed, permission-checked operations
 and user-selected data sharing. Steed has not implemented Muse's VM or taint tracking.
 
-The next decision is runtime deployment: a local sandboxed worker or a dedicated
-VM. A local Bubblewrap 0.9.0 bootstrap succeeded on this development machine with
-namespaces isolated, no home mount and no network. That is a feasibility check,
-not an implemented extension sandbox. The [Bubblewrap maintainers](https://github.com/containers/bubblewrap/blob/main/README.md)
-state that its caller must define the security policy. Before execution, Steed
-needs restricted mounts/environment/IPC, resource limits, process cleanup,
-capability-bound broker access and hostile-code acceptance. A VM adds a separate
-kernel boundary but brings image distribution, updates and higher resource costs.
+### Running an agent-built local worker
+
+The user selected a local worker. It requires Linux, a root-owned `/usr/bin/bwrap`
+supporting `--disable-userns`/`--assert-userns-disabled` (tested with 0.9.0), enabled
+unprivileged user namespaces, `libseccomp.so.2`, and root-owned system Python under
+`/usr`. Debian/Ubuntu packages are `bubblewrap` and `libseccomp2`. Browser launch and
+dependency checks still use Steed's virtual environment; generated code uses isolated
+system Python with its standard library. Missing isolation support fails the run;
+there is no host-execution fallback. A separate-kernel VM remains a possible future
+deployment option.
+
+1. Request `actions: ["workspace", "worker"]` with a sufficient operation budget.
+   Add `artifact` or exact `app` capabilities only when needed. Ordinary task
+   approval permits execution requests; it does not approve arbitrary packages.
+2. Seal source and its manifest, then call `steed_workspace_stage_extension`.
+3. Call `steed_worker_run` with `extension_id` and a stable `request_id`.
+4. The user sees **Run custom code?**, the pinned source/hash, declared app access
+   and limits. **Deny** is the default. **Run Package** approves only that package.
+   The optional checkbox remembers its exact hash for this task and current grant;
+   new code needs another popup. Remembered package decisions end on restart.
+5. Poll `steed_worker_status`, then read/export the generated Workspace files.
+   Users can review receipts, reopen pending reviews and cancel runs under
+   **File → Task Permissions → Workers**. Closing the popup leaves review pending.
+
+`steed_worker_list` returns owned receipts; `steed_worker_cancel` stops an owned run.
+States are `awaiting_approval`, `running`, `cancelling`, `succeeded`, `failed`,
+`cancelled` and `interrupted`. Repeating a run ID returns its receipt without
+executing again, including failures and cancellation; changed package inputs are
+rejected. Restart interrupts unresolved records without replay or restored grants.
+Receipts describe script completion; external app outcomes have separate Apps
+receipts and can remain uncertain after cancellation. Use a new reviewed package
+and run ID for an intentional retry after inspecting existing effects.
+
+Entry points must be `.py`. Source can import the mounted `steed_worker` helper:
+
+```python
+import io
+import zipfile
+from steed_worker import store_file
+
+output = io.BytesIO()
+with zipfile.ZipFile(output, "w") as archive:
+    archive.writestr("report.csv", "name,value\nSteed,1\n")
+store_file("report.zip", output.getvalue(), "application/zip")
+```
+
+`read_file(file_id)` reads an owned, explicitly shared/generated task file.
+`call(command, **arguments)` supports typed `workspace.begin/write/seal/list/read`,
+`artifact.store/list/read` and `app.list_tools/call_tool/status`. Every call still
+needs live task authority and spends its existing budget. App calls additionally
+need the exact manifest connector/tool/effect/destination; actual effects come from
+the trusted registry. Only this run's app request IDs are available through status.
+Generated code cannot approve grants/reviews, export host files, launch other
+workers, register providers, use arbitrary HTTP, or access browser pages directly.
+Credentials stay with Steed's trusted connector adapter.
+
+Each run has **20 seconds wall time, 10 CPU seconds, 512 MiB address space,
+32 MiB scratch, 8 MiB per scratch file, 64 file descriptors and 512 broker calls**.
+There are at most two concurrent local workers, one per task, and fifty receipts
+per task. Workspace file/byte quotas also apply. Package and helper mounts are read
+only; home/profile/state/keyring/session-bus directories and parent environment
+are absent. Network/PID/user namespaces are isolated. Before importing generated
+code, an irreversible seccomp allowlist blocks sockets, subprocess/thread creation
+and namespace changes, and hard resource limits are installed.
+
+The [Bubblewrap maintainers](https://github.com/containers/bubblewrap/blob/main/README.md)
+explain that callers define the isolation policy; Steed supplies those restrictions
+and tests actual blocked operations. Kernel isolation shares the host kernel and
+is not a VM. No package dependencies, shell/build tools or direct network are
+available. Custom integrations can compose existing approved adapters; adding
+new external services still needs a trusted adapter/credential policy.
+
+Cancellation, task completion, revocation, expiry, source deletion and shutdown
+stop the worker. Queued broker operations recheck authority immediately before
+dispatch. Scratch and materialized source are removed after termination; abrupt
+host crashes can leave private temporary directories. Retained outputs stay in
+Workspace until user deletion. User code's stdout is reserved for the bounded
+broker protocol; stderr is bounded and discarded. Receipts/events omit code,
+file contents, stderr and credential text.
+
+### Shared Google registration decision
+
+To give new installations the same **Connect → sign in → toggle access** flow,
+Steed needs a maintained shared Google Desktop OAuth client. The current remembered
+developer-owned setup already gives subsequent connections that flow. These are
+two distribution choices:
+
+| Choice | User experience | Ownership |
+| --- | --- | --- |
+| Personal/developer setup | Import a client once, then sign in and reuse switches | Each user maintains their own Cloud project |
+| Shared Steed registration (recommended for broader distribution) | Bundled public desktop client configuration; sign in and choose switches | Steed's publisher maintains the project, branding, support and verification |
+
+The implementation proposal is to bundle only the desktop app registration,
+retain developer import as an advanced option, and reuse the existing external
+browser PKCE/loopback flow, desktop keyring and account switches. User access/refresh
+tokens remain local; this needs no Steed cloud credential server and no broader
+Google scopes. An installed app's client configuration is not a private user token;
+Google's [native-app OAuth guidance](https://developers.google.com/identity/protocols/oauth2/native-app)
+describes the installed-app model.
+
+Before publication, the owner must provide a Cloud project, support contact and
+public homepage/privacy identity, then complete the applicable production process.
+Google's [brand verification guidance](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification)
+describes domain ownership and branding requirements. `gmail.send` is classified
+as sensitive in the [Gmail scope list](https://developers.google.com/workspace/gmail/api/auth/scopes)
+and public production access requires the applicable
+[sensitive-scope review](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification).
+Personal-use exceptions exist; they do not establish public distribution readiness.
+
+No shared registration, public policy or external project change has been made.
+The decision is whether to keep Steed personal for now or accept maintaining that
+publisher identity. Once chosen, client selection, onboarding and synthetic tests
+can be implemented before any actual registration/publication.
 
 ### Browser-managed application operations
 
@@ -1919,7 +2035,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 43 input schemas. Names follow the internal command
+Tool discovery publishes 47 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -2185,6 +2301,31 @@ establish real account, consent, certificate or desktop-keyring acceptance.
 
 ## Verification record
 
+Local-worker milestone (October 2, 2026): **629 tests passed in 256.190 seconds**
+(`/tmp/steed-worker-full.log`). Twenty-nine focused worker tests passed in 5.877
+seconds (`/tmp/steed-worker-focused.log`), including real Bubblewrap/seccomp
+host-file/environment/socket/process denial, hard resource limits, memory/CPU/wall
+exhaustion, protocol bounds and private scratch cleanup. Manager coverage includes
+default-Deny source review, separate exact approval, remembered-hash/task isolation,
+no replay, declared app/destination checks, typed broker boundaries, operation budgets,
+enqueue/cancel races, lifecycle/source deletion, schema-11 migration and journal
+failure before execution/after completion. Setup failure never falls back to host code.
+
+The SDK and independent JSON-RPC client each built and ran a ZIP generator after
+the actual trusted package popup, then read and verified its CSV attachment over
+both stdio and HTTP (`/tmp/steed-worker-mcp-stdio.log`,
+`/tmp/steed-worker-mcp-http.log`). Existing shared-profile browsing, watch/handoff,
+Doc/email writes, archived read-only checks and retention workflows still passed.
+Popup/results previews were visually inspected (`/tmp/steed-worker-approval.png`,
+`/tmp/steed-worker-results.png`). Browser startup/render/shutdown, workspace picker/
+export controls and synthetic Google HTTP reviewed replacement/recovery passed
+(`/tmp/steed-worker-startup.log`, `/tmp/steed-worker-workspace-ui.log`,
+`/tmp/steed-worker-google-review.log`). Ruff/format, dependency, whitespace and
+local documentation-link checks passed. These used temporary state and synthetic
+credentials/effects, not real account/keyring or desktop acceptance. This worker
+shares the host kernel and supports standard-library Python only; arbitrary new
+providers and dependency installation are separate work.
+
 Standing connector access stage (October 2, 2026): **600 tests passed in 248.392
 seconds** (`/tmp/steed-access-full.log`), including nine connector-switch
 regressions (`/tmp/steed-access-focused.log`). Twenty-one existing account setup/
@@ -2217,7 +2358,9 @@ and whitespace checks, dependencies and 74 local documentation links passed.
 Files, account data and credentials were synthetic;
 real-account/desktop acceptance remains pending. Bubblewrap 0.9.0 launched a
 harmless isolated process with no home/network; no generated source was executed.
-The isolated runtime remains a design decision, not a tested Steed feature.
+That groundwork did not execute source. The subsequent local-worker milestone
+adds isolated execution with separate exact-package approval; see the current
+record above.
 
 Reviewed document-edit stage (October 2, 2026): **568 tests passed in 254.019
 seconds** (`/tmp/steed-reviews-full.log`), plus fifteen final focused proposal regressions

@@ -160,7 +160,7 @@ class TaskStoreTests(unittest.TestCase):
         self.assertEqual(self.store.grants(), [])
         with sqlite3.connect(self.path) as connection:
             self.assertEqual(
-                connection.execute("PRAGMA user_version").fetchone()[0], 11
+                connection.execute("PRAGMA user_version").fetchone()[0], 12
             )
 
     def test_ui_tail_selects_recent_task_scoped_and_filtered_events(self):

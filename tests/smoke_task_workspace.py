@@ -49,7 +49,7 @@ def check():
             "Requested access (not granted)" in dialog.workspace_preview.toPlainText()
         )
         assert "SEND:" in dialog.workspace_preview.toPlainText()
-        assert "cannot run" in dialog.workspace_preview.toPlainText()
+        assert "execution permission required" in dialog.workspace_preview.toPlainText()
         for index in range(dialog.panels.count()):
             if dialog.panels.tabText(index) == "Workspace":
                 dialog.panels.setCurrentIndex(index)

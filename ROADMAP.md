@@ -9,6 +9,15 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 2, 2026
 
+Local-worker milestone: approved agent-built Python packages generate attachments
+and compose existing app adapters through the task broker. The automatic package
+popup shows source, hash, app capabilities and limits, defaults to Deny, and can
+remember the exact package for the current task/grant. Bubblewrap namespaces,
+read-only mounts, hard limits and a seccomp allowlist apply before source runs.
+No direct networking, credential mounts, subprocesses or dependency installation.
+Workers has retained receipts, review and cancellation; stable IDs never replay.
+See [worker usage](DOCUMENTATION.md#running-an-agent-built-local-worker).
+
 Result-retention milestone: **Task Permissions → Apps** can clear a saved provider
 result or the selected task's own results. Clearing removes text/links and shared
 receipt summaries atomically, persists across restart, and suppresses late-worker
@@ -87,7 +96,7 @@ establishes those results. Password improvements remain deferred at the user's r
 
 ### Resume checkpoint
 
-- **Latest engineering checkpoint:** exact Google folder destinations (`e74dd12`),
+- **Earlier Google checkpoint:** exact Google folder destinations (`e74dd12`),
   document/tab inspection, bounded tab reads and immutable draft appends with
   current-revision preconditions. Atomic operation ranges support read-only
   confirmation after a lost response/restart without repeating the append.
@@ -107,29 +116,36 @@ establishes those results. Password improvements remain deferred at the user's r
   Acceptance: **568 regressions passed**, focused proposal and existing Google
   checks passed, and the local HTTP fixture applied exactly one reviewed replacement
   with lost-response recovery. The actual before/after popup was inspected.
-- **Generated files/custom integration groundwork implemented:** schema-10
+- **Generated files/custom integration groundwork implemented** (`9d0f505`): schema-10
   task-owned binary files, chunked transfer, hash/size sealing, exact approved
   exports, explicitly user-selected input snapshots and retained user export/deletion.
   Seven new MCP tools work with both independent clients over stdio and HTTP.
   Custom source packages pin a manifest and owned sealed files; requested access
-  is visible but grants nothing. No package runs or registers tools.
+  is visible but grants nothing. Staging never runs code or registers tools;
+  execution is now separately approved in the local-worker milestone.
   See [workspace usage and limits](DOCUMENTATION.md#generated-files-and-custom-integration-packages).
   Acceptance: **590 tests passed in 255.599 seconds**, twenty-one final workspace
   checks, both MCP transports/clients, user sharing/export UI, Google HTTP review/
   recovery and startup/render/shutdown passed. Ruff/format and diff checks passed.
   The first stdio run hit the tracked Qt startup exit 139; retry passed. All inputs
   and account acceptance were synthetic. Real desktop/account acceptance is pending.
-- **Local worker decision accepted:** the user selected a local sandboxed worker,
-  with all account/browser access
-  through Steed's broker, no direct credential/profile/home-directory mounts, and
-  networking initially disabled. Alternative: a dedicated VM with a separate
-  kernel, greater memory/storage needs and an image/update lifecycle. Bubblewrap
-  0.9.0 launched an isolated no-home/no-network process on this machine; this
-  establishes feasibility only. Execution still needs mount/IPC/environment policy,
-  resource limits, capability-bound RPC, cleanup and adversarial acceptance.
-  Implementation is in progress: generated-code execution stays unavailable until
-  exact package grants, lifecycle/receipts and broker acceptance are completed.
-  No rebuild of daily browsing is required for either option.
+- **Latest engineering checkpoint — local worker implemented:** schema-12 owned execution
+  receipts, separate exact-package approval, task/grant-bound remembered hashes,
+  standard-library helper, two-worker capacity and bounded typed RPC are implemented.
+  Actual Bubblewrap/seccomp checks reject host-data/environment access, sockets,
+  subprocesses, namespace changes and raised hard limits. Resource/protocol limits,
+  cancellation races, app capability/destination checks, source integrity/deletion,
+  restart/migration and journal failures have regression coverage. SDK and raw MCP
+  clients generated ZIP attachments after actual package popups over both transports.
+  Acceptance: **629 regressions passed in 256.190 seconds**, 29 focused worker
+  checks passed in 5.877 seconds, both independent MCP clients passed stdio/HTTP,
+  and startup/render/shutdown, workspace picker/export UI and synthetic Google
+  document review/recovery passed. Approval/results screenshots were inspected.
+  Ruff/format, dependencies, diff and local documentation links passed. All state,
+  files, credentials and app effects were synthetic; real-account acceptance is pending.
+  Website scripts remain unavailable; this does not change ordinary page execution.
+  Additional dependencies, reusable installed integrations, arbitrary provider HTTP
+  and workspace-file recovery remain future work. No daily-browser rebuild was needed.
   Existing user-created file/folder selection also needs a separate Drive-only
   Picker consent/credential flow with verified account binding; no broader OAuth
   scopes or credential migration have been introduced. Broader provider access,
@@ -137,7 +153,7 @@ establishes those results. Password improvements remain deferred at the user's r
   Real-account acceptance needs user-owned setup and explicit approval; website
   scripts remain deferred until compatible native engine support exists.
 
-- **Connector simplicity milestone implemented:** per-account read/write/direct/
+- **Connector simplicity milestone implemented** (`0e5a46c`): per-account read/write/direct/
   send switches remember supported tools and automatically approve bounded app-only
   requests. Sign-in alone grants nothing; file/browser/execution permissions remain
   separate. Disabling access stops matching tasks and clears matching saved rules.
@@ -158,6 +174,15 @@ establishes those results. Password improvements remain deferred at the user's r
   task. Decide about a shared production OAuth registration only if first-time
   user-owned setup remains too much. Additional providers and engine/script work
   remain separate follow-ups; password improvements remain deferred.
+
+- **Next major decision:** keep developer-owned Google setup for this personal
+  browser, or distribute a shared Steed desktop OAuth registration for new users.
+  Shared registration is recommended for sign-in-and-toggle onboarding. It needs
+  a project owner, public branding/privacy/support identity and production scope
+  verification; the application cannot invent these or publish on the user's behalf.
+  The [concrete distribution proposal](DOCUMENTATION.md#shared-google-registration-decision)
+  preserves local credentials and existing scopes. No Cloud project or public
+  registration has been created or changed.
 
 **A3 remains in progress: native keyboard activation/selection and native form
 submission and scoped uploads/downloads are implemented alongside inspection, links,
@@ -802,19 +827,21 @@ stale snapshots are rejected, and malformed styling recovers safely.
 
 ### A8. Generated files and agent-built integrations
 
-**Groundwork implemented.** Agents can supply arbitrary byte formats and source
+**Local worker implemented; broader integrations pending.** Agents can supply arbitrary byte formats and source
 packages through owned immutable workspace files. User-selected input snapshots
 are separate from host filesystem access; exact download grants cover agent
 exports. The Workspace panel exposes provenance, hash, state, user export/deletion
-and staged package capability requests. All package declarations remain inert.
+and staged package capability requests. Staging grants nothing; execution uses
+separate task/package approval and a stdlib-only isolated local worker.
 Limits are 8 MiB/file and 50 names/32 MiB/task. Sending/uploading exported files
 continues to require its own permission. Workspace-file recovery and async local
 storage are future improvements.
 
-Remaining: runtime deployment decision, isolated execution/build tools, dependencies
-and resource budgets, broker-only data/credential access, package activation/versioning/
-removal, trusted effect mapping for new integrations, audit/recovery and adversarial
-fixtures. Acceptance: an agent creates a useful missing generator/integration,
+Implemented: local execution, resource budgets, broker-only data/app access,
+credential separation, durable receipts, revocation/cleanup and adversarial checks.
+Remaining: package dependencies/build tools, reusable installation/versioning/removal,
+trusted effect mapping and credential/HTTP policy for new providers, and broader
+recovery. Acceptance: an agent creates a useful missing generator/integration,
 the user sees its actual requested capabilities, and isolated execution cannot
 read unshared files, obtain host credentials, bypass app permissions or outlive revocation.
 
