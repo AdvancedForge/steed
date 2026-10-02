@@ -183,6 +183,59 @@ class AppConnectionTests(unittest.TestCase):
         )
         return self.resolve(client.submit("app.status", request_id=request_id))
 
+    def test_google_folder_receipts_and_nested_document_need_separate_exact_grants(
+        self,
+    ):
+        client, _ = self.grant(tool="create_folder")
+        artifact = self.artifact(client)
+        self.call(client, artifact, tool="create_folder")
+        folder = self.settled(client)
+        self.assertEqual(folder.state, "succeeded")
+        self.assertIn("drive:folder:synthetic-folder-1", folder.text)
+        with self.assertRaises(PermissionError):
+            self.call(client, artifact, destination="drive:folder:synthetic-folder-1")
+        child, _ = self.grant(destination="drive:folder:synthetic-folder-1")
+        self.call(
+            child, self.artifact(child), destination="drive:folder:synthetic-folder-1"
+        )
+        self.assertEqual(self.settled(child).state, "succeeded")
+        self.assertEqual(len(self.http.folder_writes), 1)
+        self.assertEqual(len(self.http.documents), 1)
+
+    def test_google_folder_lost_ack_is_durable_and_probe_never_replays_create(self):
+        self.http.lose_folder = True
+        client, _ = self.grant(tool="create_folder")
+        artifact = self.artifact(client)
+        self.call(client, artifact, tool="create_folder")
+        self.assertEqual(self.settled(client).state, "uncertain")
+        self.assertEqual(
+            self.call(client, artifact, tool="create_folder").state, "uncertain"
+        )
+        self.resolve(client.submit("app.reconcile", request_id="doc-1"))
+        self.assertEqual(self.settled(client).state, "succeeded")
+        self.assertEqual(len(self.http.folder_writes), 1)
+
+    def test_google_folder_read_only_tool_does_not_need_or_accept_a_draft(self):
+        client, _ = self.grant(tool="create_folder")
+        self.call(client, self.artifact(client), tool="create_folder")
+        self.settled(client)
+        reader, _ = self.grant(
+            tool="inspect_folder",
+            effect="read",
+            destination="drive:folder:synthetic-folder-1",
+        )
+        self.resolve(
+            reader.submit(
+                "app.call_tool",
+                connector=self.account.connector,
+                tool="inspect_folder",
+                destination="drive:folder:synthetic-folder-1",
+                request_id="folder-read",
+            )
+        )
+        self.assertEqual(self.settled(reader, "folder-read").state, "succeeded")
+        self.assertEqual(len(self.http.folder_writes), 1)
+
     def test_google_writes_use_gateway_and_uncertain_doc_lookup_does_not_replay(self):
         self.http.lose_document = True
         client, _ = self.grant()

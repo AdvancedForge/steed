@@ -7,7 +7,15 @@ from urllib.parse import parse_qs
 
 from services.app_accounts import AccountError
 from services.app_oauth import ApiError
-from services.google_connector import DRIVE, SCOPES, SEND, TOKEN, UPLOAD, USERINFO
+from services.google_connector import (
+    DRIVE,
+    FOLDER_MIME,
+    SCOPES,
+    SEND,
+    TOKEN,
+    UPLOAD,
+    USERINFO,
+)
 
 
 class MemorySecrets:
@@ -66,6 +74,9 @@ class SyntheticGoogle:
     def __init__(self):
         self.calls = []
         self.documents = []
+        self.folders = {}
+        self.folder_writes = []
+        self.lose_folder = False
         self.messages = []
         self.subject = "synthetic-subject"
         self.label = "fixture@example.test"
@@ -112,7 +123,40 @@ class SyntheticGoogle:
             if self.lose_email:
                 raise ApiError()
             return {"id": "synthetic-message"}
+        if method == "POST" and url.startswith(DRIVE + "/files?"):
+            metadata = json.loads(body)
+            self.folder_writes.append(metadata)
+            folder_id = "synthetic-folder-" + str(len(self.folder_writes))
+            self.folders[folder_id] = {
+                **metadata,
+                "id": folder_id,
+                "trashed": False,
+                "ownedByMe": True,
+                "capabilities": {"canAddChildren": True},
+            }
+            if self.lose_folder:
+                raise ApiError()
+            return {"id": folder_id}
+        if url.startswith(DRIVE + "/files/"):
+            folder_id = url.split("/files/", 1)[1].split("?", 1)[0]
+            if folder_id not in self.folders:
+                raise ApiError(404)
+            return copy.deepcopy(self.folders[folder_id])
         if url.startswith(DRIVE + "/files?"):
+            query = parse_qs(url.split("?", 1)[1]).get("q", [""])[0]
+            if FOLDER_MIME in query:
+                return (
+                    self.lookup
+                    if self.lookup is not None
+                    else {
+                        "files": [
+                            {"id": key}
+                            for key, value in self.folders.items()
+                            if value["appProperties"]["steed_operation"] in query
+                            and "'" + value["parents"][0] + "' in parents" in query
+                        ]
+                    }
+                )
             return (
                 self.lookup
                 if self.lookup is not None

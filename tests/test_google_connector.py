@@ -311,7 +311,10 @@ class GoogleConnectorTests(unittest.TestCase):
             authorize=self.authorize,
         )
         tools = GoogleConnector(account, self.store, http=self.http).tools()
-        self.assertEqual([t.tool for t in tools], ["create_document"])
+        self.assertEqual(
+            [t.tool for t in tools],
+            ["create_document", "create_folder", "inspect_folder"],
+        )
         self.assertEqual(
             [c[1] for c in self.http.calls],
             [TOKEN, "https://openidconnect.googleapis.com/v1/userinfo"],

@@ -41,7 +41,7 @@ class AppConnections(QObject):
                     "google",
                     "Google",
                     (
-                        ("documents", "Create Google Docs"),
+                        ("documents", "Google Docs and folders"),
                         ("email", "Send Gmail (no mailbox reading)"),
                     ),
                     connect_google,
