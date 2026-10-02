@@ -46,8 +46,9 @@ Page inspection returns bounded text and validated references. Task clients can
 follow links, edit supported controls, submit supported forms, scroll, and wait
 for page state with explicit permissions. Active scripts and file actions remain
 planned.
-Optional local MCP access connects external clients to the running browser's
-task capabilities. See [agent setup](DOCUMENTATION.md#local-agent-access-mcp).
+Optional local MCP access over stdio or authenticated local HTTP connects clients
+to the running browser's task capabilities. See
+[agent setup](DOCUMENTATION.md#local-agent-access-mcp).
 Bookmarks and generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,

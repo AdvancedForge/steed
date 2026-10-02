@@ -1,9 +1,10 @@
-"""Two external stdio clients drive a task beside a synthetic signed-in user.
+"""Two external stdio or HTTP clients drive a task beside a synthetic signed-in user.
 
 The fixture alone clicks the approval popup and cancels the task. No production
 approval bypass, accounts, real profiles, or external website requests are used.
 """
 
+import argparse
 import asyncio
 import json
 import select
@@ -12,7 +13,10 @@ import sys
 import threading
 import time
 import traceback
+from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -23,19 +27,39 @@ from test_task_profiles import TaskProfileTests
 from browser_window import BrowserWindow
 
 
-async def sdk_client(discovery, origin, shared, revoke, revoked):
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
+@asynccontextmanager
+async def sdk_transport(discovery, endpoint):
+    if endpoint is not None:
+        import httpx
+        from mcp.client.streamable_http import streamable_http_client
 
-    params = StdioServerParameters(
-        command=sys.executable,
-        args=[
-            str(Path(__file__).resolve().parents[1] / "agent_mcp.py"),
-            "--discovery",
-            str(discovery),
-        ],
-    )
-    async with stdio_client(params) as (reader, writer):
+        async with httpx.AsyncClient(
+            headers={"Authorization": "Bearer " + endpoint["tokens"]["sdk"]}
+        ) as http:
+            async with streamable_http_client(
+                endpoint["url"], http_client=http
+            ) as streams:
+                yield streams
+    else:
+        from mcp import StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                str(Path(__file__).resolve().parents[1] / "agent_mcp.py"),
+                "--discovery",
+                str(discovery),
+            ],
+        )
+        async with stdio_client(params) as (reader, writer):
+            yield reader, writer, None
+
+
+async def sdk_client(discovery, origin, shared, revoke, revoked, endpoint=None):
+    from mcp import ClientSession
+
+    async with sdk_transport(discovery, endpoint) as (reader, writer, get_session_id):
         async with ClientSession(reader, writer) as client:
             initialized = await client.initialize()
             shared["protocol_version"] = initialized.protocolVersion
@@ -89,6 +113,15 @@ async def sdk_client(discovery, origin, shared, revoke, revoked):
             session = await call("session.open", profile=context["profile_selector"])
             session_id = session["session_id"]
             shared["session_id"] = session_id
+            if endpoint is not None:
+                shared["independent_raw_client"] = await asyncio.to_thread(
+                    raw_http_client,
+                    endpoint,
+                    session_id,
+                    get_session_id(),
+                    origin,
+                    shared,
+                )
             await call(
                 "session.navigate", session_id=session_id, url=origin + "/mcp-start"
             )
@@ -145,6 +178,58 @@ async def sdk_client(discovery, origin, shared, revoke, revoked):
             shared["cancellation_denied_further_access"] = True
 
 
+def raw_workflow(request, notify, foreign_session):
+    request(
+        "initialize",
+        {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {"name": "steed-raw-fixture", "version": "1"},
+        },
+    )
+    notify()
+    assert len(request("tools/list", {})["tools"]) > 10
+    result = request(
+        "tools/call",
+        {
+            "name": "steed_task_start",
+            "arguments": {"objective": "Independent client isolation"},
+        },
+    )
+    assert not result["isError"]
+    denied = request(
+        "tools/call",
+        {
+            "name": "steed_session_inspect",
+            "arguments": {"session_id": foreign_session},
+        },
+    )
+    assert (
+        denied["isError"]
+        and denied["structuredContent"]["error"]["code"] == "session_not_owned"
+    )
+    denied = request("tools/call", {"name": "steed_grant_approve", "arguments": {}})
+    assert denied["isError"]
+    result = request("tools/call", {"name": "steed_task_finish", "arguments": {}})
+    assert not result["isError"]
+    result = request(
+        "tools/call",
+        {
+            "name": "steed_task_start",
+            "arguments": {"objective": "Reuse connection with fresh permissions"},
+        },
+    )
+    assert not result["isError"]
+    denied = request("tools/call", {"name": "steed_session_open", "arguments": {}})
+    assert (
+        denied["isError"]
+        and denied["structuredContent"]["error"]["code"] == "approval_required"
+    )
+    result = request("tools/call", {"name": "steed_task_finish", "arguments": {}})
+    assert not result["isError"]
+    return True
+
+
 def raw_client(discovery, foreign_session):
     """Independent JSON-RPC client: no MCP SDK on this side of the protocol."""
     process = subprocess.Popen(
@@ -177,57 +262,12 @@ def raw_client(discovery, foreign_session):
         assert response["id"] == sequence
         return response["result"]
 
-    try:
-        request(
-            "initialize",
-            {
-                "protocolVersion": "2025-11-25",
-                "capabilities": {},
-                "clientInfo": {"name": "steed-raw-fixture", "version": "1"},
-            },
-        )
+    def notify():
         process.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
         process.stdin.flush()
-        assert len(request("tools/list", {})["tools"]) > 10
-        result = request(
-            "tools/call",
-            {
-                "name": "steed_task_start",
-                "arguments": {"objective": "Independent client isolation"},
-            },
-        )
-        assert not result["isError"]
-        denied = request(
-            "tools/call",
-            {
-                "name": "steed_session_inspect",
-                "arguments": {"session_id": foreign_session},
-            },
-        )
-        assert (
-            denied["isError"]
-            and denied["structuredContent"]["error"]["code"] == "session_not_owned"
-        )
-        denied = request("tools/call", {"name": "steed_grant_approve", "arguments": {}})
-        assert denied["isError"]
-        result = request("tools/call", {"name": "steed_task_finish", "arguments": {}})
-        assert not result["isError"]
-        result = request(
-            "tools/call",
-            {
-                "name": "steed_task_start",
-                "arguments": {"objective": "Reuse connection with fresh permissions"},
-            },
-        )
-        assert not result["isError"]
-        denied = request("tools/call", {"name": "steed_session_open", "arguments": {}})
-        assert (
-            denied["isError"]
-            and denied["structuredContent"]["error"]["code"] == "approval_required"
-        )
-        result = request("tools/call", {"name": "steed_task_finish", "arguments": {}})
-        assert not result["isError"]
-        return True
+
+    try:
+        return raw_workflow(request, notify, foreign_session)
     finally:
         process.stdin.close()
         try:
@@ -239,11 +279,125 @@ def raw_client(discovery, foreign_session):
         process.stderr.close()
 
 
-def check():
+def raw_http_client(endpoint, foreign_session, foreign_http_session, origin, shared):
+    """Independent HTTP JSON-RPC client, including credential-owner denial."""
+    session_id = None
+    sequence = 0
+    headers = {
+        "Authorization": "Bearer " + endpoint["tokens"]["raw"],
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-11-25",
+    }
+
+    def request(method, params, notification=False):
+        nonlocal sequence, session_id
+        sequence += 1
+        payload = {"jsonrpc": "2.0", "method": method, "params": params}
+        if not notification:
+            payload["id"] = sequence
+        current = dict(headers)
+        if session_id:
+            current["MCP-Session-Id"] = session_id
+        with urlopen(
+            Request(
+                endpoint["url"], data=json.dumps(payload).encode(), headers=current
+            ),
+            timeout=15,
+        ) as response:
+            session_id = response.headers.get("MCP-Session-Id", session_id)
+            if notification:
+                assert response.status == 202
+                return None
+            value = json.load(response)
+            assert value["id"] == sequence
+            return value["result"]
+
+    try:
+        stolen = dict(headers, **{"MCP-Session-Id": foreign_http_session})
+        for method in ("POST", "DELETE"):
+            body = (
+                b'{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+                if method == "POST"
+                else None
+            )
+            try:
+                urlopen(
+                    Request(endpoint["url"], data=body, headers=stolen, method=method),
+                    timeout=15,
+                )
+                raise AssertionError("Foreign HTTP session was accepted")
+            except HTTPError as error:
+                assert error.code == 404
+                error.close()
+        assert raw_workflow(
+            request,
+            lambda: request("notifications/initialized", {}, notification=True),
+            foreign_session,
+        )
+
+        def call(name, **arguments):
+            result = request(
+                "tools/call",
+                {"name": "steed_" + name.replace(".", "_"), "arguments": arguments},
+            )
+            assert not result["isError"], result
+            return result["structuredContent"]["result"]
+
+        for outcome in ("complete", "delete"):
+            task = call(
+                "task.start", objective="Independent HTTP read/termination fixture"
+            )
+            shared["raw_approval_task"] = task["task_id"]
+            call(
+                "grant.request",
+                scope={
+                    "origins": [origin],
+                    "allow_private_network": True,
+                    "duration_seconds": 120,
+                    "actions": ["navigate", "inspect", "read"],
+                },
+            )
+            deadline = time.monotonic() + 15
+            while call("grant.list")[0]["status"] != "approved":
+                assert time.monotonic() < deadline
+                time.sleep(0.02)
+            page = call("session.open")
+            call(
+                "session.navigate",
+                session_id=page["session_id"],
+                url=origin + "/mcp-start",
+            )
+            call("page.wait", session_id=page["session_id"])
+            snapshot = call("page.inspect", session_id=page["session_id"])
+            assert any(
+                "Delegated workflow" in frame["text"] for frame in snapshot["frames"]
+            )
+            if outcome == "complete":
+                call("task.finish", status="completed")
+                shared["independent_raw_read_completed"] = True
+            else:
+                shared["http_delete_task"] = task["task_id"]
+        return True
+    finally:
+        if session_id:
+            with urlopen(
+                Request(
+                    endpoint["url"],
+                    headers=dict(headers, **{"MCP-Session-Id": session_id}),
+                    method="DELETE",
+                ),
+                timeout=15,
+            ):
+                pass
+
+
+def check(transport="stdio"):
     case = TaskProfileTests("runTest")
     case.setUpClass()
     case.setUp()
     worker = None
+    http_process = None
     shared, errors = {}, []
     revoke, revoked = threading.Event(), threading.Event()
     try:
@@ -267,13 +421,40 @@ def check():
         }
         window.agent_access_action.trigger()
         discovery = case.registry.agent_gateway.discovery
+        endpoint = None
+        if transport == "http":
+            endpoint_file = discovery.with_name("agent-http.json")
+            http_process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve().parents[1] / "agent_mcp.py"),
+                    "--transport",
+                    "http",
+                    "--discovery",
+                    str(discovery),
+                    "--http-client",
+                    "sdk",
+                    "--http-client",
+                    "raw",
+                ],
+                stdout=subprocess.DEVNULL,
+            )
+            case.wait_for(endpoint_file.exists)
+            endpoint = json.loads(endpoint_file.read_text())
+            shared["transport"] = "http"
 
         def run():
             try:
-                asyncio.run(sdk_client(discovery, case.origin, shared, revoke, revoked))
-                shared["independent_raw_client"] = raw_client(
-                    discovery, shared["session_id"]
+                asyncio.run(
+                    sdk_client(
+                        discovery, case.origin, shared, revoke, revoked, endpoint
+                    )
                 )
+                if endpoint is None:
+                    shared["independent_raw_client"] = raw_client(
+                        discovery, shared["session_id"]
+                    )
+
             except BaseException:
                 errors.append(traceback.format_exc())
 
@@ -286,7 +467,10 @@ def check():
             dialog = case.registry.task_approvals.dialog
             if dialog is not None and dialog.isVisible():
                 assert not dialog.isModal()
-                assert dialog.task_id == shared["task_id"]
+                assert dialog.task_id in (
+                    shared["task_id"],
+                    shared.get("raw_approval_task"),
+                )
                 dialog.approve_button.click()  # Trusted synthetic fixture only.
                 shared["approval_popup"] = True
             session_id = shared.get("session_id")
@@ -321,6 +505,14 @@ def check():
             for path, cookie in case.requests
         )
         assert user.profile() is case.profile
+        if endpoint is not None:
+            case.wait_for(
+                lambda: (
+                    case.service.store.get(shared["http_delete_task"]).status
+                    == "cancelled"
+                )
+            )
+            shared["http_delete_cancelled_owned_task"] = True
         assert not case.service._sessions
         shared["shared_cookie"] = True
         shared["ordinary_user_post"] = True
@@ -328,6 +520,15 @@ def check():
         print(json.dumps(shared, indent=2))
     finally:
         case.registry.set_agent_access(False)
+        if http_process is not None:
+            try:
+                http_process.wait(timeout=6)
+                assert http_process.returncode == 0
+                assert not endpoint_file.exists()
+            finally:
+                if http_process.poll() is None:
+                    http_process.kill()
+                    http_process.wait(timeout=5)
         if worker is not None:
             case.wait_for(lambda: not worker.is_alive())
             worker.join()
@@ -336,4 +537,6 @@ def check():
 
 
 if __name__ == "__main__":
-    check()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--transport", choices=("stdio", "http"), default="stdio")
+    check(parser.parse_args().transport)

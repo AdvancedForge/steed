@@ -371,7 +371,7 @@ Browser/
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
-├── agent_mcp.py            # Optional stdio adapter into the running browser
+├── agent_mcp.py            # Optional stdio/HTTP adapter into the running browser
 ├── requirements-mcp.txt    # Optional official MCP SDK dependency
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
@@ -486,7 +486,8 @@ supplies the task ID automatically and rejects impersonation and management
 commands. Give clients these handles; reserve the raw `service.broker` for trusted
 application management. Neither interface is a sandbox for arbitrary Python
 running inside the application. The local gateway authenticates adapter connections
-and binds each to one task; authenticated HTTP transport remains A4 work.
+and binds each to one task. Each HTTP MCP session has its own such connection;
+its transport identity is also bound to the credential that initialized it.
 
 | Command | Arguments / result |
 | --- | --- |
@@ -1086,7 +1087,8 @@ engine migration would require its own compatibility and maintenance proposal.
 ## Local agent access (MCP)
 
 The optional `agent_mcp.py` adapter exposes the existing task operations over
-stdio using the [official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
+stdio or loopback Streamable HTTP using the
+[official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
 It connects to the running Steed process; Qt pages and profiles stay in that
 process. Local access is off when the browser starts.
 
@@ -1146,6 +1148,57 @@ process. Local access is off when the browser starts.
    The same connection can then start another task; it receives a new identity
    and must request fresh permissions. An active task cannot be replaced.
 
+### HTTP connection
+
+Enable local agent access in Steed, then start a separate adapter process:
+
+```bash
+.venv/bin/python agent_mcp.py --transport http --port 8765 --http-client codex --http-client other
+```
+
+It binds only `127.0.0.1`, with endpoint `http://127.0.0.1:8765/mcp`. Omit `--port`
+to select an available port. Use a process supervisor to keep the adapter running
+independently of a terminal. The GUI continues to use its existing launcher.
+
+The adapter publishes `~/.custom_browser/agent-http.json` with mode 0600. Its
+`url` is the endpoint, and `tokens` maps each configured client name to a generated
+secret. Configure your HTTP MCP client with that URL and the header
+`Authorization: Bearer <that client's token>`. Tokens are generated per adapter
+run and are never printed or passed on its command line. Use distinct names and
+credentials for different clients; up to four can be configured. Names contain
+1–32 letters, digits, underscores or hyphens. Without `--http-client`, the name
+is `default`. All methods require authentication; website Origin headers are
+rejected. Client tokens use local pre-shared authentication; OAuth discovery is
+not implemented, so clients must support custom authorization headers.
+
+`--discovery` selects the browser's gateway metadata; `--http-discovery` selects
+the separate HTTP endpoint file. An existing endpoint file is preserved and
+startup fails instead of overwriting it. After a crash, confirm that its adapter
+is stopped before removing a stale file. Normal shutdown removes the owned
+file. Disabling agent access or closing Steed also shuts down this adapter;
+restart it after enabling a fresh browser access run.
+
+Each initialized MCP session owns a separate browser connection and task.
+Its ID is bound to the credential that initialized it. Complete tasks with
+`steed_task_finish`; send HTTP DELETE with `MCP-Session-Id` to end a session and
+cancel any unfinished task. Sessions expire after 60 seconds without an HTTP
+request or open GET stream. Closing a single HTTP connection does not cancel
+its task. A cancellation notification during an operation closes its browser
+connection, cancels its task, and prevents further operations on that connection.
+There is no automatic reconnection, operation retry, event replay or restoration
+of old grants. Effects of a cancelled/lost request can be uncertain; inspect
+evidence instead of blindly retrying. These lifecycle rules follow the
+[MCP transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports).
+
+HTTP uses the SDK's stateful session manager, JSON POST responses, optional GET
+event streams and DELETE termination. Limits are four sessions, 64 KiB request
+bodies, and one browser operation in flight per session. Browser connections
+share the gateway's four-connection limit with stdio clients. Proxy headers are
+ignored and access logging is disabled. Pages/profiles stay in the Qt process;
+the HTTP adapter uses the same broker and popup approvals as stdio.
+
+### Shared tools and permissions
+
 Tool discovery publishes 20 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
@@ -1186,9 +1239,9 @@ Rejected tool/argument requests with an assigned task record a value-free denial
 Local processes running as your user can read the connection token and request
 new tasks; they still cannot adopt another connection's task or approve grants.
 
-Verified compatibility is MCP `2025-11-25` over stdio, using an SDK client and an
-independent JSON-RPC client. The full A4 milestone remains in progress:
-authenticated Streamable HTTP, reconnect/resume semantics, watch/takeover,
+Verified compatibility is MCP `2025-11-25` over stdio and Streamable HTTP, using
+an SDK client and an independent JSON-RPC client on each transport. The full A4
+milestone remains in progress: reconnect/resume semantics, watch/takeover,
 additional protocol revisions and broader client compatibility remain pending.
 
 ## Development checks
@@ -1208,6 +1261,7 @@ QT_QPA_PLATFORM=offscreen python tests/smoke_browser.py
 QT_QPA_PLATFORM=offscreen python tests/smoke_google_login.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_active_content.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --transport http
 python tests/smoke_password_manager.py
 ```
 
@@ -1232,6 +1286,11 @@ It checks native edits/submission, stale handles, evidence without field values,
 shared cookies/profile identity, concurrent ordinary user POST, ownership denial,
 and task disposal. It never accesses an existing profile/account or proves that
 a particular AI client/provider will plan a workflow successfully.
+The HTTP mode additionally checks credential-bound transport identity, raw-client
+document retrieval/completion, and DELETE cancellation of an owned task/page.
+It starts the real HTTP adapter process and verifies shutdown and endpoint-file
+removal when browser access is disabled. HTTP unit tests skip when the optional
+SDK is absent.
 
 The optional password-manager smoke check needs `keepassxc` and `keepassxc-cli`.
 It runs offscreen with isolated configuration and a synthetic temporary vault,
@@ -1241,6 +1300,33 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+Authenticated HTTP MCP stage (October 2, 2026): 13 focused HTTP/adapter tests
+passed in 1.434 seconds (`/tmp/steed-http-focused.log`). Coverage includes all
+method authentication, Host/Origin rejection, credential-bound session ownership,
+DELETE/shutdown cleanup, idle expiry, GET-stream lifetime, explicit cancellation,
+request/session limits, private endpoint publication, browser-access epoch
+changes, and rejected overlapping operations.
+
+Both real-adapter synthetic Qt workflows passed on MCP `2025-11-25`
+(`/tmp/steed-http-stdio-smoke.log`, `/tmp/steed-http-mcp-smoke.log`). The HTTP
+SDK client completed the shared-profile native form while ordinary user POST
+continued. An independent urllib client rejected foreign-credential access,
+completed approved document retrieval, reused its task connection with fresh
+approval, and deleted a session owning an active page. Its task was cancelled
+without disrupting the SDK client's workflow. Disabling browser access stopped
+the adapter and removed its private endpoint file. Only the trusted fixture
+approved requests; production HTTP has no approval bypass.
+
+The full 290-test suite passed in 142.947 seconds
+(`/tmp/steed-http-full.log`). Real browser startup/render/shutdown passed
+(`/tmp/steed-http-startup.log`), as did Ruff, formatting, whitespace, 46 local
+documentation links and `pip check`. One HTTP smoke run exited natively (139)
+during Qt startup before the HTTP checks; the identical retry passed. This
+intermittent startup issue remains unresolved. These are isolated fixture
+results, not real-account HTTP, arbitrary client/OAuth, other protocol revision,
+reconnect/resume or watch/takeover acceptance. The broader A4 milestone stays
+in progress; core transport checks passed.
 
 Active-profile discovery and live desktop MCP check (October 1, 2026): an
 official-SDK client connected to the opted-in running browser. The user approved
@@ -1593,12 +1679,13 @@ Acceptance: fixtures for static pages/forms/SPAs/frames/DOM replacement work wit
 
 #### A4. Framework-neutral MCP — in progress
 
-Opt-in private IPC and the official-SDK stdio adapter expose current task
+Opt-in private IPC and the official-SDK stdio/HTTP adapter expose current task
 operations with published input schemas, connection ownership, capability
 and selected-profile discovery, structured results, and existing user approval.
 Two independently implemented clients passed the synthetic shared-profile and
-cancellation workflow on MCP 2025-11-25. HTTP, reconnect/resume, watch/takeover and full milestone
-acceptance remain pending. See [setup](#local-agent-access-mcp).
+cancellation workflow on MCP 2025-11-25 over both transports. Reconnect/resume,
+watch/takeover and broader client compatibility remain pending. See
+[setup](#local-agent-access-mcp).
 
 - Maintained MCP SDK; stdio client-launched adapters and an authenticated loopback-only Streamable HTTP endpoint.
 - Restricted local IPC links adapters to the single running Qt process. No public debug port or grant bypass.

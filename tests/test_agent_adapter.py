@@ -11,6 +11,28 @@ from agent_mcp import BrowserConnection
 
 
 class AgentAdapterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_http_epoch_cannot_connect_to_a_later_browser_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "discovery.json"
+            path.write_text(
+                json.dumps({"version": 1, "socket": "/unused", "token": "new-run"})
+            )
+            path.chmod(0o600)
+            connection = BrowserConnection(path)
+            connection.expected_epoch = "previous-run"
+            with patch(
+                "asyncio.open_unix_connection", new_callable=AsyncMock
+            ) as opened:
+                with self.assertRaises(RuntimeError):
+                    await connection.connect()
+                opened.assert_not_called()
+
+    async def test_overlapping_calls_are_rejected_without_queueing(self):
+        connection = BrowserConnection("unused")
+        async with connection.lock:
+            result = await connection.call("steed_task_start", {"objective": "overlap"})
+        self.assertEqual(result, {"error": {"code": "request_in_progress"}})
+
     async def test_insecure_or_symlinked_discovery_never_connects(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "discovery.json"
