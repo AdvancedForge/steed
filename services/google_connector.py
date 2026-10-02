@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 from services.app_accounts import AccountError, ClientSetupRequired
 from services.app_oauth import ApiError, AppHttp, desktop_authorization
 from services.connectors import ConnectorOutcome, ConnectorTool
+from services.google_document_edits import GoogleDocumentEdits
 from services.google_documents import GoogleDocuments
 from services.task_artifacts import artifact_input
 
@@ -305,6 +306,7 @@ class GoogleConnector:
                 ]
             )
             definitions.extend(self.documents.tools())
+            definitions.extend(GoogleDocumentEdits(self.documents).tools())
         return definitions
 
     def _access(self, cancelled):

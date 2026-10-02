@@ -82,6 +82,8 @@ class SyntheticGoogle:
         self.document_metadata = {}
         self.document_data = {}
         self.append_writes = []
+        self.replacement_writes = []
+        self.lose_replacement = False
         self.lose_append = False
         self.append_status = 0
         self.malformed_append_reply = False
@@ -188,8 +190,13 @@ class SyntheticGoogle:
                 raise ApiError(self.append_status)
             if batch["writeControl"]["requiredRevisionId"] != document["revisionId"]:
                 raise ApiError(400)
-            self.append_writes.append(batch)
-            insert, named = batch["requests"]
+            requests = batch["requests"]
+            insert = next(r for r in requests if "insertText" in r)
+            named = requests[-1]
+            replacement = named["createNamedRange"]["name"].startswith("steed_replace_")
+            (self.replacement_writes if replacement else self.append_writes).append(
+                batch
+            )
             location = insert["insertText"]["location"]
             pending = list(document["tabs"])
             while pending:
@@ -206,6 +213,16 @@ class SyntheticGoogle:
                 for e in item["paragraph"]["elements"]
             )
             encoded = original.encode("utf-16-le")
+            for item in requests:
+                if "deleteContentRange" in item:
+                    bounds = item["deleteContentRange"]["range"]
+                    assert bounds["tabId"] == location["tabId"]
+                    encoded = (
+                        encoded[: (bounds["startIndex"] - 1) * 2]
+                        + encoded[(bounds["endIndex"] - 1) * 2 :]
+                    )
+            if replacement:
+                tab["documentTab"]["namedRanges"] = {}
             offset = (location["index"] - 1) * 2
             text = (
                 encoded[:offset]
@@ -226,15 +243,17 @@ class SyntheticGoogle:
                     }
                 ],
             }
-            document["revisionId"] = "revision-" + str(len(self.append_writes) + 1)
-            if self.lose_append:
+            document["revisionId"] = "revision-" + str(
+                len(self.append_writes) + len(self.replacement_writes) + 1
+            )
+            if self.lose_replacement if replacement else self.lose_append:
                 raise ApiError()
             if self.malformed_append_reply:
                 return {"documentId": file_id}
             return {
                 "documentId": file_id,
-                "replies": [
-                    {},
+                "replies": [{} for _ in requests[:-1]]
+                + [
                     {
                         "createNamedRange": {
                             "namedRangeId": "range-" + str(len(self.append_writes))

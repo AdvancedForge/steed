@@ -315,8 +315,8 @@ class GoogleDocuments:
             payload["truncated"] = True
         return self._outcome(file_id, json.dumps(payload, ensure_ascii=False))
 
-    def _marker(self, tab, operation_id):
-        name = "steed_append_" + operation_id
+    def _marker(self, tab, operation_id, *, prefix="steed_append_"):
+        name = prefix + operation_id
         named = tab["documentTab"].get("namedRanges", {})
         if not isinstance(named, dict):
             raise ApiError()
@@ -451,18 +451,21 @@ class GoogleDocuments:
             raise ApiError()
         return self._outcome(file_id)
 
-    def find_append(self, probe, cancelled):
+    def find_append(self, probe, cancelled, *, prefix="steed_append_"):
         file_id, tab_id = tab_identity(probe.destination)
         if not re.fullmatch(r"[a-f0-9]{32}", probe.operation_id):
             raise ValueError("Invalid Google operation identity")
         _, tabs, _, _ = self._fetch(file_id, cancelled)
         tab = tabs.get(tab_id)
-        if tab is not None and self._marker(tab, probe.operation_id) is True:
+        if (
+            tab is not None
+            and self._marker(tab, probe.operation_id, prefix=prefix) is True
+        ):
             return self._outcome(
                 file_id,
-                "The unique operation range confirms the atomic append was applied; collaborators may have since edited its text.",
+                "The unique operation range confirms the atomic document update was applied; collaborators may have since edited its text.",
             )
         return ConnectorOutcome(
             "uncertain",
-            text="A unique append operation range could not be confirmed. Inspect the approved tab before another edit.",
+            text="A unique document operation range could not be confirmed. Inspect the approved tab before another edit.",
         )

@@ -150,7 +150,7 @@ TOOLS = (
     ),
     tool(
         "app.call_tool",
-        "Start an approved app call to an exact destination using an owned immutable artifact when required. Bind a stable request_id to these inputs; repeating it returns the receipt and never dispatches again, including uncertain writes. Poll app.status. No arbitrary arguments, endpoints or recipient lists are accepted.",
+        "Start an approved app call to an exact destination using an owned immutable artifact when required. Tools marked requires_review prepare a before/after proposal and wait for the user's desktop review; agents cannot approve it. Bind a stable request_id to inputs; repeats never dispatch again. Poll app.status (requested/awaiting_review means wait). No arbitrary endpoints or recipient lists.",
         {
             "connector": string(64),
             "tool": string(64),

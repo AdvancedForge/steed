@@ -305,12 +305,15 @@ class TaskApprovalQueue(QObject):
                         for grant in self.service.store.grants(task.task_id)
                         if grant.status == "requested"
                     )
+                    pending.extend(
+                        (task, review)
+                        for review in self.service.app_reviews.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
             if any(
-                (grant.grant_id if grant else "recovery:" + task.task_id)
-                == self.dialog.request_key
+                self.request_key(task, grant) == self.dialog.request_key
                 for task, grant in pending
             ):
                 return
@@ -328,18 +331,36 @@ class TaskApprovalQueue(QObject):
         if parent not in windows:
             parent = windows[0]
         for task, grant in reversed(pending):
-            key = grant.grant_id if grant else "recovery:" + task.task_id
+            key = self.request_key(task, grant)
             if key in self.deferred:
                 continue
+            from services.connector_reviews import AppReview
+            from ui.app_review import AppReviewDialog
+
             dialog = (
-                TaskApprovalDialog(self.service, task, grant, parent)
-                if grant
-                else TaskRecoveryDialog(self.service, task, parent)
+                AppReviewDialog(self.service, task, grant, parent)
+                if isinstance(grant, AppReview)
+                else (
+                    TaskApprovalDialog(self.service, task, grant, parent)
+                    if grant
+                    else TaskRecoveryDialog(self.service, task, parent)
+                )
             )
             self.dialog = dialog
             dialog.finished.connect(lambda result, gid=key: self._finished(result, gid))
             dialog.show()
             return
+
+    def request_key(self, task, item):
+        from services.connector_reviews import AppReview
+
+        return (
+            item.request_key
+            if isinstance(item, AppReview)
+            else item.grant_id
+            if item
+            else "recovery:" + task.task_id
+        )
 
     def _finished(self, result, grant_id):
         # Closing/Escape leaves a request pending in the management dialog.

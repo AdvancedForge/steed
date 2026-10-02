@@ -29,6 +29,7 @@ from services.app_oauth import ApiError, NoRedirect  # noqa: E402
 from services.connectors import ConnectorRegistry  # noqa: E402
 from services.google_connector import GoogleConnector  # noqa: E402
 from services.task_service import TaskService  # noqa: E402
+from ui.app_review import AppReviewDialog  # noqa: E402
 from ui.task_dialog import TaskDialog  # noqa: E402
 
 
@@ -262,6 +263,40 @@ def check():
             assert len(fixture.documents) == 1
             assert not fixture.messages
 
+            fixture.append_status = 0
+            replacement_client = task("replace_document", tab)
+            call(
+                replacement_client,
+                "replace_document",
+                tab,
+                "replacement",
+                draft(replacement_client, "REVIEWED_REPLACEMENT"),
+            )
+            proposed = settled(replacement_client, "replacement")
+            assert (
+                proposed.state == "requested" and proposed.reason == "awaiting_review"
+            )
+            assert not fixture.replacement_writes
+            review = service.app_reviews.get(replacement_client.task_id, "replacement")
+            review_dialog = AppReviewDialog(
+                service, service.store.get(replacement_client.task_id), review
+            )
+            review_dialog.show()
+            app.processEvents()
+            assert review_dialog.grab().save("/tmp/steed-google-document-review.png")
+            fixture.lose_replacement = True
+            review_dialog.decide(True)
+            sip.delete(review_dialog)
+            assert settled(replacement_client, "replacement").state == "uncertain"
+            resolve(
+                replacement_client.submit("app.reconcile", request_id="replacement")
+            )
+            assert settled(replacement_client, "replacement").state == "succeeded"
+            assert len(fixture.replacement_writes) == 1
+            assert not service.app_reviews.get(
+                replacement_client.task_id, "replacement"
+            ).before_text
+
             panel = TaskDialog(service)
             row = next(
                 i
@@ -282,7 +317,7 @@ def check():
             panel.close()
             sip.delete(panel)
             print(
-                "Local Google HTTP: exactly one folder, document and append; exact-tab reads, lost acknowledgement, read-only recovery after restart and atomic revision rejection passed. No real accounts used."
+                "Local Google HTTP: exactly one folder, document, append and user-reviewed replacement; exact-tab reads, lost acknowledgements, read-only recovery after restart, atomic revision rejection, content preview and no repeated mutations passed. No real accounts used."
             )
     finally:
         if service is not None:
