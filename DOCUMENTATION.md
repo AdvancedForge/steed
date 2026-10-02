@@ -878,6 +878,13 @@ No retry, pause/resume, file execution, or file-content API is supplied. There
 are at most 100 download records per session. An evidence failure after physical
 publication disables task access; reconcile the destination before retrying.
 
+In **File → Task Permissions**, select a task, then open **Activity** for its
+latest 200 journal events or **Downloads** for progress, approved destination,
+byte counts and results. Select a pending transfer and click **Cancel Selected
+Download** to stop that file while retaining the task. Completed/failed receipts
+remain available after its pages close. The display is task-scoped and excludes
+page/form contents. It refreshes while the dialog is open; closing stops polling.
+
 Qt requires choosing the download path before accepting its request; see
 [QWebEngineDownloadRequest](https://doc.qt.io/qt-6.11/qwebenginedownloadrequest.html).
 Steed uses ordinary page navigation to retain page request enforcement, rather
@@ -1410,6 +1417,20 @@ filling still need user verification.
 
 ## Verification record
 
+Task activity and retained download receipts stage (October 2, 2026): three
+real-engine UI checks passed in 1.855 seconds (`/tmp/steed-activity-focused.log`),
+covering retained results, per-task selection, hidden form values, user stream
+cancellation, and close-time polling cleanup. Nine storage tests passed in
+0.635 seconds (`/tmp/steed-activity-store.log`), including bounded, filtered,
+chronological event tails without changing external client cursors.
+Both MCP workflows passed with visible receipt previews
+(`/tmp/steed-activity-stdio.log`, `/tmp/steed-activity-http.log`), including the
+existing handoff/download/concurrent-user checks. The synthetic Downloads panel
+was visually inspected from `/tmp/steed-activity-http-preview.png`.
+The full 331-test suite passed in 207.015 seconds
+(`/tmp/steed-activity-full.log`); startup/render/shutdown passed
+(`/tmp/steed-activity-startup.log`). Ruff, formatting and whitespace passed.
+
 Scoped download stage (October 2, 2026): the full 324-test suite passed in
 219.159 seconds (`/tmp/steed-download-full.log`). Sixteen initial download
 regressions passed in 73.306 seconds (`/tmp/steed-download-focused.log`), covering
@@ -1877,7 +1898,9 @@ Acceptance: held-out comparisons against deterministic-only inspection measure c
 
 Implemented: nonmodal same-page watch, trusted user takeover through supported
 scoped actions, return with fresh references, and lifecycle cleanup. Shared-profile
-and both MCP transport fixtures passed. Full activity/artifact UI, unrestricted
+and both MCP transport fixtures passed. Task Permissions includes recent
+activity and retained download receipts with progress/cancellation.
+Artifact/connector activity, unrestricted
 pointer/custom controls, and declarative styling remain pending.
 
 - Task workspace shows agent identity/objective/authority/status/activity/artifacts/evidence.

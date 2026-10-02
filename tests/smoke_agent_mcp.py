@@ -25,6 +25,7 @@ from PyQt6.QtWebEngineCore import QWebEngineHttpRequest, QWebEngineSettings
 from test_task_profiles import TaskProfileTests
 
 from browser_window import BrowserWindow
+from ui.task_dialog import TaskDialog
 
 
 @asynccontextmanager
@@ -571,6 +572,23 @@ def check(transport="stdio"):
                 watcher.return_button.click()
                 assert not watcher.owns_control()
                 shared["user_control_returned"] = True
+            if shared.get("download_completed") and not shared.get(
+                "receipt_ui_preview"
+            ):
+                panel = TaskDialog(case.service, window)
+                row = next(
+                    i
+                    for i, (t, _) in enumerate(panel._rows)
+                    if t.task_id == shared["task_id"]
+                )
+                panel.table.selectRow(row)
+                panel.panels.setCurrentIndex(2)
+                panel.show()
+                case.app.processEvents()
+                assert panel.downloads.item(0, 1).text() == "completed"
+                panel.grab().save(f"/tmp/steed-activity-{transport}-preview.png")
+                panel.close()
+                shared["receipt_ui_preview"] = True
             if session_id in case.service.backend._sessions and not user_posted:
                 task_page = case.service.backend._sessions[session_id].page
                 assert task_page.profile() is user.profile() is case.profile

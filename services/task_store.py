@@ -280,6 +280,31 @@ class TaskStore:
             for row in rows
         ]
 
+    def recent_events(self, task_id, *, limit=200, kinds=()):
+        """Trusted UI tail, bounded and scoped without changing client cursors."""
+        self.get(task_id)
+        if not 1 <= limit <= 1000 or len(kinds) > 20:
+            raise ValueError("Invalid event tail limit")
+        condition = (
+            " AND kind IN (" + ",".join("?" for _ in kinds) + ")" if kinds else ""
+        )
+        rows = self._db.execute(
+            "SELECT * FROM events WHERE task_id = ?"
+            + condition
+            + " ORDER BY sequence DESC LIMIT ?",
+            (task_id, *kinds, limit),
+        ).fetchall()
+        return [
+            TaskEvent(
+                row["sequence"],
+                row["task_id"],
+                row["kind"],
+                json.loads(row["payload"]),
+                row["created_at"],
+            )
+            for row in reversed(rows)
+        ]
+
     def close(self):
         if self._closed:
             return
