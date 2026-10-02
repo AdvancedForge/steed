@@ -29,6 +29,7 @@ ACTION_LABELS = {
     "download": "Save downloads to the exact files listed below (no overwriting)",
     "upload": "Send the listed local files to the listed upload sites",
     "artifact": "Save and read task notes/drafts here (kept after the task ends)",
+    "app": "Use the exact app tools/destinations below (results kept here)",
 }
 
 
@@ -110,6 +111,23 @@ class TaskApprovalDialog(QDialog):
             layout.addWidget(
                 QLabel(f"Up to {scope['max_upload_bytes']:,} staged bytes per page.")
             )
+        if scope.get("connector_permissions"):
+            layout.addWidget(QLabel("Allowed app operations:"))
+            apps = QPlainTextEdit(
+                "\n".join(
+                    f"{p['effect'].upper()}: {p['connector']}.{p['tool']} → {p['destination']}"
+                    for p in scope["connector_permissions"]
+                )
+            )
+            apps.setReadOnly(True)
+            apps.setMaximumHeight(110)
+            layout.addWidget(apps)
+            app_notice = WrappedLabel(
+                "App tools may send drafts or change external data. Only listed "
+                "destinations are allowed. Dispatched writes can still happen after cancellation."
+            )
+            app_notice.setWordWrap(True)
+            layout.addWidget(app_notice)
         notice = WrappedLabel(
             (
                 "Uses your existing sign-in and site storage. You can keep browsing. "

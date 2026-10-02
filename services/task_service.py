@@ -1,5 +1,6 @@
 """Application-owned task authority; clients request but never approve grants."""
 
+import re
 import sqlite3
 import time
 from concurrent.futures import Future
@@ -13,6 +14,9 @@ from PyQt6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, pyqtSig
 
 from services.browser_backend import BrowserBackend, QtBrowserBackend, navigation_url
 from services.command_broker import CommandBroker, require_owner_thread
+from services.connector_policy import destination_name
+from services.connector_store import ConnectorStore, request_fingerprint
+from services.connectors import ConnectorJob, ConnectorRegistry, ConnectorRequest
 from services.form_submission import journal_origin
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
@@ -35,6 +39,8 @@ class TaskService(QObject):
         *,
         clock=time.monotonic,
         profiles=None,
+        connectors=None,
+        connector_timeout_ms=30000,
     ):
         super().__init__(parent)
         require_owner_thread(self)
@@ -42,6 +48,10 @@ class TaskService(QObject):
         if app is None or QThread.currentThread() != app.thread():
             raise RuntimeError("Task services require the Qt application thread")
         self.store = TaskStore(path)
+        self.connectors = connectors if connectors is not None else ConnectorRegistry()
+        self.connector_store = ConnectorStore(self.store)
+        self._connector_jobs = {}
+        self.connector_timeout_ms = connector_timeout_ms
         self.profiles = profiles
         self.backend = (
             backend
@@ -76,6 +86,11 @@ class TaskService(QObject):
                 "artifact.store": self._store_artifact,
                 "artifact.list": self._list_artifacts,
                 "artifact.read": self._read_artifact,
+                "app.list_tools": self._app_tools,
+                "app.call_tool": self._app_call,
+                "app.status": self._app_status,
+                "app.cancel": self._app_cancel,
+                "app.reconcile": self._app_reconcile,
                 "grant.request": self._request_grant,
                 "grant.list": self.store.grants,
                 "client.denied": self._client_denied,
@@ -141,6 +156,255 @@ class TaskService(QObject):
             raise
         return result
 
+    def _app_tools(self, task_id):
+        self._usable()
+        self._active(task_id)
+        return self.connectors.describe()
+
+    def _app_grant(self, task_id, record, *, consume=False):
+        arguments = {
+            "connector": record.connector,
+            "tool": record.tool,
+            "effect": record.effect,
+            "destination": record.destination,
+        }
+        if consume:
+            return self._authorize(task_id, "app", **arguments)
+        self._usable()
+        self._active(task_id)
+        live = self._grants.get(task_id)
+        if live is None:
+            self._deny(task_id, "approval_required")
+        try:
+            live[1].check("app", **arguments)
+        except TaskPermissionError as error:
+            self._deny(task_id, error.code)
+        return live[1]
+
+    def _app_call(
+        self, task_id, connector, tool, request_id, destination, artifact_id=None
+    ):
+        if not isinstance(request_id, str) or not re.fullmatch(
+            r"[A-Za-z0-9_-]{1,64}", request_id
+        ):
+            raise ValueError(
+                "Provide a stable request ID of at most 64 letters/digits/_/-"
+            )
+        definition = self.connectors.get(connector, tool)
+        destination_name(destination)
+        request = ConnectorRequest(
+            request_id, connector, tool, definition.effect, destination, None
+        )
+        grant = self._app_grant(task_id, request)
+        artifact = None
+        if definition.requires_artifact:
+            grant.check("artifact")
+            if not artifact_id:
+                raise ValueError("This app tool requires an owned artifact")
+            artifact = self.store.artifact(task_id, artifact_id)
+        elif artifact_id is not None:
+            raise ValueError("This app tool does not accept an artifact")
+        request = ConnectorRequest(
+            request_id,
+            connector,
+            tool,
+            definition.effect,
+            destination,
+            artifact,
+            uuid4().hex,
+        )
+        fingerprint = request_fingerprint(
+            connector, tool, definition.effect, destination, artifact
+        )
+        try:
+            existing = self.connector_store.get(task_id, request_id)
+        except KeyError:
+            existing = None
+        if existing:
+            if existing.fingerprint != fingerprint:
+                raise ValueError("Request ID is already bound to different inputs")
+            return existing  # Includes uncertain writes: never dispatch a duplicate.
+        self._app_capacity(task_id)
+        self._app_grant(task_id, request, consume=True)
+        try:
+            receipt = self.connector_store.create(task_id, request, fingerprint)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        self._queue_app_job(task_id, definition, request, grant)
+        self.changed.emit()
+        return receipt
+
+    def _app_capacity(self, task_id):
+        if len(self._connector_jobs) >= 4 or any(
+            owner == task_id for owner, _ in self._connector_jobs
+        ):
+            raise ValueError("An app operation is still running; wait for its result")
+
+    def _queue_app_job(self, task_id, definition, request, grant, *, probe=False):
+        job = ConnectorJob(
+            definition,
+            request,
+            grant,
+            lambda reply: self._app_finished(task_id, request.request_id, job, reply),
+            self,
+            probe=probe,
+        )
+        self._connector_jobs[task_id, request.request_id] = job
+        job.timer.timeout.connect(
+            lambda: self._app_timeout(task_id, request.request_id, job)
+        )
+        QTimer.singleShot(
+            0, lambda: self._start_app_job(task_id, request.request_id, job)
+        )
+
+    def _start_app_job(self, task_id, request_id, job):
+        if self._closed or self.failure:
+            self._app_finished(task_id, request_id, job, (None, True))
+            return
+        try:
+            self._app_grant(task_id, job.request)
+            if job.cancelled.is_set():
+                raise TaskPermissionError("app_cancelled")
+            if not job.probe and job.request.artifact is not None:
+                current = self.store.artifact(task_id, job.request.artifact.artifact_id)
+                if current.sha256 != job.request.artifact.sha256:
+                    raise ValueError("Draft changed before app dispatch")
+        except Exception:
+            self._app_finished(task_id, request_id, job, (None, True))
+            return
+        try:
+            self.connector_store.update(
+                task_id, request_id, "reconciling" if job.probe else "dispatched"
+            )
+            self.store.transition(task_id, "running")
+            job.dispatched = True
+            job.timer.start(self.connector_timeout_ms)
+            job.start()
+        except Exception:
+            self._fatal()
+            self._app_finished(task_id, request_id, job, (None, False))
+        self.changed.emit()
+
+    def _app_finished(self, task_id, request_id, job, reply):
+        self._connector_jobs.pop((task_id, request_id), None)
+        job.timer.stop()
+        if not self._closed and not self.failure:
+            outcome, not_dispatched = reply
+            if outcome is not None:
+                state, reason = outcome.state, ""
+            elif job.probe:
+                state, reason = "uncertain", "reconciliation_failed"
+            elif not_dispatched:
+                state, reason = "cancelled", "cancelled_before_adapter"
+            else:
+                state = "failed" if job.request.effect == "read" else "uncertain"
+                reason = (
+                    "connector_failed"
+                    if state == "failed"
+                    else "connector_outcome_unknown"
+                )
+            try:
+                self.connector_store.update(
+                    task_id,
+                    request_id,
+                    state,
+                    reference=outcome.reference if outcome else "",
+                    text=outcome.text if outcome else "",
+                    reason=reason,
+                )
+            except Exception:
+                self._fatal()
+            self.changed.emit()
+        job.deleteLater()
+
+    def _app_status(self, task_id, request_id):
+        self._usable()
+        receipt = self.connector_store.get(task_id, request_id)
+        self._app_grant(task_id, receipt, consume=True)
+        return receipt
+
+    def _app_timeout(self, task_id, request_id, job):
+        job.cancelled.set()
+        if self._closed or self.failure:
+            return
+        try:
+            state = (
+                "uncertain" if job.probe or job.request.effect != "read" else "failed"
+            )
+            self.connector_store.update(
+                task_id, request_id, state, reason="connector_timeout"
+            )
+        except Exception:
+            self._fatal()
+        self.changed.emit()
+
+    def _app_cancel(self, task_id, request_id):
+        self._usable()
+        self._active(task_id)
+        return self._cancel_app_job(task_id, request_id)
+
+    def _cancel_app_job(self, task_id, request_id):
+        receipt = self.connector_store.get(task_id, request_id)
+        job = self._connector_jobs.get((task_id, request_id))
+        if job:
+            job.cancelled.set()
+            job.timer.stop()
+            state = (
+                "uncertain"
+                if job.probe or (job.dispatched and receipt.effect != "read")
+                else "failed"
+                if job.dispatched
+                else "cancelled"
+            )
+            try:
+                receipt = self.connector_store.update(
+                    task_id,
+                    request_id,
+                    state,
+                    reason="cancelled_after_dispatch"
+                    if job.dispatched
+                    else "cancelled_before_dispatch",
+                )
+            except Exception:
+                self._fatal(defer_broker_close=True)
+                raise
+            self.changed.emit()
+        return receipt
+
+    def _cancel_app_jobs(self, task_id):
+        for owner, request_id in tuple(self._connector_jobs):
+            if owner == task_id:
+                self._cancel_app_job(task_id, request_id)
+
+    def _app_reconcile(self, task_id, request_id):
+        self._usable()
+        receipt = self.connector_store.get(task_id, request_id)
+        grant = self._app_grant(task_id, receipt)
+        if receipt.state != "uncertain":
+            raise ValueError("Only an uncertain app operation needs reconciliation")
+        self._app_capacity(task_id)
+        definition = self.connectors.get(receipt.connector, receipt.tool)
+        if definition.reconcile is None:
+            raise ValueError("This connector has no read-only reconciliation method")
+        self._app_grant(task_id, receipt, consume=True)
+        request = ConnectorRequest(
+            request_id,
+            receipt.connector,
+            receipt.tool,
+            receipt.effect,
+            receipt.destination,
+            None,
+            receipt.operation_id,
+        )
+        try:
+            receipt = self.connector_store.update(task_id, request_id, "reconciling")
+        except Exception:
+            self._fatal(defer_broker_close=True)
+            raise
+        self._queue_app_job(task_id, definition, request, grant, probe=True)
+        return receipt
+
     def client(self, task_id):
         """Trusted controller issues a handle bound to one task, on the Qt thread."""
         require_owner_thread(self)
@@ -198,6 +462,7 @@ class TaskService(QObject):
     def _request_grant(self, task_id, scope):
         self._active(task_id)
         scope = TaskScope.parse(scope)
+        self.connectors.check_scope(scope)
         if scope.profile != "private":
             if self.profiles is None:
                 raise ValueError("Existing profiles require the application registry")
@@ -931,6 +1196,7 @@ class TaskService(QObject):
         live = self._grants.pop(task_id, None)
         if live:
             live[1].end(status)
+        self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):
                 if owner == task_id:
@@ -995,6 +1261,9 @@ class TaskService(QObject):
         )
         for _, grant in self._grants.values():
             grant.end("journal_failure")
+        for job in self._connector_jobs.values():
+            job.cancelled.set()
+            job.timer.stop()
         self._timer.stop()
         if defer_broker_close:
             # Let the currently dispatching handler publish its original write
