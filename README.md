@@ -45,7 +45,9 @@ sites and budgets.
 Page inspection returns bounded text and validated references. Task clients can
 follow links, edit supported controls, submit supported forms, scroll, and wait
 for page state with explicit permissions. Task downloads require approved exact
-filenames and never overwrite existing files. Active scripts and uploads remain planned.
+filenames and never overwrite existing files. Task uploads require approved source
+files and upload sites; selection and submission are separate actions. Active
+scripts remain planned.
 Optional local MCP access over stdio or authenticated local HTTP connects clients
 to the running browser's task capabilities. You can watch a task's page, take
 control through supported actions, and return it to the agent. See

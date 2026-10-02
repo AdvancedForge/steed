@@ -57,6 +57,18 @@ class PageActionResult:
 
 
 @dataclass(frozen=True)
+class FileUploadResult:
+    session_id: str
+    action_id: str
+    target_id: str
+    upload_id: str
+    status: str
+    file_name: str
+    byte_count: int
+    sha256: str
+
+
+@dataclass(frozen=True)
 class PageWaitResult:
     session_id: str
     condition: str

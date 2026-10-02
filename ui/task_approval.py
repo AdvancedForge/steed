@@ -9,9 +9,13 @@ from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
+    QWidget,
 )
 
 ACTION_LABELS = {
@@ -23,7 +27,16 @@ ACTION_LABELS = {
     "scroll": "Scroll task pages",
     "submit": "Submit forms on these sites (can change account data)",
     "download": "Save downloads to the exact files listed below (no overwriting)",
+    "upload": "Send the listed local files to the listed upload sites",
 }
+
+
+class WrappedLabel(QLabel):
+    """Keep complete wrapped text visible inside the scrollable scope."""
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.setMinimumHeight(self.heightForWidth(event.size().width()))
 
 
 class TaskApprovalDialog(QDialog):
@@ -36,19 +49,29 @@ class TaskApprovalDialog(QDialog):
         )
         self.setWindowTitle("Allow task access?")
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.resize(480, 420)
-        layout = QVBoxLayout(self)
-        objective = QLabel("Task: " + task.objective[:256])
+        self.resize(500, 560)
+        outer = QVBoxLayout(self)
+        objective = WrappedLabel("Task: " + task.objective[:256])
         objective.setTextFormat(Qt.TextFormat.PlainText)
         objective.setWordWrap(True)
-        layout.addWidget(objective)
+        objective.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum
+        )
+        outer.addWidget(objective)
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        outer.addWidget(scroll)
         scope = grant.scope
         existing = scope["profile"] != "private"
         seconds = scope["duration_seconds"]
         duration = (
             f"{seconds // 60} minutes" if seconds % 60 == 0 else f"{seconds} seconds"
         )
-        summary = QLabel(
+        summary = WrappedLabel(
             "Profile: "
             + (scope["profile"].removeprefix("existing:") if existing else "Private")
             + "\n"
@@ -57,6 +80,7 @@ class TaskApprovalDialog(QDialog):
         )
         summary.setTextFormat(Qt.TextFormat.PlainText)
         summary.setWordWrap(True)
+        summary.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout.addWidget(summary)
         layout.addWidget(QLabel("Allowed sites:"))
         self.sites = QPlainTextEdit("\n".join(scope["origins"]) or "about:blank only")
@@ -71,7 +95,21 @@ class TaskApprovalDialog(QDialog):
             layout.addWidget(destinations)
             size = scope["max_download_bytes"]
             layout.addWidget(QLabel(f"Each download is limited to {size:,} bytes."))
-        notice = QLabel(
+        if scope.get("upload_sources"):
+            layout.addWidget(QLabel("Local files allowed for upload:"))
+            files = QPlainTextEdit("\n".join(scope["upload_sources"]))
+            files.setReadOnly(True)
+            files.setMaximumHeight(80)
+            layout.addWidget(files)
+            sites = QPlainTextEdit("\n".join(scope["upload_origins"]))
+            sites.setReadOnly(True)
+            sites.setMaximumHeight(70)
+            layout.addWidget(QLabel("Allowed upload sites:"))
+            layout.addWidget(sites)
+            layout.addWidget(
+                QLabel(f"Up to {scope['max_upload_bytes']:,} staged bytes per page.")
+            )
+        notice = WrappedLabel(
             (
                 "Uses your existing sign-in and site storage. You can keep browsing. "
                 "Site changes persist and may affect your signed-in session. "
@@ -83,25 +121,33 @@ class TaskApprovalDialog(QDialog):
                 if scope["allow_private_network"]
                 else ""
             )
-            + "Task scripts and uploads are unavailable. "
+            + "Task scripts are unavailable. "
             + (
                 "Forms send their current fields, including hidden site tokens. "
-                "Password and file forms are unavailable. "
+                + (
+                    "Password, multi-file and folder forms are unavailable. "
+                    if "upload" in scope["actions"]
+                    else "Password and file forms are unavailable. "
+                )
                 if "submit" in scope["actions"]
                 else ""
             )
             + "You can revoke access in File → Task Permissions."
         )
         notice.setWordWrap(True)
+        notice.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout.addWidget(notice)
         more = QPushButton("Show limits")
-        self.limits = QLabel(
+        self.limits = WrappedLabel(
             f"Up to {scope['max_operations']} operations, {scope['max_requests']} "
             f"network requests and {scope['max_sessions']} sessions.\n"
             "GET/HEAD requests can have website effects. DNS routes are not pinned.\n"
             "Form values and editable text are omitted from page reads."
         )
         self.limits.setWordWrap(True)
+        self.limits.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum
+        )
         self.limits.hide()
         more.clicked.connect(
             lambda: self.limits.setVisible(not self.limits.isVisible())
@@ -110,7 +156,7 @@ class TaskApprovalDialog(QDialog):
         layout.addWidget(self.limits)
         self.error = QLabel()
         self.error.setWordWrap(True)
-        layout.addWidget(self.error)
+        outer.addWidget(self.error)
         buttons = QHBoxLayout()
         self.deny_button = QPushButton("Deny")
         self.approve_button = QPushButton("Approve")
@@ -121,7 +167,7 @@ class TaskApprovalDialog(QDialog):
         self.approve_button.clicked.connect(lambda: self.decide(True))
         buttons.addWidget(self.deny_button)
         buttons.addWidget(self.approve_button)
-        layout.addLayout(buttons)
+        outer.addLayout(buttons)
 
     def decide(self, approve):
         try:

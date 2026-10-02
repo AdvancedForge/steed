@@ -25,6 +25,7 @@ from services.engine_capabilities import qt_engine_capabilities
 from services.form_submission import SubmissionTicket, journal_origin
 from services.navigation_service import NavigationService
 from services.page_actions import (
+    FileUploadResult,
     FormSubmissionResult,
     PageActionResult,
     PageWaitResult,
@@ -37,6 +38,7 @@ from services.permission_service import PermissionService
 from services.task_downloads import TaskDownload
 from services.task_network import TaskNetwork
 from services.task_policy import LiveGrant
+from services.task_uploads import UploadCopy
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,7 @@ class BrowserBackend(Protocol):
     def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments): ...
     def wait(self, session_id, condition, text, timeout_ms): ...
     def start_download(self, session_id, download_id, url, destination, publish): ...
+    def upload(self, session_id, action_id, snapshot_id, target_id, source): ...
     def inspect_download(self, session_id, download_id): ...
     def list_downloads(self, session_id): ...
     def cancel_download(self, session_id, download_id): ...
@@ -204,6 +207,7 @@ class QtSession:
     waits: set[Future] = field(default_factory=set)
     control_owner: str = "agent"
     downloads: dict = field(default_factory=dict)
+    uploads: dict = field(default_factory=dict)
 
 
 class QtBrowserBackend(QObject):
@@ -751,6 +755,151 @@ class QtBrowserBackend(QObject):
         network.ready.add_done_callback(ready)
         return result
 
+    def upload(self, session_id, action_id, snapshot_id, target_id, source):
+        """Copy an approved source, bind it natively, and observe the same field."""
+        session, validate_read = self._edit_context(session_id, "upload")
+        initial_url = session.page.url().toString()
+
+        def validate():
+            validate_read()
+            session.grant.check(
+                "upload", source=source, url=session.page.url().toString()
+            )
+            if session.page.settings().testAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptEnabled
+            ):
+                raise PageInspectionError("scripted_upload_unavailable")
+
+        validate()
+        if len(session.uploads) >= 20:
+            raise PageInspectionError("upload_limit")
+        request = self.inspector.input_request(
+            session_id, snapshot_id, target_id, {"operation": "upload"}
+        )
+        if session.network is None:
+            session.network = TaskNetwork(session.page, self)
+        result = Future()
+        copy = UploadCopy(
+            source,
+            session.grant,
+            initial_url,
+            session.page,
+            remaining_bytes=session.grant.scope.max_upload_bytes
+            - sum(c.size for c in session.uploads.values()),
+        )
+        session.pending_action = result
+        upload_id = uuid4().hex
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(
+            lambda: (
+                None
+                if result.done()
+                else result.set_exception(PageInspectionError("upload_timeout"))
+            )
+        )
+        timer.start(30000)
+        retained = False
+
+        def cleanup(_):
+            timer.stop()
+            timer.deleteLater()
+            if session.pending_action is result:
+                session.pending_action = None
+            self.inspector.invalidate(session_id, "upload_completed")
+            if not retained:
+                copy.close()
+
+        def observed(reply):
+            nonlocal retained
+            if result.done():
+                return
+            try:
+                reply.result()
+                validate()
+                session.uploads[upload_id] = copy
+                retained = True
+                result.set_result(
+                    FileUploadResult(
+                        session_id,
+                        action_id,
+                        target_id,
+                        upload_id,
+                        "bound",
+                        copy.path.name,
+                        copy.size,
+                        copy.digest,
+                    )
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def bound(reply):
+            if result.done():
+                return
+            try:
+                reply.result()
+                validate()
+                check = self.inspector.input_phase(
+                    session_id,
+                    session.page,
+                    {
+                        **request,
+                        "upload_id": upload_id,
+                        "name": copy.path.name,
+                        "size": copy.size,
+                    },
+                    "upload_observe",
+                    validate,
+                )
+                check.add_done_callback(observed)
+            except Exception as error:
+                result.set_exception(error)
+
+        def focused(reply):
+            if result.done():
+                return
+            try:
+                reply.result()
+                validate()
+                session.network.validate()
+                session.network.input.file(
+                    copy.path, initial_url, validate
+                ).add_done_callback(bound)
+            except Exception as error:
+                result.set_exception(error)
+
+        def ready(_):
+            if result.done():
+                return
+            try:
+                copy.ready.result()
+                validate()
+                session.network.validate()
+                if (
+                    sum(c.size for c in session.uploads.values()) + copy.size
+                    > session.grant.scope.max_upload_bytes
+                ):
+                    raise PageInspectionError("upload_storage_exhausted")
+                self.inspector.input_phase(
+                    session_id, session.page, request, "upload_prepare", validate
+                ).add_done_callback(focused)
+            except Exception as error:
+                result.set_exception(error)
+
+        def copied(_):
+            if result.done():
+                return
+            try:
+                copy.ready.result()
+                session.network.ready.add_done_callback(ready)
+            except Exception as error:
+                result.set_exception(error)
+
+        result.add_done_callback(cleanup)
+        copy.ready.add_done_callback(copied)
+        return result
+
     def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments):
         arguments = scroll_arguments(**arguments)
         session, validate = self._edit_context(session_id, "scroll")
@@ -780,6 +929,7 @@ class QtBrowserBackend(QObject):
         if session.network is not None:
             session.network.validate()
         request = self.inspector.submission_request(session_id, snapshot_id, target_id)
+        request["upload_available"] = "upload" in session.grant.scope.actions
         result = Future()
         session.pending_action = result
         ticket = session.page.submission
@@ -854,6 +1004,21 @@ class QtBrowserBackend(QObject):
             try:
                 expected = source.result()
                 validate()
+                if expected.get("file_form"):
+                    session.grant.check("upload", url=session.page.url().toString())
+                    session.grant.check("upload", url=expected["url"])
+                    for file in expected.get("uploads", []):
+                        copy = session.uploads.get(file["upload_id"])
+                        if (
+                            copy is None
+                            or file["name"] != copy.path.name
+                            or file["size"] != copy.size
+                        ):
+                            raise PageInspectionError("upload_not_owned")
+                        copy.authority()
+                        session.grant.check(
+                            "upload", source=copy.source, url=expected["url"]
+                        )
                 if session.network is not None:
                     session.network.validate()
                 ticket.arm(expected["url"], expected["method"])
@@ -1115,6 +1280,8 @@ class QtBrowserBackend(QObject):
         session = self._session(session_id)
         for transfer in session.downloads.values():
             transfer.close()
+        for copy in session.uploads.values():
+            copy.close()
         self.inspector.invalidate(session_id, "session_closed", discard=True)
         self._sessions.pop(session_id)
         self._cancel_navigation(session)

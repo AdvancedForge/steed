@@ -25,6 +25,7 @@ CLIENT_COMMANDS = frozenset(
         "page.scroll",
         "page.wait",
         "page.download",
+        "page.upload",
         "download.status",
         "download.cancel",
         "session.attach",

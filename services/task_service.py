@@ -86,6 +86,7 @@ class TaskService(QObject):
                 "page.scroll": self._scroll,
                 "page.wait": self._wait,
                 "page.download": self._download,
+                "page.upload": self._upload,
                 "download.status": self._download_status,
                 "download.cancel": self._download_cancel,
                 "session.stop": self._stop,
@@ -744,6 +745,31 @@ class TaskService(QObject):
         self._authorize(task_id, "download")
         return self.backend.inspect_download(session_id, download_id)
 
+    def _upload(self, task_id, session_id, snapshot_id, target_id, source):
+        self._owned(task_id, session_id)
+        grant = self._authorize(
+            task_id, "upload", source=source, url=self.backend.inspect(session_id).url
+        )
+        grant.check("read")
+        action_id = uuid4().hex
+        return self._start_action(
+            task_id,
+            session_id,
+            grant,
+            action_id,
+            {
+                "action_id": action_id,
+                "session_id": session_id,
+                "snapshot_id": snapshot_id,
+                "target_id": target_id,
+                "operation": "upload",
+                "source": source,
+            },
+            lambda: self.backend.upload(
+                session_id, action_id, snapshot_id, target_id, source
+            ),
+        )
+
     def _download_cancel(self, task_id, session_id, download_id):
         self._owned(task_id, session_id, allow_user=True)
         return self.backend.cancel_download(session_id, download_id)
@@ -825,6 +851,7 @@ class TaskService(QObject):
             "page.submit",
             "page.scroll",
             "page.wait",
+            "page.upload",
         }:
             raise ValueError("Unsupported user action")
         if {"task_id", "session_id"} & arguments.keys():

@@ -51,6 +51,34 @@ INPUT_SCRIPT = """
 })();
 """
 
+FILE_SCRIPT = """
+(() => {
+    const request = /* REQUEST */;
+    window[request.id] = null;
+    (async () => {
+        let target;
+        try {
+            const SDK = await import(new URL('./core/sdk/sdk.js', location.href).href);
+            const manager = SDK.TargetManager.TargetManager.instance();
+            target = manager.primaryPageTarget() || manager.targets().find(t => t.type() === 'frame');
+            if (!target) throw new Error('Target unavailable');
+            const focus = await target.emulationAgent().invoke_setFocusEmulationEnabled({enabled:true});
+            if (focus.getError()) throw new Error('Focus unavailable');
+            const agent = target.domAgent();
+            const doc = await agent.invoke_getDocument({depth:1});
+            if (doc.getError() || doc.root.documentURL !== request.url || window[request.id] === false)
+                throw new Error('Document changed');
+            const node = await agent.invoke_querySelector({nodeId:doc.root.nodeId, selector:'input[type=file]:focus'});
+            if (node.getError() || !node.nodeId || window[request.id] === false) throw new Error('File control unavailable');
+            const reply = await agent.invoke_setFileInputFiles({nodeId:node.nodeId, files:[request.file]});
+            if (reply.getError()) throw new Error('File selection unavailable');
+            if (window[request.id] !== false) window[request.id] = true;
+        } catch (_) { window[request.id] = false; }
+        finally { if (target) await target.emulationAgent().invoke_setFocusEmulationEnabled({enabled:false}); }
+    })();
+})();
+"""
+
 
 class TaskInput(QObject):
     """No caller keys, scripts, coordinates, or DevTools commands are exposed."""
@@ -64,6 +92,17 @@ class TaskInput(QObject):
     def keys(self, names, validate, *, viewport=False):
         if not 0 <= len(names) <= 32 or any(name not in KEYS for name in names):
             raise ValueError("Unsupported native input batch")
+        return self._run(
+            INPUT_SCRIPT,
+            {"keys": [KEYS[name] for name in names], "viewport": viewport},
+            validate,
+        )
+
+    def file(self, path, url, validate):
+        """Trusted staged path only; callers cannot choose protocol/selectors."""
+        return self._run(FILE_SCRIPT, {"file": str(path), "url": url}, validate)
+
+    def _run(self, template, arguments, validate):
         validate()
         self.network.validate()
         result = Future()
@@ -112,12 +151,8 @@ class TaskInput(QObject):
         result.add_done_callback(cleanup)
         poll.timeout.connect(tick)
         deadline.timeout.connect(expire)
-        request = {
-            "id": identifier,
-            "keys": [KEYS[name] for name in names],
-            "viewport": viewport,
-        }
-        script = INPUT_SCRIPT.replace("/* REQUEST */", json.dumps(request))
+        request = {"id": identifier, **arguments}
+        script = template.replace("/* REQUEST */", json.dumps(request))
         try:
             self.network.frontend.runJavaScript(script)
             poll.start()

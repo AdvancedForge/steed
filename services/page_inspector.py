@@ -205,6 +205,7 @@ class PageInspector(QObject):
                 "mode": "inspect",
                 "snapshot_id": snapshot_id,
                 "origins": grant.scope.origins,
+                "upload_available": "upload" in grant.scope.actions,
             },
             validate,
             consume,
@@ -243,7 +244,7 @@ class PageInspector(QObject):
             raise PageInspectionError("target_unknown")
         return state.targets[target_id]
 
-    def submission_request(self, session_id, snapshot_id, target_id):
+    def submission_request(self, session_id, snapshot_id, target_id, *, uploads=False):
         node_id, descriptor = self._target_reference(session_id, snapshot_id, target_id)
         if not descriptor.enabled or "submit" not in descriptor.operations:
             raise PageInspectionError("form_unsupported")
@@ -252,6 +253,7 @@ class PageInspector(QObject):
             "snapshot_id": snapshot_id,
             "node_id": node_id,
             "state_key": self._states[session_id].state_key,
+            "upload_available": uploads,
         }
 
     def prepare_submission(self, session_id, page, request, validate):
