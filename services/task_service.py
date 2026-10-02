@@ -658,6 +658,7 @@ class TaskService(QObject):
         checked = self.backend.inspect_target(session_id, snapshot_id, target_id)
         result = Future()
         actor = self._actor.get()
+        download_id = uuid4().hex
 
         def validated(source):
             try:
@@ -675,7 +676,6 @@ class TaskService(QObject):
                 grant.check("download", url=target.href, destination=destination)
                 grant.check("read")
                 grant.check("navigate", url=target.href)
-                download_id = uuid4().hex
                 details = {
                     "download_id": download_id,
                     "session_id": session_id,
@@ -727,6 +727,9 @@ class TaskService(QObject):
                             "download.failed",
                             {
                                 "session_id": session_id,
+                                "download_id": download_id,
+                                "destination": destination,
+                                "state": "failed",
                                 "reason": getattr(error, "code", "download_failed"),
                             },
                         )

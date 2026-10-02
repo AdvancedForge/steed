@@ -2,7 +2,9 @@
 
 import json
 import sqlite3
+from dataclasses import asdict
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -14,6 +16,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
 )
 
@@ -46,7 +49,25 @@ class TaskDialog(QDialog):
         layout.addWidget(self.table)
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
-        layout.addWidget(self.details)
+        self.panels = QTabWidget()
+        self.panels.addTab(self.details, "Permissions")
+        self.activity = QPlainTextEdit()
+        self.activity.setReadOnly(True)
+        self.panels.addTab(self.activity, "Activity")
+        self.downloads = QTableWidget(0, 4)
+        self.downloads.setHorizontalHeaderLabels(["File", "State", "Bytes", "Result"])
+        self.downloads.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.downloads.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.downloads.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.downloads.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self.panels.addTab(self.downloads, "Downloads")
+        layout.addWidget(self.panels)
+        self.cancel_download_button = QPushButton("Cancel Selected Download")
+        self.cancel_download_button.clicked.connect(self.cancel_download)
+        self.downloads.itemSelectionChanged.connect(self.update_download_action)
+        layout.addWidget(self.cancel_download_button)
         watching = QHBoxLayout()
         self.sessions = QComboBox()
         self.watch_button = QPushButton("Watch Page")
@@ -74,6 +95,12 @@ class TaskDialog(QDialog):
         service.changed.connect(self.refresh)
         self.finished.connect(lambda: service.changed.disconnect(self.refresh))
         self._rows = []
+        self._download_rows = []
+        self.timer = QTimer(self)
+        self.timer.setInterval(500)
+        self.timer.timeout.connect(self.refresh_activity)
+        self.finished.connect(self.timer.stop)
+        self.timer.start()
         self.refresh()
 
     def selection(self):
@@ -218,6 +245,120 @@ class TaskDialog(QDialog):
             self.details.setPlainText(
                 "Task permission requests from internal clients appear here."
             )
+        self.refresh_activity()
+
+    def refresh_activity(self):
+        selected = self.selection()
+        if self.service._closed or self.service.failure or not selected:
+            self.activity.clear()
+            self.downloads.setRowCount(0)
+            self._download_rows = []
+            self.update_download_action()
+            return
+        task = selected[0]
+        try:
+            events = self.service.store.recent_events(task.task_id)
+            lines = []
+            for event in events:
+                label = event.kind.replace(".", " ").replace("_", " ").capitalize()
+                reason = event.payload.get("reason") or event.payload.get("error")
+                if reason:
+                    label += ": " + str(reason)[:100].replace("_", " ")
+                if event.kind == "download.finished":
+                    label = "Download " + event.payload.get("state", "finished")
+                lines.append(event.created_at[11:19] + "  " + label)
+            content = "\n".join(lines) or "No recorded activity."
+            if self.activity.toPlainText() != content:
+                scroll = self.activity.verticalScrollBar()
+                follow = scroll.value() == scroll.maximum()
+                previous = scroll.value()
+                self.activity.setPlainText(content)
+                scroll.setValue(scroll.maximum() if follow else previous)
+            receipts = self.service.store.recent_events(
+                task.task_id,
+                limit=100,
+                kinds=("download.requested", "download.finished", "download.failed"),
+            )
+            records = {}
+            for event in receipts:
+                data = dict(event.payload)
+                data.setdefault("state", "requested")
+                records[data["download_id"]] = data
+            for session, owner in self.service._sessions.items():
+                if owner != task.task_id:
+                    continue
+                listing = getattr(self.service.backend, "list_downloads", None)
+                if callable(listing):
+                    for receipt in listing(session):
+                        records[receipt.download_id] = asdict(receipt)
+            previous = self.downloads.currentRow()
+            selected_id = (
+                self._download_rows[previous]["download_id"]
+                if 0 <= previous < len(self._download_rows)
+                else None
+            )
+            self._download_rows = list(records.values())[-100:]
+            self.downloads.blockSignals(True)
+            self.downloads.setRowCount(len(self._download_rows))
+            for row, record in enumerate(self._download_rows):
+                size = record.get("received_bytes", 0)
+                total = record.get("total_bytes", 0)
+                text = f"{size:,}" + (f" / {total:,}" if total > 0 else "")
+                for column, value in enumerate(
+                    (
+                        record["destination"],
+                        record["state"].replace("_", " "),
+                        text,
+                        (record.get("error") or record.get("reason", "")).replace(
+                            "_", " "
+                        ),
+                    )
+                ):
+                    self.downloads.setItem(row, column, QTableWidgetItem(value))
+                if record["download_id"] == selected_id:
+                    self.downloads.selectRow(row)
+            self.downloads.blockSignals(False)
+            self.update_download_action()
+        except (sqlite3.Error, OSError, ValueError, KeyError):
+            self.service._fatal()
+
+    def update_download_action(self):
+        row = self.downloads.currentRow()
+        record = (
+            self._download_rows[row] if 0 <= row < len(self._download_rows) else None
+        )
+        selected = self.selection()
+        self.cancel_download_button.setEnabled(
+            bool(
+                selected
+                and not self.service._closed
+                and not self.service.failure
+                and record
+                and self.service._sessions.get(record["session_id"])
+                == selected[0].task_id
+                and record["state"] in ("requested", "in_progress")
+            )
+        )
+
+    def cancel_download(self):
+        row = self.downloads.currentRow()
+        selected = self.selection()
+        if not selected or not 0 <= row < len(self._download_rows):
+            return
+        record = self._download_rows[row]
+        try:
+            self.service._download_cancel(
+                selected[0].task_id, record["session_id"], record["download_id"]
+            )
+        except Exception:
+            QMessageBox.warning(
+                self, "Download", "The download changed. Review its current state."
+            )
+        self.refresh_activity()
+
+    def closeEvent(self, event):
+        self.timer.stop()
+        super().closeEvent(event)
 
     def perform(self, operation):
         selected = self.selection()

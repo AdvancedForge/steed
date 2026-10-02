@@ -160,3 +160,25 @@ class TaskStoreTests(unittest.TestCase):
         self.assertEqual(self.store.grants(), [])
         with sqlite3.connect(self.path) as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 2)
+
+    def test_ui_tail_selects_recent_task_scoped_and_filtered_events(self):
+        first, second = self.store.create("First"), self.store.create("Second")
+        for index in range(210):
+            self.store.record_event(first.task_id, "page.inspected", {"index": index})
+        self.store.record_event(
+            first.task_id, "download.finished", {"state": "completed"}
+        )
+        self.store.record_event(
+            second.task_id, "download.finished", {"state": "foreign"}
+        )
+        recent = self.store.recent_events(first.task_id, limit=3)
+        self.assertEqual(len(recent), 3)
+        self.assertEqual(recent[-1].kind, "download.finished")
+        self.assertEqual(
+            [e.sequence for e in recent], sorted(e.sequence for e in recent)
+        )
+        self.assertTrue(all(e.task_id == first.task_id for e in recent))
+        receipts = self.store.recent_events(first.task_id, kinds=("download.finished",))
+        self.assertEqual([e.payload["state"] for e in receipts], ["completed"])
+        with self.assertRaises(ValueError):
+            self.store.recent_events(first.task_id, limit=1001)

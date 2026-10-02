@@ -10,12 +10,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 2, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-324-test suite passed in 219.159 seconds (`/tmp/steed-download-full.log`), including
+331-test suite passed in 207.015 seconds (`/tmp/steed-activity-full.log`), including
 scoped downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-download-startup.log`); the preceding local Google HTTPS check passed.
+(`/tmp/steed-activity-startup.log`); the preceding local Google HTTPS check passed.
 The previous form-stage Google fixture exited natively during `QWebEngineProfile`
 creation before passing on retry. An earlier startup fixture also exited natively.
 Track that intermittent exit separately from desktop acceptance. Ruff, formatting,
@@ -178,8 +178,19 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   Crash recovery of orphaned staging directories remains a follow-up.
   See [download usage](DOCUMENTATION.md#scoped-task-downloads).
 - **Autonomous continuation authorized:** implement and commit routine milestones
-  until a major architecture/product choice requires user judgment. Next: clearer
-  task activity and download receipts in the user interface, then assess safe uploads.
+  until a major architecture/product choice requires user judgment.
+- **Task activity implemented:** Task Permissions now has Permissions, Activity,
+  and Downloads tabs. Activity shows a bounded chronological event tail; downloads
+  show progress and retained receipts with user cancellation of a single transfer.
+  Failed starts are terminal receipts rather than permanently pending rows.
+  Synthetic UI/storage and both MCP workflows passed, including task isolation,
+  hidden values, cancellation, and closing the dialog's polling timer.
+  The full 331-test suite passed in 207.015 seconds
+  (`/tmp/steed-activity-full.log`); startup/render/shutdown, both MCP transports,
+  Ruff/formatting/whitespace also passed. The synthetic Downloads panel was
+  visually inspected. Core artifact/connector activity remains future work.
+- **Next task:** assess safe uploads after download commit `229cfe4` and the
+  task activity UI milestone.
   Reconnect/resume,
   broader client compatibility, and remaining A7 activity/artifact/styling work
   stay pending; website scripts remain deferred.
@@ -531,7 +542,8 @@ and scrolling with the task's existing permissions. Agent operations pause durin
 user control; returning control preserves edits and requires fresh references.
 Closing/reopening, revocation, concurrent shared-window lifetime, and both MCP
 transport handoffs passed synthetic fixture checks. Full direct page input,
-custom controls, activity/artifact presentation, and styling remain pending.
+custom controls, artifact presentation, and styling remain pending. Task Permissions
+includes recent activity and download progress/retained receipts with cancellation.
 
 Show tasks, authority, activity, artifacts, and evidence. Support watching,
 exclusive takeover, resume, and cancellation. Add validated declarative chrome
