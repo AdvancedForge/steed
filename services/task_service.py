@@ -2,6 +2,7 @@
 
 import time
 from concurrent.futures import Future
+from contextvars import ContextVar
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -51,6 +52,9 @@ class TaskService(QObject):
         self._clock = clock
         self._sessions = {}
         self._grants = {}
+        self._controls = {}
+        self._watchers = {}
+        self._actor = ContextVar("task_user_actor", default="agent")
         self._closed = False
         self.failure = ""
         if hasattr(self.backend, "changed"):
@@ -83,6 +87,8 @@ class TaskService(QObject):
                 "page.wait": self._wait,
                 "session.stop": self._stop,
                 "session.attach": self._attach,
+                "session.watch": self._watch,
+                "user.command": self._user_command,
                 "session.close": self._close_session,
             },
             self,
@@ -134,10 +140,18 @@ class TaskService(QObject):
             raise RuntimeError("Browser backend capability report unavailable")
         return report()
 
-    def _owned(self, task_id, session_id):
+    def _owned(self, task_id, session_id, *, allow_user=False, actor=None):
         self._active(task_id)
         if self._sessions.get(session_id) != task_id:
             self._deny(task_id, "session_not_owned")
+        if not allow_user:
+            actor = self._actor.get() if actor is None else actor
+            owner = self._controls.get(session_id, "agent")
+            if actor != owner:
+                self._deny(
+                    task_id,
+                    "user_control_active" if owner != "agent" else "control_changed",
+                )
 
     def _deny(self, task_id, code):
         self.store.record_event(task_id, "permission.denied", {"reason": code})
@@ -299,7 +313,7 @@ class TaskService(QObject):
         return self.backend.navigate(session_id, url)
 
     def _inspect(self, task_id, session_id):
-        self._owned(task_id, session_id)
+        self._owned(task_id, session_id, allow_user=True)
         self._authorize(task_id, "inspect")
         return self.backend.inspect(session_id)
 
@@ -354,8 +368,10 @@ class TaskService(QObject):
         *,
         failure_kind="page.read_failed",
         failure_details=None,
+        actor=None,
     ):
         result = Future()
+        actor = self._actor.get() if actor is None else actor
 
         def completed(source):
             if result.done():
@@ -363,7 +379,7 @@ class TaskService(QObject):
             try:
                 value = source.result()
                 self._usable()
-                self._owned(task_id, session_id)
+                self._owned(task_id, session_id, actor=actor)
                 grant.check("read")
             except Exception as error:
                 result.set_exception(error)
@@ -401,12 +417,13 @@ class TaskService(QObject):
             self._deny(task_id, error.code)
         checked = self.backend.inspect_target(session_id, snapshot_id, target_id)
         result = Future()
+        actor = self._actor.get()
 
         def validated(source):
             try:
                 target = source.result()
                 self._usable()
-                self._owned(task_id, session_id)
+                self._owned(task_id, session_id, actor=actor)
                 grant.check("read")
                 if (
                     target.kind != "link"
@@ -442,6 +459,7 @@ class TaskService(QObject):
                         **self._metadata_evidence(outcome),
                         "target_id": target_id,
                     },
+                    actor=actor,
                 )
                 receipt.add_done_callback(completed)
             except Exception as error:
@@ -473,7 +491,7 @@ class TaskService(QObject):
         return result
 
     def _stop(self, task_id, session_id):
-        # Cleanup always remains available, even without an active grant.
+        # The current controller can stop loading without an active grant.
         self._owned(task_id, session_id)
         snapshot = self.backend.stop(session_id)
         self.store.record_event(
@@ -625,13 +643,121 @@ class TaskService(QObject):
         )
 
     def _attach(self, task_id, session_id):
-        self._owned(task_id, session_id)
+        self._owned(task_id, session_id, allow_user=True)
         self._authorize(task_id, "attach")
         return self.backend.attach_view(session_id)
 
+    def _watch(self, task_id, session_id):
+        view = self._attach(task_id, session_id)
+        if session_id not in self._watchers:
+            from ui.task_watch import TaskWatchDialog
+
+            parent = None
+            if self.profiles is not None:
+                context = self.profiles.agent_context()
+                parent = next(
+                    (
+                        owner.parent()
+                        for owner in self.profiles.owners
+                        if getattr(owner.parent(), "browser_window_id", None)
+                        == context["window_id"]
+                    ),
+                    None,
+                )
+            window = TaskWatchDialog(self, task_id, session_id, view, parent)
+            self._watchers[session_id] = window
+        window = self._watchers[session_id]
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        self._control_event(task_id, "session.watched", session_id)
+        return {
+            "session_id": session_id,
+            "watching": True,
+            "control_owner": self.backend.inspect(session_id).control_owner,
+        }
+
+    def take_control(self, task_id, session_id, key):
+        require_owner_thread(self)
+        self._owned(task_id, session_id, allow_user=True)
+        if session_id in self._controls:
+            raise TaskPermissionError("user_control_active")
+        if (
+            self._watchers.get(session_id) is None
+            or self._watchers[session_id].control_key != key
+        ):
+            raise TaskPermissionError("control_not_owned")
+        self.backend.check_control_change(session_id)
+        grant = self._authorize(task_id, "attach")
+        grant.check("read")
+        self._control_event(task_id, "session.control_taken", session_id)
+        self.backend.change_control(session_id, "user")
+        self._controls[session_id] = key
+        self.changed.emit()
+
+    def return_control(self, task_id, session_id, key):
+        require_owner_thread(self)
+        self._usable()
+        self._owned(task_id, session_id, allow_user=True)
+        if self._controls.get(session_id) != key:
+            raise TaskPermissionError("control_not_owned")
+        self.backend.check_control_change(session_id)
+        self._control_event(task_id, "session.control_returned", session_id)
+        self.backend.change_control(session_id, "agent")
+        self._controls.pop(session_id)
+        self.changed.emit()
+
+    def _control_event(self, task_id, kind, session_id):
+        try:
+            self.store.record_event(task_id, kind, {"session_id": session_id})
+        except Exception:
+            self._fatal()
+            raise
+
+    def _user_command(self, task_id, session_id, key, operation_name, arguments):
+        if self._controls.get(session_id) != key:
+            raise TaskPermissionError("control_not_owned")
+        if operation_name not in {
+            "page.inspect",
+            "page.navigate",
+            "page.act",
+            "page.submit",
+            "page.scroll",
+            "page.wait",
+        }:
+            raise ValueError("Unsupported user action")
+        if {"task_id", "session_id"} & arguments.keys():
+            raise ValueError("User action identity is fixed")
+        token = self._actor.set(key)
+        try:
+            return self.broker._handlers[operation_name](
+                task_id=task_id, session_id=session_id, **arguments
+            )
+        finally:
+            self._actor.reset(token)
+
+    def close_watch(self, task_id, session_id, key):
+        require_owner_thread(self)
+        watcher = self._watchers.get(session_id)
+        if watcher is not None and watcher.control_key == key:
+            self._watchers.pop(session_id)
+        if self._controls.get(session_id) == key and session_id in self._sessions:
+            try:
+                self.return_control(task_id, session_id, key)
+            except Exception:
+                if not self._closed and not self.failure:
+                    try:
+                        self.cancel_task(task_id)
+                    except Exception:
+                        self._fatal()
+
     def _close_session(self, task_id, session_id):
-        self._owned(task_id, session_id)
+        self._owned(task_id, session_id, allow_user=True)
         self._sessions.pop(session_id)
+        self._controls.pop(session_id, None)
+        watcher = self._watchers.pop(session_id, None)
+        if watcher is not None:
+            watcher.session_ended()
         self.backend.close_session(session_id)
         self.store.record_event(task_id, "session.closed", {"session_id": session_id})
         self.changed.emit()
@@ -657,6 +783,10 @@ class TaskService(QObject):
         for session_id, owner in list(self._sessions.items()):
             if task_id is None or owner == task_id:
                 self._sessions.pop(session_id)
+                self._controls.pop(session_id, None)
+                watcher = self._watchers.pop(session_id, None)
+                if watcher is not None:
+                    watcher.session_ended()
                 self.backend.close_session(session_id)
         if self.profiles is not None:
             self.profiles.release_task_profiles(task_id)

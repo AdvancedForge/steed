@@ -500,7 +500,7 @@ its transport identity is also bound to the credential that initialized it.
 | `grant.list` | `task_id`; task grant records, including decisions |
 | `session.open` | `task_id`, optional `profile="private"`; requires approval, returns a session snapshot |
 | `session.navigate` | `task_id`, `session_id`, `url`; dispatches GET navigation |
-| `session.inspect` | `task_id`, `session_id`; URL/title/load metadata only |
+| `session.inspect` | `task_id`, `session_id`; URL/title/load metadata and `control_owner` (`agent` or `user`) |
 | `page.inspect` | `task_id`, `session_id`; explicit `read` grant, returns a structured page snapshot |
 | `page.target` | `task_id`, `session_id`, `snapshot_id`, `target_id`; validates an observed target and returns its description |
 | `page.navigate` | `task_id`, `session_id`, `snapshot_id`, `target_id`; follows a validated link and reports the load outcome |
@@ -509,7 +509,8 @@ its transport identity is also bound to the credential that initialized it.
 | `page.scroll` | `task_id`, `session_id`, `snapshot_id`, optional `frame_id`, `dx`, `dy`; requires `read` + `scroll`, returns observed offsets |
 | `page.wait` | `task_id`, `session_id`, optional `condition`, `text`, `timeout_ms`; requires `read`, returns an observed match, timeout, or load failure |
 | `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
-| `session.attach` | `task_id`, `session_id`; returns a Qt view of the existing page |
+| `session.attach` | `task_id`, `session_id`; internal read-only Qt view of the existing page |
+| `session.watch` | `task_id`, `session_id`; opens the same-page watch window; returns JSON watch/control state |
 
 An active task can call `client.submit("task.capabilities")` before requesting a
 grant. This read-only query opens no page, consumes no operation budget, and
@@ -899,8 +900,9 @@ end too. Pages, commands, and approved authority are never
 restored/replayed. An asynchronous journal write failure disables further task
 commands and emits `service.failed`; cleanup still disposes engine resources.
 
-Active document execution, script-handled forms, file actions, and watch/takeover
-controls remain future work. Existing-profile grants support the same restricted
+Active document execution, script-handled forms, and file actions remain future
+work. Watching and scoped user handoff use the existing task page.
+Existing-profile grants support the same restricted
 retrieval, metadata, content reads, control edits, and native scriptless forms as
 private task pages, with the corresponding explicit permissions.
 
@@ -1199,15 +1201,16 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 20 input schemas. Names follow the internal command
+Tool discovery publishes 21 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
 navigation, supported control edits, native form submission, scrolling, waits,
-evidence, and task lifecycle are available. Approval, task enumeration, raw
-cookies, JavaScript, arbitrary selectors, file actions, and native view attachment
-are not exposed by this adapter. Scope may include `attach` for later UI use,
-but there is no external attach/watch tool yet.
+watching, evidence, and task lifecycle are available. Approval, task enumeration,
+raw cookies, JavaScript, arbitrary selectors, file actions, and raw Qt objects
+are not exposed by this adapter. `steed_session_watch` needs explicit `attach`
+permission and opens a browser-owned window; taking and returning control are
+trusted user actions, unavailable to external clients.
 
 `steed_browser_context` needs an active task but no site grant. It returns
 `window_id`, `profile`, `profile_selector`, `shared_profile_available`, and
@@ -1218,6 +1221,45 @@ guess. Closed windows are excluded. Incognito (`search`) and `global` cannot be
 selected for shared task sessions, so their selector is null. Discovery grants
 no access, and switching profiles never retargets existing grants or sessions.
 Restart Steed after updating the browser source to expose the new context tool.
+
+### Watching and taking control
+
+Restart Steed after updating its source. Enable local agent access and connect
+the adapter as described above. To collaborate on an approved task page:
+
+1. Have the agent request `attach` and `read` with its site/profile scope.
+   Include `navigate`, `edit`, `scroll`, and `submit` only as needed; the usual
+   approval popup applies.
+2. Open **File → Task Permissions**, select the task and its session, then click
+   **Watch Page**. The agent can also call `steed_session_watch` with its
+   `session_id` to open this window.
+3. Watching shows the same page and profile while the agent continues. The
+   rendered page is read-only; opening the window never clones the session.
+4. Click **Take Control** after the current page operation finishes. Choose an
+   observed link or field and use **Open Link**, **Fill Field**, **Toggle**,
+   **Choose Option**, **Submit Form**, or the scroll buttons. The agent's page
+   operations and content reads are blocked until you return control.
+5. Click **Return to Agent** to continue delegation. The page and your edits
+   remain intact. Old target references are invalidated; the agent must inspect
+   again. `steed_session_inspect` reports `control_owner: "user"` or `"agent"`
+   so clients can wait for the handoff.
+
+This first takeover supports the same approved, scriptless actions as agent
+tasks. Direct clicking/typing inside the rendered page, website scripts,
+password/file forms, and custom controls remain unavailable. Site restrictions,
+operation budgets, and grant deadlines still apply during user control;
+ordinary browsing windows remain usable on the same profile.
+
+Closing an idle watch window, including Escape or closing its parent browser
+window, returns control and leaves the task page alive while another browser
+window remains. Closing during a pending user mutation cancels the task rather
+than resuming the agent with an uncertain action. **Cancel Task**, revocation,
+expiry, completion, disabling access, and last-window shutdown dispose owned
+pages and close their watch windows. Cancellation cannot undo an effect already
+sent to a website. Shared-profile cookies/storage follow the existing profile's
+normal lifetime.
+
+### Results and connection limits
 
 Results include matching text JSON and `structuredContent`, wrapped in
 `{"result": ...}`. Errors use `isError: true` and
@@ -1241,8 +1283,9 @@ new tasks; they still cannot adopt another connection's task or approve grants.
 
 Verified compatibility is MCP `2025-11-25` over stdio and Streamable HTTP, using
 an SDK client and an independent JSON-RPC client on each transport. The full A4
-milestone remains in progress: reconnect/resume semantics, watch/takeover,
-additional protocol revisions and broader client compatibility remain pending.
+milestone remains in progress: reconnect/resume semantics, additional protocol
+revisions and broader client compatibility remain pending. Same-page watch and
+scoped user handoff are implemented; broader collaboration UI is tracked in A7.
 
 ## Development checks
 
@@ -1282,9 +1325,13 @@ The current forced-script probes report `tested_routes_contained: false`.
 The optional MCP smoke requires `requirements-mcp.txt`. It runs an SDK client
 and a separate JSON-RPC client against a temporary, synthetic signed-in profile.
 The fixture alone clicks the approval popup and invokes trusted cancellation.
-It checks native edits/submission, stale handles, evidence without field values,
+It checks native edits/submission, watch/user handoff/return, blocked agent
+operations during takeover, stale handles, evidence without field values,
 shared cookies/profile identity, concurrent ordinary user POST, ownership denial,
-and task disposal. It never accesses an existing profile/account or proves that
+and task disposal. The trusted fixture alone uses the user controls to enter
+synthetic text. It saves `/tmp/steed-watch-stdio-preview.png` or
+`/tmp/steed-watch-http-preview.png` during takeover. It never accesses an existing
+profile/account or proves that
 a particular AI client/provider will plan a workflow successfully.
 The HTTP mode additionally checks credential-bound transport identity, raw-client
 document retrieval/completion, and DELETE cancellation of an owned task/page.
@@ -1300,6 +1347,35 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+Same-page watch and user handoff stage (October 2, 2026): the final 16 watch
+regressions passed in 3.448 seconds (`/tmp/steed-watch-focused-final.log`).
+They cover explicit attach authority, page/profile identity, read-only rendered
+input, user edits/navigation, queued and in-flight agent denial, stale targets
+and ownership keys, unchanged scopes, journal failure, revocation, busy close,
+Escape, direct widget deletion, and reopening before deferred deletion.
+A separate shared-window regression verifies parent-window close returns control
+without destroying the task's shared profile. Earlier combined gateway/service
+checks passed 47 tests in 8.248 seconds (`/tmp/steed-watch-focused.log`).
+
+Both MCP `2025-11-25` workflows passed
+(`/tmp/steed-watch-stdio-smoke.log`, `/tmp/steed-watch-http-smoke.log`).
+The trusted fixture took control, entered synthetic text through the user panel,
+verified the agent was denied, and returned the same page. The agent rejected
+its old references, inspected again, edited/submitted the native form, and
+finished while ordinary shared-profile user POST remained available. Entered
+values were absent from the journal. HTTP ownership and independent-client
+DELETE cancellation checks also passed. These isolated fixtures establish
+supported handoff behavior, not real-account or unrestricted native input
+acceptance. Website scripts remain unavailable.
+
+The full 308-test suite passed in 146.577 seconds
+(`/tmp/steed-watch-full.log`). Startup/render/shutdown passed
+(`/tmp/steed-watch-startup.log`), as did Ruff, formatting, whitespace, and
+`pip check`; 47 local documentation links passed. The synthetic handoff window
+was visually inspected from `/tmp/steed-watch-http-preview.png`.
+No native startup exit occurred in this stage; the intermittent
+Qt startup exit recorded below remains unresolved.
 
 Authenticated HTTP MCP stage (October 2, 2026): 13 focused HTTP/adapter tests
 passed in 1.434 seconds (`/tmp/steed-http-focused.log`). Coverage includes all
@@ -1683,8 +1759,9 @@ Opt-in private IPC and the official-SDK stdio/HTTP adapter expose current task
 operations with published input schemas, connection ownership, capability
 and selected-profile discovery, structured results, and existing user approval.
 Two independently implemented clients passed the synthetic shared-profile and
-cancellation workflow on MCP 2025-11-25 over both transports. Reconnect/resume,
-watch/takeover and broader client compatibility remain pending. See
+cancellation workflow on MCP 2025-11-25 over both transports. Reconnect/resume
+and broader client compatibility remain pending. Same-page
+watch and scoped user handoff are implemented. See
 [setup](#local-agent-access-mcp).
 
 - Maintained MCP SDK; stdio client-launched adapters and an authenticated loopback-only Streamable HTTP endpoint.
@@ -1713,7 +1790,12 @@ Acceptance: held-out comparisons against deterministic-only inspection measure c
 - Report partial results/blockers/uncertainty. Do not replay unfinished writes automatically after restart.
 - Acceptance: generic gateway tested against mock document/email MCP servers before real accounts.
 
-#### A7. Collaboration UI and declarative styling — pending
+#### A7. Collaboration UI and declarative styling — in progress
+
+Implemented: nonmodal same-page watch, trusted user takeover through supported
+scoped actions, return with fresh references, and lifecycle cleanup. Shared-profile
+and both MCP transport fixtures passed. Full activity/artifact UI, unrestricted
+pointer/custom controls, and declarative styling remain pending.
 
 - Task workspace shows agent identity/objective/authority/status/activity/artifacts/evidence.
 - Watch attaches a view without taking control. Takeover obtains exclusive ownership and blocks agent mutations. Resume invalidates stale snapshots. Cancel stops queued/new commands; dispatched external effects may require reconciliation rather than rollback.

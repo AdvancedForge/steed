@@ -47,6 +47,7 @@ class SessionSnapshot:
     loading: bool
     revision: int
     load_success: bool | None
+    control_owner: str = "agent"
 
 
 @dataclass(frozen=True)
@@ -194,6 +195,7 @@ class QtSession:
     pending_navigation: Future | None = None
     pending_action: Future | None = None
     waits: set[Future] = field(default_factory=set)
+    control_owner: str = "agent"
 
 
 class QtBrowserBackend(QObject):
@@ -336,6 +338,7 @@ class QtBrowserBackend(QObject):
             session.loading,
             session.revision,
             session.load_success,
+            session.control_owner,
         )
 
     def navigate(self, session_id, url):
@@ -981,14 +984,39 @@ class QtBrowserBackend(QObject):
     def attach_view(self, session_id, parent=None):
         session = self._session(session_id)
         session.grant.check("attach")
+        if session.pending_action is not None:
+            raise PageInspectionError("session_busy")
         session.views = [view for view in session.views if not sip.isdeleted(view)]
         if session.views:
             return session.views[0]
         view = QWebEngineView(parent)
         view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         view.setPage(session.page)
+        from ui.task_watch import InputShield
+
+        view.input_shield = InputShield(view)
+        self.inspector.invalidate(session_id, "view_attached")
+        session.revision += 1
         session.views.append(view)
         return view
+
+    def check_control_change(self, session_id):
+        session = self._session(session_id)
+        if (
+            session.loading
+            or session.pending_action is not None
+            or session.pending_navigation is not None
+        ):
+            raise PageInspectionError("session_busy")
+
+    def change_control(self, session_id, owner):
+        self.check_control_change(session_id)
+        session = self._session(session_id)
+        self._cancel_waits(session, "control_changed")
+        self.inspector.invalidate(session_id, "control_changed")
+        session.revision += 1
+        session.control_owner = owner
+        return self.inspect(session_id)
 
     def close_session(self, session_id):
         session = self._session(session_id)

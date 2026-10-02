@@ -92,6 +92,7 @@ class AgentGatewayTests(unittest.TestCase):
     def test_context_is_bound_to_an_active_task_and_never_opens_a_page(self):
         socket = self.connect()
         self.assertIn("error", self.call(socket, "browser.context"))
+
         task_id = self.start(socket)
         self.assertEqual(
             self.call(socket, "browser.context")["result"],
@@ -108,6 +109,24 @@ class AgentGatewayTests(unittest.TestCase):
         self.assertEqual(self.service.store.grants(task_id), [])
         self.call(socket, "task.finish", status="completed")
         self.assertIn("error", self.call(socket, "browser.context"))
+
+    def test_external_watch_returns_metadata_but_never_user_control_authority(self):
+        first, second = self.connect(), self.connect()
+        task = self.start(first)
+        self.start(second)
+        session_id = self.approved_session(first, task)
+        result = self.call(first, "session.watch", session_id=session_id)["result"]
+        self.assertEqual(
+            result,
+            {"session_id": session_id, "watching": True, "control_owner": "agent"},
+        )
+        self.assertEqual(
+            self.call(second, "session.watch", session_id=session_id)["error"]["code"],
+            "session_not_owned",
+        )
+        for name in ("user.command", "session.take_control", "session.return_control"):
+            self.assertIn("error", self.call(first, name))
+        self.assertFalse(self.service._controls)
 
     def test_approval_is_required_and_cannot_be_supplied_by_client(self):
         socket = self.connect()
