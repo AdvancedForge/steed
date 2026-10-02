@@ -9,6 +9,14 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 2, 2026
 
+Result-retention milestone: **Task Permissions → Apps** can clear a saved provider
+result or the selected task's own results. Clearing removes text/links and shared
+receipt summaries atomically, persists across restart, and suppresses late-worker
+restoration. Outcomes and operation/request identity remain for recovery and
+historical-write protection. Only trusted UI can clear; agents cannot erase their
+receipts. Independently approved checks and drafts keep their own lifetimes.
+See [retention controls](DOCUMENTATION.md#clearing-saved-app-results).
+
 Archived receipt milestone: a fresh follow-up can check a user-shared uncertain
 app receipt with exact **read-only** account/tool/destination permission. Checks
 have their own durable receipt and cancellation/budget lifecycle, but use the
@@ -38,15 +46,14 @@ First-time Cloud registration still needs user-owned setup. Validation is record
 in [DOCUMENTATION.md](DOCUMENTATION.md#verification-record).
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-501-test suite passed in 245.296 seconds (`/tmp/steed-archived-final-full.log`),
-with twenty-two final targeted checks passing after the in-flight absence guard
-(`/tmp/steed-archived-focused-final.log`). Coverage includes
+518-test suite passed in 255.304 seconds (`/tmp/steed-retention-full.log`),
+including seventeen result-retention regressions. Coverage includes
 scoped uploads/downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-archived-startup.log`); the synthetic Google HTTP/OAuth check passed
-(`/tmp/steed-archived-google.log`).
+(`/tmp/steed-retention-startup.log`); the synthetic Google HTTP/OAuth check passed
+(`/tmp/steed-retention-google.log`).
 Actual Chromium notification requests passed once/saved/forget/private behavior
 (`/tmp/steed-site-native.log`); synthetic Google API and both MCP transports passed.
 The artifact HTTP fixture hit the tracked native startup exit 139; identical retry
@@ -80,16 +87,17 @@ establishes those results. Password improvements remain deferred at the user's r
 
 ### Resume checkpoint
 
-- **Latest engineering checkpoint:** archived app receipt checks under fresh exact
-  read-only grants, independent owned probe receipts, schema-7 source mappings,
-  atomic confirmation and late-worker protection. Use `steed_app_reconcile_history`
-  after user-selected recovery; **Task Permissions → Apps** shows Previous rows.
-  Inactive tasks/grants remain closed, and mutation callbacks are never replayed.
-- **Next engineering follow-up:** bounded user controls for retained provider
-  result text while preserving request identity, append-only evidence and historical
-  write protection. Additional provider/destination mappings and agent-managed
-  mode remain separate milestones. Real-account acceptance needs user-owned Google
-  setup and explicit approval; active website scripts still need native engine support.
+- **Latest engineering checkpoint:** user-controlled provider result retention,
+  schema-8 clear markers, atomic scrubbing of shared summaries, late-result
+  suppression and intact historical-write protection. **Task Permissions → Apps**
+  supports per-receipt and owned-task clearing. No agent clearing endpoint exists.
+  Archived read-only checks remain available under fresh exact permissions.
+- **Next engineering follow-up:** Google document destination selection/editing
+  within the existing account and `drive.file` access boundary. Destination identity
+  and immutable draft binding must remain exact. Broader provider access, automatic
+  retention policies and agent-managed mode remain separate decisions/milestones.
+  Real-account acceptance needs user-owned setup and explicit approval; website
+  scripts remain deferred until compatible native engine support exists.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
@@ -112,7 +120,8 @@ edits, scrolling, and waits.**
 Autonomous milestones: scoped downloads `229cfe4`, task activity/receipts `6ad9b1a`,
 scoped uploads `027a860`, retained task artifacts `333965c`, scoped app operations
 `21790d3`, Google connections `db9e209`, permission/setup usability `7122e9a`,
-safe material recovery `a34fee5`, and the archived receipt checkpoint described above.
+safe material recovery `a34fee5`, archived receipt checks `7338b12`, and the
+result-retention checkpoint described above.
 Continued from watch/control commit `045b706`,
 following HTTP MCP commit `8266c37`
 and basic MCP commit `d663fc5`
@@ -330,8 +339,9 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   tools remain absent until configured. Setup and limitations are documented in
   [Google app connections](DOCUMENTATION.md#google-app-connections).
   Publishing a shared Steed OAuth client/verification is a separate future decision.
-  Archived-task recovery with fresh approval, app result retention, agent-managed
-  mode and additional provider adapters remain follow-ups. Keep Gmail send-only
+  Archived-task recovery with fresh approval and user-owned result clearing are
+  implemented. Automatic retention policies, agent-managed mode and additional
+  provider adapters remain follow-ups. Keep Gmail send-only
   unless the user deliberately chooses broader mailbox access.
 - **Future script acceptance:** obtain a compatible embedded engine/native hook and integrate
   trusted connection/worker policy delivery before document code executes.
@@ -693,8 +703,9 @@ protection is implemented. Archived receipts now support exact read-only checks
 under fresh authority, with independently owned receipts and atomic confirmation.
 Google HTTP acceptance after restart recorded one Doc/email with no repeat mutation;
 both independent MCP clients passed over both transports. Remaining: real Google
-acceptance, additional providers, folder selection/editing, broader result retention
-and agent-managed mode. Gmail uncertain-send recovery deliberately stays manual with
+acceptance, additional providers, folder selection/editing, automatic retention
+policies and agent-managed mode. User-owned clearing of saved result text/links is
+implemented without deleting receipt identity or the append-only journal. Gmail uncertain-send recovery deliberately stays manual with
 send-only OAuth access. A shared production OAuth client/publishing model needs
 separate user judgment. Acceptance of the gateway/Google adapter is synthetic;
 real-account acceptance remains pending.

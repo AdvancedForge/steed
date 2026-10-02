@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS recovery_effects (
     sha256 TEXT NOT NULL,
     PRIMARY KEY (task_id, source_task_id, request_id)
 );
+CREATE INDEX IF NOT EXISTS recoveries_by_source ON task_recoveries(source_task_id);
 """
 MAX_RECOVERY_BYTES = 128 * 1024
 MAX_RECOVERY_ARTIFACTS = 10

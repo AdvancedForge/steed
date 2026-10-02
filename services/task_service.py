@@ -248,6 +248,18 @@ class TaskService(QObject):
         self._active(task_id)
         return self.connectors.describe()
 
+    def clear_app_results(self, task_id, request_ids=None):
+        """Only trusted browser UI clears retained results; clients cannot erase evidence."""
+        require_owner_thread(self)
+        self._usable()
+        try:
+            count = self.connector_store.clear_results(task_id, request_ids)
+        except (sqlite3.Error, OSError, RuntimeError):
+            self._fatal()
+            raise
+        self.changed.emit()
+        return count
+
     def _app_grant(self, task_id, record, *, consume=False):
         arguments = {
             "connector": record.connector,

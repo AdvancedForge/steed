@@ -372,6 +372,16 @@ def check():
                 raise AssertionError("Gmail send must not acquire mailbox lookup")
             assert len(documents) == len(messages) == 1
             assert [item for item in wire[len(before) :] if item[0] == "POST"] == []
+            reopened.clear_app_results(task.task_id, ["document"])
+            reopened.clear_app_results(followup.task_id)
+            cleared = resolve(
+                probe_client.submit("app.status", request_id="archived-document")
+            )
+            assert cleared.state == "succeeded" and cleared.result_cleared_at
+            assert not cleared.reference and not cleared.text
+            assert not reopened.store.recovery(followup.task_id)["context"][
+                "app_receipts"
+            ][0]["reference"]
             panel = TaskDialog(reopened)
             row = next(
                 i
@@ -389,6 +399,7 @@ def check():
             panel.show()
             app.processEvents()
             panel.grab().save("/tmp/steed-archived-receipts.png")
+            panel.grab().save("/tmp/steed-retention-receipts.png")
             panel.close()
             sip.delete(panel)
             reopened.close()

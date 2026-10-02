@@ -415,6 +415,25 @@ async def sdk_client(
             ) == checked
             shared["uncertain_email_reconciled_without_replay"] = True
             shared["sdk_archived_read_only_probe"] = True
+            shared["sdk_retention_task"] = followup["task_id"]
+            deadline = time.monotonic() + 15
+            while not shared.get("sdk_results_cleared"):
+                assert time.monotonic() < deadline, "Trusted result clearing timed out"
+                await asyncio.sleep(0.02)
+            cleared = await call("app.status", request_id="archived-email")
+            assert cleared["state"] == "succeeded" and cleared["result_cleared_at"]
+            assert not cleared["text"] and not cleared["reference"]
+            assert all(
+                not r["text"] and not r["reference"]
+                for r in (await call("task.recovery"))["context"]["app_receipts"]
+            )
+            assert (
+                await call(
+                    "app.reconcile_history",
+                    source_request_id="uncertain-email",
+                    request_id="archived-email",
+                )
+            ) == cleared
             replay = await client.call_tool(
                 "steed_app_call_tool",
                 {
@@ -624,6 +643,20 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     checked = app_result("archived-email")
     assert checked["state"] == "succeeded" and checked["effect"] == "read"
     shared["raw_archived_read_only_probe"] = True
+    shared["raw_retention_task"] = followup["task_id"]
+    deadline = time.monotonic() + 15
+    while not shared.get("raw_results_cleared"):
+        assert time.monotonic() < deadline, (
+            "Independent trusted result clearing timed out"
+        )
+        time.sleep(0.02)
+    cleared = call("app.status", request_id="archived-email")
+    assert cleared["state"] == "succeeded" and cleared["result_cleared_at"]
+    assert not cleared["text"] and not cleared["reference"]
+    assert all(
+        not r["text"] and not r["reference"]
+        for r in call("task.recovery")["context"]["app_receipts"]
+    )
     replay = request(
         "tools/call",
         {
@@ -901,6 +934,15 @@ def check(transport="stdio"):
         user_edit_started = False
         while worker.is_alive() and time.monotonic() < deadline:
             case.app.processEvents()
+            for label, source in (
+                ("sdk", shared.get("task_id")),
+                ("raw", shared.get("raw_approval_task")),
+            ):
+                owner = shared.get(label + "_retention_task")
+                if owner and not shared.get(label + "_results_cleared"):
+                    case.service.clear_app_results(owner)
+                    case.service.clear_app_results(source)
+                    shared[label + "_results_cleared"] = True
             dialog = case.registry.task_approvals.dialog
             if dialog is not None and dialog.isVisible():
                 assert not dialog.isModal()

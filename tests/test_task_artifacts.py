@@ -116,7 +116,7 @@ class ArtifactStoreTests(unittest.TestCase):
         self.assertEqual(self.store.events(self.task)[:-1], events)
         self.assertEqual(self.store.artifacts(self.task), [])
         with sqlite3.connect(self.path) as database:
-            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 8)
 
     def test_user_deletion_is_atomic_and_keeps_content_free_evidence(self):
         saved = self.store.store_artifact(self.task, "Draft", "PRIVATE_DRAFT")

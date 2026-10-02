@@ -54,6 +54,7 @@ control through supported actions, and return it to the agent. Task notes and
 drafts can be retained with explicit permission and reviewed later. Optional Google
 Docs/Gmail connections use desktop-keyring credentials and scoped task approvals.
 Shared archived Doc receipts can be checked with fresh read-only access.
+Saved app results can be cleared while keeping recovery and duplicate-write evidence.
 Synthetic workflows pass, with real-account verification pending. The connection
 system supports additional provider adapters. See
 [agent setup](DOCUMENTATION.md#local-agent-access-mcp) and
