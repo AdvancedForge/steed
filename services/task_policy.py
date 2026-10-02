@@ -23,6 +23,7 @@ SUPPORTED_ACTIONS = frozenset(
         "submit",
         "download",
         "upload",
+        "artifact",
     }
 )
 

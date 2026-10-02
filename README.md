@@ -50,7 +50,8 @@ files and upload sites; selection and submission are separate actions. Active
 scripts remain planned.
 Optional local MCP access over stdio or authenticated local HTTP connects clients
 to the running browser's task capabilities. You can watch a task's page, take
-control through supported actions, and return it to the agent. See
+control through supported actions, and return it to the agent. Task notes and
+drafts can be retained with explicit permission and reviewed later. See
 [agent setup](DOCUMENTATION.md#local-agent-access-mcp).
 Bookmarks and generic extension support are planned.
 

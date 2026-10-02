@@ -28,6 +28,7 @@ ACTION_LABELS = {
     "submit": "Submit forms on these sites (can change account data)",
     "download": "Save downloads to the exact files listed below (no overwriting)",
     "upload": "Send the listed local files to the listed upload sites",
+    "artifact": "Save and read task notes/drafts here (kept after the task ends)",
 }
 
 

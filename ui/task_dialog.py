@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 from services.task_store import ACTIVE_STATUSES
@@ -54,6 +55,24 @@ class TaskDialog(QDialog):
         self.activity = QPlainTextEdit()
         self.activity.setReadOnly(True)
         self.panels.addTab(self.activity, "Activity")
+        artifacts = QWidget()
+        artifact_layout = QVBoxLayout(artifacts)
+        artifact_notice = QLabel(
+            "Agent-generated notes and drafts. Sources refer to recorded page "
+            "inspections; their claims are not verified. Content is shown as plain text."
+        )
+        artifact_notice.setWordWrap(True)
+        artifact_layout.addWidget(artifact_notice)
+        self.artifacts = QComboBox()
+        self.artifacts.currentIndexChanged.connect(self.show_artifact)
+        artifact_layout.addWidget(self.artifacts)
+        self.artifact_preview = QPlainTextEdit()
+        self.artifact_preview.setReadOnly(True)
+        artifact_layout.addWidget(self.artifact_preview)
+        self.delete_artifact_button = QPushButton("Delete Selected Draft")
+        self.delete_artifact_button.clicked.connect(self.delete_artifact)
+        artifact_layout.addWidget(self.delete_artifact_button)
+        self.panels.addTab(artifacts, "Artifacts")
         self.downloads = QTableWidget(0, 4)
         self.downloads.setHorizontalHeaderLabels(["File", "State", "Bytes", "Result"])
         self.downloads.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -263,6 +282,8 @@ class TaskDialog(QDialog):
             self.downloads.setRowCount(0)
             self._download_rows = []
             self.update_download_action()
+            self.artifacts.clear()
+            self.artifact_preview.clear()
             return
         task = selected[0]
         try:
@@ -328,8 +349,77 @@ class TaskDialog(QDialog):
                     self.downloads.selectRow(row)
             self.downloads.blockSignals(False)
             self.update_download_action()
+            previous = self.artifacts.currentData()
+            self.artifacts.blockSignals(True)
+            self.artifacts.clear()
+            for artifact in self.service.store.artifacts(task.task_id):
+                self.artifacts.addItem(artifact.title, artifact.artifact_id)
+            index = self.artifacts.findData(previous)
+            if index >= 0:
+                self.artifacts.setCurrentIndex(index)
+            self.artifacts.blockSignals(False)
+            self.show_artifact()
         except (sqlite3.Error, OSError, ValueError, KeyError):
             self.service._fatal()
+
+    def show_artifact(self):
+        selected = self.selection()
+        artifact_id = self.artifacts.currentData()
+        self.delete_artifact_button.setEnabled(
+            bool(
+                selected
+                and artifact_id
+                and not self.service._closed
+                and not self.service.failure
+            )
+        )
+        if (
+            not selected
+            or not artifact_id
+            or self.service._closed
+            or self.service.failure
+        ):
+            self.artifact_preview.clear()
+            return
+        try:
+            artifact = self.service.store.artifact(selected[0].task_id, artifact_id)
+            sources = (
+                ", ".join(f"#{s}" for s in artifact.source_events) or "None supplied"
+            )
+            content = (
+                f"Agent-generated {artifact.format}; {artifact.byte_count:,} bytes\n"
+                f"SHA-256: {artifact.sha256}\nPage inspection evidence: {sources}\n\n"
+                + artifact.content
+            )
+            if self.artifact_preview.toPlainText() != content:
+                self.artifact_preview.setPlainText(content)
+        except (sqlite3.Error, OSError, ValueError, KeyError):
+            self.service._fatal()
+
+    def delete_artifact(self):
+        selected = self.selection()
+        artifact_id = self.artifacts.currentData()
+        if (
+            not selected
+            or not artifact_id
+            or self.service._closed
+            or self.service.failure
+        ):
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "Delete draft?",
+                "Delete this retained draft? This cannot be undone.",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        try:
+            self.service.store.delete_artifact(selected[0].task_id, artifact_id)
+        except (sqlite3.Error, OSError, ValueError, KeyError):
+            self.service._fatal()
+        self.refresh_activity()
 
     def update_download_action(self):
         row = self.downloads.currentRow()
