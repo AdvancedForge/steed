@@ -183,6 +183,139 @@ class AppConnectionTests(unittest.TestCase):
         )
         return self.resolve(client.submit("app.status", request_id=request_id))
 
+    def prepared_document(self):
+        client, _ = self.grant()
+        self.call(client, self.artifact(client))
+        self.assertEqual(self.settled(client).state, "succeeded")
+        return "doc:synthetic-doc:tab:t.0"
+
+    def test_google_append_needs_exact_tab_and_retains_immutable_draft_receipt(self):
+        destination = self.prepared_document()
+        client, _ = self.grant(tool="append_document", destination=destination)
+        artifact = self.artifact(client)
+        self.call(client, artifact, tool="append_document", destination=destination)
+        result = self.settled(client)
+        self.assertEqual(result.state, "succeeded")
+        self.assertEqual(result.artifact_id, artifact.artifact_id)
+        self.assertEqual(result.destination, destination)
+        for other in ("doc:synthetic-doc:tab:t.other", "doc:other:tab:t.0"):
+            with self.subTest(other=other), self.assertRaises(PermissionError):
+                self.call(
+                    client,
+                    artifact,
+                    tool="append_document",
+                    destination=other,
+                    request_id="other",
+                )
+        self.assertEqual(
+            self.call(
+                client, artifact, tool="append_document", destination=destination
+            ).state,
+            "succeeded",
+        )
+        self.assertEqual(len(self.http.append_writes), 1)
+
+    def test_google_append_read_probe_grant_does_not_allow_write(self):
+        destination = self.prepared_document()
+        client, _ = self.grant(
+            tool="append_document", effect="read", destination=destination
+        )
+        with self.assertRaises(PermissionError):
+            self.call(
+                client,
+                self.artifact(client),
+                tool="append_document",
+                destination=destination,
+            )
+        self.assertFalse(self.http.append_writes)
+
+    def test_google_append_lost_ack_reconciles_without_replaying_write(self):
+        destination = self.prepared_document()
+        client, _ = self.grant(tool="append_document", destination=destination)
+        self.http.lose_append = True
+        self.call(
+            client,
+            self.artifact(client),
+            tool="append_document",
+            destination=destination,
+        )
+        self.assertEqual(self.settled(client).state, "uncertain")
+        self.resolve(client.submit("app.reconcile", request_id="doc-1"))
+        self.assertEqual(self.settled(client).state, "succeeded")
+        self.assertEqual(len(self.http.append_writes), 1)
+
+    def test_google_append_archived_receipt_uses_fresh_read_grant_without_draft(self):
+        destination = self.prepared_document()
+        client, _ = self.grant(tool="append_document", destination=destination)
+        self.http.lose_append = True
+        self.call(
+            client,
+            self.artifact(client),
+            tool="append_document",
+            destination=destination,
+        )
+        self.assertEqual(self.settled(client).state, "uncertain")
+        self.service._finish_task(client.task_id)
+        followup = self.service._create("Inspect previous append")
+        self.service._request_recovery(followup.task_id)
+        self.service.approve_recovery(
+            followup.task_id, client.task_id, [], evidence=True
+        )
+        grant = self.service._request_grant(
+            followup.task_id,
+            {
+                "actions": ["app"],
+                "connector_permissions": [
+                    {
+                        "connector": self.account.connector,
+                        "tool": "append_document",
+                        "effect": "read",
+                        "destination": destination,
+                    }
+                ],
+            },
+        )
+        self.service.approve_grant(followup.task_id, grant.grant_id)
+        reader = self.service.client(followup.task_id)
+        self.resolve(
+            reader.submit(
+                "app.reconcile_history",
+                source_request_id="doc-1",
+                request_id="archived-append",
+            )
+        )
+        checked = self.settled(reader, "archived-append")
+        self.assertEqual(checked.state, "succeeded")
+        self.assertEqual(checked.effect, "read")
+        self.assertEqual(checked.artifact_id, "")
+        self.assertEqual(
+            self.service.connector_store.get(client.task_id, "doc-1").state, "succeeded"
+        )
+        self.assertEqual(len(self.http.append_writes), 1)
+        self.assertEqual(self.service.store.artifacts(followup.task_id), [])
+
+    def test_google_append_grant_without_artifact_permission_is_rejected_before_approval(
+        self,
+    ):
+        destination = self.prepared_document()
+        task = self.service._create("No draft permission")
+        with self.assertRaises(ValueError):
+            self.service._request_grant(
+                task.task_id,
+                {
+                    "actions": ["app"],
+                    "connector_permissions": [
+                        {
+                            "connector": self.account.connector,
+                            "tool": "append_document",
+                            "effect": "write",
+                            "destination": destination,
+                        }
+                    ],
+                },
+            )
+        self.assertFalse(self.http.append_writes)
+
     def test_google_folder_receipts_and_nested_document_need_separate_exact_grants(
         self,
     ):

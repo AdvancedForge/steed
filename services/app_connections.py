@@ -47,7 +47,7 @@ class AppConnections(QObject):
                     connect_google,
                     lambda account, store: GoogleConnector(account, store).tools(),
                     "1. Open Google Setup and choose your Cloud project.\n"
-                    "2. Enable Drive API and/or Gmail API; configure consent and add your test account.\n"
+                    "2. Enable Drive and Docs APIs for documents, and/or Gmail API for sends; configure consent and add your test account.\n"
                     "3. Create a Desktop app OAuth client, download its JSON, and choose it below.\n"
                     "Then click Connect Google. Consent opens your system browser.",
                     "Google Desktop OAuth client JSON (from Google Cloud)",

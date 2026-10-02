@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 from services.app_accounts import AccountError, ClientSetupRequired
 from services.app_oauth import ApiError, AppHttp, desktop_authorization
 from services.connectors import ConnectorOutcome, ConnectorTool
+from services.google_documents import GoogleDocuments
 from services.task_artifacts import artifact_input
 
 AUTHORIZATION = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -36,6 +37,7 @@ def google_http():
             "https://openidconnect.googleapis.com",
             "https://www.googleapis.com",
             "https://gmail.googleapis.com",
+            "https://docs.googleapis.com",
         }
     )
 
@@ -247,6 +249,7 @@ class GoogleConnector:
         self.http = http if http is not None else google_http()
         self._lock = threading.Lock()
         self._credential = None
+        self.documents = GoogleDocuments(self)
 
     def tools(self):
         definitions = []
@@ -301,6 +304,7 @@ class GoogleConnector:
                     ),
                 ]
             )
+            definitions.extend(self.documents.tools())
         return definitions
 
     def _access(self, cancelled):
@@ -473,7 +477,8 @@ class GoogleConnector:
         ):
             raise ApiError()
         return ConnectorOutcome(
-            reference=f"https://docs.google.com/document/d/{file_id}/edit"
+            reference=f"https://docs.google.com/document/d/{file_id}/edit",
+            text=json.dumps({"destination": "doc:" + file_id}),
         )
 
     def find_document(self, probe, cancelled):
