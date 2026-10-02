@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import json
 import select
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -20,6 +21,7 @@ from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from mock_app_connector import register_mock_apps
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import QWebEngineHttpRequest, QWebEngineSettings
 from test_task_profiles import TaskProfileTests
@@ -82,6 +84,11 @@ async def sdk_client(
                 "task.start", objective="Complete a synthetic form beside the user"
             )
             shared["task_id"] = task["task_id"]
+            app_tools = await call("app.list_tools")
+            assert {(t["connector"], t["effect"]) for t in app_tools} == {
+                ("documents", "write"),
+                ("email", "send"),
+            }
             assert not (await call("task.capabilities"))["website_scripts"]
             context = await call("browser.context")
             assert context["profile_selector"] == "existing:work"
@@ -109,13 +116,29 @@ async def sdk_client(
                         "download",
                         "upload",
                         "artifact",
+                        "app",
                     ],
                     "duration_seconds": 120,
+                    "max_operations": 500,
                     "download_destinations": [destination],
                     "max_download_bytes": 1024 * 1024,
                     "upload_sources": [source],
                     "upload_origins": [origin],
                     "max_upload_bytes": 1024 * 1024,
+                    "connector_permissions": [
+                        {
+                            "connector": "documents",
+                            "tool": "create",
+                            "effect": "write",
+                            "destination": "synthetic-workspace",
+                        },
+                        {
+                            "connector": "email",
+                            "tool": "send",
+                            "effect": "send",
+                            "destination": "fixture@example.test",
+                        },
+                    ],
                 },
             )
             deadline = time.monotonic() + 15
@@ -258,6 +281,66 @@ async def sdk_client(
                 await call("task.events", limit=1000)
             )
             shared["artifact_completed"] = True
+
+            async def app_result(request_id):
+                deadline = time.monotonic() + 20
+                while True:
+                    receipt = await call("app.status", request_id=request_id)
+                    if receipt["state"] not in {
+                        "requested",
+                        "dispatched",
+                        "reconciling",
+                    }:
+                        return receipt
+                    assert time.monotonic() < deadline, "Mock app workflow timed out"
+                    await asyncio.sleep(0.1)
+
+            document_args = {
+                "connector": "documents",
+                "tool": "create",
+                "request_id": "document-1",
+                "destination": "synthetic-workspace",
+                "artifact_id": artifact["artifact_id"],
+            }
+            await call("app.call_tool", **document_args)
+            document = await app_result("document-1")
+            assert document["state"] == "succeeded" and document[
+                "reference"
+            ].startswith("document-")
+            assert (await call("app.call_tool", **document_args))[
+                "reference"
+            ] == document["reference"]
+            email = await call(
+                "artifact.store",
+                title="Synthetic email",
+                content="Synthetic document reference: " + document["reference"],
+                source_events=sources,
+            )
+            denied = await client.call_tool(
+                "steed_app_call_tool",
+                {
+                    "connector": "email",
+                    "tool": "send",
+                    "request_id": "foreign-recipient",
+                    "destination": "outside@example.test",
+                    "artifact_id": email["artifact_id"],
+                },
+            )
+            assert denied.isError
+            email_args = {
+                "connector": "email",
+                "tool": "send",
+                "request_id": "uncertain-email",
+                "destination": "fixture@example.test",
+                "artifact_id": email["artifact_id"],
+            }
+            await call("app.call_tool", **email_args)
+            assert (await app_result("uncertain-email"))["state"] == "uncertain"
+            assert (await call("app.call_tool", **email_args))["state"] == "uncertain"
+            await call("app.reconcile", request_id="uncertain-email")
+            assert (await app_result("uncertain-email"))["state"] == "succeeded"
+            shared["mock_document_email_completed"] = True
+            shared["uncertain_email_reconciled_without_replay"] = True
             revoke.set()
             deadline = time.monotonic() + 15
             while not revoked.is_set():
@@ -274,7 +357,7 @@ async def sdk_client(
             shared["cancellation_denied_further_access"] = True
 
 
-def raw_workflow(request, notify, foreign_session):
+def raw_workflow(request, notify, foreign_session, origin, shared):
     request(
         "initialize",
         {
@@ -316,17 +399,114 @@ def raw_workflow(request, notify, foreign_session):
         },
     )
     assert not result["isError"]
+    shared["raw_approval_task"] = result["structuredContent"]["result"]["task_id"]
     denied = request("tools/call", {"name": "steed_session_open", "arguments": {}})
     assert (
         denied["isError"]
         and denied["structuredContent"]["error"]["code"] == "approval_required"
     )
+
+    def call(command, **arguments):
+        result = request(
+            "tools/call",
+            {"name": "steed_" + command.replace(".", "_"), "arguments": arguments},
+        )
+        assert not result["isError"], result
+        return result["structuredContent"]["result"]
+
+    call(
+        "grant.request",
+        scope={
+            "origins": [origin],
+            "allow_private_network": True,
+            "actions": ["navigate", "inspect", "read", "artifact", "app"],
+            "max_operations": 500,
+            "connector_permissions": [
+                {
+                    "connector": "documents",
+                    "tool": "create",
+                    "effect": "write",
+                    "destination": "synthetic-workspace",
+                },
+                {
+                    "connector": "email",
+                    "tool": "send",
+                    "effect": "send",
+                    "destination": "fixture@example.test",
+                },
+            ],
+        },
+    )
+    deadline = time.monotonic() + 15
+    while call("grant.list")[0]["status"] != "approved":
+        assert time.monotonic() < deadline
+        time.sleep(0.02)
+    session = call("session.open")
+    call(
+        "session.navigate",
+        session_id=session["session_id"],
+        url=origin + "/raw-research",
+    )
+    call("page.wait", session_id=session["session_id"])
+    snapshot = call("page.inspect", session_id=session["session_id"])
+    assert snapshot["frames"][0]["text"]
+    sources = [
+        e["sequence"]
+        for e in call("task.events", limit=1000)
+        if e["kind"] == "page.inspected"
+    ][-1:]
+    draft = call(
+        "artifact.store",
+        title="Independent draft",
+        content="RAW_SYNTHETIC_DRAFT",
+        source_events=sources,
+    )
+
+    def app_result(request_id):
+        deadline = time.monotonic() + 20
+        while True:
+            result = call("app.status", request_id=request_id)
+            if result["state"] not in {"requested", "dispatched", "reconciling"}:
+                return result
+            assert time.monotonic() < deadline
+            time.sleep(0.1)
+
+    document_args = {
+        "connector": "documents",
+        "tool": "create",
+        "request_id": "document-1",
+        "destination": "synthetic-workspace",
+        "artifact_id": draft["artifact_id"],
+    }
+    call("app.call_tool", **document_args)
+    document = app_result("document-1")
+    assert document["state"] == "succeeded"
+    assert call("app.call_tool", **document_args)["reference"] == document["reference"]
+    email = call(
+        "artifact.store",
+        title="Independent email",
+        content="Synthetic document reference: " + document["reference"],
+        source_events=sources,
+    )
+    email_args = {
+        "connector": "email",
+        "tool": "send",
+        "request_id": "uncertain-email",
+        "destination": "fixture@example.test",
+        "artifact_id": email["artifact_id"],
+    }
+    call("app.call_tool", **email_args)
+    assert app_result("uncertain-email")["state"] == "uncertain"
+    assert call("app.call_tool", **email_args)["state"] == "uncertain"
+    call("app.reconcile", request_id="uncertain-email")
+    assert app_result("uncertain-email")["state"] == "succeeded"
+    shared["independent_raw_app_workflow"] = True
     result = request("tools/call", {"name": "steed_task_finish", "arguments": {}})
     assert not result["isError"]
     return True
 
 
-def raw_client(discovery, foreign_session):
+def raw_client(discovery, foreign_session, origin, shared):
     """Independent JSON-RPC client: no MCP SDK on this side of the protocol."""
     process = subprocess.Popen(
         [
@@ -363,7 +543,7 @@ def raw_client(discovery, foreign_session):
         process.stdin.flush()
 
     try:
-        return raw_workflow(request, notify, foreign_session)
+        return raw_workflow(request, notify, foreign_session, origin, shared)
     finally:
         process.stdin.close()
         try:
@@ -430,6 +610,8 @@ def raw_http_client(endpoint, foreign_session, foreign_http_session, origin, sha
             request,
             lambda: request("notifications/initialized", {}, notification=True),
             foreign_session,
+            origin,
+            shared,
         )
 
         def call(name, **arguments):
@@ -523,6 +705,8 @@ def check(transport="stdio"):
             "/mcp-upload-submitted": (200, None, b"<p>Upload received</p>"),
         }
         window.agent_access_action.trigger()
+        app_state = Path(case.directory.name) / "mock-apps.sqlite"
+        register_mock_apps(case.service.connectors, app_state)
         upload_source = Path(case.directory.name) / "mcp-upload.txt"
         upload_source.write_bytes(b"SYNTHETIC_MCP_UPLOAD_BYTES")
         discovery = case.registry.agent_gateway.discovery
@@ -564,7 +748,7 @@ def check(transport="stdio"):
                 )
                 if endpoint is None:
                     shared["independent_raw_client"] = raw_client(
-                        discovery, shared["session_id"]
+                        discovery, shared["session_id"], case.origin, shared
                     )
 
             except BaseException:
@@ -631,7 +815,7 @@ def check(transport="stdio"):
                     if t.task_id == shared["task_id"]
                 )
                 panel.table.selectRow(row)
-                panel.panels.setCurrentIndex(2)
+                panel.panels.setCurrentWidget(panel.downloads)
                 panel.show()
                 case.app.processEvents()
                 assert panel.downloads.item(0, 1).text() == "completed"
@@ -686,6 +870,24 @@ def check(transport="stdio"):
         shared["shared_cookie"] = True
         shared["ordinary_user_post"] = True
         shared["task_pages_disposed"] = True
+        with sqlite3.connect(app_state) as state:
+            results = state.execute(
+                "SELECT tool, destination, body FROM results ORDER BY tool"
+            ).fetchall()
+        assert len(results) == 4, results
+        documents = [row for row in results if row[0] == "document_create"]
+        emails = [row for row in results if row[0] == "email_send"]
+        assert len(documents) == len(emails) == 2
+        assert {row[1] for row in documents} == {"synthetic-workspace"}
+        assert {row[2] for row in documents} == {
+            "SYNTHETIC_RETAINED_DRAFT",
+            "RAW_SYNTHETIC_DRAFT",
+        }
+        assert {row[1] for row in emails} == {"fixture@example.test"}
+        assert all(
+            row[2].startswith("Synthetic document reference: document-")
+            for row in emails
+        )
         print(json.dumps(shared, indent=2))
     finally:
         case.registry.set_agent_access(False)

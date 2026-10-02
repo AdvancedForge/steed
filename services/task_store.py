@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from services.connector_store import CONNECTOR_SCHEMA
 from services.task_artifacts import (
     MAX_TASK_ARTIFACT_BYTES,
     MAX_TASK_ARTIFACTS,
@@ -66,11 +67,12 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3):
+        if version not in (0, 1, 2, 3, 4):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
-            self._db.executescript("""
+            self._db.executescript(
+                """
                 CREATE TABLE IF NOT EXISTS tasks (
                     task_id TEXT PRIMARY KEY,
                     objective TEXT NOT NULL,
@@ -119,8 +121,10 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 3;
-            """)
+                PRAGMA user_version = 4;
+            """
+                + CONNECTOR_SCHEMA
+            )
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():
             if task.status in ACTIVE_STATUSES:

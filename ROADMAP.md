@@ -10,12 +10,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 2, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-353-test suite passed in 245.973 seconds (`/tmp/steed-artifacts-full.log`), including
+374-test suite passed in 225.006 seconds (`/tmp/steed-connectors-full.log`), including
 scoped uploads/downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-artifacts-startup.log`); the preceding local Google HTTPS check passed.
+(`/tmp/steed-connectors-startup.log`); the preceding local Google HTTPS check passed.
 The artifact HTTP fixture hit the tracked native startup exit 139; identical retry
 passed. Twelve final artifact checks cover user-controlled draft deletion too.
 The previous form-stage Google fixture exited natively during `QWebEngineProfile`
@@ -37,6 +37,10 @@ scripted/custom forms and complete SPA acceptance remain pending. A4 includes
 opt-in local IPC and working stdio/HTTP MCP adapters for current task operations.
 A7 is in progress: users can watch the same task page, take control through
 supported actions, and return it with edits preserved and old references invalidated.
+A6 is in progress: a trusted connector gateway binds exact app tools/effects and
+destinations to immutable drafts, with durable receipts and read-only reconciliation.
+Mock document/email MCP workflows passed; the default browser has no real provider
+configured. Artifacts and app receipts have retained user review panels.
 Real-account login persistence, third-party Google sign-in, hardware permission
 flows, and ordinary site usability remain follow-up checks; no automated fixture
 establishes those results. Password improvements remain deferred at the user's request.
@@ -47,9 +51,11 @@ establishes those results. Password improvements remain deferred at the user's r
 submission and scoped uploads/downloads are implemented alongside inspection, links,
 edits, scrolling, and waits.**
 **A4 is in progress: external stdio and HTTP clients can use those operations.**
-**A7 is in progress: same-page watch and scoped user handoff are implemented.**
+**A7 is in progress: watch/handoff, retained drafts and app receipts are implemented.**
+**A6 is in progress: mock-tested scoped gateway and uncertain-write recovery.**
 Autonomous milestones: scoped downloads `229cfe4`, task activity/receipts `6ad9b1a`,
-scoped uploads `027a860`, and retained task artifacts in this milestone.
+scoped uploads `027a860`, retained task artifacts `333965c`, and scoped app operations
+in this milestone.
 Continued from watch/control commit `045b706`,
 following HTTP MCP commit `8266c37`
 and basic MCP commit `d663fc5`
@@ -106,7 +112,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   [assessment](DOCUMENTATION.md#bounded-engine-feasibility-assessment).
 - **Local MCP implemented:** File → Enable Local Agent Access opts in for this
   run. A private authenticated Unix socket connects the optional official-SDK
-  stdio adapter to the running Qt process. Twenty-eight published tool schemas use
+  stdio adapter to the running Qt process. Thirty-three published tool schemas use
   connection-bound active-task identity and the existing broker/grant checks. Clients
   cannot approve or adopt other tasks. Disconnect, timeout, disabling access,
   journal failure and browser shutdown remove access and dispose owned pages.
@@ -228,6 +234,29 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   remain pending. No rebuild has been started.
   Reconnect/resume, broader client compatibility, crash staging recovery and
   remaining A7 activity/artifact/styling work also stay pending.
+- **Connector gateway implemented:** trusted definitions, exact tool/effect/destination
+  scopes, immutable-draft binding, globally unique provider operation IDs and
+  persistent receipts. Duplicate local request IDs return their old receipt;
+  changed inputs and unauthorized destinations fail before adapter entry.
+  Cancellation/timeout after dispatch leave writes uncertain; a trusted read-only
+  lookup can confirm them without resending. Late observed outcomes remain visible
+  to the user after cancellation; restart never restores grants or replays work.
+  Task Permissions has an Apps panel for readable receipts, cancellation and
+  active-task reconciliation. Nineteen focused checks, the full 374-test suite,
+  both MCP document/email workflows and startup passed. Scope/receipt previews
+  were visually checked. An SDK client and independent JSON-RPC client each
+  completed the full workflow over both transports; exactly one document/email
+  per client was stored, with distinct provider IDs and no uncertain-send replay
+  (`/tmp/steed-connectors-independent-stdio.log`,
+  `/tmp/steed-connectors-independent-http.log`). Final connector/UI/status checks,
+  lint, formatting, whitespace, dependencies and local links passed. See
+  [app operations](DOCUMENTATION.md#browser-managed-application-operations).
+- **Next decision checkpoint:** select the first real provider/account workflow or
+  existing MCP service. Its destination/account model, authentication, OS secret
+  storage and receipt-lookup support must shape a concrete trusted adapter before
+  real writes are enabled. Default registries stay empty; no real account was
+  connected. Archived-task reconciliation with fresh approval, app result retention,
+  agent-managed mode and broader provider interoperability remain follow-ups.
 - **Future script acceptance:** obtain a compatible embedded engine/native hook and integrate
   trusted connection/worker policy delivery before document code executes.
   Chrome's native policy starts at 152; installed Qt embeds 140 and the latest
@@ -286,7 +315,8 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   requiring fresh approval. Real-entry-point startup/render/shutdown passed
   (`/tmp/steed-mcp-startup.log`). Lint/format/whitespace and 45 local links passed.
 - **Still pending:** full A3 form/SPA/file acceptance, later A2 authority, broader A4
-  interoperability/recovery, A5–A6, and remaining A7 work. Password improvements stay deferred.
+  interoperability/recovery, A5, remaining A6 real-provider/recovery work, and A7 styling.
+  Password improvements stay deferred.
   Real-account collaboration and interactive desktop checks remain follow-ups.
 
 | Area | Progress | Remaining work |
@@ -542,7 +572,7 @@ request takeover or return clear limitations.
 **In progress; both core transports implemented.** Optional `agent_mcp.py` uses
 the official Python SDK over stdio and authenticated loopback Streamable HTTP
 and connects to an opted-in running browser through private authenticated local
-IPC. Twenty-eight published input schemas expose current task operations, capability
+IPC. Thirty-three published input schemas expose current task operations, capability
 and selected-profile discovery, structured results, and browser-assigned identity.
 User approval is required; shared-profile collaboration, cancellation, isolation,
 and evidence were tested with an SDK client and an independent JSON-RPC client
@@ -565,9 +595,18 @@ operation without providers remains functional.
 
 ### A6. Application connections and recovery
 
-Add a grant-enforcing connector gateway, approved credential storage, receipts,
-cancellation, and reconciliation of uncertain writes. Acceptance: mock document
-and email services pass before connecting real accounts.
+**In progress.** The grant-enforcing gateway, typed adapter boundary, exact
+tool/effect/destination approvals, immutable drafts, unique provider operation IDs,
+durable receipts, worker limits and read-only reconciliation are implemented.
+Mock document/email MCP services pass over both transports, including deliberately
+incorrect remote risk annotations, lost acknowledgements, no blind replay and
+task ownership. Queued work can stop; dispatched effects remain uncertain until
+observed. Restart preserves receipts and ends authority without replay.
+
+Remaining: concrete provider/account selection, approved credential storage/setup,
+provider-specific destination canonicalization and least-privilege tool mappings,
+archived-task recovery approvals, result retention and agent-managed mode.
+Acceptance of the gateway is synthetic; real-account acceptance remains pending.
 
 ### A7. Collaboration interface and styling
 

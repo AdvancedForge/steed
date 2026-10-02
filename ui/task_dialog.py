@@ -82,6 +82,42 @@ class TaskDialog(QDialog):
             0, QHeaderView.ResizeMode.Stretch
         )
         self.panels.addTab(self.downloads, "Downloads")
+        apps = QWidget()
+        app_layout = QVBoxLayout(apps)
+        app_notice = QLabel(
+            "App receipts show observed outcomes. An uncertain write may have happened; "
+            "reconcile it before considering a new request. Cancellation does not undo writes."
+        )
+        app_notice.setWordWrap(True)
+        app_layout.addWidget(app_notice)
+        self.apps = QTableWidget(0, 4)
+        self.apps.setHorizontalHeaderLabels(
+            ["Operation", "Destination", "State", "Request"]
+        )
+        self.apps.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.apps.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.apps.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.apps.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        for column in (0, 2, 3):
+            self.apps.horizontalHeader().setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self.apps.itemSelectionChanged.connect(self.show_app)
+        app_layout.addWidget(self.apps)
+        self.app_preview = QPlainTextEdit()
+        self.app_preview.setReadOnly(True)
+        app_layout.addWidget(self.app_preview)
+        app_buttons = QHBoxLayout()
+        self.cancel_app_button = QPushButton("Cancel App Operation")
+        self.cancel_app_button.clicked.connect(lambda: self.perform_app("cancel"))
+        self.reconcile_app_button = QPushButton("Reconcile Uncertain Result")
+        self.reconcile_app_button.clicked.connect(lambda: self.perform_app("reconcile"))
+        app_buttons.addWidget(self.cancel_app_button)
+        app_buttons.addWidget(self.reconcile_app_button)
+        app_layout.addLayout(app_buttons)
+        self.panels.addTab(apps, "Apps")
         layout.addWidget(self.panels)
         self.cancel_download_button = QPushButton("Cancel Selected Download")
         self.cancel_download_button.clicked.connect(self.cancel_download)
@@ -115,6 +151,7 @@ class TaskDialog(QDialog):
         self.finished.connect(lambda: service.changed.disconnect(self.refresh))
         self._rows = []
         self._download_rows = []
+        self._app_rows = []
         self.timer = QTimer(self)
         self.timer.setInterval(500)
         self.timer.timeout.connect(self.refresh_activity)
@@ -261,6 +298,16 @@ class TaskDialog(QDialog):
                     else "Network methods: GET/HEAD. "
                 )
                 + "Requests can have effects on a website.\n"
+                + (
+                    "App operations (exact effect and destination):\n"
+                    + "\n".join(
+                        f"{p['effect'].upper()}: {p['connector']}.{p['tool']} → {p['destination']}"
+                        for p in scope.get("connector_permissions", [])
+                    )
+                    + "\nApp results are retained; cancellation does not undo writes.\n"
+                    if scope.get("connector_permissions")
+                    else ""
+                )
                 + f"Duration: {scope['duration_seconds']} seconds after approval\n"
                 + f"Operation limit: {scope['max_operations']}\n"
                 + f"Network request limit: {scope['max_requests']}\n"
@@ -284,6 +331,9 @@ class TaskDialog(QDialog):
             self.update_download_action()
             self.artifacts.clear()
             self.artifact_preview.clear()
+            self.apps.setRowCount(0)
+            self._app_rows = []
+            self.show_app()
             return
         task = selected[0]
         try:
@@ -359,6 +409,7 @@ class TaskDialog(QDialog):
                 self.artifacts.setCurrentIndex(index)
             self.artifacts.blockSignals(False)
             self.show_artifact()
+            self.refresh_apps(task.task_id)
         except (sqlite3.Error, OSError, ValueError, KeyError):
             self.service._fatal()
 
@@ -419,6 +470,101 @@ class TaskDialog(QDialog):
             self.service.store.delete_artifact(selected[0].task_id, artifact_id)
         except (sqlite3.Error, OSError, ValueError, KeyError):
             self.service._fatal()
+        self.refresh_activity()
+
+    def refresh_apps(self, task_id):
+        index = self.apps.currentRow()
+        previous = (
+            self._app_rows[index].request_id
+            if 0 <= index < len(self._app_rows)
+            else None
+        )
+        self._app_rows = self.service.connector_store.list(task_id)
+        self.apps.blockSignals(True)
+        self.apps.setRowCount(len(self._app_rows))
+        for row, receipt in enumerate(self._app_rows):
+            for column, value in enumerate(
+                (
+                    f"{receipt.effect.upper()}: {receipt.connector}.{receipt.tool}",
+                    receipt.destination,
+                    receipt.state,
+                    receipt.request_id,
+                )
+            ):
+                item = QTableWidgetItem(value)
+                item.setToolTip(value)
+                self.apps.setItem(row, column, item)
+            if receipt.request_id == previous:
+                self.apps.selectRow(row)
+        if previous is None and self._app_rows:
+            self.apps.selectRow(0)
+        self.apps.blockSignals(False)
+        self.show_app()
+
+    def show_app(self):
+        index = self.apps.currentRow()
+        receipt = self._app_rows[index] if 0 <= index < len(self._app_rows) else None
+        active = not self.service._closed and not self.service.failure
+        job = (
+            self.service._connector_jobs.get((receipt.task_id, receipt.request_id))
+            if receipt
+            else None
+        )
+        self.cancel_app_button.setEnabled(bool(active and job))
+        can_reconcile = False
+        if (
+            active
+            and receipt
+            and receipt.state == "uncertain"
+            and not any(
+                owner == receipt.task_id for owner, _ in self.service._connector_jobs
+            )
+        ):
+            live = self.service._grants.get(receipt.task_id)
+            try:
+                if live:
+                    live[1].check(
+                        "app",
+                        connector=receipt.connector,
+                        tool=receipt.tool,
+                        effect=receipt.effect,
+                        destination=receipt.destination,
+                    )
+                    definition = self.service.connectors.get(
+                        receipt.connector, receipt.tool
+                    )
+                    can_reconcile = definition.reconcile is not None
+            except (ValueError, PermissionError):
+                pass
+        self.reconcile_app_button.setEnabled(can_reconcile)
+        text = (
+            f"Operation: {receipt.effect.upper()} {receipt.connector}.{receipt.tool}\n"
+            f"Destination: {receipt.destination}\n"
+            f"State: {receipt.state}\nResult: {receipt.reference or 'No confirmed reference'}\n"
+            f"Reason: {receipt.reason or 'None'}\nOperation ID: {receipt.operation_id}\n"
+            f"Draft ID: {receipt.artifact_id or 'Not used'}\n\n{receipt.text}"
+            if receipt
+            else ""
+        )
+        if self.app_preview.toPlainText() != text:
+            self.app_preview.setPlainText(text)
+
+    def perform_app(self, operation):
+        index = self.apps.currentRow()
+        if not 0 <= index < len(self._app_rows):
+            return
+        receipt = self._app_rows[index]
+        try:
+            if operation == "cancel":
+                self.service._cancel_app_job(receipt.task_id, receipt.request_id)
+            else:
+                self.service._app_reconcile(receipt.task_id, receipt.request_id)
+        except Exception:
+            QMessageBox.warning(
+                self,
+                "App Operation",
+                "The operation or permission changed. Review its receipt before continuing.",
+            )
         self.refresh_activity()
 
     def update_download_action(self):

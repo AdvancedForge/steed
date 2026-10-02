@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from PyQt6.QtCore import QUrl
 
+from services.connector_policy import ConnectorPermission, connector_permissions
 from utils import sanitize_profile_name
 
 SUPPORTED_ACTIONS = frozenset(
@@ -24,6 +25,7 @@ SUPPORTED_ACTIONS = frozenset(
         "download",
         "upload",
         "artifact",
+        "app",
     }
 )
 
@@ -134,6 +136,7 @@ class TaskScope:
     upload_sources: tuple[str, ...] = ()
     upload_origins: tuple[str, ...] = ()
     max_upload_bytes: int = 5 * 1024 * 1024
+    connector_permissions: tuple[ConnectorPermission, ...] = ()
 
     @classmethod
     def parse(cls, values):
@@ -201,6 +204,11 @@ class TaskScope:
             raise ValueError("Upload permission requires exact sources and origins")
         if not set(upload_origins) <= set(origins):
             raise ValueError("Upload origins must be allowed task origins")
+        apps = connector_permissions(values.get("connector_permissions", []))
+        if bool(apps) != ("app" in actions):
+            raise ValueError(
+                "App permission requires exact tools, effects and destinations"
+            )
         return cls(
             origins,
             tuple(sorted(set(actions))),
@@ -209,6 +217,7 @@ class TaskScope:
             download_destinations=destinations,
             upload_sources=sources,
             upload_origins=upload_origins,
+            connector_permissions=apps,
             **numbers,
         )
 
@@ -244,14 +253,29 @@ class LiveGrant:
             self._ended = "expired"
         return self._ended
 
-    def check(self, action, *, url=None, profile=None, destination=None, source=None):
+    def check(
+        self,
+        action,
+        *,
+        url=None,
+        profile=None,
+        destination=None,
+        source=None,
+        connector=None,
+        tool=None,
+        effect=None,
+    ):
         with self._lock:
             reason = self._reason()
             if reason:
                 raise TaskPermissionError(reason)
             if profile is not None and profile != self.scope.profile:
                 raise TaskPermissionError("profile_out_of_scope")
-            if destination is not None:
+            if action == "app":
+                permission = ConnectorPermission(connector, tool, effect, destination)
+                if permission not in self.scope.connector_permissions:
+                    raise TaskPermissionError("app_out_of_scope")
+            elif destination is not None:
                 if (
                     action != "download"
                     or destination not in self.scope.download_destinations

@@ -87,9 +87,10 @@ SCOPE = schema(
                     "download",
                     "upload",
                     "artifact",
+                    "app",
                 ],
             },
-            "maxItems": 10,
+            "maxItems": 11,
         },
         "profile": string(140),
         "allow_private_network": {
@@ -110,6 +111,22 @@ SCOPE = schema(
         "upload_sources": {"type": "array", "items": string(4096), "maxItems": 20},
         "upload_origins": {"type": "array", "items": string(2048), "maxItems": 20},
         "max_upload_bytes": integer(1, 25 * 1024 * 1024),
+        "connector_permissions": {
+            "type": "array",
+            "maxItems": 20,
+            "items": schema(
+                {
+                    "connector": string(64),
+                    "tool": string(64),
+                    "effect": {
+                        **string(),
+                        "enum": ["read", "write", "send", "delete", "spend"],
+                    },
+                    "destination": string(320),
+                },
+                ("connector", "tool", "effect", "destination"),
+            ),
+        },
     }
 )
 SCOPE["description"] = (
@@ -127,6 +144,40 @@ def tool(command, description, properties=None, required=()):
 
 
 TOOLS = (
+    tool(
+        "app.list_tools",
+        "Discover browser-configured app tools and trusted effects. No account credentials or authority are returned; no connectors are bundled by default.",
+    ),
+    tool(
+        "app.call_tool",
+        "Start an approved app call to an exact destination using an owned immutable artifact when required. Bind a stable request_id to these inputs; repeating it returns the receipt and never dispatches again, including uncertain writes. Poll app.status. No arbitrary arguments, endpoints or recipient lists are accepted.",
+        {
+            "connector": string(64),
+            "tool": string(64),
+            "request_id": string(64),
+            "destination": string(320),
+            "artifact_id": string(),
+        },
+        ("connector", "tool", "request_id", "destination"),
+    ),
+    tool(
+        "app.status",
+        "Read an owned app receipt with current matching permission; uncertain means inspect/reconcile before considering another write.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
+        "app.cancel",
+        "Cancel an owned app operation without spending a cleanup operation. Dispatched writes may still happen; cancellation is not rollback.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
+        "app.reconcile",
+        "Use the connector's trusted read-only receipt lookup for an uncertain operation after its worker ends. Requires current exact app permission; never replays the write.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
     tool(
         "artifact.store",
         "Retain an immutable task note/draft with artifact permission. Text is agent-generated, not verified. Sources are this task's page.inspected event sequences; content stays out of activity logs. Up to 16 KiB UTF-8 per artifact, 50 artifacts/512 KiB per task.",

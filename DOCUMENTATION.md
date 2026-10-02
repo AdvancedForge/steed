@@ -371,6 +371,9 @@ Browser/
 │   ├── task_downloads.py   # Native downloads, safe destination publication and receipts
 │   ├── task_uploads.py     # Bounded immutable copies of approved upload sources
 │   ├── task_artifacts.py   # Retained task text, quotas and source-evidence validation
+│   ├── connectors.py       # Trusted app tool mappings and bounded worker jobs
+│   ├── connector_policy.py # Exact connector/tool/effect/destination permissions
+│   ├── connector_store.py  # Durable app receipts and interrupted-write recovery
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
@@ -502,6 +505,9 @@ its transport identity is also bound to the credential that initialized it.
 | `task.finish` | `task_id`, optional terminal `status`; closes owned sessions |
 | `artifact.store` | `task_id`, `title`, `content`, optional `format` and `source_events`; explicit `artifact` permission, returns immutable draft metadata |
 | `artifact.list`, `artifact.read` | `task_id`, plus `artifact_id` for read; artifact permission, returns owned metadata or text |
+| `app.list_tools` | `task_id`; configured tool descriptions/effects, no grant or credentials |
+| `app.call_tool` | `task_id`, `connector`, `tool`, `request_id`, `destination`, optional `artifact_id`; exact app permission, starts a call and returns its durable receipt |
+| `app.status`, `app.cancel`, `app.reconcile` | `task_id`, `request_id`; owned receipt lookup, cooperative cancellation or read-only reconciliation |
 | `grant.request` | `task_id`, `scope`; records a pending request, without authority |
 | `grant.list` | `task_id`; task grant records, including decisions |
 | `session.open` | `task_id`, optional `profile="private"`; requires approval, returns a session snapshot |
@@ -581,7 +587,8 @@ redirect destinations need their own entries. Credentials, wildcards, and origin
 paths are rejected. `about:blank` is allowed without adding an origin. Exact file
 destinations and upload sources/sites have separate permissions. Supported actions are
 `navigate`, metadata `inspect`, content `read`, view `attach`, control `edit`,
-`scroll`, form `submit`, `download`, `upload`, and retained-text `artifact`. The default action list remains
+`scroll`, form `submit`, `download`, `upload`, retained-text `artifact` and scoped
+`app`. The default action list remains
 `navigate`, `inspect`, and `attach`; content, edits, scrolling, and submission need
 explicit approval.
 An edit grant does not authorize submission, POST, active scripts, or file actions.
@@ -933,6 +940,93 @@ Draft** asks for confirmation and removes the stored draft with a content-free
 receipt; this trusted user action is unavailable to agents. It does not promise
 forensic erasure from SQLite journals, free pages or external copies.
 
+### Browser-managed application operations
+
+The gateway and recovery rules are implemented and tested against synthetic
+document/email MCP services. **No real provider or account setup is bundled yet.**
+`steed_app_list_tools` therefore returns an empty list in the default browser.
+It requires an active task, but no grant or page. External agents cannot register
+connectors, choose endpoints or change credential configuration.
+
+Trusted browser code can supply a `ConnectorRegistry` to `TaskService`, registering
+immutable `ConnectorTool` definitions with a fixed effect (`read`, `write`, `send`,
+`delete`, `spend`), description, artifact requirement, worker `execute` callback and
+optional read-only `reconcile` callback. Remote tool annotations do not set risk;
+the mock server deliberately claims writes are read-only to test this distinction.
+Adapters receive a typed destination and owned draft, not arbitrary client JSON,
+URLs, credential paths or recipient arrays. Concrete adapters must validate and
+map provider-specific destinations and fields; trusted Python adapters are not
+an OS sandbox. They must enforce their own bounded network timeouts.
+
+Discover configured tools first, then request explicit permission, for example:
+
+```python
+scope = {
+    "actions": ["artifact", "app"],
+    "connector_permissions": [
+        {
+            "connector": "documents",
+            "tool": "create",
+            "effect": "write",
+            "destination": "approved-workspace-id",
+        },
+        {
+            "connector": "email",
+            "tool": "send",
+            "effect": "send",
+            "destination": "approved-recipient@example.org",
+        },
+    ],
+}
+```
+
+Each of up to 20 entries binds an exact connector, tool, trusted effect and
+destination. Wildcards, unknown tools, risk downgrades and missing required draft
+permission are rejected before approval. The popup displays each effect and
+destination, disclosing external changes, retained results and cancellation limits.
+Browser-page/profile permissions and app accounts are separate; app authority does
+not enable website scripts or turn browser cookies into provider credentials.
+
+Store an immutable draft, then call `steed_app_call_tool` with the matching tool,
+destination, `artifact_id` when required and a stable `request_id` of 1–64 letters,
+digits, underscores or hyphens. The browser assigns a separate globally unique
+`operation_id` for provider deduplication/lookup; identical local IDs in different
+tasks cannot collide there. Reusing a request ID with matching inputs returns its
+receipt, including uncertain results, without redispatch or extra operation cost.
+Changing its inputs is rejected. Deleting the draft before dispatch prevents sending
+the queued copy; deleting it after dispatch cannot retract external effects.
+
+Poll `steed_app_status`. States include `requested`, `dispatched`, `succeeded`,
+`not_applied`, `failed`, `cancelled`, `uncertain`, and `reconciling`. Calls/status
+queries spend operation budget; owned cleanup does not. A confirmed result comes
+from the trusted adapter's observed response, not simply from dispatch. Provider
+exception text is omitted from receipts/events. Outputs are bounded to 16 KiB
+UTF-8 plus a reference of at most 2,048 characters. Text/reference stay out of
+activity events; they are retained as local plaintext in private `tasks.sqlite`.
+
+There are at most 50 receipts per task, one running worker per task and four
+globally. A 30-second timeout requests cooperative cancellation and reports an
+uncertain write or failed read. A worker still running retains its capacity slot;
+another write or reconciliation cannot race it. `steed_app_cancel`, task endings,
+revocation, expiry and shutdown stop queued operations and request cancellation
+of dispatched ones. They do not promise rollback. A late observed response may
+update the user's receipt after task cancellation, without restoring client access.
+
+After an uncertain operation's worker ends, `steed_app_reconcile` invokes only the
+trusted receipt-lookup callback with the original provider operation ID and
+destination, without draft bytes or a second write. No automatic write retry occurs.
+Initial requests and dispatch gates commit before adapter entry; failed evidence
+writes disable access. Restart marks unresolved dispatched writes/reconciliation
+uncertain and queued requests cancelled; it neither replays calls nor restores
+grants. Recovery stays observable even if a provider acknowledgement was lost.
+
+In **File → Task Permissions → Apps**, review owned destinations, states, request
+IDs, references and result text, cancel a running operation, or reconcile an
+uncertain result while its original task/grant remains active. Finished/interrupted
+receipts remain readable by the user. Reconciliation of archived tasks with fresh
+approval, result-retention controls, real credential storage/setup and concrete
+provider mappings remain follow-ups. A client cannot adopt another task's ledger.
+
 ### Scoped task uploads
 
 Request explicit source files and upload origins alongside ordinary task sites:
@@ -1055,7 +1149,7 @@ are Qt-thread methods deliberately absent from the client command surface.
 
 `tasks.sqlite` has owner-only permissions. It persists objectives, task states,
 URLs/titles, grant scopes/decisions, and event metadata; private engine
-cookies/storage stay in memory. Schema 3 adds retained artifacts to the task database
+cookies/storage stay in memory. Schema 4 adds retained artifacts and app receipts to the task database
 without replacing its journal.
 Task state transitions and their events are transactional. SQL triggers prevent
 updating/deleting journal entries. Active tasks become `interrupted` when the
@@ -1365,13 +1459,14 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 28 input schemas. Names follow the internal command
+Tool discovery publishes 33 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
 navigation, supported control edits, native form submission, scoped uploads and
 downloads, scrolling, waits,
-watching, evidence, and task lifecycle are available. Approval, task enumeration,
+watching, retained drafts, configured app operations, evidence, and task lifecycle
+are available. Approval, task enumeration,
 raw cookies, JavaScript, arbitrary selectors, file bytes, and raw Qt objects
 are not exposed by this adapter. `steed_session_watch` needs explicit `attach`
 permission and opens a browser-owned window; taking and returning control are
@@ -1415,6 +1510,8 @@ tasks. Direct clicking/typing inside the rendered page, website scripts,
 password/multiple-file/folder forms, and custom controls remain unavailable. Site restrictions,
 operation budgets, and grant deadlines still apply during user control;
 ordinary browsing windows remain usable on the same profile.
+Take Control pauses page operations; app operations belong to the task and use
+their own cancellation controls in the Apps panel.
 
 Closing an idle watch window, including Escape or closing its parent browser
 window, returns control and leaves the task page alive while another browser
@@ -1513,6 +1610,33 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+Connector gateway stage (October 2, 2026): the full 374-test suite passed in 225.006
+seconds (`/tmp/steed-connectors-full.log`). Nineteen focused checks passed in 1.142
+seconds (`/tmp/steed-connectors-focused-final.log`), covering trusted effect mapping,
+exact destinations, artifact/receipt ownership, independent provider IDs, duplicate
+and changed requests, queued cancellation, live timeout/capacity, expiry/budgets,
+revocation, late actual outcomes, journal failures, restart recovery, draft deletion
+before dispatch and retained plain-text user receipt/reconciliation controls.
+Both real MCP transports completed research/draft → mock document → mock email,
+with exactly one document and one email in the synthetic provider database
+(`/tmp/steed-connectors-stdio.log`, `/tmp/steed-connectors-http.log`). An intentionally
+lost email acknowledgement was reconciled read-only without resending; an outside
+recipient was denied. Remote tool annotations falsely claimed read-only operations
+while trusted browser mappings still required write/send authority. Startup passed
+(`/tmp/steed-connectors-startup.log`), and receipt/approval previews were inspected.
+The final receipt text layout was checked separately by the connector/UI group
+(`/tmp/steed-connectors-ui-final.log`). No real accounts or emails were used.
+The final dispatch-status adjustment (app-only tasks become running) also passed
+all nineteen connector checks in 1.148 seconds
+(`/tmp/steed-connectors-status-final.log`). Lint, formatting, whitespace, dependency
+consistency and 26 local documentation file links passed.
+The expanded final smoke checks passed with an SDK client and an independently
+implemented JSON-RPC client each completing the full workflow over both transports
+(`/tmp/steed-connectors-independent-stdio.log`,
+`/tmp/steed-connectors-independent-http.log`). Each fixture's provider database had
+exactly two documents and two emails, one of each per client, including independent
+reconciliation of lost send acknowledgements and task-specific provider IDs.
 
 Task artifact stage (October 2, 2026): the full 353-test suite passed in 245.973
 seconds (`/tmp/steed-artifacts-full.log`). Twelve final focused artifact checks
@@ -1975,8 +2099,8 @@ Read-only snapshots, explicit content grants, bounded extraction, and opaque
 target validation, observed link navigation, scriptless control edits, form submission, scrolling,
 and bounded waits are implemented. Text editing events/undo are verified on the
 pinned engine. Native keyboard activation/selection are implemented. Pointer
-gestures and active-page
-permissions, file grants, and full SPA/form workflows remain pending.
+gestures, active-page permissions and full SPA/form workflows remain pending.
+Exact file grants and bounded uploads/downloads are implemented.
 Website JavaScript remains ungranted: the next stage must cover background
 network transports/workers and submit-handler mutations with tested enforcement
 before enabling scripts. No JavaScript wrappers alone establish that boundary.
@@ -2017,7 +2141,14 @@ Extract candidates deterministically first; a Jev adapter answers finite classif
 
 Acceptance: held-out comparisons against deterministic-only inspection measure coverage, incorrect mappings, latency, and cost. Enable classification only where it improves results.
 
-#### A6. Application connections and recovery — pending
+#### A6. Application connections and recovery — in progress
+
+The trusted connector gateway, exact tool/effect/destination scopes, worker limits,
+immutable-draft binding, durable request identity, observed receipts and read-only
+reconciliation passed mock document/email MCP workflows over both Steed transports.
+Default registries have no real account/provider. See
+[current app operations](#browser-managed-application-operations). Provider account
+setup, OS credentials, archived-task recovery and agent-managed mode remain pending.
 
 - Browser-mediated mode: MCP gateway enforces grants, logs activity, handles cancellation, and records results.
 - Agent-managed mode: direct external connections; clearly disclose absent browser visibility/enforcement.
@@ -2033,8 +2164,9 @@ Implemented: nonmodal same-page watch, trusted user takeover through supported
 scoped actions, return with fresh references, and lifecycle cleanup. Shared-profile
 and both MCP transport fixtures passed. Task Permissions includes recent
 activity and retained download receipts with progress/cancellation.
-Artifact/connector activity, unrestricted
-pointer/custom controls, and declarative styling remain pending.
+Unrestricted pointer/custom controls and declarative styling remain pending.
+Retained artifact review/deletion and app receipts/cancellation/reconciliation are
+implemented.
 
 - Task workspace shows agent identity/objective/authority/status/activity/artifacts/evidence.
 - Watch attaches a view without taking control. Takeover obtains exclusive ownership and blocks agent mutations. Resume invalidates stale snapshots. Cancel stops queued/new commands; dispatched external effects may require reconciliation rather than rollback.
@@ -2045,7 +2177,13 @@ pointer/custom controls, and declarative styling remain pending.
 
 ### End-to-end validation and rollout
 
-#### Research → document → email — pending
+#### Research → document → email — mock workflow passed; real services pending
+
+An SDK client and independent JSON-RPC client each passed this workflow over both
+Steed transports using synthetic page sources and mock document/email MCP providers.
+Each client retained source-linked drafts, created one document, sent its reference
+only to an approved synthetic recipient, and reconciled a lost acknowledgement
+without resending. Real provider/account setup and acceptance remain pending.
 
 The external agent obtains a scoped task grant, searches/inspects sources, generates its own document, stores it with references/provenance, creates a document through an approved connector, sends only to authorized recipients, and returns document references/receipts/unresolved limitations. Browser-side generation is not required.
 
