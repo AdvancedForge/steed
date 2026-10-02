@@ -108,6 +108,7 @@ async def sdk_client(
                         "scroll",
                         "download",
                         "upload",
+                        "artifact",
                     ],
                     "duration_seconds": 120,
                     "download_destinations": [destination],
@@ -237,6 +238,26 @@ async def sdk_client(
             events = await call("task.events", limit=1000)
             assert "SYNTHETIC_MCP_UPLOAD_BYTES" not in json.dumps(events)
             shared["upload_completed"] = True
+            sources = [e["sequence"] for e in events if e["kind"] == "page.inspected"][
+                -2:
+            ]
+            artifact = await call(
+                "artifact.store",
+                title="Synthetic draft",
+                content="SYNTHETIC_RETAINED_DRAFT",
+                source_events=sources,
+            )
+            assert "content" not in artifact
+            assert (await call("artifact.read", artifact_id=artifact["artifact_id"]))[
+                "content"
+            ] == "SYNTHETIC_RETAINED_DRAFT"
+            assert (await call("artifact.list"))[0]["artifact_id"] == artifact[
+                "artifact_id"
+            ]
+            assert "SYNTHETIC_RETAINED_DRAFT" not in json.dumps(
+                await call("task.events", limit=1000)
+            )
+            shared["artifact_completed"] = True
             revoke.set()
             deadline = time.monotonic() + 15
             while not revoked.is_set():

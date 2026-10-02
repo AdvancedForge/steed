@@ -10,12 +10,14 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 2, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-343-test suite passed in 233.164 seconds (`/tmp/steed-upload-complete.log`), including
+353-test suite passed in 245.973 seconds (`/tmp/steed-artifacts-full.log`), including
 scoped uploads/downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-upload-startup.log`); the preceding local Google HTTPS check passed.
+(`/tmp/steed-artifacts-startup.log`); the preceding local Google HTTPS check passed.
+The artifact HTTP fixture hit the tracked native startup exit 139; identical retry
+passed. Twelve final artifact checks cover user-controlled draft deletion too.
 The previous form-stage Google fixture exited natively during `QWebEngineProfile`
 creation before passing on retry. An earlier startup fixture also exited natively.
 Track that intermittent exit separately from desktop acceptance. Ruff, formatting,
@@ -47,7 +49,8 @@ edits, scrolling, and waits.**
 **A4 is in progress: external stdio and HTTP clients can use those operations.**
 **A7 is in progress: same-page watch and scoped user handoff are implemented.**
 Autonomous milestones: scoped downloads `229cfe4`, task activity/receipts `6ad9b1a`,
-and scoped uploads in this milestone. Continued from watch/control commit `045b706`,
+scoped uploads `027a860`, and retained task artifacts in this milestone.
+Continued from watch/control commit `045b706`,
 following HTTP MCP commit `8266c37`
 and basic MCP commit `d663fc5`
 and native-networking commit
@@ -103,7 +106,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   [assessment](DOCUMENTATION.md#bounded-engine-feasibility-assessment).
 - **Local MCP implemented:** File → Enable Local Agent Access opts in for this
   run. A private authenticated Unix socket connects the optional official-SDK
-  stdio adapter to the running Qt process. Twenty-five published tool schemas use
+  stdio adapter to the running Qt process. Twenty-eight published tool schemas use
   connection-bound active-task identity and the existing broker/grant checks. Clients
   cannot approve or adopt other tasks. Disconnect, timeout, disabling access,
   journal failure and browser shutdown remove access and dispose owned pages.
@@ -208,14 +211,21 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   Selected copies remain until session teardown; crash orphan recovery remains
   pending. File bytes are never exported through tools or journal events.
   See [upload usage](DOCUMENTATION.md#scoped-task-uploads).
-- **Engineering decision checkpoint:** the remaining A3 scripted-site/custom-control
+- **Artifact milestone implemented:** explicit `artifact` permission saves immutable
+  local notes/drafts, with bounded UTF-8/count/total storage, hashes and validated
+  task-owned page-inspection source references. Content/title stay out of activity
+  events. Task Permissions has an Artifacts tab for plain-text review after
+  completion/restart and confirmed user deletion; agents cannot delete drafts.
+  Both MCP workflows passed. The full 353-test suite passed, plus twelve final
+  artifact checks after adding deletion. See
+  [artifact usage](DOCUMENTATION.md#retained-task-artifacts).
+- **Engine direction agreed:** the remaining A3 scripted-site/custom-control
   and unrestricted takeover work needs native policy inside the shared embedded
   engine. Engine work remains deferred as previously agreed; routine file work
-  has not changed that boundary. Before undertaking a maintained Qt engine build,
-  embedding migration or rebuild, choose whether to revisit that investment or
-  prioritize artifacts/connectors (A5–A6) on the current restricted backend.
-  Recommendation: retain the working browser and prioritize artifacts/connectors
-  while waiting for maintainable native support. No rebuild has been started.
+  has not changed that boundary. The user accepted prioritizing artifacts and
+  connectors on the current backend. Continue A4/A7 artifact work and the A6
+  connector gateway with mock services before real accounts; optional A5 providers
+  remain pending. No rebuild has been started.
   Reconnect/resume, broader client compatibility, crash staging recovery and
   remaining A7 activity/artifact/styling work also stay pending.
 - **Future script acceptance:** obtain a compatible embedded engine/native hook and integrate
@@ -532,7 +542,7 @@ request takeover or return clear limitations.
 **In progress; both core transports implemented.** Optional `agent_mcp.py` uses
 the official Python SDK over stdio and authenticated loopback Streamable HTTP
 and connects to an opted-in running browser through private authenticated local
-IPC. Twenty-five published input schemas expose current task operations, capability
+IPC. Twenty-eight published input schemas expose current task operations, capability
 and selected-profile discovery, structured results, and browser-assigned identity.
 User approval is required; shared-profile collaboration, cancellation, isolation,
 and evidence were tested with an SDK client and an independent JSON-RPC client
@@ -567,8 +577,9 @@ and scrolling with the task's existing permissions. Agent operations pause durin
 user control; returning control preserves edits and requires fresh references.
 Closing/reopening, revocation, concurrent shared-window lifetime, and both MCP
 transport handoffs passed synthetic fixture checks. Full direct page input,
-custom controls, artifact presentation, and styling remain pending. Task Permissions
-includes recent activity and download progress/retained receipts with cancellation.
+custom controls and styling remain pending. Task Permissions includes retained
+plain-text task drafts with source evidence and confirmed user deletion, and
+recent activity and download progress/retained receipts with cancellation.
 
 Show tasks, authority, activity, artifacts, and evidence. Support watching,
 exclusive takeover, resume, and cancellation. Add validated declarative chrome

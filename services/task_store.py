@@ -8,6 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from services.task_artifacts import (
+    MAX_TASK_ARTIFACT_BYTES,
+    MAX_TASK_ARTIFACTS,
+    ArtifactSummary,
+    TaskArtifact,
+    artifact_input,
+)
+
 ACTIVE_STATUSES = frozenset({"created", "running"})
 TERMINAL_STATUSES = frozenset({"completed", "cancelled", "interrupted", "failed"})
 
@@ -58,7 +66,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2):
+        if version not in (0, 1, 2, 3):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -98,7 +106,20 @@ class TaskStore:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS grants_one_live_per_task
                     ON grants(task_id) WHERE status IN ('requested', 'approved');
-                PRAGMA user_version = 2;
+                CREATE TABLE IF NOT EXISTS artifacts (
+                    artifact_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES tasks(task_id),
+                    title TEXT NOT NULL,
+                    format TEXT NOT NULL CHECK(format IN ('text', 'markdown')),
+                    byte_count INTEGER NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    source_events TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    content TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS artifacts_by_task
+                    ON artifacts(task_id, created_at, artifact_id);
+                PRAGMA user_version = 3;
             """)
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():
@@ -279,6 +300,94 @@ class TaskStore:
             )
             for row in rows
         ]
+
+    def store_artifact(
+        self, task_id, title, content, format="markdown", source_events=()
+    ):
+        if self.get(task_id).status not in ACTIVE_STATUSES:
+            raise ValueError("Task is no longer active")
+        title, size, digest, sources = artifact_input(
+            title, content, format, source_events
+        )
+        for sequence in sources:
+            row = self._db.execute(
+                "SELECT kind FROM events WHERE task_id = ? AND sequence = ?",
+                (task_id, sequence),
+            ).fetchone()
+            if row is None or row["kind"] != "page.inspected":
+                raise ValueError(
+                    "Artifact source is not this task's recorded page inspection"
+                )
+        count, total = self._db.execute(
+            "SELECT count(*), coalesce(sum(byte_count), 0) FROM artifacts WHERE task_id = ?",
+            (task_id,),
+        ).fetchone()
+        if count >= MAX_TASK_ARTIFACTS or total + size > MAX_TASK_ARTIFACT_BYTES:
+            raise ValueError("Task artifact storage limit reached")
+        artifact_id, now = uuid4().hex, timestamp()
+        with self._db:
+            self._db.execute(
+                "INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    artifact_id,
+                    task_id,
+                    title,
+                    format,
+                    size,
+                    digest,
+                    json.dumps(sources),
+                    now,
+                    content,
+                ),
+            )
+            self._append(
+                task_id,
+                "artifact.stored",
+                {
+                    "artifact_id": artifact_id,
+                    "byte_count": size,
+                    "sha256": digest,
+                    "source_events": sources,
+                },
+            )
+        return self.artifact(task_id, artifact_id, include_content=False)
+
+    def artifact(self, task_id, artifact_id, *, include_content=True):
+        self.get(task_id)
+        columns = (
+            "*"
+            if include_content
+            else "artifact_id, task_id, title, format, byte_count, sha256, source_events, created_at"
+        )
+        row = self._db.execute(
+            f"SELECT {columns} FROM artifacts WHERE task_id = ? AND artifact_id = ?",
+            (task_id, artifact_id),
+        ).fetchone()
+        if row is None:
+            raise KeyError("Artifact does not belong to this task")
+        values = dict(row)
+        values["source_events"] = tuple(json.loads(values["source_events"]))
+        return (TaskArtifact if include_content else ArtifactSummary)(**values)
+
+    def artifacts(self, task_id):
+        self.get(task_id)
+        rows = self._db.execute(
+            "SELECT artifact_id FROM artifacts WHERE task_id = ? ORDER BY created_at, artifact_id",
+            (task_id,),
+        ).fetchall()
+        return [self.artifact(task_id, row[0], include_content=False) for row in rows]
+
+    def delete_artifact(self, task_id, artifact_id):
+        """Trusted user removal; keep a content-free deletion receipt."""
+        artifact = self.artifact(task_id, artifact_id, include_content=False)
+        with self._db:
+            self._db.execute(
+                "DELETE FROM artifacts WHERE task_id = ? AND artifact_id = ?",
+                (task_id, artifact_id),
+            )
+            self._append(
+                task_id, "artifact.deleted", {"artifact_id": artifact.artifact_id}
+            )
 
     def recent_events(self, task_id, *, limit=200, kinds=()):
         """Trusted UI tail, bounded and scoped without changing client cursors."""

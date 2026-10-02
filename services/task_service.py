@@ -1,5 +1,6 @@
 """Application-owned task authority; clients request but never approve grants."""
 
+import sqlite3
 import time
 from concurrent.futures import Future
 from contextvars import ContextVar
@@ -72,6 +73,9 @@ class TaskService(QObject):
                 "task.list": self.store.list_tasks,
                 "task.events": self.store.events,
                 "task.finish": self._finish_task,
+                "artifact.store": self._store_artifact,
+                "artifact.list": self._list_artifacts,
+                "artifact.read": self._read_artifact,
                 "grant.request": self._request_grant,
                 "grant.list": self.store.grants,
                 "client.denied": self._client_denied,
@@ -106,6 +110,36 @@ class TaskService(QObject):
         task = self.store.create(objective)
         self.changed.emit()
         return task
+
+    def _store_artifact(
+        self, task_id, title, content, format="markdown", source_events=()
+    ):
+        self._authorize(task_id, "artifact")
+        try:
+            result = self.store.store_artifact(
+                task_id, title, content, format, source_events
+            )
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        self.changed.emit()
+        return result
+
+    def _list_artifacts(self, task_id):
+        self._authorize(task_id, "artifact")
+        return self.store.artifacts(task_id)
+
+    def _read_artifact(self, task_id, artifact_id):
+        self._authorize(task_id, "artifact")
+        result = self.store.artifact(task_id, artifact_id)
+        try:
+            self.store.record_event(
+                task_id, "artifact.read", {"artifact_id": artifact_id}
+            )
+        except Exception:
+            self._fatal(defer_broker_close=True)
+            raise
+        return result
 
     def client(self, task_id):
         """Trusted controller issues a handle bound to one task, on the Qt thread."""

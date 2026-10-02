@@ -370,6 +370,7 @@ Browser/
 │   ├── form_submission.py  # Per-page submission tickets and journal URL privacy
 │   ├── task_downloads.py   # Native downloads, safe destination publication and receipts
 │   ├── task_uploads.py     # Bounded immutable copies of approved upload sources
+│   ├── task_artifacts.py   # Retained task text, quotas and source-evidence validation
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
@@ -499,6 +500,8 @@ its transport identity is also bound to the credential that initialized it.
 | `task.capabilities` | `task_id`; backend/engine versions, supported actions, and website-script availability |
 | `task.events` | `task_id`, optional `after` sequence and `limit`; ordered events |
 | `task.finish` | `task_id`, optional terminal `status`; closes owned sessions |
+| `artifact.store` | `task_id`, `title`, `content`, optional `format` and `source_events`; explicit `artifact` permission, returns immutable draft metadata |
+| `artifact.list`, `artifact.read` | `task_id`, plus `artifact_id` for read; artifact permission, returns owned metadata or text |
 | `grant.request` | `task_id`, `scope`; records a pending request, without authority |
 | `grant.list` | `task_id`; task grant records, including decisions |
 | `session.open` | `task_id`, optional `profile="private"`; requires approval, returns a session snapshot |
@@ -564,8 +567,9 @@ the complete workflow with a real local HTTP fixture, without AI or an account.
 
 By default, each session owns a separate off-the-record profile. Its page survives closing
 an attached view, and a new view attaches to the same page. Task completion or
-the last browser window closing disposes pages before their profiles. Downloads,
-file selection, site permissions, document scripts, new workers, WebSockets, external URL
+the last browser window closing disposes pages before their profiles. File transfers
+require the scoped download/upload operations described below. Site permissions,
+document scripts, new workers, WebSockets, external URL
 schemes, and the built-in PDF viewer are unavailable in current task pages.
 Ordinary browser tabs retain their existing settings. Task browsing currently
 supports document retrieval with GET/HEAD and explicitly authorized native form
@@ -574,10 +578,10 @@ that a site is read-only. POST is allowed only through a bound, one-use form tic
 
 Scopes match exact HTTP/HTTPS origins, including scheme and port; subdomains and
 redirect destinations need their own entries. Credentials, wildcards, and origin
-paths are rejected. `about:blank` is allowed without adding an origin. File
-destinations cannot currently be granted. Only
+paths are rejected. `about:blank` is allowed without adding an origin. Exact file
+destinations and upload sources/sites have separate permissions. Supported actions are
 `navigate`, metadata `inspect`, content `read`, view `attach`, control `edit`,
-`scroll`, and form `submit` are supported actions. The default action list remains
+`scroll`, form `submit`, `download`, `upload`, and retained-text `artifact`. The default action list remains
 `navigate`, `inspect`, and `attach`; content, edits, scrolling, and submission need
 explicit approval.
 An edit grant does not authorize submission, POST, active scripts, or file actions.
@@ -589,8 +593,9 @@ approval screen discloses that readable text and control labels will be shared
 with the task client, including on signed-in pages. Existing metadata-only grants
 cannot call `page.inspect`, `page.target`, `page.navigate`, `page.act`, `page.submit`, `page.scroll`,
 or `page.wait`. No cloud provider receives this data
-through the current implementation; external-agent transport and provider
-disclosure permissions remain future milestones.
+through a built-in classification/search provider. Local MCP clients receive
+approved reads; their external model/provider use is outside browser enforcement.
+Browser-managed provider disclosure remains future work.
 
 After successful loading, call `page.inspect` through the task-bound client. It
 returns a `PageSnapshot` with a unique snapshot ID, session/task IDs, URL/title,
@@ -894,6 +899,40 @@ Qt requires choosing the download path before accepting its request; see
 Steed uses ordinary page navigation to retain page request enforcement, rather
 than exposing an unrestricted engine download API.
 
+### Retained task artifacts
+
+Include `artifact` in a task's requested actions to save/read generated notes or
+drafts locally. This permission is separate from page reading, uploads and app
+connections; it grants no website access. The popup explains that drafts remain
+after the task ends. Old grants gain no artifact authority.
+
+Use `steed_artifact_store` with `title`, `content`, optional `format` (`text` or
+`markdown`, default `markdown`) and optional `source_events`. Each source must be
+the sequence number of this task's successful `page.inspected` journal event;
+foreign, invented, duplicate and other event types are rejected. Up to 20 sources
+are allowed. These are inspection references, not verification of generated claims.
+Source URLs can be written into the draft by its author; Steed does not fetch them.
+
+Storage returns an immutable ID, size, SHA-256 fingerprint and source references,
+without echoing the body. `steed_artifact_list` returns owned metadata and
+`steed_artifact_read` retrieves one owned draft. Calls spend the task's operation
+budget and require current approved authority; completion, revocation, expiry and
+restart end client access. A new task cannot adopt another task's drafts.
+
+Limits are 16 KiB UTF-8 per draft, 50 drafts/512 KiB per task and a 200-character
+printable title. The MCP transport's serialized-request size limit also applies.
+Drafts are immutable through the API; save a new draft to revise one. Body storage
+and its metadata receipt commit together. Titles/body stay out of journal events.
+Content is retained as local plaintext in owner-only `tasks.sqlite`, not encrypted
+or automatically sent to any provider, app or website.
+
+In **File → Task Permissions → Artifacts**, choose a draft to review it as plain
+text. Markdown/HTML do not run scripts, load images or follow links. Completed and
+interrupted tasks retain drafts for user review after restart. **Delete Selected
+Draft** asks for confirmation and removes the stored draft with a content-free
+receipt; this trusted user action is unavailable to agents. It does not promise
+forensic erasure from SQLite journals, free pages or external copies.
+
 ### Scoped task uploads
 
 Request explicit source files and upload origins alongside ordinary task sites:
@@ -1016,7 +1055,7 @@ are Qt-thread methods deliberately absent from the client command surface.
 
 `tasks.sqlite` has owner-only permissions. It persists objectives, task states,
 URLs/titles, grant scopes/decisions, and event metadata; private engine
-cookies/storage stay in memory. Schema 2 upgrades the original task database
+cookies/storage stay in memory. Schema 3 adds retained artifacts to the task database
 without replacing its journal.
 Task state transitions and their events are transactional. SQL triggers prevent
 updating/deleting journal entries. Active tasks become `interrupted` when the
@@ -1326,7 +1365,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 25 input schemas. Names follow the internal command
+Tool discovery publishes 28 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -1474,6 +1513,20 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+Task artifact stage (October 2, 2026): the full 353-test suite passed in 245.973
+seconds (`/tmp/steed-artifacts-full.log`). Twelve final focused artifact checks
+passed in 0.725 seconds (`/tmp/steed-artifacts-focused-final.log`), including
+content/metadata transactions, UTF-8/count/total quotas, source-event ownership,
+grants and budgets, revocation, restart retention, schema migration, plain-text
+completed-task review, confirmed user deletion and denial of agent deletion.
+Failed evidence writes prevent disclosure or roll back deletion. Both MCP
+workflows stored/listed/read sourced synthetic drafts
+(`/tmp/steed-artifacts-stdio.log`, `/tmp/steed-artifacts-http-retry.log`). The first
+HTTP run hit the previously tracked native Qt startup exit 139; identical retry
+passed. The native issue remains unresolved. Startup/render/shutdown passed
+(`/tmp/steed-artifacts-startup.log`); the synthetic artifact panel was visually
+checked. No real account or app provider was used.
 
 Scoped upload stage (October 2, 2026): eleven focused checks passed in 15.751 seconds
 (`/tmp/steed-upload-focused-release.log`), covering immutable copied bytes, exact
