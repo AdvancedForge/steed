@@ -34,6 +34,13 @@ CONNECTOR_SCHEMA = """
         FOREIGN KEY(task_id, request_id) REFERENCES connector_calls(task_id, request_id),
         FOREIGN KEY(source_task_id, source_request_id) REFERENCES connector_calls(task_id, request_id)
     );
+    CREATE TABLE IF NOT EXISTS connector_result_clears (
+        task_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        cleared_at TEXT NOT NULL,
+        PRIMARY KEY(task_id, request_id),
+        FOREIGN KEY(task_id, request_id) REFERENCES connector_calls(task_id, request_id)
+    );
 """
 
 
@@ -54,6 +61,7 @@ class ConnectorReceipt:
     reason: str
     created_at: str
     updated_at: str
+    result_cleared_at: str = ""
 
 
 def request_fingerprint(connector, tool, effect, destination, artifact):
@@ -87,7 +95,7 @@ class ConnectorStore:
     def get(self, task_id, request_id):
         self.store.get(task_id)
         row = self.store._db.execute(
-            "SELECT * FROM connector_calls WHERE task_id = ? AND request_id = ?",
+            "SELECT c.*, COALESCE(r.cleared_at, '') AS result_cleared_at FROM connector_calls c LEFT JOIN connector_result_clears r USING(task_id, request_id) WHERE c.task_id = ? AND c.request_id = ?",
             (task_id, request_id),
         ).fetchone()
         if row is None:
@@ -99,7 +107,7 @@ class ConnectorStore:
         return [
             ConnectorReceipt(**dict(row))
             for row in self.store._db.execute(
-                "SELECT * FROM connector_calls WHERE task_id = ? ORDER BY created_at, request_id",
+                "SELECT c.*, COALESCE(r.cleared_at, '') AS result_cleared_at FROM connector_calls c LEFT JOIN connector_result_clears r USING(task_id, request_id) WHERE c.task_id = ? ORDER BY c.created_at, c.request_id",
                 (task_id,),
             )
         ]
@@ -155,6 +163,42 @@ class ConnectorStore:
             self._update(task_id, request_id, state, reference, text, reason)
         return self.get(task_id, request_id)
 
+    def clear_results(self, task_id, request_ids=None):
+        """Trusted user action; suppress future result retention without erasing identity."""
+        receipts = {r.request_id: r for r in self.list(task_id)}
+        if request_ids is None:
+            request_ids = tuple(receipts)
+        if (
+            not isinstance(request_ids, (list, tuple))
+            or len(request_ids) > 50
+            or any(not isinstance(item, str) for item in request_ids)
+            or len(set(request_ids)) != len(request_ids)
+        ):
+            raise ValueError("Choose at most 50 distinct owned app receipts")
+        if any(item not in receipts for item in request_ids):
+            raise KeyError("App request does not belong to this task")
+        selected = [
+            item for item in request_ids if not receipts[item].result_cleared_at
+        ]
+        if not selected:
+            return 0
+        now = datetime.now(timezone.utc).isoformat()
+        with self.store._db:
+            for request_id in selected:
+                self.store._db.execute(
+                    "INSERT INTO connector_result_clears VALUES (?, ?, ?)",
+                    (task_id, request_id, now),
+                )
+                self.store._db.execute(
+                    "UPDATE connector_calls SET reference = '', text = '', updated_at = ? WHERE task_id = ? AND request_id = ?",
+                    (now, task_id, request_id),
+                )
+                self.store._append(
+                    task_id, "app.result_cleared", {"request_id": request_id}
+                )
+            self.store.clear_shared_app_results(task_id, selected)
+        return len(selected)
+
     def finish_probe(
         self, task_id, request_id, state, *, reference="", text="", reason=""
     ):
@@ -186,6 +230,8 @@ class ConnectorStore:
             and previous.reason == "read_only_followup"
         ):
             return  # An older worker cannot erase independently confirmed evidence.
+        if previous.result_cleared_at:
+            reference, text = "", ""
         self.store._db.execute(
             "UPDATE connector_calls SET state = ?, reference = ?, text = ?, reason = ?, updated_at = ? WHERE task_id = ? AND request_id = ?",
             (

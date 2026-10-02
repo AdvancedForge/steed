@@ -121,6 +121,16 @@ class TaskDialog(QDialog):
         app_buttons.addWidget(self.cancel_app_button)
         app_buttons.addWidget(self.reconcile_app_button)
         app_layout.addLayout(app_buttons)
+        result_buttons = QHBoxLayout()
+        self.clear_app_result_button = QPushButton("Clear Saved Result")
+        self.clear_app_result_button.clicked.connect(self.clear_app_result)
+        self.clear_task_results_button = QPushButton("Clear This Task’s Results")
+        self.clear_task_results_button.clicked.connect(
+            lambda: self.clear_app_result(all_owned=True)
+        )
+        result_buttons.addWidget(self.clear_app_result_button)
+        result_buttons.addWidget(self.clear_task_results_button)
+        app_layout.addLayout(result_buttons)
         self.panels.addTab(apps, "Apps")
         saved = QWidget()
         saved_layout = QVBoxLayout(saved)
@@ -692,6 +702,18 @@ class TaskDialog(QDialog):
             else None
         )
         self.cancel_app_button.setEnabled(bool(active and job))
+        self.clear_app_result_button.setEnabled(
+            bool(active and receipt and not receipt.result_cleared_at)
+        )
+        self.clear_task_results_button.setEnabled(
+            bool(
+                active
+                and any(
+                    r.task_id == owner and not r.result_cleared_at
+                    for r in self._app_rows
+                )
+            )
+        )
         can_reconcile = False
         if (
             active
@@ -726,17 +748,64 @@ class TaskDialog(QDialog):
             if archived
             else "Check the result without resending the original operation."
         )
+        result_label = (
+            receipt.reference
+            or (
+                "No saved reference"
+                if receipt.result_cleared_at
+                else "No confirmed reference"
+            )
+            if receipt
+            else ""
+        )
         text = (
             f"Operation: {receipt.effect.upper()} {receipt.connector}.{receipt.tool}\n"
             f"Destination: {receipt.destination}\n"
-            f"State: {receipt.state}\nResult: {receipt.reference or 'No confirmed reference'}\n"
-            f"Reason: {receipt.reason or 'None'}\nOperation ID: {receipt.operation_id}\n"
+            f"State: {receipt.state}\nResult: {result_label}\n"
+            + (
+                f"Saved result cleared: {receipt.result_cleared_at}\n"
+                if receipt.result_cleared_at
+                else ""
+            )
+            + f"Reason: {receipt.reason or 'None'}\nOperation ID: {receipt.operation_id}\n"
             f"Draft ID: {receipt.artifact_id or 'Not used'}\n\n{receipt.text}"
             if receipt
             else ""
         )
         if self.app_preview.toPlainText() != text:
             self.app_preview.setPlainText(text)
+
+    def clear_app_result(self, *, all_owned=False):
+        selected = self.selection()
+        row = self.apps.currentRow()
+        if selected is None or (not all_owned and not 0 <= row < len(self._app_rows)):
+            return
+        task_id = selected[0].task_id if all_owned else self._app_rows[row].task_id
+        ids = None if all_owned else [self._app_rows[row].request_id]
+        subject = "this task's own app receipts" if all_owned else "this app receipt"
+        if (
+            QMessageBox.question(
+                self,
+                "Clear Saved App Results?",
+                f"Clear saved provider text and links for {subject}, including shared receipt summaries? "
+                "Later results for these receipts will not be saved. Outcomes, accounts, destinations "
+                "and IDs are kept for recovery and duplicate-write protection. "
+                "Provider data, drafts and results from separate checks are kept.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        try:
+            self.service.clear_app_results(task_id, ids)
+        except Exception:
+            QMessageBox.warning(
+                self,
+                "App Results",
+                "Saved results could not be cleared. Review the task journal.",
+            )
+        self.refresh_activity()
 
     def perform_app(self, operation):
         index = self.apps.currentRow()

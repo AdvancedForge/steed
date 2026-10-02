@@ -74,7 +74,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3, 4, 5, 6, 7):
+        if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -128,7 +128,7 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 7;
+                PRAGMA user_version = 8;
             """
                 + CONNECTOR_SCHEMA
                 + RULE_SCHEMA
@@ -588,6 +588,46 @@ class TaskStore:
                 digest,
             ),
         ).fetchall()
+
+    def clear_shared_app_results(self, source_task_id, request_ids):
+        """Scrub saved summaries in the caller's receipt-clearing transaction."""
+        self.get(source_task_id)
+        for row in self._db.execute(
+            "SELECT task_id FROM task_recoveries WHERE source_task_id = ?",
+            (source_task_id,),
+        ):
+            task_id = row["task_id"]
+            try:
+                context = self.recovery(task_id)["context"]
+            except (ValueError, TypeError) as error:
+                raise RuntimeError("Invalid saved recovery context") from error
+            receipts = context.get("app_receipts", [])
+            if not isinstance(receipts, list) or len(receipts) > 50:
+                raise RuntimeError("Invalid saved app receipt summaries")
+            changed = False
+            for receipt in receipts:
+                if not isinstance(receipt, dict):
+                    raise RuntimeError("Invalid saved app receipt summary")
+                if (
+                    receipt.get("task_id") == source_task_id
+                    and receipt.get("request_id") in request_ids
+                ):
+                    receipt["reference"], receipt["text"] = "", ""
+                    receipt["text_truncated"] = False
+                    changed = True
+            if changed:
+                encoded = json.dumps(context, ensure_ascii=False, allow_nan=False)
+                if len(encoded.encode("utf-8")) > MAX_RECOVERY_BYTES:
+                    raise RuntimeError("Invalid saved recovery size")
+                self._db.execute(
+                    "UPDATE task_recoveries SET snapshot = ? WHERE task_id = ?",
+                    (encoded, task_id),
+                )
+                self._append(
+                    task_id,
+                    "recovery.results_cleared",
+                    {"source_task_id": source_task_id},
+                )
 
     def record_event(self, task_id: str, kind: str, payload: dict):
         self.get(task_id)

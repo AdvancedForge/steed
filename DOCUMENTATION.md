@@ -535,7 +535,7 @@ account identity requiring fresh approval. Profile rules follow renames, but not
 deletion/recreation under the same name. Saved lists retain their original labels.
 
 Rules and their grant provenance are journaled atomically in `tasks.sqlite`
-(schema 7). Restart preserves rules but interrupts tasks and never restores old
+(schema 8). Restart preserves rules but interrupts tasks and never restores old
 grants or retries operations. Approval management remains trusted browser UI;
 agent tools cannot create, broaden or remove rules. Website choices are separate.
 
@@ -1092,8 +1092,38 @@ IDs, references and result text, cancel a running operation, or reconcile an
 uncertain result while its original task/grant remains active. Finished/interrupted
 receipts remain readable by the user. Shared archived receipts can also be checked
 under a fresh read-only grant; see [archived receipt checks](#checking-an-archived-app-receipt).
-Result-retention controls and additional real providers remain follow-ups. A client
-cannot adopt another task's ledger.
+User-controlled [result clearing](#clearing-saved-app-results) is implemented;
+automatic retention policies and additional real providers remain follow-ups.
+A client cannot adopt another task's ledger.
+
+### Clearing saved app results
+
+Open **File → Task Permissions → Apps** and select a receipt. **Clear Saved Result**
+removes its saved provider text and link after confirmation. A **Previous** row
+clears the original receipt and its shared recovery summaries. **Clear This Task’s
+Results** clears the selected task's own receipts (up to fifty); Previous rows
+belong to their original tasks. The confirmation defaults to **No**.
+
+Outcomes, accounts, destinations, request/operation IDs, fingerprints, draft IDs
+and the append-only journal remain available for recovery and duplicate-write
+protection. The preview shows when the result was cleared; owned MCP receipts
+include `result_cleared_at`. Clearing and scrubbing shared summaries commit in one
+transaction. Repeating a clear is a no-op. Only trusted browser UI can clear
+results; agents have no clearing tool or management authority.
+
+Clearing can also apply to queued/running operations or uncertain receipts.
+Operations continue under their existing permissions and their outcome can still
+be recorded. A persistent marker prevents later workers or reconciliation from
+restoring text/links on the cleared receipt, including after restart. For an
+uncertain receipt, a new separately approved read-only check owns its own result;
+clear that receipt too if you want to remove its saved text. Completed receipts
+with cleared links retain their outcome; use the provider UI to locate their data.
+Matching historical writes remain blocked.
+
+Provider-side files/emails, drafts and independent check receipts retain their
+own lifetimes. Previously exported/copied data and backups are outside this local
+removal; this is not a secure disk erase. Automatic expiry and broader retention
+policies remain future work.
 
 ### Google app connections
 
@@ -1738,7 +1768,7 @@ connection, restores pages/grants or dispatches an old operation.
 
 Copies have independent IDs and lifetime. Deleting an original draft does not
 delete shared copies. Imports, source provenance, evidence and write protections
-commit together in `tasks.sqlite` schema 7. Copies are checked against their
+commit together in `tasks.sqlite` schema 8. Copies are checked against their
 stored UTF-8 byte count/content hash. Selection is bounded to ten drafts, the
 context to 128 KiB and ancestry to 32 tasks. Oversized evidence can be omitted.
 Restart interrupts follow-ups and ends pending pickers; another follow-up needs
@@ -1894,10 +1924,33 @@ stable receipts, restart without grants/replay and a fresh read-only archived Do
 check using the original operation property. It does
 not contact Google or test HTTPS certificates, a real desktop keyring or consent UI.
 It saves `/tmp/steed-google-connections.png`, `/tmp/steed-google-approval.png`,
-`/tmp/steed-archived-read-approval.png` and `/tmp/steed-archived-receipts.png`.
+`/tmp/steed-archived-read-approval.png`, `/tmp/steed-archived-receipts.png` and
+`/tmp/steed-retention-receipts.png`. It also verifies user-cleared source/check
+results while retaining their states, operation identities and no-replay behavior.
 Neither optional SDK nor SecretStorage is needed for this synthetic smoke.
 
 ## Verification record
+
+Provider result-retention stage (October 2, 2026): **518 tests passed in
+255.304 seconds** (`/tmp/steed-retention-full.log`). Seventeen focused checks passed
+in 1.486 seconds (`/tmp/steed-retention-focused.log`), covering owned/bulk clearing,
+foreign IDs, idempotency, identity/state/draft preservation, historical-write guards,
+shared-summary removal, queued/late writes, cleared source/probe confirmations,
+restart, schema-7 migration, journal rollback, corrupt snapshots, agent API denial
+and default-No UI confirmation. Clear markers suppress future text/link storage
+while outcomes and independently confirmed evidence remain intact.
+
+SDK and independent JSON-RPC clients observed user-cleared results and summaries
+and still rejected matching historical writes over both transports
+(`/tmp/steed-retention-mcp-stdio.log`, `/tmp/steed-retention-mcp-http.log`). Provider
+writes stayed at exactly two documents and two emails across clients. Shared-profile
+browsing, watch/handoff, uploads/downloads, cancellation and cleanup also passed.
+The synthetic Google HTTP/OAuth fixture cleared source/check results and retained
+states and operation identity, with exactly one Doc/email and no extra mutations
+(`/tmp/steed-retention-google.log`). The clearing controls and timestamp preview were
+visually inspected using `/tmp/steed-retention-receipts.png`. Startup/render/shutdown
+passed on Qt 6.11.2 (`/tmp/steed-retention-startup.log`). Ruff, formatting, whitespace
+and dependency checks passed. No real accounts, desktop keyrings or hardware were used.
 
 Archived app receipt stage (October 2, 2026): the full **501-test suite passed
 in 245.296 seconds** (`/tmp/steed-archived-final-full.log`). After the final guard
@@ -2538,7 +2591,9 @@ implemented; registries stay empty until accounts are configured. See
 [Google setup](#google-app-connections). User-selected follow-ups with fresh access
 and historical app-write protections are implemented; see
 [task recovery](#continuing-previous-work). Real-account acceptance, additional
-providers, broader result-retention controls and agent-managed mode remain pending.
+providers, automatic retention policies and agent-managed mode remain pending.
+User-controlled clearing of provider result text/links is implemented; see
+[result retention](#clearing-saved-app-results).
 
 - Browser-mediated mode: MCP gateway enforces grants, logs activity, handles cancellation, and records results.
 - Agent-managed mode: direct external connections; clearly disclose absent browser visibility/enforcement.
