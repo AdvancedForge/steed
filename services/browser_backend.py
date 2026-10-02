@@ -737,7 +737,19 @@ class QtBrowserBackend(QObject):
 
     def submit_form(self, session_id, action_id, snapshot_id, target_id):
         """Authorize one native submission and observe its document load."""
-        session, validate = self._edit_context(session_id, "submit")
+        session, validate_edit = self._edit_context(session_id, "submit")
+
+        def validate():
+            validate_edit()
+            # Script handlers run after DOM preflight and can alter sensitive
+            # controls before native serialization. The one-use ticket binds
+            # the route/method, not the request body. Keep this path scriptless.
+            if session.page.settings().testAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptEnabled
+            ):
+                raise PageInspectionError("scripted_submission_unavailable")
+
+        validate()
         session.grant.check("navigate")
         if session.network is not None:
             session.network.validate()

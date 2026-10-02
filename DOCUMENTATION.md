@@ -746,6 +746,10 @@ Current support is main-document, same-window HTTP/HTTPS GET or POST with
 Forms containing password/file controls, child-frame forms, multipart/plain-text
 forms, dialog methods, image submitters, and new-window/named targets are unavailable.
 Document scripts remain disabled, so script-handled forms and SPAs need later work.
+Submission checks this setting before preparation and again before arming its
+ticket. An enabled setting returns `scripted_submission_unavailable` without
+dispatch: JavaScript submit handlers could change sensitive controls after DOM
+preflight, and a route/method ticket does not bind the serialized body.
 This does not add password-manager integration to tasks.
 
 One per-page ticket binds the destination and method to a dispatch. The interceptor
@@ -871,9 +875,49 @@ end too. Pages, commands, and approved authority are never
 restored/replayed. An asynchronous journal write failure disables further task
 commands and emits `service.failed`; cleanup still disposes engine resources.
 
-Active document execution, form/file actions, and watch/takeover controls remain
-future work. Existing-profile grants support the same restricted retrieval,
-metadata operations, and explicitly approved content reads as private task pages.
+Active document execution, script-handled forms, file actions, and watch/takeover
+controls remain future work. Existing-profile grants support the same restricted
+retrieval, metadata, content reads, control edits, and native scriptless forms as
+private task pages, with the corresponding explicit permissions.
+
+### Active-content networking audit
+
+`tests/smoke_task_active_content.py` deliberately enables JavaScript in synthetic
+task pages to identify missing boundaries. The application and grant API still
+keep website scripts unavailable. This experiment uses temporary profiles,
+loopback HTTP/WebSocket destinations and a UDP STUN receiver, without real
+accounts or external services. It requires working local TCP/UDP networking.
+
+The Qt 6.11.2 results are:
+
+| Probe | Private task with forced scripts | Existing-profile task with forced scripts |
+| --- | --- | --- |
+| Approved-origin GET | Reached fixture | Reached fixture |
+| Unapproved-origin fetch | Blocked | Blocked |
+| General POST | Blocked | Blocked |
+| Blob dedicated-worker fetch to unapproved origin | Blocked | Blocked |
+| Blob shared-worker fetch to unapproved origin | Blocked | **Reached fixture** |
+| Unapproved WebSocket handshake | Blocked | Blocked |
+| WebRTC STUN packets to another port | **Reached UDP receiver** | **Reached UDP receiver** |
+
+Both scriptless task controls produced no tested active-content requests or UDP
+packets. Ordinary user pages reached all positive-control destinations, including
+while a task shared their profile. These measurements cover the specific fixtures,
+not every transport, redirect, realm, or Chromium version.
+
+A separate fixture-controlled CSP probe used `worker-src 'none'`, restricted
+`connect-src`, and `webrtc 'block'`. It blocked the shared-worker request, but the
+engine reported the `webrtc` directive as unrecognized and still sent STUN packets.
+The fixture's meta policy is a capability probe, not shipped enforcement for
+arbitrary documents. HTTP interceptors or a CSP worker policy alone therefore do
+not establish the required active-script boundary. Main-world JavaScript wrappers
+also need proof against fresh iframe realms and cannot serve as the sole boundary.
+
+Before introducing a `scripts` grant, establish native enforcement for workers,
+child contexts and non-HTTP transports without restricting concurrent user tabs.
+Keep script-enabled forms denied until serialized-body/handler semantics have a
+separate enforceable design. A new script authority must explicitly describe
+website code's access to the selected profile's storage and account state.
 
 ## Development checks
 
@@ -890,6 +934,7 @@ For headless Linux checks:
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python -m unittest discover -s tests -v
 QT_QPA_PLATFORM=offscreen python tests/smoke_browser.py
 QT_QPA_PLATFORM=offscreen python tests/smoke_google_login.py
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_active_content.py
 python tests/smoke_password_manager.py
 ```
 
@@ -902,6 +947,11 @@ destroy and recreate QApplication between test classes using WebEngine.
 
 The Google compatibility smoke check also needs `openssl`. It uses a temporary loopback HTTPS server, maps the Google account host to that server for this test process, and trusts only its generated certificate key. It never contacts Google or uses an account.
 
+The active-content audit prints JSON with observed requests, STUN packet counts,
+script execution results, and `tested_routes_contained`. Exit zero means its
+positive controls and scriptless checks completed; it does not approve scripts.
+The current forced-script probes report `tested_routes_contained: false`.
+
 The optional password-manager smoke check needs `keepassxc` and `keepassxc-cli`.
 It runs offscreen with isolated configuration and a synthetic temporary vault,
 seeds a fixture pairing, and checks encrypted saving/retrieval and vault locking.
@@ -910,6 +960,19 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+A3 active-content boundary stage (October 1, 2026): the loopback audit completed
+on Qt 6.11.2 (`/tmp/steed-active-audit.log`), identifying the shared-worker and
+WebRTC gaps described above. CSP prevented the shared-worker request in its
+controlled fixture but did not stop STUN. Website scripts remain unavailable;
+no broader grant or profile-wide user restriction was added. All 20 form/ticket
+checks passed (`/tmp/steed-active-forms.log`), including two new regressions for
+script settings enabled before preparation or during its asynchronous callback.
+Neither path armed a ticket or sent a form request. Ordinary browsing and earlier
+native actions retain their existing behavior. The complete 253-test suite passed
+in 143.111 seconds (`/tmp/steed-active-full.log`); Ruff, formatting and whitespace
+checks passed. This stage does not establish interactive desktop or real-account
+acceptance. Historical native Qt startup exits remain unresolved.
 
 A3 native keyboard stage (October 1, 2026): all 251 regressions passed on Qt 6.11.2
 in 141.614 seconds (`/tmp/steed-native-full.log`). Six new input checks and a new
