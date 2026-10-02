@@ -33,7 +33,7 @@ class TaskDialog(QDialog):
         notice = QLabel(
             "Requests open automatically for approval. Existing profiles support "
             "shared access; you can keep browsing while a task uses your sign-in. "
-            "Downloads require exact file permission. Task scripts and uploads are unavailable. Revoking access cancels the task."
+            "File transfers require exact file and site permission. Task scripts are unavailable. Revoking access cancels the task."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -201,6 +201,15 @@ class TaskDialog(QDialog):
                 )
                 + f"Actions: {', '.join(scope['actions']) or 'None'}\n"
                 + (
+                    "Upload files:\n"
+                    + "\n".join(scope["upload_sources"])
+                    + "\nUpload sites:\n"
+                    + "\n".join(scope["upload_origins"])
+                    + f"\nStaging per page: up to {scope['max_upload_bytes']:,} bytes.\n"
+                    if scope.get("upload_sources")
+                    else ""
+                )
+                + (
                     "Download files (no overwriting):\n"
                     + "\n".join(scope["download_destinations"])
                     + f"\nEach file: up to {scope['max_download_bytes']:,} bytes.\n"
@@ -215,8 +224,8 @@ class TaskDialog(QDialog):
                 )
                 + (
                     "Submission: native GET/POST forms can change account data and send "
-                    "current fields, including hidden site tokens. Password/file forms, "
-                    "child frames, new windows and multipart forms are unavailable.\n"
+                    "current fields, including hidden site tokens. Password, multi-file and folder forms, "
+                    "child frames and new windows are unavailable. Multipart needs approved single-file upload.\n"
                     if "submit" in scope["actions"]
                     else "Form submission is unavailable.\n"
                 )

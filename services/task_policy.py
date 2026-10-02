@@ -13,7 +13,17 @@ from PyQt6.QtCore import QUrl
 from utils import sanitize_profile_name
 
 SUPPORTED_ACTIONS = frozenset(
-    {"navigate", "inspect", "read", "attach", "edit", "scroll", "submit", "download"}
+    {
+        "navigate",
+        "inspect",
+        "read",
+        "attach",
+        "edit",
+        "scroll",
+        "submit",
+        "download",
+        "upload",
+    }
 )
 
 
@@ -120,6 +130,9 @@ class TaskScope:
     max_sessions: int = 1
     download_destinations: tuple[str, ...] = ()
     max_download_bytes: int = 25 * 1024 * 1024
+    upload_sources: tuple[str, ...] = ()
+    upload_origins: tuple[str, ...] = ()
+    max_upload_bytes: int = 5 * 1024 * 1024
 
     @classmethod
     def parse(cls, values):
@@ -157,6 +170,7 @@ class TaskScope:
             ("max_requests", 1000, 100000),
             ("max_sessions", 1, 10),
             ("max_download_bytes", 25 * 1024 * 1024, 100 * 1024 * 1024),
+            ("max_upload_bytes", 5 * 1024 * 1024, 25 * 1024 * 1024),
         ):
             value = values.get(field, default)
             if (
@@ -172,12 +186,28 @@ class TaskScope:
         destinations = tuple(sorted({download_destination(p) for p in destinations}))
         if bool(destinations) != ("download" in actions):
             raise ValueError("Download permission requires explicit destinations")
+        sources = values.get("upload_sources", [])
+        upload_origins = values.get("upload_origins", [])
+        if not isinstance(sources, (tuple, list)) or len(sources) > 20:
+            raise ValueError("Provide at most 20 exact upload sources")
+        if not isinstance(upload_origins, (tuple, list)) or len(upload_origins) > 20:
+            raise ValueError("Provide at most 20 exact upload origins")
+        sources = tuple(sorted({download_destination(p) for p in sources}))
+        upload_origins = tuple(sorted({origin_url(p) for p in upload_origins}))
+        if (bool(sources) or bool(upload_origins)) != ("upload" in actions) or (
+            "upload" in actions and (not sources or not upload_origins)
+        ):
+            raise ValueError("Upload permission requires exact sources and origins")
+        if not set(upload_origins) <= set(origins):
+            raise ValueError("Upload origins must be allowed task origins")
         return cls(
             origins,
             tuple(sorted(set(actions))),
             profile,
             private,
             download_destinations=destinations,
+            upload_sources=sources,
+            upload_origins=upload_origins,
             **numbers,
         )
 
@@ -213,7 +243,7 @@ class LiveGrant:
             self._ended = "expired"
         return self._ended
 
-    def check(self, action, *, url=None, profile=None, destination=None):
+    def check(self, action, *, url=None, profile=None, destination=None, source=None):
         with self._lock:
             reason = self._reason()
             if reason:
@@ -226,12 +256,26 @@ class LiveGrant:
                     or destination not in self.scope.download_destinations
                 ):
                     raise TaskPermissionError("destination_out_of_scope")
+            if source is not None and (
+                action != "upload" or source not in self.scope.upload_sources
+            ):
+                raise TaskPermissionError("source_out_of_scope")
             if action != "open" and action not in self.scope.actions:
                 raise TaskPermissionError("action_out_of_scope")
             if url is not None:
                 reason = self._url_reason(url)
                 if reason:
                     raise TaskPermissionError(reason)
+                if action == "upload":
+                    try:
+                        actual = urlsplit(url)
+                        origin = origin_url(f"{actual.scheme}://{actual.netloc}")
+                    except ValueError:
+                        raise TaskPermissionError(
+                            "upload_origin_out_of_scope"
+                        ) from None
+                    if origin not in self.scope.upload_origins:
+                        raise TaskPermissionError("upload_origin_out_of_scope")
 
     def _url_reason(self, value):
         if value == "about:blank":

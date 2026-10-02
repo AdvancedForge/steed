@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import test_task_profiles as profiles
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QLabel, QPlainTextEdit, QScrollArea
 
 from browser_window import BrowserWindow
 
@@ -66,6 +66,38 @@ class TaskApprovalTests(unittest.TestCase):
         )
         dialog.deny_button.click()
         self.assertNotIn(task.task_id, self.service._grants)
+
+    def test_upload_permission_lists_files_and_sites_with_accessible_decisions(self):
+        self.window()
+        task = self.command("task.create", objective="Upload an approved report")
+        grant = self.request(
+            task.task_id,
+            actions=["navigate", "read", "submit", "upload"],
+            upload_sources=["/tmp/synthetic-report.txt"],
+            upload_origins=[self.origin],
+        )
+        dialog = self.popup()
+        fields = [field.toPlainText() for field in dialog.findChildren(QPlainTextEdit)]
+        self.assertIn("/tmp/synthetic-report.txt", fields)
+        self.assertEqual(fields.count(self.origin), 2)
+        labels = " ".join(label.text() for label in dialog.findChildren(QLabel))
+        self.assertIn("Send the listed local files", labels)
+        self.assertIn("Password, multi-file and folder forms are unavailable", labels)
+        scroll = dialog.findChild(QScrollArea)
+        self.assertIsNotNone(scroll)
+        self.assertFalse(scroll.isAncestorOf(dialog.approve_button))
+        self.assertFalse(scroll.isAncestorOf(dialog.deny_button))
+        self.wait_for(
+            lambda: all(
+                label.height() >= label.heightForWidth(label.width())
+                for label in dialog.findChildren(QLabel)
+                if label.isVisible() and label.wordWrap()
+            )
+        )
+        self.assertEqual(
+            self.service.store.grant(task.task_id, grant.grant_id).status, "requested"
+        )
+        dialog.deny_button.click()
 
     def test_requests_wait_for_a_window_and_are_presented_one_at_a_time(self):
         first_id, first_grant = self.named_request()

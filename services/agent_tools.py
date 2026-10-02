@@ -85,9 +85,10 @@ SCOPE = schema(
                     "scroll",
                     "submit",
                     "download",
+                    "upload",
                 ],
             },
-            "maxItems": 8,
+            "maxItems": 9,
         },
         "profile": string(140),
         "allow_private_network": {
@@ -105,10 +106,13 @@ SCOPE = schema(
             "description": "Exact absolute filenames. Existing files are never overwritten.",
         },
         "max_download_bytes": integer(1, 100 * 1024 * 1024),
+        "upload_sources": {"type": "array", "items": string(4096), "maxItems": 20},
+        "upload_origins": {"type": "array", "items": string(2048), "maxItems": 20},
+        "max_upload_bytes": integer(1, 25 * 1024 * 1024),
     }
 )
 SCOPE["description"] = (
-    "Exact task permissions. Downloads require exact destination filenames; scripts and uploads are unavailable. The user approves in Steed."
+    "Exact task permissions. Downloads require exact destination filenames. Uploads require exact sources and destination origins; website scripts are unavailable. The user approves in Steed."
 )
 
 
@@ -210,6 +214,12 @@ TOOLS = (
         "Read an owned download's progress or completion receipt; file bytes are not exposed.",
         {**SESSION, "download_id": string()},
         ("session_id", "download_id"),
+    ),
+    tool(
+        "page.upload",
+        "Select an approved source file in an observed single-file control. Needs read/upload permission and upload_origins for the page and form destination. The browser stages an immutable copy; page.submit with separate submit/navigate authority sends it. No raw file bytes, selectors or scripts are exposed.",
+        {**TARGET, "source": string(4096)},
+        (*TARGET, "source"),
     ),
     tool(
         "download.cancel",

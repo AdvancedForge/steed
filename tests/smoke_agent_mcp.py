@@ -58,7 +58,7 @@ async def sdk_transport(discovery, endpoint):
 
 
 async def sdk_client(
-    discovery, origin, shared, revoke, revoked, destination, endpoint=None
+    discovery, origin, shared, revoke, revoked, destination, source, endpoint=None
 ):
     from mcp import ClientSession
 
@@ -107,10 +107,14 @@ async def sdk_client(
                         "submit",
                         "scroll",
                         "download",
+                        "upload",
                     ],
                     "duration_seconds": 120,
                     "download_destinations": [destination],
                     "max_download_bytes": 1024 * 1024,
+                    "upload_sources": [source],
+                    "upload_origins": [origin],
+                    "max_upload_bytes": 1024 * 1024,
                 },
             )
             deadline = time.monotonic() + 15
@@ -214,6 +218,25 @@ async def sdk_client(
             assert download["state"] == "completed", download
             assert Path(destination).read_bytes() == b"SYNTHETIC_DOWNLOAD_BYTES"
             shared["download_completed"] = True
+            await call(
+                "session.navigate",
+                session_id=session_id,
+                url=origin + "/mcp-upload-form",
+            )
+            assert (await call("page.wait", session_id=session_id))[
+                "status"
+            ] == "matched"
+            selected = await call(
+                "page.upload", **(await target("Upload source")), source=source
+            )
+            assert selected["status"] == "bound"
+            assert selected["byte_count"] == len(b"SYNTHETIC_MCP_UPLOAD_BYTES")
+            Path(source).write_bytes(b"SYNTHETIC_CHANGED_AFTER_COPY")
+            upload = await call("page.submit", **(await target("Send file")))
+            assert upload["request_authorized"] and upload["status"] == "loaded"
+            events = await call("task.events", limit=1000)
+            assert "SYNTHETIC_MCP_UPLOAD_BYTES" not in json.dumps(events)
+            shared["upload_completed"] = True
             revoke.set()
             deadline = time.monotonic() + 15
             while not revoked.is_set():
@@ -467,6 +490,7 @@ def check(transport="stdio"):
             "/mcp-start": b'<p>Delegated workflow</p><a href="/mcp-form">Open form</a>',
             "/mcp-form": b'<form method="post" action="/mcp-submitted"><input aria-label="Message" name="message" value="FORM_PRIVATE"><input type="hidden" name="token" value="SYNTHETIC_TOKEN"><input aria-label="Confirm" type="checkbox" name="confirm" value="yes"><button name="decision" value="send">Send</button></form>',
             "/download-mcp": b"SYNTHETIC_DOWNLOAD_BYTES",
+            "/mcp-upload-form": b'<form method="post" action="/mcp-upload-submitted" enctype="multipart/form-data"><input aria-label="Upload source" type="file" name="file"><button>Send file</button></form>',
         }
         type(case).post_responses = {
             "/mcp-submitted": (
@@ -475,8 +499,11 @@ def check(transport="stdio"):
                 b'<p>Received</p><a href="/download-mcp">Download receipt</a>',
             ),
             "/mcp-user-post": (200, None, b"<p>User browsing continues</p>"),
+            "/mcp-upload-submitted": (200, None, b"<p>Upload received</p>"),
         }
         window.agent_access_action.trigger()
+        upload_source = Path(case.directory.name) / "mcp-upload.txt"
+        upload_source.write_bytes(b"SYNTHETIC_MCP_UPLOAD_BYTES")
         discovery = case.registry.agent_gateway.discovery
         endpoint = None
         if transport == "http":
@@ -510,6 +537,7 @@ def check(transport="stdio"):
                         revoke,
                         revoked,
                         str(Path(case.directory.name) / "mcp-result.bin"),
+                        str(upload_source),
                         endpoint,
                     )
                 )
@@ -615,6 +643,11 @@ def check(transport="stdio"):
         )
         form = next(body for path, body, _ in case.posted if path == "/mcp-submitted")
         assert b"message=SYNTHETIC_MCP_VALUE" in form and b"confirm=yes" in form
+        uploaded = next(
+            body for path, body, _ in case.posted if path == "/mcp-upload-submitted"
+        )
+        assert b"SYNTHETIC_MCP_UPLOAD_BYTES" in uploaded
+        assert b"SYNTHETIC_CHANGED_AFTER_COPY" not in uploaded
         assert any(
             path == "/mcp-form" and "task_cookie=fixture" in cookie
             for path, cookie in case.requests

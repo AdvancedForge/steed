@@ -19,17 +19,31 @@
         const target = override("formtarget", "formTarget", native("target") || doc.querySelector("base[target]")?.target || "");
         if (!["http:", "https:"].includes(action.protocol) || action.username || action.password || action.href.length > 2048)
             return {error: "form_destination_unsupported"};
-        if (!["GET", "POST"].includes(method) || enctype !== "application/x-www-form-urlencoded" ||
+        const hasFiles = Array.from(native("elements")).some(c => c.type === "file");
+        const multipart = hasFiles && request.upload_available && method === "POST" && enctype === "multipart/form-data";
+        if (!["GET", "POST"].includes(method) || (!multipart && enctype !== "application/x-www-form-urlencoded") ||
             !["", "_self"].includes(target)) return {error: "form_unsupported"};
         const elements = native("elements");
         if (elements.length > 200) return {error: "form_control_limit"};
+        const uploads = [];
+        let fileCount = 0;
         for (const control of elements) {
-            if (["password", "file"].includes(control.type)) return {error: "sensitive_form_unsupported"};
+            if (control.type === "password") return {error: "sensitive_form_unsupported"};
+            if (control.type === "file") {
+                if (!multipart || ++fileCount > 1 || control.multiple || control.webkitdirectory)
+                    return {error: "sensitive_form_unsupported"};
+                if (!control.disabled && control.files.length) {
+                    const binding = globalThis.__steedUploadBindings?.get(control);
+                    if (control.files.length !== 1 || !binding || binding.file !== control.files[0])
+                        return {error: "upload_not_owned"};
+                    uploads.push({upload_id:binding.id, name:binding.file.name, size:binding.file.size});
+                }
+            }
         }
-        return {url: action.href, method};
+        return {url: action.href, method, file_form:hasFiles, uploads};
     };
     try {
-        if (["target", "act", "scroll", "form", "submit", "input_layout", "input_prepare", "input_check", "input_observe"].includes(request.mode)) {
+        if (["target", "act", "scroll", "form", "submit", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
             const state = globalThis[request.state_key];
             if (!state || state.snapshot_id !== request.snapshot_id) return fail("stale_snapshot");
             for (const frame of state.frames) {
@@ -49,6 +63,23 @@
             }
             const target = state.targets.get(request.node_id);
             if (!target || !target.node.isConnected) return fail("stale_snapshot");
+            if (["upload_prepare", "upload_observe"].includes(request.mode)) {
+                const node = target.node, doc = node.ownerDocument;
+                if (node.tagName !== "INPUT" || node.type !== "file" || doc.defaultView !== window ||
+                    node.getRootNode() !== doc || node.multiple || node.webkitdirectory || node.matches(":disabled") ||
+                    !node.getClientRects().length || getComputedStyle(node).visibility !== "visible")
+                    return fail("control_unsupported");
+                if (request.mode === "upload_prepare") {
+                    node.focus({preventScroll:true});
+                    return doc.activeElement === node ? JSON.stringify({prepared:true}) : fail("focus_unavailable");
+                }
+                if (doc.activeElement !== node || node.files.length !== 1 ||
+                    node.files[0].name !== request.name || node.files[0].size !== request.size)
+                    return fail("upload_outcome_unknown");
+                globalThis.__steedUploadBindings ||= new WeakMap();
+                globalThis.__steedUploadBindings.set(node, {id:request.upload_id, file:node.files[0]});
+                return JSON.stringify({bound:true});
+            }
             if (request.mode === "input_layout") return JSON.stringify({viewport_needed: innerWidth <= 0 || innerHeight <= 0});
             if (["input_prepare", "input_check", "input_observe"].includes(request.mode)) {
                 const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
@@ -86,7 +117,8 @@
                 const node = target.node, info = submission(node);
                 if (info.error) return fail(info.error);
                 if (request.mode === "form") return JSON.stringify(info);
-                if (info.url !== request.expected.url || info.method !== request.expected.method)
+                if (info.url !== request.expected.url || info.method !== request.expected.method ||
+                    JSON.stringify(info.uploads) !== JSON.stringify(request.expected.uploads))
                     return fail("stale_snapshot");
                 const form = node.form, win = node.ownerDocument.defaultView;
                 const noValidate = Object.getOwnPropertyDescriptor(win.HTMLFormElement.prototype, "noValidate").get.call(form);
@@ -234,7 +266,12 @@
                     kind = type === "checkbox" || type === "radio" ? type : "input";
                     operations = [kind === "input" ? "enter" : "activate"];
                     if (type === "password") { constraints.push("sensitive_field", "values_omitted"); operations = []; }
-                    if (type === "file") { constraints.push("file_actions_unavailable"); operations = []; }
+                    if (type === "file") {
+                        constraints.push("values_omitted");
+                        operations = request.upload_available && win === window && node.getRootNode() === doc &&
+                            !node.multiple && !node.webkitdirectory ? ["upload"] : [];
+                        if (!operations.length) constraints.push("file_actions_unavailable");
+                    }
                     if (type === "submit" || type === "button") { kind = "button"; operations = ["activate"]; }
                 } else if (tag === "textarea") { kind = "textarea"; operations = ["enter"]; }
                 else if (tag === "select") { kind = "select"; operations = ["select"]; }

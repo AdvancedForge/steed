@@ -113,6 +113,12 @@ class TaskWatchDialog(QDialog):
         values.addWidget(self.text)
         values.addWidget(self.choice)
         controls.addLayout(values)
+        self.sources = QComboBox()
+        live = service._grants.get(task_id)
+        if live:
+            for source in live[1].scope.upload_sources:
+                self.sources.addItem(source, source)
+        controls.addWidget(self.sources)
         actions = QHBoxLayout()
         self.action_buttons = {}
         for operation, label in (
@@ -121,6 +127,7 @@ class TaskWatchDialog(QDialog):
             ("activate", "Toggle"),
             ("select", "Choose Option"),
             ("submit", "Submit Form"),
+            ("upload", "Select File"),
         ):
             button = QPushButton(label)
             button.clicked.connect(lambda checked=False, op=operation: self.act(op))
@@ -140,7 +147,7 @@ class TaskWatchDialog(QDialog):
         controls.addLayout(extra)
         controls.addWidget(
             QLabel(
-                "Approved sites and actions still apply. Scripts, password/file forms and custom controls are unavailable."
+                "Approved files, sites and actions still apply. Scripts, password/multi-file forms and custom controls are unavailable."
             )
         )
         layout.addWidget(self.controls)
@@ -281,6 +288,8 @@ class TaskWatchDialog(QDialog):
                 if operation == "navigate"
                 else "submit"
                 if operation == "submit"
+                else "upload"
+                if operation == "upload"
                 else "edit"
             )
             button.setEnabled(
@@ -307,6 +316,15 @@ class TaskWatchDialog(QDialog):
                 and "edit" in allowed
             )
         )
+        self.sources.setVisible(bool(target and "upload" in target.operations))
+        self.sources.setEnabled(
+            bool(
+                available
+                and target
+                and "upload" in target.operations
+                and "upload" in allowed
+            )
+        )
         self.refresh_button.setEnabled(self.owns_control() and not self._busy)
         for button in self.scroll_buttons:
             button.setEnabled(available and "scroll" in allowed)
@@ -325,8 +343,10 @@ class TaskWatchDialog(QDialog):
             "snapshot_id": self.snapshot.snapshot_id,
             "target_id": target.target_id,
         }
-        if operation in ("navigate", "submit"):
+        if operation in ("navigate", "submit", "upload"):
             command = "page." + operation
+            if operation == "upload":
+                arguments["source"] = self.sources.currentData()
         else:
             command = "page.act"
             arguments["operation"] = operation

@@ -363,12 +363,13 @@ Browser/
 │   ├── permission_service.py # Modern/legacy permission responses and task denial
 │   ├── task_policy.py      # Exact scopes, expiry, and thread-safe request budgets
 │   ├── task_network.py     # Private per-target service-worker bypass adapter
-│   ├── task_input.py       # Fixed native keyboard events and task focus emulation
+│   ├── task_input.py       # Fixed native keys, file binding and task focus emulation
 │   ├── task_client.py      # Task-bound client command facade
 │   ├── page_inspector.py   # Asynchronous snapshots, validation, and fixed actions
 │   ├── page_actions.py     # Bounded action inputs and value-free receipts
 │   ├── form_submission.py  # Per-page submission tickets and journal URL privacy
 │   ├── task_downloads.py   # Native downloads, safe destination publication and receipts
+│   ├── task_uploads.py     # Bounded immutable copies of approved upload sources
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
@@ -462,7 +463,7 @@ The application-owned `DownloadManager` receives a destination-picker callback
 from the registry instead of opening dialogs itself. A manager with no provider
 declines downloads. Task downloads have their own explicit destination grants,
 staging, cancellation, and receipts; they never invoke the ordinary file picker.
-Uploads remain unavailable.
+Single-file task uploads require exact source-file and upload-site approval.
 
 The task service is available to trusted in-process Python controllers through
 `window.profile_manager.registry.tasks`. It is initialized only on demand and
@@ -511,6 +512,7 @@ its transport identity is also bound to the credential that initialized it.
 | `page.scroll` | `task_id`, `session_id`, `snapshot_id`, optional `frame_id`, `dx`, `dy`; requires `read` + `scroll`, returns observed offsets |
 | `page.wait` | `task_id`, `session_id`, optional `condition`, `text`, `timeout_ms`; requires `read`, returns an observed match, timeout, or load failure |
 | `page.download` | `task_id`, `session_id`, `snapshot_id`, `target_id`, `destination`; requires `read` + `navigate` + `download`, starts an observed attachment link and returns its download ID |
+| `page.upload` | `task_id`, `session_id`, `snapshot_id`, `target_id`, `source`; requires `read` + `upload`, binds an approved source copy to an observed single-file input and returns metadata |
 | `download.status` | `task_id`, `session_id`, `download_id`; download grant, returns progress/completion receipt without file bytes |
 | `download.cancel` | `task_id`, `session_id`, `download_id`; cancels owned transfer and discards staged bytes without spending a cleanup operation |
 | `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
@@ -773,8 +775,10 @@ the browser's native form checks. Every completed attempt invalidates references
 
 Current support is main-document, same-window HTTP/HTTPS GET or POST with
 `application/x-www-form-urlencoded` encoding and at most 200 native form controls.
-Forms containing password/file controls, child-frame forms, multipart/plain-text
-forms, dialog methods, image submitters, and new-window/named targets are unavailable.
+Approved single-file uploads additionally support POST `multipart/form-data`.
+Forms containing passwords, multiple/folder file inputs, child-frame forms,
+plain-text forms, dialog methods, image submitters, and new-window/named targets
+are unavailable. Multipart forms require the explicit upload grant described below.
 Document scripts remain disabled, so script-handled forms and SPAs need later work.
 Submission checks this setting before preparation and again before arming its
 ticket. An enabled setting returns `scripted_submission_unavailable` without
@@ -890,6 +894,58 @@ Qt requires choosing the download path before accepting its request; see
 Steed uses ordinary page navigation to retain page request enforcement, rather
 than exposing an unrestricted engine download API.
 
+### Scoped task uploads
+
+Request explicit source files and upload origins alongside ordinary task sites:
+
+```python
+scope = {
+    "profile": "private",
+    "origins": ["https://example.org"],
+    "allow_private_network": True,
+    "actions": ["navigate", "inspect", "read", "upload", "submit"],
+    "upload_sources": ["/home/yourname/Documents/report.pdf"],
+    "upload_origins": ["https://example.org"],
+    "max_upload_bytes": 5 * 1024 * 1024,
+}
+```
+
+The approval popup lists the exact local files, upload sites and staging budget.
+Sources must be normalized absolute filenames; symlink components and nonregular
+files are rejected. Upload origins must be a subset of the task's allowed origins.
+Both the page and form destination need upload authority, even if the destination
+already has navigation permission. Existing grants gain no file access.
+
+Inspect the page, choose an input whose operations include `upload`, and call
+`steed_page_upload` with its current `session_id`, `snapshot_id`, `target_id` and
+approved `source`. Steed copies the source in a worker thread into private storage,
+rejecting size violations or changes during copying. It binds that immutable copy
+through a fixed native engine operation, without exposing selectors, script or
+file bytes to the client. The receipt includes the filename, byte count and SHA-256
+fingerprint. Later changes to the original file do not change the selected copy.
+
+Selection does not submit the form. Inspect again for fresh references, then use
+`steed_page_submit` with `read` + `navigate` + `submit` permission. Native validation,
+hidden fields and the chosen submitter apply; the one-use POST ticket rejects body
+replay through a redirect. A loaded response still does not establish account-level
+success. File bytes and form values are excluded from journal events.
+
+Support is limited to one ordinary main-document file control per POST multipart
+form. Website scripts, multiple files, folder inputs, password controls, frames,
+shadow-root file inputs and custom upload widgets remain unavailable. The private
+frontend adapter is verified on Qt 6.11.2 and needs checking on engine upgrades.
+
+The default staging budget is 5 MiB, capped at 25 MiB across retained copies in a
+session, with at most 20 copies. Copying and selection have a 30-second deadline.
+Pending selection checks live authority and is cancelled by stop, revocation or
+teardown. Successful copies remain until their session closes; cleanup removes
+them. A crash can leave private staging directories; automatic orphan recovery is
+not implemented. There is no raw file-reading API or automatic submission retry.
+
+During **Take Control**, select the file input, choose an approved **Source** and
+click **Select File**. Return control to let the agent inspect fresh references and
+continue; source and destination permissions stay the same.
+
 ### Existing signed-in task profiles
 
 An internal client can request `"profile": "existing:work"` to use the existing
@@ -969,7 +1025,7 @@ end too. Pages, commands, and approved authority are never
 restored/replayed. An asynchronous journal write failure disables further task
 commands and emits `service.failed`; cleanup still disposes engine resources.
 
-Active document execution, script-handled forms, and uploads remain future
+Active document execution and script-handled forms remain future
 work. Watching and scoped user handoff use the existing task page.
 Existing-profile grants support the same restricted
 retrieval, metadata, content reads, control edits, and native scriptless forms as
@@ -1270,13 +1326,14 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 24 input schemas. Names follow the internal command
+Tool discovery publishes 25 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
-navigation, supported control edits, native form submission, scrolling, waits,
+navigation, supported control edits, native form submission, scoped uploads and
+downloads, scrolling, waits,
 watching, evidence, and task lifecycle are available. Approval, task enumeration,
-raw cookies, JavaScript, arbitrary selectors, uploads, and raw Qt objects
+raw cookies, JavaScript, arbitrary selectors, file bytes, and raw Qt objects
 are not exposed by this adapter. `steed_session_watch` needs explicit `attach`
 permission and opens a browser-owned window; taking and returning control are
 trusted user actions, unavailable to external clients.
@@ -1306,7 +1363,8 @@ the adapter as described above. To collaborate on an approved task page:
    rendered page is read-only; opening the window never clones the session.
 4. Click **Take Control** after the current page operation finishes. Choose an
    observed link or field and use **Open Link**, **Fill Field**, **Toggle**,
-   **Choose Option**, **Submit Form**, or the scroll buttons. The agent's page
+   **Choose Option**, **Select File** with an approved source, **Submit Form**, or
+   the scroll buttons. The agent's page
    operations and content reads are blocked until you return control.
 5. Click **Return to Agent** to continue delegation. The page and your edits
    remain intact. Old target references are invalidated; the agent must inspect
@@ -1315,7 +1373,7 @@ the adapter as described above. To collaborate on an approved task page:
 
 This first takeover supports the same approved, scriptless actions as agent
 tasks. Direct clicking/typing inside the rendered page, website scripts,
-password/file forms, and custom controls remain unavailable. Site restrictions,
+password/multiple-file/folder forms, and custom controls remain unavailable. Site restrictions,
 operation budgets, and grant deadlines still apply during user control;
 ordinary browsing windows remain usable on the same profile.
 
@@ -1394,7 +1452,7 @@ The current forced-script probes report `tested_routes_contained: false`.
 The optional MCP smoke requires `requirements-mcp.txt`. It runs an SDK client
 and a separate JSON-RPC client against a temporary, synthetic signed-in profile.
 The fixture alone clicks the approval popup and invokes trusted cancellation.
-It checks native edits/submission/downloads, watch/user handoff/return, blocked agent
+It checks native edits/submission/downloads/uploads, watch/user handoff/return, blocked agent
 operations during takeover, stale handles, evidence without field values,
 shared cookies/profile identity, concurrent ordinary user POST, ownership denial,
 and task disposal. The trusted fixture alone uses the user controls to enter
@@ -1416,6 +1474,28 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+Scoped upload stage (October 2, 2026): eleven focused checks passed in 15.751 seconds
+(`/tmp/steed-upload-focused-release.log`), covering immutable copied bytes, exact
+source/site authority, symlinks, size limits, enabled-script denial, mid-copy
+revocation, remaining staging budget, stale references, unsupported multiple files,
+user file selection,
+redirect replay and actual shared-profile cookies. Both MCP workflows passed
+with separate selection/submission and a changed original source after copying
+(`/tmp/steed-upload-stdio-final.log`, `/tmp/steed-upload-http-final.log`); the submitted body
+contained the original copy. No file bytes appeared in task events.
+The full 343-test suite passed in 233.164 seconds
+(`/tmp/steed-upload-complete.log`); startup/render/shutdown passed
+(`/tmp/steed-upload-startup.log`). The first full run found one permission-dialog
+wording regression; the dialog now distinguishes grants with and without upload
+authority. The final wrapped-label adjustment was checked separately by six
+popup checks, which passed in 2.034 seconds
+(`/tmp/steed-upload-approval-final.log`), including exact file/site disclosure and
+wrapped-label sizing. Long scopes scroll while Approve/Deny stay visible;
+the synthetic upload popup was visually checked at the top and bottom.
+Ruff, formatting, whitespace, dependency consistency and local file links passed.
+These are synthetic local fixtures, not acceptance of real authenticated upload
+sites or scripted widgets.
 
 Task activity and retained download receipts stage (October 2, 2026): three
 real-engine UI checks passed in 1.855 seconds (`/tmp/steed-activity-focused.log`),
