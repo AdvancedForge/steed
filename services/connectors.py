@@ -10,6 +10,29 @@ from services.task_artifacts import TaskArtifact
 
 
 @dataclass(frozen=True)
+class ConnectorReview:
+    before: str
+    after: str
+    context: str
+
+    def validate(self):
+        for value, maximum in (
+            (self.before, 16384),
+            (self.after, 16384),
+            (self.context, 4096),
+        ):
+            if (
+                not isinstance(value, str)
+                or "\x00" in value
+                or len(value.encode("utf-8")) > maximum
+            ):
+                raise ValueError("Invalid bounded app review")
+        if not self.after or not self.context:
+            raise ValueError("App review needs content and provider context")
+        return self
+
+
+@dataclass(frozen=True)
 class ConnectorRequest:
     request_id: str
     connector: str
@@ -18,6 +41,7 @@ class ConnectorRequest:
     destination: str
     artifact: TaskArtifact | None
     operation_id: str = ""
+    review: ConnectorReview | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +85,7 @@ class ConnectorTool:
     execute: object
     reconcile: object = None
     validate_destination: object = None
+    prepare_review: object = None
 
 
 class ConnectorRegistry:
@@ -80,6 +105,14 @@ class ConnectorRegistry:
             or (
                 definition.validate_destination is not None
                 and not callable(definition.validate_destination)
+            )
+            or (
+                definition.prepare_review is not None
+                and (
+                    not callable(definition.prepare_review)
+                    or not definition.requires_artifact
+                    or definition.effect != "write"
+                )
             )
         ):
             raise ValueError("Invalid trusted connector tool")
@@ -116,6 +149,7 @@ class ConnectorRegistry:
                 "requires_artifact": t.requires_artifact,
                 "can_reconcile": t.reconcile is not None,
                 "reconcile_effect": "read" if t.reconcile is not None else None,
+                "requires_review": t.prepare_review is not None,
             }
             for _, t in sorted(self._tools.items())
         ]
@@ -175,6 +209,7 @@ class ConnectorJob(QObject):
         *,
         probe=False,
         probe_request=None,
+        preparing=False,
     ):
         super().__init__(parent)
         self.definition, self.request, self.grant = definition, request, grant
@@ -183,6 +218,7 @@ class ConnectorJob(QObject):
         )
         self.probe = probe
         self.probe_request = probe_request
+        self.preparing = preparing
         self.dispatched = False
         self.finished.connect(callback, Qt.ConnectionType.QueuedConnection)
         self.timer = QTimer(self)
@@ -209,19 +245,24 @@ class ConnectorJob(QObject):
         else:
             try:
                 result = (
-                    self.definition.reconcile(
-                        self.probe_request
-                        or ConnectorProbe(
-                            self.request.request_id,
-                            self.request.destination,
-                            self.request.operation_id,
-                        ),
-                        self.cancelled,
+                    self.definition.prepare_review(self.request, self.cancelled)
+                    if self.preparing
+                    else (
+                        self.definition.reconcile(
+                            self.probe_request
+                            or ConnectorProbe(
+                                self.request.request_id,
+                                self.request.destination,
+                                self.request.operation_id,
+                            ),
+                            self.cancelled,
+                        )
+                        if self.probe
+                        else self.definition.execute(self.request, self.cancelled)
                     )
-                    if self.probe
-                    else self.definition.execute(self.request, self.cancelled)
                 )
-                if not isinstance(result, ConnectorOutcome):
+                expected = ConnectorReview if self.preparing else ConnectorOutcome
+                if not isinstance(result, expected):
                     raise ValueError("Invalid connector adapter result")
                 reply = (result.validate(), False)
             except Exception:

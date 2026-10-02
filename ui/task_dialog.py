@@ -120,6 +120,9 @@ class TaskDialog(QDialog):
         self.reconcile_app_button.clicked.connect(lambda: self.perform_app("reconcile"))
         app_buttons.addWidget(self.cancel_app_button)
         app_buttons.addWidget(self.reconcile_app_button)
+        self.review_app_button = QPushButton("Review Proposed Change")
+        self.review_app_button.clicked.connect(self.review_app)
+        app_buttons.addWidget(self.review_app_button)
         app_layout.addLayout(app_buttons)
         result_buttons = QHBoxLayout()
         self.clear_app_result_button = QPushButton("Clear Saved Result")
@@ -701,7 +704,17 @@ class TaskDialog(QDialog):
             if receipt and not archived
             else None
         )
-        self.cancel_app_button.setEnabled(bool(active and job))
+        try:
+            review = (
+                self.service.app_reviews.get(receipt.task_id, receipt.request_id)
+                if receipt and not archived
+                else None
+            )
+        except KeyError:
+            review = None
+        pending_review = review is not None and review.status == "pending"
+        self.review_app_button.setEnabled(bool(active and pending_review))
+        self.cancel_app_button.setEnabled(bool(active and (job or pending_review)))
         self.clear_app_result_button.setEnabled(
             bool(active and receipt and not receipt.result_cleared_at)
         )
@@ -900,6 +913,22 @@ class TaskDialog(QDialog):
                 "The task or permission changed, or its journal could not be saved. Review the current state before trying again.",
             )
         self.refresh()
+
+    def review_app(self):
+        index = self.apps.currentRow()
+        if not 0 <= index < len(self._app_rows):
+            return
+        receipt = self._app_rows[index]
+        from ui.app_review import AppReviewDialog
+
+        try:
+            review = self.service.app_reviews.get(receipt.task_id, receipt.request_id)
+            task = self.service.store.get(receipt.task_id)
+            dialog = AppReviewDialog(self.service, task, review, self)
+            dialog.finished.connect(lambda _: dialog.deleteLater())
+            dialog.show()
+        except (KeyError, ValueError):
+            return
 
     def watch_page(self):
         selected = self.selection()

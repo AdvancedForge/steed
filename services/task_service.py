@@ -15,12 +15,14 @@ from PyQt6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, pyqtSig
 from services.browser_backend import BrowserBackend, QtBrowserBackend, navigation_url
 from services.command_broker import CommandBroker, require_owner_thread
 from services.connector_policy import destination_name
+from services.connector_reviews import ConnectorReviews
 from services.connector_store import ConnectorStore, request_fingerprint
 from services.connectors import (
     ConnectorJob,
     ConnectorProbe,
     ConnectorRegistry,
     ConnectorRequest,
+    ConnectorReview,
 )
 from services.form_submission import journal_origin
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
@@ -57,6 +59,7 @@ class TaskService(QObject):
         self.store = TaskStore(path)
         self.connectors = connectors if connectors is not None else ConnectorRegistry()
         self.connector_store = ConnectorStore(self.store)
+        self.app_reviews = ConnectorReviews(self.store)
         self._connector_jobs = {}
         self.connector_timeout_ms = connector_timeout_ms
         self.profiles = profiles
@@ -349,7 +352,13 @@ class TaskService(QObject):
         except (sqlite3.Error, OSError):
             self._fatal(defer_broker_close=True)
             raise
-        self._queue_app_job(task_id, definition, request, grant)
+        self._queue_app_job(
+            task_id,
+            definition,
+            request,
+            grant,
+            preparing=definition.prepare_review is not None,
+        )
         self.changed.emit()
         return receipt
 
@@ -360,7 +369,15 @@ class TaskService(QObject):
             raise ValueError("An app operation is still running; wait for its result")
 
     def _queue_app_job(
-        self, task_id, definition, request, grant, *, probe=False, probe_request=None
+        self,
+        task_id,
+        definition,
+        request,
+        grant,
+        *,
+        probe=False,
+        probe_request=None,
+        preparing=False,
     ):
         job = ConnectorJob(
             definition,
@@ -370,6 +387,7 @@ class TaskService(QObject):
             self,
             probe=probe,
             probe_request=probe_request,
+            preparing=preparing,
         )
         self._connector_jobs[task_id, request.request_id] = job
         job.timer.timeout.connect(
@@ -396,7 +414,14 @@ class TaskService(QObject):
             return
         try:
             self.connector_store.update(
-                task_id, request_id, "reconciling" if job.probe else "dispatched"
+                task_id,
+                request_id,
+                "requested"
+                if job.preparing
+                else "reconciling"
+                if job.probe
+                else "dispatched",
+                reason="preparing_review" if job.preparing else "",
             )
             self.store.transition(task_id, "running")
             job.dispatched = True
@@ -412,6 +437,40 @@ class TaskService(QObject):
         job.timer.stop()
         if not self._closed and not self.failure:
             outcome, not_dispatched = reply
+            if job.preparing:
+                try:
+                    if (
+                        isinstance(outcome, ConnectorReview)
+                        and not job.cancelled.is_set()
+                        and outcome.after == job.request.artifact.content
+                    ):
+                        self._app_grant(task_id, job.request)
+                        self.app_reviews.create(task_id, request_id, outcome)
+                        self.connector_store.update(
+                            task_id, request_id, "requested", reason="awaiting_review"
+                        )
+                    else:
+                        self.connector_store.update(
+                            task_id,
+                            request_id,
+                            "cancelled",
+                            reason="review_preparation_failed",
+                        )
+                except TaskPermissionError:
+                    try:
+                        self.connector_store.update(
+                            task_id,
+                            request_id,
+                            "cancelled",
+                            reason="review_authority_ended",
+                        )
+                    except Exception:
+                        self._fatal()
+                except Exception:
+                    self._fatal()
+                self.changed.emit()
+                job.deleteLater()
+                return
             if outcome is not None:
                 state, reason = outcome.state, ""
             elif job.probe:
@@ -454,13 +513,75 @@ class TaskService(QObject):
         self._app_grant(task_id, receipt, consume=True)
         return receipt
 
+    def resolve_app_review(self, task_id, request_id, *, approve=False):
+        """Trusted desktop UI only; no broker command can authorize a proposal."""
+        require_owner_thread(self)
+        self._usable()
+        try:
+            return self._resolve_app_review(task_id, request_id, approve=approve)
+        except TaskPermissionError:
+            raise
+        except (sqlite3.Error, OSError):
+            self._fatal()
+            raise
+
+    def _resolve_app_review(self, task_id, request_id, *, approve):
+        receipt = self.connector_store.get(task_id, request_id)
+        review = self.app_reviews.get(task_id, request_id)
+        if review.status != "pending" or receipt.state != "requested":
+            raise ValueError("This review is no longer pending")
+        if not approve:
+            self.app_reviews.resolve(task_id, request_id, "denied")
+            self.connector_store.update(
+                task_id, request_id, "cancelled", reason="review_denied"
+            )
+            self.changed.emit()
+            return
+        definition = self.connectors.get(receipt.connector, receipt.tool)
+        if definition.prepare_review is None:
+            raise ValueError("This tool does not accept reviewed execution")
+        artifact = self.store.artifact(task_id, receipt.artifact_id)
+        request = ConnectorRequest(
+            request_id,
+            receipt.connector,
+            receipt.tool,
+            receipt.effect,
+            receipt.destination,
+            artifact,
+            receipt.operation_id,
+            review.payload(),
+        )
+        if (
+            artifact.content != review.after_text
+            or request_fingerprint(
+                request.connector,
+                request.tool,
+                request.effect,
+                request.destination,
+                artifact,
+            )
+            != receipt.fingerprint
+        ):
+            raise ValueError("The proposed draft no longer matches the request")
+        grant = self._app_grant(task_id, request)
+        grant.check("artifact")
+        self._app_capacity(task_id)
+        self._app_grant(task_id, request, consume=True)
+        self.app_reviews.resolve(task_id, request_id, "approved")
+        self._queue_app_job(task_id, definition, request, grant)
+        self.changed.emit()
+
     def _app_timeout(self, task_id, request_id, job):
         job.cancelled.set()
         if self._closed or self.failure:
             return
         try:
             state = (
-                "uncertain" if job.probe or job.request.effect != "read" else "failed"
+                "cancelled"
+                if job.preparing
+                else "uncertain"
+                if job.probe or job.request.effect != "read"
+                else "failed"
             )
             self.connector_store.update(
                 task_id, request_id, state, reason="connector_timeout"
@@ -481,7 +602,9 @@ class TaskService(QObject):
             job.cancelled.set()
             job.timer.stop()
             state = (
-                "uncertain"
+                "cancelled"
+                if job.preparing
+                else "uncertain"
                 if job.probe or (job.dispatched and receipt.effect != "read")
                 else "failed"
                 if job.dispatched
@@ -500,12 +623,25 @@ class TaskService(QObject):
                 self._fatal(defer_broker_close=True)
                 raise
             self.changed.emit()
+        else:
+            try:
+                review = self.app_reviews.get(task_id, request_id)
+            except KeyError:
+                review = None
+            if review is not None and review.status == "pending":
+                self.app_reviews.resolve(task_id, request_id, "cancelled")
+                receipt = self.connector_store.update(
+                    task_id, request_id, "cancelled", reason="review_cancelled"
+                )
+                self.changed.emit()
         return receipt
 
     def _cancel_app_jobs(self, task_id):
         for owner, request_id in tuple(self._connector_jobs):
             if owner == task_id:
                 self._cancel_app_job(task_id, request_id)
+        for review in self.app_reviews.pending(task_id):
+            self._cancel_app_job(task_id, review.request_id)
 
     def _app_reconcile(self, task_id, request_id):
         self._usable()

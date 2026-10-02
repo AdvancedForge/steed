@@ -1197,13 +1197,15 @@ for these non-basic scopes; reconnect when needed. See Google's
 | `google_<connection-id>.inspect_document` | `doc:<id>` | Read one exact Steed-created Doc's title and tab identities, without returning body text or requiring a draft. |
 | `google_<connection-id>.read_document` | `doc:<id>:tab:<tab-id>` | Read bounded plain text from one exact tab; no draft or write access is required. |
 | `google_<connection-id>.append_document` | `doc:<id>:tab:<tab-id>` | Append the immutable draft body to one exact tab; its title is unused. Existing text is retained. Adds an operation named range visible to collaborators. |
+| `google_<connection-id>.replace_document` | `doc:<id>:tab:<tab-id>` | Prepare a complete plain-text body replacement and show a before/after popup. Every change needs trusted user review, including under saved task grants. |
+| `google_<connection-id>.replace_document_direct` | `doc:<id>:tab:<tab-id>` | Replace the complete plain-text body without another content popup. Requires its own exact named permission; reusable approvals are supported. |
 | `google_<connection-id>.send_email` | `email:recipient@example.com` | Send one plain-text email; draft title becomes its subject and content becomes its body. |
 
 Use the actual connector ID returned by discovery, not the placeholder above.
 Mailbox destinations accept a single ASCII address with a lowercase domain;
 display names, recipient lists and header injection are rejected before approval.
 Local-part case, dots and plus tags remain exact. Arbitrary existing Drive files,
-shared drives, replacing existing document text, rich-text writes, attachments and
+shared drives, editing arbitrary existing documents, rich-text writes, attachments and
 mailbox reads are not implemented. Markdown drafts remain literal plain text. Drive
 [upload conversion](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
 creates the document and imports its text in one multipart request; no second
@@ -1275,7 +1277,46 @@ explicit selection through a future access flow. Google's
 [desktop Picker flow](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker)
 requires Drive-only consent, separate from Steed's current identity/Gmail consent;
 it is not enabled by these tools. General replacement/editing policy also remains
-a separate product decision.
+handled through the reviewed/direct tools described below.
+
+### Reviewed and direct document edits
+
+Use `replace_document` for the default review workflow. It requires an immutable
+draft and exact tab write permission, then reads the complete current plain-text
+body and revision in a worker. Its receipt stays `requested` with reason
+`awaiting_review`; no mutation has been sent. A popup shows the account,
+destination, a diff and separate current/proposed text views. **Deny** is the
+default. **Apply This Change** authorizes that captured draft and revision only.
+Closing/Escape defers the popup; reopen it through **Task Permissions → Apps →
+Review Proposed Change**. Cancel the app operation to discard the proposal.
+The management window and automatic approval queue share the same user-only
+decision method; no agent command can approve a content review.
+
+To delegate edits without reviewing every body, request the separately named
+`replace_document_direct` permission. The permission popup explicitly describes
+direct replacement and possible formatting changes. **Allow every time** and
+**Allow every time on this profile** can save that exact scope through the usual
+approval controls. A saved `replace_document` permission still requires each
+content review; it never covers `replace_document_direct`, another account or
+another tab. Direct permission does not reveal account credentials.
+
+Replacement supports a complete plain-text tab body of at most 16 KiB, with
+validated contiguous UTF-16 indices. Tables, inline non-text objects and suggested
+content are rejected rather than silently omitted. Body formatting may change;
+the tab title and other tabs remain outside the edit. Deletion, insertion and a
+`steed_replace_<operation-id>` range run in one revision-bound atomic batch. The
+final mandatory newline is preserved. A changed revision/text between preview
+and approval returns `not_applied`, requiring a fresh proposal; there is no silent
+rebase or retry. Lost replies can be checked read-only using the operation range,
+as with appends. Replacing body content can remove older operation ranges, so a
+missing historical range cannot establish whether an older update happened.
+
+Pending proposal previews live in a separate bounded schema-9 store, not agent
+receipts or activity events. Decision, cancellation, grant termination and restart
+scrub their before/after/provider-context text. The immutable agent draft remains
+independently retained. Restart never resumes a pending review or approved write.
+Clearing saved receipt results still follows the existing retention policy and
+does not cancel an operation or pending review.
 
 Connections use immutable provider/subject identities and a new opaque connector
 ID on every reconnect, including the same account. Account names and capabilities
@@ -2010,11 +2051,28 @@ The Google documents smoke uses an in-memory credential store and the production
 Google HTTP adapter routed to localhost. It checks folder → Doc → tab inspection
 → append, private text isolation between tabs, a lost append response, restart,
 fresh read-only archived confirmation without draft copying, and atomic revision
-rejection. It records exactly one folder, Doc and append and sends no email.
-It saves `/tmp/steed-google-document-receipts.png`. It does not contact Google or
+rejection. It also shows the before/after popup, applies one user-reviewed replacement,
+loses its TCP acknowledgement and confirms its operation range without replay.
+It records one folder, Doc, append and replacement and sends no email.
+It saves `/tmp/steed-google-document-receipts.png` and
+`/tmp/steed-google-document-review.png`. It does not contact Google or
 establish real account, consent, certificate or desktop-keyring acceptance.
 
 ## Verification record
+
+Reviewed document-edit stage (October 2, 2026): **568 tests passed in 254.019
+seconds** (`/tmp/steed-reviews-full.log`), plus fifteen final focused proposal regressions
+(`/tmp/steed-reviews-focused.log`). Existing Google adapter/gateway checks and the
+production-transport local HTTP workflow passed (`/tmp/steed-reviews-google.log`,
+`/tmp/steed-reviews-gateway.log`, `/tmp/steed-reviews-http.log`). The review screenshot
+was inspected: account/destination, current/proposed text, diff and default Deny
+are visible. Tests cover user-only review, fresh/saved reviewed grants, separate
+reusable direct grants, exact draft/revision binding, scrubbed previews, cancellation,
+restart, storage failures, foreign tasks and uncertain replacement recovery.
+All provider data and credentials were synthetic; real Google acceptance is pending.
+Both independent MCP clients over stdio and HTTP, startup/render/shutdown,
+Ruff/format and diff checks passed (`/tmp/steed-reviews-mcp-stdio.log`,
+`/tmp/steed-reviews-mcp-http.log`, `/tmp/steed-reviews-startup.log`).
 
 Google folder/document stages (October 2, 2026): folder milestone `e74dd12`
 passed **531 tests in 246.031 seconds** (`/tmp/steed-folders-full.log`); the

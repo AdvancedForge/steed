@@ -320,6 +320,8 @@ class GoogleConnectorTests(unittest.TestCase):
                 "inspect_document",
                 "read_document",
                 "append_document",
+                "replace_document",
+                "replace_document_direct",
             ],
         )
         self.assertEqual(

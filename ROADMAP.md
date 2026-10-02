@@ -98,13 +98,22 @@ establishes those results. Password improvements remain deferred at the user's r
   startup/render/shutdown, Ruff/format, dependencies and local documentation links
   passed. Fixtures used temporary state and synthetic accounts; real Google and
   desktop acceptance remains pending.
-- **Next major decision:** choose the authority model for changing existing
-  document text: user-reviewed change proposals or direct edits under an exact
-  document/tab grant. Append-only updates retain existing text; replacement and
-  general editing are deliberately unimplemented until this choice is made.
-  Recommendation: reviewed proposals by default, with a clearly separate reusable
-  permission for direct edits. This determines the review UI, durable proposal
-  lifecycle and when an agent may change existing user content.
+- **Document-edit decision accepted and implemented:** user-reviewed proposals
+  by default, with a separately named reusable direct-edit permission. Schema-9
+  previews, automatic before/after popups, default Deny, exact revision/draft
+  binding, private-preview scrubbing and read-only edit recovery are implemented.
+  Saved reviewed grants never bypass content review or cover direct edits.
+  Plain-text replacement stays within one exact Steed-created document tab.
+  Acceptance: **568 regressions passed**, focused proposal and existing Google
+  checks passed, and the local HTTP fixture applied exactly one reviewed replacement
+  with lost-response recovery. The actual before/after popup was inspected.
+- **Next engineering work:** general generated attachments and extension package
+  groundwork. Agents should be able to supply arbitrary file formats/source code
+  through owned immutable files without hardwired generators. Muse research points
+  toward private workspaces, credential separation and broker-controlled data access.
+  Running untrusted generated integration code requires a separately isolated
+  runtime with controlled filesystem/network access; choosing that boundary is
+  a major engineering decision, not permission to load code into the browser.
   Existing user-created file/folder selection also needs a separate Drive-only
   Picker consent/credential flow with verified account binding; no broader OAuth
   scopes or credential migration have been introduced. Broader provider access,
@@ -738,7 +747,13 @@ The local HTTP fixture confirms exactly one folder/Doc/append, restart recovery
 under fresh read-only authority, no copied draft, no other-tab text disclosure and
 no automatic retry after revision rejection. Operation ranges are visible to
 collaborators; a retained marker confirms application, not unchanged text.
-General existing-text edits need the authority decision in the resume checkpoint;
+Reviewed/plain-text direct replacement is implemented after the user accepted
+review-by-default with a separate reusable direct-edit grant. Before/after
+previews are private to trusted UI, default Deny, and scrubbed after decisions or
+restart. Agents cannot approve them. New revision/text requires a fresh proposal.
+The HTTP fixture exercises actual review and lost-reply confirmation without a
+second replacement. Rich/unsupported bodies are rejected; formatting can change.
+Broader structural edits remain future work;
 existing-file selection needs separate account-bound consent. No rebuild, broad
 OAuth scope, real account effect or password work was started.
 
