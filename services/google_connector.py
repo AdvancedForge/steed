@@ -1,6 +1,7 @@
-"""Google's first trusted mappings: new Docs and single-recipient Gmail sends."""
+"""Account-bound Google Docs, app-created folders and single-recipient sends."""
 
 import base64
+import hashlib
 import json
 import re
 import threading
@@ -20,6 +21,8 @@ USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
 DRIVE = "https://www.googleapis.com/drive/v3"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 SEND = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+DOCUMENT_MIME = "application/vnd.google-apps.document"
+FOLDER_MIME = "application/vnd.google-apps.folder"
 SCOPES = {
     "documents": "https://www.googleapis.com/auth/drive.file",
     "email": "https://www.googleapis.com/auth/gmail.send",
@@ -63,8 +66,21 @@ def email_destination(destination):
 
 
 def document_destination(destination):
-    if destination != "drive:root":
-        raise ValueError("Google Docs currently supports only drive:root (My Drive)")
+    """Parse an exact parent; folder ownership/access is checked before dispatch."""
+    if destination == "drive:root":
+        return "root"
+    if isinstance(destination, str) and destination.startswith("drive:folder:"):
+        file_id = destination.removeprefix("drive:folder:")
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,200}", file_id):
+            return file_id
+    raise ValueError("Use drive:root or drive:folder:<Steed-created folder ID>")
+
+
+def folder_destination(destination):
+    parent = document_destination(destination)
+    if parent == "root":
+        raise ValueError("Use drive:folder:<Steed-created folder ID>")
+    return parent
 
 
 def _identity(http, access_token, cancelled):
@@ -240,7 +256,7 @@ class GoogleConnector:
                     self.account.connector,
                     "create_document",
                     "write",
-                    f"Google Docs ({self.account.label}): create a plain-text document in drive:root",
+                    f"Google Docs ({self.account.label}): create a plain-text document in My Drive or an exact Steed-created folder",
                     True,
                     self.create_document,
                     self.find_document,
@@ -259,6 +275,31 @@ class GoogleConnector:
                     None,
                     email_destination,
                 )
+            )
+        if "documents" in self.account.capabilities:
+            definitions.extend(
+                [
+                    ConnectorTool(
+                        self.account.connector,
+                        "create_folder",
+                        "write",
+                        f"Google Drive ({self.account.label}): create a folder in My Drive or an exact Steed-created folder; draft title is the name, body is unused",
+                        True,
+                        self.create_folder,
+                        self.find_folder,
+                        document_destination,
+                    ),
+                    ConnectorTool(
+                        self.account.connector,
+                        "inspect_folder",
+                        "read",
+                        f"Google Drive ({self.account.label}): read one exact Steed-created folder's identity and name; no file listing",
+                        False,
+                        self.inspect_folder,
+                        None,
+                        folder_destination,
+                    ),
+                ]
             )
         return definitions
 
@@ -326,6 +367,53 @@ class GoogleConnector:
     def _headers(self, cancelled):
         return {"Authorization": "Bearer " + self._access(cancelled)}
 
+    def _properties(self, operation_id):
+        return {
+            "steed_operation": operation_id,
+            "steed_account": hashlib.sha256(
+                self.account.subject.encode("utf-8")
+            ).hexdigest(),
+        }
+
+    def _parent(self, destination, headers, cancelled):
+        parent = document_destination(destination)
+        if parent == "root":
+            return parent, None
+        self.store.active(self.account)
+        result = self.http.request(
+            "GET",
+            DRIVE
+            + "/files/"
+            + parent
+            + "?"
+            + urlencode(
+                {
+                    "fields": "id,name,mimeType,trashed,ownedByMe,driveId,appProperties,capabilities(canAddChildren)"
+                }
+            ),
+            headers=headers,
+            cancelled=cancelled,
+        )
+        properties = result.get("appProperties")
+        capabilities = result.get("capabilities")
+        if (
+            result.get("id") != parent
+            or result.get("mimeType") != FOLDER_MIME
+            or result.get("trashed") is not False
+            or result.get("ownedByMe") is not True
+            or result.get("driveId")
+            or not isinstance(properties, dict)
+            or properties.get("steed_account") != self._properties("")["steed_account"]
+            or not isinstance(properties.get("steed_operation"), str)
+            or not re.fullmatch(r"[a-f0-9]{32}", properties["steed_operation"])
+            or not isinstance(capabilities, dict)
+            or capabilities.get("canAddChildren") is not True
+        ):
+            raise AccountError(
+                "Choose a writable folder created by Steed in this account."
+            )
+        return parent, result
+
     def _write_input(self, request, tool, effect):
         if (
             request.connector != self.account.connector
@@ -344,10 +432,11 @@ class GoogleConnector:
         document_destination(request.destination)
         try:
             headers = self._headers(cancelled)
+            parent, _ = self._parent(request.destination, headers, cancelled)
         except (AccountError, ApiError):
             return ConnectorOutcome(
                 "not_applied",
-                text="Google authorization is unavailable; no document was requested.",
+                text="Google authorization or destination is unavailable; no document was requested.",
             )
         boundary = "steed_" + request.operation_id
         # A user draft cannot inject MIME parts through a matching boundary.
@@ -355,9 +444,9 @@ class GoogleConnector:
             boundary += "x"
         metadata = {
             "name": request.artifact.title,
-            "mimeType": "application/vnd.google-apps.document",
-            "parents": ["root"],
-            "appProperties": {"steed_operation": request.operation_id},
+            "mimeType": DOCUMENT_MIME,
+            "parents": [parent],
+            "appProperties": self._properties(request.operation_id),
         }
         body = (
             f"--{boundary}\r\nContent-Type: application/json; charset=utf-8\r\n\r\n"
@@ -388,12 +477,85 @@ class GoogleConnector:
         )
 
     def find_document(self, probe, cancelled):
-        document_destination(probe.destination)
+        return self._find_created(probe, cancelled, DOCUMENT_MIME)
+
+    def create_folder(self, request, cancelled):
+        self._write_input(request, "create_folder", "write")
+        document_destination(request.destination)
+        try:
+            headers = self._headers(cancelled)
+            parent, _ = self._parent(request.destination, headers, cancelled)
+        except (AccountError, ApiError):
+            return ConnectorOutcome(
+                "not_applied",
+                text="Google authorization or destination is unavailable; no folder was requested.",
+            )
+        headers["Content-Type"] = "application/json"
+        self.store.active(self.account)
+        result = self.http.request(
+            "POST",
+            DRIVE + "/files?" + urlencode({"fields": "id"}),
+            headers=headers,
+            body=json.dumps(
+                {
+                    "name": request.artifact.title,
+                    "mimeType": FOLDER_MIME,
+                    "parents": [parent],
+                    "appProperties": self._properties(request.operation_id),
+                }
+            ).encode("utf-8"),
+            cancelled=cancelled,
+        )
+        return self._folder_outcome(result)
+
+    def _folder_outcome(self, result):
+        file_id = result.get("id")
+        if not isinstance(file_id, str) or not re.fullmatch(
+            r"[A-Za-z0-9_-]{1,200}", file_id
+        ):
+            raise ApiError()
+        return ConnectorOutcome(
+            reference=f"https://drive.google.com/drive/folders/{file_id}",
+            text=json.dumps({"destination": "drive:folder:" + file_id}),
+        )
+
+    def inspect_folder(self, request, cancelled):
+        if (
+            request.connector != self.account.connector
+            or request.tool != "inspect_folder"
+            or request.effect != "read"
+            or request.artifact is not None
+        ):
+            raise ValueError("Invalid Google folder inspection")
+        folder_destination(request.destination)
+        _, result = self._parent(
+            request.destination, self._headers(cancelled), cancelled
+        )
+        name = result.get("name")
+        if (
+            not isinstance(name, str)
+            or len(name.encode("utf-8")) > 4096
+            or "\x00" in name
+        ):
+            raise ApiError()
+        outcome = self._folder_outcome(result)
+        return ConnectorOutcome(
+            reference=outcome.reference,
+            text=json.dumps(
+                {"destination": request.destination, "name": name}, ensure_ascii=False
+            ),
+        )
+
+    def find_folder(self, probe, cancelled):
+        return self._find_created(probe, cancelled, FOLDER_MIME)
+
+    def _find_created(self, probe, cancelled, mime_type):
+        parent = document_destination(probe.destination)
         if not re.fullmatch(r"[a-f0-9]{32}", probe.operation_id):
             raise ValueError("Invalid Google operation identity")
         query = (
-            "trashed = false and 'root' in parents and "
-            "mimeType = 'application/vnd.google-apps.document' and "
+            f"trashed = false and '{parent}' in parents and "
+            f"mimeType = '{mime_type}' and "
             f"appProperties has {{ key='steed_operation' and value='{probe.operation_id}' }}"
         )
         result = self.http.request(
@@ -420,11 +582,17 @@ class GoogleConnector:
             and not result.get("nextPageToken")
             and not result.get("incompleteSearch")
         ):
-            return self._document_outcome(files[0])
+            if not isinstance(files[0], dict):
+                raise ApiError()
+            return (
+                self._folder_outcome(files[0])
+                if mime_type == FOLDER_MIME
+                else self._document_outcome(files[0])
+            )
         # Search absence is not proof of non-creation (indexing delay, moves/deletion).
         return ConnectorOutcome(
             "uncertain",
-            text="A unique document could not be confirmed. Check My Drive before creating another.",
+            text="A unique item could not be confirmed. Check the approved folder in Google Drive before creating another.",
         )
 
     def send_email(self, request, cancelled):

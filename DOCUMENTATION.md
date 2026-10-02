@@ -1148,7 +1148,7 @@ To configure Google:
    production client. The import ignores endpoints supplied by the JSON and uses
    fixed Google HTTPS endpoints. Google's [desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)
    describes client creation and the system-browser/loopback flow.
-4. Open **File → App Connections**, select **Create Google Docs** and/or **Send
+4. Open **File → App Connections**, select **Google Docs and folders** and/or **Send
    Gmail**, expand **Set Up App Access…**, and choose the JSON once. **Open Google
    Setup** links to the Cloud client page. Click **Connect Google**. Steed saves
    the app configuration in your desktop keyring for subsequent connections;
@@ -1190,18 +1190,34 @@ for these non-basic scopes; reconnect when needed. See Google's
 
 | Tool | Exact destination | Behavior |
 | --- | --- | --- |
-| `google_<connection-id>.create_document` | `drive:root` | Create a new Google Doc in that account's My Drive; draft title becomes its name and draft content is imported as plain text. |
+| `google_<connection-id>.create_document` | `drive:root` or `drive:folder:<id>` | Create a new Google Doc in My Drive or one exact Steed-created folder; draft title is its name and content is imported as plain text. |
+| `google_<connection-id>.create_folder` | `drive:root` or `drive:folder:<id>` | Create one folder; the immutable draft title is its name. The required draft body is unused and is never uploaded. Result text contains the new exact destination. |
+| `google_<connection-id>.inspect_folder` | `drive:folder:<id>` | Read that exact Steed-created folder's identity and name, without a draft or a listing of its contents. |
 | `google_<connection-id>.send_email` | `email:recipient@example.com` | Send one plain-text email; draft title becomes its subject and content becomes its body. |
 
 Use the actual connector ID returned by discovery, not the placeholder above.
 Mailbox destinations accept a single ASCII address with a lowercase domain;
 display names, recipient lists and header injection are rejected before approval.
-Local-part case, dots and plus tags remain exact. Arbitrary Drive folders, shared
-drives, editing existing documents, rich text, attachments and mailbox reads are
-not implemented. Markdown drafts are sent/imported as literal plain text. Drive
+Local-part case, dots and plus tags remain exact. Arbitrary existing Drive folders,
+shared drives, editing existing documents, rich text, attachments and mailbox reads
+are not implemented. Markdown drafts are sent/imported as literal plain text. Drive
 [upload conversion](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
 creates the document and imports its text in one multipart request; no second
 content write or broad Docs permission is needed.
+
+To organize task output, approve `create_folder` on `drive:root`, retain a draft
+whose title is the desired folder name, and call the tool with that draft ID.
+Copy the `drive:folder:<id>` destination from its receipt. Request a separate
+`create_document` or `create_folder` grant for that exact destination; a root
+grant never includes its folders. Before a folder write, Steed checks that the
+parent is untrashed, owned by the connected Google identity, writable, outside
+shared drives, and carries Steed's account-bound creation metadata. Shortcuts and
+unmarked folders are rejected before the mutation. Inspection reveals only the
+approved folder's name and identity; it does not enumerate Drive. Reconnecting
+the same Google identity retains folder eligibility but requires a new connector
+grant. Editing/removing the private metadata can make a folder unavailable.
+Google's [folder API](https://developers.google.com/workspace/drive/api/guides/folder)
+creates folders as metadata-only files; Steed performs one creation request.
 
 Connections use immutable provider/subject identities and a new opaque connector
 ID on every reconnect, including the same account. Account names and capabilities
@@ -1226,8 +1242,8 @@ accounting. A fresh write normally needs token refresh, identity verification an
 one mutation; cached-token writes need one mutation. OAuth setup is user-owned,
 outside task grants.
 
-Google Docs attach the browser's operation ID as a private Drive app property.
-Read-only recovery searches that property in the original account/root destination;
+Google Docs and folders attach the browser's operation ID as a private Drive app property.
+Read-only recovery searches that property in the original account/parent destination;
 one unique result confirms success. Empty, multiple or incomplete results remain
 uncertain: indexing delay, file moves/deletion and provider failure cannot prove
 non-creation. Workspace documents cannot use Drive's pre-generated IDs; the
@@ -1237,7 +1253,7 @@ automatic reconciliation. Check Gmail **Sent** before sending another email. The
 stable `Message-ID` helps manual identification and is not an idempotency guarantee.
 A fresh task can check a user-shared archived Google Doc receipt with exact
 read-only permission using [archived receipt checks](#checking-an-archived-app-receipt).
-The lookup uses the original account/root/operation ID; it does not need draft
+The lookup uses the original account/parent/operation ID; it does not need draft
 bytes or write permission. Gmail remains send-only and requires manual checking.
 [Task recovery](#continuing-previous-work) keeps matching historical writes blocked.
 

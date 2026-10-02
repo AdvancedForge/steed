@@ -87,14 +87,18 @@ establishes those results. Password improvements remain deferred at the user's r
 
 ### Resume checkpoint
 
-- **Latest engineering checkpoint:** user-controlled provider result retention,
-  schema-8 clear markers, atomic scrubbing of shared summaries, late-result
-  suppression and intact historical-write protection. **Task Permissions → Apps**
-  supports per-receipt and owned-task clearing. No agent clearing endpoint exists.
-  Archived read-only checks remain available under fresh exact permissions.
-- **Next engineering follow-up:** Google document destination selection/editing
-  within the existing account and `drive.file` access boundary. Destination identity
-  and immutable draft binding must remain exact. Broader provider access, automatic
+- **Latest engineering checkpoint:** Google app-created folders, exact parent
+  destinations, account/ownership/writeability checks, read-only folder inspection
+  and lost-acknowledgement reconciliation without replay. Root grants do not cover
+  folders. Schema-8 result clearing and archived receipt checks remain supported.
+  Acceptance: **531 regression tests passed**, Google local HTTP/OAuth smoke,
+  both MCP clients over stdio and HTTP, startup/render/shutdown, Ruff and format
+  checks passed. Fixtures used temporary state and synthetic accounts; real
+  Google/desktop acceptance remains pending.
+- **Next engineering follow-up:** append-only Google document editing within
+  the existing account and `drive.file` access boundary, with exact document/tab
+  identity, immutable drafts and revision checks. Existing-file selection, broader
+  provider access, automatic
   retention policies and agent-managed mode remain separate decisions/milestones.
   Real-account acceptance needs user-owned setup and explicit approval; website
   scripts remain deferred until compatible native engine support exists.
@@ -121,7 +125,8 @@ Autonomous milestones: scoped downloads `229cfe4`, task activity/receipts `6ad9b
 scoped uploads `027a860`, retained task artifacts `333965c`, scoped app operations
 `21790d3`, Google connections `db9e209`, permission/setup usability `7122e9a`,
 safe material recovery `a34fee5`, archived receipt checks `7338b12`, and the
-result-retention checkpoint described above.
+result-retention checkpoint `675e631`. Google folder destinations follow these
+checkpoints; see the current resume checkpoint.
 Continued from watch/control commit `045b706`,
 following HTTP MCP commit `8266c37`
 and basic MCP commit `d663fc5`
@@ -702,8 +707,12 @@ User-selected material recovery with fresh approval and matching historical-writ
 protection is implemented. Archived receipts now support exact read-only checks
 under fresh authority, with independently owned receipts and atomic confirmation.
 Google HTTP acceptance after restart recorded one Doc/email with no repeat mutation;
-both independent MCP clients passed over both transports. Remaining: real Google
-acceptance, additional providers, folder selection/editing, automatic retention
+both independent MCP clients passed over both transports. Exact Steed-created
+folder destinations, nested creation, read-only inspection and creation probes
+are implemented. Adapter/gateway regressions and a real local HTTP fixture cover
+foreign/trashed/shared-drive/read-only parent rejection, exact grants, lost
+acknowledgements and no repeated creation. Remaining: real Google
+acceptance, additional providers, existing-file selection/document editing, automatic retention
 policies and agent-managed mode. User-owned clearing of saved result text/links is
 implemented without deleting receipt identity or the append-only journal. Gmail uncertain-send recovery deliberately stays manual with
 send-only OAuth access. A shared production OAuth client/publishing model needs
