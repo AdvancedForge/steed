@@ -3,6 +3,7 @@
 import json
 import sqlite3
 from dataclasses import asdict
+from uuid import uuid4
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
@@ -88,7 +89,8 @@ class TaskDialog(QDialog):
         app_layout = QVBoxLayout(apps)
         app_notice = QLabel(
             "App receipts show observed outcomes. An uncertain write may have happened; "
-            "reconcile it before considering a new request. Cancellation does not undo writes."
+            "reconcile it before considering a new request. Shared previous receipts can be "
+            "checked here with fresh read-only app permission. Cancellation does not undo writes."
         )
         app_notice.setWordWrap(True)
         app_layout.addWidget(app_notice)
@@ -642,17 +644,26 @@ class TaskDialog(QDialog):
     def refresh_apps(self, task_id):
         index = self.apps.currentRow()
         previous = (
-            self._app_rows[index].request_id
+            (self._app_rows[index].task_id, self._app_rows[index].request_id)
             if 0 <= index < len(self._app_rows)
             else None
         )
         self._app_rows = self.service.connector_store.list(task_id)
+        recovery = self.service.store.recovery(task_id)
+        if recovery["status"] == "approved":
+            for shared in recovery["context"].get("app_receipts", []):
+                self._app_rows.append(
+                    self.service.connector_store.get(
+                        shared["task_id"], shared["request_id"]
+                    )
+                )
         self.apps.blockSignals(True)
         self.apps.setRowCount(len(self._app_rows))
         for row, receipt in enumerate(self._app_rows):
             for column, value in enumerate(
                 (
-                    f"{receipt.effect.upper()}: {receipt.connector}.{receipt.tool}",
+                    ("Previous " if receipt.task_id != task_id else "")
+                    + f"{receipt.effect.upper()}: {receipt.connector}.{receipt.tool}",
                     receipt.destination,
                     receipt.state,
                     receipt.request_id,
@@ -661,7 +672,7 @@ class TaskDialog(QDialog):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)
                 self.apps.setItem(row, column, item)
-            if receipt.request_id == previous:
+            if (receipt.task_id, receipt.request_id) == previous:
                 self.apps.selectRow(row)
         if previous is None and self._app_rows:
             self.apps.selectRow(0)
@@ -671,10 +682,13 @@ class TaskDialog(QDialog):
     def show_app(self):
         index = self.apps.currentRow()
         receipt = self._app_rows[index] if 0 <= index < len(self._app_rows) else None
+        selected = self.selection()
+        owner = selected[0].task_id if selected else None
+        archived = receipt is not None and receipt.task_id != owner
         active = not self.service._closed and not self.service.failure
         job = (
             self.service._connector_jobs.get((receipt.task_id, receipt.request_id))
-            if receipt
+            if receipt and not archived
             else None
         )
         self.cancel_app_button.setEnabled(bool(active and job))
@@ -683,27 +697,35 @@ class TaskDialog(QDialog):
             active
             and receipt
             and receipt.state == "uncertain"
-            and not any(
-                owner == receipt.task_id for owner, _ in self.service._connector_jobs
-            )
+            and not any(task_id == owner for task_id, _ in self.service._connector_jobs)
         ):
-            live = self.service._grants.get(receipt.task_id)
+            live = self.service._grants.get(owner)
             try:
                 if live:
                     live[1].check(
                         "app",
                         connector=receipt.connector,
                         tool=receipt.tool,
-                        effect=receipt.effect,
+                        effect="read" if archived else receipt.effect,
                         destination=receipt.destination,
                     )
                     definition = self.service.connectors.get(
                         receipt.connector, receipt.tool
                     )
-                    can_reconcile = definition.reconcile is not None
+                    can_reconcile = definition.reconcile is not None and not (
+                        archived
+                        and self.service.connector_store.probe_source(
+                            receipt.task_id, receipt.request_id
+                        )
+                    )
             except (ValueError, PermissionError):
                 pass
         self.reconcile_app_button.setEnabled(can_reconcile)
+        self.reconcile_app_button.setToolTip(
+            "Requires a fresh READ permission for this exact account, tool and destination."
+            if archived
+            else "Check the result without resending the original operation."
+        )
         text = (
             f"Operation: {receipt.effect.upper()} {receipt.connector}.{receipt.tool}\n"
             f"Destination: {receipt.destination}\n"
@@ -721,9 +743,16 @@ class TaskDialog(QDialog):
         if not 0 <= index < len(self._app_rows):
             return
         receipt = self._app_rows[index]
+        selected = self.selection()
+        if selected is None:
+            return
         try:
             if operation == "cancel":
                 self.service._cancel_app_job(receipt.task_id, receipt.request_id)
+            elif receipt.task_id != selected[0].task_id:
+                self.service._app_reconcile_history(
+                    selected[0].task_id, receipt.request_id, uuid4().hex
+                )
             else:
                 self.service._app_reconcile(receipt.task_id, receipt.request_id)
         except Exception:

@@ -161,8 +161,9 @@ class ConnectorTests(unittest.TestCase):
             sip.delete(service)
 
     def test_remote_claimed_read_effect_cannot_downgrade_trusted_write(self):
-        with self.assertRaises(ValueError):
-            self.client(effect="read")
+        client, _, artifact = self.client(effect="read")
+        with self.assertRaises(TaskPermissionError):
+            self.call(client, artifact)
         with self.assertRaises(ValueError):
             self.client(actions=("app",))
         self.assertFalse(self.calls)

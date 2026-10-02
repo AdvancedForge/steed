@@ -22,6 +22,7 @@ CLIENT_COMMANDS = frozenset(
         "app.status",
         "app.cancel",
         "app.reconcile",
+        "app.reconcile_history",
         "grant.request",
         "grant.list",
         "session.open",

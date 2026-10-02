@@ -16,7 +16,12 @@ from services.browser_backend import BrowserBackend, QtBrowserBackend, navigatio
 from services.command_broker import CommandBroker, require_owner_thread
 from services.connector_policy import destination_name
 from services.connector_store import ConnectorStore, request_fingerprint
-from services.connectors import ConnectorJob, ConnectorRegistry, ConnectorRequest
+from services.connectors import (
+    ConnectorJob,
+    ConnectorProbe,
+    ConnectorRegistry,
+    ConnectorRequest,
+)
 from services.form_submission import journal_origin
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
@@ -95,6 +100,7 @@ class TaskService(QObject):
                 "app.status": self._app_status,
                 "app.cancel": self._app_cancel,
                 "app.reconcile": self._app_reconcile,
+                "app.reconcile_history": self._app_reconcile_history,
                 "grant.request": self._request_grant,
                 "grant.list": self.store.grants,
                 "client.denied": self._client_denied,
@@ -313,7 +319,11 @@ class TaskService(QObject):
                     previous = self.connector_store.get(
                         historical["source_task_id"], historical["request_id"]
                     )
-                    if previous.state not in {"cancelled", "not_applied"}:
+                    if (
+                        previous.state not in {"cancelled", "not_applied"}
+                        or (historical["source_task_id"], historical["request_id"])
+                        in self._connector_jobs
+                    ):
                         self._deny(task_id, "recovery_write_already_recorded")
             except TaskPermissionError:
                 raise
@@ -337,7 +347,9 @@ class TaskService(QObject):
         ):
             raise ValueError("An app operation is still running; wait for its result")
 
-    def _queue_app_job(self, task_id, definition, request, grant, *, probe=False):
+    def _queue_app_job(
+        self, task_id, definition, request, grant, *, probe=False, probe_request=None
+    ):
         job = ConnectorJob(
             definition,
             request,
@@ -345,6 +357,7 @@ class TaskService(QObject):
             lambda reply: self._app_finished(task_id, request.request_id, job, reply),
             self,
             probe=probe,
+            probe_request=probe_request,
         )
         self._connector_jobs[task_id, request.request_id] = job
         job.timer.timeout.connect(
@@ -401,7 +414,16 @@ class TaskService(QObject):
                     else "connector_outcome_unknown"
                 )
             try:
-                self.connector_store.update(
+                if job.probe_request is not None and state == "not_applied":
+                    source = self.connector_store.probe_source(task_id, request_id)
+                    if source in self._connector_jobs:
+                        state, reason = "uncertain", "original_operation_running"
+                update = (
+                    self.connector_store.finish_probe
+                    if job.probe_request is not None
+                    else self.connector_store.update
+                )
+                update(
                     task_id,
                     request_id,
                     state,
@@ -476,6 +498,11 @@ class TaskService(QObject):
     def _app_reconcile(self, task_id, request_id):
         self._usable()
         receipt = self.connector_store.get(task_id, request_id)
+        source = self.connector_store.probe_source(task_id, request_id)
+        if source is not None:
+            return self._app_reconcile_history(
+                task_id, source[1], request_id, retry=True
+            )
         grant = self._app_grant(task_id, receipt)
         if receipt.state != "uncertain":
             raise ValueError("Only an uncertain app operation needs reconciliation")
@@ -499,6 +526,102 @@ class TaskService(QObject):
             self._fatal(defer_broker_close=True)
             raise
         self._queue_app_job(task_id, definition, request, grant, probe=True)
+        return receipt
+
+    def _history_receipt(self, task_id, source_request_id):
+        """Only receipts explicitly disclosed by the user are probe targets."""
+        recovery = self.store.recovery(task_id)
+        context = recovery.get("context", {})
+        if recovery["status"] != "approved" or not context.get("evidence_included"):
+            self._deny(task_id, "recovery_receipt_not_shared")
+        source = recovery["source_task_id"]
+        if not any(
+            r["task_id"] == source and r["request_id"] == source_request_id
+            for r in context.get("app_receipts", [])
+        ):
+            self._deny(task_id, "recovery_receipt_not_shared")
+        return self.connector_store.get(source, source_request_id)
+
+    def _app_reconcile_history(
+        self, task_id, source_request_id, request_id, *, retry=False
+    ):
+        """Probe one shared archived receipt under fresh read-only app authority."""
+        self._usable()
+        self._active(task_id)
+        if not isinstance(request_id, str) or not re.fullmatch(
+            r"[A-Za-z0-9_-]{1,64}", request_id
+        ):
+            raise ValueError(
+                "Provide a stable request ID of at most 64 letters/digits/_/-"
+            )
+        try:
+            original = self._history_receipt(task_id, source_request_id)
+            if self.connector_store.probe_source(original.task_id, original.request_id):
+                raise ValueError(
+                    "Choose the original task's receipt to check its outcome"
+                )
+            definition = self.connectors.get(original.connector, original.tool)
+            if definition.reconcile is None:
+                raise ValueError(
+                    "This connector has no read-only reconciliation method"
+                )
+            request = ConnectorRequest(
+                request_id,
+                original.connector,
+                original.tool,
+                "read",
+                original.destination,
+                None,
+                uuid4().hex,
+            )
+            grant = self._app_grant(task_id, request)
+            source = (original.task_id, original.request_id)
+            fingerprint = request_fingerprint(
+                request.connector, request.tool, "read", request.destination, None
+            )
+            try:
+                receipt = self.connector_store.get(task_id, request_id)
+            except KeyError:
+                receipt = None
+            if receipt is not None:
+                if (
+                    receipt.fingerprint != fingerprint
+                    or self.connector_store.probe_source(task_id, request_id) != source
+                ):
+                    raise ValueError("Request ID is already bound to different inputs")
+                if not retry:
+                    return receipt
+                if receipt.state != "uncertain":
+                    raise ValueError("Only an uncertain probe needs reconciliation")
+            if original.state != "uncertain":
+                raise ValueError(
+                    "Only an uncertain archived operation needs reconciliation"
+                )
+            self._app_capacity(task_id)
+            self._app_grant(task_id, request, consume=True)
+            receipt = (
+                self.connector_store.update(task_id, request_id, "reconciling")
+                if retry
+                else self.connector_store.create(
+                    task_id, request, fingerprint, source=source
+                )
+            )
+        except TaskPermissionError:
+            raise
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        self._queue_app_job(
+            task_id,
+            definition,
+            request,
+            grant,
+            probe=True,
+            probe_request=ConnectorProbe(
+                original.request_id, original.destination, original.operation_id
+            ),
+        )
+        self.changed.emit()
         return receipt
 
     def client(self, task_id):

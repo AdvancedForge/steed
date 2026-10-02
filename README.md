@@ -52,8 +52,9 @@ Optional local MCP access over stdio or authenticated local HTTP connects client
 to the running browser's task capabilities. You can watch a task's page, take
 control through supported actions, and return it to the agent. Task notes and
 drafts can be retained with explicit permission and reviewed later. Optional Google
-Docs/Gmail connections use desktop-keyring credentials and scoped task approvals;
-synthetic workflows pass, with real-account verification pending. The connection
+Docs/Gmail connections use desktop-keyring credentials and scoped task approvals.
+Shared archived Doc receipts can be checked with fresh read-only access.
+Synthetic workflows pass, with real-account verification pending. The connection
 system supports additional provider adapters. See
 [agent setup](DOCUMENTATION.md#local-agent-access-mcp) and
 [Google setup](DOCUMENTATION.md#google-app-connections).
