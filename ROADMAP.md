@@ -9,6 +9,15 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 2, 2026
 
+Safe follow-up milestone: agents can request a browser picker for an archived task
+and selected drafts/evidence. No archive enumeration or client-selected source is
+exposed. Imports preserve provenance with new IDs and require fresh grants, even
+when saved approvals exist. Ancestral app-call guards block matching completed or
+uncertain writes before dispatch, including recreated drafts and deleted originals.
+Both independent MCP clients completed selection/approval/no-replay workflows over
+stdio and HTTP. Historical provider probes still require a separate implementation;
+Gmail stays send-only. See [task recovery](DOCUMENTATION.md#continuing-previous-work).
+
 Permission/setup usability milestone: both website and agent prompts now offer
 one-time and remembered choices with clear capability and profile scope.
 Agent rules cover matching or narrower requests, preserve exact app accounts and
@@ -20,12 +29,12 @@ First-time Cloud registration still needs user-owned setup. Validation is record
 in [DOCUMENTATION.md](DOCUMENTATION.md#verification-record).
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-458-test suite passed in 247.049 seconds (`/tmp/steed-permissions-acceptance.log`), including
+479-test suite passed in 253.137 seconds (`/tmp/steed-recovery-final-full.log`), including
 scoped uploads/downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-permissions-startup.log`); the preceding local Google HTTPS check passed.
+(`/tmp/steed-recovery-startup.log`); the preceding local Google HTTPS check passed.
 Actual Chromium notification requests passed once/saved/forget/private behavior
 (`/tmp/steed-site-native.log`); synthetic Google API and both MCP transports passed.
 The artifact HTTP fixture hit the tracked native startup exit 139; identical retry
@@ -58,6 +67,16 @@ flows, and ordinary site usability remain follow-up checks; no automated fixture
 establishes those results. Password improvements remain deferred at the user's request.
 
 ### Resume checkpoint
+
+- **Latest engineering checkpoint:** safe user-selected follow-ups, independent
+  copied drafts and bounded evidence, schema-6 persistence, fresh approval and
+  ancestral write protection. Agent tools are `steed_task_recover` and
+  `steed_task_recovery`; **Task Permissions → Recovery** manages pending requests.
+- **Next engineering follow-up:** read-only probing of an archived app receipt
+  under a fresh exact grant, with durable ownership/cancellation and no mutation
+  replay. This is not implemented by material recovery. Deliberate repeat-write
+  overrides, additional providers, active website scripts and real-account
+  acceptance remain separate work. Keep original inactive tasks and grants closed.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
@@ -137,7 +156,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   [assessment](DOCUMENTATION.md#bounded-engine-feasibility-assessment).
 - **Local MCP implemented:** File → Enable Local Agent Access opts in for this
   run. A private authenticated Unix socket connects the optional official-SDK
-  stdio adapter to the running Qt process. Thirty-three published tool schemas use
+  stdio adapter to the running Qt process. Thirty-five published tool schemas use
   connection-bound active-task identity and the existing broker/grant checks. Clients
   cannot approve or adopt other tasks. Disconnect, timeout, disabling access,
   journal failure and browser shutdown remove access and dispose owned pages.
@@ -620,7 +639,7 @@ request takeover or return clear limitations.
 **In progress; both core transports implemented.** Optional `agent_mcp.py` uses
 the official Python SDK over stdio and authenticated loopback Streamable HTTP
 and connects to an opted-in running browser through private authenticated local
-IPC. Thirty-three published input schemas expose current task operations, capability
+IPC. Thirty-five published input schemas expose current task operations, capability
 and selected-profile discovery, structured results, and browser-assigned identity.
 User approval is required; shared-profile collaboration, cancellation, isolation,
 and evidence were tested with an SDK client and an independent JSON-RPC client
@@ -656,8 +675,9 @@ and least-privilege Docs/Gmail tools are implemented with synthetic acceptance.
 The provider-neutral factory/account system also passes a synthetic second-provider
 test. See [Google setup](DOCUMENTATION.md#google-app-connections).
 
-Remaining: user-configured real Google acceptance, additional real providers,
-folder selection/editing, archived-task recovery approvals, result retention and
+User-selected material recovery with fresh approval and matching historical-write
+protection is implemented. Remaining: real Google acceptance, additional providers,
+folder selection/editing, archived read-only provider probes, broader result retention and
 agent-managed mode. Gmail uncertain-send recovery deliberately stays manual with
 send-only OAuth access. A shared production OAuth client/publishing model needs
 separate user judgment. Acceptance of the gateway/Google adapter is synthetic;

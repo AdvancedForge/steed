@@ -19,6 +19,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ui.task_recovery import TaskRecoveryDialog
+
 ACTION_LABELS = {
     "navigate": "Open links on these sites",
     "inspect": "See page addresses and titles",
@@ -60,6 +62,7 @@ class TaskApprovalDialog(QDialog):
             grant.grant_id,
         )
         self.setWindowTitle("Allow task access?")
+        self.request_key = grant.grant_id
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.resize(500, 560)
         outer = QVBoxLayout(self)
@@ -94,6 +97,12 @@ class TaskApprovalDialog(QDialog):
         summary.setWordWrap(True)
         summary.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout.addWidget(summary)
+        if service.store.recovery(task.task_id)["status"] == "approved":
+            recovery_notice = WrappedLabel(
+                "Follow-up task: these are fresh permissions. Previously shared drafts/evidence do not restore old access or authorize replaying completed or uncertain writes."
+            )
+            recovery_notice.setWordWrap(True)
+            layout.addWidget(recovery_notice)
         layout.addWidget(QLabel("Allowed sites:"))
         self.sites = QPlainTextEdit("\n".join(scope["origins"]) or "about:blank only")
         self.sites.setReadOnly(True)
@@ -282,16 +291,25 @@ class TaskApprovalQueue(QObject):
         pending = []
         if not self.service._closed and not self.service.failure:
             try:
-                pending = [
-                    (task, grant)
-                    for task in self.service.store.list_tasks()
-                    for grant in self.service.store.grants(task.task_id)
-                    if grant.status == "requested"
-                ]
+                for task in self.service.store.list_tasks():
+                    if (
+                        self.service.store.recovery(task.task_id)["status"]
+                        == "requested"
+                    ):
+                        pending.append((task, None))
+                    pending.extend(
+                        (task, grant)
+                        for grant in self.service.store.grants(task.task_id)
+                        if grant.status == "requested"
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
-            if any(grant.grant_id == self.dialog.grant_id for _, grant in pending):
+            if any(
+                (grant.grant_id if grant else "recovery:" + task.task_id)
+                == self.dialog.request_key
+                for task, grant in pending
+            ):
                 return
             self.dialog.done(QDialog.DialogCode.Accepted)
             return
@@ -307,13 +325,16 @@ class TaskApprovalQueue(QObject):
         if parent not in windows:
             parent = windows[0]
         for task, grant in reversed(pending):
-            if grant.grant_id in self.deferred:
+            key = grant.grant_id if grant else "recovery:" + task.task_id
+            if key in self.deferred:
                 continue
-            dialog = TaskApprovalDialog(self.service, task, grant, parent)
-            self.dialog = dialog
-            dialog.finished.connect(
-                lambda result, gid=grant.grant_id: self._finished(result, gid)
+            dialog = (
+                TaskApprovalDialog(self.service, task, grant, parent)
+                if grant
+                else TaskRecoveryDialog(self.service, task, parent)
             )
+            self.dialog = dialog
+            dialog.finished.connect(lambda result, gid=key: self._finished(result, gid))
             dialog.show()
             return
 

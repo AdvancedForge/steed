@@ -9,6 +9,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QPlainTextEdit, QScrollArea
 
 from browser_window import BrowserWindow
+from ui.task_approval import TaskApprovalDialog
+from ui.task_recovery import TaskRecoveryDialog
 
 
 class TaskApprovalTests(unittest.TestCase):
@@ -47,6 +49,37 @@ class TaskApprovalTests(unittest.TestCase):
         dialog.approve_button.click()
         self.assertEqual(self.service.store.grant(task_id, grant_id).status, "approved")
         self.assertEqual(window.profile_manager.current_profile_name, "work")
+
+    def test_recovery_picker_is_queued_and_access_still_gets_a_fresh_popup(self):
+        self.window()
+        source = self.service._create("Archived synthetic notes")
+        grant = self.service._request_grant(source.task_id, {"actions": ["artifact"]})
+        self.service.approve_grant(source.task_id, grant.grant_id, remember="global")
+        self.service._store_artifact(source.task_id, "Notes", "SYNTHETIC_NOTES")
+        self.service._finish_task(source.task_id)
+        task = self.command("task.create", objective="Continue selected notes")
+        self.command("task.recover", task_id=task.task_id)
+        popup = self.popup()
+        self.assertIsInstance(popup, TaskRecoveryDialog)
+        self.assertFalse(popup.isModal())
+        popup.artifacts.item(0).setCheckState(Qt.CheckState.Checked)
+        popup.share.click()
+        self.wait_for(lambda: self.registry.task_approvals.dialog is None)
+        new_grant = self.command(
+            "grant.request", task_id=task.task_id, scope={"actions": ["artifact"]}
+        )
+        self.assertEqual(new_grant.status, "requested")
+        approval = self.popup()
+        self.assertIsInstance(approval, TaskApprovalDialog)
+        self.assertEqual(approval.task_id, task.task_id)
+        self.assertEqual(self.service._sessions, {})
+        approval.approve_button.click()
+        self.assertEqual(
+            self.service._read_artifact(
+                task.task_id, self.service.store.artifacts(task.task_id)[0].artifact_id
+            ).content,
+            "SYNTHETIC_NOTES",
+        )
 
     def test_form_permission_discloses_site_changes_and_hidden_fields(self):
         self.window()

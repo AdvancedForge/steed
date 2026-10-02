@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from services.task_store import ACTIVE_STATUSES
 from ui.task_approval import ACTION_LABELS, app_description
+from ui.task_recovery import TaskRecoveryDialog
 
 
 class TaskDialog(QDialog):
@@ -145,6 +146,15 @@ class TaskDialog(QDialog):
         self.saved_rules.itemSelectionChanged.connect(self.show_saved_rule)
         saved_layout.addWidget(self.forget_rule_button)
         self.panels.addTab(saved, "Saved Approvals")
+        recovery = QWidget()
+        recovery_layout = QVBoxLayout(recovery)
+        self.recovery_details = QPlainTextEdit()
+        self.recovery_details.setReadOnly(True)
+        recovery_layout.addWidget(self.recovery_details)
+        self.recovery_button = QPushButton("Choose Recovery Material…")
+        self.recovery_button.clicked.connect(self.choose_recovery)
+        recovery_layout.addWidget(self.recovery_button)
+        self.panels.addTab(recovery, "Recovery")
         self._saved_rows = []
         layout.addWidget(self.panels)
         self.cancel_download_button = QPushButton("Cancel Selected Download")
@@ -327,6 +337,19 @@ class TaskDialog(QDialog):
         task, grant = selected if selected else (None, None)
         active = available and task is not None and task.status in ACTIVE_STATUSES
         pending = active and grant is not None and grant.status == "requested"
+        recovery = (
+            self.service.store.recovery(task.task_id)
+            if available and task is not None
+            else {"status": "none"}
+        )
+        self.recovery_button.setEnabled(
+            bool(active and recovery["status"] == "requested")
+        )
+        self.recovery_details.setPlainText(
+            json.dumps(recovery, ensure_ascii=False, indent=2)
+            if recovery["status"] != "none"
+            else "Agents can request a follow-up before requesting permissions. You choose a finished task and selected drafts. New grants and pages are required; previous writes are not resumed."
+        )
         self.approve_button.setEnabled(bool(pending))
         self.deny_button.setEnabled(bool(pending))
         self.revoke_button.setEnabled(
@@ -450,6 +473,21 @@ class TaskDialog(QDialog):
                 "Task permission requests from internal clients appear here."
             )
         self.refresh_activity()
+
+    def choose_recovery(self):
+        selected = self.selection()
+        if selected:
+            approvals = getattr(self.service.profiles, "task_approvals", None)
+            existing = approvals.dialog if approvals else None
+            if (
+                isinstance(existing, TaskRecoveryDialog)
+                and existing.task_id == selected[0].task_id
+            ):
+                existing.raise_()
+                existing.activateWindow()
+                return
+            dialog = TaskRecoveryDialog(self.service, selected[0], self)
+            dialog.show()
 
     def refresh_activity(self):
         selected = self.selection()

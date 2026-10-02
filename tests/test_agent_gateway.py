@@ -89,6 +89,43 @@ class AgentGatewayTests(unittest.TestCase):
         )
         self.assertEqual(self.service.store.list_tasks(), [])
 
+    def test_recovery_shares_only_user_selected_material_with_the_requesting_connection(
+        self,
+    ):
+        source = self.service._create("Original private work")
+        artifact = self.service.store.store_artifact(
+            source.task_id, "Notes", "SYNTHETIC_RETAINED_BODY"
+        )
+        self.service._finish_task(source.task_id)
+        first, second = self.connect(), self.connect()
+        task, other = self.start(first), self.start(second)
+        result = self.call(first, "task.recover")["result"]
+        self.assertEqual(result["status"], "requested")
+        self.assertEqual(result["context"], {})
+        self.assertIn(
+            "error", self.call(second, "task.recover", source_task_id=source.task_id)
+        )
+        self.service.approve_recovery(
+            task, source.task_id, [artifact.artifact_id], evidence=False
+        )
+        context = self.call(first, "task.recovery")["result"]
+        self.assertEqual(context["source_task_id"], source.task_id)
+        copied = context["context"]["imported_artifacts"][0]["artifact_id"]
+        self.assertIn("error", self.call(first, "artifact.read", artifact_id=copied))
+        self.assertEqual(
+            self.call(second, "task.recovery")["result"], {"status": "none"}
+        )
+        self.assertIn("error", self.call(second, "task.recovery", task_id=task))
+        self.assertFalse(self.service.store.artifacts(other))
+        grant = self.call(first, "grant.request", scope={"actions": ["artifact"]})[
+            "result"
+        ]
+        self.service.approve_grant(task, grant["grant_id"])
+        self.assertEqual(
+            self.call(first, "artifact.read", artifact_id=copied)["result"]["content"],
+            "SYNTHETIC_RETAINED_BODY",
+        )
+
     def test_context_is_bound_to_an_active_task_and_never_opens_a_page(self):
         socket = self.connect()
         self.assertIn("error", self.call(socket, "browser.context"))

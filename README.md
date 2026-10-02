@@ -59,6 +59,8 @@ system supports additional provider adapters. See
 [Google setup](DOCUMENTATION.md#google-app-connections).
 Website and agent prompts offer one-time or saved approvals, with explicit
 site/action/profile scope and separate screens to remove saved choices.
+Agents can request a user-selected follow-up from retained drafts and evidence;
+it needs fresh access and protects matching completed or uncertain app writes.
 Bookmarks and generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,

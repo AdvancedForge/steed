@@ -20,8 +20,10 @@ from services.connectors import ConnectorJob, ConnectorRegistry, ConnectorReques
 from services.form_submission import journal_origin
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
+from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
 from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
+from services.task_recovery import MAX_RECOVERY_ARTIFACTS, recovery_snapshot
 from services.task_store import ACTIVE_STATUSES, TERMINAL_STATUSES, TaskStore
 
 
@@ -83,6 +85,8 @@ class TaskService(QObject):
                 "task.list": self.store.list_tasks,
                 "task.events": self.store.events,
                 "task.finish": self._finish_task,
+                "task.recover": self._request_recovery,
+                "task.recovery": self._recovery_info,
                 "artifact.store": self._store_artifact,
                 "artifact.list": self._list_artifacts,
                 "artifact.read": self._read_artifact,
@@ -125,6 +129,83 @@ class TaskService(QObject):
         task = self.store.create(objective)
         self.changed.emit()
         return task
+
+    def _request_recovery(self, task_id):
+        """Ask the user to choose historical material; clients cannot select a source."""
+        self._usable()
+        self._active(task_id)
+        try:
+            result = self.store.request_recovery(task_id)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        self.changed.emit()
+        return result
+
+    def _recovery_info(self, task_id):
+        self._usable()
+        self._active(task_id)
+        return self.store.recovery(task_id)
+
+    def approve_recovery(self, task_id, source_task_id, artifact_ids, *, evidence=True):
+        """Trusted user selection discloses only chosen drafts and bounded evidence."""
+        require_owner_thread(self)
+        self._usable()
+        if (
+            not isinstance(artifact_ids, (list, tuple))
+            or len(artifact_ids) > MAX_RECOVERY_ARTIFACTS
+            or any(not isinstance(value, str) for value in artifact_ids)
+            or len(set(artifact_ids)) != len(artifact_ids)
+            or type(evidence) is not bool
+            or (not artifact_ids and not evidence)
+        ):
+            raise ValueError("Select at most ten drafts and/or retained evidence")
+        if self.store.get(source_task_id).status not in TERMINAL_STATUSES:
+            raise ValueError("Choose a finished or interrupted task")
+        try:
+            artifacts = [
+                self.store.artifact(source_task_id, value) for value in artifact_ids
+            ]
+            for artifact in artifacts:
+                _, size, digest, _ = artifact_input(
+                    artifact.title,
+                    artifact.content,
+                    artifact.format,
+                    artifact.source_events,
+                )
+                if size != artifact.byte_count or digest != artifact.sha256:
+                    raise ValueError("Retained draft integrity check failed")
+            snapshot = recovery_snapshot(
+                self.store, self.connector_store, source_task_id, artifacts, evidence
+            )
+            effects = [
+                (
+                    source,
+                    receipt,
+                    self.store.artifact_digest(source, receipt.artifact_id),
+                )
+                for source in self.store.recovery_ancestors(source_task_id)
+                for receipt in self.connector_store.list(source)
+                if receipt.effect != "read"
+            ]
+            result = self.store.approve_recovery(
+                task_id, source_task_id, artifacts, snapshot, effects
+            )
+        except (sqlite3.Error, OSError):
+            self._fatal()
+            raise
+        self.changed.emit()
+        return result
+
+    def deny_recovery(self, task_id):
+        require_owner_thread(self)
+        self._usable()
+        try:
+            self.store.deny_recovery(task_id)
+        except (sqlite3.Error, OSError):
+            self._fatal()
+            raise
+        self.changed.emit()
 
     def _store_artifact(
         self, task_id, title, content, format="markdown", source_events=()
@@ -226,6 +307,19 @@ class TaskService(QObject):
             if existing.fingerprint != fingerprint:
                 raise ValueError("Request ID is already bound to different inputs")
             return existing  # Includes uncertain writes: never dispatch a duplicate.
+        if request.effect != "read":
+            try:
+                for historical in self.store.recovery_effects(task_id, request):
+                    previous = self.connector_store.get(
+                        historical["source_task_id"], historical["request_id"]
+                    )
+                    if previous.state not in {"cancelled", "not_applied"}:
+                        self._deny(task_id, "recovery_write_already_recorded")
+            except TaskPermissionError:
+                raise
+            except (sqlite3.Error, OSError):
+                self._fatal(defer_broker_close=True)
+                raise
         self._app_capacity(task_id)
         self._app_grant(task_id, request, consume=True)
         try:
@@ -465,13 +559,22 @@ class TaskService(QObject):
         self._active(task_id)
         scope = TaskScope.parse(scope)
         self.connectors.check_scope(scope)
+        recovery = self.store.recovery(task_id)
+        if recovery["status"] == "requested":
+            raise ValueError(
+                "Wait for the user to choose or deny recovery before requesting access"
+            )
         if scope.profile != "private":
             if self.profiles is None:
                 raise ValueError("Existing profiles require the application registry")
             self.profiles.validate_task_profile(scope.profile)
         result = self.store.request_grant(task_id, scope.payload())
         try:
-            rules = self.store.approval_rules()
+            # Sharing archived data and approving current access are separate decisions.
+            # Even a remembered permission must not silently authorize a follow-up.
+            rules = (
+                [] if recovery["status"] == "approved" else self.store.approval_rules()
+            )
             profile_key = (
                 self._approval_profile_key(scope)
                 if any(r.mode == "profile" for r in rules)

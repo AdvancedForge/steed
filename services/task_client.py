@@ -12,6 +12,8 @@ CLIENT_COMMANDS = frozenset(
         "browser.context",
         "task.events",
         "task.finish",
+        "task.recover",
+        "task.recovery",
         "artifact.store",
         "artifact.list",
         "artifact.read",
