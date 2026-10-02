@@ -171,7 +171,7 @@ establishes those results. Password improvements remain deferred at the user's r
   Removing one-time Google Cloud setup still requires a shared production OAuth
   registration/publishing decision; no real registration or scopes were changed.
 
-- **Latest engineering checkpoint — selected file recovery:** user-only Files
+- **Selected file recovery implemented** (`b21c917`): user-only Files
   picker shares up to ten sealed files/32 MiB with no default selections.
   Copies preserve bytes/hash and gain fresh IDs with explicit source mappings;
   bytes stay outside recovery JSON and events. Draft/file copies, evidence and
@@ -186,6 +186,32 @@ establishes those results. Password improvements remain deferred at the user's r
   and fresh workspace grants. The corrected Workspace preview passed for ordinary
   tasks without recovery too. Browser startup, screenshot inspection, Ruff/format,
   whitespace and local documentation links passed. Synthetic state/files only.
+
+- **Latest engineering checkpoint — worker setup diagnostics:** agents discover
+  actual local-worker readiness and limits before uploading packages through
+  `worker.capabilities`. One cached fixed background check per browser run uses
+  no task data/accounts, creates no grant and consumes no task budget. Trusted
+  Workers UI can retry after setup changes; agents cannot force new checks or
+  inject source. Concurrent callers share the result; unavailable environments
+  get sanitized setup guidance. Actual runs still recheck isolation/authority.
+  Shutdown stops pending checks, and restart resets the support snapshot.
+  Acceptance: **657 regressions passed in 285.324 seconds**, forty focused worker
+  checks passed in 7.464 seconds, both independent MCP clients discovered setup,
+  generated/recovered ZIP files and completed existing app/browser workflows over
+  stdio/HTTP. The first stdio launch hit the tracked native Qt exit 139 before
+  acceptance; the identical retry passed. Setup UI preview and startup/render/
+  shutdown passed. Ruff/format, whitespace, dependencies and local doc links passed.
+  All account data, profiles and file effects were synthetic.
+
+- **Next major engineering decision — worker dependencies:** standard-library
+  workers are usable, but advanced generators need a library policy. Recommend
+  a small optional maintained PDF/XLSX/image bundle first, with pinned/hash-checked
+  wheels, an isolated read-only dependency mount and environment-bound code
+  approvals. Alternative: user-reviewed exact per-task dependencies with additional
+  environment, storage and recovery machinery. See the
+  [concrete dependency proposal](DOCUMENTATION.md#worker-dependency-decision).
+  Neither package installation nor runtime network/source-build authority is enabled.
+  Shared Google registration remains deferred and does not block this choice.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage

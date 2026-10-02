@@ -5,7 +5,8 @@ import sqlite3
 from dataclasses import asdict
 from uuid import uuid4
 
-from PyQt6.QtCore import QTimer
+from PyQt6 import sip
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -115,6 +116,15 @@ class TaskDialog(QDialog):
         )
         worker_notice.setWordWrap(True)
         worker_layout.addWidget(worker_notice)
+        self.worker_setup_status = QLabel(
+            "Check setup before building a local worker. Missing isolation never falls back to host execution."
+        )
+        self.worker_setup_status.setWordWrap(True)
+        self.worker_setup_status.setTextFormat(Qt.TextFormat.PlainText)
+        worker_layout.addWidget(self.worker_setup_status)
+        self.worker_setup_button = QPushButton("Check Worker Setup")
+        self.worker_setup_button.clicked.connect(self.check_worker_setup)
+        worker_layout.addWidget(self.worker_setup_button)
         self.worker_runs = QTableWidget(0, 4)
         self.worker_runs.setHorizontalHeaderLabels(
             ["Request", "Entrypoint", "State", "Result"]
@@ -839,6 +849,9 @@ class TaskDialog(QDialog):
     def update_worker_actions(self):
         record = self.selected_worker()
         available = not self.service.failure and not self.service._closed
+        self.worker_setup_button.setEnabled(
+            available and not getattr(self, "_checking_worker_setup", False)
+        )
         self.review_worker_button.setEnabled(
             bool(available and record and record.state == "awaiting_approval")
         )
@@ -866,6 +879,41 @@ class TaskDialog(QDialog):
                 "Worker Package",
                 "The package is unavailable. Cancel the request or check task access.",
             )
+
+    def check_worker_setup(self):
+        self.worker_setup_button.setEnabled(False)
+        self._checking_worker_setup = True
+        self.worker_setup_status.setText(
+            "Checking isolated Python, syscall policy and resource limits…"
+        )
+        try:
+            future = self.service.check_worker_setup()
+        except (OSError, sqlite3.Error, ValueError, RuntimeError):
+            self._checking_worker_setup = False
+            self.worker_setup_status.setText(
+                "The setup check is unavailable or already running. Try again after it finishes."
+            )
+            self.update_worker_actions()
+            return
+
+        def finished(source):
+            if sip.isdeleted(self):
+                return
+            self._checking_worker_setup = False
+            try:
+                result = source.result()
+                self.worker_setup_status.setText(
+                    "Local Python worker ready. Exact-package and task permissions still apply."
+                    if result["available"]
+                    else "Local worker unavailable. Install Bubblewrap/libseccomp and check system Python and user-namespace policy; then retry. Generated code will not run without isolation."
+                )
+            except Exception:
+                self.worker_setup_status.setText(
+                    "The setup check ended. Reopen this panel or retry when task services are available."
+                )
+            self.update_worker_actions()
+
+        future.add_done_callback(finished)
 
     def cancel_worker(self):
         record = self.selected_worker()

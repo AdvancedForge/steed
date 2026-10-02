@@ -25,6 +25,7 @@ CLIENT_COMMANDS = frozenset(
         "workspace.export",
         "workspace.stage_extension",
         "worker.run",
+        "worker.capabilities",
         "worker.status",
         "worker.list",
         "worker.cancel",

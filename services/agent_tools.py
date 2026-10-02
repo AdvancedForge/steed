@@ -281,6 +281,10 @@ TOOLS = (
         ("extension_id", "request_id"),
     ),
     tool(
+        "worker.capabilities",
+        "Check local sandbox availability and limits before uploading code. A cached, fixed background self-test uses no task data, accounts or grants. This is a support snapshot, not execution permission; actual runs recheck setup and exact package approval. Only trusted UI can retry the check.",
+    ),
+    tool(
         "worker.status",
         "Read an owned execution receipt with current worker permission. App effects have separate provider receipts.",
         {"request_id": string(64)},
