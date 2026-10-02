@@ -124,6 +124,7 @@ class TaskService(QObject):
                         self.workers.run, task_id, extension_id, request_id
                     )
                 ),
+                "worker.capabilities": self._worker_capabilities,
                 "worker.status": lambda task_id, request_id: self._worker_action(
                     self.workers.status, task_id, request_id
                 ),
@@ -459,6 +460,15 @@ class TaskService(QObject):
         self._usable()
         self._active(task_id)
         return self._worker_action(self.workers.cancel, task_id, request_id)
+
+    def _worker_capabilities(self, task_id):
+        self._usable()
+        self._active(task_id)
+        return self._worker_action(self.workers.capabilities)
+
+    def check_worker_setup(self):
+        """Trusted UI retries a fixed probe; agents only read its cached outcome."""
+        return self._worker_action(self.workers.capabilities, recheck=True)
 
     def cancel_worker(self, task_id, request_id):
         """Trusted UI may stop a retained task's running worker."""

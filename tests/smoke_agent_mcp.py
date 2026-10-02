@@ -195,6 +195,12 @@ async def sdk_client(
                 "task.start", objective="Complete a synthetic form beside the user"
             )
             shared["task_id"] = task["task_id"]
+            worker_support = await call("worker.capabilities")
+            assert (
+                worker_support["available"]
+                and worker_support["execution_approval"] == "exact_package"
+            )
+            shared["sdk_worker_setup_discovery"] = True
             app_tools = await call("app.list_tools")
             assert {(t["connector"], t["effect"]) for t in app_tools} == {
                 ("documents", "write"),
@@ -618,6 +624,13 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     )
     assert not result["isError"]
     shared["raw_approval_task"] = result["structuredContent"]["result"]["task_id"]
+    support = request(
+        "tools/call", {"name": "steed_worker_capabilities", "arguments": {}}
+    )
+    assert (
+        not support["isError"] and support["structuredContent"]["result"]["available"]
+    )
+    shared["raw_worker_setup_discovery"] = True
     denied = request("tools/call", {"name": "steed_session_open", "arguments": {}})
     assert (
         denied["isError"]

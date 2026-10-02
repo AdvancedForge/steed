@@ -10,6 +10,7 @@ from services.command_broker import require_owner_thread
 from services.connector_policy import ConnectorPermission, connector_permissions
 from services.local_worker import MAX_WORKERS, LocalWorkerJob, WorkerOutcome
 from services.task_policy import TaskPermissionError
+from services.worker_diagnostics import WorkerDiagnostics
 from services.worker_store import WorkerStore
 
 RPC_TOOLS = {
@@ -38,6 +39,21 @@ class WorkerManager(QObject):
         self.service = service
         self.store = WorkerStore(service.store)
         self.jobs = {}
+        self.diagnostics = WorkerDiagnostics(self)
+
+    def capabilities(self, *, recheck=False):
+        require_owner_thread(self)
+        self.service._usable()
+        if recheck:
+            if (
+                self.diagnostics.future is not None
+                and not self.diagnostics.future.done()
+            ):
+                raise ValueError("Wait for the current setup check to finish")
+            self.diagnostics.close()
+            self.diagnostics.deleteLater()
+            self.diagnostics = WorkerDiagnostics(self)
+        return self.diagnostics.check()
 
     def run(self, task_id, extension_id, request_id):
         require_owner_thread(self)
@@ -302,6 +318,7 @@ class WorkerManager(QObject):
                 self.cancel(task_id, record.request_id, reason="package_source_deleted")
 
     def stop_all(self):
+        self.diagnostics.close()
         for job in self.jobs.values():
             job.cancelled.set()
             job.timer.stop()
