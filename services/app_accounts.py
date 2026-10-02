@@ -1,5 +1,6 @@
 """Provider-neutral account identities; OAuth material lives in Secret Service."""
 
+import hashlib
 import json
 import re
 import threading
@@ -15,6 +16,10 @@ from utils import save_json
 
 class AccountError(RuntimeError):
     """Safe user-facing setup error without provider responses or credentials."""
+
+
+class ClientSetupRequired(AccountError):
+    """An intentionally forgotten app registration must be imported again."""
 
 
 @dataclass(frozen=True)
@@ -175,6 +180,42 @@ class AccountStore:
         with self._lock:
             if not account.enabled or self._accounts.get(account.account_id) != account:
                 raise AccountError("This app connection is disabled. Reconnect it.")
+
+    def client_configuration(self, provider, value=None):
+        """Keep reusable app registration separate from individual account tokens."""
+        connector_name(provider)
+        key = self._client_key(provider)
+        if value is not None:
+            self.secrets.save(
+                key, {"kind": "desktop-client", "provider": provider, "client": value}
+            )
+            return value
+        stored = self.secrets.load(key)
+        if stored.get("forgotten") is True:
+            raise ClientSetupRequired(
+                f"Set up {provider.title()} access once: choose an app client file to configure access again."
+            )
+        if (
+            stored.get("kind") != "desktop-client"
+            or stored.get("provider") != provider
+            or not isinstance(stored.get("client"), dict)
+        ):
+            raise AccountError(
+                "Saved app configuration is unavailable. Choose a client file once."
+            )
+        return stored["client"]
+
+    def _client_key(self, provider):
+        connector_name(provider)
+        return hashlib.sha256(
+            ("steed-desktop-client:" + provider).encode()
+        ).hexdigest()[:32]
+
+    def forget_client_configuration(self, provider):
+        self.secrets.save(
+            self._client_key(provider),
+            {"kind": "desktop-client", "provider": provider, "forgotten": True},
+        )
 
     def install(self, provider, subject, label, capabilities, credential, cancelled):
         """Write secrets first; only committed metadata enables an account."""

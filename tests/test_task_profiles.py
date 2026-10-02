@@ -68,6 +68,31 @@ class TaskProfileTests(unittest.TestCase):
         grant = self.request(task.task_id, profile="existing:work")
         return task.task_id, grant.grant_id
 
+    def test_remembered_permission_identity_survives_rename_not_recreation(self):
+        key = self.registry.approval_profile_key("existing:work", create=True)
+        identity = self.config.profiles_dir / "work" / ".steed_permission_id"
+        self.assertEqual(identity.stat().st_mode & 0o777, 0o600)
+        self.assertTrue(self.manager.rename_profile("work", "renamed"))
+        self.assertEqual(self.registry.approval_profile_key("existing:renamed"), key)
+        self.assertTrue(self.manager.delete_profile("renamed"))
+        self.assertTrue(self.manager.create_profile("renamed"))
+        self.assertEqual(self.registry.approval_profile_key("existing:renamed"), "")
+        self.assertNotEqual(
+            self.registry.approval_profile_key("existing:renamed", create=True), key
+        )
+
+    def test_permission_identity_rejects_symlinks_and_invalid_contents(self):
+        identity = self.config.profiles_dir / "work" / ".steed_permission_id"
+        target = self.config.config_dir / "identity-fixture"
+        target.write_text("a" * 32)
+        identity.symlink_to(target)
+        with self.assertRaises(ValueError):
+            self.registry.approval_profile_key("existing:work", create=True)
+        identity.unlink()
+        identity.write_text("invalid")
+        with self.assertRaises(ValueError):
+            self.registry.approval_profile_key("existing:work")
+
     def test_closing_watch_parent_returns_control_without_closing_shared_task_profile(
         self,
     ):

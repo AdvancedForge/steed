@@ -351,6 +351,65 @@ class GoogleConnectorTests(unittest.TestCase):
             )
         self.assertFalse(self.http.documents)
 
+    def test_saved_setup_connects_again_without_a_client_file(self):
+        connect_google(
+            self.store,
+            self.client_file(),
+            ("documents",),
+            self.cancelled,
+            http=self.http,
+            authorize=self.authorize,
+        )
+        account = connect_google(
+            self.store,
+            None,
+            ("email",),
+            self.cancelled,
+            http=self.http,
+            authorize=self.authorize,
+        )
+        self.assertEqual(account.capabilities, ("email",))
+        self.assertNotIn("SYNTHETIC_SECRET", self.store.path.read_text())
+
+    def test_existing_account_upgrades_to_reusable_setup_without_file(self):
+        account = connect_google(
+            self.store,
+            None,
+            ("email",),
+            self.cancelled,
+            http=self.http,
+            authorize=self.authorize,
+        )
+        self.assertEqual(account.capabilities, ("email",))
+        self.assertIn("client_id", self.store.client_configuration("google"))
+
+    def test_forgetting_setup_never_recovers_it_from_an_existing_account(self):
+        self.store.forget_client_configuration("google")
+        with self.assertRaises(AccountError):
+            connect_google(
+                self.store,
+                None,
+                ("email",),
+                self.cancelled,
+                http=self.http,
+                authorize=self.authorize,
+            )
+        self.assertFalse(self.http.calls)
+        self.assertEqual(len(self.store.list()), 1)
+
+    def test_first_connection_without_config_shows_actionable_setup_message(self):
+        empty = AccountStore(self.path / "empty.json", MemorySecrets())
+        with self.assertRaisesRegex(AccountError, "Set up Google access once"):
+            connect_google(
+                empty,
+                None,
+                ("email",),
+                self.cancelled,
+                http=self.http,
+                authorize=self.authorize,
+            )
+        self.assertFalse(self.http.calls)
+
 
 class AppHttpTests(unittest.TestCase):
     def test_endpoint_allowlist_and_cancellation_precede_transport(self):

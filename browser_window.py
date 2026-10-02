@@ -14,6 +14,7 @@ from PyQt6.QtWebEngineCore import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
+    QDialog,
     QInputDialog,
     QMainWindow,
     QMenu,
@@ -28,6 +29,7 @@ from config import Config
 from cookie_manager import CookieManager
 from profile_manager import ProfileManager
 from services.permission_service import PermissionService
+from services.site_permissions import FEATURES
 from tab_manager import ClosedTabHistory, TabManager, TabState
 from ui.adblock_dialog import AdBlockDialog
 from ui.address_bar import AddressBar
@@ -39,6 +41,7 @@ from ui.group_dialog import GroupDialog
 from ui.media_dialog import DesktopMediaDialog
 from ui.password_dialog import PasswordDialog
 from ui.settings_dialog import SettingsDialog
+from ui.site_permissions import SitePermissionDialog, SitePermissionsDialog
 from ui.tab_bar import TabBar
 from ui.task_dialog import TaskDialog
 from webengine import (
@@ -268,6 +271,13 @@ class BrowserWindow(QMainWindow):
         task_action = QAction("Task Permissions...", self)
         task_action.triggered.connect(self._open_tasks)
         file_menu.insertAction(exit_action, task_action)
+        site_action = QAction("Website Permissions...", self)
+        site_action.triggered.connect(
+            lambda: SitePermissionsDialog(
+                self.profile_manager.registry.site_permissions, self
+            ).exec()
+        )
+        file_menu.insertAction(task_action, site_action)
         apps_action = QAction("App Connections...", self)
         apps_action.triggered.connect(self._open_app_connections)
         file_menu.insertAction(task_action, apps_action)
@@ -931,33 +941,81 @@ class BrowserWindow(QMainWindow):
     def _connect_page_signals(self, page):
         PermissionService.connect_page(
             page,
-            self._on_permission_requested,
+            lambda permission: self._on_permission_requested(permission, page),
             self._on_feature_permission_requested,
             self._on_desktop_media_requested,
             modern_available=QWebEnginePermission is not None,
         )
         page.fullScreenRequested.connect(self._on_fullscreen_requested)
 
-    def _on_permission_requested(self, permission: QWebEnginePermission):
+    def _on_permission_requested(self, permission: QWebEnginePermission, page=None):
         PermissionService.respond(
-            permission, self._ask_permission, lambda: self._closing
+            permission,
+            lambda origin, feature: self._ask_permission(origin, feature, page),
+            lambda: self._closing,
         )
 
     def _on_feature_permission_requested(self, page, origin, feature):
         PermissionService.respond_legacy(
-            page, origin, feature, self._ask_permission, lambda: self._closing
+            page,
+            origin,
+            feature,
+            lambda origin, feature: self._ask_permission(origin, feature, page),
+            lambda: self._closing,
         )
 
-    def _ask_permission(self, origin, feature):
-        name = PermissionService.feature_name(feature)
-        reply = QMessageBox.question(
-            self,
-            "Permission Request",
-            f"{origin.toString()} requests {name}. Allow?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+    def _ask_permission(self, origin, feature, page=None):
+        feature = feature.name
+        if (
+            self._closing
+            or feature not in FEATURES
+            or (page is not None and sip.isdeleted(page))
+        ):
+            return False
+        registry = self.profile_manager.registry
+        profile = (
+            page.profile() if page is not None else self.profile_manager.current_profile
         )
-        return reply == QMessageBox.StandardButton.Yes
+        try:
+            context = registry.site_permission_context(profile)
+            store = registry.site_permissions
+            if store.allowed(
+                origin.toString(),
+                feature,
+                key=context["key"],
+                private=context["private"],
+            ):
+                return True
+            dialog = SitePermissionDialog(
+                origin.toString(),
+                feature,
+                context["profile"],
+                private=context["private"],
+                parent=self,
+            )
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+            # A modal request can run profile deletion or window shutdown.
+            if (
+                self._closing
+                or sip.isdeleted(profile)
+                or (page is not None and sip.isdeleted(page))
+            ):
+                return False
+            if registry.site_permission_context(profile) != context:
+                return False
+            mode = dialog.remember.currentData()
+            if mode != "once":
+                store.remember(origin.toString(), feature, mode, **context)
+            return True
+        except (OSError, ValueError):
+            if not self._closing:
+                QMessageBox.warning(
+                    self,
+                    "Website Permission",
+                    "Could not safely read or save this permission. Access was denied.",
+                )
+            return False
 
     # ---------- Tab Group UI ----------
     def _handle_group_rename_request(self, tab_index: int):

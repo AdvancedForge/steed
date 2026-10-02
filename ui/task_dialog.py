@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from services.task_store import ACTIVE_STATUSES
+from ui.task_approval import ACTION_LABELS, app_description
 
 
 class TaskDialog(QDialog):
@@ -118,6 +119,33 @@ class TaskDialog(QDialog):
         app_buttons.addWidget(self.reconcile_app_button)
         app_layout.addLayout(app_buttons)
         self.panels.addTab(apps, "Apps")
+        saved = QWidget()
+        saved_layout = QVBoxLayout(saved)
+        saved_notice = QLabel(
+            "Saved approvals automatically allow matching requests from any connected agent. "
+            "Forget an approval to prompt again and revoke active tasks using it. "
+            "Revoking one task leaves its saved approval in place."
+        )
+        saved_notice.setWordWrap(True)
+        saved_layout.addWidget(saved_notice)
+        self.saved_rules = QTableWidget(0, 3)
+        self.saved_rules.setHorizontalHeaderLabels(["Applies to", "Actions", "Saved"])
+        self.saved_rules.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.saved_rules.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.saved_rules.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.saved_rules.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        saved_layout.addWidget(self.saved_rules)
+        self.saved_details = QPlainTextEdit()
+        self.saved_details.setReadOnly(True)
+        saved_layout.addWidget(self.saved_details)
+        self.forget_rule_button = QPushButton("Forget and Revoke Access")
+        self.forget_rule_button.clicked.connect(self.forget_rule)
+        self.saved_rules.itemSelectionChanged.connect(self.show_saved_rule)
+        saved_layout.addWidget(self.forget_rule_button)
+        self.panels.addTab(saved, "Saved Approvals")
+        self._saved_rows = []
         layout.addWidget(self.panels)
         self.cancel_download_button = QPushButton("Cancel Selected Download")
         self.cancel_download_button.clicked.connect(self.cancel_download)
@@ -164,6 +192,7 @@ class TaskDialog(QDialog):
         return self._rows[row] if 0 <= row < len(self._rows) else None
 
     def refresh(self):
+        self.refresh_saved_rules()
         selected = self.selection()
         selected_id = selected[0].task_id if selected else None
         self.table.blockSignals(True)
@@ -198,6 +227,99 @@ class TaskDialog(QDialog):
         finally:
             self.table.blockSignals(False)
         self.show_details()
+
+    def refresh_saved_rules(self):
+        previous = self.saved_rules.currentRow()
+        selected = (
+            self._saved_rows[previous].rule_id
+            if 0 <= previous < len(self._saved_rows)
+            else None
+        )
+        self.saved_rules.blockSignals(True)
+        try:
+            self._saved_rows = (
+                self.service.store.approval_rules()
+                if not self.service._closed and not self.service.failure
+                else []
+            )
+            self.saved_rules.setRowCount(len(self._saved_rows))
+            for row, rule in enumerate(self._saved_rows):
+                where = (
+                    "All profiles (including private)"
+                    if rule.mode == "global"
+                    else rule.scope["profile"].removeprefix("existing:")
+                )
+                for col, value in enumerate(
+                    (where, ", ".join(rule.scope["actions"]), rule.created_at)
+                ):
+                    item = QTableWidgetItem(value)
+                    item.setToolTip(value)
+                    self.saved_rules.setItem(row, col, item)
+                if selected == rule.rule_id:
+                    self.saved_rules.selectRow(row)
+        except (OSError, sqlite3.Error, ValueError):
+            self.service._fatal()
+            self._saved_rows = []
+            self.saved_rules.setRowCount(0)
+        finally:
+            self.saved_rules.blockSignals(False)
+        self.show_saved_rule()
+
+    def show_saved_rule(self):
+        row = self.saved_rules.currentRow()
+        valid = 0 <= row < len(self._saved_rows)
+        self.forget_rule_button.setEnabled(
+            valid and not self.service.failure and not self.service._closed
+        )
+        if not valid:
+            self.saved_details.setPlainText(
+                "Select a saved approval to review its sites, actions, app destinations and limits."
+            )
+            return
+        scope = self._saved_rows[row].scope
+        lines = [
+            "Sites: " + (", ".join(scope["origins"]) or "about:blank only"),
+            "Actions:",
+        ]
+        lines.extend(ACTION_LABELS[action] for action in scope["actions"])
+        for permission in scope["connector_permissions"]:
+            lines.extend(
+                (
+                    f"{permission['effect'].upper()}: {app_description(self.service, permission)}",
+                    "Destination: " + permission["destination"],
+                )
+            )
+        for field, label in (
+            ("download_destinations", "Download files"),
+            ("upload_sources", "Upload files"),
+            ("upload_origins", "Upload sites"),
+        ):
+            if scope[field]:
+                lines.append(label + ": " + ", ".join(scope[field]))
+        lines.append(
+            f"Per task: {scope['duration_seconds']} seconds, {scope['max_operations']} operations, {scope['max_requests']} requests, {scope['max_sessions']} sessions."
+        )
+        lines.append(
+            "Private network access: "
+            + ("Allowed" if scope["allow_private_network"] else "Denied")
+        )
+        lines.append(
+            "\nTechnical scope:\n" + json.dumps(scope, ensure_ascii=False, indent=2)
+        )
+        self.saved_details.setPlainText("\n".join(lines))
+
+    def forget_rule(self):
+        row = self.saved_rules.currentRow()
+        if 0 <= row < len(self._saved_rows):
+            try:
+                self.service.forget_approval_rule(self._saved_rows[row].rule_id)
+            except (OSError, sqlite3.Error, ValueError, RuntimeError):
+                QMessageBox.warning(
+                    self,
+                    "Saved Approvals",
+                    "The saved approval could not be removed. Check the permission journal.",
+                )
+            self.refresh()
 
     def show_details(self):
         selected = self.selection()
@@ -242,7 +364,14 @@ class TaskDialog(QDialog):
             )
             self.details.setPlainText(
                 f"Task: {task.task_id}\n"
-                f"Profile: {scope['profile']}\n"
+                + (
+                    "Approved using saved permission: "
+                    + self.service.store.grant_rule_id(grant.grant_id)
+                    + "\n"
+                    if self.service.store.grant_rule_id(grant.grant_id)
+                    else ""
+                )
+                + f"Profile: {scope['profile']}\n"
                 + "Origins:\n"
                 + ("\n".join(scope["origins"]) or "about:blank only")
                 + "\n"

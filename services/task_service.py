@@ -470,10 +470,28 @@ class TaskService(QObject):
                 raise ValueError("Existing profiles require the application registry")
             self.profiles.validate_task_profile(scope.profile)
         result = self.store.request_grant(task_id, scope.payload())
+        try:
+            rules = self.store.approval_rules()
+            profile_key = (
+                self._approval_profile_key(scope)
+                if any(r.mode == "profile" for r in rules)
+                else ""
+            )
+            rule = next((r for r in rules if r.covers(scope, profile_key)), None)
+            if rule is not None:
+                result = self.approve_grant(task_id, result.grant_id, _rule=rule)
+        except (OSError, sqlite3.Error, ValueError):
+            self._fatal()
+            raise
         self.changed.emit()
         return result
 
-    def approve_grant(self, task_id, grant_id):
+    def _approval_profile_key(self, scope, *, create=False):
+        if scope.profile == "private" or self.profiles is None:
+            return ""
+        return self.profiles.approval_profile_key(scope.profile, create=create)
+
+    def approve_grant(self, task_id, grant_id, *, remember="once", _rule=None):
         """Trusted Qt UI method, deliberately absent from the command broker."""
         require_owner_thread(self)
         self._usable()
@@ -483,6 +501,15 @@ class TaskService(QObject):
         if record.status != "requested":
             raise ValueError("Only a pending request can be approved")
         self.connectors.check_scope(scope)
+        profile_key = (
+            self._approval_profile_key(scope, create=remember == "profile")
+            if remember == "profile" or _rule is not None and _rule.mode == "profile"
+            else ""
+        )
+        if remember == "profile" and not profile_key:
+            raise ValueError("Profile approvals require an existing named profile")
+        if _rule is not None and not _rule.covers(scope, profile_key):
+            raise ValueError("Saved approval does not cover this request")
         grant = LiveGrant(scope, clock=self._clock)
         expires = (
             datetime.now(timezone.utc) + timedelta(seconds=scope.duration_seconds)
@@ -493,8 +520,13 @@ class TaskService(QObject):
                 raise ValueError("Existing profiles require the application registry")
             self.profiles.reserve_task_profile(task_id, scope.profile)
         try:
-            record = self.store.resolve_grant(
-                task_id, grant_id, "approved", expires_at=expires
+            record = self.store.approve_with_rule(
+                task_id,
+                grant_id,
+                expires,
+                remember=remember,
+                profile_key=profile_key,
+                rule=_rule,
             )
             self._grants[task_id] = (grant_id, grant)
         except Exception:
@@ -509,6 +541,24 @@ class TaskService(QObject):
             raise
         self.changed.emit()
         return record
+
+    def forget_approval_rule(self, rule_id):
+        """Trusted settings: future requests prompt and linked live tasks lose access."""
+        require_owner_thread(self)
+        self._usable()
+        try:
+            links = self.store.remove_approval_rule(rule_id)
+            for task_id, grant_id in links:
+                live = self._grants.get(task_id)
+                if live and live[0] == grant_id:
+                    live[1].end("revoked")
+            for task_id, grant_id in links:
+                if task_id in self._grants:
+                    self.revoke_grant(task_id, grant_id)
+        except (OSError, sqlite3.Error):
+            self._fatal()
+            raise
+        self.changed.emit()
 
     def deny_grant(self, task_id, grant_id):
         require_owner_thread(self)
@@ -532,6 +582,12 @@ class TaskService(QObject):
         """Trusted account settings end matching authority before removing tools."""
         require_owner_thread(self)
         self._usable()
+        for rule in self.store.approval_rules():
+            if any(
+                p["connector"] == connector
+                for p in rule.scope.get("connector_permissions", [])
+            ):
+                self.forget_approval_rule(rule.rule_id)
         for task in self.store.list_tasks():
             for record in self.store.grants(task.task_id):
                 if record.status == "requested" and any(

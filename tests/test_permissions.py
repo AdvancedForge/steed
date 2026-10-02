@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import QWebEnginePage
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtWidgets import QDialog
 
 from browser_window import BrowserWindow, QWebEnginePermission
 from services.permission_service import PermissionService
@@ -37,9 +37,10 @@ class PermissionTests(unittest.TestCase):
     def test_modern_signal_keeps_request_api_and_media_picker(self):
         page = Mock()
         BrowserWindow._connect_page_signals(self.window, page)
-        page.permissionRequested.connect.assert_called_once_with(
-            self.window._on_permission_requested
-        )
+        callback = page.permissionRequested.connect.call_args.args[0]
+        permission = Mock()
+        callback(permission)
+        self.window._on_permission_requested.assert_called_once_with(permission, page)
         page.featurePermissionRequested.connect.assert_not_called()
         page.desktopMediaRequested.connect.assert_called_once_with(
             self.window._on_desktop_media_requested
@@ -123,24 +124,35 @@ class PermissionTests(unittest.TestCase):
         page.setFeaturePermission.assert_not_called()
 
     def test_prompt_names_both_enum_types_and_defaults_to_no(self):
+        self.window.profile_manager = Mock()
+        self.window.profile_manager.registry.site_permission_context.return_value = {
+            "key": "a" * 32,
+            "profile": "work",
+            "private": False,
+        }
         types = [QWebEnginePage.Feature]
         if QWebEnginePermission is not None:
             types.append(QWebEnginePermission.PermissionType)
         for enum_type in types:
             with self.subTest(enum_type=enum_type):
-                with patch.object(
-                    QMessageBox, "question", return_value=QMessageBox.StandardButton.No
-                ) as question:
+                with (
+                    patch.object(
+                        self.window.profile_manager.registry.site_permissions,
+                        "allowed",
+                        return_value=False,
+                    ),
+                    patch("browser_window.SitePermissionDialog") as question,
+                ):
+                    question.return_value.exec.return_value = (
+                        QDialog.DialogCode.Rejected
+                    )
                     allowed = BrowserWindow._ask_permission(
                         self.window, self.origin, enum_type.MediaAudioCapture
                     )
                 self.assertFalse(allowed)
                 self.assertEqual(
-                    question.call_args.args[2],
-                    "https://example.org requests Microphone. Allow?",
-                )
-                self.assertEqual(
-                    question.call_args.args[4], QMessageBox.StandardButton.No
+                    question.call_args.args[:2],
+                    ("https://example.org", "MediaAudioCapture"),
                 )
 
 

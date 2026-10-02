@@ -143,7 +143,7 @@ class TaskApprovalTests(unittest.TestCase):
         self.assertIn("<b>", objective.text())
         with patch.object(
             self.service.store,
-            "resolve_grant",
+            "approve_with_rule",
             side_effect=sqlite3.OperationalError("fixture"),
         ):
             dialog.approve_button.click()

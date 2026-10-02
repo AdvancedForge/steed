@@ -13,6 +13,7 @@ for current progress and remaining work.
 - [Usage](#usage)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Find in page and zoom](#find-in-page-and-zoom)
+- [Website permissions](#website-permissions)
 - [KeePassXC setup](#third-party-password-managers)
 - [Profiles and stored data](#profiles-and-stored-data)
 - [Tabs and groups](#tabs-and-groups)
@@ -22,6 +23,8 @@ for current progress and remaining work.
 - [Project structure](#project-structure)
 - [Engine and storage internals](#engine-and-storage-internals)
 - [Internal task services](#internal-task-services)
+- [Remembering agent approvals](#remembering-agent-approvals)
+- [Google app connections](#google-app-connections)
 - [Local agent access (MCP)](#local-agent-access-mcp)
 - [Development checks](#development-checks)
 - [Verification record](#verification-record)
@@ -137,6 +140,8 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 - Fill Login
 - Downloads...
 - Task Permissions...: Review, approve, deny, revoke, or cancel task requests
+- Website Permissions...: Review and forget saved website approvals
+- App Connections...: Connect provider accounts for approved tasks
 - Ad Blocking...
 - Settings...
 - Exit
@@ -171,8 +176,33 @@ Individual tabs also expose **Set Group…**, **Set to existing**, **Clear Group
 
 Dark mode is available in **File → Settings**.
 
-Site permissions (camera, microphone, location, notifications, screen sharing) are
-asked per request and default to deny. Nothing is remembered between requests.
+### Website permissions
+
+Website prompts name the exact site, requested capability and requesting tab's
+profile. **Deny** remains the default. Choose a lifetime before clicking **Allow**:
+
+- **Allow once:** approve this request without saving a choice. Access can last
+  for the requesting page's lifetime; it does not end immediately after approval.
+- **Allow every time:** remember this exact site and capability across regular
+  profiles, including `global`. It excludes private browsing.
+- **Allow every time on this profile:** remember the same permission only for
+  this profile. Profile identity survives renaming; recreating a deleted profile
+  does not inherit its approval. Saved lists retain the original profile label.
+
+Private browsing offers **Allow every time in this private session** instead.
+These choices remain in memory for the shared Search profile's lifetime and
+disappear when Steed closes. Private browsing never inherits regular approvals.
+Screen sharing still requires choosing a screen or window each time.
+
+Use **File → Website Permissions** to forget a choice and make future requests
+ask again. Forgetting does not promise to terminate an existing capture; close
+the tab using your camera, microphone or screen to stop it. Website approvals
+never authorize agents: task pages continue to deny engine permissions.
+
+Regular choices live in owner-only `~/.custom_browser/site_permissions.json`.
+On supported Qt versions Steed uses `AskEveryTime` so native persisted choices
+cannot bypass these controls; older native approvals will prompt again. Read or
+write failures deny access rather than granting an unsaved remembered permission.
 
 ### Find in page and zoom
 
@@ -320,7 +350,7 @@ Configuration is stored in `~/.custom_browser/config.json`. You can edit this fi
 - `adblock_exceptions`: Host names excluded from filtering
 
 The same directory also holds browser-managed state, which is not configuration:
-`downloads.json`, `filter_lists.json`, `global_cookie_deletions.json`, the
+`downloads.json`, `filter_lists.json`, `global_cookie_deletions.json`, `site_permissions.json`, the
 `profiles/` and `global_profile/` storage directories, `deleted_profiles/` for
 archived profiles, and per-profile `tabs.json`, `groups.json`, `history.json`,
 `password_manager.json`, and
@@ -361,6 +391,8 @@ Browser/
 │   ├── engine_capabilities.py # Implemented authority and native-policy prerequisites
 │   ├── navigation_service.py # Shared navigation, find, and zoom operations
 │   ├── permission_service.py # Modern/legacy permission responses and task denial
+│   ├── site_permissions.py # Exact website approvals and private-session isolation
+│   ├── approval_rules.py   # Bounded reusable agent approvals and matching
 │   ├── task_policy.py      # Exact scopes, expiry, and thread-safe request budgets
 │   ├── task_network.py     # Private per-target service-worker bypass adapter
 │   ├── task_input.py       # Fixed native keys, file binding and task focus emulation
@@ -476,6 +508,36 @@ API; the optional [local MCP adapter](#local-agent-access-mcp) exposes a bounded
 subset through private IPC. **File → Task Permissions**
 provides user approval, denial, revocation, and cancellation. A client can propose
 a scope but cannot approve it through the command broker.
+
+### Remembering agent approvals
+
+Task popups show the requested sites, actions, profile, app account/tool/effect
+and destination, files, duration and budgets. Choose **Allow once** for this task,
+**Allow every time** for all profiles (including private tasks), or **Allow every
+time on this profile** for one existing named profile. Profile-specific choices
+are unavailable for private task profiles. A saved approval can be used by any
+connected agent; enabling local agent access is still required after startup.
+
+A future request is approved automatically only when one saved rule covers its
+whole scope: sites, actions, files, upload sites and exact app account/tool/effect/
+destination must be subsets; duration and budgets cannot increase, and private
+network access cannot be added. Separate rules are never combined. Each matching
+task gets a fresh bounded grant and its own duration/budgets; rules are not an
+aggregate lifetime spending limit. Expanded requests still show a popup.
+
+Manage rules in **File → Task Permissions → Saved Approvals**. **Forget and Revoke
+Access** removes the rule and revokes all active tasks approved through it.
+Revoking one task leaves its saved rule intact. Disconnecting an app account
+removes matching rules and revokes matching grants; reconnecting creates a new
+account identity requiring fresh approval. Profile rules follow renames, but not
+deletion/recreation under the same name. Saved lists retain their original labels.
+
+Rules and their grant provenance are journaled atomically in `tasks.sqlite`
+(schema 5). Restart preserves rules but interrupts tasks and never restores old
+grants or retries operations. Approval management remains trusted browser UI;
+agent tools cannot create, broaden or remove rules. Website choices are separate.
+
+### Internal command API
 
 `service.broker.submit(name, **arguments)` returns a `concurrent.futures.Future`.
 Worker threads can submit commands; handlers and engine operations execute on
@@ -1051,8 +1113,13 @@ To configure Google:
    production client. The import ignores endpoints supplied by the JSON and uses
    fixed Google HTTPS endpoints. Google's [desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)
    describes client creation and the system-browser/loopback flow.
-4. Open **File → App Connections**, choose the JSON, select **Create Google Docs**
-   and/or **Send Gmail**, and click **Connect Account**. Unlock the desktop keyring
+4. Open **File → App Connections**, select **Create Google Docs** and/or **Send
+   Gmail**, expand **Set Up App Access…**, and choose the JSON once. **Open Google
+   Setup** links to the Cloud client page. Click **Connect Google**. Steed saves
+   the app configuration in your desktop keyring for subsequent connections;
+   after this first setup, just select capabilities and click **Connect Google**.
+   An existing connected installation can reuse its saved client configuration
+   without the original file. Unlock the desktop keyring
    if prompted. Finish consent in your system browser, select the intended Google
    account, then return to Steed. Use a system browser supported by Google's OAuth
    flow; if Steed is your default and authorization is refused, temporarily select
@@ -1065,9 +1132,17 @@ To configure Google:
    an account alone never approves a task.
 6. Approve the task popup only for the account, tool and destination you intend.
    Review results in **File → Task Permissions → Apps** and drafts in **Artifacts**.
-   **Disconnect / Remove Credentials** disables the connection, denies pending
+   **Disconnect Account** disables the connection, denies pending
    requests and revokes active grants using it before attempting keyring deletion.
    If the keyring is locked, unlock it and retry removal; the connection stays disabled.
+
+**Forget Saved App Setup** removes the reusable registration from the keyring;
+existing accounts stay connected, but adding another account requires importing
+the client JSON again. Disconnecting an account retains this reusable setup.
+Importing a client saves configuration even if OAuth consent is later cancelled;
+that configuration grants no account or task access. The setup controls collapse
+after a successful connection. A brand-new installation still requires the
+user-owned Cloud registration above: Steed has no shared production OAuth client.
 
 The requested OAuth scopes are `openid` and `email` for account identity, plus
 `drive.file` for documents and/or `gmail.send` for sending. Google defines
@@ -1726,6 +1801,39 @@ Neither optional SDK nor SecretStorage is needed for this synthetic smoke.
 
 ## Verification record
 
+Permission/setup usability stage (October 2, 2026): the complete **458-test suite
+passed in 247.049 seconds** (`/tmp/steed-permissions-acceptance.log`). New regressions
+cover exact site/action/account/destination matching, profile identity and
+rename/recreation, non-union of rules, atomic approval/provenance, revocation,
+restart and disconnect, corrupt-state failure, website scope/private isolation,
+save failures, page-bound profile selection, and reusable Google client setup.
+Thirteen app connection checks and seventeen saved-approval checks passed after
+the final UI changes (`/tmp/steed-permissions-ui-final.log`,
+`/tmp/steed-approval-final.log`); setup and permission dialogs were visually
+inspected using synthetic accounts.
+
+The real Chromium notification fixture passed one-time approval followed by a
+fresh prompt after navigation, saved approval reuse, forgetting, and exclusion
+from private browsing (`/tmp/steed-site-native.log`). Run it separately:
+
+```bash
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" \
+  .venv/bin/python tests/smoke_site_permissions.py
+```
+
+It uses temporary profiles and a loopback HTTP page, with real Chromium permission
+requests and synthetic choices. It does not test OS notification delivery or
+camera, microphone, location or screen hardware. Synthetic OAuth/API workflow
+acceptance passed (`/tmp/steed-permissions-google-http.log`), as did independent
+MCP clients over stdio and HTTP (`/tmp/steed-permissions-mcp-stdio.log`,
+`/tmp/steed-permissions-mcp-http.log`) and startup/render/shutdown on Qt 6.11.2
+(`/tmp/steed-permissions-startup.log`). Chromium's startup smoke required execution
+outside the tool filesystem sandbox; this is separate from the tracked native
+startup crash. Lint, formatting, whitespace, dependency and local-link checks
+passed. No real Google account/keyring or hardware acceptance was performed.
+
+Earlier verification records follow.
+
 Google connection stage (October 2, 2026): the full 413-test suite passed in
 245.201 seconds (`/tmp/steed-google-full.log`). Thirty-nine new checks cover account
 identity/storage, setup/PKCE/state, tokens/scopes/rotation, destination validation,
@@ -2188,7 +2296,8 @@ The Steed application-menu entry was installed on the development machine.
 - Active profiles must be switched away from in every window before rename/archive. Archived profile data is recoverable under `~/.custom_browser/deleted_profiles/`.
 - Tab sessions are saved per profile; the most recently saved window supplies that profile's restored session.
 - A window always keeps at least one tab, so the final tab cannot be closed or restored.
-- Site permissions are per request and never remembered.
+- Remembered website approvals affect future requests; forgetting cannot guarantee
+  that an existing capture stops. Hardware camera/location/screen acceptance remains manual.
 
 ## Planned architecture
 
