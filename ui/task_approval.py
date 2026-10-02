@@ -32,6 +32,7 @@ ACTION_LABELS = {
     "download": "Save downloads to the exact files listed below (no overwriting)",
     "upload": "Send the listed local files to the listed upload sites",
     "artifact": "Save and read task notes/drafts here (kept after the task ends)",
+    "workspace": "Create and read task files, including inputs you explicitly share; stage custom integration source (no host-folder access, execution or network permission)",
     "app": "Use the exact app tools/destinations below (results kept here)",
 }
 

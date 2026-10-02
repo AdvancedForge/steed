@@ -402,7 +402,7 @@ class ResultRetentionTests(unittest.TestCase):
             database.execute("PRAGMA user_version = 7")
         self.service = TaskService(self.path, connectors=self.registry)
         self.assertEqual(
-            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 9
+            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 10
         )
         self.assertEqual(
             self.service.connector_store.get(source.task_id, original.request_id),
