@@ -1058,7 +1058,8 @@ paths. Deleted names remain reserved; a different revision needs a new name.
 Data and metadata commit with content-free events in schema-10 `tasks.sqlite`.
 Local bytes are plaintext in this owner-only database. Restart retains bytes but
 ends all old task authority; retained-file export/deletion is a trusted user action.
-Recovery currently shares selected text drafts/evidence, not workspace files.
+Recovery can also copy explicitly selected sealed workspace files into a fresh
+task; see [continuing previous work](#continuing-previous-work).
 
 Export publication checks live permission again, avoids following parent symlinks
 and never overwrites. A journal failure before publication prevents export; failure
@@ -1181,6 +1182,10 @@ broker protocol; stderr is bounded and discarded. Receipts/events omit code,
 file contents, stderr and credential text.
 
 ### Shared Google registration decision
+
+**Deferred by the user.** Shared registration remains a goal; local engineering
+continues using the existing developer-owned setup. Revisit this at distribution
+time rather than requiring a registration decision for each engineering milestone.
 
 To give new installations the same **Connect → sign in → toggle access** flow,
 Steed needs a maintained shared Google Desktop OAuth client. The current remembered
@@ -2107,8 +2112,11 @@ connection, restores pages/grants or dispatches an old operation.
    requesting a grant or doing work. It cannot enumerate archives or supply a
    source task ID. The browser opens a nonmodal **Continue previous work?** picker.
 2. Select a finished, cancelled, failed or interrupted task. Check up to ten
-   drafts to share; none are selected by default. Clicking a draft previews its
-   plain text. The evidence checkbox shares prior permission scope, up to 50
+   drafts under **Drafts** and up to ten sealed files under **Files** to share;
+   neither list is selected by default. Files are bounded to 8 MiB each and
+   32 MiB total. Drafts have plain-text previews; files show name/type/size/hash
+   without rendering or running their contents. Sharing can disclose the selected
+   material to the agent's model provider. The evidence checkbox shares prior permission scope, up to 50
    activity entries, the selected drafts' recorded source inspections and app
    receipt summaries. Receipt text is limited to 512 characters with an explicit
    truncation flag. Source profile/scope is historical information only.
@@ -2116,18 +2124,28 @@ connection, restores pages/grants or dispatches an old operation.
    Escape leaves the request pending; reopen it in **File → Task Permissions →
    Recovery → Choose Recovery Material…**. This tab also shows retained context.
 4. The agent polls `steed_task_recovery`. After approval it receives only the
-   selected context and new artifact IDs. Draft bodies still require a fresh
+   selected context, new artifact IDs and `context.imported_files` mappings.
+   Each file mapping has fresh `file_id`, `source_file_id`, name/type/size/hash;
+   it contains no file bytes. Draft bodies still require a fresh
    `artifact` grant; use `steed_artifact_list`/`steed_artifact_read` after approval.
+   File bytes separately require fresh `workspace` permission and
+   `steed_workspace_list`/`steed_workspace_read`.
    Original draft IDs and source-event/target references belong to the old task
    and cannot be used as current observations.
 5. Request the current sites, profile, actions and app destinations as usual.
    Recovered tasks always show a fresh access prompt, even when a saved rule
    would cover the request. Open fresh pages and inspect again before acting.
 
-Copies have independent IDs and lifetime. Deleting an original draft does not
-delete shared copies. Imports, source provenance, evidence and write protections
-commit together in `tasks.sqlite` schema 8. Copies are checked against their
-stored UTF-8 byte count/content hash. Selection is bounded to ten drafts, the
+Copies have independent IDs and lifetime. Deleting an original draft/file does not
+delete shared copies. Draft/file imports, source provenance, evidence and write protections
+commit together in `tasks.sqlite` (current schema 12; no new schema migration for
+file recovery). Copies are checked against their stored size/hash before sharing.
+Only selected files enter the new workspace, marked `user_shared`; unselected,
+deleted, building and foreign files are rejected. Imported source is data:
+packages need fresh staging and exact code approval. Old package registrations,
+worker receipts and remembered execution approvals are never copied. File provenance
+is recorded in recovery mappings, value-free activity events and the Workspace panel.
+Selection is bounded to ten drafts and ten files, the
 context to 128 KiB and ancestry to 32 tasks. Oversized evidence can be omitted.
 Restart interrupts follow-ups and ends pending pickers; another follow-up needs
 another user selection and fresh approval.
@@ -2300,6 +2318,24 @@ It saves `/tmp/steed-google-document-receipts.png` and
 establish real account, consent, certificate or desktop-keyring acceptance.
 
 ## Verification record
+
+Selected-file recovery (October 2, 2026): **646 tests passed in 274.034 seconds**
+(`/tmp/steed-file-recovery-full-final.log`). Thirty-five focused recovery checks
+passed in 4.097 seconds; seventeen final file-recovery checks passed in 2.045
+seconds (`/tmp/steed-file-recovery-focused.log`,
+`/tmp/steed-file-recovery-focused-final.log`). Coverage includes selected binary
+fidelity, provenance/fresh IDs, independent deletion/restart lifetime, workspace
+permission, fresh approval despite saved rules, inert copied source, corrupt/
+foreign/building/deleted input denial, limits and complete transaction rollback.
+Both SDK and independent clients recovered generated ZIP attachments over both
+MCP transports (`/tmp/steed-file-recovery-mcp-stdio-final.log`,
+`/tmp/steed-file-recovery-mcp-http-final.log`). The initial MCP run caught a missing
+recovery-context lookup in the Workspace preview; it was corrected and covered
+for ordinary tasks before the final suite. The superseded full run was stopped.
+The Files picker screenshot was inspected (`/tmp/steed-workspace-recovery.png`),
+and real-entry-point startup/render/shutdown passed
+(`/tmp/steed-file-recovery-startup.log`). Ruff, format, whitespace and local doc
+links passed. All files/accounts were synthetic; no Google registration changes.
 
 Local-worker milestone (October 2, 2026): **629 tests passed in 256.190 seconds**
 (`/tmp/steed-worker-full.log`). Twenty-nine focused worker tests passed in 5.877

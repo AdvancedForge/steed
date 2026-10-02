@@ -80,6 +80,20 @@ def workspace_name(name):
     return name
 
 
+def file_declaration(name, media_type, byte_count, sha256):
+    workspace_name(name)
+    if (
+        not isinstance(media_type, str)
+        or len(media_type) > 100
+        or not re.fullmatch(r"[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+", media_type)
+        or type(byte_count) is not int
+        or not 0 <= byte_count <= MAX_FILE_BYTES
+        or not isinstance(sha256, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", sha256)
+    ):
+        raise ValueError("Declare a media type, size up to 8 MiB and lowercase SHA-256")
+
+
 class TaskWorkspace:
     def __init__(self, store):
         self.store = store
@@ -106,19 +120,7 @@ class TaskWorkspace:
 
     def begin(self, task_id, name, media_type, byte_count, sha256):
         self.store.get(task_id)
-        workspace_name(name)
-        if (
-            not isinstance(media_type, str)
-            or len(media_type) > 100
-            or not re.fullmatch(r"[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+", media_type)
-            or type(byte_count) is not int
-            or not 0 <= byte_count <= MAX_FILE_BYTES
-            or not isinstance(sha256, str)
-            or not re.fullmatch(r"[a-f0-9]{64}", sha256)
-        ):
-            raise ValueError(
-                "Declare a media type, size up to 8 MiB and lowercase SHA-256"
-            )
+        file_declaration(name, media_type, byte_count, sha256)
         previous = self.store._db.execute(
             "SELECT file_id FROM workspace_files WHERE task_id=? AND name=?",
             (task_id, name),
@@ -152,6 +154,58 @@ class TaskWorkspace:
                 {"file_id": file_id, "byte_count": byte_count, "sha256": sha256},
             )
         return self.get(task_id, file_id)
+
+    def _import_selected(self, task_id, source_task_id, file_ids):
+        """Copy inside the caller's recovery transaction; never commit independently."""
+        selected = [self.get(source_task_id, file_id) for file_id in file_ids]
+        total = 0
+        for item in selected:
+            if item.status != "sealed":
+                raise ValueError("Share only sealed, available workspace files")
+            file_declaration(
+                item.name, item.media_type, item.expected_bytes, item.sha256
+            )
+            total += item.expected_bytes
+        if total > MAX_WORKSPACE_BYTES:
+            raise ValueError("Selected files exceed the 32 MiB workspace limit")
+        imported = []
+        for item in selected:
+            payload = self.bytes(source_task_id, item.file_id)
+            file_id = uuid4().hex
+            self.store._db.execute(
+                "INSERT INTO workspace_files VALUES (?,?,?,?,?,?,'sealed',?,'user_shared')",
+                (
+                    file_id,
+                    task_id,
+                    item.name,
+                    item.media_type,
+                    item.expected_bytes,
+                    item.sha256,
+                    payload,
+                ),
+            )
+            imported.append(
+                {
+                    "file_id": file_id,
+                    "source_file_id": item.file_id,
+                    "name": item.name,
+                    "media_type": item.media_type,
+                    "byte_count": item.expected_bytes,
+                    "sha256": item.sha256,
+                }
+            )
+            self.store._append(
+                task_id,
+                "workspace.file_imported",
+                {
+                    "file_id": file_id,
+                    "source_task_id": source_task_id,
+                    "source_file_id": item.file_id,
+                    "byte_count": item.expected_bytes,
+                    "sha256": item.sha256,
+                },
+            )
+        return imported
 
     def write(self, task_id, file_id, offset, data_base64):
         item = self.get(task_id, file_id)
@@ -199,6 +253,8 @@ class TaskWorkspace:
         item = self.get(task_id, file_id)
         if item.status == "deleted":
             raise ValueError("Workspace file was deleted by the user")
+        if item.status == "sealed" and item.byte_count != item.expected_bytes:
+            raise ValueError("Sealed workspace file integrity check failed")
         data = self.store._db.execute(
             "SELECT data FROM workspace_files WHERE file_id=?", (file_id,)
         ).fetchone()[0]

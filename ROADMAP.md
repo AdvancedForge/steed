@@ -18,6 +18,13 @@ No direct networking, credential mounts, subprocesses or dependency installation
 Workers has retained receipts, review and cancellation; stable IDs never replay.
 See [worker usage](DOCUMENTATION.md#running-an-agent-built-local-worker).
 
+File-recovery milestone: follow-ups can explicitly share selected sealed binary
+files and source alongside drafts/evidence. Files receive independent IDs,
+size/hash validation and source provenance; imports and write guards commit
+together. Fresh workspace permission is still needed to read bytes. Packages
+are copied as data and need new staging and code approval. Google shared
+registration remains important and is deferred at the user's request.
+
 Result-retention milestone: **Task Permissions → Apps** can clear a saved provider
 result or the selected task's own results. Clearing removes text/links and shared
 receipt summaries atomically, persists across restart, and suppresses late-worker
@@ -129,7 +136,7 @@ establishes those results. Password improvements remain deferred at the user's r
   recovery and startup/render/shutdown passed. Ruff/format and diff checks passed.
   The first stdio run hit the tracked Qt startup exit 139; retry passed. All inputs
   and account acceptance were synthetic. Real desktop/account acceptance is pending.
-- **Latest engineering checkpoint — local worker implemented:** schema-12 owned execution
+- **Local worker implemented** (`2a7a8e5`): schema-12 owned execution
   receipts, separate exact-package approval, task/grant-bound remembered hashes,
   standard-library helper, two-worker capacity and bounded typed RPC are implemented.
   Actual Bubblewrap/seccomp checks reject host-data/environment access, sockets,
@@ -145,7 +152,8 @@ establishes those results. Password improvements remain deferred at the user's r
   files, credentials and app effects were synthetic; real-account acceptance is pending.
   Website scripts remain unavailable; this does not change ordinary page execution.
   Additional dependencies, reusable installed integrations, arbitrary provider HTTP
-  and workspace-file recovery remain future work. No daily-browser rebuild was needed.
+  remain future work. Selected workspace-file recovery is now implemented below.
+  No daily-browser rebuild was needed.
   Existing user-created file/folder selection also needs a separate Drive-only
   Picker consent/credential flow with verified account binding; no broader OAuth
   scopes or credential migration have been introduced. Broader provider access,
@@ -163,6 +171,22 @@ establishes those results. Password improvements remain deferred at the user's r
   Removing one-time Google Cloud setup still requires a shared production OAuth
   registration/publishing decision; no real registration or scopes were changed.
 
+- **Latest engineering checkpoint — selected file recovery:** user-only Files
+  picker shares up to ten sealed files/32 MiB with no default selections.
+  Copies preserve bytes/hash and gain fresh IDs with explicit source mappings;
+  bytes stay outside recovery JSON and events. Draft/file copies, evidence and
+  historical-write guards are atomic. Foreign/building/deleted/corrupt inputs,
+  oversized selections/context and journal failures leave no partial imports.
+  Restart keeps copied data and ends authority. Source deletion does not delete
+  copies; packages/worker approvals never transfer. Workspace preview shows
+  provenance. No schema migration or broader provider authority is needed.
+  Acceptance: **646 regressions passed in 274.034 seconds**, 35 focused recovery
+  checks and seventeen final file-recovery checks passed. Both independent MCP
+  clients recovered generated ZIP files over stdio/HTTP after the real user picker
+  and fresh workspace grants. The corrected Workspace preview passed for ordinary
+  tasks without recovery too. Browser startup, screenshot inspection, Ruff/format,
+  whitespace and local documentation links passed. Synthetic state/files only.
+
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
   them. Removing an agent rule revokes linked tasks; disconnecting an app removes
@@ -175,7 +199,11 @@ establishes those results. Password improvements remain deferred at the user's r
   user-owned setup remains too much. Additional providers and engine/script work
   remain separate follow-ups; password improvements remain deferred.
 
-- **Next major decision:** keep developer-owned Google setup for this personal
+- **Shared Google registration — deferred by the user:** important for future
+  sign-in-only onboarding, but not blocking local engineering milestones. Keep
+  the existing one-time personal setup while proceeding with file recovery and
+  local integration groundwork. Revisit publisher ownership/registration later.
+  The distribution choices are: keep developer-owned Google setup for this personal
   browser, or distribute a shared Steed desktop OAuth registration for new users.
   Shared registration is recommended for sign-in-and-toggle onboarding. It needs
   a project owner, public branding/privacy/support identity and production scope
@@ -834,8 +862,8 @@ exports. The Workspace panel exposes provenance, hash, state, user export/deleti
 and staged package capability requests. Staging grants nothing; execution uses
 separate task/package approval and a stdlib-only isolated local worker.
 Limits are 8 MiB/file and 50 names/32 MiB/task. Sending/uploading exported files
-continues to require its own permission. Workspace-file recovery and async local
-storage are future improvements.
+continues to require its own permission. User-selected workspace-file recovery
+is implemented; async local storage remains future work.
 
 Implemented: local execution, resource budgets, broker-only data/app access,
 credential separation, durable receipts, revocation/cleanup and adversarial checks.
