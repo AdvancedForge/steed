@@ -1,6 +1,7 @@
 """Window-local selection backed by an application-owned engine registry."""
 
 import logging
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -24,6 +25,7 @@ from services.agent_gateway import AgentGateway
 from services.app_connections import AppConnections
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
+from services.site_permissions import SitePermissions, configure_permission_policy
 from services.task_policy import task_profile_name
 from services.task_service import TaskService
 from ui.download_dialog import choose_download_destination
@@ -61,6 +63,10 @@ class ProfileRegistry(QObject):
         self.last_active_owner = None
         self._tasks = None
         self._app_connections = None
+        self.site_permissions = SitePermissions(
+            config.config_dir / "site_permissions.json"
+        )
+        self._private_permission_key = uuid4().hex
         self.agent_gateway = None
         self.task_profiles = {}
         self.navigation = NavigationService(self)
@@ -73,6 +79,7 @@ class ProfileRegistry(QObject):
             "global", config.config_dir / "global_profile"
         )
         self.search_profile = QWebEngineProfile(self)
+        configure_permission_policy(self.search_profile)
         self.defaults["search"] = self.search_profile.httpUserAgent()
         self.search_profile.setHttpCacheType(
             QWebEngineProfile.HttpCacheType.MemoryHttpCache
@@ -173,6 +180,59 @@ class ProfileRegistry(QObject):
             raise ValueError("The requested existing profile is unavailable")
         return name
 
+    def approval_profile_key(self, selector, *, create=False):
+        """Identity survives renames, but a newly created profile gets fresh authority."""
+        require_owner_thread(self)
+        name = self.validate_task_profile(selector)
+        return self._permission_identity(self.config.profiles_dir / name, create=create)
+
+    @staticmethod
+    def _permission_identity(directory, *, create=False):
+        path = directory / ".steed_permission_id"
+        if directory.is_symlink():
+            raise ValueError("Invalid profile permission directory")
+        if path.is_symlink():
+            raise ValueError("Invalid profile permission identity")
+        try:
+            with path.open("rb") as handle:
+                key = handle.read(33).decode("ascii")
+        except FileNotFoundError:
+            if not create:
+                return ""
+            key = uuid4().hex
+            descriptor = os.open(
+                path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+            )
+            with os.fdopen(descriptor, "w", encoding="ascii") as handle:
+                handle.write(key)
+                handle.flush()
+                os.fsync(handle.fileno())
+        if len(key) != 32 or any(c not in "0123456789abcdef" for c in key):
+            raise ValueError("Invalid profile permission identity")
+        return key
+
+    def site_permission_context(self, profile):
+        """Resolve the requesting page's profile, never the foreground selection."""
+        require_owner_thread(self)
+        if profile is self.search_profile:
+            return {
+                "key": self._private_permission_key,
+                "profile": "Search (private)",
+                "private": True,
+            }
+        for name, candidate in self.profiles.items():
+            if candidate is profile:
+                return {
+                    "key": self._permission_identity(
+                        self.config.config_dir / "global_profile", create=True
+                    )
+                    if name == "global"
+                    else self.approval_profile_key("existing:" + name, create=True),
+                    "profile": name,
+                    "private": False,
+                }
+        raise ValueError("Website permission profile is unavailable")
+
     def reserve_task_profile(self, task_id, selector):
         """Reserve on the Qt thread, without granting engine authority."""
         require_owner_thread(self)
@@ -209,6 +269,7 @@ class ProfileRegistry(QObject):
         fresh = not directory.exists()
         directory.mkdir(parents=True, exist_ok=True)
         profile = QWebEngineProfile(name, self)
+        configure_permission_policy(profile)
         profile.setPersistentStoragePath(str(directory / "storage"))
         profile.setCachePath(str(directory / "cache"))
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)

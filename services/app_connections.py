@@ -22,6 +22,7 @@ class AppProvider:
     tools: object
     setup_hint: str = "Choose the provider's desktop client configuration file."
     client_placeholder: str = "Desktop client configuration"
+    setup_url: str = ""
 
 
 class AppConnections(QObject):
@@ -45,10 +46,12 @@ class AppConnections(QObject):
                     ),
                     connect_google,
                     lambda account, store: GoogleConnector(account, store).tools(),
-                    "Enable the selected APIs in your Google Cloud project first. "
-                    "Authorization opens your system browser. A send with a lost "
-                    "acknowledgement needs checking in Gmail; Steed does not request mailbox reading access.",
+                    "1. Open Google Setup and choose your Cloud project.\n"
+                    "2. Enable Drive API and/or Gmail API; configure consent and add your test account.\n"
+                    "3. Create a Desktop app OAuth client, download its JSON, and choose it below.\n"
+                    "Then click Connect Google. Consent opens your system browser.",
                     "Google Desktop OAuth client JSON (from Google Cloud)",
+                    "https://console.cloud.google.com/auth/clients",
                 ),
             )
         )
@@ -95,7 +98,7 @@ class AppConnections(QObject):
         for definition in definitions:
             self.connectors.register(definition)
 
-    def _worker(self, operation):
+    def _worker(self, operation, *, success="Account operation completed."):
         require_owner_thread(self)
         if self._closed or self.failure or self.busy:
             raise AccountError(
@@ -105,6 +108,7 @@ class AppConnections(QObject):
         self._future = Future()
         future, cancelled = self._future, self._cancelled
         self.busy = True
+        self._success_message = success
 
         def run():
             try:
@@ -139,11 +143,26 @@ class AppConnections(QObject):
         finally:
             self.connectors.unregister(connector)
         self.message = "Connection disabled. Removing its local credentials…"
-        self._worker(lambda _: self.store.forget_secret(account_id))
+        self._worker(
+            lambda _: self.store.forget_secret(account_id),
+            success="Account disconnected. Saved app setup can be reused for future connections.",
+        )
 
     def unlock(self):
         self.message = "Unlock your desktop keyring when prompted."
-        self._worker(lambda _: self.store.secrets.check(unlock=True))
+        self._worker(
+            lambda _: self.store.secrets.check(unlock=True),
+            success="Desktop keyring is unlocked.",
+        )
+
+    def forget_client_configuration(self, provider):
+        """User can remove reusable registration without disconnecting accounts."""
+        connector_name(provider)
+        self.message = "Removing saved app setup…"
+        self._worker(
+            lambda _: self.store.forget_client_configuration(provider),
+            success="Saved app setup forgotten. Existing accounts remain connected.",
+        )
 
     def cancel(self):
         require_owner_thread(self)
@@ -165,7 +184,7 @@ class AppConnections(QObject):
                     f"Connected {account.label}. Tasks still need your approval."
                 )
             else:
-                self.message = "Account operation completed."
+                self.message = self._success_message
         except AccountError as error:
             self.message = str(error)
         except Exception:

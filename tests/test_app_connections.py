@@ -302,6 +302,35 @@ class AppConnectionTests(unittest.TestCase):
         self.assertEqual([t["tool"] for t in tools], ["send_email"])
         self.assertFalse(self.service.store.grants())
 
+    def test_simple_connect_ui_reuses_setup_without_a_file(self):
+        dialog = AppConnectionsDialog(self.manager)
+        self.dialogs.append(dialog)
+        self.assertTrue(dialog.setup_panel.isHidden())
+        self.assertEqual(dialog.connect_button.text(), "Connect Google fixture")
+        dialog._connect()
+        self.wait_for(lambda: not self.manager.busy)
+        self.assertEqual(len(self.store.list()), 2)
+        self.assertFalse(self.service.store.grants())
+
+    def test_forgetting_app_setup_keeps_account_connections_and_tools(self):
+        self.store.client_configuration(
+            "google", {"client_id": "synthetic", "client_secret": "synthetic"}
+        )
+        before = self.manager.connectors.describe()
+        self.manager.forget_client_configuration("google")
+        self.wait_for(lambda: not self.manager.busy)
+        self.assertTrue(self.store.list()[0].enabled)
+        self.assertEqual(self.manager.connectors.describe(), before)
+        with self.assertRaises(AccountError):
+            self.store.client_configuration("google")
+
+    def test_missing_saved_setup_reveals_one_time_setup_panel(self):
+        dialog = AppConnectionsDialog(self.manager)
+        self.dialogs.append(dialog)
+        self.manager.message = "Set up Google access once: choose your client file."
+        self.manager.changed.emit()
+        self.assertFalse(dialog.setup_panel.isHidden())
+
     def test_cancelling_setup_preserves_existing_accounts(self):
         initial = self.store.list()
         self.gate.clear()

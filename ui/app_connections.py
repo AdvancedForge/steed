@@ -3,7 +3,8 @@
 import sqlite3
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,14 +14,17 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLayout,
     QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from services.app_accounts import AccountError
+from ui.task_approval import WrappedLabel
 
 
 class AppConnectionsDialog(QDialog):
@@ -28,7 +32,7 @@ class AppConnectionsDialog(QDialog):
         super().__init__(parent)
         self.manager = manager
         self.setWindowTitle("App Connections")
-        self.resize(760, 530)
+        self.resize(720, 400)
         layout = QVBoxLayout(self)
         intro = QLabel(
             "Connect accounts for delegated tasks. Each task still asks for the exact "
@@ -58,21 +62,45 @@ class AppConnectionsDialog(QDialog):
         layout.addLayout(self.capability_layout)
         self.capabilities = {}
         self.provider.currentIndexChanged.connect(self._capabilities)
+        self.setup_button = QPushButton("Set Up App Access…")
+        self.setup_button.setCheckable(True)
+        layout.addWidget(self.setup_button)
+        self.setup_panel = QWidget()
+        setup_layout = QVBoxLayout(self.setup_panel)
+        setup_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        self.setup_button.toggled.connect(self._toggle_setup)
+        self.setup_panel.hide()
+        layout.addWidget(self.setup_panel)
+        setup_help = QLabel(
+            "Import the provider's desktop app configuration once. Steed remembers it in your keyring for future account connections."
+        )
+        setup_help.setWordWrap(True)
+        setup_layout.addWidget(setup_help)
+        self.setup_link_button = QPushButton()
+        self.setup_link_button.clicked.connect(self.open_setup)
+        setup_layout.addWidget(self.setup_link_button)
         client_row = QHBoxLayout()
         self.client = QLineEdit()
         self.browse = QPushButton("Choose Client JSON…")
         self.browse.clicked.connect(self._browse)
         client_row.addWidget(self.client)
         client_row.addWidget(self.browse)
-        layout.addLayout(client_row)
-        self.notice = QLabel()
+        setup_layout.addLayout(client_row)
+        self.notice = WrappedLabel()
         self.notice.setTextFormat(Qt.TextFormat.PlainText)
         self.notice.setWordWrap(True)
-        layout.addWidget(self.notice)
+        setup_layout.addWidget(self.notice)
+        self.forget_setup_button = QPushButton("Forget Saved App Setup")
+        self.forget_setup_button.clicked.connect(
+            lambda: self._run(
+                lambda: manager.forget_client_configuration(self.provider.currentData())
+            )
+        )
+        setup_layout.addWidget(self.forget_setup_button)
         self._capabilities()
         row = QHBoxLayout()
         self.connect_button = QPushButton("Connect Account")
-        self.disconnect_button = QPushButton("Disconnect / Remove Credentials")
+        self.disconnect_button = QPushButton("Disconnect Account")
         self.unlock_button = QPushButton("Unlock Keyring")
         self.cancel_button = QPushButton("Cancel Setup")
         for button in (
@@ -105,6 +133,10 @@ class AppConnectionsDialog(QDialog):
         self.capabilities = {}
         provider = self.manager.providers.get(self.provider.currentData())
         if provider is not None:
+            if hasattr(self, "connect_button"):
+                self.connect_button.setText("Connect " + provider.title)
+            self.setup_link_button.setText("Open " + provider.title + " Setup")
+            self.setup_link_button.setVisible(bool(provider.setup_url))
             self.client.setPlaceholderText(provider.client_placeholder)
             self.notice.setText(provider.setup_hint)
             for name, label in provider.capabilities:
@@ -112,6 +144,29 @@ class AppConnectionsDialog(QDialog):
                 check.setChecked(True)
                 self.capabilities[name] = check
                 self.capability_layout.addWidget(check)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "setup_panel") and not self.setup_panel.isHidden():
+            self.setup_panel.setMinimumHeight(
+                self.setup_panel.heightForWidth(max(100, event.size().width() - 22))
+            )
+
+    def _toggle_setup(self, enabled):
+        self.setup_panel.setVisible(enabled)
+        if enabled:
+            self.setup_panel.setMinimumHeight(
+                self.setup_panel.heightForWidth(max(100, self.width() - 22))
+            )
+            self.resize(
+                self.width(),
+                max(self.height(), self.layout().totalHeightForWidth(self.width())),
+            )
+
+    def open_setup(self):
+        provider = self.manager.providers.get(self.provider.currentData())
+        if provider is not None and QUrl(provider.setup_url).scheme() == "https":
+            QDesktopServices.openUrl(QUrl(provider.setup_url))
 
     def _browse(self):
         filename, _ = QFileDialog.getOpenFileName(
@@ -130,15 +185,15 @@ class AppConnectionsDialog(QDialog):
 
     def _connect(self):
         capabilities = tuple(n for n, c in self.capabilities.items() if c.isChecked())
-        if not capabilities or not self.client.text().strip():
-            self.status.setText(
-                "Choose a desktop client JSON and at least one capability."
-            )
+        if not capabilities:
+            self.status.setText("Choose at least one capability.")
             return
         self._run(
             lambda: self.manager.connect_account(
                 self.provider.currentData(),
-                Path(self.client.text().strip()),
+                Path(self.client.text().strip())
+                if self.client.text().strip()
+                else None,
                 capabilities,
             )
         )
@@ -159,6 +214,8 @@ class AppConnectionsDialog(QDialog):
             self.provider,
             self.client,
             self.browse,
+            self.setup_button,
+            self.forget_setup_button,
             *self.capabilities.values(),
         ):
             widget.setEnabled(available)
@@ -169,6 +226,8 @@ class AppConnectionsDialog(QDialog):
         if row >= 0:
             selected = self.accounts.item(row, 0).data(Qt.ItemDataRole.UserRole)
         accounts = self.manager.store.list() if self.manager.store is not None else ()
+        self.accounts.setVisible(bool(accounts))
+        self.provider.setVisible(len(self.manager.providers) > 1)
         self.accounts.setRowCount(len(accounts))
         for row, account in enumerate(accounts):
             for col, value in enumerate(
@@ -187,6 +246,12 @@ class AppConnectionsDialog(QDialog):
             if selected == account.account_id:
                 self.accounts.selectRow(row)
         self.status.setText(self.manager.message)
+        if self.manager.message.startswith("Connected ") and not self.manager.busy:
+            self.client.clear()
+            self.setup_button.setChecked(False)
+        if self.manager.message.startswith("Set up Google access once"):
+            self.setup_button.setChecked(True)
+        self.connect_button.setText("Connect " + self.provider.currentText())
         self._buttons()
 
     def done(self, result):

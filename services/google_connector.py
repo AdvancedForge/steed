@@ -9,7 +9,7 @@ from email.message import EmailMessage
 from email.policy import SMTP
 from urllib.parse import urlencode
 
-from services.app_accounts import AccountError
+from services.app_accounts import AccountError, ClientSetupRequired
 from services.app_oauth import ApiError, AppHttp, desktop_authorization
 from services.connectors import ConnectorOutcome, ConnectorTool
 from services.task_artifacts import artifact_input
@@ -123,10 +123,35 @@ def connect_google(
         raise ValueError("Select Google Docs and/or Gmail send")
     store.secrets.check(unlock=True)
     try:
-        raw = client_file.read_bytes()
-        if len(raw) > 65536:
-            raise ValueError("Client file too large")
-        client = json.loads(raw)["installed"]
+        if client_file is not None:
+            raw = client_file.read_bytes()
+            if len(raw) > 65536:
+                raise ValueError("Client file too large")
+            client = json.loads(raw)["installed"]
+        else:
+            try:
+                client = store.client_configuration("google")
+            except ClientSetupRequired:
+                raise
+            except (AccountError, KeyError):
+                # Existing installations can reuse a previously connected account's
+                # client without requiring its downloaded file again.
+                client = None
+                for account in reversed(store.list()):
+                    if account.provider == "google" and account.enabled:
+                        try:
+                            saved = store.secrets.load(account.account_id)
+                            client = {
+                                "client_id": saved["client_id"],
+                                "client_secret": saved["client_secret"],
+                            }
+                            break
+                        except (AccountError, KeyError):
+                            continue
+                if client is None:
+                    raise AccountError(
+                        "Set up Google access once: open Set Up App Access and choose your Desktop OAuth client file. Future connections will reuse it."
+                    ) from None
         client_id, client_secret = client["client_id"], client["client_secret"]
         if (
             not isinstance(client_id, str)
@@ -142,6 +167,9 @@ def connect_google(
         raise AccountError(
             "Choose a Google OAuth client JSON for a Desktop app."
         ) from None
+    store.client_configuration(
+        "google", {"client_id": client_id, "client_secret": client_secret}
+    )
     http = http if http is not None else google_http()
     authorize = authorize if authorize is not None else desktop_authorization
     scopes = ("openid", "email", *(SCOPES[c] for c in capabilities))
@@ -225,7 +253,7 @@ class GoogleConnector:
                     self.account.connector,
                     "send_email",
                     "send",
-                    f"Gmail ({self.account.label}): send a draft to email:recipient@example.com; no mailbox reading",
+                    f"Gmail ({self.account.label}): send one plain-text email; no mailbox reading",
                     True,
                     self.send_email,
                     None,

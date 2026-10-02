@@ -6,6 +6,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -195,6 +196,19 @@ class TaskApprovalDialog(QDialog):
         self.error = QLabel()
         self.error.setWordWrap(True)
         outer.addWidget(self.error)
+        self.remember = QComboBox()
+        self.remember.addItem("Allow once", "once")
+        self.remember.addItem("Allow every time", "global")
+        self.remember.addItem("Allow every time on this profile", "profile")
+        if not existing:
+            self.remember.model().item(2).setEnabled(False)
+        self.remember_notice = QLabel()
+        self.remember_notice.setTextFormat(Qt.TextFormat.PlainText)
+        self.remember_notice.setWordWrap(True)
+        self.remember.currentIndexChanged.connect(self.update_remember_notice)
+        outer.addWidget(self.remember)
+        outer.addWidget(self.remember_notice)
+        self.update_remember_notice()
         buttons = QHBoxLayout()
         self.deny_button = QPushButton("Deny")
         self.approve_button = QPushButton("Approve")
@@ -207,10 +221,32 @@ class TaskApprovalDialog(QDialog):
         buttons.addWidget(self.approve_button)
         outer.addLayout(buttons)
 
+    def update_remember_notice(self):
+        mode = self.remember.currentData()
+        if mode == "once":
+            message = "Approve this task only. Private tasks cannot save a profile-specific approval."
+        else:
+            where = (
+                "all profiles, including private tasks"
+                if mode == "global"
+                else "this named profile only"
+            )
+            message = (
+                f"Automatically approve matching requests from any connected agent for {where}. "
+                "Sites, actions, files, app accounts/destinations and limits stay within this request. "
+                "Each task gets its own duration and budgets. "
+                "Remove saved approvals in Task Permissions."
+            )
+        self.remember_notice.setText(message)
+
     def decide(self, approve):
         try:
-            method = self.service.approve_grant if approve else self.service.deny_grant
-            method(self.task_id, self.grant_id)
+            if approve:
+                self.service.approve_grant(
+                    self.task_id, self.grant_id, remember=self.remember.currentData()
+                )
+            else:
+                self.service.deny_grant(self.task_id, self.grant_id)
         except (
             ValueError,
             PermissionError,

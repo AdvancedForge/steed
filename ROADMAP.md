@@ -9,13 +9,25 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 2, 2026
 
+Permission/setup usability milestone: both website and agent prompts now offer
+one-time and remembered choices with clear capability and profile scope.
+Agent rules cover matching or narrower requests, preserve exact app accounts and
+destinations, and can be forgotten with linked live access revoked. Website
+rules are separate; regular approvals never enter private browsing, whose saved
+choices are session-only. Google app registration is remembered in the desktop
+keyring so subsequent account connections need only **Connect Google** and consent.
+First-time Cloud registration still needs user-owned setup. Validation is recorded
+in [DOCUMENTATION.md](DOCUMENTATION.md#verification-record).
+
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-413-test suite passed in 245.201 seconds (`/tmp/steed-google-full.log`), including
+458-test suite passed in 247.049 seconds (`/tmp/steed-permissions-acceptance.log`), including
 scoped uploads/downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-google-startup.log`); the preceding local Google HTTPS check passed.
+(`/tmp/steed-permissions-startup.log`); the preceding local Google HTTPS check passed.
+Actual Chromium notification requests passed once/saved/forget/private behavior
+(`/tmp/steed-site-native.log`); synthetic Google API and both MCP transports passed.
 The artifact HTTP fixture hit the tracked native startup exit 139; identical retry
 passed. Twelve final artifact checks cover user-controlled draft deletion too.
 The previous form-stage Google fixture exited natively during `QWebEngineProfile`
@@ -47,6 +59,18 @@ establishes those results. Password improvements remain deferred at the user's r
 
 ### Resume checkpoint
 
+- **Latest usability checkpoint:** reusable approvals for both permission systems;
+  **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
+  them. Removing an agent rule revokes linked tasks; disconnecting an app removes
+  matching rules. Private website choices remain in memory. Google setup has a
+  collapsible one-time import, reusable OS-keyring configuration and a forget
+  control. No real account or hardware acceptance was performed.
+- **Next user-dependent check:** restart Steed, review the new prompts, connect a
+  user-owned Google client/account, and explicitly approve a small real Doc/email
+  task. Decide about a shared production OAuth registration only if first-time
+  user-owned setup remains too much. Additional providers and engine/script work
+  remain separate follow-ups; password improvements remain deferred.
+
 **A3 remains in progress: native keyboard activation/selection and native form
 submission and scoped uploads/downloads are implemented alongside inspection, links,
 edits, scrolling, and waits.**
@@ -54,8 +78,9 @@ edits, scrolling, and waits.**
 **A7 is in progress: watch/handoff, retained drafts and app receipts are implemented.**
 **A6 is in progress: mock-tested scoped gateway and uncertain-write recovery.**
 Autonomous milestones: scoped downloads `229cfe4`, task activity/receipts `6ad9b1a`,
-scoped uploads `027a860`, retained task artifacts `333965c`, and scoped app operations
-in this milestone.
+scoped uploads `027a860`, retained task artifacts `333965c`, scoped app operations
+`21790d3`, Google connections `db9e209`, and the permission/setup usability checkpoint
+described above.
 Continued from watch/control commit `045b706`,
 following HTTP MCP commit `8266c37`
 and basic MCP commit `d663fc5`

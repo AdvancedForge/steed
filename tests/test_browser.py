@@ -793,12 +793,114 @@ class BrowserTests(unittest.TestCase):
             QWebEnginePermission.PermissionType.Notifications
         )
         permission.origin.return_value = QUrl("https://example.org")
-        with patch.object(
-            QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
-        ):
+        with patch.object(self.window, "_ask_permission", return_value=True):
             self.window._on_permission_requested(permission)
         permission.grant.assert_called_once()
         permission.deny.assert_not_called()
+
+    @unittest.skipIf(QWebEnginePermission is None, "Requires Qt 6.8 permissions")
+    def test_website_permission_uses_requesting_page_profile_and_is_reusable(self):
+        page = self.window.tabs[0].page()
+        original = self.window.profile_manager.registry.site_permission_context(
+            page.profile()
+        )
+        self.window.profile_manager.create_profile("other")
+        self.window.profile_manager.switch_to_profile("other")
+        feature = QWebEnginePermission.PermissionType.MediaVideoCapture
+        with patch("browser_window.SitePermissionDialog") as factory:
+            factory.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            factory.return_value.remember.currentData.return_value = "profile"
+            self.assertTrue(
+                self.window._ask_permission(QUrl("https://example.org"), feature, page)
+            )
+            self.assertEqual(factory.call_args.args[2], original["profile"])
+        rules = self.window.profile_manager.registry.site_permissions.rules()
+        self.assertEqual(rules[0]["key"], original["key"])
+        with patch("browser_window.SitePermissionDialog") as factory:
+            self.assertTrue(
+                self.window._ask_permission(QUrl("https://example.org"), feature, page)
+            )
+            factory.assert_not_called()
+
+    @unittest.skipIf(QWebEnginePermission is None, "Requires Qt 6.8 permissions")
+    def test_allow_once_and_denial_never_save_website_rules(self):
+        feature = QWebEnginePermission.PermissionType.Notifications
+        with patch("browser_window.SitePermissionDialog") as factory:
+            factory.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            factory.return_value.remember.currentData.return_value = "once"
+            self.assertTrue(
+                self.window._ask_permission(QUrl("https://example.org"), feature)
+            )
+            factory.return_value.exec.return_value = QDialog.DialogCode.Rejected
+            self.assertFalse(
+                self.window._ask_permission(QUrl("https://example.org"), feature)
+            )
+            self.assertEqual(factory.call_count, 2)
+        self.assertFalse(self.window.profile_manager.registry.site_permissions.rules())
+
+    @unittest.skipIf(QWebEnginePermission is None, "Requires Qt 6.8 permissions")
+    def test_website_persistence_failure_denies_engine_request(self):
+        permission = Mock()
+        permission.permissionType.return_value = (
+            QWebEnginePermission.PermissionType.Notifications
+        )
+        permission.origin.return_value = QUrl("https://example.org")
+        with (
+            patch("browser_window.SitePermissionDialog") as factory,
+            patch(
+                "services.site_permissions.save_json", side_effect=OSError("fixture")
+            ),
+            patch.object(QMessageBox, "warning"),
+        ):
+            factory.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            factory.return_value.remember.currentData.return_value = "global"
+            self.window._on_permission_requested(permission, self.window.tabs[0].page())
+        permission.deny.assert_called_once()
+        permission.grant.assert_not_called()
+        self.assertFalse(self.window.profile_manager.registry.site_permissions.rules())
+
+    @unittest.skipIf(QWebEnginePermission is None, "Requires Qt 6.8 permissions")
+    def test_native_permission_policy_always_defers_to_steed_choices(self):
+        registry = self.window.profile_manager.registry
+        for profile in (*registry.profiles.values(), registry.search_profile):
+            self.assertEqual(
+                profile.persistentPermissionsPolicy(),
+                profile.PersistentPermissionsPolicy.AskEveryTime,
+            )
+
+    def test_global_browser_profile_has_its_own_website_permission_identity(self):
+        registry = self.window.profile_manager.registry
+        context = registry.site_permission_context(registry.global_profile)
+        self.assertEqual(context["profile"], "global")
+        self.assertFalse(context["private"])
+        self.assertEqual(len(context["key"]), 32)
+        self.assertNotEqual(
+            context["key"],
+            registry.site_permission_context(
+                self.window.profile_manager.current_profile
+            )["key"],
+        )
+
+    @unittest.skipIf(QWebEnginePermission is None, "Requires Qt 6.8 permissions")
+    def test_shutdown_during_website_prompt_does_not_persist_choice(self):
+        feature = QWebEnginePermission.PermissionType.MediaVideoCapture
+
+        def close_during_prompt():
+            self.window._closing = True
+            return QDialog.DialogCode.Accepted
+
+        try:
+            with patch("browser_window.SitePermissionDialog") as factory:
+                factory.return_value.exec.side_effect = close_during_prompt
+                factory.return_value.remember.currentData.return_value = "global"
+                self.assertFalse(
+                    self.window._ask_permission(QUrl("https://example.org"), feature)
+                )
+            self.assertFalse(
+                self.window.profile_manager.registry.site_permissions.rules()
+            )
+        finally:
+            self.window._closing = False
 
     def test_fullscreen_enter_and_exit_follow_requested_state(self):
         request = Mock(spec=QWebEngineFullScreenRequest)

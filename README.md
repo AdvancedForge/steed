@@ -57,6 +57,8 @@ synthetic workflows pass, with real-account verification pending. The connection
 system supports additional provider adapters. See
 [agent setup](DOCUMENTATION.md#local-agent-access-mcp) and
 [Google setup](DOCUMENTATION.md#google-app-connections).
+Website and agent prompts offer one-time or saved approvals, with explicit
+site/action/profile scope and separate screens to remove saved choices.
 Bookmarks and generic extension support are planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,

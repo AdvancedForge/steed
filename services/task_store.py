@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from services.approval_rules import RULE_SCHEMA, ApprovalRule
 from services.connector_store import CONNECTOR_SCHEMA
 from services.task_artifacts import (
     MAX_TASK_ARTIFACT_BYTES,
@@ -67,7 +68,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3, 4):
+        if version not in (0, 1, 2, 3, 4, 5):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -121,9 +122,10 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 4;
+                PRAGMA user_version = 5;
             """
                 + CONNECTOR_SCHEMA
+                + RULE_SCHEMA
             )
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():
@@ -238,6 +240,100 @@ class TaskStore:
             if reason
             else {"grant_id": grant.grant_id},
         )
+
+    def approval_rules(self):
+        self._check()
+        return [
+            ApprovalRule.from_row(row)
+            for row in self._db.execute(
+                "SELECT * FROM approval_rules ORDER BY mode DESC, created_at, rule_id"
+            )
+        ]
+
+    def approve_with_rule(
+        self,
+        task_id,
+        grant_id,
+        expires_at,
+        *,
+        remember="once",
+        profile_key="",
+        rule=None,
+    ):
+        """Grant, remembered choice and provenance commit in one transaction."""
+        grant = self.grant(task_id, grant_id)
+        if (
+            grant.status != "requested"
+            or self.get(task_id).status not in ACTIVE_STATUSES
+        ):
+            raise ValueError("Only an active pending request can be approved")
+        if remember not in {"once", "global", "profile"} or (
+            remember == "profile" and not profile_key
+        ):
+            raise ValueError("Invalid remembered approval choice")
+        rule_id = rule.rule_id if rule else None
+        with self._db:
+            if remember != "once":
+                if len(self.approval_rules()) >= 200:
+                    raise ValueError("Remove a saved approval before adding another")
+                rule_id = uuid4().hex
+                self._db.execute(
+                    "INSERT INTO approval_rules VALUES (?, ?, ?, ?, ?)",
+                    (
+                        rule_id,
+                        remember,
+                        profile_key if remember == "profile" else "",
+                        json.dumps(grant.scope, sort_keys=True),
+                        timestamp(),
+                    ),
+                )
+                self._append(
+                    task_id,
+                    "permission.remembered",
+                    {"rule_id": rule_id, "mode": remember},
+                )
+            elif rule is not None and not any(
+                r.rule_id == rule_id for r in self.approval_rules()
+            ):
+                raise ValueError("Saved approval is no longer available")
+            self._resolve_grant(
+                grant,
+                "approved",
+                expires_at=expires_at,
+                reason="saved_approval:" + rule_id if rule_id else "",
+            )
+            if rule_id:
+                self._db.execute(
+                    "INSERT INTO approval_rule_grants VALUES (?, ?)",
+                    (grant_id, rule_id),
+                )
+        return self.grant(task_id, grant_id)
+
+    def grant_rule_id(self, grant_id):
+        self._check()
+        row = self._db.execute(
+            "SELECT rule_id FROM approval_rule_grants WHERE grant_id = ?", (grant_id,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def remove_approval_rule(self, rule_id):
+        self._check()
+        links = []
+        with self._db:
+            removed = self._db.execute(
+                "DELETE FROM approval_rules WHERE rule_id = ?", (rule_id,)
+            )
+            if not removed.rowcount:
+                raise ValueError("Saved approval is no longer available")
+            for row in self._db.execute(
+                "SELECT g.task_id, g.grant_id FROM grants g JOIN approval_rule_grants r ON r.grant_id = g.grant_id WHERE r.rule_id = ? AND g.status = 'approved'",
+                (rule_id,),
+            ):
+                links.append((row["task_id"], row["grant_id"]))
+                self._append(
+                    row["task_id"], "permission.forgotten", {"rule_id": rule_id}
+                )
+        return links
 
     def get(self, task_id: str) -> TaskRecord:
         self._check()
