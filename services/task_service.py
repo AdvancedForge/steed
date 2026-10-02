@@ -119,9 +119,9 @@ class TaskService(QObject):
                 "workspace.read": self._workspace_read,
                 "workspace.export": self._workspace_export,
                 "workspace.stage_extension": self._workspace_stage_extension,
-                "worker.run": lambda task_id, extension_id, request_id: (
+                "worker.run": lambda task_id, extension_id, request_id, runtime="stdlib": (
                     self._worker_action(
-                        self.workers.run, task_id, extension_id, request_id
+                        self.workers.run, task_id, extension_id, request_id, runtime
                     )
                 ),
                 "worker.capabilities": self._worker_capabilities,

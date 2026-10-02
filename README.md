@@ -41,13 +41,15 @@ Optional local MCP access over stdio or authenticated HTTP lets external agents
 browse approved sites alongside your tabs, with task permissions, watch/handoff,
 file transfers and retained drafts/receipts. Agent-built Python packages can generate
 attachments and compose approved app tools in an isolated local worker after
-exact-package approval. Users share selected input files and export results from
+exact-package/environment approval. An optional document bundle adds PDF, XLSX and
+image generation. Users share selected input files and export results from
 Task Permissions. Active website scripts and generic extensions remain planned.
 Google Docs/Gmail connections keep credentials in the desktop keyring and offer
 persistent account access switches. Real-account acceptance remains pending. See
 [agent setup](DOCUMENTATION.md#local-agent-access-mcp) and
 [Google setup](DOCUMENTATION.md#google-app-connections), plus
 [local worker requirements](DOCUMENTATION.md#running-an-agent-built-local-worker).
+Install the optional bundle with `.venv/bin/python install_worker_bundle.py`.
 Website and agent prompts offer one-time or saved approvals, with explicit
 site/action/profile scope and separate screens to remove saved choices.
 Bookmarks and generic extension support are planned.

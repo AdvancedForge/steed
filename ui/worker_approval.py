@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from services.worker_bundle import environment
 from ui.task_approval import app_description
 
 
@@ -29,10 +30,21 @@ class WorkerApprovalDialog(QDialog):
         self.setWindowTitle("Run custom code?")
         self.resize(640, 560)
         package = service.workspace.package(task.task_id, receipt.extension_id)
+        env = environment(receipt.runtime)
+        if env.sha256 != receipt.environment_sha256:
+            raise ValueError(
+                "The requested environment changed; request a fresh approval"
+            )
         layout = QVBoxLayout(self)
         summary = QLabel(
             f"Task: {task.objective}\nPackage: {package['name']}\n"
-            "Runs in a local Python sandbox. No direct network, host files, "
+            f"Environment: {env.name}\n"
+            + (
+                ", ".join(f"{name} {version}" for name, version in env.libraries) + "\n"
+                if env.libraries
+                else ""
+            )
+            + "Runs in a local Python sandbox. No direct network, host files, "
             "passwords or subprocesses. Existing task file/draft/app permissions "
             "still control every broker operation.\n"
             "Limits: 20 seconds, 10 CPU seconds, 512 MiB memory and 32 MiB scratch space."
@@ -76,12 +88,14 @@ class WorkerApprovalDialog(QDialog):
         notice = QLabel(
             "Source preview is limited to 16 KiB. Export source from Workspace to inspect larger packages.\nSHA-256: "
             + receipt.package_sha256
+            + "\nEnvironment SHA-256: "
+            + receipt.environment_sha256
         )
         notice.setTextFormat(Qt.TextFormat.PlainText)
         notice.setWordWrap(True)
         layout.addWidget(notice)
         self.remember = QCheckBox(
-            "Allow this exact package again for the rest of this task"
+            "Allow this exact package and environment again for this task"
         )
         layout.addWidget(self.remember)
         self.error = QLabel()

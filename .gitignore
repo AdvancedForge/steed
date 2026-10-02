@@ -2,4 +2,5 @@
 __pycache__/
 *.py[cod]
 .ruff_cache/
+.worker-bundles/
 client_secret_*.apps.googleusercontent.com.json

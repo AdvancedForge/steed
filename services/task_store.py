@@ -79,10 +79,24 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12):
+        if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
+            # Legacy approvals cannot authorize any dependency environment.
+            columns = {
+                row[1] for row in self._db.execute("PRAGMA table_info(worker_runs)")
+            }
+            if columns:
+                if "runtime" not in columns:
+                    self._db.execute(
+                        "ALTER TABLE worker_runs ADD COLUMN runtime TEXT NOT NULL DEFAULT 'stdlib'"
+                    )
+                if "environment_sha256" not in columns:
+                    self._db.execute(
+                        "ALTER TABLE worker_runs ADD COLUMN environment_sha256 TEXT NOT NULL DEFAULT ''"
+                    )
+                    self._db.execute("DROP TABLE IF EXISTS worker_package_approvals")
             self._db.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS tasks (
@@ -133,7 +147,7 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 12;
+                PRAGMA user_version = 13;
             """
                 + CONNECTOR_SCHEMA
                 + REVIEW_SCHEMA

@@ -125,9 +125,9 @@ class TaskDialog(QDialog):
         self.worker_setup_button = QPushButton("Check Worker Setup")
         self.worker_setup_button.clicked.connect(self.check_worker_setup)
         worker_layout.addWidget(self.worker_setup_button)
-        self.worker_runs = QTableWidget(0, 4)
+        self.worker_runs = QTableWidget(0, 5)
         self.worker_runs.setHorizontalHeaderLabels(
-            ["Request", "Entrypoint", "State", "Result"]
+            ["Request", "Entrypoint", "Environment", "State", "Result"]
         )
         self.worker_runs.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.worker_runs.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
@@ -828,12 +828,18 @@ class TaskDialog(QDialog):
                 (
                     record.request_id,
                     record.entrypoint,
+                    record.runtime,
                     record.state.replace("_", " "),
                     record.reason.replace("_", " "),
                 )
             ):
                 item = QTableWidgetItem(value)
-                item.setToolTip(record.package_sha256)
+                item.setToolTip(
+                    "Package: "
+                    + record.package_sha256
+                    + "\nEnvironment: "
+                    + (record.environment_sha256 or "legacy receipt")
+                )
                 self.worker_runs.setItem(row, column, item)
         if self._worker_rows:
             self.worker_runs.selectRow(
@@ -907,6 +913,24 @@ class TaskDialog(QDialog):
                     if result["available"]
                     else "Local worker unavailable. Install Bubblewrap/libseccomp and check system Python and user-namespace policy; then retry. Generated code will not run without isolation."
                 )
+                documents = next(
+                    (
+                        e
+                        for e in result.get("environments", [])
+                        if e["runtime"] == "documents"
+                    ),
+                    None,
+                )
+                if result["available"] and documents is not None:
+                    self.worker_setup_status.setText(
+                        self.worker_setup_status.text()
+                        + "\n"
+                        + (
+                            "Document bundle ready: PDF, XLSX and images."
+                            if documents["available"]
+                            else "Optional document bundle unavailable. Run .venv/bin/python install_worker_bundle.py once, then retry this check."
+                        )
+                    )
             except Exception:
                 self.worker_setup_status.setText(
                     "The setup check ended. Reopen this panel or retry when task services are available."

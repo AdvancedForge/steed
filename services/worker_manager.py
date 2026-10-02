@@ -10,6 +10,7 @@ from services.command_broker import require_owner_thread
 from services.connector_policy import ConnectorPermission, connector_permissions
 from services.local_worker import MAX_WORKERS, LocalWorkerJob, WorkerOutcome
 from services.task_policy import TaskPermissionError
+from services.worker_bundle import environment, require_installed
 from services.worker_diagnostics import WorkerDiagnostics
 from services.worker_store import WorkerStore
 
@@ -55,7 +56,7 @@ class WorkerManager(QObject):
             self.diagnostics = WorkerDiagnostics(self)
         return self.diagnostics.check()
 
-    def run(self, task_id, extension_id, request_id):
+    def run(self, task_id, extension_id, request_id, runtime="stdlib"):
         require_owner_thread(self)
         self.service._active(task_id)
         if not isinstance(request_id, str) or not re.fullmatch(
@@ -70,17 +71,23 @@ class WorkerManager(QObject):
         except KeyError:
             previous = None
         if previous is not None:
-            if previous.extension_id != extension_id:
-                raise ValueError("Worker request ID is already bound to a package")
+            if previous.extension_id != extension_id or previous.runtime != runtime:
+                raise ValueError(
+                    "Worker request ID is already bound to a package and runtime"
+                )
             return previous
+        env = environment(runtime)
+        require_installed(env)
         package = self.service.workspace.package(task_id, extension_id)
         self.check_package(package, grant)
         if len(self.store.list(task_id)) >= 50:
             raise TaskPermissionError("worker_run_limit")
         try:
-            record = self.store.create(task_id, request_id, package)
+            record = self.store.create(task_id, request_id, package, env)
             grant_id = self.service._grants[task_id][0]
-            if self.store.remembered(task_id, grant_id, package["package_sha256"]):
+            if self.store.remembered(
+                task_id, grant_id, package["package_sha256"], env.sha256
+            ):
                 record = self.resolve(task_id, request_id, approve=True)
         except TaskPermissionError:
             raise
@@ -93,9 +100,7 @@ class WorkerManager(QObject):
     def check_package(self, package, grant):
         grant.check("worker")
         if not package["manifest"]["entrypoint"].endswith(".py"):
-            raise ValueError(
-                "The local worker supports Python standard-library entrypoints"
-            )
+            raise ValueError("The local worker supports Python entrypoints")
         for permission in connector_permissions(package["manifest"]["capabilities"]):
             grant.check(
                 "app",
@@ -128,6 +133,12 @@ class WorkerManager(QObject):
         if package["package_sha256"] != receipt.package_sha256:
             raise ValueError("The captured package identity changed")
         self.check_package(package, grant)
+        env = environment(receipt.runtime)
+        if env.sha256 != receipt.environment_sha256:
+            raise ValueError(
+                "The captured worker environment changed; request a fresh approval"
+            )
+        require_installed(env)
         if len(self.jobs) >= MAX_WORKERS or any(
             owner == task_id for owner, _ in self.jobs
         ):
@@ -139,6 +150,7 @@ class WorkerManager(QObject):
             lambda message, future: self.rpc(key, message, future),
             lambda result: self.finished(key, result),
             self,
+            environment=env,
         )
         job.grant = grant
         job.package_sha256 = package["package_sha256"]

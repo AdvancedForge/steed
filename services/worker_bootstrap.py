@@ -7,8 +7,9 @@ import os
 import resource
 import runpy
 import sys
+import termios
 
-# No socket, clone/fork/exec, namespace, mount, ptrace, ioctl, keyring, BPF or
+# No socket, clone/fork/exec, namespace, mount, ptrace, general ioctl, keyring, BPF or
 # io_uring calls. Default deny makes additions require a reviewed policy change.
 SYSCALLS = """
 read write readv writev pread64 pwrite64 close close_range lseek fstat stat lstat
@@ -25,6 +26,15 @@ epoll_create epoll_create1 epoll_ctl epoll_wait epoll_pwait
 futex futex_waitv sched_getaffinity sched_yield getrusage sysinfo uname
 getrlimit setrlimit prlimit64 restart_syscall exit exit_group
 """.split()
+
+
+class ArgComparison(ctypes.Structure):
+    _fields_ = [
+        ("argument", ctypes.c_uint),
+        ("operation", ctypes.c_uint),
+        ("value", ctypes.c_uint64),
+        ("unused", ctypes.c_uint64),
+    ]
 
 
 def restrict():
@@ -50,6 +60,13 @@ def restrict():
     ]
     library.seccomp_load.argtypes = [ctypes.c_void_p]
     library.seccomp_release.argtypes = [ctypes.c_void_p]
+    library.seccomp_rule_add_array.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_int,
+        ctypes.c_uint,
+        ctypes.POINTER(ArgComparison),
+    ]
     policy = library.seccomp_init(0x00050000 | errno.EPERM)
     if not policy:
         raise RuntimeError("seccomp_initialization_failed")
@@ -61,6 +78,18 @@ def restrict():
                 and library.seccomp_rule_add(policy, 0x7FFF0000, number, 0) != 0
             ):
                 raise RuntimeError("seccomp_rule_failed")
+        # CPython's tempfile opener marks descriptors close-on-exec with FIOCLEX.
+        # Permit only that request; terminal/device/network controls remain denied.
+        comparison = ArgComparison(1, 4, termios.FIOCLEX, 0)  # SCMP_CMP_EQ
+        number = library.seccomp_syscall_resolve_name(b"ioctl")
+        if (
+            number < 0
+            or library.seccomp_rule_add_array(
+                policy, 0x7FFF0000, number, 1, ctypes.byref(comparison)
+            )
+            != 0
+        ):
+            raise RuntimeError("seccomp_rule_failed")
         if library.seccomp_load(policy) != 0:
             raise RuntimeError("seccomp_load_failed")
     finally:
@@ -80,6 +109,9 @@ def main():
     sys.stdout.write('{"kind":"ready","protocol":1}\n')
     sys.stdout.flush()
     sys.path[:0] = ["/sdk", "/package"]
+    if os.path.isdir("/dependencies"):
+        # No site import: wheel .pth files and entrypoint hooks are never evaluated.
+        sys.path.append("/dependencies")
     os.chdir("/work")
     try:
         runpy.run_path("/package/" + sys.argv[1], run_name="__main__")
