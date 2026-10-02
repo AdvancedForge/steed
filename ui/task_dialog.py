@@ -30,7 +30,7 @@ class TaskDialog(QDialog):
         notice = QLabel(
             "Requests open automatically for approval. Existing profiles support "
             "shared access; you can keep browsing while a task uses your sign-in. "
-            "Task scripts and file actions are unavailable. Revoking access cancels the task."
+            "Downloads require exact file permission. Task scripts and uploads are unavailable. Revoking access cancels the task."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -173,6 +173,13 @@ class TaskDialog(QDialog):
                     else "Storage: a separate private profile for each session.\n"
                 )
                 + f"Actions: {', '.join(scope['actions']) or 'None'}\n"
+                + (
+                    "Download files (no overwriting):\n"
+                    + "\n".join(scope["download_destinations"])
+                    + f"\nEach file: up to {scope['max_download_bytes']:,} bytes.\n"
+                    if scope.get("download_destinations")
+                    else ""
+                )
                 + (
                     "Control changes: text entry, selection by index, and checkbox/radio activation. "
                     "Active document scripts are unavailable.\n"

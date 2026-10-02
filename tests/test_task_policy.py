@@ -87,7 +87,7 @@ class TaskPolicyTests(unittest.TestCase):
         self.assertEqual(
             explicit.request("https://example.org/form", b"POST"), "method_out_of_scope"
         )
-        for action in ("scripts", "upload", "download"):
+        for action in ("scripts", "upload"):
             with self.subTest(action=action), self.assertRaises(ValueError):
                 self.scope(actions=[action])
 

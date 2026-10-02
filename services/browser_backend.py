@@ -34,6 +34,7 @@ from services.page_actions import (
 )
 from services.page_inspector import PageInspectionError, PageInspector
 from services.permission_service import PermissionService
+from services.task_downloads import TaskDownload
 from services.task_network import TaskNetwork
 from services.task_policy import LiveGrant
 
@@ -75,6 +76,11 @@ class BrowserBackend(Protocol):
     def submit_form(self, session_id, action_id, snapshot_id, target_id): ...
     def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments): ...
     def wait(self, session_id, condition, text, timeout_ms): ...
+    def start_download(self, session_id, download_id, url, destination, publish): ...
+    def inspect_download(self, session_id, download_id): ...
+    def cancel_download(self, session_id, download_id): ...
+    def check_control_change(self, session_id): ...
+    def change_control(self, session_id, owner): ...
     def stop(self, session_id: str) -> SessionSnapshot: ...
     def attach_view(
         self, session_id: str, parent: QWidget | None = None
@@ -196,6 +202,7 @@ class QtSession:
     pending_action: Future | None = None
     waits: set[Future] = field(default_factory=set)
     control_owner: str = "agent"
+    downloads: dict = field(default_factory=dict)
 
 
 class QtBrowserBackend(QObject):
@@ -252,7 +259,9 @@ class QtBrowserBackend(QObject):
             )
             profile.setUrlRequestInterceptor(interceptor)
             profile.task_interceptor = interceptor
-            profile.downloadRequested.connect(lambda request: request.cancel())
+            profile.downloadRequested.connect(
+                lambda request: page.task_download_handler(request)
+            )
         if not owns_profile:
             interceptor = TaskRequestInterceptor(
                 grant, report, page, submission=page.submission
@@ -284,6 +293,9 @@ class QtBrowserBackend(QObject):
         PermissionService.deny_page(page, lambda: self._closed)
         session = QtSession(task_id, profile, page, grant, owns_profile)
         self._sessions[session_id] = session
+        page.task_download_handler = lambda request: self._download_requested(
+            session_id, request
+        )
         page.loadStarted.connect(lambda: self._started(session_id))
         page.loadFinished.connect(lambda ok: self._finished(session_id, ok))
         page.urlChanged.connect(lambda url: self._url_changed(session_id))
@@ -496,6 +508,9 @@ class QtBrowserBackend(QObject):
             pending.set_exception(RuntimeError("Task navigation cancelled"))
 
     def _cancel_action(self, session, reason):
+        for transfer in session.downloads.values():
+            if not transfer.result.done():
+                transfer.cancel(reason)
         pending = session.pending_action
         if pending is not None and not pending.done():
             pending.set_exception(PageInspectionError(reason))
@@ -1009,6 +1024,80 @@ class QtBrowserBackend(QObject):
         ):
             raise PageInspectionError("session_busy")
 
+    def start_download(self, session_id, download_id, url, destination, publish):
+        self.check_control_change(session_id)
+        session = self._session(session_id)
+        if len(session.downloads) >= 100:
+            raise PageInspectionError("download_limit")
+        session.grant.check("download", url=url, destination=destination)
+        transfer = TaskDownload(
+            session_id,
+            download_id,
+            session.page,
+            session.grant,
+            url,
+            destination,
+            publish,
+        )
+        session.downloads[download_id] = transfer
+        session.pending_action = transfer.result
+
+        def completed(_):
+            if session.pending_action is transfer.result:
+                session.pending_action = None
+            session.page.loadFinished.disconnect(loaded)
+
+        def loaded(ok):
+            def checked():
+                # Attachment navigation reports loadFinished(False) before
+                # downloadRequested. Wait for the explicit transfer deadline
+                # in that case rather than racing the engine's queued request.
+                if ok and transfer.request is None and not transfer.result.done():
+                    transfer.cancel("not_a_download")
+
+            QTimer.singleShot(0, checked)
+
+        session.page.loadFinished.connect(loaded)
+        transfer.result.add_done_callback(completed)
+
+        def navigate():
+            if transfer.result.done() or session_id not in self._sessions:
+                return
+            try:
+                if session.network is not None:
+                    session.network.validate()
+                session.grant.check("download", url=url, destination=destination)
+                session.page.setUrl(navigation_url(url))
+            except Exception:
+                transfer.cancel("download_navigation_failed")
+
+        if session.network is not None and not session.network.ready.done():
+            session.network.ready.add_done_callback(lambda _: navigate())
+        else:
+            navigate()
+        return transfer
+
+    def _download_requested(self, session_id, request):
+        session = self._sessions.get(session_id)
+        if session is None:
+            request.cancel()
+            return
+        pending = next(
+            (t for t in session.downloads.values() if not t.result.done()), None
+        )
+        if pending is None:
+            request.cancel()
+        else:
+            pending.accept(request)
+
+    def inspect_download(self, session_id, download_id):
+        return self._session(session_id).downloads[download_id].snapshot()
+
+    def cancel_download(self, session_id, download_id):
+        transfer = self._session(session_id).downloads[download_id]
+        transfer.cancel()
+        return transfer.snapshot()
+
     def change_control(self, session_id, owner):
         self.check_control_change(session_id)
         session = self._session(session_id)
@@ -1020,6 +1109,8 @@ class QtBrowserBackend(QObject):
 
     def close_session(self, session_id):
         session = self._session(session_id)
+        for transfer in session.downloads.values():
+            transfer.close()
         self.inspector.invalidate(session_id, "session_closed", discard=True)
         self._sessions.pop(session_id)
         self._cancel_navigation(session)

@@ -56,7 +56,9 @@ async def sdk_transport(discovery, endpoint):
             yield reader, writer, None
 
 
-async def sdk_client(discovery, origin, shared, revoke, revoked, endpoint=None):
+async def sdk_client(
+    discovery, origin, shared, revoke, revoked, destination, endpoint=None
+):
     from mcp import ClientSession
 
     async with sdk_transport(discovery, endpoint) as (reader, writer, get_session_id):
@@ -103,8 +105,11 @@ async def sdk_client(discovery, origin, shared, revoke, revoked, endpoint=None):
                         "edit",
                         "submit",
                         "scroll",
+                        "download",
                     ],
                     "duration_seconds": 120,
+                    "download_destinations": [destination],
+                    "max_download_bytes": 1024 * 1024,
                 },
             )
             deadline = time.monotonic() + 15
@@ -192,6 +197,22 @@ async def sdk_client(discovery, origin, shared, revoke, revoked, endpoint=None):
             assert "SYNTHETIC_USER_HANDOFF" not in json.dumps(events)
             assert any(event["kind"] == "page.action_finished" for event in events)
             shared["form_completed"] = True
+            attachment = await target("Download receipt")
+            download = await call(
+                "page.download", **attachment, destination=destination
+            )
+            deadline = time.monotonic() + 15
+            while download["state"] in ("requested", "in_progress"):
+                assert time.monotonic() < deadline, "Download fixture timed out"
+                await asyncio.sleep(0.1)
+                download = await call(
+                    "download.status",
+                    session_id=session_id,
+                    download_id=download["download_id"],
+                )
+            assert download["state"] == "completed", download
+            assert Path(destination).read_bytes() == b"SYNTHETIC_DOWNLOAD_BYTES"
+            shared["download_completed"] = True
             revoke.set()
             deadline = time.monotonic() + 15
             while not revoked.is_set():
@@ -444,9 +465,14 @@ def check(transport="stdio"):
         type(case).page_fixtures = {
             "/mcp-start": b'<p>Delegated workflow</p><a href="/mcp-form">Open form</a>',
             "/mcp-form": b'<form method="post" action="/mcp-submitted"><input aria-label="Message" name="message" value="FORM_PRIVATE"><input type="hidden" name="token" value="SYNTHETIC_TOKEN"><input aria-label="Confirm" type="checkbox" name="confirm" value="yes"><button name="decision" value="send">Send</button></form>',
+            "/download-mcp": b"SYNTHETIC_DOWNLOAD_BYTES",
         }
         type(case).post_responses = {
-            "/mcp-submitted": (200, None, b"<p>Received</p>"),
+            "/mcp-submitted": (
+                200,
+                None,
+                b'<p>Received</p><a href="/download-mcp">Download receipt</a>',
+            ),
             "/mcp-user-post": (200, None, b"<p>User browsing continues</p>"),
         }
         window.agent_access_action.trigger()
@@ -477,7 +503,13 @@ def check(transport="stdio"):
             try:
                 asyncio.run(
                     sdk_client(
-                        discovery, case.origin, shared, revoke, revoked, endpoint
+                        discovery,
+                        case.origin,
+                        shared,
+                        revoke,
+                        revoked,
+                        str(Path(case.directory.name) / "mcp-result.bin"),
+                        endpoint,
                     )
                 )
                 if endpoint is None:

@@ -84,9 +84,10 @@ SCOPE = schema(
                     "edit",
                     "scroll",
                     "submit",
+                    "download",
                 ],
             },
-            "maxItems": 7,
+            "maxItems": 8,
         },
         "profile": string(140),
         "allow_private_network": {
@@ -97,10 +98,17 @@ SCOPE = schema(
         "max_operations": integer(1, 10000),
         "max_requests": integer(1, 100000),
         "max_sessions": integer(1, 10),
+        "download_destinations": {
+            "type": "array",
+            "items": string(4096),
+            "maxItems": 20,
+            "description": "Exact absolute filenames. Existing files are never overwritten.",
+        },
+        "max_download_bytes": integer(1, 100 * 1024 * 1024),
     }
 )
 SCOPE["description"] = (
-    "Exact task permissions. The user approves in Steed; scripts and file actions are unavailable."
+    "Exact task permissions. Downloads require exact destination filenames; scripts and uploads are unavailable. The user approves in Steed."
 )
 
 
@@ -190,6 +198,24 @@ TOOLS = (
         "Follow an observed link with current references and read/navigation permission.",
         TARGET,
         tuple(TARGET),
+    ),
+    tool(
+        "page.download",
+        "Download an observed attachment link to an approved exact filename. Needs read, navigate and download authority. Returns an ID; poll download.status. Never overwrites. HTML/save-page and redirected download URLs are unsupported.",
+        {**TARGET, "destination": string(4096)},
+        (*TARGET, "destination"),
+    ),
+    tool(
+        "download.status",
+        "Read an owned download's progress or completion receipt; file bytes are not exposed.",
+        {**SESSION, "download_id": string()},
+        ("session_id", "download_id"),
+    ),
+    tool(
+        "download.cancel",
+        "Cancel an owned pending download and discard its staged bytes. Completed files remain.",
+        {**SESSION, "download_id": string()},
+        ("session_id", "download_id"),
     ),
     tool(
         "page.act",

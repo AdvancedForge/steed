@@ -44,8 +44,8 @@ approved existing profiles alongside your tabs, with approval popups and limits 
 sites and budgets.
 Page inspection returns bounded text and validated references. Task clients can
 follow links, edit supported controls, submit supported forms, scroll, and wait
-for page state with explicit permissions. Active scripts and file actions remain
-planned.
+for page state with explicit permissions. Task downloads require approved exact
+filenames and never overwrite existing files. Active scripts and uploads remain planned.
 Optional local MCP access over stdio or authenticated local HTTP connects clients
 to the running browser's task capabilities. You can watch a task's page, take
 control through supported actions, and return it to the agent. See

@@ -2,6 +2,7 @@
 
 import ipaddress
 import math
+import os
 import threading
 import time
 from dataclasses import asdict, dataclass
@@ -12,8 +13,23 @@ from PyQt6.QtCore import QUrl
 from utils import sanitize_profile_name
 
 SUPPORTED_ACTIONS = frozenset(
-    {"navigate", "inspect", "read", "attach", "edit", "scroll", "submit"}
+    {"navigate", "inspect", "read", "attach", "edit", "scroll", "submit", "download"}
 )
+
+
+def download_destination(value):
+    """An exact absolute filename, without aliases or control characters."""
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 4096
+        or not value.isprintable()
+        or not value.startswith("/")
+        or value.startswith("//")
+        or os.path.normpath(value) != value
+        or value == "/"
+    ):
+        raise ValueError("Provide an exact absolute destination filename")
+    return value
 
 
 def task_profile_name(selector):
@@ -102,6 +118,8 @@ class TaskScope:
     max_operations: int = 100
     max_requests: int = 1000
     max_sessions: int = 1
+    download_destinations: tuple[str, ...] = ()
+    max_download_bytes: int = 25 * 1024 * 1024
 
     @classmethod
     def parse(cls, values):
@@ -138,6 +156,7 @@ class TaskScope:
             ("max_operations", 100, 10000),
             ("max_requests", 1000, 100000),
             ("max_sessions", 1, 10),
+            ("max_download_bytes", 25 * 1024 * 1024, 100 * 1024 * 1024),
         ):
             value = values.get(field, default)
             if (
@@ -147,7 +166,20 @@ class TaskScope:
             ):
                 raise ValueError(f"Invalid {field}")
             numbers[field] = value
-        return cls(origins, tuple(sorted(set(actions))), profile, private, **numbers)
+        destinations = values.get("download_destinations", [])
+        if not isinstance(destinations, (tuple, list)) or len(destinations) > 20:
+            raise ValueError("Provide at most 20 exact download destinations")
+        destinations = tuple(sorted({download_destination(p) for p in destinations}))
+        if bool(destinations) != ("download" in actions):
+            raise ValueError("Download permission requires explicit destinations")
+        return cls(
+            origins,
+            tuple(sorted(set(actions))),
+            profile,
+            private,
+            download_destinations=destinations,
+            **numbers,
+        )
 
     def payload(self):
         return asdict(self)
@@ -189,7 +221,11 @@ class LiveGrant:
             if profile is not None and profile != self.scope.profile:
                 raise TaskPermissionError("profile_out_of_scope")
             if destination is not None:
-                raise TaskPermissionError("file_actions_unavailable")
+                if (
+                    action != "download"
+                    or destination not in self.scope.download_destinations
+                ):
+                    raise TaskPermissionError("destination_out_of_scope")
             if action != "open" and action not in self.scope.actions:
                 raise TaskPermissionError("action_out_of_scope")
             if url is not None:

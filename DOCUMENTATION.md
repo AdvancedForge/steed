@@ -368,6 +368,7 @@ Browser/
 │   ├── page_inspector.py   # Asynchronous snapshots, validation, and fixed actions
 │   ├── page_actions.py     # Bounded action inputs and value-free receipts
 │   ├── form_submission.py  # Per-page submission tickets and journal URL privacy
+│   ├── task_downloads.py   # Native downloads, safe destination publication and receipts
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
@@ -459,8 +460,9 @@ navigation and `services/permission_service.py` for permission wiring and
 lifetime checks. Browser prompts stay in the UI; task pages deny permissions.
 The application-owned `DownloadManager` receives a destination-picker callback
 from the registry instead of opening dialogs itself. A manager with no provider
-declines downloads. Task file actions remain disabled until destination grants
-and deterministic file operations are implemented.
+declines downloads. Task downloads have their own explicit destination grants,
+staging, cancellation, and receipts; they never invoke the ordinary file picker.
+Uploads remain unavailable.
 
 The task service is available to trusted in-process Python controllers through
 `window.profile_manager.registry.tasks`. It is initialized only on demand and
@@ -508,6 +510,9 @@ its transport identity is also bound to the credential that initialized it.
 | `page.submit` | `task_id`, `session_id`, `snapshot_id`, `target_id`; requires `read` + `navigate` + `submit`, returns an observed native-form outcome |
 | `page.scroll` | `task_id`, `session_id`, `snapshot_id`, optional `frame_id`, `dx`, `dy`; requires `read` + `scroll`, returns observed offsets |
 | `page.wait` | `task_id`, `session_id`, optional `condition`, `text`, `timeout_ms`; requires `read`, returns an observed match, timeout, or load failure |
+| `page.download` | `task_id`, `session_id`, `snapshot_id`, `target_id`, `destination`; requires `read` + `navigate` + `download`, starts an observed attachment link and returns its download ID |
+| `download.status` | `task_id`, `session_id`, `download_id`; download grant, returns progress/completion receipt without file bytes |
+| `download.cancel` | `task_id`, `session_id`, `download_id`; cancels owned transfer and discards staged bytes without spending a cleanup operation |
 | `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
 | `session.attach` | `task_id`, `session_id`; internal read-only Qt view of the existing page |
 | `session.watch` | `task_id`, `session_id`; opens the same-page watch window; returns JSON watch/control state |
@@ -821,6 +826,63 @@ termination, or session shutdown interrupts them. Revocation/expiry checks also
 apply before returning results. Only one wait runs per session, and a wait cannot
 start during a controlled action. Waiting does not spend network budget by itself.
 
+### Scoped task downloads
+
+Request `download` alongside `read` and `navigate`, with exact absolute filenames
+in `download_destinations`. For example:
+
+```json
+{
+  "origins": ["https://example.org"],
+  "allow_private_network": true,
+  "actions": ["navigate", "inspect", "read", "download"],
+  "download_destinations": ["/home/yourname/Downloads/report.pdf"],
+  "max_download_bytes": 26214400
+}
+```
+
+The approval popup lists destinations and the per-file size limit. Parent
+directories must already exist and cannot contain symlinks. Filenames must be
+normalized absolute paths; there is no folder-wide, overwrite, or execution
+authority. Up to 20 filenames may be approved. The default size limit is 25 MiB;
+the maximum is 100 MiB.
+
+Inspect a page and pass the attachment link's current `snapshot_id` and
+`target_id`, plus an approved `destination`, to `steed_page_download`. It starts
+navigation on that same task page/profile and returns a `download_id`.
+Poll `steed_download_status` with its session/download IDs; terminal states are
+`completed`, `cancelled`, or `failed`. Status polling spends operation budget,
+so use a bounded polling interval, such as 500 ms. Completed receipts include
+destination, observed received/total bytes, state, and a bounded error code.
+The file's contents and URL query are excluded from journal evidence.
+
+Steed accepts only the expected native attachment request. HTML/save-page
+responses are unsupported; download URL redirects fail closed when they change
+the request's URL. Unapproved origins are blocked before their request reaches
+the server. Pending transfers have a 30-second deadline and block other page
+actions/takeover. The endpoint and cookie tests cover private and concurrently
+shared profiles; ordinary tabs keep their existing download picker/history.
+
+The engine writes to a private temporary directory anchored by a Linux directory
+descriptor. Before publishing, Steed rechecks authority, destination identity,
+byte counts, and journal availability. Atomic hard-link publication fails if a
+file or symlink already occupies the approved name. Completed files have mode
+0600. Progress checks cancel oversized/unknown-length transfers; temporary disk
+usage may exceed the limit briefly before an engine notification is processed.
+The final file is never published over the size limit.
+
+`steed_download_cancel`, stop/navigation, revocation, expiry, disconnect, and
+session/task shutdown cancel pending transfers and remove staged bytes. Files
+already published remain; cancellation cannot undo an HTTP request already sent.
+No retry, pause/resume, file execution, or file-content API is supplied. There
+are at most 100 download records per session. An evidence failure after physical
+publication disables task access; reconcile the destination before retrying.
+
+Qt requires choosing the download path before accepting its request; see
+[QWebEngineDownloadRequest](https://doc.qt.io/qt-6.11/qwebenginedownloadrequest.html).
+Steed uses ordinary page navigation to retain page request enforcement, rather
+than exposing an unrestricted engine download API.
+
 ### Existing signed-in task profiles
 
 An internal client can request `"profile": "existing:work"` to use the existing
@@ -900,7 +962,7 @@ end too. Pages, commands, and approved authority are never
 restored/replayed. An asynchronous journal write failure disables further task
 commands and emits `service.failed`; cleanup still disposes engine resources.
 
-Active document execution, script-handled forms, and file actions remain future
+Active document execution, script-handled forms, and uploads remain future
 work. Watching and scoped user handoff use the existing task page.
 Existing-profile grants support the same restricted
 retrieval, metadata, content reads, control edits, and native scriptless forms as
@@ -1201,13 +1263,13 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 21 input schemas. Names follow the internal command
+Tool discovery publishes 24 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
 navigation, supported control edits, native form submission, scrolling, waits,
 watching, evidence, and task lifecycle are available. Approval, task enumeration,
-raw cookies, JavaScript, arbitrary selectors, file actions, and raw Qt objects
+raw cookies, JavaScript, arbitrary selectors, uploads, and raw Qt objects
 are not exposed by this adapter. `steed_session_watch` needs explicit `attach`
 permission and opens a browser-owned window; taking and returning control are
 trusted user actions, unavailable to external clients.
@@ -1325,7 +1387,7 @@ The current forced-script probes report `tested_routes_contained: false`.
 The optional MCP smoke requires `requirements-mcp.txt`. It runs an SDK client
 and a separate JSON-RPC client against a temporary, synthetic signed-in profile.
 The fixture alone clicks the approval popup and invokes trusted cancellation.
-It checks native edits/submission, watch/user handoff/return, blocked agent
+It checks native edits/submission/downloads, watch/user handoff/return, blocked agent
 operations during takeover, stale handles, evidence without field values,
 shared cookies/profile identity, concurrent ordinary user POST, ownership denial,
 and task disposal. The trusted fixture alone uses the user controls to enter
@@ -1347,6 +1409,27 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+Scoped download stage (October 2, 2026): the full 324-test suite passed in
+219.159 seconds (`/tmp/steed-download-full.log`). Sixteen initial download
+regressions passed in 73.306 seconds (`/tmp/steed-download-focused.log`), covering
+exact paths/size scopes, existing files, symlinks, parent substitution, native
+private/shared profile downloads, credential sharing, ordinary download
+independence, forbidden redirects, HTML responses, known/unknown-size limits,
+stream cancellation, late destination creation, revocation, and publication
+journal failure. The final 19 focused checks passed in 72.304 seconds
+(`/tmp/steed-download-focused-final.log`), adding active-transfer expiry,
+cross-task ownership and post-publication receipt failure. Ruff, formatting,
+whitespace, and optional dependency checks passed.
+
+Both MCP workflows downloaded and inspected a synthetic output file through
+the real adapter (`/tmp/steed-download-stdio.log`,
+`/tmp/steed-download-http.log`); shared-profile form/handoff, concurrent user
+POST, cancellation and independent-client ownership checks remained passing.
+Startup/render/shutdown passed (`/tmp/steed-download-startup.log`). These are
+isolated fixtures, not real-account download acceptance. Completed files survive
+normal task teardown; crashes can leave private staged directories until explicit
+cleanup. No upload, pause/replay or executable-content authority was added.
 
 Same-page watch and user handoff stage (October 2, 2026): the final 16 watch
 regressions passed in 3.448 seconds (`/tmp/steed-watch-focused-final.log`).

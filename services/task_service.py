@@ -85,6 +85,9 @@ class TaskService(QObject):
                 "page.submit": self._submit,
                 "page.scroll": self._scroll,
                 "page.wait": self._wait,
+                "page.download": self._download,
+                "download.status": self._download_status,
+                "download.cancel": self._download_cancel,
                 "session.stop": self._stop,
                 "session.attach": self._attach,
                 "session.watch": self._watch,
@@ -646,6 +649,101 @@ class TaskService(QObject):
         self._owned(task_id, session_id, allow_user=True)
         self._authorize(task_id, "attach")
         return self.backend.attach_view(session_id)
+
+    def _download(self, task_id, session_id, snapshot_id, target_id, destination):
+        self._owned(task_id, session_id)
+        grant = self._authorize(task_id, "download", destination=destination)
+        grant.check("read")
+        grant.check("navigate")
+        checked = self.backend.inspect_target(session_id, snapshot_id, target_id)
+        result = Future()
+        actor = self._actor.get()
+
+        def validated(source):
+            try:
+                target = source.result()
+                self._usable()
+                self._owned(task_id, session_id, actor=actor)
+                if (
+                    target.kind != "link"
+                    or not target.enabled
+                    or target.read_only
+                    or "navigate" not in target.operations
+                    or target.href is None
+                ):
+                    raise PageInspectionError("target_not_navigable")
+                grant.check("download", url=target.href, destination=destination)
+                grant.check("read")
+                grant.check("navigate", url=target.href)
+                download_id = uuid4().hex
+                details = {
+                    "download_id": download_id,
+                    "session_id": session_id,
+                    "destination": destination,
+                    "url": journal_origin(target.href),
+                }
+
+                def publish():
+                    self._usable()
+                    self._owned(task_id, session_id, actor=actor)
+                    grant.check("download", url=target.href, destination=destination)
+                    try:
+                        self.store.record_event(
+                            task_id, "download.publish_requested", details
+                        )
+                    except Exception:
+                        self._fatal()
+                        raise
+
+                try:
+                    self.store.record_event(task_id, "download.requested", details)
+                except Exception:
+                    self._fatal()
+                    raise
+                transfer = self.backend.start_download(
+                    session_id, download_id, target.href, destination, publish
+                )
+
+                def finished(source):
+                    if self._closed or self.failure:
+                        return
+                    try:
+                        outcome = source.result()
+                        self.store.record_event(
+                            task_id, "download.finished", asdict(outcome)
+                        )
+                        self.changed.emit()
+                    except Exception:
+                        self._fatal()
+
+                transfer.result.add_done_callback(finished)
+                result.set_result(transfer.snapshot())
+            except Exception as error:
+                result.set_exception(error)
+                if not self._closed and not self.failure:
+                    try:
+                        self.store.record_event(
+                            task_id,
+                            "download.failed",
+                            {
+                                "session_id": session_id,
+                                "reason": getattr(error, "code", "download_failed"),
+                            },
+                        )
+                    except Exception:
+                        self._fatal()
+
+        checked.add_done_callback(validated)
+        return result
+
+    def _download_status(self, task_id, session_id, download_id):
+        self._owned(task_id, session_id, allow_user=True)
+        self._authorize(task_id, "download")
+        return self.backend.inspect_download(session_id, download_id)
+
+    def _download_cancel(self, task_id, session_id, download_id):
+        self._owned(task_id, session_id, allow_user=True)
+        return self.backend.cancel_download(session_id, download_id)
 
     def _watch(self, task_id, session_id):
         view = self._attach(task_id, session_id)
