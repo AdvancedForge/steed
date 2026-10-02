@@ -5,7 +5,7 @@ import sqlite3
 from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
-from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtCore import QEvent, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
@@ -132,6 +132,7 @@ class BrowserWindow(QMainWindow):
 
     def __init__(self, profile_name: str | None = None):
         super().__init__()
+        self.browser_window_id = uuid4().hex
         self.config = Config()
         self.profile_manager = ProfileManager(self.config, profile_name, self)
         self.config = self.profile_manager.config
@@ -266,6 +267,13 @@ class BrowserWindow(QMainWindow):
         task_action = QAction("Task Permissions...", self)
         task_action.triggered.connect(self._open_tasks)
         file_menu.insertAction(exit_action, task_action)
+        self.agent_access_action = QAction("Enable Local Agent Access", self)
+        self.agent_access_action.setCheckable(True)
+        registry = self.profile_manager.registry
+        self.agent_access_action.setChecked(registry.agent_gateway is not None)
+        registry.agent_access_changed.connect(self.agent_access_action.setChecked)
+        self.agent_access_action.triggered.connect(self._set_agent_access)
+        file_menu.insertAction(task_action, self.agent_access_action)
         edit_menu = menubar.addMenu("Edit")
         self.find_action = QAction("Find in Page...", self)
         self.find_action.setShortcut(QKeySequence("Ctrl+F"))
@@ -714,6 +722,31 @@ class BrowserWindow(QMainWindow):
         if not self._closing and self.tabs:
             self.find_bar.set_page(self.tabs[self.current_tab_index].page())
             self.find_bar.open_find()
+
+    def event(self, event):
+        if event.type() == QEvent.Type.WindowActivate and hasattr(
+            self, "profile_manager"
+        ):
+            manager = self.profile_manager
+            if not manager._closed:
+                manager.registry.last_active_owner = manager
+        return super().event(event)
+
+    def _set_agent_access(self, enabled):
+        try:
+            self.profile_manager.registry.set_agent_access(enabled)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error):
+            self.agent_access_action.setChecked(False)
+            QMessageBox.warning(
+                self, "Agent Access", "Local agent access could not be started."
+            )
+            return
+        self.status_bar.showMessage(
+            "Local agent access enabled; tasks still require approval."
+            if enabled
+            else "Local agent access disabled; connected tasks were cancelled.",
+            8000,
+        )
 
     def _open_tasks(self):
         if not self._closing:

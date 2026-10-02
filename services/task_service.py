@@ -63,6 +63,8 @@ class TaskService(QObject):
             {
                 "task.create": self._create,
                 "task.status": self.store.get,
+                "task.capabilities": self._capabilities,
+                "browser.context": self._browser_context,
                 "task.list": self.store.list_tasks,
                 "task.events": self.store.events,
                 "task.finish": self._finish_task,
@@ -108,6 +110,29 @@ class TaskService(QObject):
     def _active(self, task_id):
         if self.store.get(task_id).status not in ACTIVE_STATUSES:
             raise TaskPermissionError("task_inactive")
+
+    def _browser_context(self, task_id):
+        """Read selected-window/profile metadata without granting site access."""
+        self._usable()
+        self._active(task_id)
+        if self.profiles is None:
+            return {
+                "window_id": None,
+                "profile": None,
+                "profile_selector": None,
+                "shared_profile_available": False,
+                "source": "no_browser_window",
+            }
+        return self.profiles.agent_context()
+
+    def _capabilities(self, task_id):
+        """Discover implemented authority without opening pages or issuing grants."""
+        self._usable()
+        self._active(task_id)
+        report = getattr(self.backend, "capabilities", None)
+        if not callable(report):
+            raise RuntimeError("Browser backend capability report unavailable")
+        return report()
 
     def _owned(self, task_id, session_id):
         self._active(task_id)

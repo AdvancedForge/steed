@@ -22,6 +22,7 @@ for current progress and remaining work.
 - [Project structure](#project-structure)
 - [Engine and storage internals](#engine-and-storage-internals)
 - [Internal task services](#internal-task-services)
+- [Local agent access (MCP)](#local-agent-access-mcp)
 - [Development checks](#development-checks)
 - [Verification record](#verification-record)
 - [Current limitations](#current-limitations)
@@ -352,9 +353,12 @@ Browser/
 ├── utils.py                # Atomic JSON, profile path helpers
 ├── webengine.py            # Shared engine settings
 ├── services/
+│   ├── agent_gateway.py    # Opt-in private IPC, connection ownership and cleanup
+│   ├── agent_tools.py      # Published tool schemas and browser-side validation
 │   ├── task_store.py       # SQLite tasks, append-only events, restart recovery
 │   ├── command_broker.py   # Named commands dispatched on the Qt thread
 │   ├── browser_backend.py  # Task pages, profile sharing, and observed navigation
+│   ├── engine_capabilities.py # Implemented authority and native-policy prerequisites
 │   ├── navigation_service.py # Shared navigation, find, and zoom operations
 │   ├── permission_service.py # Modern/legacy permission responses and task denial
 │   ├── task_policy.py      # Exact scopes, expiry, and thread-safe request budgets
@@ -367,6 +371,8 @@ Browser/
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
+├── agent_mcp.py            # Optional stdio adapter into the running browser
+├── requirements-mcp.txt    # Optional official MCP SDK dependency
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
 │   ├── find_bar.py        # Debounced page search and match navigation
@@ -459,7 +465,8 @@ and deterministic file operations are implemented.
 The task service is available to trusted in-process Python controllers through
 `window.profile_manager.registry.tasks`. It is initialized only on demand and
 shared across windows using the same application registry. This is a developer
-API; no agent endpoint or MCP tools are exposed yet. **File → Task Permissions**
+API; the optional [local MCP adapter](#local-agent-access-mcp) exposes a bounded
+subset through private IPC. **File → Task Permissions**
 provides user approval, denial, revocation, and cancellation. A client can propose
 a scope but cannot approve it through the command broker.
 
@@ -478,12 +485,14 @@ on the Qt thread to issue a task-bound handle. `client.submit(name, **arguments)
 supplies the task ID automatically and rejects impersonation and management
 commands. Give clients these handles; reserve the raw `service.broker` for trusted
 application management. Neither interface is a sandbox for arbitrary Python
-running inside the application. External transport authentication remains A4 work.
+running inside the application. The local gateway authenticates adapter connections
+and binds each to one task; authenticated HTTP transport remains A4 work.
 
 | Command | Arguments / result |
 | --- | --- |
 | `task.create` | `objective`; returns a task record |
 | `task.status`, `task.list` | `task_id` for status; records for list |
+| `task.capabilities` | `task_id`; backend/engine versions, supported actions, and website-script availability |
 | `task.events` | `task_id`, optional `after` sequence and `limit`; ordered events |
 | `task.finish` | `task_id`, optional terminal `status`; closes owned sessions |
 | `grant.request` | `task_id`, `scope`; records a pending request, without authority |
@@ -500,6 +509,20 @@ running inside the application. External transport authentication remains A4 wor
 | `page.wait` | `task_id`, `session_id`, optional `condition`, `text`, `timeout_ms`; requires `read`, returns an observed match, timeout, or load failure |
 | `session.stop`, `session.close` | `task_id`, `session_id`; stops or destroys the session |
 | `session.attach` | `task_id`, `session_id`; returns a Qt view of the existing page |
+
+An active task can call `client.submit("task.capabilities")` before requesting a
+grant. This read-only query opens no page, consumes no operation budget, and
+issues no authority. It reports `supported_actions`, `website_scripts`,
+`script_unavailable_reason`, and engine versions. Queries retain the client's
+task identity and reject inactive tasks. Alternate backends must provide their
+own report; a missing implementation returns an error rather than claiming Qt
+capabilities.
+
+The Qt report currently returns `website_scripts: false`. Chromium below 152
+reports `engine_upgrade_required`; a verified newer version reports
+`native_policy_not_integrated`. An unrecognized version reports
+`engine_version_unverified`. `native_policy_candidate` describes version
+eligibility only: upgrading the engine never enables scripts or adds a grant.
 
 For example, submit `task.create` with an objective, obtain its `task_id`, issue a
 bound client, and use that client to submit `grant.request` with this scope:
@@ -969,6 +992,205 @@ Normal runs exit zero when audit controls complete, even when containment fails.
 fails because TURN/TCP reaches the unapproved listener. A future passing result
 covers these fixtures only and does not establish full active-script acceptance.
 
+### Active-script engine decision
+
+Use native per-document connection enforcement in the same embedded engine and
+actual profile as the user's tabs. The selected direction combines
+`Connection-Allowlist` with `webrtc=block`, a worker-blocking CSP, and the existing
+live-grant request checks. This preserves collaborative account/storage access
+without changing ordinary tabs' networking.
+
+Chrome documents stable Connection-Allowlist support starting in
+[Chromium 152](https://developer.chrome.com/blog/fedcm-connection-allowlist).
+The installed Steed engine is Qt 6.11.2 / Chromium 140.0.7339.225; its failed RTC
+probes remain the embedded-backend baseline. The latest published
+[PyQt6-WebEngine-Qt6 package](https://pypi.org/project/PyQt6-WebEngine-Qt6/) checked
+October 1, 2026 is 6.11.2, so reinstalling the current dependencies does not
+provide the required Chromium generation. A compatible Qt engine/native hook or
+backport is required before production integration.
+
+| Approach | Decision |
+| --- | --- |
+| Native policy inside the shared embedded engine | Selected; needs a compatible engine and trusted policy-delivery integration |
+| A separate external Chromium process for tasks | Does not share the actual live `QWebEngineProfile`; rejected for current collaboration requirements |
+| Disable RTC/networking across the shared profile | Would restrict the user's ordinary tabs; rejected |
+| Packet loss or JavaScript constructor wrappers | Insufficient connection boundary; the bundled-engine probes expose TCP/realm gaps |
+
+`tests/smoke_native_connection_policy.py` proves engine feasibility using the
+locally installed Chromium 153.0.8010.36. It starts a separate headless test
+browser through anonymous DevTools pipes, with a temporary synthetic profile
+and loopback HTTP, UDP STUN, and TCP TURN listeners. It neither accesses Steed's
+profile nor installs an application backend or public debugging endpoint.
+
+```bash
+.venv/bin/python tests/smoke_native_connection_policy.py
+.venv/bin/python tests/smoke_native_connection_policy.py --chromium /usr/bin/chromium
+```
+
+The restricted document's fixture server supplies a native connection allowlist
+covering two exact loopback origins, `webrtc=block`, and `worker-src 'none'` before
+website code runs. Unapproved fetch/WebSocket requests, shared/dedicated workers
+(including a fresh initial iframe realm), STUN UDP, and TURN/TCP connections were
+blocked. An allowed cross-process iframe ran the same probes. Approved-origin
+GET and synthetic POST reached the server; cross-origin response access still
+follows ordinary CORS rules. Connection policy does not provide method/body
+authority: production still needs the existing request filter, grant checks,
+and a separate script-handled form design.
+
+Ordinary pages sharing the synthetic profile reached all positive-control
+destinations before and during restricted browsing. Both tabs shared cookies,
+local storage, and a live storage update. Native policy survived detachment of
+the control session; task closure disposed its owned frame targets while the
+ordinary tab retained access to storage. The diagnostic exits nonzero if a
+positive control is missing or the containment checks fail. A passing
+`tested_connection_policy_contained` covers these fixtures, not all transports
+or Steed's missing adapter.
+
+Next, obtain a compatible embedded engine and implement trusted policy delivery
+for every task document/frame before its code executes. Preserve response bytes,
+encoding, streaming, cookies, and existing CSP/connection-policy restrictions;
+policy merging must not broaden a server restriction. Cover redirects,
+initial/child realms, service-worker bypass, unknown or malformed policy, adapter
+failure, revocation, and exact grants in the real shared-profile backend.
+Fail closed when delivery or verification fails. Keep website scripts and
+script-handled forms unavailable until those acceptance checks pass.
+
+### Bounded engine feasibility assessment
+
+Decision on October 1, 2026: defer agent website-script support and continue
+with the current supported operations. Keep the Qt browser and its shared-profile
+model; no dependency replacement, engine fork, or profile migration was performed.
+
+The installed engine and failed embedded RTC probes establish the current gap.
+Qt's [separate-release announcement](https://www.qt.io/blog/qt-webengine-will-release-separate)
+states that the first Qt WebEngine 6.140 release accompanying Qt 6.12 still uses
+Chromium 140. A newer Chromium baseline is planned later, with its exact feature
+support still requiring verification. No compatible packaged Qt/PyQt build was
+identified in this assessment.
+
+The inspected [Qt request API source](https://raw.githubusercontent.com/qt/qtwebengine/dev/src/core/api/qwebengineurlrequestinfo.h)
+provides request blocking/header changes, without the required document-response
+policy hook. Chromium's [native policy design](https://chromium.googlesource.com/chromium/src/+/main/docs/connection_allowlist_design.md)
+requires context identifiers across browser, renderer, and network-service code,
+frame/worker propagation, registration before resource loading, and restoration
+after network-service failure. I infer that porting the complete feature and
+exposing a trusted Qt policy hook is substantial native-engine work, rather than
+a small Python adapter change. A bounded, maintainable backport was not established;
+no custom engine compilation or complete patch/dependency audit was attempted.
+
+Revisit this decision when a maintained build offers the required enforcement or
+a reproducible, supportable integration is demonstrated. Verify the actual feature,
+policy delivery, and shared-profile fixtures before granting scripts. A whole-browser
+engine migration would require its own compatibility and maintenance proposal.
+
+## Local agent access (MCP)
+
+The optional `agent_mcp.py` adapter exposes the existing task operations over
+stdio using the [official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
+It connects to the running Steed process; Qt pages and profiles stay in that
+process. Local access is off when the browser starts.
+
+1. Install the optional dependencies from the repository root:
+
+   ```bash
+   .venv/bin/python -m pip install -r requirements-mcp.txt
+   ```
+
+2. Start Steed and select **File → Enable Local Agent Access**. This enables
+   local connections for the current browser run; it grants no site access.
+3. Configure your MCP client to launch the adapter. For clients using an
+   `mcpServers` configuration, substitute the absolute repository paths:
+
+   ```json
+   {
+     "mcpServers": {
+       "steed": {
+         "command": "/absolute/path/Browser/.venv/bin/python",
+         "args": ["/absolute/path/Browser/agent_mcp.py"]
+       }
+     }
+   }
+   ```
+
+   The adapter normally reads `~/.custom_browser/agent-access.json`. A custom
+   browser data directory can be selected with `--discovery /path/agent-access.json`.
+   The browser must already be running and opted in. No terminal is needed for
+   the GUI; the MCP client manages the adapter process.
+4. Have the client call `steed_task_start` with an objective, then
+   `steed_task_capabilities` and `steed_browser_context`. Context reports the
+   active browser window's profile, or the last-used window when another app has
+   focus. Use its `profile_selector` (for example `existing:work`) to request
+   shared access through `steed_grant_request`; otherwise use `private`.
+   A scope example is:
+
+   ```json
+   {
+     "scope": {
+       "origins": ["https://example.org"],
+       "actions": ["navigate", "inspect", "read"],
+       "profile": "existing:work",
+       "allow_private_network": true,
+       "duration_seconds": 600
+     }
+   }
+   ```
+
+   DNS hostnames currently require explicit private-network permission because
+   the Qt filter cannot pin their resolved routes. The named profile must exist.
+5. Read the nonmodal approval popup and choose **Approve** or **Deny**. The client
+   polls `steed_grant_list` for the decision, then opens a session with the exact
+   approved profile. You can keep browsing on that same profile.
+6. Revoke/cancel through **File → Task Permissions**, or disable local agent
+   access to cancel connected tasks. Closing the adapter cancels its unfinished
+   task. Use `steed_task_finish` after completing a workflow.
+   The same connection can then start another task; it receives a new identity
+   and must request fresh permissions. An active task cannot be replaced.
+
+Tool discovery publishes 20 input schemas. Names follow the internal command
+table with `steed_` and underscores, for example `page.inspect` becomes
+`steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
+omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
+navigation, supported control edits, native form submission, scrolling, waits,
+evidence, and task lifecycle are available. Approval, task enumeration, raw
+cookies, JavaScript, arbitrary selectors, file actions, and native view attachment
+are not exposed by this adapter. Scope may include `attach` for later UI use,
+but there is no external attach/watch tool yet.
+
+`steed_browser_context` needs an active task but no site grant. It returns
+`window_id`, `profile`, `profile_selector`, `shared_profile_available`, and
+`source`, without open URLs, tab contents, history or credentials. A focused
+browser dialog resolves to its parent window. With no recorded focus, a sole
+window is selected; multiple windows yield an unavailable context rather than a
+guess. Closed windows are excluded. Incognito (`search`) and `global` cannot be
+selected for shared task sessions, so their selector is null. Discovery grants
+no access, and switching profiles never retargets existing grants or sessions.
+Restart Steed after updating the browser source to expose the new context tool.
+
+Results include matching text JSON and `structuredContent`, wrapped in
+`{"result": ...}`. Errors use `isError: true` and
+`{"error": {"code": ..., "message": ...}}`. The SDK also rejects invalid tool
+names/schemas. Browser errors omit exception strings and tracebacks. Page content
+is untrusted, field values are omitted, references become stale after changes,
+and existing read/edit/submit permissions still apply. Connection loss or a
+cancelled request may follow a site effect; no operation is automatically retried.
+
+The browser gateway uses a private Unix socket in a temporary directory (0700),
+a 0600 discovery file, and an ephemeral token. It accepts at most four connections,
+with one active task and one in-flight command per connection. Browser-side validation
+rejects caller-selected task identities and unsupported tools even if the adapter
+is bypassed. Requests are limited to 64 KiB and responses to 1 MiB. Authentication
+times out after five seconds; an operation exceeding 30 seconds closes its
+connection and cancels its task. Disabling access, journal failure, disconnect,
+and last-window shutdown remove access and dispose owned pages before profiles.
+Rejected tool/argument requests with an assigned task record a value-free denial event.
+Local processes running as your user can read the connection token and request
+new tasks; they still cannot adopt another connection's task or approve grants.
+
+Verified compatibility is MCP `2025-11-25` over stdio, using an SDK client and an
+independent JSON-RPC client. The full A4 milestone remains in progress:
+authenticated Streamable HTTP, reconnect/resume semantics, watch/takeover,
+additional protocol revisions and broader client compatibility remain pending.
+
 ## Development checks
 
 ```bash
@@ -985,6 +1207,7 @@ QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python -m u
 QT_QPA_PLATFORM=offscreen python tests/smoke_browser.py
 QT_QPA_PLATFORM=offscreen python tests/smoke_google_login.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_active_content.py
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py
 python tests/smoke_password_manager.py
 ```
 
@@ -1002,6 +1225,14 @@ script execution results, and `tested_routes_contained`. Exit zero means its
 positive controls and scriptless checks completed; it does not approve scripts.
 The current forced-script probes report `tested_routes_contained: false`.
 
+The optional MCP smoke requires `requirements-mcp.txt`. It runs an SDK client
+and a separate JSON-RPC client against a temporary, synthetic signed-in profile.
+The fixture alone clicks the approval popup and invokes trusted cancellation.
+It checks native edits/submission, stale handles, evidence without field values,
+shared cookies/profile identity, concurrent ordinary user POST, ownership denial,
+and task disposal. It never accesses an existing profile/account or proves that
+a particular AI client/provider will plan a workflow successfully.
+
 The optional password-manager smoke check needs `keepassxc` and `keepassxc-cli`.
 It runs offscreen with isolated configuration and a synthetic temporary vault,
 seeds a fixture pairing, and checks encrypted saving/retrieval and vault locking.
@@ -1010,6 +1241,78 @@ The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
 filling still need user verification.
 
 ## Verification record
+
+Active-profile discovery and live desktop MCP check (October 1, 2026): an
+official-SDK client connected to the opted-in running browser. The user approved
+read/navigation access to `https://en.wikipedia.org` on `existing:codex test`.
+The client inspected Python's article, followed its observed Guido van Rossum
+link, inspected that article, and finished the task successfully. This verifies
+a real client and public-site workflow on the user-selected profile; it does
+not test authenticated sites, website scripts or HTTP transport. The running
+browser predated profile discovery, so the user supplied its profile name;
+the new context tool is verified separately with temporary profiles.
+
+Nineteen focused gateway/UI tests passed in 4.589 seconds
+(`/tmp/steed-context-focused.log`), including six new regressions for exact
+profile names, grant stability during switches, focus/dialog selection,
+multiple/closed windows, incognito/global exclusion, and bound-task lifetime.
+The two-client MCP smoke passed with discovery supplying the shared-profile
+grant/session selector (`/tmp/steed-context-mcp-smoke.log`). The full 280-test
+suite passed in 135.526 seconds (`/tmp/steed-context-full.log`). Real-entry-point
+startup/render/shutdown passed (`/tmp/steed-context-startup.log`), as did Ruff,
+formatting, whitespace and 45 local documentation links. These checks used
+isolated configuration and synthetic credentials.
+
+A4 stdio stage and bounded engine assessment (October 1, 2026): no compatible
+packaged embedded engine or maintainable small backport was established from the
+installed engine probes, Qt release information, public request API source, and
+Chromium policy design. Custom compilation/full patch auditing were not attempted.
+Scripted tasks are deferred; the existing Qt browser and profile model remain.
+
+Two external clients passed the synthetic delegated workflow on MCP 2025-11-25
+(`/tmp/steed-agent-mcp-smoke.log`): the official-SDK client exercised capability
+discovery, denial before approval, the nonmodal approval popup, observed link
+navigation, native text/checkbox edits, stale-reference denial, form submission,
+value-free evidence, cancellation and denied access afterward. A separate raw
+JSON-RPC client initialized, discovered tools, created its own task, rejected
+foreign-session/approval attempts, and finished. The task shared the user's
+actual profile and fixture cookie; ordinary user POST remained available and
+task pages were disposed. The fixture alone approved/cancelled; production code
+provides no remote approval tool. This proves these local client/fixture paths,
+not real-account, desktop, AI-provider, HTTP-transport or complete A4 acceptance.
+
+Eleven focused gateway/UI regressions passed in 2.561 seconds
+(`/tmp/steed-agent-focused.log`); last-owner shutdown coverage was then added.
+Three adapter failure checks passed for private/symlinked discovery, malformed
+metadata, and closing uncertain/cancelled requests without retry. The final
+274-test suite passed on Qt 6.11.2 in 162.856 seconds
+(`/tmp/steed-mcp-final.log`), including 16 new transport/UI/adapter checks and
+sequential tasks requiring fresh identity/approval. The final two-client smoke
+also passed reuse without carrying grants into a new task. Real-entry-point
+startup/render/shutdown passed (`/tmp/steed-mcp-startup.log`). Ruff, formatting,
+whitespace, 45 local documentation links, and optional MCP dependencies via
+`pip check` passed. Historical native Qt startup exits remain
+unresolved; this stage does not claim to fix them.
+
+A3 engine decision and capability discovery (October 1, 2026): the native
+connection-policy gate passed on separately installed Chromium 153.0.8010.36
+(`/tmp/steed-native-connection-policy.log`). Unapproved HTTP/WebSocket, worker,
+STUN UDP, and TURN/TCP probes were contained in the restricted document and its
+cross-process iframe. Positive controls retained ordinary networking and
+approved-origin GET/POST; shared cookies/storage/live updates, control-session
+detachment, owned-frame disposal, and the surviving user tab passed. This is a
+synthetic external-engine experiment, not embedded Qt acceptance or real-account
+testing. Native policy inside the actual shared embedded engine is the selected
+direction; obtaining compatible engine support and trusted policy delivery remain
+next. Steed keeps website scripts unavailable.
+
+Five capability regressions passed (`/tmp/steed-capabilities-focused.log`),
+covering version eligibility without script authority, unverified versions,
+discovery without grants/page creation, task identity/lifetime, and missing
+alternate-backend reports. The complete 258-test suite passed on Qt 6.11.2 in
+135.128 seconds (`/tmp/steed-engine-full.log`). Ruff, formatting, whitespace,
+and local documentation links passed. This run does not resolve the historical
+native Qt startup exits or establish interactive desktop acceptance.
 
 A3 native networking prototype stage (October 1, 2026): the expanded baseline
 audit passed (`/tmp/steed-native-policy-baseline.log`). Response continuation and
@@ -1288,7 +1591,14 @@ Use browser-issued opaque target handles tied to session/frame/revision. Reject 
 
 Acceptance: fixtures for static pages/forms/SPAs/frames/DOM replacement work without screenshot loops; unsupported actions request takeover or return explicit limitations.
 
-#### A4. Framework-neutral MCP — pending
+#### A4. Framework-neutral MCP — in progress
+
+Opt-in private IPC and the official-SDK stdio adapter expose current task
+operations with published input schemas, connection ownership, capability
+and selected-profile discovery, structured results, and existing user approval.
+Two independently implemented clients passed the synthetic shared-profile and
+cancellation workflow on MCP 2025-11-25. HTTP, reconnect/resume, watch/takeover and full milestone
+acceptance remain pending. See [setup](#local-agent-access-mcp).
 
 - Maintained MCP SDK; stdio client-launched adapters and an authenticated loopback-only Streamable HTTP endpoint.
 - Restricted local IPC links adapters to the single running Qt process. No public debug port or grant bypass.

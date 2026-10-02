@@ -20,6 +20,7 @@ from cookie_sharing import CookieSharing, cookie_key, fingerprint
 from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
 from password_manager import PasswordManager
+from services.agent_gateway import AgentGateway
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
 from services.task_policy import task_profile_name
@@ -43,6 +44,7 @@ class ProfileRegistry(QObject):
     """One engine profile per storage path; last window flushes engine storage."""
 
     profiles_updated = pyqtSignal()
+    agent_access_changed = pyqtSignal(bool)
 
     def __init__(self, config, parent):
         super().__init__(parent)
@@ -55,7 +57,9 @@ class ProfileRegistry(QObject):
         self.snapshot_disagreements = 0
         self.global_fingerprints = None
         self.owners = set()
+        self.last_active_owner = None
         self._tasks = None
+        self.agent_gateway = None
         self.task_profiles = {}
         self.navigation = NavigationService(self)
         self.downloads = DownloadManager(
@@ -91,7 +95,57 @@ class ProfileRegistry(QObject):
                 self.config.config_dir / "tasks.sqlite", self, profiles=self
             )
             self.task_approvals = TaskApprovalQueue(self, self._tasks)
+            self._tasks.failed.connect(lambda _: self.set_agent_access(False))
         return self._tasks
+
+    def agent_context(self):
+        """Report selected profile metadata, never page URLs or browsing state."""
+        require_owner_thread(self)
+        windows = {
+            owner.parent(): owner
+            for owner in self.owners
+            if owner.parent() is not None
+            and hasattr(owner.parent(), "browser_window_id")
+            and not getattr(owner.parent(), "_closing", False)
+        }
+        active = QApplication.activeWindow()
+        while active is not None and active not in windows:
+            active = active.parentWidget()
+        owner, source = windows.get(active), "active_window"
+        if owner is None and self.last_active_owner in windows.values():
+            owner, source = self.last_active_owner, "last_active_window"
+        if owner is None and len(windows) == 1:
+            owner, source = next(iter(windows.values())), "only_window"
+        if owner is None:
+            return {
+                "window_id": None,
+                "profile": None,
+                "profile_selector": None,
+                "shared_profile_available": False,
+                "source": "no_active_window",
+            }
+        name = owner.current_profile_name
+        shared = name not in (None, "global", "search")
+        return {
+            "window_id": owner.parent().browser_window_id,
+            "profile": name,
+            "profile_selector": "existing:" + name if shared else None,
+            "shared_profile_available": shared,
+            "source": source,
+        }
+
+    def set_agent_access(self, enabled):
+        """Opt in for this browser run; each connection still needs user grants."""
+        require_owner_thread(self)
+        if enabled == (self.agent_gateway is not None):
+            return
+        if enabled:
+            self.agent_gateway = AgentGateway(self.tasks, self.config.config_dir, self)
+        else:
+            gateway, self.agent_gateway = self.agent_gateway, None
+            gateway.close()
+            gateway.deleteLater()
+        self.agent_access_changed.emit(bool(enabled))
 
     def validate_task_profile(self, selector):
         name = task_profile_name(selector)
@@ -261,8 +315,11 @@ class ProfileRegistry(QObject):
 
     def release(self, owner):
         self.owners.discard(owner)
+        if self.last_active_owner is owner:
+            self.last_active_owner = None
         if self.owners:
             return
+        self.set_agent_access(False)
         self.sharing.closed = True
         if self._tasks is not None:
             try:

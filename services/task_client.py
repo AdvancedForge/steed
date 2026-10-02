@@ -8,6 +8,8 @@ from services.command_broker import CommandBroker
 CLIENT_COMMANDS = frozenset(
     {
         "task.status",
+        "task.capabilities",
+        "browser.context",
         "task.events",
         "task.finish",
         "grant.request",

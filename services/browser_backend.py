@@ -21,6 +21,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from services.command_broker import require_owner_thread
+from services.engine_capabilities import qt_engine_capabilities
 from services.form_submission import SubmissionTicket, journal_origin
 from services.navigation_service import NavigationService
 from services.page_actions import (
@@ -58,6 +59,8 @@ class NavigationResult:
 
 class BrowserBackend(Protocol):
     """Internal interface; each engine session must receive approved authority."""
+
+    def capabilities(self): ...
 
     def open_session(
         self, task_id: str, *, grant: LiveGrant, profile: str = "private"
@@ -217,6 +220,10 @@ class QtBrowserBackend(QObject):
         if session_id not in self._sessions:
             raise KeyError("Unknown session")
         return self._sessions[session_id]
+
+    def capabilities(self):
+        require_owner_thread(self)
+        return qt_engine_capabilities()
 
     def open_session(self, task_id, *, grant, profile="private"):
         require_owner_thread(self)
