@@ -68,16 +68,23 @@ class TaskServiceTests(unittest.TestCase):
                     if self.path == "/service-worker.js"
                     else "text/html",
                 )
-                self.send_header("Content-Length", str(len(payload)))
+                if self.path != "/download-unknown":
+                    self.send_header("Content-Length", str(len(payload)))
                 if self.path == "/cookie":
                     self.send_header("Set-Cookie", "task_cookie=fixture; Path=/")
-                if self.path == "/download":
+                if self.path.startswith("/download"):
                     self.send_header(
                         "Content-Disposition", 'attachment; filename="task-fixture.bin"'
                     )
                 self.end_headers()
                 try:
-                    self.wfile.write(payload)
+                    if self.path == "/download-slow":
+                        for offset in range(0, len(payload), 4096):
+                            self.wfile.write(payload[offset : offset + 4096])
+                            self.wfile.flush()
+                            time.sleep(0.02)
+                    else:
+                        self.wfile.write(payload)
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 

@@ -22,6 +22,7 @@ ACTION_LABELS = {
     "edit": "Change text, choices, checkboxes and radio buttons",
     "scroll": "Scroll task pages",
     "submit": "Submit forms on these sites (can change account data)",
+    "download": "Save downloads to the exact files listed below (no overwriting)",
 }
 
 
@@ -62,6 +63,14 @@ class TaskApprovalDialog(QDialog):
         self.sites.setReadOnly(True)
         self.sites.setMaximumHeight(100)
         layout.addWidget(self.sites)
+        if scope.get("download_destinations"):
+            destinations = QPlainTextEdit("\n".join(scope["download_destinations"]))
+            destinations.setReadOnly(True)
+            destinations.setMaximumHeight(100)
+            layout.addWidget(QLabel("Allowed download files:"))
+            layout.addWidget(destinations)
+            size = scope["max_download_bytes"]
+            layout.addWidget(QLabel(f"Each download is limited to {size:,} bytes."))
         notice = QLabel(
             (
                 "Uses your existing sign-in and site storage. You can keep browsing. "
@@ -74,7 +83,7 @@ class TaskApprovalDialog(QDialog):
                 if scope["allow_private_network"]
                 else ""
             )
-            + "Task scripts, uploads and downloads are unavailable. "
+            + "Task scripts and uploads are unavailable. "
             + (
                 "Forms send their current fields, including hidden site tokens. "
                 "Password and file forms are unavailable. "

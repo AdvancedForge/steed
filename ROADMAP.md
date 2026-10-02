@@ -10,12 +10,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 2, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-308-test suite passed in 146.577 seconds (`/tmp/steed-watch-full.log`), including
-watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
+324-test suite passed in 219.159 seconds (`/tmp/steed-download-full.log`), including
+scoped downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-watch-startup.log`); the preceding local Google HTTPS check passed.
+(`/tmp/steed-download-startup.log`); the preceding local Google HTTPS check passed.
 The previous form-stage Google fixture exited natively during `QWebEngineProfile`
 creation before passing on retry. An earlier startup fixture also exited natively.
 Track that intermittent exit separately from desktop acceptance. Ruff, formatting,
@@ -25,11 +25,13 @@ during the previous browser checks.
 The user reports few complaints during daily use and authorized proceeding after
 the checks available to the assistant. A1 is implemented, and A2 supports private
 and concurrently shared existing-profile grants, with automatic approval popups.
-File and active-page authority will be implemented alongside their A3 operations.
+Exact download-file authority is implemented; upload and active-page authority
+will be implemented alongside their A3 operations.
 A3 includes content inspection, stale-target validation, observed link navigation,
-scriptless control edits, native form submission, scrolling, and bounded waits.
+scriptless control edits, native form submission, scrolling, bounded waits, and
+scoped native attachment downloads.
 Active document scripts are deferred following the bounded engine assessment;
-file actions and complete form/SPA acceptance remain pending. A4 includes
+uploads and complete form/SPA acceptance remain pending. A4 includes
 opt-in local IPC and working stdio/HTTP MCP adapters for current task operations.
 A7 is in progress: users can watch the same task page, take control through
 supported actions, and return it with edits preserved and old references invalidated.
@@ -40,10 +42,12 @@ establishes those results. Password improvements remain deferred at the user's r
 ### Resume checkpoint
 
 **A3 remains in progress: native keyboard activation/selection and native form
-submission are implemented alongside inspection, links, edits, scrolling, and waits.**
+submission and scoped downloads are implemented alongside inspection, links,
+edits, scrolling, and waits.**
 **A4 is in progress: external stdio and HTTP clients can use those operations.**
 **A7 is in progress: same-page watch and scoped user handoff are implemented.**
-Continued from HTTP MCP commit `8266c37`, following basic MCP commit `d663fc5`
+Continued from watch/control commit `045b706`, following HTTP MCP commit `8266c37`
+and basic MCP commit `d663fc5`
 and native-networking commit
 `1cd031f`; preceding safeguards/audit
 commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
@@ -95,7 +99,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   [assessment](DOCUMENTATION.md#bounded-engine-feasibility-assessment).
 - **Local MCP implemented:** File → Enable Local Agent Access opts in for this
   run. A private authenticated Unix socket connects the optional official-SDK
-  stdio adapter to the running Qt process. Twenty-one published tool schemas use
+  stdio adapter to the running Qt process. Twenty-four published tool schemas use
   connection-bound active-task identity and the existing broker/grant checks. Clients
   cannot approve or adopt other tasks. Disconnect, timeout, disabling access,
   journal failure and browser shutdown remove access and dispose owned pages.
@@ -155,9 +159,28 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   The synthetic handoff window was visually inspected. No native startup exit was
   observed in this stage; the intermittent exit recorded above remains unresolved.
   See [handoff usage](DOCUMENTATION.md#watching-and-taking-control).
-- **Next task:** A2/A3 destination-specific download permissions and task download
-  actions, with observed receipts, cancellation, and shared-profile isolation.
-  Uploads follow after download lifecycle is established. Reconnect/resume,
+- **Scoped downloads implemented:** exact absolute destination files and a
+  per-file byte limit appear in the approval popup. `page.download` follows an
+  observed attachment link on the same task page/profile; `download.status` and
+  `download.cancel` expose receipts and cleanup. Private descriptor-anchored
+  staging and atomic, non-overwriting publication preserve existing files and
+  deny path/symlink substitution. Known/unknown-size checks, cancellation,
+  revocation, journal failure, and private/shared-profile origin boundaries are
+  covered. Both MCP workflows completed a synthetic file alongside ordinary
+  user POST; independent ordinary downloads still use their picker/history.
+  The full 324-test run passed in 219.159 seconds; startup and both transports
+  passed (`/tmp/steed-download-full.log`, `/tmp/steed-download-startup.log`,
+  `/tmp/steed-download-stdio.log`, `/tmp/steed-download-http.log`).
+  Additional streaming expiry, ownership, and post-publication evidence checks
+  are recorded in the focused download verification. Downloads are bounded to
+  30 seconds/100 MiB and expected attachments; uploads, HTML saving, redirected
+  request URLs, replay/resume, and file-content access remain unsupported.
+  Crash recovery of orphaned staging directories remains a follow-up.
+  See [download usage](DOCUMENTATION.md#scoped-task-downloads).
+- **Autonomous continuation authorized:** implement and commit routine milestones
+  until a major architecture/product choice requires user judgment. Next: clearer
+  task activity and download receipts in the user interface, then assess safe uploads.
+  Reconnect/resume,
   broader client compatibility, and remaining A7 activity/artifact/styling work
   stay pending; website scripts remain deferred.
 - **Future script acceptance:** obtain a compatible embedded engine/native hook and integrate
@@ -174,6 +197,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
 - **Resume points:** `services/browser_backend.py`, `services/page_inspector.py`,
   `services/page_inspection.js`, `services/page_actions.py`, `services/task_service.py`,
   `services/form_submission.py`, `services/task_input.py`, `services/task_network.py`,
+  `services/task_downloads.py`, `tests/test_task_downloads.py`,
   `services/engine_capabilities.py`, `services/task_client.py`,
   `agent_mcp.py`, `services/agent_gateway.py`, `services/agent_tools.py`,
   `ui/task_watch.py`, `ui/task_dialog.py`, `tests/test_task_watch.py`,
@@ -342,7 +366,8 @@ Implemented for the current task backend:
   rename/archive/delete remain blocked while tasks hold it; user switching,
   pop-outs, downloads, password operations, and cookie inspection continue.
 - Private/DNS network access needs explicit permission. Document scripts, new
-  workers, WebSockets, and file actions are unavailable. GET/HEAD remain ordinary
+  workers, WebSockets, and uploads are unavailable. Exact destination download
+  permission and byte limits are implemented. GET/HEAD remain ordinary
   retrieval methods; POST requires a one-use, explicitly approved native-form action.
   Shared-profile task pages bypass existing service workers through a private
   per-target adapter; user workers retain ordinary behavior. Setup failure
@@ -471,7 +496,7 @@ request takeover or return clear limitations.
 **In progress; both core transports implemented.** Optional `agent_mcp.py` uses
 the official Python SDK over stdio and authenticated loopback Streamable HTTP
 and connects to an opted-in running browser through private authenticated local
-IPC. Twenty-one published input schemas expose current task operations, capability
+IPC. Twenty-four published input schemas expose current task operations, capability
 and selected-profile discovery, structured results, and browser-assigned identity.
 User approval is required; shared-profile collaboration, cancellation, isolation,
 and evidence were tested with an SDK client and an independent JSON-RPC client
