@@ -89,6 +89,7 @@ class GoogleDocumentEdits:
                 self.apply_direct,
                 self.find_edit,
                 tab_identity,
+                access_group="direct",
             ),
         ]
 

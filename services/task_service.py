@@ -17,6 +17,7 @@ from PyQt6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, pyqtSig
 
 from services.browser_backend import BrowserBackend, QtBrowserBackend, navigation_url
 from services.command_broker import CommandBroker, require_owner_thread
+from services.connector_access import ConnectorAccess
 from services.connector_policy import destination_name
 from services.connector_reviews import ConnectorReviews
 from services.connector_store import ConnectorStore, request_fingerprint
@@ -64,6 +65,7 @@ class TaskService(QObject):
         self.store = TaskStore(path)
         self.connectors = connectors if connectors is not None else ConnectorRegistry()
         self.connector_store = ConnectorStore(self.store)
+        self.account_access = ConnectorAccess(self.store, self.connectors)
         self.app_reviews = ConnectorReviews(self.store)
         self.workspace = TaskWorkspace(self.store)
         self._connector_jobs = {}
@@ -1029,6 +1031,10 @@ class TaskService(QObject):
             rule = next((r for r in rules if r.covers(scope, profile_key)), None)
             if rule is not None:
                 result = self.approve_grant(task_id, result.grant_id, _rule=rule)
+            elif recovery["status"] != "approved" and self.account_access.covers(scope):
+                result = self.approve_grant(
+                    task_id, result.grant_id, _account_access=True
+                )
         except (OSError, sqlite3.Error, ValueError):
             self._fatal()
             raise
@@ -1040,7 +1046,9 @@ class TaskService(QObject):
             return ""
         return self.profiles.approval_profile_key(scope.profile, create=create)
 
-    def approve_grant(self, task_id, grant_id, *, remember="once", _rule=None):
+    def approve_grant(
+        self, task_id, grant_id, *, remember="once", _rule=None, _account_access=False
+    ):
         """Trusted Qt UI method, deliberately absent from the command broker."""
         require_owner_thread(self)
         self._usable()
@@ -1050,6 +1058,12 @@ class TaskService(QObject):
         if record.status != "requested":
             raise ValueError("Only a pending request can be approved")
         self.connectors.check_scope(scope)
+        if _account_access and (
+            remember != "once"
+            or _rule is not None
+            or not self.account_access.covers(scope)
+        ):
+            raise ValueError("Account settings do not cover this request")
         profile_key = (
             self._approval_profile_key(scope, create=remember == "profile")
             if remember == "profile" or _rule is not None and _rule.mode == "profile"
@@ -1076,6 +1090,7 @@ class TaskService(QObject):
                 remember=remember,
                 profile_key=profile_key,
                 rule=_rule,
+                account_access=_account_access,
             )
             self._grants[task_id] = (grant_id, grant)
         except Exception:
@@ -1090,6 +1105,49 @@ class TaskService(QObject):
             raise
         self.changed.emit()
         return record
+
+    def set_connector_access(self, connector, group, enabled):
+        """Trusted settings switch; unavailable to agents and connector code."""
+        require_owner_thread(self)
+        self._usable()
+        try:
+            pairs = self.account_access.set(connector, group, enabled)
+            if not enabled:
+
+                def affected(permissions):
+                    return any(
+                        p["connector"] == connector
+                        and (p["tool"], p["effect"]) in pairs
+                        for p in permissions
+                    )
+
+                for rule in self.store.approval_rules():
+                    if affected(rule.scope["connector_permissions"]):
+                        self.forget_approval_rule(rule.rule_id)
+                for task_id, (grant_id, live) in list(self._grants.items()):
+                    if any(
+                        p.connector == connector and (p.tool, p.effect) in pairs
+                        for p in live.scope.connector_permissions
+                    ):
+                        self.revoke_grant(task_id, grant_id)
+            else:
+                for task in self.store.list_tasks():
+                    if (
+                        task.status not in ACTIVE_STATUSES
+                        or self.store.recovery(task.task_id)["status"] == "approved"
+                    ):
+                        continue
+                    for grant in self.store.grants(task.task_id):
+                        if grant.status == "requested" and self.account_access.covers(
+                            TaskScope.parse(grant.scope)
+                        ):
+                            self.approve_grant(
+                                task.task_id, grant.grant_id, _account_access=True
+                            )
+        except (sqlite3.Error, OSError):
+            self._fatal()
+            raise
+        self.changed.emit()
 
     def forget_approval_rule(self, rule_id):
         """Trusted settings: future requests prompt and linked live tasks lose access."""
@@ -1131,6 +1189,11 @@ class TaskService(QObject):
         """Trusted account settings end matching authority before removing tools."""
         require_owner_thread(self)
         self._usable()
+        try:
+            self.account_access.forget(connector)
+        except (OSError, sqlite3.Error):
+            self._fatal()
+            raise
         for rule in self.store.approval_rules():
             if any(
                 p["connector"] == connector

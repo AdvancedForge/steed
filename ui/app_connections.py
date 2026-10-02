@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from services.app_accounts import AccountError
+from services.connector_access import GROUP_LABELS
 from ui.task_approval import WrappedLabel
 
 
@@ -32,11 +33,12 @@ class AppConnectionsDialog(QDialog):
         super().__init__(parent)
         self.manager = manager
         self.setWindowTitle("App Connections")
-        self.resize(720, 400)
+        self.resize(720, 620)
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Connect accounts for delegated tasks. Each task still asks for the exact "
-            "tools and destinations it needs. Credentials stay in your desktop keyring."
+            "Sign in once, then choose what agents may do with each account. Allowed "
+            "app-only tasks do not repeat permission prompts. Browsing, file access and "
+            "code execution have separate permissions. Credentials stay in your desktop keyring."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
@@ -54,6 +56,18 @@ class AppConnectionsDialog(QDialog):
             1, QHeaderView.ResizeMode.Stretch
         )
         layout.addWidget(self.accounts)
+        self.access_panel = QWidget()
+        self.access_layout = QVBoxLayout(self.access_panel)
+        self.access_notice = QLabel(
+            "Allow these actions without asking for each task. Applies to all connected "
+            "agents, across profiles. Each app-only task keeps exact destinations, a "
+            "10-minute limit and at most 1,000 operations. Turning access off stops matching "
+            "tasks and clears matching saved approvals."
+        )
+        self.access_notice.setWordWrap(True)
+        self.access_layout.addWidget(self.access_notice)
+        self.access_choices = {}
+        layout.addWidget(self.access_panel)
         self.provider = QComboBox()
         for provider in manager.providers.values():
             self.provider.addItem(provider.title, provider.name)
@@ -219,6 +233,58 @@ class AppConnectionsDialog(QDialog):
             *self.capabilities.values(),
         ):
             widget.setEnabled(available)
+        self._access_choices(available)
+
+    def _access_choices(self, available):
+        for check in self.access_choices.values():
+            self.access_layout.removeWidget(check)
+            check.deleteLater()
+        self.access_choices = {}
+        row = self.accounts.currentRow()
+        account = None
+        if row >= 0 and self.manager.store is not None:
+            account_id = self.accounts.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            account = next(
+                (a for a in self.manager.store.list() if a.account_id == account_id),
+                None,
+            )
+        self.access_panel.setVisible(bool(account and account.enabled))
+        self.access_panel.setEnabled(available)
+        if not account or not account.enabled:
+            return
+        try:
+            service = self.manager.access_service()
+            if service is None:
+                return
+            groups = service.account_access.groups(account.connector)
+            for group in GROUP_LABELS:
+                if group not in groups:
+                    continue
+                check = QCheckBox(GROUP_LABELS[group])
+                state = service.account_access.state(account.connector, group)
+                check.setTristate(state == "some")
+                check.setCheckState(
+                    Qt.CheckState.Checked
+                    if state == "all"
+                    else Qt.CheckState.PartiallyChecked
+                    if state == "some"
+                    else Qt.CheckState.Unchecked
+                )
+                check.setEnabled(available and not service.failure)
+                check.setToolTip(
+                    "Supported tools: "
+                    + ", ".join(sorted({t for t, _ in groups[group]}))
+                )
+                check.clicked.connect(
+                    lambda enabled, selected=account.account_id, mode=group: self._run(
+                        lambda: self.manager.set_access(selected, mode, enabled)
+                    )
+                )
+                self.access_choices[group] = check
+                self.access_layout.addWidget(check)
+        except (OSError, sqlite3.Error, ValueError, RuntimeError):
+            self.status.setText("Account access settings are unavailable.")
+            self.access_panel.setEnabled(False)
 
     def refresh(self):
         selected = None
@@ -228,6 +294,7 @@ class AppConnectionsDialog(QDialog):
         accounts = self.manager.store.list() if self.manager.store is not None else ()
         self.accounts.setVisible(bool(accounts))
         self.provider.setVisible(len(self.manager.providers) > 1)
+        self.accounts.blockSignals(True)
         self.accounts.setRowCount(len(accounts))
         for row, account in enumerate(accounts):
             for col, value in enumerate(
@@ -245,6 +312,9 @@ class AppConnectionsDialog(QDialog):
                 self.accounts.setItem(row, col, item)
             if selected == account.account_id:
                 self.accounts.selectRow(row)
+        if selected is None and accounts:
+            self.accounts.selectRow(len(accounts) - 1)
+        self.accounts.blockSignals(False)
         self.status.setText(self.manager.message)
         if self.manager.message.startswith("Connected ") and not self.manager.busy:
             self.client.clear()

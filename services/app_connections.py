@@ -98,6 +98,25 @@ class AppConnections(QObject):
         for definition in definitions:
             self.connectors.register(definition)
 
+    def access_service(self):
+        require_owner_thread(self)
+        if self.task_service is None and self.parent() is not None:
+            self.task_service = self.parent().tasks
+        return self.task_service
+
+    def set_access(self, account_id, group, enabled):
+        require_owner_thread(self)
+        if self._closed or self.failure or self.busy:
+            raise AccountError("Account access is unavailable.")
+        account = next(a for a in self.store.list() if a.account_id == account_id)
+        self.store.active(account)
+        service = self.access_service()
+        if service is None:
+            raise AccountError("Task permission service is unavailable.")
+        service.set_connector_access(account.connector, group, enabled)
+        self.message = "Account access saved. Turning access off stops matching tasks."
+        self.changed.emit()
+
     def _worker(self, operation, *, success="Account operation completed."):
         require_owner_thread(self)
         if self._closed or self.failure or self.busy:
