@@ -10,12 +10,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 2, 2026
 
 Browser essentials include Ctrl+F find in page and per-tab zoom. The complete
-374-test suite passed in 225.006 seconds (`/tmp/steed-connectors-full.log`), including
+413-test suite passed in 245.201 seconds (`/tmp/steed-google-full.log`), including
 scoped uploads/downloads, watch/handoff, HTTP session/credential/lifecycle tests, native-input checks,
 capability discovery, local agent transport/lifecycle checks, and shared-profile
 focus/control-isolation, plus existing form, popup, and browser regressions.
 Current startup/render/shutdown passed on Qt 6.11.2
-(`/tmp/steed-connectors-startup.log`); the preceding local Google HTTPS check passed.
+(`/tmp/steed-google-startup.log`); the preceding local Google HTTPS check passed.
 The artifact HTTP fixture hit the tracked native startup exit 139; identical retry
 passed. Twelve final artifact checks cover user-controlled draft deletion too.
 The previous form-stage Google fixture exited natively during `QWebEngineProfile`
@@ -251,12 +251,31 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   `/tmp/steed-connectors-independent-http.log`). Final connector/UI/status checks,
   lint, formatting, whitespace, dependencies and local links passed. See
   [app operations](DOCUMENTATION.md#browser-managed-application-operations).
-- **Next decision checkpoint:** select the first real provider/account workflow or
-  existing MCP service. Its destination/account model, authentication, OS secret
-  storage and receipt-lookup support must shape a concrete trusted adapter before
-  real writes are enabled. Default registries stay empty; no real account was
-  connected. Archived-task reconciliation with fresh approval, app result retention,
-  agent-managed mode and broader provider interoperability remain follow-ups.
+- **Google-first connection milestone (implemented here):** user selected Google
+  while requiring other providers to remain possible. Added provider-neutral
+  immutable account identities/factories, App Connections UI, desktop OAuth with
+  PKCE/state and Linux Secret Service storage. Google creates a plain-text Doc in
+  `drive:root` or sends one draft to an exact `email:` mailbox using only selected
+  Drive-file/Gmail-send scopes plus account identity. Reconnect gets a new connector
+  ID; disconnect disables accounts, denies pending requests and revokes matching
+  grants before credential removal. A cooperative authority gate checks each API
+  request. Docs use a private operation property for read-only recovery; absence
+  stays uncertain. Gmail cannot reconcile with send-only scope and is never retried.
+  Thirty-nine new tests and the full 413-test suite passed; 58 final focused checks
+  passed too. A local HTTP fixture completed OAuth → draft → Doc → email with lost
+  acknowledgements and exactly one document/email, then restarted without replay.
+  Both independent MCP clients still pass over both transports, and startup passed.
+  A synthetic Microsoft provider uses the same setup/grant/receipt system without
+  Google-specific changes to task policy; a real Microsoft/MCP adapter remains future work.
+- **Next account acceptance checkpoint:** supply a user-controlled Google Cloud
+  Desktop OAuth client and complete consent via File → App Connections, then run
+  an explicitly approved small real Doc/email task. No real account was connected;
+  tools remain absent until configured. Setup and limitations are documented in
+  [Google app connections](DOCUMENTATION.md#google-app-connections).
+  Publishing a shared Steed OAuth client/verification is a separate future decision.
+  Archived-task recovery with fresh approval, app result retention, agent-managed
+  mode and additional provider adapters remain follow-ups. Keep Gmail send-only
+  unless the user deliberately chooses broader mailbox access.
 - **Future script acceptance:** obtain a compatible embedded engine/native hook and integrate
   trusted connection/worker policy delivery before document code executes.
   Chrome's native policy starts at 152; installed Qt embeds 140 and the latest
@@ -278,6 +297,10 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   `ui/task_watch.py`, `ui/task_dialog.py`, `tests/test_task_watch.py`,
   `tests/test_agent_gateway.py`, `tests/test_agent_access_ui.py`, `tests/smoke_agent_mcp.py`,
   `tests/test_page_actions.py`, `tests/test_page_forms.py`,
+  `services/app_accounts.py`, `services/app_connections.py`, `services/app_oauth.py`,
+  `services/google_connector.py`, `ui/app_connections.py`,
+  `tests/test_app_accounts.py`, `tests/test_app_connections.py`,
+  `tests/test_google_connector.py`, `tests/smoke_google_connector.py`,
   `tests/smoke_task_active_content.py`, `tests/smoke_task_native_policy.py`,
   `tests/smoke_native_connection_policy.py`, and `tests/chromium_pipe.py`.
   Preserve concurrent
@@ -603,10 +626,17 @@ incorrect remote risk annotations, lost acknowledgements, no blind replay and
 task ownership. Queued work can stop; dispatched effects remain uncertain until
 observed. Restart preserves receipts and ends authority without replay.
 
-Remaining: concrete provider/account selection, approved credential storage/setup,
-provider-specific destination canonicalization and least-privilege tool mappings,
-archived-task recovery approvals, result retention and agent-managed mode.
-Acceptance of the gateway is synthetic; real-account acceptance remains pending.
+Google-first provider/account setup, OS-keyring credentials, exact destinations
+and least-privilege Docs/Gmail tools are implemented with synthetic acceptance.
+The provider-neutral factory/account system also passes a synthetic second-provider
+test. See [Google setup](DOCUMENTATION.md#google-app-connections).
+
+Remaining: user-configured real Google acceptance, additional real providers,
+folder selection/editing, archived-task recovery approvals, result retention and
+agent-managed mode. Gmail uncertain-send recovery deliberately stays manual with
+send-only OAuth access. A shared production OAuth client/publishing model needs
+separate user judgment. Acceptance of the gateway/Google adapter is synthetic;
+real-account acceptance remains pending.
 
 ### A7. Collaboration interface and styling
 

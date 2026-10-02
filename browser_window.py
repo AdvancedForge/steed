@@ -31,6 +31,7 @@ from services.permission_service import PermissionService
 from tab_manager import ClosedTabHistory, TabManager, TabState
 from ui.adblock_dialog import AdBlockDialog
 from ui.address_bar import AddressBar
+from ui.app_connections import AppConnectionsDialog
 from ui.cookie_dialog import CookieDialog
 from ui.download_dialog import DownloadDialog
 from ui.find_bar import FindBar
@@ -267,6 +268,9 @@ class BrowserWindow(QMainWindow):
         task_action = QAction("Task Permissions...", self)
         task_action.triggered.connect(self._open_tasks)
         file_menu.insertAction(exit_action, task_action)
+        apps_action = QAction("App Connections...", self)
+        apps_action.triggered.connect(self._open_app_connections)
+        file_menu.insertAction(task_action, apps_action)
         self.agent_access_action = QAction("Enable Local Agent Access", self)
         self.agent_access_action.setCheckable(True)
         registry = self.profile_manager.registry
@@ -760,6 +764,14 @@ class BrowserWindow(QMainWindow):
                     "Task permissions could not be opened. Check that the task database is available and supported.",
                 )
                 return
+            dialog.exec()
+            dialog.deleteLater()
+
+    def _open_app_connections(self):
+        if not self._closing:
+            dialog = AppConnectionsDialog(
+                self.profile_manager.registry.app_connections, self
+            )
             dialog.exec()
             dialog.deleteLater()
 
