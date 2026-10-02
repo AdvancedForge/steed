@@ -313,7 +313,14 @@ class GoogleConnectorTests(unittest.TestCase):
         tools = GoogleConnector(account, self.store, http=self.http).tools()
         self.assertEqual(
             [t.tool for t in tools],
-            ["create_document", "create_folder", "inspect_folder"],
+            [
+                "create_document",
+                "create_folder",
+                "inspect_folder",
+                "inspect_document",
+                "read_document",
+                "append_document",
+            ],
         )
         self.assertEqual(
             [c[1] for c in self.http.calls],

@@ -87,19 +87,28 @@ establishes those results. Password improvements remain deferred at the user's r
 
 ### Resume checkpoint
 
-- **Latest engineering checkpoint:** Google app-created folders, exact parent
-  destinations, account/ownership/writeability checks, read-only folder inspection
-  and lost-acknowledgement reconciliation without replay. Root grants do not cover
-  folders. Schema-8 result clearing and archived receipt checks remain supported.
-  Acceptance: **531 regression tests passed**, Google local HTTP/OAuth smoke,
-  both MCP clients over stdio and HTTP, startup/render/shutdown, Ruff and format
-  checks passed. Fixtures used temporary state and synthetic accounts; real
-  Google/desktop acceptance remains pending.
-- **Next engineering follow-up:** append-only Google document editing within
-  the existing account and `drive.file` access boundary, with exact document/tab
-  identity, immutable drafts and revision checks. Existing-file selection, broader
-  provider access, automatic
-  retention policies and agent-managed mode remain separate decisions/milestones.
+- **Latest engineering checkpoint:** exact Google folder destinations (`e74dd12`),
+  document/tab inspection, bounded tab reads and immutable draft appends with
+  current-revision preconditions. Atomic operation ranges support read-only
+  confirmation after a lost response/restart without repeating the append.
+  Folder/account/ownership checks, schema-8 result clearing and historical-write
+  protection remain supported. Root/file/tab grants never include other destinations.
+  Acceptance: **555 tests passed in 252.809 seconds**, focused Google/gateway
+  checks, both Google HTTP workflows, both MCP clients over both transports,
+  startup/render/shutdown, Ruff/format, dependencies and local documentation links
+  passed. Fixtures used temporary state and synthetic accounts; real Google and
+  desktop acceptance remains pending.
+- **Next major decision:** choose the authority model for changing existing
+  document text: user-reviewed change proposals or direct edits under an exact
+  document/tab grant. Append-only updates retain existing text; replacement and
+  general editing are deliberately unimplemented until this choice is made.
+  Recommendation: reviewed proposals by default, with a clearly separate reusable
+  permission for direct edits. This determines the review UI, durable proposal
+  lifecycle and when an agent may change existing user content.
+  Existing user-created file/folder selection also needs a separate Drive-only
+  Picker consent/credential flow with verified account binding; no broader OAuth
+  scopes or credential migration have been introduced. Broader provider access,
+  automatic retention policies and agent-managed mode remain separate milestones.
   Real-account acceptance needs user-owned setup and explicit approval; website
   scripts remain deferred until compatible native engine support exists.
 
@@ -126,7 +135,8 @@ scoped uploads `027a860`, retained task artifacts `333965c`, scoped app operatio
 `21790d3`, Google connections `db9e209`, permission/setup usability `7122e9a`,
 safe material recovery `a34fee5`, archived receipt checks `7338b12`, and the
 result-retention checkpoint `675e631`. Google folder destinations follow these
-checkpoints; see the current resume checkpoint.
+checkpoints at `e74dd12`; exact-tab document updates follow that milestone.
+See the current resume checkpoint.
 Continued from watch/control commit `045b706`,
 following HTTP MCP commit `8266c37`
 and basic MCP commit `d663fc5`
@@ -712,12 +722,25 @@ folder destinations, nested creation, read-only inspection and creation probes
 are implemented. Adapter/gateway regressions and a real local HTTP fixture cover
 foreign/trashed/shared-drive/read-only parent rejection, exact grants, lost
 acknowledgements and no repeated creation. Remaining: real Google
-acceptance, additional providers, existing-file selection/document editing, automatic retention
+acceptance, additional providers, existing-file selection/general document editing, automatic retention
 policies and agent-managed mode. User-owned clearing of saved result text/links is
 implemented without deleting receipt identity or the append-only journal. Gmail uncertain-send recovery deliberately stays manual with
 send-only OAuth access. A shared production OAuth client/publishing model needs
 separate user judgment. Acceptance of the gateway/Google adapter is synthetic;
 real-account acceptance remains pending.
+
+Exact-tab document inspection, bounded reads and plain-text appends are now
+implemented for Steed-created Google Docs, using existing `drive.file` access.
+Writes require immutable drafts, exact tab authority, live account checks and
+`requiredRevisionId`. Text plus an operation named range commit atomically.
+Lost replies remain uncertain; probes read the original range without resending.
+The local HTTP fixture confirms exactly one folder/Doc/append, restart recovery
+under fresh read-only authority, no copied draft, no other-tab text disclosure and
+no automatic retry after revision rejection. Operation ranges are visible to
+collaborators; a retained marker confirms application, not unchanged text.
+General existing-text edits need the authority decision in the resume checkpoint;
+existing-file selection needs separate account-bound consent. No rebuild, broad
+OAuth scope, real account effect or password work was started.
 
 ### A7. Collaboration interface and styling
 

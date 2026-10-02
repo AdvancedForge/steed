@@ -1139,7 +1139,8 @@ To configure Google:
    Your Linux desktop needs a working Secret Service keyring, such as GNOME
    Keyring or a Secret Service provider you already use. Steed has no plaintext
    credential fallback. This is separate from KeePassXC website-password pairing.
-2. In your Google Cloud project, enable **Google Drive API** for documents and/or
+2. In your Google Cloud project, enable **Google Drive API** and **Google Docs API**
+   for documents and/or
    **Gmail API** for sending. Configure the OAuth consent screen; for an external
    testing app, add your Google account as a test user. Follow Google's
    [consent setup](https://developers.google.com/workspace/guides/configure-oauth-consent).
@@ -1193,14 +1194,17 @@ for these non-basic scopes; reconnect when needed. See Google's
 | `google_<connection-id>.create_document` | `drive:root` or `drive:folder:<id>` | Create a new Google Doc in My Drive or one exact Steed-created folder; draft title is its name and content is imported as plain text. |
 | `google_<connection-id>.create_folder` | `drive:root` or `drive:folder:<id>` | Create one folder; the immutable draft title is its name. The required draft body is unused and is never uploaded. Result text contains the new exact destination. |
 | `google_<connection-id>.inspect_folder` | `drive:folder:<id>` | Read that exact Steed-created folder's identity and name, without a draft or a listing of its contents. |
+| `google_<connection-id>.inspect_document` | `doc:<id>` | Read one exact Steed-created Doc's title and tab identities, without returning body text or requiring a draft. |
+| `google_<connection-id>.read_document` | `doc:<id>:tab:<tab-id>` | Read bounded plain text from one exact tab; no draft or write access is required. |
+| `google_<connection-id>.append_document` | `doc:<id>:tab:<tab-id>` | Append the immutable draft body to one exact tab; its title is unused. Existing text is retained. Adds an operation named range visible to collaborators. |
 | `google_<connection-id>.send_email` | `email:recipient@example.com` | Send one plain-text email; draft title becomes its subject and content becomes its body. |
 
 Use the actual connector ID returned by discovery, not the placeholder above.
 Mailbox destinations accept a single ASCII address with a lowercase domain;
 display names, recipient lists and header injection are rejected before approval.
-Local-part case, dots and plus tags remain exact. Arbitrary existing Drive folders,
-shared drives, editing existing documents, rich text, attachments and mailbox reads
-are not implemented. Markdown drafts are sent/imported as literal plain text. Drive
+Local-part case, dots and plus tags remain exact. Arbitrary existing Drive files,
+shared drives, replacing existing document text, rich-text writes, attachments and
+mailbox reads are not implemented. Markdown drafts remain literal plain text. Drive
 [upload conversion](https://developers.google.com/workspace/drive/api/guides/manage-uploads)
 creates the document and imports its text in one multipart request; no second
 content write or broad Docs permission is needed.
@@ -1214,10 +1218,64 @@ parent is untrashed, owned by the connected Google identity, writable, outside
 shared drives, and carries Steed's account-bound creation metadata. Shortcuts and
 unmarked folders are rejected before the mutation. Inspection reveals only the
 approved folder's name and identity; it does not enumerate Drive. Reconnecting
-the same Google identity retains folder eligibility but requires a new connector
+the same Google identity and OAuth app retains folder eligibility but requires a new connector
 grant. Editing/removing the private metadata can make a folder unavailable.
-Google's [folder API](https://developers.google.com/workspace/drive/api/guides/folder)
+Google’s [folder API](https://developers.google.com/workspace/drive/api/guides/folder)
 creates folders as metadata-only files; Steed performs one creation request.
+
+For collaborative document updates:
+
+1. Take `doc:<id>` from a successful `create_document` receipt. Request
+   `inspect_document` with `read` access to that exact destination. Its result
+   lists tab titles and exact `doc:<id>:tab:<tab-id>` destinations, including
+   nested tabs. It returns no body text.
+2. Request `read_document` with `read` access to the chosen tab to see its current
+   plain text. Output is capped at 8 KiB of UTF-8 text and 16 KiB of serialized
+   result; `truncated` reports shortening and `incomplete` reports omitted tables,
+   non-text elements or inline suggested edits. Provider JSON responses have a
+   separate 128 KiB limit. These are saved app results and can be cleared in
+   **Task Permissions → Apps**.
+3. To add content, request `append_document` with `write` access to that exact
+   tab plus `artifact` permission. Store the intended body as an immutable draft
+   and call the tool with its ID. Inspection does not grant `read_document` or
+   `append_document` access, and a grant for one tab does not include another tab.
+4. Steed verifies the file's Google account, ownership, untrashed Doc type and
+   private creation metadata before reading its tabs. Appending also requires
+   writeability, a valid current revision and a supported final paragraph. Docs
+   created before the account marker was introduced remain eligible if their
+   original private operation marker and ownership still validate.
+5. The append inserts a newline followed by the literal draft body immediately
+   before the chosen tab's final newline. Existing styles may be inherited from
+   the adjacent paragraph. Text and a `steed_append_<operation-id>` named range
+   are submitted in one atomic batch with `requiredRevisionId`. A concurrent
+   revision change rejects the entire batch as `not_applied`; Steed does not
+   reread and resend automatically. Characters Google strips during insertion
+   are rejected before any API request so UTF-16 range offsets stay correct.
+6. A lost/malformed response leaves an uncertain receipt. **Reconcile Uncertain
+   Result**, or a fresh read-only [archived receipt check](#checking-an-archived-app-receipt),
+   looks for the unique operation range in the original tab. It never calls the
+   append operation. Missing, ambiguous or removed ranges remain uncertain;
+   absence never proves the edit did not happen. A confirmed range establishes
+   that the atomic append was applied, not that collaborators left its text unchanged.
+
+Google documents the [atomic batch and revision precondition](https://developers.google.com/workspace/docs/api/reference/rest/v1/documents/batchUpdate)
+and [tab-aware document structure](https://developers.google.com/workspace/docs/api/reference/rest/v1/documents).
+Named ranges are visible to every collaborator with access and can be changed
+or removed. They contain an opaque operation identifier, never local task IDs,
+credentials or draft metadata. This is recovery evidence, not server-side
+idempotency. Reading/checking a document remains possible after it becomes
+read-only; appending does not. Documents with more than 32 tabs, malformed tab
+identity or unsupported final structures fail closed. Large tab-name results
+report `tabs_truncated` if the result budget omits entries.
+
+These tools use the existing `drive.file` scope; enabling Docs API does not add
+whole-Drive or broad document access. Opening a file in a normal browser tab does
+not authorize its connector use. Existing user-created documents/folders need
+explicit selection through a future access flow. Google's
+[desktop Picker flow](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker)
+requires Drive-only consent, separate from Steed's current identity/Gmail consent;
+it is not enabled by these tools. General replacement/editing policy also remains
+a separate product decision.
 
 Connections use immutable provider/subject identities and a new opaque connector
 ID on every reconnect, including the same account. Account names and capabilities
@@ -1238,8 +1296,10 @@ Requests have ten-second socket timeouts, bounded JSON responses and no redirect
 or automatic retries. Cooperative adapters check task authority/cancellation
 before each request; a dispatched request can still finish after cancellation.
 Provider API calls use the connector operation budget, not browser-page request
-accounting. A fresh write normally needs token refresh, identity verification and
-one mutation; cached-token writes need one mutation. OAuth setup is user-owned,
+accounting. A fresh root creation/send needs token refresh, identity verification
+and one mutation; a cached-token root creation/send needs one mutation. Folder
+writes also verify parent metadata; document appends also fetch file metadata and
+the current document revision. OAuth setup is user-owned,
 outside task grants.
 
 Google Docs and folders attach the browser's operation ID as a private Drive app property.
@@ -1891,6 +1951,7 @@ QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python test
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --transport http
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_google_connector.py
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_google_documents.py
 python tests/smoke_password_manager.py
 ```
 
@@ -1945,7 +2006,33 @@ It saves `/tmp/steed-google-connections.png`, `/tmp/steed-google-approval.png`,
 results while retaining their states, operation identities and no-replay behavior.
 Neither optional SDK nor SecretStorage is needed for this synthetic smoke.
 
+The Google documents smoke uses an in-memory credential store and the production
+Google HTTP adapter routed to localhost. It checks folder → Doc → tab inspection
+→ append, private text isolation between tabs, a lost append response, restart,
+fresh read-only archived confirmation without draft copying, and atomic revision
+rejection. It records exactly one folder, Doc and append and sends no email.
+It saves `/tmp/steed-google-document-receipts.png`. It does not contact Google or
+establish real account, consent, certificate or desktop-keyring acceptance.
+
 ## Verification record
+
+Google folder/document stages (October 2, 2026): folder milestone `e74dd12`
+passed **531 tests in 246.031 seconds** (`/tmp/steed-folders-full.log`); the
+following document milestone passed **555 tests in 252.809 seconds**
+(`/tmp/steed-docs-full.log`). Fifty-two focused Google checks and 21 gateway
+checks passed (`/tmp/steed-docs-focused.log`, `/tmp/steed-docs-gateway.log`).
+Coverage includes exact parent/tab grants, account and ownership checks,
+immutable drafts, UTF-16 offsets, nested tabs, bounded output, revision conflicts,
+lost/malformed responses, unique-range checks, read-only archive confirmation,
+and cancellation before mutation. The production-transport localhost workflow
+passed with one folder/Doc/append and no repeated mutation
+(`/tmp/steed-docs-http.log`). Its receipt screenshot was inspected.
+The previous OAuth/Doc/email smoke, SDK and independent MCP clients over both
+transports, startup/render/shutdown, Ruff/format, dependency checks and 33 local
+documentation links also passed (`/tmp/steed-docs-google.log`,
+`/tmp/steed-docs-mcp-stdio.log`, `/tmp/steed-docs-mcp-http.log`,
+`/tmp/steed-docs-startup.log`). All account acceptance here is synthetic;
+real Google consent/accounts, desktop keyring and hardware checks remain pending.
 
 Provider result-retention stage (October 2, 2026): **518 tests passed in
 255.304 seconds** (`/tmp/steed-retention-full.log`). Seventeen focused checks passed

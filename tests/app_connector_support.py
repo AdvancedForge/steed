@@ -3,6 +3,8 @@
 import copy
 import json
 import threading
+from email import policy
+from email.parser import BytesParser
 from urllib.parse import parse_qs
 
 from services.app_accounts import AccountError
@@ -16,6 +18,7 @@ from services.google_connector import (
     UPLOAD,
     USERINFO,
 )
+from services.google_documents import DOCS, DOCUMENT_MIME
 
 
 class MemorySecrets:
@@ -76,6 +79,12 @@ class SyntheticGoogle:
         self.documents = []
         self.folders = {}
         self.folder_writes = []
+        self.document_metadata = {}
+        self.document_data = {}
+        self.append_writes = []
+        self.lose_append = False
+        self.append_status = 0
+        self.malformed_append_reply = False
         self.lose_folder = False
         self.messages = []
         self.subject = "synthetic-subject"
@@ -115,6 +124,28 @@ class SyntheticGoogle:
             }
         if url.startswith(UPLOAD):
             self.documents.append(body)
+            parts = BytesParser(policy=policy.default).parsebytes(
+                ("Content-Type: " + headers["Content-Type"] + "\r\n\r\n").encode()
+                + body
+            )
+            parts = list(parts.iter_parts())
+            metadata = json.loads(parts[0].get_payload(decode=True))
+            text = parts[1].get_payload(decode=True).decode("utf-8")
+            self.document_metadata["synthetic-doc"] = {
+                **metadata,
+                "id": "synthetic-doc",
+                "mimeType": DOCUMENT_MIME,
+                "trashed": False,
+                "ownedByMe": True,
+                "capabilities": {"canEdit": True},
+            }
+            self.document_data["synthetic-doc"] = {
+                "documentId": "synthetic-doc",
+                "title": metadata["name"],
+                "revisionId": "revision-1",
+                "suggestionsViewMode": "SUGGESTIONS_INLINE",
+                "tabs": [synthetic_document_tab("t.0", text + "\n")],
+            }
             if self.lose_document:
                 raise ApiError()
             return {"id": "synthetic-doc"}
@@ -139,9 +170,78 @@ class SyntheticGoogle:
             return {"id": folder_id}
         if url.startswith(DRIVE + "/files/"):
             folder_id = url.split("/files/", 1)[1].split("?", 1)[0]
-            if folder_id not in self.folders:
+            files = {**self.folders, **self.document_metadata}
+            if folder_id not in files:
                 raise ApiError(404)
-            return copy.deepcopy(self.folders[folder_id])
+            return copy.deepcopy(files[folder_id])
+        if url.startswith(DOCS + "/"):
+            file_id = (
+                url.removeprefix(DOCS + "/")
+                .split("?", 1)[0]
+                .removesuffix(":batchUpdate")
+            )
+            document = self.document_data[file_id]
+            if method == "GET":
+                return copy.deepcopy(document)
+            batch = json.loads(body)
+            if self.append_status:
+                raise ApiError(self.append_status)
+            if batch["writeControl"]["requiredRevisionId"] != document["revisionId"]:
+                raise ApiError(400)
+            self.append_writes.append(batch)
+            insert, named = batch["requests"]
+            location = insert["insertText"]["location"]
+            pending = list(document["tabs"])
+            while pending:
+                tab = pending.pop(0)
+                pending.extend(tab.get("childTabs", []))
+                if tab["tabProperties"]["tabId"] == location["tabId"]:
+                    break
+            else:
+                raise AssertionError("Unknown fixture tab")
+            original = "".join(
+                e["textRun"]["content"]
+                for item in tab["documentTab"]["body"]["content"]
+                if "paragraph" in item
+                for e in item["paragraph"]["elements"]
+            )
+            encoded = original.encode("utf-16-le")
+            offset = (location["index"] - 1) * 2
+            text = (
+                encoded[:offset]
+                + insert["insertText"]["text"].encode("utf-16-le")
+                + encoded[offset:]
+            ).decode("utf-16-le")
+            tab["documentTab"]["body"] = synthetic_document_tab(
+                location["tabId"], text
+            )["documentTab"]["body"]
+            name = named["createNamedRange"]["name"]
+            tab["documentTab"].setdefault("namedRanges", {})[name] = {
+                "name": name,
+                "namedRanges": [
+                    {
+                        "name": name,
+                        "namedRangeId": "range-" + str(len(self.append_writes)),
+                        "ranges": [named["createNamedRange"]["range"]],
+                    }
+                ],
+            }
+            document["revisionId"] = "revision-" + str(len(self.append_writes) + 1)
+            if self.lose_append:
+                raise ApiError()
+            if self.malformed_append_reply:
+                return {"documentId": file_id}
+            return {
+                "documentId": file_id,
+                "replies": [
+                    {},
+                    {
+                        "createNamedRange": {
+                            "namedRangeId": "range-" + str(len(self.append_writes))
+                        }
+                    },
+                ],
+            }
         if url.startswith(DRIVE + "/files?"):
             query = parse_qs(url.split("?", 1)[1]).get("q", [""])[0]
             if FOLDER_MIME in query:
@@ -163,3 +263,30 @@ class SyntheticGoogle:
                 else {"files": [{"id": "synthetic-doc"}] if self.documents else []}
             )
         raise AssertionError("Unexpected synthetic endpoint")
+
+
+def synthetic_document_tab(tab_id="t.0", text="EXISTING_TEXT\n", title="Fixture tab"):
+    end = 1 + len(text.encode("utf-16-le")) // 2
+    return {
+        "tabProperties": {"tabId": tab_id, "title": title},
+        "documentTab": {
+            "body": {
+                "content": [
+                    {"startIndex": 0, "endIndex": 1, "sectionBreak": {}},
+                    {
+                        "startIndex": 1,
+                        "endIndex": end,
+                        "paragraph": {
+                            "elements": [
+                                {
+                                    "startIndex": 1,
+                                    "endIndex": end,
+                                    "textRun": {"content": text},
+                                },
+                            ]
+                        },
+                    },
+                ]
+            }
+        },
+    }
