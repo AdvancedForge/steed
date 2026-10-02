@@ -86,6 +86,7 @@ class ConnectorTool:
     reconcile: object = None
     validate_destination: object = None
     prepare_review: object = None
+    access_group: str = ""
 
 
 class ConnectorRegistry:
@@ -99,6 +100,8 @@ class ConnectorRegistry:
         connector_name(definition.tool)
         if (
             definition.effect not in EFFECTS
+            or definition.access_group not in {"", "direct"}
+            or (definition.access_group == "direct" and definition.effect != "write")
             or type(definition.requires_artifact) is not bool
             or not callable(definition.execute)
             or (definition.reconcile is not None and not callable(definition.reconcile))

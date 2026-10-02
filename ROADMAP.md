@@ -119,16 +119,16 @@ establishes those results. Password improvements remain deferred at the user's r
   recovery and startup/render/shutdown passed. Ruff/format and diff checks passed.
   The first stdio run hit the tracked Qt startup exit 139; retry passed. All inputs
   and account acceptance were synthetic. Real desktop/account acceptance is pending.
-- **Next major engineering decision:** choose the isolated runtime for generated
-  code. Recommendation: a local sandboxed worker, with all account/browser access
+- **Local worker decision accepted:** the user selected a local sandboxed worker,
+  with all account/browser access
   through Steed's broker, no direct credential/profile/home-directory mounts, and
   networking initially disabled. Alternative: a dedicated VM with a separate
   kernel, greater memory/storage needs and an image/update lifecycle. Bubblewrap
   0.9.0 launched an isolated no-home/no-network process on this machine; this
   establishes feasibility only. Execution still needs mount/IPC/environment policy,
   resource limits, capability-bound RPC, cleanup and adversarial acceptance.
-  This decision affects dependencies, installation and the isolation guarantee;
-  generated-code execution remains unavailable until it is accepted and built.
+  Implementation is in progress: generated-code execution stays unavailable until
+  exact package grants, lifecycle/receipts and broker acceptance are completed.
   No rebuild of daily browsing is required for either option.
   Existing user-created file/folder selection also needs a separate Drive-only
   Picker consent/credential flow with verified account binding; no broader OAuth
@@ -136,6 +136,16 @@ establishes those results. Password improvements remain deferred at the user's r
   automatic retention policies and agent-managed mode remain separate milestones.
   Real-account acceptance needs user-owned setup and explicit approval; website
   scripts remain deferred until compatible native engine support exists.
+
+- **Connector simplicity milestone implemented:** per-account read/write/direct/
+  send switches remember supported tools and automatically approve bounded app-only
+  requests. Sign-in alone grants nothing; file/browser/execution permissions remain
+  separate. Disabling access stops matching tasks and clears matching saved rules.
+  Schema-11 settings survive restart without reviving tasks; new tools require
+  renewed choice. **600 regressions passed in 248.392 seconds**, nine focused
+  switch checks and 21 existing account checks passed. Synthetic accounts only.
+  Removing one-time Google Cloud setup still requires a shared production OAuth
+  registration/publishing decision; no real registration or scopes were changed.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage

@@ -1219,6 +1219,37 @@ policies remain future work.
 
 ### Google app connections
 
+**File → App Connections** now provides persistent switches for each connected
+account: read/check results, create/add content, direct replacements, sending,
+and any supported delete/spend tools. Sign-in alone grants no task authority.
+Turn on only the actions you want to allow without another app-task prompt.
+Reviewed replacements still show their before/after proposal; direct replacements
+have a separate switch. Gmail remains send-only, with no inbox access.
+
+These choices apply to all connected agents across browser profiles, but only
+automatically approve **app-only tasks** using private task profiles, optionally
+with text-draft permission. Each request keeps exact tools/effects/destinations,
+at most ten minutes/1,000 operations/1,000 requests and one session. Browser sites,
+shared cookies, binary workspace files and code execution require their own
+approval. Follow-ups containing recovered material continue to require fresh task
+approval. Larger or combined requests still show the ordinary permission popup.
+
+Turning a switch off clears matching remembered approvals and stops matching
+active tasks, including manually approved ones. Existing external changes remain.
+Disconnecting clears all switches for that immutable account identity. Reconnecting
+creates a new identity with switches off. Choices persist in schema-11 task storage;
+restart ends old task authority. A newly added tool does not inherit a previous
+switch: the UI shows partial access until you explicitly enable the group again.
+The browser's trusted registry determines actual effects; remote tool annotations
+or generated package declarations cannot change these choices.
+
+The design borrows the separation of sign-in and persistent read/write policy
+from [Muse's connector architecture](https://research.meta.ai/blog/security-and-safety-for-ai-agents-our-approach-with-muse).
+For example, Dropbox's [official Muse setup](https://blog.dropbox.com/topics/company/put-dropbox-project-context-to-work-meta-muse)
+describes selecting the connector and signing in to authorize access. Steed's
+Google flow is similarly reusable after its one-time app registration, but a
+production shared OAuth client is still needed to remove Cloud setup for new users.
+
 Google is the first real provider adapter. The same account store, provider factory,
 approval gateway and receipt format can support Microsoft 365 and other trusted
 MCP/API adapters. Those additional adapters are not bundled yet; a synthetic second
@@ -1258,7 +1289,9 @@ To configure Google:
    through `steed_app_list_tools`, request exact app permissions, retain a draft
    with `steed_artifact_store`, and send its ID to `steed_app_call_tool`. Connecting
    an account alone never approves a task.
-6. Approve the task popup only for the account, tool and destination you intend.
+6. Enable the account access switches you want to reuse. Matching bounded app-only
+   tasks proceed without a popup. Otherwise, approve the task popup only for the
+   account, tool and destination you intend.
    Review results in **File → Task Permissions → Apps** and drafts in **Artifacts**.
    **Disconnect Account** disables the connection, denies pending
    requests and revokes active grants using it before attempting keyring deletion.
@@ -2151,6 +2184,16 @@ It saves `/tmp/steed-google-document-receipts.png` and
 establish real account, consent, certificate or desktop-keyring acceptance.
 
 ## Verification record
+
+Standing connector access stage (October 2, 2026): **600 tests passed in 248.392
+seconds** (`/tmp/steed-access-full.log`), including nine connector-switch
+regressions (`/tmp/steed-access-focused.log`). Twenty-one existing account setup/
+disconnect checks passed (`/tmp/steed-access-connections.log`). Coverage includes
+new destinations under exact live grants, separate read/send/direct permissions,
+revocation and saved-rule clearing, resource limits, no inherited file access,
+immutable account identity, restart, new-tool partial state, trusted UI clicks,
+and settings/approval journal failures. Accounts, credentials and effects were
+synthetic; real Google consent and desktop keyring acceptance remain pending.
 
 Generated-file/custom integration groundwork (October 2, 2026): **590 tests passed
 in 255.599 seconds** (`/tmp/steed-workspace-full.log`), plus twenty-one final focused
