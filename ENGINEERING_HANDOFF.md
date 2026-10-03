@@ -173,6 +173,10 @@ The contributor has [five substantial milestones](https://github.com/AdvancedFor
 The connector PR was not merged during the engineering integration. Re-review any
 new head before merge; fixtures are not live account proof.
 
+The published [v6 runtime coordination and next steps](https://github.com/AdvancedForge/steed/pull/2#issuecomment-5974337618)
+records provider migration/fixture work after `11a28e9`. This runtime update does
+not approve a changed PR head; re-review the contributor’s next exact SHA.
+
 The static-header milestone is implemented: version 5 requires 1–4 canonical
 `request_headers` with constrained non-secret values. Supported names are
 `Notion-Version`, `X-GitHub-Api-Version`, `Zotero-API-Version` and `OCS-APIRequest`.
