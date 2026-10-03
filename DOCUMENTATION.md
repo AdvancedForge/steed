@@ -2526,6 +2526,21 @@ process. Local access is off when the browser starts.
 
 ### External-agent conversation sidebar
 
+**File → Agent Connection Setup…**, also available from the sidebar's
+**Connection Setup…** button, opens a nonmodal setup screen. It enables local
+access only when you click **Enable Local Agent Access**, then offers **Copy
+Connection Settings** and **Copy Starter Prompt**. The settings use the running
+Python interpreter, repository and browser data directory, including paths with
+spaces. Add the Steed server entry to your client's existing configuration;
+clients without `mcpServers` JSON can use the displayed command and arguments.
+Opening the screen or copying settings creates no task, launches no agent and
+grants no page/app access. The screen never reads or copies gateway tokens. If
+the optional MCP SDK is absent, it shows a one-time installation command; it
+does not run the installer. The enable state follows the existing File-menu
+switch and resets on browser restart. Seven setup regressions plus existing
+agent/sidebar checks passed together (53 tests in 13.277 seconds); the final
+setup screen was visually inspected and ordinary startup/render/shutdown passed.
+
 Steed uses external agents first. The sidebar communicates with the agent that
 owns an existing MCP task; the browser does not launch models, store model keys,
 or automatically start a new agent turn.

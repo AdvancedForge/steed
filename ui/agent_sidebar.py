@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -20,6 +20,8 @@ from ui.task_dialog import TaskDialog
 
 
 class AgentSidebar(QDockWidget):
+    setup_requested = pyqtSignal()
+
     def __init__(self, service, parent=None):
         super().__init__("External Agents", parent)
         self.service = service
@@ -45,6 +47,9 @@ class AgentSidebar(QDockWidget):
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
+        self.setup = QPushButton("Connection Setup…")
+        self.setup.clicked.connect(lambda: self.setup_requested.emit())
+        layout.addWidget(self.setup)
         self.tasks = QComboBox()
         self.tasks.setAccessibleName("External agent task")
         self.tasks.currentIndexChanged.connect(self._select)

@@ -385,6 +385,20 @@ establishes those results. Password improvements remain deferred at the user's r
   Logs: `/tmp/steed-sidebar-{full,final-focused,messages,mcp-stdio,mcp-http,startup}.log`.
   See [conversation setup and protocol](DOCUMENTATION.md#external-agent-conversation-sidebar).
 
+- **External-client setup simplified:** File → Agent Connection Setup… and the
+  sidebar's Connection Setup… button open one nonmodal screen with explicit local
+  opt-in, copyable interpreter/adapter/discovery settings and a mailbox starter
+  prompt. No gateway token is read/copied, no client is launched/configured and
+  opening/copying creates no task or grant. Missing optional dependencies are
+  explained without installing them. Seven onboarding checks plus the existing
+  final agent/sidebar checks passed: 53 tests in 13.277 seconds. The remaining
+  integration decision is the external client to support for starting/waking an
+  idle agent from Steed; the generic MCP mailbox remains available now. The final
+  setup/sidebar previews were inspected; Ruff/format, whitespace and standalone
+  browser startup/render/shutdown passed. No real external agent or account was
+  launched by these synthetic checks.
+  Logs: `/tmp/steed-agent-setup-{focused,preview,startup}.log`.
+
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
   them. Removing an agent rule revokes linked tasks; disconnecting an app removes
