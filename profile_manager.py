@@ -62,6 +62,7 @@ class ProfileRegistry(QObject):
         self.owners = set()
         self.last_active_owner = None
         self._tasks = None
+        self._agent_providers = None
         self._app_connections = None
         self.site_permissions = SitePermissions(
             config.config_dir / "site_permissions.json"
@@ -121,6 +122,15 @@ class ProfileRegistry(QObject):
             self._tasks.failed.connect(lambda _: self.set_agent_access(False))
         return self._tasks
 
+    @property
+    def agent_providers(self):
+        require_owner_thread(self)
+        if self._agent_providers is None:
+            from services.agent_providers import AgentProviders
+
+            self._agent_providers = AgentProviders(self, self)
+        return self._agent_providers
+
     def agent_context(self):
         """Report selected profile metadata, never page URLs or browsing state."""
         require_owner_thread(self)
@@ -165,6 +175,8 @@ class ProfileRegistry(QObject):
         if enabled:
             self.agent_gateway = AgentGateway(self.tasks, self.config.config_dir, self)
         else:
+            if self._agent_providers is not None:
+                self._agent_providers.close()
             gateway, self.agent_gateway = self.agent_gateway, None
             gateway.close()
             gateway.deleteLater()

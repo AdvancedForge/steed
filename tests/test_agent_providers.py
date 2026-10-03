@@ -1,0 +1,343 @@
+"""Real child/Qt/gateway chat lifecycle with a deterministic external runtime."""
+
+import sqlite3
+import sys
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import test_task_services as fixtures
+from PyQt6.QtCore import QProcess
+
+from services.agent_gateway import AgentGateway
+from services.agent_providers import AgentProviders
+from services.codex_provider import CodexProvider
+from ui.agent_sidebar import AgentSidebar
+
+
+class AgentProviderTests(unittest.TestCase):
+    setUpClass = classmethod(fixtures.TaskServiceTests.setUpClass.__func__)
+    tearDownClass = classmethod(fixtures.TaskServiceTests.tearDownClass.__func__)
+    wait_for = fixtures.TaskServiceTests.wait_for
+
+    def setUp(self):
+        fixtures.TaskServiceTests.setUp(self)
+        self.gateway = AgentGateway(self.service, self.directory.name)
+        registry = SimpleNamespace(
+            tasks=self.service,
+            agent_gateway=self.gateway,
+            set_agent_access=lambda _: None,
+        )
+        self.mode = "normal"
+        self.drivers = []
+
+        def factory(parent):
+            driver = CodexProvider(
+                parent,
+                command=[
+                    sys.executable,
+                    str(Path(__file__).parent / "fixtures" / "fake_codex_server.py"),
+                    self.mode,
+                ],
+            )
+            self.drivers.append(driver)
+            return driver
+
+        self.manager = AgentProviders(registry, factory=factory)
+        self.sidebar = AgentSidebar(self.service, providers=self.manager)
+
+    def tearDown(self):
+        self.sidebar.detach()
+        self.sidebar.close()
+        self.manager.close()
+        self.gateway.close()
+        self.manager.deleteLater()
+        fixtures.TaskServiceTests.tearDown(self)
+
+    def chat(self, mode="normal"):
+        self.mode = mode
+        task = self.manager.new_chat()
+        self.sidebar.tasks.setCurrentIndex(self.sidebar.tasks.findData(task))
+        self.wait_for(
+            lambda: (
+                self.manager.status(task) == "Codex ready"
+                or task not in self.manager.chats
+            )
+        )
+        return task
+
+    def send(self, text):
+        self.sidebar.composer.setPlainText(text)
+        self.sidebar.send.click()
+
+    def complete(self, task, count=1):
+        self.wait_for(
+            lambda: (
+                len(
+                    [
+                        m
+                        for m in self.messages(task)
+                        if m["role"] == "agent" and m["state"] == "complete"
+                    ]
+                )
+                == count
+            )
+        )
+
+    def messages(self, task):
+        return self.service.messages.read(task)["messages"]
+
+    def test_sidebar_starts_turn_and_continues_same_task(self):
+        task = self.chat()
+        self.assertTrue(self.sidebar.send.isEnabled())
+        self.send("First prompt")
+        self.complete(task)
+        self.send("Follow-up")
+        self.complete(task, 2)
+        self.assertEqual(
+            [m["text"] for m in self.messages(task)],
+            [
+                "First prompt",
+                "Synthetic reply: First prompt",
+                "Follow-up",
+                "Synthetic reply: Follow-up",
+            ],
+        )
+        self.assertEqual(self.service.store.grants(task), [])
+        self.assertIn("Agent fetched", self.sidebar.status.text())
+        self.assertEqual(len(self.drivers), 1)
+
+    def test_busy_queue_keeps_order_and_does_not_duplicate(self):
+        task = self.chat()
+        first = self.service.send_message(task, "First")
+        self.service.user_message_sent.emit(task, first)
+        self.service.send_message(task, "Second")
+        self.service.send_message(task, "Third")
+        self.complete(task, 3)
+        self.assertEqual(
+            [m["text"] for m in self.messages(task) if m["role"] == "agent"],
+            [
+                "Synthetic reply: First",
+                "Synthetic reply: Second",
+                "Synthetic reply: Third",
+            ],
+        )
+
+    def test_events_before_turn_response_are_retained(self):
+        task = self.chat("early-events")
+        self.send("Early")
+        self.complete(task)
+        self.assertEqual(self.messages(task)[-1]["text"], "Synthetic reply: Early")
+
+    def test_long_utf8_reply_is_split_without_corruption(self):
+        task = self.chat("long")
+        self.send("Long")
+        self.complete(task, 2)
+        replies = [m for m in self.messages(task) if m["role"] == "agent"]
+        self.assertEqual("".join(m["text"] for m in replies), "🌍" * 2500)
+        self.assertTrue(all(len(m["text"].encode()) <= 8192 for m in replies))
+
+    def test_clear_discards_queued_prompts(self):
+        task = self.chat()
+        self.send("Already sent")
+        self.service.send_message(task, "Queued then cleared")
+        self.service.clear_messages(task)
+        self.wait_for(
+            lambda: (
+                self.manager.status(task) == "Codex ready"
+                or task not in self.manager.chats
+            )
+        )
+        self.assertFalse(
+            any(
+                m["role"] == "agent" and "Queued then cleared" in m["text"]
+                for m in self.messages(task)
+            )
+        )
+
+    def test_clear_during_stream_does_not_restore_text_or_end_task(self):
+        task = self.chat("slow")
+        self.send("Stream then clear")
+        self.wait_for(
+            lambda: any(m["state"] == "streaming" for m in self.messages(task))
+        )
+        self.service.send_message(task, "Queued before clear")
+        self.service.clear_messages(task)
+        self.wait_for(lambda: self.manager.status(task) == "Codex ready")
+        self.assertTrue(all(m["state"] == "cleared" for m in self.messages(task)))
+        self.assertIn(task, self.manager.chats)
+        self.send("New prompt")
+        self.complete(task)
+        self.assertIn(
+            "Synthetic reply: New prompt", self.sidebar.transcript.toPlainText()
+        )
+
+    def test_cancel_stops_child_and_keeps_history(self):
+        task = self.chat()
+        self.send("Explicitly shared")
+        self.sidebar.cancel.click()
+        self.wait_for(
+            lambda: self.drivers[0].process.state() == QProcess.ProcessState.NotRunning
+        )
+        self.assertNotIn(task, self.manager.chats)
+        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        self.assertEqual(self.messages(task)[0]["text"], "Explicitly shared")
+        self.assertFalse(self.sidebar.send.isEnabled())
+
+    def test_incognito_disables_new_chat_without_cancelling_work(self):
+        task = self.chat()
+        self.sidebar.set_private(True)
+        self.assertFalse(self.sidebar.new_chat.isEnabled())
+        self.assertFalse(self.sidebar.send.isEnabled())
+        self.assertIn(task, self.manager.chats)
+
+    def test_signin_is_external_and_failure_retains_readonly_task(self):
+        task = self.chat("signin")
+        self.assertNotIn(task, self.manager.chats)
+        self.assertIn("codex login", self.sidebar.status.text())
+        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        self.assertFalse(self.sidebar.send.isEnabled())
+
+    def test_extra_server_and_wrong_task_fail_closed(self):
+        for mode in ("extra-server", "wrong-task"):
+            with self.subTest(mode=mode):
+                task = self.chat(mode)
+                self.assertNotIn(task, self.manager.chats)
+                self.assertEqual(self.service.store.get(task).status, "cancelled")
+                self.assertFalse(self.sidebar.send.isEnabled())
+
+    def test_native_permission_settings_are_preserved(self):
+        task = self.chat("unsafe-profile")
+        self.assertIn(task, self.manager.chats)
+        self.assertEqual(self.service.store.grants(task), [])
+        self.send("Native capabilities retained")
+        self.wait_for(lambda: self.messages(task)[-1]["state"] == "complete")
+
+    def test_native_approval_popup_does_not_grant_steed_access(self):
+        task = self.chat("approval")
+        self.send("Run a native tool")
+        self.wait_for(lambda: self.manager.chats[task]["requests"])
+        self.sidebar.show_requests()
+        dialog = self.sidebar._request_dialogs[(task, "native-request")]
+        self.assertIn("synthetic-native-command", dialog.params["command"])
+        dialog.session.click()
+        self.complete(task)
+        self.assertEqual(self.service.store.grants(task), [])
+        self.assertEqual(self.manager.chats[task]["requests"], {})
+
+    def test_native_question_returns_answer_without_storing_it_in_chat(self):
+        task = self.chat("question")
+        self.send("Ask me")
+        self.wait_for(lambda: self.manager.chats[task]["requests"])
+        self.sidebar.show_requests()
+        dialog = self.sidebar._request_dialogs[(task, "native-request")]
+        dialog.allow.click()
+        self.assertIn("Answer each", dialog.error.text())
+        dialog.answers["choice"][0].setCurrentIndex(1)
+        dialog.allow.click()
+        self.complete(task)
+        self.assertEqual(self.service.store.grants(task), [])
+        self.assertFalse(any(m["text"] == "Plain" for m in self.messages(task)))
+
+    def test_native_permission_deny_and_cancel_cleanup(self):
+        task = self.chat("permission")
+        self.send("Request native network")
+        self.wait_for(lambda: self.manager.chats[task]["requests"])
+        self.sidebar.show_requests()
+        dialog = self.sidebar._request_dialogs[(task, "native-request")]
+        dialog.reject()
+        self.complete(task)
+        self.assertEqual(self.service.store.grants(task), [])
+        self.send("Another request")
+        self.wait_for(lambda: self.manager.chats[task]["requests"])
+        self.sidebar.show_requests()
+        self.service.cancel_task(task)
+        self.assertNotIn(task, self.manager.chats)
+        self.assertEqual(self.sidebar._request_dialogs, {})
+
+    def test_protocol_failures_stop_without_replaying_queued_messages(self):
+        for mode in (
+            "disconnect",
+            "malformed",
+            "oversized",
+            "host-request",
+            "wrong-thread",
+        ):
+            with self.subTest(mode=mode):
+                task = self.chat(mode)
+                self.send("Prompt")
+                self.service.send_message(task, "Queued")
+                self.wait_for(lambda task=task: task not in self.manager.chats)
+                self.assertEqual(self.service.store.get(task).status, "cancelled")
+                self.assertEqual(self.messages(task)[1]["text"], "Queued")
+                self.assertNotIn(
+                    "synthetic-private-command", self.sidebar.status.text()
+                )
+                self.assertEqual(self.service.store.grants(task), [])
+
+    def test_two_tasks_are_isolated_and_limit_is_enforced(self):
+        first, second = self.chat(), self.chat()
+        with self.assertRaises(ValueError):
+            self.manager.new_chat()
+        self.send("Second only")
+        self.complete(second)
+        self.assertEqual(self.messages(first), [])
+        self.manager.close()
+        self.assertEqual(self.manager.chats, {})
+
+    def test_timeout_stops_without_acknowledging_or_retrying(self):
+        task = self.chat("hang")
+        self.send("Uncertain delivery")
+        driver = self.drivers[-1]
+        driver.pending = {
+            key: (callback, 0) for key, (callback, _) in driver.pending.items()
+        }
+        driver._timeouts()
+        self.wait_for(lambda: task not in self.manager.chats)
+        self.assertEqual(self.service.messages.read_sequence(task), 0)
+        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        self.assertEqual(len(self.drivers), 1)
+
+    def test_acknowledgement_storage_failure_does_not_escape_signal(self):
+        task = self.chat("hang")
+        self.send("Synthetic prompt")
+        driver = self.drivers[-1]
+        message_id = self.messages(task)[0]["message_id"]
+        with patch.object(
+            self.service.messages,
+            "acknowledge",
+            side_effect=sqlite3.OperationalError("Synthetic database failure"),
+        ):
+            driver.accepted.emit(message_id)
+        self.assertTrue(self.service.failure)
+        self.assertNotIn(task, self.manager.chats)
+
+    def test_new_binding_file_is_private_and_removed_once_connected(self):
+        self.mode = "normal"
+        task = self.manager.new_chat()
+        path = self.manager.chats[task]["binding_file"]
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.wait_for(lambda: self.manager.status(task) == "Codex ready")
+        self.assertFalse(path.exists())
+        self.assertEqual(self.gateway.bindings, {})
+
+    def test_missing_dependency_creates_no_task_or_connection(self):
+        from unittest.mock import patch
+
+        with patch(
+            "services.agent_providers.importlib.util.find_spec", return_value=None
+        ):
+            with self.assertRaises(RuntimeError):
+                self.manager.new_chat()
+        self.assertEqual(self.service.store.list_tasks(), [])
+
+    def test_trusted_model_choice_is_scoped_to_this_chat(self):
+        self.sidebar.model.setCurrentIndex(1)
+        self.sidebar.new_chat.click()
+        task = next(iter(self.manager.chats))
+        self.wait_for(lambda: self.manager.status(task) == "Codex ready")
+        self.assertEqual(self.drivers[-1].model, "gpt-5.4")
+        with self.assertRaises(ValueError):
+            self.manager.new_chat(model="invalid model/argument")
+        self.assertEqual(len(self.service.store.list_tasks()), 1)

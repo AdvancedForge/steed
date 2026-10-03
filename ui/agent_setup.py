@@ -63,6 +63,14 @@ class AgentSetupDialog(QDialog):
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
+        codex = QLabel(
+            "For Codex: install a current Codex CLI (tested with 0.160.0), sign in "
+            "once using codex login, then choose New Codex Chat in the sidebar. "
+            "No client configuration or starter prompt is needed for that option. "
+            "Steed sends messages automatically and never stores model credentials."
+        )
+        codex.setWordWrap(True)
+        layout.addWidget(codex)
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)

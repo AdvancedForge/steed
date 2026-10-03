@@ -2,7 +2,9 @@
 
 import json
 import secrets
+import sqlite3
 import tempfile
+import time
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, QTimer
@@ -28,6 +30,7 @@ class AgentGateway(QObject):
         self.directory = tempfile.TemporaryDirectory(prefix="steed-agent-")
         self.token = secrets.token_urlsafe(32)
         self.connections = set()
+        self.bindings = {}
         self.closed = False
         self.server = QLocalServer(self)
         self.server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
@@ -46,6 +49,41 @@ class AgentGateway(QObject):
             self.directory.cleanup()
             raise
 
+    def bind_task(self, task_id):
+        """Issue a short-lived, single-use capability to a trusted provider launcher."""
+        require_owner_thread(self)
+        self.bindings = {
+            key: value
+            for key, value in self.bindings.items()
+            if value[1] > time.monotonic()
+        }
+        self.service._active(task_id)
+        if (
+            self.closed
+            or task_id in self.service.external_tasks
+            or len(self.bindings) >= 4
+        ):
+            raise ValueError("Task connection unavailable")
+        token = secrets.token_urlsafe(32)
+        self.bindings[token] = (task_id, time.monotonic() + 60)
+        return token
+
+    def revoke_binding(self, token):
+        require_owner_thread(self)
+        self.bindings.pop(token, None)
+
+    def _redeem(self, token):
+        if not isinstance(token, str):
+            raise ValueError("Invalid task binding")
+        binding = self.bindings.pop(token, None)
+        if binding is None or binding[1] <= time.monotonic():
+            raise ValueError("Task binding expired")
+        task_id = binding[0]
+        self.service._active(task_id)
+        if task_id in self.service.external_tasks:
+            raise ValueError("Task already connected")
+        return self.service.client(task_id)
+
     def _accept(self):
         while self.server.hasPendingConnections():
             socket = self.server.nextPendingConnection()
@@ -61,6 +99,7 @@ class AgentGateway(QObject):
         if self.closed:
             return
         self.closed = True
+        self.bindings.clear()
         self.server.close()
         for connection in tuple(self.connections):
             connection.close()
@@ -80,6 +119,7 @@ class AgentConnection(QObject):
         self.authenticated = False
         self.closed = False
         self.client = None
+        self.managed = False
         self.pending = None
         self.deadline = QTimer(self)
         self.deadline.setSingleShot(True)
@@ -120,18 +160,34 @@ class AgentConnection(QObject):
                 if not self.authenticated:
                     token = request.get("token")
                     if (
-                        set(request) != {"token"}
+                        set(request) not in ({"token"}, {"token", "task_binding"})
                         or not isinstance(token, str)
                         or not secrets.compare_digest(token, self.gateway.token)
                     ):
                         self.close()
                         return
+                    if "task_binding" in request:
+                        self.client = self.gateway._redeem(request["task_binding"])
+                        self.managed = True
+                        self.gateway.service.external_connection(
+                            self.client.task_id, True
+                        )
                     self.authenticated = True
                     self.deadline.stop()
                     self._send({"connected": True})
                     continue
                 self._request(request)
-            except (ValueError, TypeError, UnicodeError, RecursionError):
+            except sqlite3.Error:
+                self.gateway.service._fatal()
+                self.close()
+            except (
+                ValueError,
+                TypeError,
+                UnicodeError,
+                RecursionError,
+                OSError,
+                RuntimeError,
+            ):
                 self.close()
 
     def _request(self, request):
@@ -151,6 +207,8 @@ class AgentConnection(QObject):
             if spec is None:
                 raise ValueError("Unknown tool")
             spec.validate(request["arguments"])
+            if self.managed and spec.command in ("task.start", "conversation.reply"):
+                raise ValueError("Managed conversation is bound by the browser")
             self.gateway.service._usable()
             if spec.command == "task.start":
                 if (

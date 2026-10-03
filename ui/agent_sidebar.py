@@ -16,15 +16,17 @@ from PyQt6.QtWidgets import (
 )
 
 from services.task_store import ACTIVE_STATUSES
+from ui.agent_request import AgentRequestDialog
 from ui.task_dialog import TaskDialog
 
 
 class AgentSidebar(QDockWidget):
     setup_requested = pyqtSignal()
 
-    def __init__(self, service, parent=None):
+    def __init__(self, service, parent=None, *, providers=None):
         super().__init__("External Agents", parent)
         self.service = service
+        self.providers = providers
         self.setObjectName("externalAgentSidebar")
         self.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
@@ -43,13 +45,25 @@ class AgentSidebar(QDockWidget):
         body = QWidget()
         layout = QVBoxLayout(body)
         notice = QLabel(
-            "Connect an external agent to Steed MCP and have it start a task. Select that task here. The agent must read and reply through the conversation tools."
+            "Start a Codex chat here, or connect another external agent using Connection Setup. Codex uses its own sign-in; New Codex Chat enables local agent access for this browser run."
+            if providers is not None
+            else "Connect an external agent to Steed MCP and have it start a task. Select that task here. The agent must read and reply through the conversation tools."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
         self.setup = QPushButton("Connection Setup…")
         self.setup.clicked.connect(lambda: self.setup_requested.emit())
         layout.addWidget(self.setup)
+        self.model = QComboBox()
+        self.model.setAccessibleName("Codex model")
+        self.model.addItem("Codex default", None)
+        self.model.addItem("GPT-5.4 (tested direct Steed tools)", "gpt-5.4")
+        self.model.setVisible(providers is not None)
+        layout.addWidget(self.model)
+        self.new_chat = QPushButton("New Codex Chat")
+        self.new_chat.clicked.connect(self.start_chat)
+        self.new_chat.setVisible(providers is not None)
+        layout.addWidget(self.new_chat)
         self.tasks = QComboBox()
         self.tasks.setAccessibleName("External agent task")
         self.tasks.currentIndexChanged.connect(self._select)
@@ -79,6 +93,11 @@ class AgentSidebar(QDockWidget):
         buttons.addWidget(self.clear)
         layout.addLayout(buttons)
         tools = QHBoxLayout()
+        self.agent_requests = QPushButton("Agent requests")
+        self.agent_requests.clicked.connect(self.show_requests)
+        self.agent_requests.setVisible(providers is not None)
+        layout.addWidget(self.agent_requests)
+        self._request_dialogs = {}
         self.details = []
         for label, panel in (
             ("Permissions", "Permissions"),
@@ -100,7 +119,7 @@ class AgentSidebar(QDockWidget):
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
         privacy = QLabel(
-            "Only sent text is shared. Messages grant no page, profile, file or app access. Hiding this panel keeps the task running."
+            "Steed shares sent text. Codex retains its own tools and permissions. Browser/profile access requires Steed approval. Hiding this panel keeps the task running."
         )
         privacy.setWordWrap(True)
         layout.addWidget(privacy)
@@ -109,7 +128,52 @@ class AgentSidebar(QDockWidget):
         shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         shortcut.activated.connect(self.send_message)
         self.service.changed.connect(self.refresh)
+        if self.providers is not None:
+            self.providers.changed.connect(self.refresh)
+            self.providers.requested.connect(self._request_added)
         self.refresh()
+
+    def _request_added(self, task_id, request_id, payload):
+        if task_id == self._task_id and not self._private and self.isVisible():
+            self._show_request(task_id, request_id, payload)
+
+    def show_requests(self):
+        if self._private or self.providers is None:
+            return
+        chat = self.providers.chats.get(self._task_id, {})
+        for request_id, request in list(chat.get("requests", {}).items()):
+            self._show_request(self._task_id, request_id, request["payload"])
+
+    def _show_request(self, task_id, request_id, payload):
+        if not self.providers.claim_request(task_id, request_id):
+            return
+        try:
+            dialog = AgentRequestDialog(
+                payload,
+                lambda result: self.providers.respond(task_id, request_id, result),
+                self,
+            )
+        except (ValueError, KeyError, TypeError):
+            self.error.setText(
+                "This agent request could not be displayed. Cancel the task."
+            )
+            return
+        dialog.setWindowTitle(f"Codex request · {task_id[:8]}")
+        self._request_dialogs[(task_id, request_id)] = dialog
+        dialog.finished.connect(
+            lambda: self._request_dialogs.pop((task_id, request_id), None)
+        )
+        dialog.show()
+
+    def start_chat(self):
+        if self._private or self.providers is None:
+            return
+        try:
+            task_id = self.providers.new_chat(model=self.model.currentData())
+            self.refresh()
+            self.tasks.setCurrentIndex(self.tasks.findData(task_id))
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
+            self.error.setText(str(error))
 
     def set_private(self, private):
         self._private = private
@@ -122,6 +186,26 @@ class AgentSidebar(QDockWidget):
         available = (
             not self._private and not self.service._closed and not self.service.failure
         )
+        for key, dialog in list(self._request_dialogs.items()):
+            pending = (
+                self.providers.chats.get(key[0], {}).get("requests", {})
+                if self.providers
+                else {}
+            )
+            if key[1] not in pending:
+                dialog.answered = True
+                dialog.reject()
+            elif not available:
+                dialog.reject()
+        pending_count = (
+            len(self.providers.chats.get(self._task_id, {}).get("requests", {}))
+            if self.providers
+            else 0
+        )
+        self.agent_requests.setText(f"Agent requests ({pending_count})")
+        self.agent_requests.setEnabled(available and pending_count > 0)
+        self.new_chat.setEnabled(available)
+        self.model.setEnabled(available)
         try:
             records = self.service.store.list_tasks() if available else []
             # Preserve the selected history even as new tasks arrive.
@@ -145,7 +229,7 @@ class AgentSidebar(QDockWidget):
                 choices.append(
                     (
                         task.task_id,
-                        f"{'Connected' if connected else task.status} · {' '.join(task.objective.split())[:80]}",
+                        f"{'Connected' if connected else task.status} · {' '.join(task.objective.split())[:80]} · {task.task_id[:8]}",
                     )
                 )
             if choices != self._choices:
@@ -165,7 +249,14 @@ class AgentSidebar(QDockWidget):
             self._unavailable()
 
     def _unavailable(self):
-        for button in (self.send, self.cancel, self.clear, *self.details):
+        for button in (
+            self.send,
+            self.cancel,
+            self.clear,
+            self.new_chat,
+            self.agent_requests,
+            *self.details,
+        ):
             button.setEnabled(False)
         self.composer.setEnabled(False)
         self.transcript.clear()
@@ -201,6 +292,7 @@ class AgentSidebar(QDockWidget):
             active = (
                 task.status in ACTIVE_STATUSES
                 and task_id in self.service.external_tasks
+                and (self.providers is None or self.providers.can_send(task_id))
             )
             dirty = False
             while True:
@@ -233,6 +325,10 @@ class AgentSidebar(QDockWidget):
             self.status.setText(
                 f"{'Connected' if active else 'Read-only history · ' + task.status}\n{profile} · Permission: {permission.status if permission else 'not requested'}"
             )
+            if self.providers is not None and self.providers.status(task_id):
+                self.status.setText(
+                    self.providers.status(task_id) + "\n" + self.status.text()
+                )
             read = self.service.messages.read_sequence(task_id)
             waiting = sum(
                 m["role"] == "user" and m["state"] != "cleared" and m["sequence"] > read
@@ -263,7 +359,7 @@ class AgentSidebar(QDockWidget):
             )
         self.send.setEnabled(active)
         self.composer.setEnabled(active)
-        self.cancel.setEnabled(active)
+        self.cancel.setEnabled(usable and task.status in ACTIVE_STATUSES)
         self.clear.setEnabled(usable)
         for button in self.details:
             button.setEnabled(usable)
@@ -317,4 +413,13 @@ class AgentSidebar(QDockWidget):
         dialog.show()
 
     def detach(self):
+        for key, dialog in list(self._request_dialogs.items()):
+            dialog.reject()
+            if self.providers and key[0] in self.providers.chats:
+                request = self.providers.chats[key[0]]["requests"].get(key[1])
+                if request:
+                    request["claimed"] = False
         self.service.changed.disconnect(self.refresh)
+        if self.providers is not None:
+            self.providers.changed.disconnect(self.refresh)
+            self.providers.requested.disconnect(self._request_added)
