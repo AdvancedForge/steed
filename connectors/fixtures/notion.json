@@ -251,7 +251,11 @@
     "code_stability": "Programmatic error code values such as validation_error and object_not_found are documented as stable and not changing without a version bump."
   },
   "framework_gap": {
-    "capabilities": ["static_headers", "identity_shapes", "post_reads"],
+    "capabilities": [
+      "static_headers",
+      "identity_shapes",
+      "post_reads"
+    ],
     "minimum_missing_behavior": "Send one reviewed static header on every request, and accept an identity label that is documented as null. Those two together are what stand between this family and a single-item read.",
     "not_required_for_a_first_read": [
       "POST reads, which only block listing a data source.",
@@ -272,5 +276,35 @@
     "https://developers.notion.com/reference/errors",
     "https://developers.notion.com/reference/status-codes",
     "https://developers.notion.com/guides/get-started/upgrade-guide-2025-09-03"
-  ]
+  ],
+  "empirical_status": {
+    "policy": "Documentation proves what an endpoint offers. A framework test can only prove Steed's own behaviour against a documented shape. Neither can show that a provider accepts a credential or sends a field, so those stay pending until a real account is used.",
+    "settled_by_documentation": [
+      "Notion-Version is required on all REST API requests, and a missing header fails with the documented code missing_version.",
+      "GET /v1/users/me is documented as returning the user associated with the token, and object and id are documented as always present.",
+      "The user object marks name as oneOf string or null.",
+      "Since 2025-09-03 a database response has no properties field and instead lists data_sources.",
+      "Error responses document the code and message properties, with additional_data documented as optional."
+    ],
+    "pending": [
+      {
+        "question": "Does an internal integration token authenticate GET /v1/users/me, and what does its bot document contain?",
+        "status": "pending",
+        "settled_by": "a real internal integration; the documented bot fields are the evidence, not a statement.",
+        "blocks": "trusting a bot workspace id or workspace name"
+      },
+      {
+        "question": "Does a real bot document ever omit name, and is workspace_name null when the owner is a user?",
+        "status": "pending",
+        "settled_by": "a real connection, since nullability is documented but occurrence is not.",
+        "blocks": "describing how often the label limitation is hit"
+      },
+      {
+        "question": "Do the projected database and data source fields appear for a real shared database?",
+        "status": "pending",
+        "settled_by": "a real connection with a shared database.",
+        "blocks": "any field projection"
+      }
+    ]
+  }
 }
