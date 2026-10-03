@@ -113,6 +113,60 @@ class StartupTests(unittest.TestCase):
 
 
 class BrowserTests(unittest.TestCase):
+    def test_menu_categories_keep_shortcuts_and_profile_controls(self):
+        menus = {
+            action.text(): action.menu() for action in self.window.menuBar().actions()
+        }
+        self.assertEqual(list(menus), ["General", "Tabs", "Agents", "View", "Cookies"])
+        self.assertIn(self.window.reload_action, menus["Tabs"].actions())
+        self.assertIn(self.window.find_action, menus["View"].actions())
+        self.assertIn(self.window.agent_sidebar_action, menus["Agents"].actions())
+        self.assertIn(self.window.file_library_action, menus["Agents"].actions())
+        profiles = next(
+            action.menu()
+            for action in menus["General"].actions()
+            if action.text() == "Profiles"
+        )
+        self.assertIn(
+            self.window.profile_shortcuts_menu.menuAction(), profiles.actions()
+        )
+        history = next(
+            action
+            for action in menus["Cookies"].actions()
+            if action.text() == "Clear Browsing History..."
+        )
+        with patch.object(self.window.history, "clear") as clear:
+            with patch.object(
+                QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+            ):
+                history.trigger()
+            clear.assert_called_once()
+
+    def test_tab_group_menu_operates_on_current_tab(self):
+        tabs = next(
+            action.menu()
+            for action in self.window.menuBar().actions()
+            if action.text() == "Tabs"
+        )
+        groups = next(
+            action.menu() for action in tabs.actions() if action.text() == "Tab Groups"
+        )
+        actions = {action.text(): action for action in groups.actions()}
+        with patch(
+            "browser_window.QInputDialog.getText", return_value=("Research", True)
+        ):
+            actions["Set Current Tab Group…"].trigger()
+        current = self.window.tabs[self.window.current_tab_index]
+        self.assertEqual(current.group, "Research")
+        group = self.window.tab_manager.groups[current.group_id]
+        groups.aboutToShow.emit()
+        actions["Collapse / Expand Current Group"].trigger()
+        self.assertTrue(group.collapsed)
+        actions["Remove Current Tab from Group"].trigger()
+        self.assertIsNone(current.group_id)
+        groups.aboutToShow.emit()
+        self.assertFalse(actions["Collapse / Expand Current Group"].isEnabled())
+
     def test_task_permissions_menu_reports_storage_failure_without_crashing(self):
         with (
             patch(

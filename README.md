@@ -47,8 +47,8 @@ exact-package/environment approval. An optional document bundle adds PDF, XLSX a
 image generation. Users share selected input files and export results from
 Task Permissions. Explicitly delegated live tabs keep normal website scripts and
 page state; restricted task pages remain available. Generic extensions remain planned.
-Use **File → Agent Connection Setup** for copyable client settings.
-Open **View → Agent Sidebar** (`Ctrl+Shift+A`) to message a connected task;
+Use **Agents → Agent Connection Setup** for copyable client settings.
+Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) to message a connected task;
 choose **New Codex Chat** for automatic message delivery after signing into
 Codex CLI. Other external clients use the
 [conversation tools](DOCUMENTATION.md#external-agent-conversation-sidebar).
