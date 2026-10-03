@@ -4,6 +4,7 @@ import sqlite3
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import test_task_profiles as fixtures
@@ -77,6 +78,25 @@ class AgentSidebarTests(unittest.TestCase):
             dialog.panels.tabText(dialog.panels.currentIndex()), "Permissions"
         )
         dialog.close()
+
+    def test_pending_agent_questions_follow_conversation_selection(self):
+        _, sidebar = self.sidebar()
+        first = self.connect_task(sidebar, "Needs an answer")
+        second = self.connect_task(sidebar, "No question")
+        provider = SimpleNamespace(
+            chats={first: {"requests": {"question": {}}}},
+            can_send=lambda task: True,
+            status=lambda task: "",
+        )
+        with patch.object(sidebar, "providers", provider):
+            sidebar.refresh()
+            self.assertFalse(sidebar.agent_requests.isVisible())
+            sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(first))
+            self.assertTrue(sidebar.agent_requests.isVisible())
+            self.assertIn("(1)", sidebar.agent_requests.text())
+            self.assertFalse(sidebar.tools_panel.isVisible())
+            sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(second))
+            self.assertFalse(sidebar.agent_requests.isVisible())
 
     def test_managed_codex_chat_is_shared_and_access_toggle_stops_it(self):
         first_window, first = self.sidebar()
