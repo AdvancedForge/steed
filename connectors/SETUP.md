@@ -188,7 +188,9 @@ Notes on the wire shape:
   because a reviewed path segment never contains a slash.
 - Issue creation sends exactly `title` and `description`. GitLab interprets a
   leading slash command in an issue title or description as a quick action, so
-  Steed sends the reviewed draft unchanged and never strips or guesses commands.
+  the `create_issue` tool description repeats that warning where the source
+  review and the task's own payload preview are read, and Steed sends the
+  reviewed draft unchanged without stripping or guessing commands.
 - Nothing here proves that a create committed. There is no reviewed
   reconciliation route and no idempotency header, so an uncertain create is
   reported as uncertain and you check the GitLab issue list yourself.
