@@ -1,0 +1,59 @@
+{
+  "version": 2,
+  "name": "Microsoft Graph read subset",
+  "origin": "https://graph.microsoft.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/v1.0/me",
+    "subject": "/id",
+    "label": "/userPrincipalName"
+  },
+  "tools": [
+    {
+      "name": "read_drive_item",
+      "description": "Read one own-drive item by its ID",
+      "method": "GET",
+      "path": "/v1.0/me/drive/items/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "name",
+          "pointer": "/name"
+        },
+        {
+          "label": "url",
+          "pointer": "/webUrl"
+        }
+      ]
+    },
+    {
+      "name": "list_events_first_page",
+      "description": "Read the first account calendar page only",
+      "method": "GET",
+      "path": "/v1.0/me/events",
+      "response": [
+        {
+          "label": "events",
+          "pointer": "/value"
+        }
+      ]
+    },
+    {
+      "name": "list_task_lists_first_page",
+      "description": "Read the first Microsoft To Do list page only",
+      "method": "GET",
+      "path": "/v1.0/me/todo/lists",
+      "response": [
+        {
+          "label": "lists",
+          "pointer": "/value"
+        }
+      ]
+    }
+  ]
+}

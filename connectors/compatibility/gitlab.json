@@ -1,0 +1,61 @@
+{
+  "version": 2,
+  "name": "GitLab.com starter",
+  "origin": "https://gitlab.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/api/v4/user",
+    "subject": "/id",
+    "label": "/username"
+  },
+  "tools": [
+    {
+      "name": "read_project",
+      "description": "Read one project by numeric project ID",
+      "method": "GET",
+      "path": "/api/v4/projects/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "name",
+          "pointer": "/name"
+        },
+        {
+          "label": "url",
+          "pointer": "/web_url"
+        }
+      ]
+    },
+    {
+      "name": "create_issue",
+      "description": "Create an issue in the selected numeric project",
+      "method": "POST",
+      "effect": "write",
+      "path": "/api/v4/projects/{destination}/issues",
+      "destination": "resource_id",
+      "request": {
+        "title": "artifact.title",
+        "description": "artifact.content"
+      },
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "iid",
+          "pointer": "/iid"
+        },
+        {
+          "label": "url",
+          "pointer": "/web_url"
+        }
+      ]
+    }
+  ]
+}
