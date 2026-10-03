@@ -1034,6 +1034,21 @@ the required cases.
 
 ## Beyond the initial plan
 
+The user reaffirmed agent customization and requested a toggleable agent sidebar
+on October 3, 2026. Preserve customization as a product goal: agents should build
+reviewed connector recipes, generated files and eventually declarative browser
+styling/features with visible install, versioning, disable and rollback controls.
+Do not run generated browser Python or treat connector installation as authority.
+
+**Agent conversation sidebar — requested, not implemented:** show/hide beside the
+current page, choose an agent/task, stream conversation and display pending
+permissions, artifacts and receipts. Agents continue to use Steed's MCP tools and
+existing task/profile grants. MCP tool transport alone does not host a chat/model;
+selecting an external agent backend versus a Steed-managed runner is a major
+integration decision before chat execution. Hiding the sidebar should preserve
+the conversation; task cancellation is a separate explicit action. Keep ordinary
+browsing and shared-profile collaboration usable while the agent works.
+
 Built-in agent hosting, scheduling, autonomous planning, and model-account
 management need a separate proposal after the collaboration layer is proven.
 That proposal must address OS isolation, billing, credentials, resources, and
