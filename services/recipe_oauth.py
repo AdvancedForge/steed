@@ -84,7 +84,17 @@ def token_response(result, scopes):
 
 def token_http(recipe, http=None):
     return http or RecipeHttp(
-        recipe.origin, token_endpoint=recipe.authentication.token_endpoint
+        recipe.origin,
+        token_endpoint=recipe.authentication.token_endpoint,
+        query_parameters={
+            tool.path: {
+                t.pagination.parameter
+                for t in recipe.tools
+                if t.path == tool.path and t.pagination
+            }
+            for tool in recipe.tools
+            if tool.pagination
+        },
     )
 
 

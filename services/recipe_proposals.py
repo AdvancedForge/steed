@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from services.connector_recipes import MAX_RECIPE_BYTES, parse_recipe
+from services.connector_recipes import MAX_RECIPE_BYTES, RecipeError, parse_recipe
 from services.task_policy import TaskPermissionError
 
 RECIPE_SCHEMA = """
@@ -127,6 +127,31 @@ class RecipeProposals:
             )
         self.service.changed.emit()
         return self.get(task_id, request_id)
+
+    def validate(self, task_id, file_id):
+        self.service._authorize(task_id, "connector")
+        self.service._authorize(task_id, "workspace")
+        item = self.service.workspace.get(task_id, file_id)
+        if item.status != "sealed" or item.expected_bytes > MAX_RECIPE_BYTES:
+            raise ValueError("Choose a sealed owned recipe JSON file of at most 16 KiB")
+        source = self.service.workspace.bytes(task_id, file_id)
+        try:
+            recipe = parse_recipe(source)
+        except RecipeError as error:
+            return {
+                "valid": False,
+                "reason": str(error),
+                "file_id": file_id,
+                "sha256": item.sha256,
+            }
+        return {
+            "valid": True,
+            "file_id": file_id,
+            "sha256": recipe.sha256,
+            "recipe": recipe.metadata(),
+            "installation_required": True,
+            "provider_semantics_verified": False,
+        }
 
     def update(self, task_id, request_id, state):
         previous = self.get(task_id, request_id)

@@ -321,6 +321,30 @@ class RecipeProposalTests(unittest.TestCase):
         self.assertEqual(self.accounts.list(), ())
         self.assertTrue(self.service.failure)
 
+    def test_preflight_is_owned_offline_and_creates_no_installation_or_account(self):
+        item = self.upload()
+        checked = self.call("recipe.validate", file_id=item.file_id)
+        self.assertTrue(checked["valid"])
+        self.assertTrue(checked["installation_required"])
+        self.assertFalse(checked["provider_semantics_verified"])
+        self.assertEqual(checked["recipe"]["provider"], recipe().provider)
+        self.assertEqual(self.service.recipes.list(self.client.task_id), [])
+        self.assertEqual(self.accounts.list(), ())
+        self.assertFalse(self.manager.providers)
+        self.assertFalse(self.http.calls)
+        bad = self.upload(
+            b'{"version":1,"credentials":"SYNTHETIC_SECRET"}', name="bad.json"
+        )
+        result = self.call("recipe.validate", file_id=bad.file_id)
+        self.assertFalse(result["valid"])
+        self.assertNotIn("SYNTHETIC_SECRET", str(result))
+        foreign = self.task()
+        with self.assertRaises(KeyError):
+            self.call("recipe.validate", client=foreign, file_id=item.file_id)
+        no_scope = self.task(["workspace"])
+        with self.assertRaises(TaskPermissionError):
+            self.call("recipe.validate", client=no_scope, file_id=item.file_id)
+
     def test_reinstall_after_failed_removal_never_restores_old_account_authority(self):
         account = self.connect()
         self.manager.set_access(account.account_id, "read", True)

@@ -30,6 +30,7 @@ CLIENT_COMMANDS = frozenset(
         "worker.list",
         "worker.cancel",
         "recipe.propose",
+        "recipe.validate",
         "recipe.status",
         "recipe.list",
         "recipe.capabilities",

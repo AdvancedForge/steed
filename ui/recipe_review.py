@@ -60,6 +60,11 @@ class RecipeReviewDialog(QDialog):
                     if "{destination}" in t.path
                     else "\nDestination: account (fixed collection)"
                 )
+                + (
+                    f"\nPagination: up to {t.pagination.max_pages} pages; query parameter {t.pagination.parameter}; next cursor {t.pagination.cursor}; selected fields must be arrays"
+                    if t.pagination
+                    else ""
+                )
                 for t in recipe.tools
             )
             + "\n\nRecipe SHA-256: "

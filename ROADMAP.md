@@ -268,11 +268,34 @@ establishes those results. Password improvements remain deferred at the user's r
   inspected and Ruff/format passed. Logs: `/tmp/steed-recipes-oauth-full.log`,
   `/tmp/steed-recipes-oauth-focused.log`, and
   `/tmp/steed-recipes-oauth-mcp-{stdio,http}.log`. All accounts were synthetic.
-- **Next recipe engineering milestones:** add preflight diagnostics and bounded
-  collection pagination, then evaluate reviewed write plans, revisions, idempotency
-  and reconciliation against built-in quality. Existing
-  Google remains the provider-specific reference. Shared Google registration remains
-  deferred. No generic network or credential permission is granted to generated code.
+- **Latest recipe checkpoint — preflight and bounded pagination:** agent-visible
+  `recipe.validate` checks sealed owned source offline and returns grammar diagnostics
+  plus compiled domains/account selectors/tools, with no popup, installation or API
+  request. A successful result explicitly leaves provider semantics unverified.
+  Fixed collection tools may follow one reviewed cursor parameter for 1–5 pages;
+  results merge selected arrays and report pages/more-available without exposing
+  cursors. Identity, revocation, source/account state and output limits are checked
+  between pages. Canonical query encoding prevents arbitrary URL/query dispatch.
+  Example: `examples/connector_recipes/notes-paginated.json`. Acceptance: **733
+  regressions passed in 283.392 seconds**; 55 final recipe checks passed in 6.169
+  seconds, including a subsequent long-metadata discovery/registration fix. Both
+  external clients preflighted and read bearer/OAuth/paginated recipes over both
+  MCP transports alongside sandbox document generation. Startup crashed during
+  concurrent offscreen Vulkan initialization; a standalone retry passed. Its cause
+  is not proven, so native desktop startup remains a separate check. Ruff/format,
+  whitespace, local doc links, 53-tool discovery and all three synthetic examples
+  passed; pagination previews were inspected. Logs:
+  `/tmp/steed-recipes-pagination-{full,focused,mcp-stdio,mcp-http}.log` and
+  `/tmp/steed-recipes-pagination-startup-alone.log`. All accounts/data were synthetic.
+- **Next milestone — reviewed create/send recipes, approved by the user:**
+  reviewed agent source may add create/send effects through bounded declarative
+  broker plans. Implement exact
+  payload previews, task/account authority, persistent receipts and no automatic
+  replay after an uncertain outcome. Edits require revisions/conditional requests;
+  delete/spend and arbitrary adapter code remain outside the first write milestone.
+  See the [concrete proposal](DOCUMENTATION.md#agent-designed-write-boundary).
+  Recipe writes are not implemented yet; built-in Google remains the provider-specific
+  reference. Shared Google registration remains deferred independently.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage

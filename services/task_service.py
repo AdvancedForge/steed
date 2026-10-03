@@ -143,6 +143,9 @@ class TaskService(QObject):
                 "recipe.status": self._recipe_status,
                 "recipe.list": self._recipe_list,
                 "recipe.capabilities": self._recipe_capabilities,
+                "recipe.validate": lambda task_id, file_id: self._worker_action(
+                    self.recipes.validate, task_id, file_id
+                ),
                 "app.list_tools": self._app_tools,
                 "app.call_tool": self._app_call,
                 "app.status": self._app_status,
@@ -480,7 +483,11 @@ class TaskService(QObject):
     def _recipe_capabilities(self, task_id):
         import copy
 
-        from services.connector_recipes import RECIPE_EXAMPLE, RECIPE_OAUTH_EXAMPLE
+        from services.connector_recipes import (
+            RECIPE_EXAMPLE,
+            RECIPE_OAUTH_EXAMPLE,
+            RECIPE_PAGINATED_EXAMPLE,
+        )
 
         self._usable()
         self._active(task_id)
@@ -502,9 +509,12 @@ class TaskService(QObject):
                 "proposals_per_task": 20,
                 "pending_per_task": 3,
                 "oauth_scopes": 20,
+                "pagination_pages": 5,
+                "pagination_cursor_bytes": 512,
             },
             "example": copy.deepcopy(RECIPE_EXAMPLE),
             "oauth_example": copy.deepcopy(RECIPE_OAUTH_EXAMPLE),
+            "pagination_example": copy.deepcopy(RECIPE_PAGINATED_EXAMPLE),
         }
 
     def _recipe_list(self, task_id):
