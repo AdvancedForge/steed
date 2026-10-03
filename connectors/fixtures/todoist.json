@@ -4,12 +4,16 @@
     "https://developer.todoist.com/api/v1/",
     "https://developer.todoist.com/api/v1/#tag/Users/operation/get_user_info",
     "https://developer.todoist.com/api/v1/#tag/Tasks/operation/get_tasks",
-    "https://developer.todoist.com/api/v1/#tag/Tasks/operation/create_task"
+    "https://developer.todoist.com/api/v1/#tag/Tasks/operation/create_task",
+    "https://developer.todoist.com/api/v1/#tag/Projects/operation/get_projects",
+    "https://developer.todoist.com/api/v1/#tag/Projects/operation/get_project"
   ],
-  "notes": [
+"notes": [
     "GET /api/v1/user returns the account id, email and the account's own personal token in a top-level token field. Only /id and /email are selected, so that token never reaches a task, review or result.",
     "GET /api/v1/tasks returns results plus an optional next_cursor; the profile reads at most three cursor pages.",
-    "POST /api/v1/tasks requires content. description, project_id, section_id, labels, due dates and priority are optional, so the reviewed profile sends content and description only and an omitted project_id targets the Inbox project."
+    "POST /api/v1/tasks requires content. description, project_id, section_id, labels, due dates and priority are optional, so the reviewed profile sends content and description only and an omitted project_id targets the Inbox.",
+    "GET /api/v1/tasks/{task_id} documents description on the task object. read_task stays minimal so a task without one still reads, and read_task_detail returns it for a task that documents it.",
+    "GET /api/v1/projects and GET /api/v1/projects/{project_id} document results with a next_cursor and a project object. The documented project response is a union of the personal and workspace views, so only the fields present in both are selected; workspace-only access, role and inbox_project fields are deliberately not selected."
   ],
   "identity": {
     "/api/v1/user": {
@@ -67,6 +71,37 @@
       "project_id": "220474322",
       "added_at": "2025-01-15T10:31:00Z",
       "content": "Task without a description"
+    },
+    "/api/v1/projects/6XGgm6PHrGgMpCFX": {
+      "id": "6XGgm6PHrGgMpCFX",
+      "name": "Inbox",
+      "is_shared": false,
+      "is_favorite": false,
+      "is_archived": false,
+      "inbox_project": true,
+      "color": "charcoal",
+      "view_style": "list",
+      "description": "Tasks for the launch plan",
+      "access": null,
+      "role": "admin",
+      "parent_id": "6XGgm6PHrGgMpCFX"
+    },
+    "/api/v1/projects": {
+      "results": [
+        {
+          "id": "6XGgm6PHrGgMpCFX",
+          "name": "Inbox",
+          "is_shared": false,
+          "is_favorite": false
+        },
+        {
+          "id": "6XGgm6PHrGgMpCFXD",
+          "name": "Launch plan",
+          "is_shared": true,
+          "is_favorite": true
+        }
+      ],
+      "next_cursor": null
     }
   },
   "created": {

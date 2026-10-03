@@ -238,6 +238,71 @@ class TodoistProfileTests(ProfileCase):
         )
         self.assertNotIn("cursor=c3", [c[1] for c in self.api.calls])
 
+    def test_task_descriptions_read_separately_and_fail_closed_when_absent(self):
+        result = self.read(self.adapter, "read_task_detail", "6XGgmFVcrG5RRjVr")
+        self.assertEqual(
+            json.loads(result.text),
+            {
+                "id": "6XGgmFVcrG5RRjVr",
+                "content": "Documented task",
+                "description": "Documented description",
+            },
+        )
+        self.assertEqual(self.api.posts, [])
+        # description is documented as optional, so the detail read must not
+        # substitute a value for a task that documents none.
+        with self.assertRaises((RecipeError, KeyError)):
+            self.read(self.adapter, "read_task_detail", "6XGgmFVcrG5RRjVrB")
+
+    def test_project_metadata_reads_the_shared_documented_fields_only(self):
+        result = self.read(self.adapter, "read_project", "6XGgm6PHrGgMpCFX")
+        self.assertEqual(
+            json.loads(result.text),
+            {
+                "id": "6XGgm6PHrGgMpCFX",
+                "name": "Inbox",
+                "shared": False,
+                "favorite": False,
+            },
+        )
+        self.assertEqual(
+            self.api.calls[-1][1],
+            "https://api.todoist.com/api/v1/projects/6XGgm6PHrGgMpCFX",
+        )
+        self.assertEqual(self.api.posts, [])
+        project = next(t for t in self.recipe.tools if t.name == "read_project")
+        for value in ("220474322/6XGgm6PHrGgMpCFX", "../projects", "6XGgm6PHrGg?x=1"):
+            with self.subTest(value=value), self.assertRaises(RecipeError):
+                project.destination(value)
+        # A project name is not a project ID: the request is made, and the
+        # service's own rejection is surfaced instead of another project.
+        with self.assertRaises((RecipeError, KeyError, ApiError)):
+            self.read(self.adapter, "read_project", "Inbox")
+
+    def test_project_listing_is_bounded_and_never_creates_anything(self):
+        pages = {
+            "": {
+                "results": [{"id": "1", "name": "One"}],
+                "next_cursor": "p2",
+            },
+            "p2": {
+                "results": [{"id": "2", "name": "Two"}],
+                "next_cursor": "p3",
+            },
+            "p3": {"results": [{"id": "3", "name": "Three"}], "next_cursor": "p4"},
+        }
+        self.api.with_pages("/api/v1/projects", pages)
+        selected = json.loads(self.read(self.adapter, "list_projects", "account").text)
+        self.assertEqual(
+            [p["name"] for p in selected["projects"]], ["One", "Two", "Three"]
+        )
+        self.assertEqual(selected["_pagination"], {"pages": 3, "more_available": True})
+        self.assertEqual(
+            [urlsplit(c[1]).query for c in self.api.calls if "?" in c[1]],
+            ["cursor=p2", "cursor=p3"],
+        )
+        self.assertEqual(self.api.posts, [])
+
     def test_create_sends_the_exact_reviewed_draft_to_the_inbox(self):
         request, definition, review = self.reviewed_create(
             self.adapter, "create_task", "account"
