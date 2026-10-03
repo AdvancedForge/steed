@@ -815,7 +815,12 @@ class AssessedCandidateQueueTests(unittest.TestCase):
                 # An assessed candidate is never quietly shipped as a profile.
                 self.assertNotIn(entry["host"], shipped_origins)
                 self.assertFalse((PACKAGED / (entry["name"] + ".json")).exists())
-                self.assertFalse((FIXTURES / (entry["name"] + ".json")).exists())
+                contract = FIXTURES / (entry["name"].split()[0].lower() + ".json")
+                if contract.exists():
+                    # An assessment contract is reference data, never a profile.
+                    data = json.loads(contract.read_text("utf-8"))
+                    self.assertEqual(data["status"], "gated")
+                    self.assertTrue(data.get("blockers"))
 
     def test_only_bearer_services_and_public_hosts_can_become_profiles(self):
         for entry in self.services:
@@ -913,3 +918,114 @@ class SharedCapabilityGroupTests(unittest.TestCase):
                     group["title"] in guide,
                     group["title"] + " is missing from SETUP.md",
                 )
+
+
+class AssessedContractTests(unittest.TestCase):
+    """Reference contracts for gated services: documented, versioned, secret-free."""
+
+    def contract(self, provider):
+        return json.loads((FIXTURES / (provider + ".json")).read_text("utf-8"))
+
+    def test_notion_identity_is_documented_with_a_nullable_label(self):
+        contract = self.contract("notion")
+        self.assertEqual(contract["status"], "gated")
+        identity = contract["identity_contract"]
+        self.assertEqual(identity["method"], "GET")
+        self.assertEqual(identity["path"], "/v1/users/me")
+        self.assertEqual(identity["subject_pointer"], "/id")
+        self.assertEqual(identity["label_pointer"], "/name")
+        self.assertIn("null", identity["label_limitation"])
+        documents = identity["identity_documents"]
+        self.assertEqual(sorted(documents), ["bot_with_name", "bot_without_name"])
+        self.assertIsNone(documents["bot_without_name"]["name"])
+        self.assertIsInstance(documents["bot_with_name"]["name"], str)
+        for label, document in documents.items():
+            with self.subTest(document=label):
+                self.assertEqual(document["object"], "user")
+                self.assertEqual(document["type"], "bot")
+                self.assertRegex(document["id"], r"[0-9a-f-]{36}")
+                # Only documented user fields, and no email as a label.
+                self.assertLessEqual(
+                    set(document), {"object", "id", "name", "avatar_url", "type", "bot"}
+                )
+                self.assertLessEqual(
+                    set(document["bot"]),
+                    {"owner", "workspace_id", "workspace_name", "workspace_limits"},
+                )
+
+    def test_notion_fixture_is_bound_to_one_explicit_version(self):
+        contract = self.contract("notion")
+        versioned = contract["versioned_contract"]
+        self.assertEqual(
+            contract["notion_version"], versioned["header_example"]["Notion-Version"]
+        )
+        self.assertIn(contract["notion_version"], versioned["documented_versions"])
+        self.assertTrue(versioned["why"])
+        self.assertIn("required", versioned["why"])
+
+    def test_notion_read_contract_matches_the_documented_data_source_split(self):
+        contract = self.contract("notion")
+        reads = contract["read_contract"]
+        database = reads["database"]
+        self.assertEqual(database["method"], "GET")
+        # A current database read returns data_sources and no properties.
+        self.assertIn("data_sources", database["response"])
+        self.assertNotIn("properties", database["response"])
+        self.assertIn("deprecat", database["note"])
+        data_source = reads["data_source"]
+        self.assertTrue(data_source["path"].startswith("/v1/data_sources/"))
+        self.assertIn("properties", data_source["response"])
+        # The two id types are not interchangeable.
+        self.assertNotEqual(
+            database["path"].rsplit("/", 1)[-1],
+            data_source["path"].rsplit("/", 1)[-1],
+        )
+        self.assertEqual(contract["query_contract"]["method"], "POST")
+        self.assertEqual(contract["query_contract"]["response"]["has_more"], False)
+
+    def test_notion_assessment_row_matches_the_contract(self):
+        row = next(
+            entry
+            for entry in json.loads(
+                (FIXTURES / "assessed_candidates.json").read_text("utf-8")
+            )["services"]
+            if entry["name"] == "Notion"
+        )
+        self.assertEqual(row["status"], "gated")
+        self.assertIn("/v1/users/me", row["identity"])
+        self.assertIn("null", row["identity"])
+        self.assertIn("Notion-Version", row["gate"])
+        self.assertIn("static_headers", row["capabilities"])
+
+    def test_no_fixture_or_header_example_carries_a_credential(self):
+        # Documentation may name a scheme, and a fixture may echo the shape of a
+        # token field, but no committed value may look like a real credential.
+        prefixed = ("ntn_", "figd_", "ghp_", "github_pat_", "glpat-", "secret_")
+        placed = re.compile(
+            r"(?:bearer|authorization|token)[\"':= ]+[A-Za-z0-9._~+/-]{12,}",
+            re.IGNORECASE,
+        )
+        for path in sorted(FIXTURES.glob("*.json")):
+            body = path.read_text("utf-8").lower()
+            for marker in prefixed:
+                with self.subTest(fixture=path.name, marker=marker):
+                    self.assertNotIn(marker, body, path.name + " names a token prefix")
+            for match in placed.finditer(body):
+                with self.subTest(fixture=path.name, value=match.group(0)):
+                    # Only an obviously synthetic placeholder may appear.
+                    self.assertTrue(
+                        "synthetic" in match.group(0),
+                        path.name + " carries a credential value",
+                    )
+        shared = json.loads((FIXTURES / "shared_capabilities.json").read_text("utf-8"))
+        credentials = ("authorization", "x-figma-token", "zotero-api-key")
+        for group in shared["groups"]:
+            for requirement in group["requirements"]:
+                example = requirement.get("header_example")
+                if example is None:
+                    continue
+                for header, value in example.items():
+                    with self.subTest(group=group["id"], header=header):
+                        self.assertNotIn("secret", value.lower())
+                        if header.lower() in credentials:
+                            self.assertIn("<", value)

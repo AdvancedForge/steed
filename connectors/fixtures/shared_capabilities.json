@@ -16,8 +16,13 @@
         {
           "service": "Notion",
           "header": "Notion-Version",
-          "documented": "Every request must carry a Notion-Version header; requests without it are rejected.",
-          "reference": "https://developers.notion.com/reference/versioning"
+          "documented": "Notion documents the Notion-Version header as required on all REST API requests. Documented versions are 2026-03-11, 2025-09-03, 2022-06-28, 2022-02-22, 2021-08-16 and 2021-05-13.",
+          "reference": "https://developers.notion.com/reference/versioning",
+          "header_example": {
+            "Authorization": "Bearer <integration token supplied by the user>",
+            "Notion-Version": "2026-03-11"
+          },
+          "version_sensitive": "Response shapes are version specific. Since 2025-09-03 a database read returns a data_sources array and its documented response has no properties field; the older retrieve-a-database page is deprecated for versions up to and including 2022-06-28."
         },
         {
           "service": "Figma",
@@ -43,10 +48,11 @@
         "samples": [
           {
             "service": "Notion",
-            "identity": "no documented identity endpoint; a bot-user or parent-page lookup is a data read",
-            "read": "GET /v1/databases/{id} returning documented property keys",
-            "write_request": "POST /v1/pages with the nested v3 template already implemented",
-            "proves": "the required header is present on every method and the reviewed payload is unchanged"
+            "identity": "GET /v1/users/me, documented as returning the user associated with the token, with one bot document whose name is present and one whose name is null",
+            "read": "GET /v1/databases/{database_id} bound to Notion-Version 2026-03-11, returning the documented data_sources array and no properties, plus GET /v1/data_sources/{data_source_id} for the properties schema",
+            "write_request": "none claimed; a Notion write would additionally need a nested v3 template and the reviewed version header",
+            "proves": "the required version header is present on every method and the version-specific response is read without mixing in the deprecated database property shape",
+            "fixture": "connectors/fixtures/notion.json"
           },
           {
             "service": "Figma",
@@ -319,9 +325,9 @@
         "Readwise / Reader",
         "Spotify",
         "Airtable",
-        "Notion",
         "Microsoft 365",
-        "Joplin"
+        "Joplin",
+        "Notion"
       ],
       "requirements": [
         {
@@ -346,8 +352,8 @@
         },
         {
           "service": "Notion",
-          "documented": "There is no documented current-user identity route for an integration token.",
-          "reference": "https://developers.notion.com/reference/intro"
+          "documented": "GET /v1/users/me is documented, and object and id are documented as always present, but the user object marks name as oneOf string or null, so a bot with no name has no non-empty label.",
+          "reference": "https://developers.notion.com/reference/get-self"
         },
         {
           "service": "Microsoft 365",
@@ -378,7 +384,7 @@
       "unblocks": [
         "a Spotify read subset with a stable account identity",
         "a Calendly identity contract once a URI subject is deliberately supported",
-        "explicitly documenting that Readwise, Notion and Joplin have no bindable identity"
+        "explicitly documenting that Readwise and Joplin have no bindable identity, and that Notion's bindable subject exists but its label can be null"
       ]
     },
     {
@@ -437,7 +443,8 @@
       "engine_limit": "Reads are GET only and writes are single POSTs whose bodies are reviewed flat bindings or templates, so an RPC or GraphQL read cannot be expressed at all.",
       "services": [
         "Dropbox",
-        "Linear"
+        "Linear",
+        "Notion"
       ],
       "requirements": [
         {
@@ -449,6 +456,11 @@
           "service": "Linear",
           "documented": "Queries and mutations are POST /graphql with a query string, variables and an application-level errors array.",
           "reference": "https://linear.app/developers/graphql"
+        },
+        {
+          "service": "Notion",
+          "documented": "Querying a data source is POST /v1/data_sources/{data_source_id}/query with an optional request body and next_cursor paging, so a Notion listing cannot be a GET.",
+          "reference": "https://developers.notion.com/reference/query-a-data-source"
         }
       ],
       "fixture_contract": {
@@ -465,6 +477,13 @@
             "request": "{\"query\": \"query ...\", \"variables\": {...}}",
             "response": "{\"data\": {...}, \"errors\": null}",
             "proves": "a GraphQL errors array is surfaced as a failed read"
+          },
+          {
+            "service": "Notion",
+            "request": "{\"page_size\": 25} against a data source",
+            "response": "a list object with results, next_cursor and has_more at Notion-Version 2026-03-11",
+            "proves": "a version-bound POST read is reviewed like a write and its cursor is bounded",
+            "fixture": "connectors/fixtures/notion.json"
           }
         ]
       },
