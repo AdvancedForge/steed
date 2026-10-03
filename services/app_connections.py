@@ -13,6 +13,7 @@ from services.connector_recipes import RecipeError, RecipeStore
 from services.connectors import ConnectorRegistry
 from services.google_connector import GoogleConnector, connect_google
 from services.recipe_connector import RecipeConnector, connect_recipe
+from services.recipe_oauth import connect_recipe_oauth
 
 
 @dataclass(frozen=True)
@@ -120,16 +121,33 @@ class AppConnections(QObject):
     def _recipe_provider(self, recipe):
         return AppProvider(
             recipe.provider,
-            recipe.name,
+            f"{recipe.name} ({recipe.origin.removeprefix('https://')})",
             tuple((t.name, t.description) for t in recipe.tools),
-            lambda *args: (_ for _ in ()).throw(
-                AccountError("Use trusted bearer-token connection UI")
+            lambda store, path, caps, cancelled: (
+                connect_recipe_oauth(
+                    recipe,
+                    self.recipes,
+                    store,
+                    path,
+                    caps,
+                    cancelled,
+                    http=self._recipe_http(recipe),
+                )
+                if recipe.authentication.kind == "oauth_pkce"
+                else (_ for _ in ()).throw(
+                    AccountError("Use trusted bearer-token connection UI")
+                )
             ),
             lambda account, store: RecipeConnector(
                 recipe, self.recipes, account, store, http=self._recipe_http(recipe)
             ).tools(),
-            "Connect this reviewed service with its own API token. It stays in your desktop keyring.",
-            authentication="bearer",
+            (
+                "Connect this reviewed service with its own API token. It stays in your desktop keyring."
+                if recipe.authentication.kind == "bearer"
+                else "Import a native OAuth client JSON with client_id and optionally client_secret once. It must support PKCE S256 and an http://127.0.0.1:<port>/callback redirect. Sign-in opens your system browser; all reviewed scopes are requested. Client setup and tokens stay in your keyring."
+            ),
+            client_placeholder="Native OAuth client JSON (client_id, optional client_secret)",
+            authentication=recipe.authentication.kind,
             recipe_sha256=recipe.sha256,
         )
 
@@ -188,6 +206,7 @@ class AppConnections(QObject):
         ):
             raise AccountError("Recipe removal is unavailable during account setup")
         self.recipes.disable(provider)  # Deny interpreter entry before grant cleanup.
+        forget_setup = self.providers[provider].authentication == "oauth_pkce"
         for account in self.store.list():
             if account.provider == provider and account.enabled:
                 connector = self.store.disable(account.account_id)
@@ -201,6 +220,8 @@ class AppConnections(QObject):
         def forget(cancelled):
             for account_id in accounts:
                 self.store.forget_secret(account_id)
+            if forget_setup:
+                self.store.forget_client_configuration(provider)
 
         self._worker(
             forget, success="Connector recipe removed; existing task receipts remain."

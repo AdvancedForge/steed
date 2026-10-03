@@ -4,9 +4,10 @@ import json
 import re
 
 from services.app_accounts import AccountError
-from services.connector_recipes import resource_id, select
+from services.connector_recipes import select
 from services.connectors import ConnectorOutcome, ConnectorTool
 from services.recipe_http import RecipeHttp, check_cancelled
+from services.recipe_oauth import RecipeOAuthAccess, token_http
 
 
 def bearer_token(value):
@@ -14,6 +15,21 @@ def bearer_token(value):
         r"[A-Za-z0-9._~+/-]{8,8192}={0,2}", value
     ):
         raise AccountError("Provide this service's bearer token without spaces")
+    return value
+
+
+def redact(value, credentials):
+    """Redact before JSON escaping, including reflected object keys."""
+    if isinstance(value, str):
+        for credential in credentials:
+            value = value.replace(credential, "[credential redacted]")
+        return value
+    if isinstance(value, list):
+        return [redact(v, credentials) for v in value]
+    if isinstance(value, dict):
+        return {
+            redact(k, credentials): redact(v, credentials) for k, v in value.items()
+        }
     return value
 
 
@@ -48,6 +64,8 @@ def connect_recipe(
     recipe, catalog, store, token, capabilities, cancelled, *, http=None
 ):
     catalog.active(recipe)
+    if recipe.authentication.kind != "bearer":
+        raise AccountError("Connect this recipe with OAuth sign-in")
     if not capabilities or not set(capabilities) <= {t.name for t in recipe.tools}:
         raise AccountError("Select supported recipe tools")
     token = bearer_token(token)
@@ -83,7 +101,12 @@ class RecipeConnector:
             t.name for t in recipe.tools
         }:
             raise ValueError("Account does not match this recipe")
-        self.http = http or RecipeHttp(recipe.origin)
+        self.http = token_http(recipe, http)
+        self.oauth = (
+            RecipeOAuthAccess(recipe, catalog, account, store, self.http)
+            if recipe.authentication.kind == "oauth_pkce"
+            else None
+        )
 
     def tools(self):
         return [
@@ -91,12 +114,18 @@ class RecipeConnector:
                 self.account.connector,
                 tool.name,
                 "read",
-                tool.description,
+                f"{self.recipe.name} [{self.recipe.origin}] ({self.account.label}): "
+                + tool.description
+                + (
+                    " (exact resource ID)"
+                    if "{destination}" in tool.path
+                    else " (destination: account)"
+                ),
                 False,
                 lambda request, cancelled, selected=tool: self.execute(
                     selected, request, cancelled
                 ),
-                validate_destination=resource_id,
+                validate_destination=tool.destination,
             )
             for tool in self.recipe.tools
             if tool.name in self.account.capabilities
@@ -112,15 +141,21 @@ class RecipeConnector:
             or request.artifact is not None
         ):
             raise ValueError("Recipe request does not match the configured tool")
-        destination = resource_id(request.destination)
-        credential = self.store.secrets.load(self.account.account_id)
+        destination = tool.destination(request.destination)
+        credential = (
+            self.oauth.credential(cancelled)
+            if self.oauth
+            else self.store.secrets.load(self.account.account_id)
+        )
         if (
             credential.get("provider") != self.recipe.provider
             or credential.get("recipe_sha256") != self.recipe.sha256
             or credential.get("subject") != self.account.subject
         ):
             raise AccountError("Credential does not match the installed recipe/account")
-        token = bearer_token(credential.get("token"))
+        token = bearer_token(
+            credential.get("access_token") if self.oauth else credential.get("token")
+        )
         if identity(self.recipe, self.http, token, cancelled) != (
             self.account.subject,
             self.account.label,
@@ -138,10 +173,21 @@ class RecipeConnector:
         check_cancelled(cancelled)
         self.catalog.active(self.recipe)
         self.store.active(self.account)
+        credentials = tuple(
+            value
+            for value in (
+                token,
+                credential.get("refresh_token"),
+                credential.get("client_secret"),
+            )
+            if isinstance(value, str) and value
+        )
         text = json.dumps(
-            {label: select(result, path) for label, path in tool.response},
+            redact(
+                {label: select(result, path) for label, path in tool.response},
+                credentials,
+            ),
             ensure_ascii=False,
             allow_nan=False,
         )
-        text = text.replace(token, "[credential redacted]")
         return ConnectorOutcome(text=text).validate()

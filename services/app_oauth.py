@@ -71,6 +71,7 @@ def desktop_authorization(
     *,
     open_browser=webbrowser.open,
     timeout=180,
+    google_options=True,
 ):
     """Return code/verifier/redirect only; never log callback URLs or responses."""
     verifier, state = secrets.token_urlsafe(48), secrets.token_urlsafe(32)
@@ -145,8 +146,11 @@ def desktop_authorization(
                     "state": state,
                     "code_challenge": challenge,
                     "code_challenge_method": "S256",
-                    "access_type": "offline",
-                    "prompt": "consent select_account",
+                    **(
+                        {"access_type": "offline", "prompt": "consent select_account"}
+                        if google_options
+                        else {}
+                    ),
                 }
             )
         )

@@ -1284,9 +1284,9 @@ trustworthiness; isolation continues to apply.
 Reviewed recipes are the first implemented stage of agent-designed providers. An
 agent describes a bounded REST integration in JSON; Steed interprets it through
 its trusted connector broker. Agents never receive account credentials or install
-Python in the browser. Recipes currently support bearer-token authentication and
-read-only GET tools. OAuth sign-in, collection reads, pagination, writes and
-provider-specific conflict/reconciliation behavior are later milestones. The goal
+Python in the browser. Recipes support native OAuth/PKCE or bearer-token authentication,
+fixed collection paths and resource-specific read-only GET tools. Pagination, writes
+and provider-specific conflict/reconciliation behavior are later milestones. The goal
 is the same account and permission experience as Steed's built-in Google provider.
 Shared Google registration remains deferred independently.
 
@@ -1300,14 +1300,17 @@ To add a service:
    select a local JSON file.
 2. Review **Add this service connection?**. It shows the actual HTTPS domain,
    identity endpoint, tool paths, selected returned fields and exact source hash.
+   OAuth recipes also show both authorization/token endpoints and every scope.
    Check that these are the intended service and genuinely read-only API requests;
    GET is not proof of their semantics. Click **Add Connection Recipe** or **Deny**.
    Closing leaves an agent proposal pending. Reopen it in
    **Task Permissions → Connector Recipes → Review Connection Recipe…**.
 3. Select the installed service in **App Connections**, choose its tools, and click
-   **Connect**. Enter that service's API bearer token in the password field. Steed
-   verifies the account ID/label at the reviewed identity endpoint and stores the
-   token only in the desktop Secret Service keyring. It is never a workspace input.
+   **Connect**. For bearer recipes, enter that service's API token in the password
+   field. For OAuth recipes, import a native client JSON once under **Set Up App
+   Access…**, then sign in through your system browser. Future connections reuse
+   client setup from the keyring. Steed verifies the account ID/label at the reviewed
+   identity endpoint. Credentials are never workspace inputs.
 4. Enable **Read** for that account if agents should access these tools without a
    popup for every app-only task. Each task still requests exact tool/resource
    destinations and gets normal budgets, cancellation and retained receipts.
@@ -1316,21 +1319,68 @@ To add a service:
 5. Finish the recipe-design task and start a fresh task to use the connected
    account: Steed's task grants are fixed, so installation does not silently widen
    its existing grant. Discover the account/tool via `steed_app_list_tools`, then
-   use `steed_app_call_tool` with an exact resource ID as `destination` and a stable
+   use `steed_app_call_tool` with an exact resource ID, or literal `account` for a
+   fixed collection path, as `destination` and a stable
    `request_id`. Poll `steed_app_status`; the normal receipt keeps selected JSON
    fields and replay returns the same receipt without repeating the HTTP request.
 
 The [example recipe](examples/connector_recipes/notes.json) uses a synthetic
 `.example` domain; it is a format reference, not a working external account.
-Version 1 declares one exact public HTTPS origin, bearer authentication, an
-identity path with JSON pointers for subject and label, and 1–10 named GET tools.
-Each tool path includes exactly one `{destination}`; resource IDs are single,
+The [OAuth collection example](examples/connector_recipes/notes-oauth.json) is
+also synthetic. Version 1 declares one exact public HTTPS API origin, authentication,
+an identity path with JSON pointers for subject and label, and 1–10 named GET tools.
+A tool path is fixed, with literal destination `account`, or includes one complete
+`{destination}` segment; resource IDs are single,
 bounded ASCII segments, never URLs or queries. Each response selects 1–10 labeled
-JSON pointers (objects and array indexes only). No headers, credentials, executable
-expressions, arbitrary requests, redirects or request bodies are accepted.
+JSON pointers (objects and array indexes only). Source cannot contain credentials,
+custom headers, executable expressions, arbitrary requests or API request bodies.
+OAuth token forms are built exclusively by trusted Steed code for its exact reviewed
+token endpoint, never invoked as agent tools.
 Recipes are at most 16 KiB; API responses at most 128 KiB and retained tool results
 at most 16 KiB. Each task retains at most 20 proposals with three pending at once.
 A catalog retains at most 50 versions and is limited to 2 MiB.
+
+Native OAuth recipes use this authentication object (all endpoints/scopes appear
+in the installation popup):
+
+```json
+{
+  "type": "oauth_pkce",
+  "authorization_endpoint": "https://auth.fixture.example/authorize",
+  "token_endpoint": "https://auth.fixture.example/token",
+  "scopes": ["profile", "notes.read"]
+}
+```
+
+Register a native/desktop client with the actual provider and supply a user-owned
+JSON file containing `{"client_id":"YOUR_NATIVE_CLIENT_ID"}` and optionally
+`client_secret`. Client files cannot change recipe endpoints. No registration or
+credentials are provided by the synthetic example. The provider must support PKCE
+S256, authorization-code exchange and an ephemeral loopback
+`http://127.0.0.1:<port>/callback`. Steed opens the external system browser and
+validates callback Host/path/state; it does not reuse a browser cookie session for
+API authorization. It requests all reviewed scopes, with no Google-specific
+`prompt` or `access_type` parameters. Provider-specific parameters, discovery,
+device flows and hosted-only callback services are unsupported; bearer setup
+remains available. See [native-app OAuth](https://www.rfc-editor.org/rfc/rfc8252.html).
+
+The trusted worker verifies granted scopes and token lifetime, binds credentials
+to exact recipe/source/account and saves access/refresh tokens plus client setup
+only in Secret Service. Refresh is serialized per connected account, verifies
+identity and persists rotated credentials before publishing data. The first use
+after restart refreshes again when refresh access exists. A service that grants
+only an access token works until expiration, then requires reconnection. Turning
+access off, disconnecting or removing the source denies late publication and
+credential restoration. Failed keyring saves publish no data. Provider failures
+and revoked consent require reconnection rather than automatic operation retries.
+The protocol follows the [OAuth authorization/refresh flow](https://www.rfc-editor.org/rfc/rfc6749.html).
+
+Changing the provider in setup clears the selected client file to prevent
+accidental reuse across services. Recipe provider names in account UI include the
+actual API domain, and tools include the connected account label. Results redact
+literal current access/refresh/client-secret values before JSON escaping, including
+object keys; this is not a general information-flow/taint guarantee against a
+service transforming or disclosing its own credentials.
 
 The HTTPS transport rejects private, reserved, multicast, mapped and mixed DNS
 answers, connects to a validated numeric public address without resolving again,
@@ -1344,7 +1394,7 @@ Each recipe hashes its exact source bytes into a new immutable provider identity
 Even a formatting-only change is a new version with a fresh account and switches
 initially off. **Remove Selected Recipe** persists catalog denial first, revokes
 matching tasks/saved permissions and disables accounts before deleting local
-credentials. A failed cleanup cannot restore an old account upon reinstallation.
+credentials and forgetting saved OAuth client setup. A failed cleanup cannot restore an old account upon reinstallation.
 Existing workspace files, drafts and receipts remain independently manageable.
 Catalog and account metadata live beside app settings in
 `~/.custom_browser/connector_recipes.json` and `app_accounts.json`; secrets live
@@ -1366,6 +1416,16 @@ and Ruff/format passed. Logs: `/tmp/steed-recipes-full.log`,
 `/tmp/steed-recipes-focused.log`, `/tmp/steed-recipes-mcp-{stdio,http}.log`, and
 `/tmp/steed-recipes-startup.log`. Review/settings previews were inspected. Real
 service accounts and native desktop interaction remain separate acceptance checks.
+
+OAuth/collection milestone acceptance: **723 regressions passed in 295.840
+seconds**; 45 final recipe checks passed in 6.286 seconds, including subsequent
+malformed-catalog and immediate UI-refresh fixes. Both external clients completed
+bearer and OAuth collection workflows over both MCP transports alongside real
+sandbox document generation. Ruff/format passed and review/setup previews were
+inspected. Logs: `/tmp/steed-recipes-oauth-full.log`,
+`/tmp/steed-recipes-oauth-focused.log`, and
+`/tmp/steed-recipes-oauth-mcp-{stdio,http}.log`. Real-provider consent, refresh
+compatibility and native desktop interaction remain separate acceptance checks.
 
 ### Shared Google registration decision
 

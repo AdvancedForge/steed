@@ -14,8 +14,9 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import application
 from recipe_support import TOKEN, SyntheticRecipeHttp, recipe
+from test_recipe_oauth import OAuthHttp, oauth_recipe
 
-from services.app_accounts import AccountStore
+from services.app_accounts import AccountStore, ClientSetupRequired
 from services.app_connections import AppConnections
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
@@ -334,6 +335,76 @@ class RecipeProposalTests(unittest.TestCase):
         self.manager.install_recipe(recipe())
         self.assertFalse(self.accounts.list()[0].enabled)
         self.assertFalse(self.manager.connectors.describe())
+
+    def test_oauth_settings_connection_collection_read_and_removal_share_native_controls(
+        self,
+    ):
+        custom = oauth_recipe()
+        self.http = OAuthHttp()
+        self.manager.install_recipe(custom)
+        path = self.root / "client.json"
+        path.write_text('{"client_id":"SYNTHETIC_CLIENT"}')
+        panel = AppConnectionsDialog(self.manager)
+        self.dialogs.append(panel)
+        self.assertFalse(panel.setup_button.isHidden())
+        panel.client.setText(str(path))
+        self.manager.install_recipe(recipe())
+        panel.provider.setCurrentIndex(panel.provider.findData(recipe().provider))
+        self.assertEqual(panel.client.text(), "")
+        panel.provider.setCurrentIndex(panel.provider.findData(custom.provider))
+        panel.show()
+        panel.setup_button.click()
+        panel.grab().save("/tmp/steed-recipe-oauth-settings.png")
+        review = RecipeReviewDialog(self.manager, custom)
+        self.dialogs.append(review)
+        review.show()
+        self.app.processEvents()
+        review.grab().save("/tmp/steed-recipe-oauth-review.png")
+        with patch(
+            "services.recipe_oauth.desktop_authorization",
+            return_value=(
+                "SYNTHETIC_CODE",
+                "SYNTHETIC_VERIFIER",
+                "http://127.0.0.1:12345/callback",
+            ),
+        ) as authorize:
+            self.manager.connect_account(
+                custom.provider, path, ["read_note", "list_notes"]
+            )
+            self.wait_for(lambda: not self.manager.busy)
+        self.assertFalse(authorize.call_args.kwargs["google_options"])
+        account = self.accounts.list()[0]
+        self.manager.set_access(account.account_id, "read", True)
+        task = self.service._create("Read a synthetic collection")
+        permission = {
+            "connector": account.connector,
+            "tool": "list_notes",
+            "effect": "read",
+            "destination": "account",
+        }
+        grant = self.service._request_grant(
+            task.task_id, {"actions": ["app"], "connector_permissions": [permission]}
+        )
+        self.assertEqual(grant.status, "approved")
+        client = self.service.client(task.task_id)
+        self.call(
+            "app.call_tool",
+            client=client,
+            connector=account.connector,
+            tool="list_notes",
+            destination="account",
+            request_id="collection",
+        )
+        self.wait_for(lambda: not self.service._connector_jobs)
+        self.assertEqual(
+            self.call("app.status", client=client, request_id="collection").state,
+            "succeeded",
+        )
+        self.manager.remove_recipe(custom.provider)
+        self.wait_for(lambda: not self.manager.busy)
+        with self.assertRaises(ClientSetupRequired):
+            self.accounts.client_configuration(custom.provider)
+        self.assertNotIn(account.account_id, self.secrets.values)
 
     def test_trusted_settings_manage_recipes_and_pending_task_reviews(self):
         proposal = self.propose()

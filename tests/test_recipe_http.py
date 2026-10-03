@@ -38,7 +38,7 @@ class RecipeHttpTests(unittest.TestCase):
                 "-subj",
                 "/CN=api.fixture.example",
                 "-addext",
-                "subjectAltName=DNS:api.fixture.example",
+                "subjectAltName=DNS:api.fixture.example,DNS:auth.fixture.example",
             ],
             check=True,
             stdout=subprocess.DEVNULL,
@@ -57,6 +57,10 @@ class RecipeHttpTests(unittest.TestCase):
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                owner.forms.append(self.rfile.read(int(self.headers["Content-Length"])))
+                self.do_GET()
+
             def do_GET(self):
                 owner.calls.append((self.path, dict(self.headers)))
                 self.send_response(owner.status)
@@ -75,6 +79,7 @@ class RecipeHttpTests(unittest.TestCase):
             def log_message(self, *args):
                 pass
 
+        self.forms = []
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(self.cert, self.key)
@@ -98,7 +103,15 @@ class RecipeHttpTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
 
-    def request(self, *, trusted=True):
+    def request(
+        self,
+        *,
+        trusted=True,
+        method="GET",
+        url="https://api.fixture.example/note",
+        headers=None,
+        body=None,
+    ):
         original_socket = socket.socket
         owner = self
 
@@ -122,9 +135,10 @@ class RecipeHttpTests(unittest.TestCase):
             ),
         ):
             result = self.http.request(
-                "GET",
-                "https://api.fixture.example/note",
-                headers={"Authorization": "Bearer SYNTHETIC_TOKEN"},
+                method,
+                url,
+                headers=headers or {"Authorization": "Bearer SYNTHETIC_TOKEN"},
+                body=body,
             )
             self.assertEqual(resolve.call_count, 1)
             return result
@@ -139,6 +153,32 @@ class RecipeHttpTests(unittest.TestCase):
         with self.assertRaises(ApiError):
             self.request(trusted=False)
         self.assertEqual(self.calls, [])
+
+    def test_token_exchange_is_pinned_to_its_own_reviewed_domain_and_form(self):
+        endpoint = "https://auth.fixture.example/token"
+        self.http = RecipeHttp("https://api.fixture.example", token_endpoint=endpoint)
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        body = b"grant_type=authorization_code&code=SYNTHETIC_CODE&code_verifier=SYNTHETIC_VERIFIER"
+        self.assertEqual(
+            self.request(method="POST", url=endpoint, headers=headers, body=body),
+            {"text": "SYNTHETIC_DATA"},
+        )
+        self.assertEqual(self.calls[0][1]["Host"], "auth.fixture.example")
+        self.assertNotIn("Authorization", self.calls[0][1])
+        self.assertEqual(self.forms, [body])
+        for url, sent_headers, sent_body in (
+            (endpoint + "?x=1", headers, body),
+            ("https://api.fixture.example/token", headers, body),
+            (endpoint, {**headers, "Authorization": "Bearer SYNTHETIC_TOKEN"}, body),
+            (endpoint, headers, b"x" * 32769),
+            (endpoint, headers, b"\xff"),
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                self.http.request("POST", url, headers=sent_headers, body=sent_body)
+        self.status = 302
+        with self.assertRaises(ApiError):
+            self.request(method="POST", url=endpoint, headers=headers, body=body)
+        self.assertEqual(len(self.calls), 2)
 
     def test_authenticated_redirect_is_not_followed_or_retried(self):
         self.status = 302
