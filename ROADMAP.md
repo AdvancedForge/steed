@@ -323,6 +323,14 @@ establishes those results. Password improvements remain deferred at the user's r
   shared catalog/picker and declarative plan runtime. Default discovery requires
   one generic catalog addition and must preserve explicit recipe/account review.
 
+- **Packaged service picker implemented:** App Connections → Add a Service reads
+  JSON profiles from `connectors/recipes/` without provider-specific Python.
+  The existing default-Deny source review, account connection, switches and task
+  grants remain separate. Changed selections fail closed; malformed, oversized,
+  symlink and special-file entries are skipped. Six focused regressions passed;
+  the synthetic picker was visually inspected. Starter service data remains the
+  other contributor's isolated work; compatibility proofs are not shipped defaults.
+
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
   them. Removing an agent rule revokes linked tasks; disconnecting an app removes

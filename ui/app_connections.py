@@ -76,6 +76,9 @@ class AppConnectionsDialog(QDialog):
             self.provider.addItem(provider.title, provider.name)
         layout.addWidget(self.provider)
         recipes = QHBoxLayout()
+        self.bundled_recipe_button = QPushButton("Add a Service…")
+        self.bundled_recipe_button.clicked.connect(self.browse_services)
+        recipes.addWidget(self.bundled_recipe_button)
         self.import_recipe_button = QPushButton("Add Connector Recipe…")
         self.remove_recipe_button = QPushButton("Remove Selected Recipe")
         self.import_recipe_button.clicked.connect(self.import_recipe)
@@ -262,6 +265,9 @@ class AppConnectionsDialog(QDialog):
         self.import_recipe_button.setEnabled(
             available and self.manager.recipes is not None
         )
+        self.bundled_recipe_button.setEnabled(
+            available and self.manager.recipes is not None
+        )
         selected = self.manager.providers.get(self.provider.currentData())
         self.remove_recipe_button.setEnabled(
             bool(available and selected and selected.recipe_sha256)
@@ -407,6 +413,12 @@ class AppConnectionsDialog(QDialog):
             self.status.setText(
                 "Choose a valid connector recipe JSON of at most 16 KiB."
             )
+
+    def browse_services(self):
+        from ui.bundled_recipes import BundledRecipesDialog
+
+        self.bundled_dialog = BundledRecipesDialog(self.manager, self)
+        self.bundled_dialog.show()
 
     def remove_recipe(self):
         from PyQt6.QtWidgets import QMessageBox

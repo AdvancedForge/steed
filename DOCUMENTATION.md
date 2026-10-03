@@ -1480,6 +1480,21 @@ acceptance remain separate.
 
 ### Agent-designed write boundary
 
+Packaged service discovery: open **File → App Connections → Add a Service…**.
+Steed loads bounded JSON recipes from `connectors/recipes/`; choosing a service
+opens the same default-Deny source review as importing a recipe. This installs
+only the reviewed source. Connect its account, enable its action switches, and
+grant the task separately. Each create/send still needs its exact payload review.
+Missing or malformed catalog entries are skipped; unavailable or changed selections
+require reopening the picker. Discovery reads at most 50 matching regular files,
+rejects symlinks and special files, and performs no network requests.
+
+The [starter connector handoff](connectors/HANDOFF.md) assigns service data and
+fixtures to another contributor. The compatibility proofs are not installed
+defaults; the picker is empty until reviewed starter profiles are packaged.
+Six catalog/picker regressions passed, including changed-source rejection, safe
+file discovery, and installation granting neither account nor task access.
+
 **Implemented: reviewed declarative creates/sends.** Version 1 read recipes remain
 compatible. Version 2 may mix the existing GET format with POST tools. The
 [create/send example](examples/connector_recipes/notes-writes.json) is synthetic;
