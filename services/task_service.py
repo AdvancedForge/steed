@@ -142,6 +142,9 @@ class TaskService(QObject):
                 "library.list": lambda task_id, folder_id, **args: self._library_run(
                     task_id, "list", folder_id, **args
                 ),
+                "library.search": lambda task_id, **args: self._library_run(
+                    task_id, "search", **args
+                ),
                 "library.read": lambda task_id, folder_id, **args: self._library_run(
                     task_id, "read", folder_id, **args
                 ),
@@ -382,6 +385,8 @@ class TaskService(QObject):
                 library.folder(folder_id, agent=True)
             if method == "folders":
                 result = library.folders(**kwargs)
+            elif method == "search":
+                result = library.search(folder_id=folder_id, **kwargs)
             elif method == "begin":
                 kwargs.pop("task", None)
                 result = library.begin(task_id, folder_id, **kwargs)
@@ -390,7 +395,7 @@ class TaskService(QObject):
         except (sqlite3.Error, OSError):
             self._fatal(defer_broker_close=True)
             raise
-        if method not in ("folders", "list", "read", "begin"):
+        if method not in ("folders", "list", "read", "begin", "search"):
             self.changed.emit()
         return result
 
