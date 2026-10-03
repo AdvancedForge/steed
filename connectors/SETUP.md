@@ -161,3 +161,59 @@ Official references:
 - [Rate limits for the REST API](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
 - [Fine-grained personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 
+---
+
+## GitLab.com
+
+`connectors/recipes/gitlab.json`, origin `https://gitlab.com`, bearer
+authentication with a personal access token.
+
+Scope shipped:
+
+| Action | Wire contract |
+| --- | --- |
+| Identity | `GET /api/v4/user`, subject `/id`, label `/username` |
+| Read one project | `GET /api/v4/projects/{destination}` returning `/id`, `/path_with_namespace`, `/web_url` |
+| Create issue | `POST /api/v4/projects/{destination}/issues` with `title` and `description` |
+
+Deliberately excluded: self-hosted or private GitLab instances, namespace project
+paths such as `group/project`, issue updates and deletes, and issue listing. Issue
+listing is left out because GitLab pages with an offset and a `Link` header, which
+the current cursor pagination cannot follow; that is shared framework work, not a
+connector workaround.
+
+Notes on the wire shape:
+
+- Destinations are numeric project IDs. A namespace path cannot be expressed,
+  because a reviewed path segment never contains a slash.
+- Issue creation sends exactly `title` and `description`. GitLab interprets a
+  leading slash command in an issue title or description as a quick action, so
+  Steed sends the reviewed draft unchanged and never strips or guesses commands.
+- Nothing here proves that a create committed. There is no reviewed
+  reconciliation route and no idempotency header, so an uncertain create is
+  reported as uncertain and you check the GitLab issue list yourself.
+
+### Least-permission setup
+
+1. In GitLab open **Preferences → Access tokens** (or **User settings → Access
+   tokens**) and create a token with a short expiry date.
+2. Choose the narrowest scope you need:
+   - `read_api` for reads only, or
+   - `api` when you also want reviewed issue creation. Issue creation is not
+     available to `read_api`.
+3. Name the token so you can recognise it, for example `steed-connector`, and
+   record the expiry date.
+4. Paste it into Steed's Connect step for that account and select only the
+   actions you want to expose to tasks. The token is stored in the desktop
+   keyring.
+5. Revoke it on the same page at any time; disconnecting in Steed removes the
+   stored credential.
+
+Official references:
+
+- [GitLab REST authentication](https://docs.gitlab.com/api/rest/authentication/)
+- [Retrieve the current user](https://docs.gitlab.com/api/users/#retrieve-the-current-user)
+- [Get single project](https://docs.gitlab.com/api/projects/#get-single-project)
+- [Create an issue](https://docs.gitlab.com/api/issues/#create-an-issue)
+
+
