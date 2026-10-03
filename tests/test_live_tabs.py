@@ -1,0 +1,344 @@
+"""Actual-page handoff, normal scripts and immediate, irreversible Take Back."""
+
+import unittest
+
+import test_task_profiles as fixtures
+from PyQt6 import sip
+from PyQt6.QtCore import QEvent, Qt, QUrl
+from PyQt6.QtGui import QKeyEvent
+from PyQt6.QtWebEngineCore import QWebEngineSettings
+
+from browser_window import BrowserWindow
+from services.page_inspector import PageInspectionError
+from services.task_client import TaskClient
+from services.task_policy import TaskPermissionError, TaskScope
+
+HTML = """<html><title>Live fixture</title><body>
+<h1>Current live document</h1><input id="field" aria-label="Message" value="PRIVATE_VALUE">
+<input type="checkbox" aria-label="Confirm"><input type="password" value="PASSWORD_VALUE">
+<button type="button" id="action" onclick="window.clicked++; document.title='Clicked'; fetch('/background', {method:'POST',body:'live'})">Run action</button>
+<form action="/submitted" method="post" onsubmit="event.preventDefault(); window.sent++; document.title='Submitted'">
+<button id="send">Send</button></form>
+<div role="button" aria-label="Custom">Custom</div><canvas></canvas><img alt="Picture">
+<div id="shadow"></div>
+<script>window.ticks=0; window.clicked=0; window.sent=0;
+setInterval(()=>window.ticks++, 20);
+document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML='<p>Shadow content</p>';
+</script></body></html>"""
+
+
+class LiveTabsTests(unittest.TestCase):
+    setUpClass = classmethod(fixtures.TaskProfileTests.setUpClass.__func__)
+    tearDownClass = classmethod(fixtures.TaskProfileTests.tearDownClass.__func__)
+    setUp = fixtures.TaskProfileTests.setUp
+    tearDown = fixtures.TaskProfileTests.tearDown
+    wait_for = fixtures.TaskProfileTests.wait_for
+    command = fixtures.TaskProfileTests.command
+
+    def window(self, profile="work"):
+        window = BrowserWindow()
+        self.windows.append(window)
+        window._switch_to_profile(profile)
+        window.show()
+        self.page_fixtures["/live"] = HTML.encode()
+        view = window.tabs[window.current_tab_index]
+        loaded = []
+        view.loadFinished.connect(loaded.append)
+        view.setUrl(QUrl(self.origin + "/live"))
+        self.wait_for(lambda: loaded and view.title() == "Live fixture")
+        view.original_policy = view.focusPolicy()
+        return window, view
+
+    def task(self):
+        return self.command(
+            "task.create", objective="Collaborate on the live page"
+        ).task_id
+
+    def share(self, window, task=None):
+        task = task or self.task()
+        grant = window.delegate_tabs(task)
+        if grant.status == "requested":
+            self.service.approve_grant(task, grant.grant_id)
+        session = self.service.backend.live_session(
+            window.tabs[window.current_tab_index]
+        )
+        self.assertIsNotNone(session)
+        return task, grant, session
+
+    def value(self, page, expression):
+        values = []
+        page.runJavaScript(expression, values.append)
+        self.wait_for(lambda: bool(values))
+        return values[0]
+
+    def inspect(self, task, session):
+        return self.command("page.inspect", task_id=task, session_id=session)
+
+    def act(self, task, session, snapshot, target, operation="activate", **extra):
+        return self.command(
+            "page.act",
+            task_id=task,
+            session_id=session,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=target.target_id,
+            operation=operation,
+            **extra,
+        )
+
+    def test_approval_preserves_original_page_state_and_normal_scripts(self):
+        window, view = self.window()
+        page, profile, parent = view.page(), view.page().profile(), view.parent()
+        self.value(
+            page, "document.querySelector('#field').value='EDITED_BY_USER'; true"
+        )
+        task = self.task()
+        grant = window.delegate_tabs(task)
+        self.assertIsNone(self.service.backend.live_session(view))
+        with self.assertRaises(TaskPermissionError):
+            self.command("browser.tabs", task_id=task)
+        self.service.approve_grant(task, grant.grant_id)
+        session = self.service.backend.live_session(view)
+        self.assertIs(view.page(), page)
+        self.assertIs(page.profile(), profile)
+        self.assertIs(view.parent(), parent)
+        self.assertEqual(
+            self.value(page, "document.querySelector('#field').value"), "EDITED_BY_USER"
+        )
+        self.assertTrue(
+            page.settings().testAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptEnabled
+            )
+        )
+        before = self.value(page, "window.ticks")
+        self.wait_for(lambda: self.value(page, "window.ticks") > before)
+        self.assertTrue(window.live_bar.isVisible())
+        snapshot = self.inspect(task, session)
+        self.assertEqual(self.service.backend.inspect(session).mode, "live")
+        self.assertIn("normal_website_scripts_and_network", snapshot.limitations)
+        self.assertNotIn("document_scripts_disabled", snapshot.limitations)
+        self.assertNotIn("EDITED_BY_USER", repr(snapshot))
+        self.assertNotIn("PASSWORD_VALUE", repr(snapshot))
+        self.assertIn("open_shadow_root_present", snapshot.limitations)
+        self.assertIn("canvas_present", snapshot.limitations)
+        self.assertIn("visual_content_present", snapshot.limitations)
+        self.assertIn("custom_controls_present", snapshot.limitations)
+
+    def test_native_button_activation_runs_website_handler_and_background_post(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        target = next(t for t in snapshot.frames[0].targets if t.label == "Run action")
+        result = self.act(task, session, snapshot, target)
+        self.assertEqual(result.status, "dispatched")
+        self.assertEqual(result.input_semantics, "chromium_keyboard")
+        self.wait_for(lambda: self.value(view.page(), "window.clicked") == 1)
+        self.wait_for(
+            lambda: any(path == "POST /background" for path, _ in self.requests)
+        )
+        self.assertTrue(
+            view.page()
+            .settings()
+            .testAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled)
+        )
+        self.assertIsNotNone(view.page().devToolsPage())
+        window.take_back_button.click()
+        self.assertIsNone(view.page().devToolsPage())
+        self.assertEqual(view.title(), "Clicked")
+
+    def test_live_form_submit_runs_handlers_without_claiming_site_success(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        target = next(t for t in snapshot.frames[0].targets if t.label == "Send")
+        result = self.command(
+            "page.submit",
+            task_id=task,
+            session_id=session,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=target.target_id,
+        )
+        self.assertEqual(result.status, "dispatched")
+        self.assertEqual(result.site_effects, "unknown")
+        self.assertFalse(result.request_authorized)
+        self.assertEqual(self.value(view.page(), "window.sent"), 1)
+
+    def test_take_back_removes_access_and_cannot_be_re_adopted(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        tabs = self.command("browser.tabs", task_id=task)["tabs"]
+        self.assertEqual([tab["tab_id"] for tab in tabs], [view.tab_id])
+        adopted = self.command("session.adopt", task_id=task, tab_id=view.tab_id)
+        self.assertEqual(adopted.session_id, session)
+        policy = view.original_policy
+        self.assertEqual(view.focusPolicy(), Qt.FocusPolicy.NoFocus)
+        window.take_back_button.click()
+        self.assertEqual(view.focusPolicy(), policy)
+        self.assertFalse(window.live_bar.isVisible())
+        self.assertFalse(sip.isdeleted(view.page()))
+        self.assertEqual(self.command("browser.tabs", task_id=task)["tabs"], [])
+        with self.assertRaises(TaskPermissionError):
+            self.command("session.adopt", task_id=task, tab_id=view.tab_id)
+        with self.assertRaises(TaskPermissionError):
+            self.inspect(task, session)
+        self.assertEqual(self.service.store.get(task).status, "running")
+
+    def test_user_input_is_shielded_until_take_back(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        shield = self.service.backend._sessions[session].shield
+        event = QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier, "a"
+        )
+        self.assertTrue(shield.eventFilter(view, event))
+        window._take_back_current_tab()
+        self.assertTrue(sip.isdeleted(shield))
+        self.assertEqual(view.focusPolicy(), view.original_policy)
+
+    def test_take_back_cancels_pending_input_before_dispatch(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        target = next(t for t in snapshot.frames[0].targets if t.label == "Run action")
+        future = self.service.broker.submit(
+            "page.act",
+            task_id=task,
+            session_id=session,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=target.target_id,
+            operation="activate",
+        )
+        self.wait_for(
+            lambda: self.service.backend._sessions[session].pending_action is not None
+        )
+        window._take_back_current_tab()
+        self.wait_for(future.done)
+        with self.assertRaises(PageInspectionError):
+            future.result()
+        self.assertEqual(self.value(view.page(), "window.clicked"), 0)
+        self.assertIsNone(view.page().devToolsPage())
+
+    def test_take_back_while_loading_does_not_stop_user_page(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        self.command(
+            "session.navigate",
+            task_id=task,
+            session_id=session,
+            url=self.origin + "/slow",
+        )
+        window._take_back_current_tab()
+        self.wait_for(lambda: view.title() == "Task fixture")
+        self.wait_for(lambda: not view.page().isLoading())
+
+    def test_watch_uses_original_window_without_reparenting_the_view(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        parent = view.parent()
+        result = self.command("session.watch", task_id=task, session_id=session)
+        self.assertEqual(result["mode"], "live")
+        self.assertIs(view.parent(), parent)
+        self.assertNotIn(session, self.service._watchers)
+
+    def test_close_session_and_task_cancel_return_tabs_without_destruction(self):
+        for cancel in (False, True):
+            window, view = self.window()
+            task, _, session = self.share(window)
+            page = view.page()
+            if cancel:
+                self.service.cancel_task(task)
+            else:
+                self.command("session.close", task_id=task, session_id=session)
+            self.assertIs(view.page(), page)
+            self.assertFalse(sip.isdeleted(page))
+            self.assertIsNone(self.service.backend.live_session(view))
+            self.assertNotIn(view.tab_id, self.service.live_tabs.offers)
+            self.assertFalse(window.live_bar.isVisible())
+
+    def test_unshared_tabs_cross_task_and_incognito_are_not_exposed(self):
+        window, view = self.window()
+        other_window, other_view = self.window()
+        task, _, _ = self.share(window)
+        other = self.task()
+        with self.assertRaises(TaskPermissionError):
+            self.command("session.adopt", task_id=other, tab_id=view.tab_id)
+        with self.assertRaises(TaskPermissionError):
+            self.command("session.adopt", task_id=task, tab_id=other_view.tab_id)
+        self.assertEqual(len(self.command("browser.tabs", task_id=task)["tabs"]), 1)
+        other_window._switch_to_profile("search")
+        with self.assertRaises(ValueError):
+            other_window.delegate_tabs(other)
+        with self.assertRaises(ValueError):
+            TaskScope.parse({"origins": [], "actions": ["live"]})
+
+    def test_expiry_and_profile_switch_restore_control(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        self.service._grants[task][1].deadline = 0
+        self.service._expire_grants()
+        self.assertIsNone(self.service.backend.live_session(view))
+        self.assertFalse(sip.isdeleted(view.page()))
+        self.assertEqual(view.focusPolicy(), view.original_policy)
+        task, _, session = self.share(window)
+        window._switch_to_profile("default")
+        self.assertNotIn(session, self.service._sessions)
+        self.assertNotIn(view.tab_id, self.service.live_tabs.offers)
+
+    def test_whole_profile_selection_shares_current_tabs_across_windows_only(self):
+        first, first_view = self.window()
+        second, second_view = self.window()
+        third, third_view = self.window("default")
+        task = self.task()
+        grant = first.delegate_tabs(task, whole_profile=True)
+        self.service.approve_grant(task, grant.grant_id)
+        tabs = self.command("browser.tabs", task_id=task)["tabs"]
+        self.assertEqual(
+            {tab["tab_id"] for tab in tabs}, {first_view.tab_id, second_view.tab_id}
+        )
+        self.assertTrue(first.live_bar.isVisible())
+        self.assertTrue(second.live_bar.isVisible())
+        self.assertFalse(third.live_bar.isVisible())
+        first._new_tab(url=self.origin + "/live")
+        self.assertEqual(len(self.command("browser.tabs", task_id=task)["tabs"]), 2)
+        self.assertIsNone(self.service.backend.live_session(third_view))
+        second.close()
+        self.assertEqual(len(self.command("browser.tabs", task_id=task)["tabs"]), 1)
+
+    def test_user_navigation_returns_control_before_address_change(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        window._navigate_to_url(self.origin + "/next")
+        self.assertNotIn(session, self.service._sessions)
+        self.assertFalse(window.live_bar.isVisible())
+        self.wait_for(lambda: not view.page().isLoading())
+
+    def test_replacement_requires_fresh_review_and_old_rules_do_not_grant_live(self):
+        window, view = self.window()
+        task = self.task()
+        record = self.command(
+            "grant.request",
+            task_id=task,
+            scope={
+                "origins": [self.origin],
+                "profile": "existing:work",
+                "allow_private_network": True,
+                "actions": ["read", "inspect", "navigate", "attach"],
+            },
+        )
+        self.service.approve_grant(task, record.grant_id, remember="profile")
+        page_session = self.command(
+            "session.open", task_id=task, profile="existing:work"
+        )
+        request = window.delegate_tabs(task)
+        self.assertEqual(request.status, "requested")
+        self.assertNotIn(page_session.session_id, self.service._sessions)
+        self.assertIsNone(self.service.backend.live_session(view))
+        self.service.deny_grant(task, request.grant_id)
+        self.assertFalse(window.live_bar.isVisible())
+        self.assertFalse(sip.isdeleted(view.page()))
+
+    def test_task_client_cannot_request_trusted_handoff_or_approval(self):
+        client = TaskClient(self.task(), self.service.broker)
+        future = client.submit("live_tabs.request", views=[])
+        self.wait_for(future.done)
+        with self.assertRaises(TaskPermissionError):
+            future.result()

@@ -29,6 +29,7 @@ SUPPORTED_ACTIONS = frozenset(
         "worker",
         "connector",
         "app",
+        "live",
     }
 )
 
@@ -162,6 +163,8 @@ class TaskScope:
         profile = values.get("profile", "private")
         if profile != "private":
             task_profile_name(profile)
+        if "live" in actions and profile == "private":
+            raise ValueError("Live delegation requires an existing named profile")
         private = values.get("allow_private_network", False)
         if not isinstance(private, bool):
             raise ValueError("Network permission must be a boolean")

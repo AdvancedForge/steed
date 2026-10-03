@@ -2638,16 +2638,68 @@ task pages disable website JavaScript; modern apps may therefore be incomplete
 or unusable even when an ordinary user tab works. Agents should inspect the
 capability report and snapshot limitations rather than claim a complete view.
 
-Existing-profile permission shares cookies/login state with ordinary browsing;
-it currently creates a separate task page. **Watch / Take control / Return
-control** preserves that task page. It does not adopt an already-open user tab.
-User-requested live tab/profile delegation remains planned: preserve the actual
-page and normal website execution, expose approved tab discovery/search and
-visual evidence, show the active controller, and return control immediately
-without deleting the user's tab when a task ends. This needs its own engine and
-ownership acceptance; it must not silently reload a tab into the restricted task
-backend or imply that ordinary JavaScript's background traffic obeys task
-network restrictions.
+Existing-profile permission shares cookies/login state with ordinary browsing and
+creates a separate restricted task page. **Watch / Take control / Return control**
+preserves that task page.
+
+#### Delegate normal live tabs
+
+1. Open the agent sidebar and select a connected task.
+2. Click **Delegate current tab…**. Choose the current tab or all currently open
+   tabs on this named profile, across its windows (maximum ten).
+3. Review the popup's profile, sites, selected tabs and actions, then approve.
+   Existing task authority is replaced by a fresh reviewed scope; prior task
+   pages close. Resolve any pending permission request first.
+4. The agent calls `steed_browser_tabs` to discover only those shared tabs and
+   `steed_session_adopt` to obtain/reuse their session IDs. The selected tabs are
+   also adopted automatically on approval. It uses the normal inspection/action
+   tools on the same page, with the existing login, document state, JavaScript,
+   cookies and ordinary background network activity.
+5. A bar above the page identifies the controlling task. **Take Back** removes
+   that tab's authority immediately, including during pending input or loading.
+   The agent cannot re-adopt it without a new explicit handoff. Address-bar
+   navigation, Back, Forward and Reload also take the tab back first.
+
+New tabs and tabs from other profiles are never included automatically. You can
+browse other tabs while the agent works. Direct input into a delegated tab is
+shielded; Take Back restores its prior input policy. Closing the tab/window,
+changing profile, task cancellation, expiry, access disable and shutdown all
+release borrowed pages before ordinary browser cleanup. Task completion does
+not close or reload the user's tab. Incognito tabs cannot be delegated.
+
+The `live` action is separate approval for this mode, with clear script/network
+wording; remembered restricted-page approvals do not cover it. Ordinary website
+scripts can send requests or change account data following interaction. Their
+background requests are not filtered or counted against restricted-page network
+budgets. Native button activation and form dispatch report `dispatched`, not
+confirmed website success; observe the result and never retry uncertain effects.
+Password/file forms, custom widgets and live upload/download automation remain
+unsupported; use restricted task transfers or explicitly shared files instead.
+Normal user download/permission dialogs keep their ordinary browser behavior.
+
+Live targets are revalidated individually against their node, markup, labels,
+base URI and ancestor attributes, so unrelated DOM updates do not invalidate
+all controls. Replaced or changed controls still require a fresh inspection.
+Restricted pages retain their whole-document staleness checks. Control references
+remain opaque and no arbitrary script, selector or coordinate tool is exposed.
+
+#### Website observation coverage
+
+`page.inspect` provides bounded rendered DOM text and native controls, with flags
+for truncation, inaccessible/out-of-scope frames, observed open shadow roots,
+canvas, images/video/SVG and custom widgets. It distinguishes live website
+execution from disabled scripts. Field values and editable text are omitted.
+These flags describe coverage gaps, not a guarantee of completeness.
+
+“Important” depends on the user's task. A layered observer should first extract
+text, labels, links, headings and frames deterministically; then use accessibility
+semantics and viewport images where DOM coverage is insufficient. A lightweight
+model can route the next observation and rank relevant evidence within a budget.
+It cannot recover unloaded content or guarantee that nothing was missed. The
+current milestone adds coverage signals; visual and accessibility fallbacks are
+tracked next. Native frame inspection is available in Qt's
+[QWebEngineFrame API](https://doc.qt.io/qt-6.11/qwebengineframe.html), but frame
+lifetime and each frame's authority must be checked before exposing its content.
 
 #### Other external clients
 
@@ -2798,7 +2850,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 55 input schemas. Names follow the internal command
+Tool discovery publishes 57 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link

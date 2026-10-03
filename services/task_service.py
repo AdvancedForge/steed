@@ -97,6 +97,9 @@ class TaskService(QObject):
         self._grants = {}
         self._controls = {}
         self._watchers = {}
+        from services.live_tabs import LiveTabs
+
+        self.live_tabs = LiveTabs(self)
         self._actor = ContextVar("task_user_actor", default="agent")
         self._closed = False
         self.failure = ""
@@ -164,6 +167,8 @@ class TaskService(QObject):
                 "grant.request": self._request_grant,
                 "grant.list": self.store.grants,
                 "client.denied": self._client_denied,
+                "browser.tabs": self.live_tabs.list,
+                "session.adopt": self.live_tabs.adopt,
                 "session.open": self._open_session,
                 "session.navigate": self._navigate,
                 "session.inspect": self._inspect,
@@ -1357,6 +1362,7 @@ class TaskService(QObject):
             elif existing:
                 self.profiles.release_task_profiles(task_id)
             raise
+        self.live_tabs.activate(task_id)
         self.changed.emit()
         return record
 
@@ -1425,6 +1431,7 @@ class TaskService(QObject):
         require_owner_thread(self)
         self._usable()
         result = self.store.resolve_grant(task_id, grant_id, "denied", reason="user")
+        self.live_tabs.discard(task_id)
         self.changed.emit()
         return result
 
@@ -1520,6 +1527,16 @@ class TaskService(QObject):
         if self._closed or self.failure or snapshot.session_id not in self._sessions:
             return
         try:
+            if getattr(snapshot, "mode", "restricted") == "live":
+                grant = self._grants.get(snapshot.task_id)
+                try:
+                    if grant is None:
+                        raise TaskPermissionError("approval_required")
+                    grant[1].check("read", url=snapshot.url)
+                except TaskPermissionError:
+                    view = self.backend.live_view(snapshot.session_id)
+                    self.live_tabs.release_id(view.tab_id)
+                    return
             self.store.record_event(
                 snapshot.task_id, "session.updated", self._metadata_evidence(snapshot)
             )
@@ -1559,8 +1576,10 @@ class TaskService(QObject):
 
     def _inspect(self, task_id, session_id):
         self._owned(task_id, session_id, allow_user=True)
-        self._authorize(task_id, "inspect")
-        return self.backend.inspect(session_id)
+        grant = self._authorize(task_id, "inspect")
+        snapshot = self.backend.inspect(session_id)
+        grant.check("inspect", url=snapshot.url)
+        return snapshot
 
     def _inspect_page(self, task_id, session_id):
         self._owned(task_id, session_id)
@@ -2017,6 +2036,18 @@ class TaskService(QObject):
 
     def _watch(self, task_id, session_id):
         view = self._attach(task_id, session_id)
+        if getattr(self.backend.inspect(session_id), "mode", "restricted") == "live":
+            window = view.browser_window
+            window._switch_tab(window.tabs.index(view))
+            window.show()
+            window.raise_()
+            window.activateWindow()
+            return {
+                "session_id": session_id,
+                "watching": True,
+                "control_owner": "agent",
+                "mode": "live",
+            }
         if session_id not in self._watchers:
             from ui.task_watch import TaskWatchDialog
 
@@ -2127,6 +2158,9 @@ class TaskService(QObject):
         watcher = self._watchers.pop(session_id, None)
         if watcher is not None:
             watcher.session_ended()
+        if getattr(self.backend.inspect(session_id), "mode", "restricted") == "live":
+            view = self.backend.live_view(session_id)
+            self.live_tabs.offers.pop(view.tab_id, None)
         self.backend.close_session(session_id)
         self.store.record_event(task_id, "session.closed", {"session_id": session_id})
         self.changed.emit()
@@ -2152,6 +2186,7 @@ class TaskService(QObject):
         return result
 
     def _discard_sessions(self, task_id=None):
+        self.live_tabs.discard(task_id)
         for session_id, owner in list(self._sessions.items()):
             if task_id is None or owner == task_id:
                 self._sessions.pop(session_id)

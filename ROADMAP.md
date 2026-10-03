@@ -1155,10 +1155,9 @@ Real account/model availability and desktop acceptance remain manual checks.
 **Direction reaffirmed:** external agents keep their normal independent
 capabilities; Steed provides communication and browser tools. The user's request
 for taking over current profiles/tabs is distinct from existing-profile task
-pages and is not yet implemented. Next browser milestone: user-directed live-tab
-handoff with preserved page/JavaScript, approved tab discovery/search, visible
-controller, immediate return and borrowed-page cleanup. Add visual evidence and
-broader widget/frame coverage; current DOM actions deliberately report omissions.
+pages. The next milestone below implements user-directed live delegation;
+restricted task pages retain their existing execution/network policy. Visual
+and accessibility coverage remain the next observation work.
 
 **External-agent integration research:** Muse supports custom service connectors;
 dots uses enabled plugins/local computer connections. Neither cloud agent can
@@ -1168,3 +1167,40 @@ and the compatibility matrix are in DOCUMENTATION.md. A cloud bridge requires
 choosing its hosting/authentication/tunnel model before publishing an endpoint.
 Google production registration remains deferred; connector implementation handoff
 paths remain reserved for the other contributor.
+
+
+### Live tab delegation and coverage signals — October 3, 2026
+
+**Implemented:** sidebar handoff of the current tab or up to ten currently open
+same-profile tabs, including other windows. Trusted tab selection plus fresh
+`live`/read/action approval is required. `browser.tabs` lists only shared tabs;
+`session.adopt` uses their original pages and preserves state, login, scripts,
+normal service workers and background requests. No tab reload, copy, reparenting
+or global profile policy change occurs. New/unshared/incognito tabs stay outside
+this task's access.
+
+A visible controller bar offers immediate **Take Back**. User address navigation,
+Back/Forward/Reload, tab disposal, profile switch, task end/expiry and shutdown
+return authority without destroying the borrowed page. Pending reads/native
+input are cancelled and tab offers are removed, preventing re-adoption without
+a fresh user handoff. Native activation executes ordinary website handlers;
+form/button receipts distinguish dispatch from unknown site effects. Transfers
+remain on the existing restricted path. No debug listener is opened.
+
+Live controls tolerate unrelated mutations while revalidating their referenced
+node, labels, base URI and ancestors. Restricted-page staleness remains unchanged.
+DOM snapshots flag actual shadow roots, canvas, visual content and custom widgets
+and distinguish enabled live scripts from restricted execution. Completeness is
+never claimed; a task-aware model may later select further bounded observations.
+
+**Validation:** 149 focused live/task/browser/MCP regressions passed in
+115.303 seconds (`/tmp/steed-live-regressions.log`), including
+identity/state retention, normal background POST, native handlers, pending input
+revocation, loading, scope isolation, multiwindow/profile lifecycle and permission
+replacement. Ruff lint/format and whitespace checks pass.
+
+**Next:** approved viewport visual evidence, accessibility semantics and broader
+frame/widget coverage; use coverage-driven deterministic routing first. Real
+signed-in desktop acceptance remains a manual check. Cloud personal-agent access
+still requires a local bridge or a separately chosen hosting/authentication model.
+Google production registration and password improvements remain deferred.

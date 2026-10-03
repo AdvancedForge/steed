@@ -3,6 +3,16 @@
     "use strict";
     const request = /* REQUEST */;
     const fail = code => JSON.stringify({error: code});
+    const liveFingerprint = node => {
+        if (node.outerHTML.length > 65536) return null;
+        const attributes = el => Array.from(el.attributes, a => [a.name, a.value]);
+        const ancestors = [];
+        for (let el = node.parentElement; el; el = el.parentElement) ancestors.push(attributes(el));
+        const labels = Array.from(node.labels || [], el => el.outerHTML);
+        const labelled = (node.getAttribute("aria-labelledby") || "").split(/\s+/).slice(0, 8)
+            .map(id => node.ownerDocument.getElementById(id)?.outerHTML || "");
+        return JSON.stringify([node.outerHTML, node.baseURI, ancestors, labels, labelled]);
+    };
     const submission = node => {
         const doc = node.ownerDocument, win = doc.defaultView, form = node.form;
         if (!form || win !== window || node.type !== "submit" ||
@@ -43,12 +53,12 @@
         return {url: action.href, method, file_form:hasFiles, uploads};
     };
     try {
-        if (["target", "act", "scroll", "form", "submit", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
+        if (["target", "act", "scroll", "form", "submit", "live_prepare", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
             const state = globalThis[request.state_key];
             if (!state || state.snapshot_id !== request.snapshot_id) return fail("stale_snapshot");
             for (const frame of state.frames) {
                 frame.dirty ||= frame.observer.takeRecords().length > 0;
-                if (frame.dirty || frame.window.document !== frame.document ||
+                if ((!state.live && frame.dirty) || frame.window.document !== frame.document ||
                     frame.document.URL !== frame.url) return fail("stale_snapshot");
             }
             if (request.mode === "scroll") {
@@ -63,6 +73,8 @@
             }
             const target = state.targets.get(request.node_id);
             if (!target || !target.node.isConnected) return fail("stale_snapshot");
+            if (state.live && (!target.fingerprint || liveFingerprint(target.node) !== target.fingerprint))
+                return fail("stale_snapshot");
             if (["upload_prepare", "upload_observe"].includes(request.mode)) {
                 const node = target.node, doc = node.ownerDocument;
                 if (node.tagName !== "INPUT" || node.type !== "file" || doc.defaultView !== window ||
@@ -113,6 +125,16 @@
                 }
                 return fail("control_unsupported");
             }
+            if (request.mode === "live_prepare") {
+                const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
+                if (win !== window || !["BUTTON", "INPUT"].includes(node.tagName) ||
+                    (node.tagName === "INPUT" && !["button", "submit"].includes(node.type)) ||
+                    node.matches(":disabled") || node.getAttribute("aria-disabled") === "true" ||
+                    !node.getClientRects().length || win.getComputedStyle(node).visibility !== "visible")
+                    return fail("control_unsupported");
+                node.focus({preventScroll: false});
+                return doc.activeElement === node ? JSON.stringify({prepared:true}) : fail("focus_unavailable");
+            }
             if (["form", "submit"].includes(request.mode)) {
                 const node = target.node, info = submission(node);
                 if (info.error) return fail(info.error);
@@ -154,12 +176,14 @@
 
         const previous = globalThis[request.state_key];
         if (previous) for (const frame of previous.frames) frame.observer.disconnect();
-        const state = {snapshot_id: request.snapshot_id, frames: [], targets: new Map()};
+        const state = {snapshot_id: request.snapshot_id, live: !!request.live, frames: [], targets: new Map()};
         globalThis[request.state_key] = state;
         const frames = [], limitations = new Set([
-            "document_scripts_disabled", "form_values_omitted", "editable_text_omitted",
+            request.live ? "normal_website_scripts_and_network" : "document_scripts_disabled",
+            "form_values_omitted", "editable_text_omitted",
             "shadow_dom_not_inspected", "canvas_content_not_inspected"
         ]);
+        if (request.live) limitations.add("live_targets_revalidated_individually");
         const allowed = new Set(request.origins);
         let remainingText = 32000, remainingTargets = 200, remainingNodes = 12000;
 
@@ -251,6 +275,9 @@
                 }
                 const tag = node.tagName.toLowerCase(), type = clean(node.getAttribute("type"), 32).toLowerCase();
                 if ((tag === "iframe" || tag === "frame") && frameElements.length < 16) frameElements.push(node);
+                if (node.shadowRoot) limitations.add("open_shadow_root_present");
+                if (tag === "canvas") limitations.add("canvas_present");
+                if (["img", "svg", "video"].includes(tag)) limitations.add("visual_content_present");
                 const role = clean(node.getAttribute("role"), 64).toLowerCase();
                 let kind = "", operations = [], href = null, formAction = null, formMethod = null;
                 const constraints = [];
@@ -277,6 +304,7 @@
                 else if (tag === "select") { kind = "select"; operations = ["select"]; }
                 else if (["button", "link", "textbox", "combobox", "checkbox", "radio"].includes(role)) {
                     kind = "custom"; constraints.push("custom_control_unsupported");
+                    limitations.add("custom_controls_present");
                 }
                 if (kind) {
                     if (kind === "button") {
@@ -286,6 +314,10 @@
                             const destination = new URL(info.url);
                             destination.search = ""; destination.hash = "";
                             formAction = destination.href; formMethod = info.method;
+                        }
+                        else if (request.live && !node.form && (tag === "button" || type === "button")) {
+                            operations = ["activate"];
+                            constraints.push("website_handlers_can_change_data");
                         }
                         else { operations = []; constraints.push(info.error); }
                     }
@@ -299,7 +331,7 @@
                         if (!enabled) constraints.push("disabled");
                         if (readOnly) constraints.push("read_only");
                         const nodeId = "node:" + state.targets.size;
-                        state.targets.set(nodeId, {node});
+                        state.targets.set(nodeId, {node, fingerprint: request.live ? liveFingerprint(node) : null});
                         frame.targets.push({node_id: nodeId, kind, role: role || kind,
                             label: labelFor(node, doc, win), enabled, read_only: readOnly, href,
                             operations, constraints, form_action: formAction, form_method: formMethod});

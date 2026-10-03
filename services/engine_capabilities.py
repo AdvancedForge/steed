@@ -24,6 +24,9 @@ class EngineCapabilities:
     script_unavailable_reason: str
     native_policy_candidate: bool
     required_chromium_major: int
+    live_tab_delegation: bool = True
+    live_website_scripts: bool = True
+    live_network_policy: str = "normal_browser_background_traffic"
 
 
 def qt_engine_capabilities() -> EngineCapabilities:
