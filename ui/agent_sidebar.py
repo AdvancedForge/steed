@@ -46,21 +46,91 @@ class AgentSidebar(QDockWidget):
         self._choices = []
         body = QWidget()
         layout = QVBoxLayout(body)
-        notice = QLabel(
-            "Start a Codex chat here, or connect another external agent using Connection Setup. Codex uses its own sign-in; New Codex Chat enables local agent access for this browser run."
-            if providers is not None
-            else "Connect an external agent to Steed MCP and have it start a task. Select that task here. The agent must read and reply through the conversation tools."
+        self.welcome = QLabel()
+        self.welcome.setWordWrap(True)
+        self.welcome.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.welcome)
+        self.start_controls = QWidget()
+        start_buttons = QHBoxLayout(self.start_controls)
+        start_buttons.setContentsMargins(0, 0, 0, 0)
+        self.new_chat = QPushButton("New Codex chat")
+        self.new_chat.clicked.connect(self.start_chat)
+        self.new_chat.setVisible(providers is not None)
+        start_buttons.addWidget(self.new_chat)
+        self.setup = QPushButton(
+            "Connect another agent…" if providers else "Connect an agent…"
         )
-        notice.setWordWrap(True)
-        layout.addWidget(notice)
-        self.setup = QPushButton("Connection Setup…")
         self.setup.clicked.connect(lambda: self.setup_requested.emit())
-        layout.addWidget(self.setup)
-        self.library_button = QPushButton("File Library…")
+        start_buttons.addWidget(self.setup)
+        layout.addWidget(self.start_controls)
+        self.tasks = QComboBox()
+        self.tasks.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.tasks.setMinimumContentsLength(18)
+        self.tasks.setAccessibleName("External agent task")
+        self.tasks.currentIndexChanged.connect(self._select)
+        layout.addWidget(self.tasks)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.status)
+        self.error = QLabel()
+        self.error.setWordWrap(True)
+        self.error.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.error)
+        self.pending = QPushButton()
+        self.pending.clicked.connect(lambda: self.open_details("Permissions"))
+        layout.addWidget(self.pending)
+        self.agent_requests = QPushButton("Answer agent")
+        self.agent_requests.clicked.connect(self.show_requests)
+        layout.addWidget(self.agent_requests)
+        self._request_dialogs = {}
+        self.conversation = QWidget()
+        chat_layout = QVBoxLayout(self.conversation)
+        chat_layout.setContentsMargins(0, 0, 0, 0)
+        self.transcript = QPlainTextEdit()
+        self.transcript.setReadOnly(True)
+        self.transcript.setAccessibleName("Agent conversation")
+        chat_layout.addWidget(self.transcript, 1)
+        self.composer = QPlainTextEdit()
+        self.composer.setPlaceholderText("Write a message… (Ctrl+Enter to send)")
+        self.composer.setMaximumHeight(100)
+        self.composer.setAccessibleName("Message to selected agent")
+        chat_layout.addWidget(self.composer)
+        self.send = QPushButton("Send")
+        self.send.clicked.connect(self.send_message)
+        send_controls = QHBoxLayout()
+        send_controls.addWidget(self.send)
+        self.cancel = QPushButton("Cancel task")
+        self.cancel.clicked.connect(self.cancel_task)
+        send_controls.addWidget(self.cancel)
+        chat_layout.addLayout(send_controls)
+        self.delegate = QPushButton("Share browser tabs…")
+        self.delegate.clicked.connect(self.delegate_tabs)
+        chat_layout.addWidget(self.delegate)
+        layout.addWidget(self.conversation, 1)
+        self.more = QPushButton("More options ▸")
+        self.more.setCheckable(True)
+        self.more.toggled.connect(self._show_options)
+        layout.addWidget(self.more)
+        self.tools_panel = QWidget()
+        tools_layout = QVBoxLayout(self.tools_panel)
+        tools_layout.setContentsMargins(0, 0, 0, 0)
+        self.model = QComboBox()
+        self.model.setAccessibleName("Codex model")
+        self.model.addItem("Codex default", None)
+        self.model.addItem("GPT-5.4 (tested direct Steed tools)", "gpt-5.4")
+        self.model.setVisible(providers is not None)
+        tools_layout.addWidget(self.model)
+        self.connection_settings = QPushButton("Connection setup…")
+        self.connection_settings.clicked.connect(lambda: self.setup_requested.emit())
+        tools_layout.addWidget(self.connection_settings)
+        self.library_button = QPushButton("File library…")
         self.library_button.clicked.connect(
             lambda: self.browser_window._open_file_library()
         )
-        layout.addWidget(self.library_button)
+        tools_layout.addWidget(self.library_button)
         display = QHBoxLayout()
         for label, method in (
             ("Open as tab", "_open_agent_tab"),
@@ -71,58 +141,12 @@ class AgentSidebar(QDockWidget):
                 lambda checked=False, method=method: self.change_display(method)
             )
             display.addWidget(button)
-        layout.addLayout(display)
-        self.model = QComboBox()
-        self.model.setAccessibleName("Codex model")
-        self.model.addItem("Codex default", None)
-        self.model.addItem("GPT-5.4 (tested direct Steed tools)", "gpt-5.4")
-        self.model.setVisible(providers is not None)
-        layout.addWidget(self.model)
-        self.new_chat = QPushButton("New Codex Chat")
-        self.new_chat.clicked.connect(self.start_chat)
-        self.new_chat.setVisible(providers is not None)
-        layout.addWidget(self.new_chat)
-        self.tasks = QComboBox()
-        self.tasks.setAccessibleName("External agent task")
-        self.tasks.currentIndexChanged.connect(self._select)
-        layout.addWidget(self.tasks)
-        self.status = QLabel()
-        self.status.setWordWrap(True)
-        self.status.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self.status)
-        self.transcript = QPlainTextEdit()
-        self.transcript.setReadOnly(True)
-        self.transcript.setAccessibleName("Agent conversation")
-        layout.addWidget(self.transcript, 1)
-        self.composer = QPlainTextEdit()
-        self.composer.setPlaceholderText("Message this external agent… (Ctrl+Enter)")
-        self.composer.setMaximumHeight(100)
-        self.composer.setAccessibleName("Message to selected agent")
-        layout.addWidget(self.composer)
-        buttons = QHBoxLayout()
-        self.send = QPushButton("Send")
-        self.send.clicked.connect(self.send_message)
-        buttons.addWidget(self.send)
-        self.cancel = QPushButton("Cancel Task")
-        self.cancel.clicked.connect(self.cancel_task)
-        buttons.addWidget(self.cancel)
-        self.clear = QPushButton("Clear Chat")
-        self.clear.clicked.connect(self.clear_messages)
-        buttons.addWidget(self.clear)
-        layout.addLayout(buttons)
-        self.delegate = QPushButton("Delegate current tab…")
-        self.delegate.clicked.connect(self.delegate_tabs)
-        layout.addWidget(self.delegate)
+        tools_layout.addLayout(display)
         tools = QHBoxLayout()
-        self.agent_requests = QPushButton("Agent requests")
-        self.agent_requests.clicked.connect(self.show_requests)
-        self.agent_requests.setVisible(providers is not None)
-        layout.addWidget(self.agent_requests)
-        self._request_dialogs = {}
         self.details = []
         for label, panel in (
             ("Permissions", "Permissions"),
-            ("Files", "Workspace"),
+            ("Task files", "Workspace"),
             ("Receipts", "Apps"),
         ):
             button = QPushButton(label)
@@ -131,19 +155,26 @@ class AgentSidebar(QDockWidget):
             )
             tools.addWidget(button)
             self.details.append(button)
-        layout.addLayout(tools)
-        self.error = QLabel()
-        self.error.setWordWrap(True)
-        self.error.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self.error)
+        tools_layout.addLayout(tools)
         self.summary = QLabel()
         self.summary.setWordWrap(True)
-        layout.addWidget(self.summary)
+        tools_layout.addWidget(self.summary)
+        administration = QHBoxLayout()
+        self.clear = QPushButton("Clear chat")
+        self.clear.clicked.connect(self.clear_messages)
+        administration.addWidget(self.clear)
+        tools_layout.addLayout(administration)
         privacy = QLabel(
-            "Steed shares sent text. Codex retains its own tools and permissions. Browser/profile access requires Steed approval. Hiding this panel keeps the task running."
+            "Only sent messages are shared. Browser access needs your approval. "
+            "Closing this panel keeps the task running."
         )
         privacy.setWordWrap(True)
-        layout.addWidget(privacy)
+        tools_layout.addWidget(privacy)
+        self.tools_panel.hide()
+        layout.addWidget(self.tools_panel)
+        self._body_layout = layout
+        self._spacer_index = layout.count()
+        layout.addStretch(1)
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setWidget(body)
@@ -156,6 +187,46 @@ class AgentSidebar(QDockWidget):
             self.providers.changed.connect(self.refresh)
             self.providers.requested.connect(self._request_added)
         self.refresh()
+
+    def _show_options(self, expanded):
+        self.tools_panel.setVisible(expanded and not self._private)
+        self.more.setText("More options ▾" if expanded else "More options ▸")
+
+    def _update_layout(self, usable, *, pending=0):
+        available = (
+            not self._private and not self.service._closed and not self.service.failure
+        )
+        self.welcome.setVisible(not usable)
+        self.welcome.setText(
+            "Agent conversations are unavailable in private browsing. Switch to a regular profile."
+            if self._private
+            else "Talk to an agent\n\nStart a Codex chat, then send your first message.\n"
+            "To use another agent, open connection setup, add Steed to that agent, "
+            "and ask it to start a task. Choose its conversation here.\n\n"
+            "Browser access is shared only when you approve it."
+            if self.providers is not None
+            else "Connect your agent\n\n1. Open connection setup.\n"
+            "2. Add Steed to your agent and ask it to start a task.\n"
+            "3. Choose its conversation and send a message."
+        )
+        self.start_controls.setVisible(available)
+        self.setup.setVisible(not usable)
+        self.connection_settings.setVisible(usable)
+        self._body_layout.setStretch(self._spacer_index, 0 if usable else 1)
+        self.tasks.setVisible(available and self.tasks.count() > 1)
+        self.status.setVisible(usable)
+        self.conversation.setVisible(usable)
+        self.cancel.setVisible(usable and self.cancel.isEnabled())
+        self.delegate.setVisible(usable and self.delegate.isEnabled())
+        self.pending.setText(f"Review {pending} pending approval(s)…")
+        self.pending.setVisible(usable and pending > 0)
+        self.pending.setEnabled(usable and pending > 0)
+        self.agent_requests.setVisible(usable and self.agent_requests.isEnabled())
+        self.more.setVisible(available)
+        self.error.setVisible(bool(self.error.text()))
+        if not available:
+            self.more.setChecked(False)
+            self.tools_panel.hide()
 
     def _request_added(self, task_id, request_id, payload):
         if task_id == self._task_id and not self._private and self.isVisible():
@@ -189,6 +260,7 @@ class AgentSidebar(QDockWidget):
             self.error.setText(
                 "This agent request could not be displayed. Cancel the task."
             )
+            self.error.show()
             return
         dialog.setWindowTitle(f"Codex request · {task_id[:8]}")
         self._request_dialogs[(task_id, request_id)] = dialog
@@ -206,6 +278,7 @@ class AgentSidebar(QDockWidget):
             self.tasks.setCurrentIndex(self.tasks.findData(task_id))
         except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
             self.error.setText(str(error))
+            self.error.show()
 
     def set_private(self, private):
         self._private = private
@@ -237,7 +310,7 @@ class AgentSidebar(QDockWidget):
             if self.providers
             else 0
         )
-        self.agent_requests.setText(f"Agent requests ({pending_count})")
+        self.agent_requests.setText(f"Answer agent ({pending_count})…")
         self.agent_requests.setEnabled(available and pending_count > 0)
         self.new_chat.setEnabled(available)
         self.model.setEnabled(available)
@@ -255,7 +328,7 @@ class AgentSidebar(QDockWidget):
                 if t.task_id not in self.service.external_tasks
                 and t.task_id != self._task_id
             ]
-            choices = [(None, "Choose an external agent task")]
+            choices = [(None, "Choose a conversation")]
             for task in reversed(records):
                 connected = (
                     task.task_id in self.service.external_tasks
@@ -298,7 +371,10 @@ class AgentSidebar(QDockWidget):
         self.transcript.clear()
         self.status.setText("Conversation is unavailable.")
         self.summary.clear()
-        self.error.setText("Conversation is unavailable.")
+        self.error.setText(
+            "Conversation could not be loaded. Your browsing is still available."
+        )
+        self._update_layout(False)
 
     def _select(self):
         if self._task_id and not self._private:
@@ -323,6 +399,7 @@ class AgentSidebar(QDockWidget):
             and not self.service.failure
         )
         active = False
+        counts = {"pending": 0}
         if usable:
             task = self.service.store.get(task_id)
             active = (
@@ -391,7 +468,7 @@ class AgentSidebar(QDockWidget):
             self.status.setText(
                 "Agent conversations are disabled in incognito."
                 if self._private
-                else "Select a task. Enable Local Agent Access in File to connect an agent."
+                else "Choose a conversation, or start a new chat."
             )
         self.delegate.setEnabled(
             active and hasattr(self.browser_window, "delegate_tabs")
@@ -402,6 +479,7 @@ class AgentSidebar(QDockWidget):
         self.clear.setEnabled(usable)
         for button in self.details:
             button.setEnabled(usable)
+        self._update_layout(usable, pending=counts["pending"])
 
     def delegate_tabs(self):
         from PyQt6.QtWidgets import QInputDialog
@@ -424,6 +502,7 @@ class AgentSidebar(QDockWidget):
             )
         except (ValueError, RuntimeError, sqlite3.Error, OSError) as error:
             self.error.setText(str(error))
+            self.error.show()
         else:
             self.error.clear()
 
@@ -436,6 +515,7 @@ class AgentSidebar(QDockWidget):
             self.error.setText(
                 "Message was not sent. Use nonempty text up to 8 KiB; check the agent connection and task limits."
             )
+            self.error.show()
             return
         self.composer.clear()
         self._drafts.pop(self._task_id, None)
@@ -454,6 +534,7 @@ class AgentSidebar(QDockWidget):
             operation(self._task_id)
         except (ValueError, RuntimeError, sqlite3.Error, OSError):
             self.error.setText("Task operation could not be completed.")
+            self.error.show()
 
     def open_details(self, panel):
         if self._task_id is None or self._private:
@@ -462,6 +543,7 @@ class AgentSidebar(QDockWidget):
             dialog = TaskDialog(self.service, self)
         except (ValueError, RuntimeError, sqlite3.Error, OSError):
             self.error.setText("Task details could not be opened.")
+            self.error.show()
             return
         for row, (task, _) in enumerate(dialog._rows):
             if task.task_id == self._task_id:

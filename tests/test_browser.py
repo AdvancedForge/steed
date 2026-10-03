@@ -118,7 +118,7 @@ class BrowserTests(unittest.TestCase):
             action.text(): action.menu() for action in self.window.menuBar().actions()
         }
         self.assertEqual(
-            list(menus), ["General", "Tabs", "Agents", "View", "Profile", "Cookies"]
+            list(menus), ["General", "Profile", "Tabs", "View", "Cookies", "Agents"]
         )
         self.assertIn(self.window.reload_action, menus["Tabs"].actions())
         self.assertIn(self.window.find_action, menus["View"].actions())

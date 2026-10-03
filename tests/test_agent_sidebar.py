@@ -37,6 +37,47 @@ class AgentSidebarTests(unittest.TestCase):
         sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(task.task_id))
         return task.task_id
 
+    def test_first_open_shows_setup_without_empty_chat_or_administration(self):
+        _, sidebar = self.sidebar()
+        self.assertTrue(sidebar.welcome.isVisible())
+        self.assertTrue(sidebar.new_chat.isVisible())
+        self.assertTrue(sidebar.setup.isVisible())
+        self.assertFalse(sidebar.conversation.isVisible())
+        self.assertFalse(sidebar.tools_panel.isVisible())
+        self.assertFalse(sidebar.tasks.isVisible())
+        self.assertFalse(sidebar.pending.isVisible())
+        sidebar.more.click()
+        self.assertTrue(sidebar.library_button.isVisible())
+        sidebar.more.click()
+        self.assertFalse(sidebar.tools_panel.isVisible())
+
+    def test_connected_chat_keeps_draft_and_task_when_options_collapse(self):
+        _, sidebar = self.sidebar()
+        task = self.connect_task(sidebar)
+        self.assertFalse(sidebar.welcome.isVisible())
+        self.assertTrue(sidebar.conversation.isVisible())
+        sidebar.composer.setPlainText("Draft stays local")
+        sidebar.more.click()
+        sidebar.more.click()
+        self.assertFalse(sidebar.tools_panel.isVisible())
+        self.assertEqual(sidebar.composer.toPlainText(), "Draft stays local")
+        self.assertEqual(self.service.store.grants(task), [])
+        self.assertTrue(sidebar.send.isEnabled())
+
+    def test_pending_permissions_stay_visible_with_options_collapsed(self):
+        _, sidebar = self.sidebar()
+        task = self.connect_task(sidebar)
+        self.command("grant.request", task_id=task, scope={"actions": ["artifact"]})
+        self.assertFalse(sidebar.tools_panel.isVisible())
+        self.assertTrue(sidebar.pending.isVisible())
+        sidebar.pending.click()
+        dialog = sidebar.findChildren(TaskDialog)[-1]
+        self.assertEqual(dialog.selection()[0].task_id, task)
+        self.assertEqual(
+            dialog.panels.tabText(dialog.panels.currentIndex()), "Permissions"
+        )
+        dialog.close()
+
     def test_managed_codex_chat_is_shared_and_access_toggle_stops_it(self):
         first_window, first = self.sidebar()
         second_window, second = self.sidebar()
