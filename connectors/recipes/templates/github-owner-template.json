@@ -33,7 +33,7 @@
     },
     {
       "name": "read_issue",
-      "description": "Read one issue by its number in the repository fixed in this reviewed source. body and state_reason are documented as possibly null and are returned as null.",
+      "description": "Read one issue by its number in the repository fixed in this reviewed source. GitHub's Issues API can also return a pull request at this number and this read does not establish the object type. body and state_reason are documented as possibly null and are returned as null.",
       "method": "GET",
       "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/REPLACE-WITH-YOUR-GITHUB-REPOSITORY/issues/{destination}",
       "response": [

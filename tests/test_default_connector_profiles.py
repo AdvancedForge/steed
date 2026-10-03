@@ -478,6 +478,31 @@ class GitHubOwnerTemplateTests(ProfileCase):
             with self.subTest(value=value), self.assertRaises(RecipeError):
                 issue.destination(value)
 
+    def test_a_pull_request_projects_to_the_same_fields_and_no_type_is_claimed(self):
+        pull = json.loads(self.read(self.adapter, "read_issue", "3").text)
+        self.assertEqual(
+            pull,
+            {
+                "number": 3,
+                "title": "Documented pull request returned by the issues route",
+                "state": "open",
+                "state_reason": None,
+                "body": None,
+                "url": "https://github.com/fixture-owner/fixture-repo/pull/3",
+            },
+        )
+        # The documented pull_request discriminator is deliberately not selected,
+        # so the projection cannot claim which kind of object it is.
+        self.assertNotIn("pull_request", pull)
+        self.assertIn(
+            "pull request", self.definition(self.adapter, "read_issue").description
+        )
+        self.assertIn(
+            "does not establish the object type",
+            self.definition(self.adapter, "read_issue").description,
+        )
+        self.assertEqual(self.api.posts, [])
+
     def test_documented_issue_statuses_fail_without_redirects_or_guessing(self):
         route = "/repos/fixture-owner/fixture-repo/issues/1"
         for status in (301, 304, 404, 410):
@@ -631,8 +656,10 @@ class GitLabProfileTests(ProfileCase):
         )
 
     def test_quick_action_text_is_warned_about_and_sent_verbatim(self):
+        # GitLab documents quick actions as commands that start a line of a
+        # description or comment; a slash inside a title proves nothing.
         draft = "/assign @fixture-user\n/confidential\nPlease triage this draft."
-        title = "Fixture /close title"
+        title = "Fixture title"
         artifact = draft_artifact(draft, title)
         request, definition, review = self.reviewed_create(
             self.adapter, "create_issue", "7", artifact
@@ -640,6 +667,7 @@ class GitLabProfileTests(ProfileCase):
         # The tool description carries the warning a source review would show.
         self.assertIn("quick action", definition.description)
         self.assertIn("/confidential", definition.description)
+        self.assertIn("description or comment", definition.description)
         self.assertEqual(
             json.loads(review.before), {"title": title, "description": draft}
         )
@@ -654,7 +682,8 @@ class GitLabProfileTests(ProfileCase):
         path, payload = self.api.posts[0]
         self.assertEqual(path, "/api/v4/projects/7/issues")
         # The reviewed draft is submitted verbatim: no command is stripped,
-        # escaped or described as plain prose.
+        # escaped or described as plain prose, and GitLab decides what a
+        # description line means.
         self.assertEqual(payload, {"title": title, "description": draft})
 
     def test_no_operation_lookup_claims_to_prove_a_create(self):
