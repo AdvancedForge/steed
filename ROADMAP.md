@@ -10,7 +10,34 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 3, 2026
 
 **Priority: daily workflow engineering.** Public-release work remains reference
-backlog; it is not the active agenda. The completed milestone is a persistent agent
+backlog; it is not the active agenda.
+
+**Library discovery milestone (in progress on `engineering/library-discovery`).**
+Reusable files are now findable instead of only reachable by walking every
+folder. `steed_library_search` returns file metadata across every enabled root
+in one call — folder id, folder name, relative path, kind, current revision and
+size — which is exactly what `steed_library_read` and `steed_library_write_begin`
+already need, so an agent can locate a nested input and reuse it from a new task
+without listing folders one at a time. Matching is a literal substring of the
+path, so `%` and `_` are never wildcards. Results are ordered by folder name then
+path and paged with an opaque cursor, and identical file names in different roots
+stay distinguishable by folder id. Disabled roots, Trash and old versions are
+never returned, and access is rechecked on every call, so disabling a folder
+hides it immediately. The scan is bounded and reports `truncated` rather than
+pretending a capped result is complete. In the library window a **Filter** box
+applies the same literal match to the selected folder, replaces the silent
+2,000-row ceiling with an explicit limit notice, and clears on profile change or
+close. Discovery is metadata only: no content indexing, no decision model, no
+recurring approval prompts, and imports remain copies.
+
+Validation so far: 29 library checks pass on Linux (18 backend, 11 service/UI),
+together with 38 workspace/recovery checks and a clean Ruff lint/format run.
+Smaller-than-expected evidence: the browser-profile suites abort in this
+environment because constructing a persistent `QWebEngineProfile` needs GLX, which
+this headless runner cannot provide, so the full-suite and MCP smoke journeys
+still need a display-capable Linux run before a PR.
+
+**Earlier completed milestone:** a persistent agent
 file library: user-added files/subfolders survive tasks and restart; a clear
 folder enable switch gives connected agents full file access without repeated
 uploads or per-file/task approvals. Old versions and Trash support recovery,

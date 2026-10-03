@@ -30,6 +30,7 @@ CLIENT_COMMANDS = frozenset(
         "workspace.stage_extension",
         "library.folders",
         "library.list",
+        "library.search",
         "library.read",
         "library.mkdir",
         "library.write_begin",

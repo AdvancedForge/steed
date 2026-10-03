@@ -1062,8 +1062,12 @@ SQLite erasure or remove copies already exported/fetched.
 Storage is local in `~/.custom_browser/agent_library.sqlite`, with private file
 permissions and a separate schema from tasks. Current limits are 50 library root
 folders, 64 MiB per file, 512 MiB total including versions and pending writes,
-500 import entries at once, and bounded metadata/history counts. The UI displays
-up to 2,000 entries; agents paginate direct children. Files are stored as data,
+500 import entries at once, and bounded metadata/history counts. The UI can
+filter the selected folder by name or path with the **Filter** box (a literal
+substring, so `%` and `_` are ordinary characters) and shows at most 2,000 rows
+at a time, saying so when more match; narrow the filter to reach later entries.
+Agents can page with `steed_library_search` to find a file across every enabled
+folder without listing them one at a time. Files are stored as data,
 never rendered/executed automatically. Reads and uploads use 32 KiB chunks.
 These are resource limits, not repeated approval requirements.
 
@@ -1071,6 +1075,7 @@ These are resource limits, not repeated approval requirements.
 | --- | --- |
 | `steed_library_folders` | Discover enabled root IDs/names; disabled roots are hidden. |
 | `steed_library_list` | List direct children with `folder_id`, optional `path`, `after`, `limit`; recurse into directories. |
+| `steed_library_search` | Find files across enabled folders by name/path. Returns folder id/name, path and current revision; literal substring match, page with the returned cursor. |
 | `steed_library_read` | Read base64 bytes with `folder_id`, `path`, current `revision`, optional `offset`/`limit`; changed revisions fail. |
 | `steed_library_mkdir` | Create a relative subfolder and missing parents. |
 | `steed_library_write_begin` | Bind `request_id`, path, byte count, SHA-256 and expected revision; `0` creates a new name. |
