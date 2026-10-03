@@ -24,7 +24,14 @@
       "provider": "todoist",
       "reviewed_source": "connectors/recipes/todoist.json",
       "official_reference": "https://developer.todoist.com/api/v1/",
-      "tools": ["read_task", "read_task_detail", "list_tasks", "read_project", "list_projects", "create_task"],
+      "tools": [
+        "read_task",
+        "read_task_detail",
+        "list_tasks",
+        "read_project",
+        "list_projects",
+        "create_task"
+      ],
       "least_permission": "A Todoist personal API token from Settings, Integrations, Developer. It is account-wide and cannot be scoped per project, so the subset keeps its authority minimal by reading selected IDs, bounding listings to three cursor pages, and creating only reviewed Inbox tasks.",
       "synthetic_expectations": {
         "identity_result": "subject 1234567 from /id and label from /email, with the account's own echoed token field never leaving identity selection",
@@ -49,7 +56,11 @@
       "provider": "github",
       "reviewed_source": "connectors/recipes/templates/github-owner-template.json, imported as a user-owned copy with the owner and repository fixed",
       "official_reference": "https://docs.github.com/en/rest",
-      "tools": ["read_repository", "read_issue", "create_issue"],
+      "tools": [
+        "read_repository",
+        "read_issue",
+        "create_issue"
+      ],
       "least_permission": "A fine-grained personal access token with a short expiry, repository access limited to the one repository in the reviewed source, and Issues read and write only. No contents, pull request, actions or administration permission, and no account permissions.",
       "synthetic_expectations": {
         "identity_result": "subject from the numeric /id and label from /login, never from a private email",
@@ -72,13 +83,17 @@
     },
     {
       "provider": "gitlab",
-      "reviewed_source": "connectors/recipes/gitlab.json",
+      "reviewed_source": "connectors/recipes/gitlab.json, plus connectors/recipes/templates/gitlab-project-template.json imported as a user-owned copy with the numeric project ID fixed",
       "official_reference": "https://docs.gitlab.com/api/rest/",
-      "tools": ["read_project", "create_issue"],
+      "tools": [
+        "read_project",
+        "read_issue",
+        "create_issue"
+      ],
       "least_permission": "A GitLab personal access token with a short expiry. read_api for reads only, or api when reviewed issue creation is wanted, because issue creation is not available to read_api.",
       "synthetic_expectations": {
         "identity_result": "subject from the numeric /id and label from /username",
-        "read_result": "read_project returns id, path_with_namespace and web_url for one numeric project ID",
+        "read_result": "read_project returns id, path_with_namespace and web_url for one numeric project ID; the per-project template's read_issue returns iid, title, state, description and web_url for one issue IID, with a documented null description passed through as an explicit null and no tier-conditional field projected",
         "reviewed_create_preview": "POST /api/v4/projects/{id}/issues with exactly title and description, a tool description warning that a command starting a line of the description is a quick action, and a payload_sha256 over the reviewed bytes",
         "uncertain_write_handling": "Nothing in this subset can prove a create committed, so the issue list is checked by hand and nothing is resent",
         "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked on the access tokens page"

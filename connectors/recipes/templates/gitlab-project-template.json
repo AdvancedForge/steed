@@ -1,0 +1,89 @@
+{
+  "version": 2,
+  "name": "GitLab.com (one project)",
+  "origin": "https://gitlab.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/api/v4/user",
+    "subject": "/id",
+    "label": "/username"
+  },
+  "tools": [
+    {
+      "name": "read_project",
+      "description": "Read the GitLab.com project whose numeric ID is fixed in this reviewed source",
+      "method": "GET",
+      "path": "/api/v4/projects/REPLACE-WITH-YOUR-GITLAB-PROJECT-ID",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "name",
+          "pointer": "/path_with_namespace"
+        },
+        {
+          "label": "url",
+          "pointer": "/web_url"
+        }
+      ]
+    },
+    {
+      "name": "read_issue",
+      "description": "Read one issue of the reviewed project by its per-project issue IID. description is documented as possibly null and is returned as null.",
+      "method": "GET",
+      "path": "/api/v4/projects/REPLACE-WITH-YOUR-GITLAB-PROJECT-ID/issues/{destination}",
+      "response": [
+        {
+          "label": "iid",
+          "pointer": "/iid"
+        },
+        {
+          "label": "title",
+          "pointer": "/title"
+        },
+        {
+          "label": "state",
+          "pointer": "/state"
+        },
+        {
+          "label": "description",
+          "pointer": "/description"
+        },
+        {
+          "label": "url",
+          "pointer": "/web_url"
+        }
+      ]
+    },
+    {
+      "name": "create_issue",
+      "description": "Create a new issue in the reviewed project. GitLab recognizes a quick action when a command such as /assign or /confidential starts a line of an issue description or comment; the reviewed draft is sent unchanged.",
+      "method": "POST",
+      "effect": "write",
+      "path": "/api/v4/projects/REPLACE-WITH-YOUR-GITLAB-PROJECT-ID/issues",
+      "destination": "account",
+      "request": {
+        "title": "artifact.title",
+        "description": "artifact.content"
+      },
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "iid",
+          "pointer": "/iid"
+        },
+        {
+          "label": "url",
+          "pointer": "/web_url"
+        }
+      ]
+    }
+  ]
+}
