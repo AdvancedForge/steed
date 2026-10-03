@@ -165,7 +165,13 @@ def connect_recipe_oauth(
     )
     access, expires = token_response(result, auth.scopes)
     refresh = opaque(result["refresh_token"]) if "refresh_token" in result else None
-    subject, label = identity(recipe, http, access, cancelled)
+    subject, label = identity(
+        recipe,
+        http,
+        access,
+        cancelled,
+        credentials=(refresh, client.get("client_secret"), code, verifier),
+    )
     if any(
         v and (v in subject or v in label)
         for v in (refresh, client.get("client_secret"))
@@ -251,7 +257,17 @@ class RecipeOAuthAccess:
                 refreshed = {**saved, "access_token": access, "expires_at": expires}
                 if "refresh_token" in result:
                     refreshed["refresh_token"] = opaque(result["refresh_token"])
-                if identity(self.recipe, self.http, access, cancelled) != (
+                if identity(
+                    self.recipe,
+                    self.http,
+                    access,
+                    cancelled,
+                    credentials=tuple(
+                        packet.get(field)
+                        for packet in (saved, refreshed)
+                        for field in ("access_token", "refresh_token", "client_secret")
+                    ),
+                ) != (
                     self.account.subject,
                     self.account.label,
                 ):

@@ -174,6 +174,17 @@ RECIPE_HEADERS_EXAMPLE = {
     "request_headers": {"Notion-Version": "2025-09-03"},
 }
 
+RECIPE_IDENTITY_EXAMPLE = {
+    **RECIPE_HEADERS_EXAMPLE,
+    "version": 6,
+    "name": "Example Nullable Identity Notes",
+    "identity": {
+        **RECIPE_HEADERS_EXAMPLE["identity"],
+        "label": "/name",
+        "label_alternatives": ["/email", "/id"],
+    },
+}
+
 
 class RecipeError(ValueError):
     pass
@@ -424,6 +435,7 @@ class ConnectorRecipe:
     authentication: RecipeAuthentication = RecipeAuthentication()
     version: int = 1
     request_headers: tuple = ()
+    label_alternatives: tuple = ()
 
     @property
     def provider(self):
@@ -442,6 +454,7 @@ class ConnectorRecipe:
                 "path": self.identity_path,
                 "subject": self.subject_pointer,
                 "label": self.label_pointer,
+                "label_alternatives": list(self.label_alternatives),
             },
             "oauth": (
                 {
@@ -533,19 +546,51 @@ def parse_recipe(raw):
                 "authentication",
                 "identity",
                 "tools",
-                *(["request_headers"] if data.get("version") == 5 else []),
+                *(
+                    ["request_headers"]
+                    if data.get("version") == 5
+                    or data.get("version") == 6
+                    and "request_headers" in data
+                    else []
+                ),
             ),
         )
-        if type(data["version"]) is not int or data["version"] not in (1, 2, 3, 4, 5):
+        if type(data["version"]) is not int or data["version"] not in (
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+        ):
             raise RecipeError("Unsupported connector recipe version")
         headers = (
             static_request_headers(data["request_headers"])
-            if data["version"] == 5
+            if data["version"] >= 5 and "request_headers" in data
             else ()
         )
         auth = authentication(data["authentication"])
         identity = data["identity"]
-        fields(identity, ("path", "subject", "label"))
+        fields(
+            identity,
+            (
+                "path",
+                "subject",
+                "label",
+                *(["label_alternatives"] if data["version"] == 6 else []),
+            ),
+        )
+        alternatives = ()
+        if data["version"] == 6:
+            values = identity["label_alternatives"]
+            if not isinstance(values, list) or not 1 <= len(values) <= 3:
+                raise RecipeError("Provide 1–3 reviewed identity label alternatives")
+            alternatives = tuple(pointer(value) for value in values)
+            if (
+                len(set((pointer(identity["label"]), *alternatives)))
+                != len(alternatives) + 1
+            ):
+                raise RecipeError("Identity label pointers must be distinct")
         if not isinstance(data["tools"], list) or not 1 <= len(data["tools"]) <= 10:
             raise RecipeError("Provide 1–10 tools")
         tools, names = [], set()
@@ -738,6 +783,7 @@ def parse_recipe(raw):
             auth,
             data["version"],
             headers,
+            alternatives,
         )
     except (KeyError, TypeError, UnicodeError, RecursionError, ValueError) as error:
         if isinstance(error, RecipeError):

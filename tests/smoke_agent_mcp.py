@@ -40,7 +40,7 @@ from test_task_profiles import TaskProfileTests
 
 from browser_window import BrowserWindow
 from services.connector_recipes import (
-    RECIPE_HEADERS_EXAMPLE,
+    RECIPE_IDENTITY_EXAMPLE,
     RECIPE_NESTED_EXAMPLE,
     RECIPE_OAUTH_EXAMPLE,
     RECIPE_PAGINATED_EXAMPLE,
@@ -60,7 +60,8 @@ async def sdk_transport(discovery, endpoint):
         from mcp.client.streamable_http import streamable_http_client
 
         async with httpx.AsyncClient(
-            headers={"Authorization": "Bearer " + endpoint["tokens"]["sdk"]}
+            headers={"Authorization": "Bearer " + endpoint["tokens"]["sdk"]},
+            timeout=15.0,  # Match raw-client bound; Qt/worker fixtures may exceed 5s.
         ) as http:
             async with streamable_http_client(
                 endpoint["url"], http_client=http
@@ -102,7 +103,7 @@ async def recipe_workflow(
         and capabilities["installation_approval"] == "exact_recipe"
     )
     source = json.dumps(
-        capabilities["headers_example"]
+        capabilities["identity_example"]
         if plan
         else capabilities["nested_example"]
         if nested
@@ -143,6 +144,11 @@ async def recipe_workflow(
     assert preflight["recipe"]["provider"] == provider
     assert not preflight["provider_semantics_verified"]
     if plan:
+        assert preflight["recipe"]["identity"]["label_alternatives"] == [
+            "/email",
+            "/id",
+        ]
+        assert capabilities["limits"]["identity_label_alternatives"] == 3
         assert capabilities["request_headers"]["Notion-Version"] == "YYYY-MM-DD"
         assert preflight["recipe"]["request_headers"] == {
             "Notion-Version": "2025-09-03"
@@ -262,6 +268,7 @@ async def recipe_workflow(
         ] = True
         if plan:
             shared[label + "_reviewed_header_recipe_writes"] = True
+            shared[label + "_reviewed_identity_recipe_writes"] = True
         await call("task.finish")
         return
     task = await call("task.start", objective="Read one note from the reviewed service")
@@ -1690,7 +1697,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         paginated_source,
                         write_recipe(),
                         parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
-                        parse_recipe(json.dumps(RECIPE_HEADERS_EXAMPLE).encode()),
+                        parse_recipe(json.dumps(RECIPE_IDENTITY_EXAMPLE).encode()),
                     )
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
@@ -1710,7 +1717,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     plan = (
                         context["source_sha256"]
                         == parse_recipe(
-                            json.dumps(RECIPE_HEADERS_EXAMPLE).encode()
+                            json.dumps(RECIPE_IDENTITY_EXAMPLE).encode()
                         ).sha256
                     )
                     assert (
@@ -1799,7 +1806,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     paginated_source,
                     write_recipe(),
                     parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
-                    parse_recipe(json.dumps(RECIPE_HEADERS_EXAMPLE).encode()),
+                    parse_recipe(json.dumps(RECIPE_IDENTITY_EXAMPLE).encode()),
                 ):
                     if selected.provider not in manager.providers or manager.busy:
                         continue
@@ -1911,6 +1918,8 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             assert shared["raw_reviewed_nested_recipe_writes"]
             assert shared["sdk_reviewed_plan_recipe_writes"]
             assert shared["raw_reviewed_plan_recipe_writes"]
+            assert shared["sdk_reviewed_identity_recipe_writes"]
+            assert shared["raw_reviewed_identity_recipe_writes"]
             assert shared["sdk_reviewed_header_recipe_writes"]
             assert shared["raw_reviewed_header_recipe_writes"]
             header_calls = [c for c in write_http.calls if "Notion-Version" in c[2]]

@@ -1005,8 +1005,8 @@ forensic erasure from SQLite journals, free pages or external copies.
 
 ### Persistent agent file library
 
-Use **Agents → Agent File Library…**, or **File Library…** in the agent sidebar,
-to keep reusable files outside individual tasks:
+Use **Agents → Agent File Library…**, or **More options → File library…** in the
+agent sidebar, to keep reusable files outside individual tasks:
 
 1. Choose **New library folder…** and name it, for example `Research`.
 2. Use **Add files…** or **Add folder…**. Imports copy regular files, subfolders
@@ -1612,6 +1612,59 @@ verify a provider's supported version or make a whole service compatible:
 identity labels, pagination, POST reads and payload/response shapes still need
 separate contracts and acceptance.
 
+### Reviewed identity-label alternatives
+
+**Recipe version 6** adds a required identity field `label_alternatives`: an
+ordered list of 1–3 distinct JSON pointers, also distinct from the primary
+`label`. The account `subject` remains one exact, validated pointer. For example:
+
+```json
+"identity": {
+  "path": "/me",
+  "subject": "/id",
+  "label": "/name",
+  "label_alternatives": ["/email", "/id"]
+}
+```
+
+Only missing, null or empty-string labels advance to the next reviewed pointer,
+including a missing/null parent. Invalid types, malformed containers, control
+characters, whitespace-only or oversized labels and known credential echoes
+fail instead of being hidden by a fallback. An explicitly selected subject
+pointer may use the validated numeric-to-string account ID. No label field is
+inferred, and no email or ID is used unless the source explicitly lists it.
+
+Source review and preflight/catalog metadata show the alternatives in order.
+Account connect, cached authorization, OAuth refresh and paged reads retain exact
+subject and resolved-label checks; a changed resolved identity requires reconnect.
+Access/refresh tokens and other known exchange secrets must not appear in either
+identity value. Alternatives change the source hash/provider, so old accounts,
+permissions and reviews cannot authorize the changed source.
+
+Version 6 retains nested requests and sequential plans. Its `request_headers`
+field is optional; if present it has the same strict v5 allowlist and limits.
+Versions 1–5 keep their own strict grammar and do not accept label alternatives.
+`steed_recipe_capabilities` exposes versions 1–6, the alternative limit/policy and
+`identity_example`; [notes-identity.json](examples/connector_recipes/notes-identity.json)
+is the corresponding synthetic plan, not a live provider integration.
+
+This supports explicitly reviewed optional display-name contracts; for example,
+Notion documents that only user `object` and `id` are always present
+([official user reference](https://developers.notion.com/reference/user)). It does
+not establish provider consent, request semantics or support for POST queries.
+Those need separate contracts and real-account acceptance.
+
+Integrated acceptance: **948 regressions pass in 385.504 seconds**. Actual SDK
+and independent-client MCP journeys pass over stdio and authenticated HTTP with
+v6 reviewed plans, document workers and persistent library reuse. Startup/local
+render/shutdown passes on Qt 6.11.2; synthetic sidebar/menu/source previews were
+inspected. Ruff lint/format, dependency, whitespace, eight recipe examples and
+local document links pass. One HTTP fixture run hit the SDK's default 5s timeout;
+its bounded timeout now matches the existing raw client's 15s, and the rerun passes.
+Live-provider/native desktop acceptance remains separate. Logs:
+`/tmp/steed-sidebar-identity-full.log`, `/tmp/steed-identity-mcp-stdio.log`,
+`/tmp/steed-identity-mcp-http-final.log`, `/tmp/steed-sidebar-identity-startup.log`.
+
 **Version 3 nested JSON templates:** GET tools retain the existing format. POST
 `request` can contain nested objects, arrays and JSON literals. Bind draft data
 with an explicit single-key object such as `{"$bind": "artifact.content"}`;
@@ -1633,8 +1686,8 @@ serialized body, URL, source hash, account, draft hash and operation ID.
 The [nested example](examples/connector_recipes/notes-nested.json) is synthetic.
 Nested payloads are the first part of declarative request plans. Version 4 adds
 bounded result-dependent POST sequences; version 5 adds the reviewed static
-headers above. Arbitrary query inputs, root-array POSTs, revision guards and
-response conditions remain future work; provider sign-in and API semantics
+headers above; version 6 adds explicit identity-label alternatives. Arbitrary
+query inputs, root-array POSTs, revision guards and response conditions remain future work; provider sign-in and API semantics
 still require separate acceptance.
 
 Nested-template acceptance: **774 regressions passed in 299.980 seconds**;
@@ -2696,10 +2749,11 @@ Log: `/tmp/steed-sidebar-simplified-final.log`.
    may be incompatible; failed setup leaves a cancelled, read-only task.
 2. Install Steed's optional adapter dependencies:
    `.venv/bin/python -m pip install -r requirements-mcp.txt`.
-3. Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) and choose **New Codex Chat**.
+3. Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) and choose **New Codex chat**.
    This explicitly enables local agent access for this browser run and starts a
    new task. No MCP client configuration or starter prompt is required.
-   The model selector can use your Codex default or request GPT-5.4 for this chat
+   Before starting a chat, **More options** contains the model selector. It can
+   use your Codex default or request GPT-5.4 for this chat
    without changing Codex's saved configuration. Direct Steed tools were verified
    with GPT-5.4 and code-runtime Steed calls with GPT-6.1 Sol in offline native
    fixtures; your account must still provide the selected model.
@@ -2729,7 +2783,7 @@ startup failure and disconnect stop delivery without automatic replay. Runtime
 stderr, account details and message bodies are not added to activity events.
 
 Native Codex questions and command/file/network approval requests appear as
-nonmodal popups while the selected chat is visible. **Agent requests** opens
+nonmodal popups while the selected chat is visible. **Answer agent (N)…** opens
 pending requests when the sidebar was hidden. **Allow once**, **Allow for this
 chat** and **Deny** answer native requests; questions accept an option or text.
 These answers do not grant any Steed browser or connector authority. Codex's own
@@ -2739,7 +2793,7 @@ Codex's active thread, local files or external effects.
 
 Messages still grant no Steed page, profile, connector or worker access. Codex
 requests the same Steed permissions and payload reviews as any other MCP agent;
-use **Permissions**, **Files**, and **Receipts** beside the conversation. Replies
+expand **More options** for **Permissions**, **Task files**, and **Receipts**. Replies
 are streamed as plain text, coalesced and split at UTF-8 boundaries within existing
 chat limits. No message bodies, account details or runtime stderr enter activity
 events. **Clear Chat** removes queued prompts and suppresses the rest of an erased
@@ -2789,7 +2843,7 @@ preserves that task page.
 #### Delegate normal live tabs
 
 1. Open the agent sidebar and select a connected task.
-2. Click **Delegate current tab…**. Choose the current tab or all currently open
+2. Click **Share browser tabs…**. Choose the current tab or all currently open
    tabs on this named profile, across its windows (maximum ten).
 3. Review the popup's profile, sites, selected tabs and actions, then approve.
    Existing task authority is replaced by a fresh reviewed scope; prior task
@@ -4107,27 +4161,35 @@ future work. Implementation order and status live in [ROADMAP.md](ROADMAP.md).
 
 ### Customization direction (planned)
 
-Build on the existing recipes, generated files, local workers and task mailbox.
-Declarative UI customization is not implemented yet. Proposed layers are:
+The user means configurable **browser UI**: the placement and appearance of
+controls, rather than only saved agent workflows. Layout preferences and an
+agent-editable layout format are not implemented yet. Extend the current Qt
+interface incrementally; a browser rebuild is unnecessary for this scope.
 
-- **Personal layout:** show/hide and reorder supported controls, choose sidebar
-  or chat-tab presentation, save workspaces and reusable tab-group layouts.
-- **Reusable actions:** an agent designs a named workflow such as “summarize
-  these tabs into a report,” reusing supported tools, enabled library inputs and
-  the user's connected services. Expose it in a menu or optional shortcut.
-- **Native panels:** agents compose a research sidebar, reading queue or project
-  dashboard from stable Steed components and explicitly selected data sources.
-- **Integrations and outputs:** reviewed connector recipes and worker generators
-  grow into installable packages with a manifest, supported API version, update
-  review, disable and rollback controls.
+1. **Manual layout settings:** show/hide and reorder supported toolbar buttons,
+   move the sidebar left/right, remember its width, choose compact/comfortable
+   spacing and save named layouts. Preserve today's menu order as the default;
+   optional menu order belongs in these settings. Keep Settings and Reset Layout
+   reachable even when controls are hidden. Store global defaults first;
+   per-window/profile overrides can follow if needed.
+2. **Reviewed agent layout proposals:** stable component IDs and a versioned JSON
+   layout schema, bounded sizes and valid placements, preview before Apply,
+   export/import, migration, Reset and recovery to the last working layout. An
+   agent can propose a layout through a typed interface without installing code.
+   Changing layout never enables an account, folder, profile or task permission.
+3. **Agent-designed native panels:** expose a small palette of text, lists,
+   tables, forms and buttons for reading queues, research panels and project
+   dashboards. Actions use existing Steed capabilities, with visible data sources
+   and access choices. Panel updates support review, disable and rollback.
+4. **Appearance and optional actions:** validated colors, fonts and spacing, plus
+   shortcuts or named workflows attached to supported controls. Arbitrary styles
+   must not hide approvals or make recovery controls unreadable.
 
-Start with one useful workflow and a small supported UI schema. External agents
-keep their own tools; Steed brokers the selected browser/library/app capabilities.
-A custom button or panel inherits existing access choices rather than receiving
-implicit access to every profile. Its data/action scopes are visible during
-installation. Generated code does not run inside the browser process. Arbitrary
-UI frameworks, executable browser plugins and a general application marketplace
-are separate design work; choose a concrete first workflow before widening scope.
+Recipes, generated files, local workers and the task mailbox are foundations
+already available, but they do not constitute configurable browser chrome.
+External agents keep their own tools. Generated Python does not run inside the
+browser process; arbitrary executable UI extensions need a separate contract.
+See the [engineering queue](ROADMAP.md#current-engineering-queue) for sequencing.
 
 ### Agent framework
 

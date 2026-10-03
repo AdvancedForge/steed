@@ -62,6 +62,13 @@ class RecipeReviewDialog(QDialog):
             )
             + f"Account identity: GET {recipe.identity_path}\n"
             f"Account ID: {recipe.subject_pointer}\nAccount label: {recipe.label_pointer}\n\n"
+            + (
+                "Label alternatives in order: "
+                + ", ".join(recipe.label_alternatives)
+                + "\nOnly missing, null or empty labels fall back; account ID stays exact.\n\n"
+                if recipe.label_alternatives
+                else ""
+            )
             + "\n\n".join(
                 f"{t.effect.upper()}: {t.description}\n{t.method} {t.path}\nReturns: "
                 + ", ".join(f"{label} ({path})" for label, path in t.response)

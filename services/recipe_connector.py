@@ -57,7 +57,37 @@ def tool_description(recipe, account, tool):
     return prefix + description + suffix
 
 
-def identity(recipe, http, token, cancelled):
+def identity_label(recipe, result, subject, credentials):
+    """Use only reviewed labels; absence may fall back, malformed data may not."""
+    for path in (recipe.label_pointer, *recipe.label_alternatives):
+        try:
+            value = result
+            for part in path[1:].split("/"):
+                if value is None and recipe.label_alternatives:
+                    break
+                value = select(value, "/" + part)
+        except (KeyError, IndexError):
+            if recipe.label_alternatives:
+                continue
+            raise
+        if recipe.label_alternatives and (value is None or value == ""):
+            continue
+        if recipe.label_alternatives and path == recipe.subject_pointer:
+            value = subject
+        if (
+            not isinstance(value, str)
+            or not 1 <= len(value) <= 254
+            or not value.isprintable()
+            or recipe.label_alternatives
+            and not value.strip()
+            or any(secret in value for secret in credentials)
+        ):
+            raise AccountError("The service returned an invalid reviewed account label")
+        return value
+    raise AccountError("The service returned no usable reviewed account label")
+
+
+def identity(recipe, http, token, cancelled, *, credentials=()):
     check_cancelled(cancelled)
     result = http.request(
         "GET",
@@ -65,22 +95,19 @@ def identity(recipe, http, token, cancelled):
         headers={**dict(recipe.request_headers), "Authorization": "Bearer " + token},
         cancelled=cancelled,
     )
-    subject, label = (
-        select(result, recipe.subject_pointer),
-        select(result, recipe.label_pointer),
+    subject = select(result, recipe.subject_pointer)
+    secrets = tuple(
+        value for value in (token, *credentials) if isinstance(value, str) and value
     )
     if type(subject) is int:
         subject = str(subject)
     if (
         not isinstance(subject, str)
         or not re.fullmatch(r"[A-Za-z0-9._-]{1,255}", subject)
-        or not isinstance(label, str)
-        or not 1 <= len(label) <= 254
-        or not label.isprintable()
-        or token in subject
-        or token in label
+        or any(secret in subject for secret in secrets)
     ):
         raise AccountError("The service did not return a usable account identity")
+    label = identity_label(recipe, result, subject, secrets)
     return subject, label
 
 
@@ -215,14 +242,6 @@ class RecipeConnector:
         token = bearer_token(
             credential.get("access_token") if self.oauth else credential.get("token")
         )
-        if identity(self.recipe, self.http, token, cancelled) != (
-            self.account.subject,
-            self.account.label,
-        ):
-            raise AccountError("Account identity changed; reconnect this service")
-        self.catalog.active(self.recipe)
-        self.store.active(self.account)
-        check_cancelled(cancelled)
         credentials = tuple(
             value
             for value in (
@@ -232,6 +251,16 @@ class RecipeConnector:
             )
             if isinstance(value, str) and value
         )
+        if identity(
+            self.recipe, self.http, token, cancelled, credentials=credentials
+        ) != (
+            self.account.subject,
+            self.account.label,
+        ):
+            raise AccountError("Account identity changed; reconnect this service")
+        self.catalog.active(self.recipe)
+        self.store.active(self.account)
+        check_cancelled(cancelled)
         return token, credentials
 
     def read(self, tool, destination, token, credentials, cancelled):
@@ -242,7 +271,9 @@ class RecipeConnector:
             self.catalog.active(self.recipe)
             self.store.active(self.account)
             check_cancelled(cancelled)
-            if index and identity(self.recipe, self.http, token, cancelled) != (
+            if index and identity(
+                self.recipe, self.http, token, cancelled, credentials=credentials
+            ) != (
                 self.account.subject,
                 self.account.label,
             ):
