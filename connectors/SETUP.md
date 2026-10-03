@@ -119,7 +119,7 @@ Scope shipped:
 | Create issue | `POST /repos/{owner}/{repository}/issues` with `title` and `body` |
 
 Deliberately excluded: arbitrary owners or repositories chosen at call time, issue
-updates and comments, pull requests, releases, and issue-list pagination.
+updates and comments, releases, and issue-list pagination.
 
 Notes on the wire shape:
 
@@ -140,6 +140,13 @@ Notes on the wire shape:
   issue answers `301`, an issue the token cannot read answers `404`, and a
   deleted issue answers `410`. Steed follows no redirect, so each of those is
   surfaced as a failed read rather than retried elsewhere.
+- The same route documents that a **pull request** can be returned at the selected
+  issue number, marked by an optional `pull_request` object. `read_issue` does not
+  select that discriminator, so a pull request projects to exactly the same six
+  fields as an issue and **the read does not establish the object type**. The tool
+  description says so where the read is offered. Treat the result as "issue-or-pull
+  request"; if you need to know which, read it again through a route that the
+  reviewed profile does not offer yet.
 - `state_reason` for an open issue is documented as nullable but not as
   specifically `null`; the profile passes through whatever GitHub sends.
 - Issue creation sends exactly `title` and `body`. No labels, assignees, projects
@@ -215,11 +222,15 @@ Notes on the wire shape:
 
 - Destinations are numeric project IDs. A namespace path cannot be expressed,
   because a reviewed path segment never contains a slash.
-- Issue creation sends exactly `title` and `description`. GitLab interprets a
-  leading slash command in an issue title or description as a quick action, so
-  the `create_issue` tool description repeats that warning where the source
-  review and the task's own payload preview are read, and Steed sends the
-  reviewed draft unchanged without stripping or guessing commands.
+- Issue creation sends exactly `title` and `description`. GitLab documents a
+  **quick action** as a command that starts its own line in an issue
+  description or comment, such as `/assign` or `/confidential`, so a draft that
+  begins a line with a slash can change the created issue. The `create_issue`
+  tool description repeats that warning where the source review and the task's own
+  payload preview are read, and Steed sends the reviewed draft unchanged: no
+  command is stripped, escaped or described as plain prose, and nothing here
+  claims that GitLab interprets a title. GitLab's processing of the submitted
+  text is service behaviour that you confirm on the created issue.
 - Nothing here proves that a create committed. There is no reviewed
   reconciliation route and no idempotency header, so an uncertain create is
   reported as uncertain and you check the GitLab issue list yourself.
@@ -246,6 +257,7 @@ Official references:
 - [Retrieve the current user](https://docs.gitlab.com/api/users/#retrieve-the-current-user)
 - [Get single project](https://docs.gitlab.com/api/projects/#get-single-project)
 - [Create an issue](https://docs.gitlab.com/api/issues/#create-an-issue)
+- [Quick actions](https://docs.gitlab.com/user/project/quick_actions/)
 
 
 
