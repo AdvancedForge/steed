@@ -1402,7 +1402,8 @@ class ExecutableContractCaseTests(unittest.TestCase):
                 self.assertEqual(case["expected"]["outcome"], "refused_before_dispatch")
 
     def test_an_unreviewed_query_parameter_is_refused_before_dispatch(self):
-        case = self.case("figma_document_read_body_bound")
+        documented = self.case("figma_document_read_body_bound")["request"]["query"]
+        self.assertEqual(documented, {"depth": "1"})
         http = RecipeHttp(CONTRACT_ORIGINS["Figma"])
         with self.assertRaises(ValueError) as caught:
             http.request(
