@@ -131,6 +131,35 @@ RECIPE_NESTED_EXAMPLE = {
     ],
 }
 
+RECIPE_PLAN_EXAMPLE = {
+    **RECIPE_NESTED_EXAMPLE,
+    "version": 4,
+    "name": "Example Sequential Notes",
+    "tools": [
+        {
+            **{
+                key: value
+                for key, value in RECIPE_NESTED_EXAMPLE["tools"][0].items()
+                if key != "reconciliation"
+            },
+            "plan": [
+                {
+                    "name": "append_note",
+                    "description": "Append reviewed text to the newly created note",
+                    "method": "POST",
+                    "path": "/notes/{step.create_note.id}/comments",
+                    "request": {
+                        "note_id": {"$bind": "step.create_note.id"},
+                        "comment": {"$bind": "artifact.content"},
+                        "operation_id": {"$bind": "operation_id"},
+                    },
+                    "response": [{"label": "id", "pointer": "/id"}],
+                }
+            ],
+        }
+    ],
+}
+
 
 class RecipeError(ValueError):
     pass
@@ -320,6 +349,8 @@ class RecipeTool:
     idempotency_header: str = ""
     reconciliation: RecipeReconciliation | None = None
     request_template: JsonTemplate | None = None
+    steps: tuple = ()
+    plan_context: tuple = ()
 
     @property
     def method(self):
@@ -421,6 +452,21 @@ class ConnectorRecipe:
                     "response_fields": [
                         {"label": k, "pointer": v} for k, v in t.response
                     ],
+                    "plan": [
+                        {
+                            "name": step.name,
+                            "description": step.description,
+                            "method": step.method,
+                            "path": step.path,
+                            "request": step.request_template.source(),
+                            "response_fields": [
+                                {"label": k, "pointer": v} for k, v in step.response
+                            ],
+                            "idempotency_header": step.idempotency_header or None,
+                        }
+                        for step in t.steps
+                    ]
+                    or None,
                 }
                 for t in self.tools
             ],
@@ -441,7 +487,7 @@ def parse_recipe(raw):
         fields(
             data, ("version", "name", "origin", "authentication", "identity", "tools")
         )
-        if type(data["version"]) is not int or data["version"] not in (1, 2, 3):
+        if type(data["version"]) is not int or data["version"] not in (1, 2, 3, 4):
             raise RecipeError("Unsupported connector recipe version")
         auth = authentication(data["authentication"])
         identity = data["identity"]
@@ -471,6 +517,11 @@ def parse_recipe(raw):
                     *(
                         ["reconciliation"]
                         if writing and "reconciliation" in item
+                        else []
+                    ),
+                    *(
+                        ["plan"]
+                        if data["version"] == 4 and writing and "plan" in item
                         else []
                     ),
                 ),
@@ -509,7 +560,7 @@ def parse_recipe(raw):
                         "Send needs one email recipient; resource writes need a destination path segment"
                     )
                 value = item["request"]
-                if data["version"] == 3:
+                if data["version"] >= 3:
                     template = json_template(value)
                     sources = template.bindings()
                 else:
@@ -613,6 +664,14 @@ def parse_recipe(raw):
                     template,
                 )
             )
+            if "plan" in item:
+                from dataclasses import replace
+
+                from services.recipe_plans import compile_plan
+
+                tools[-1] = replace(
+                    tools[-1], steps=compile_plan(tools[-1], item["plan"], data)
+                )
         return ConnectorRecipe(
             hashlib.sha256(raw).hexdigest(),
             raw,

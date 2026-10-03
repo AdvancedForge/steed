@@ -46,7 +46,8 @@ image generation. Users share selected input files and export results from
 Task Permissions. Active website scripts and generic extensions remain planned.
 Google Docs/Gmail connections keep credentials in the desktop keyring and offer
 persistent account access switches. Real-account acceptance remains pending.
-Agents can also propose connector recipes for REST reads, creates and sends;
+Agents can propose connector recipes for REST reads, creates and sends,
+including nested payloads and separately reviewed multi-step requests;
 Steed owns OAuth sign-in or token setup, execution, permission switches and revocation.
 [Recipe setup](DOCUMENTATION.md#agent-designed-connector-recipes) describes this
 format, per-action payload reviews and limits. See

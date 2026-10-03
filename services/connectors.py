@@ -88,6 +88,7 @@ class ConnectorTool:
     prepare_review: object = None
     access_group: str = ""
     review_kind: str = "document"
+    plan: object = None
 
 
 class ConnectorRegistry:
@@ -107,6 +108,13 @@ class ConnectorRegistry:
             or definition.access_group not in {"", "direct"}
             or (definition.access_group == "direct" and definition.effect != "write")
             or type(definition.requires_artifact) is not bool
+            or definition.plan is not None
+            and (
+                definition.effect not in {"write", "send"}
+                or definition.review_kind != "payload"
+                or not callable(getattr(definition.plan, "materialize", None))
+                or not 2 <= len(getattr(definition.plan, "steps", ())) <= 5
+            )
             or not callable(definition.execute)
             or (definition.reconcile is not None and not callable(definition.reconcile))
             or (
@@ -157,6 +165,7 @@ class ConnectorRegistry:
                 "can_reconcile": t.reconcile is not None,
                 "reconcile_effect": "read" if t.reconcile is not None else None,
                 "requires_review": t.prepare_review is not None,
+                "plan_steps": len(t.plan.steps) if t.plan else 0,
             }
             for _, t in sorted(self._tools.items())
         ]

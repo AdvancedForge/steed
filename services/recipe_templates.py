@@ -49,8 +49,29 @@ class JsonTemplate:
             return frozenset().union(*(child.bindings() for child in children))
         return frozenset()
 
+    def resolve(self, values):
+        """Freeze previously selected outputs; preserve the normal draft bindings."""
+        if self.kind == "binding" and self.value.startswith("step."):
+            value = values[self.value]
+            if (
+                not isinstance(value, str)
+                or "\x00" in value
+                or len(value.encode("utf-8")) > 4096
+            ):
+                raise ValueError("Plan outputs must bind bounded JSON strings")
+            return JsonTemplate("literal", value)
+        if self.kind == "object":
+            return JsonTemplate(
+                "object", tuple((k, child.resolve(values)) for k, child in self.value)
+            )
+        if self.kind == "array":
+            return JsonTemplate(
+                "array", tuple(child.resolve(values) for child in self.value)
+            )
+        return self
 
-def json_template(value, *, bindings=True):
+
+def json_template(value, *, bindings=True, binding_sources=BINDING_SOURCES):
     """Compile recipe data or validate a materialized request before HTTP entry."""
     nodes = 0
 
@@ -61,7 +82,7 @@ def json_template(value, *, bindings=True):
             raise ValueError("JSON template exceeds its depth or node limit")
         if isinstance(item, dict):
             if bindings and "$bind" in item:
-                if set(item) != {"$bind"} or item["$bind"] not in BINDING_SOURCES:
+                if set(item) != {"$bind"} or item["$bind"] not in binding_sources:
                     raise ValueError("Use one supported explicit JSON binding")
                 return JsonTemplate("binding", item["$bind"])
             if len(item) > MAX_TEMPLATE_ITEMS or any(

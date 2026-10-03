@@ -88,6 +88,23 @@ class RecipeReviewDialog(QDialog):
                     if t.pagination
                     else ""
                 )
+                + (
+                    "\nSequential plan (separate review and receipt per POST):\n"
+                    + "\n\n".join(
+                        f"{i + 1}. {step.name}: {step.description}\nPOST {step.path}\n"
+                        + json.dumps(
+                            step.request_template.source(), ensure_ascii=False, indent=2
+                        )
+                        + "\nReturns: "
+                        + ", ".join(f"{k} ({p})" for k, p in step.response)
+                        + "\nOperation header: "
+                        + (step.idempotency_header or "none")
+                        for i, step in enumerate(t.steps)
+                    )
+                    + "\nStops on failure, denial, revocation or uncertainty. No automatic restart/resume; completed steps are not rolled back."
+                    if t.steps
+                    else ""
+                )
                 for t in recipe.tools
             )
             + "\n\nRecipe SHA-256: "

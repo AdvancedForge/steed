@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, pyqtSignal
 
+from services.app_plans import AppPlans
 from services.browser_backend import BrowserBackend, QtBrowserBackend, navigation_url
 from services.command_broker import CommandBroker, require_owner_thread
 from services.connector_access import ConnectorAccess
@@ -74,6 +75,7 @@ class TaskService(QObject):
         self.connector_store = ConnectorStore(self.store)
         self.account_access = ConnectorAccess(self.store, self.connectors)
         self.app_reviews = ConnectorReviews(self.store)
+        self.app_plans = AppPlans(self)
         self.workspace = TaskWorkspace(self.store)
         self._connector_jobs = {}
         self.connector_timeout_ms = connector_timeout_ms
@@ -488,6 +490,7 @@ class TaskService(QObject):
             RECIPE_NESTED_EXAMPLE,
             RECIPE_OAUTH_EXAMPLE,
             RECIPE_PAGINATED_EXAMPLE,
+            RECIPE_PLAN_EXAMPLE,
             RECIPE_WRITE_EXAMPLE,
         )
 
@@ -496,8 +499,8 @@ class TaskService(QObject):
         return {
             "available": self.recipes.connections is not None
             and self.recipes.connections.recipes is not None,
-            "version": 3,
-            "supported_versions": [1, 2, 3],
+            "version": 4,
+            "supported_versions": [1, 2, 3, 4],
             "authentication": ["bearer", "oauth_pkce"],
             "destinations": {
                 "resource": "one exact resource ID",
@@ -521,12 +524,14 @@ class TaskService(QObject):
                 "template_depth": 8,
                 "template_nodes": 100,
                 "template_items": 20,
+                "plan_steps": 5,
             },
             "example": copy.deepcopy(RECIPE_EXAMPLE),
             "oauth_example": copy.deepcopy(RECIPE_OAUTH_EXAMPLE),
             "pagination_example": copy.deepcopy(RECIPE_PAGINATED_EXAMPLE),
             "write_example": copy.deepcopy(RECIPE_WRITE_EXAMPLE),
             "nested_example": copy.deepcopy(RECIPE_NESTED_EXAMPLE),
+            "plan_example": copy.deepcopy(RECIPE_PLAN_EXAMPLE),
         }
 
     def _recipe_list(self, task_id):
@@ -580,7 +585,30 @@ class TaskService(QObject):
         require_owner_thread(self)
         self._usable()
         try:
+            receipts = {r.request_id: r for r in self.connector_store.list(task_id)}
+            selected = tuple(receipts) if request_ids is None else request_ids
+            parents = set()
+            if (
+                isinstance(selected, (list, tuple))
+                and len(selected) <= 50
+                and all(isinstance(item, str) and item in receipts for item in selected)
+                and len(set(selected)) == len(selected)
+            ):
+                expanded = set(selected)
+                for request_id in selected:
+                    if self.app_plans.parent(task_id, request_id):
+                        parents.add(request_id)
+                        expanded.update(
+                            row["child_request_id"]
+                            for row in self.app_plans.children(task_id, request_id)
+                        )
+                    link = self.app_plans.link(task_id, request_id)
+                    if link is not None:
+                        parents.add(link["parent_request_id"])
+                request_ids = tuple(expanded)
             count = self.connector_store.clear_results(task_id, request_ids)
+            for parent_id in parents:
+                self.app_plans.cancel(task_id, parent_id)
         except (sqlite3.Error, OSError, RuntimeError):
             self._fatal()
             raise
@@ -670,19 +698,34 @@ class TaskService(QObject):
                 self._fatal(defer_broker_close=True)
                 raise
         self._app_capacity(task_id)
+        needed = len(definition.plan.steps) + 1 if definition.plan is not None else 1
+        if (
+            len(self.connector_store.list(task_id))
+            + self.app_plans.reserved(task_id)
+            + needed
+            > 50
+        ):
+            raise ValueError("Reserve enough app receipts for every plan step")
         self._app_grant(task_id, request, consume=True)
         try:
             receipt = self.connector_store.create(task_id, request, fingerprint)
         except (sqlite3.Error, OSError):
             self._fatal(defer_broker_close=True)
             raise
-        self._queue_app_job(
-            task_id,
-            definition,
-            request,
-            grant,
-            preparing=definition.prepare_review is not None,
-        )
+        if definition.plan is not None:
+            try:
+                self.app_plans.start(task_id, receipt, definition)
+            except (sqlite3.Error, OSError):
+                self._fatal(defer_broker_close=True)
+                raise
+        else:
+            self._queue_app_job(
+                task_id,
+                definition,
+                request,
+                grant,
+                preparing=definition.prepare_review is not None,
+            )
         self.changed.emit()
         return receipt
 
@@ -733,6 +776,8 @@ class TaskService(QObject):
                 current = self.store.artifact(task_id, job.request.artifact.artifact_id)
                 if current.sha256 != job.request.artifact.sha256:
                     raise ValueError("Draft changed before app dispatch")
+            if not job.preparing and not job.probe:
+                self.app_plans.check_review(task_id, job.request)
         except Exception:
             self._app_finished(task_id, request_id, job, (None, True))
             return
@@ -748,6 +793,7 @@ class TaskService(QObject):
                 reason="preparing_review" if job.preparing else "",
             )
             self.store.transition(task_id, "running")
+            self.app_plans.changed(task_id, request_id, advance=True)
             job.dispatched = True
             job.timer.start(self.connector_timeout_ms)
             job.start()
@@ -792,6 +838,11 @@ class TaskService(QObject):
                         self._fatal()
                 except Exception:
                     self._fatal()
+                if not self.failure:
+                    try:
+                        self.app_plans.changed(task_id, request_id, advance=True)
+                    except Exception:
+                        self._fatal()
                 self.changed.emit()
                 job.deleteLater()
                 return
@@ -826,6 +877,7 @@ class TaskService(QObject):
                     text=outcome.text if outcome else "",
                     reason=reason,
                 )
+                self.app_plans.changed(task_id, request_id, advance=not job.probe)
             except Exception:
                 self._fatal()
             self.changed.emit()
@@ -859,9 +911,11 @@ class TaskService(QObject):
             self.connector_store.update(
                 task_id, request_id, "cancelled", reason="review_denied"
             )
+            self.app_plans.changed(task_id, request_id)
             self.changed.emit()
             return
         definition = self.connectors.get(receipt.connector, receipt.tool)
+        definition = self.app_plans.definition(task_id, request_id, definition)
         if definition.prepare_review is None:
             raise ValueError("This tool does not accept reviewed execution")
         artifact = self.store.artifact(task_id, receipt.artifact_id)
@@ -888,6 +942,7 @@ class TaskService(QObject):
         ):
             raise ValueError("The proposed draft no longer matches the request")
         grant = self._app_grant(task_id, request)
+        self.app_plans.check_review(task_id, request)
         grant.check("artifact")
         self._app_capacity(task_id)
         self._app_grant(task_id, request, consume=True)
@@ -910,6 +965,7 @@ class TaskService(QObject):
             self.connector_store.update(
                 task_id, request_id, state, reason="connector_timeout"
             )
+            self.app_plans.changed(task_id, request_id)
         except Exception:
             self._fatal()
         self.changed.emit()
@@ -921,6 +977,9 @@ class TaskService(QObject):
 
     def _cancel_app_job(self, task_id, request_id):
         receipt = self.connector_store.get(task_id, request_id)
+        if self.app_plans.parent(task_id, request_id):
+            self.app_plans.cancel(task_id, request_id)
+            return self.connector_store.get(task_id, request_id)
         job = self._connector_jobs.get((task_id, request_id))
         if job:
             job.cancelled.set()
@@ -958,6 +1017,7 @@ class TaskService(QObject):
                     task_id, request_id, "cancelled", reason="review_cancelled"
                 )
                 self.changed.emit()
+        self.app_plans.changed(task_id, request_id)
         return receipt
 
     def _cancel_app_jobs(self, task_id):

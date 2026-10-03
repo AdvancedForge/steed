@@ -46,6 +46,8 @@ def tool_description(recipe, account, tool):
     )
     if tool.pagination:
         suffix += f" (up to {tool.pagination.max_pages} pages)"
+    if tool.steps:
+        suffix += f" ({len(tool.steps)} separately reviewed steps)"
     budget = 512 - len(prefix) - len(suffix)
     description = (
         tool.description
@@ -131,6 +133,7 @@ class RecipeConnector:
         )
 
     def tools(self):
+        from services.recipe_plans import RecipePlan
         from services.recipe_writes import RecipeWrites
 
         writes = RecipeWrites(self)
@@ -160,6 +163,7 @@ class RecipeConnector:
                 if tool.reconciliation
                 else None,
                 review_kind="payload" if tool.effect != "read" else "document",
+                plan=RecipePlan(self, tool) if tool.steps else None,
             )
             for tool in self.recipe.tools
             if tool.name in self.account.capabilities

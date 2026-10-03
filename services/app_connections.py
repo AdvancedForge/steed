@@ -132,7 +132,12 @@ class AppConnections(QObject):
             recipe.provider,
             f"{recipe.name} ({recipe.origin.removeprefix('https://')})",
             tuple(
-                (t.name, f"{t.effect.upper()}: {t.description}") for t in recipe.tools
+                (
+                    t.name,
+                    f"{t.effect.upper()}: {t.description}"
+                    + (f" ({len(t.steps)} reviewed steps)" if t.steps else ""),
+                )
+                for t in recipe.tools
             ),
             lambda store, path, caps, cancelled: (
                 connect_recipe_oauth(

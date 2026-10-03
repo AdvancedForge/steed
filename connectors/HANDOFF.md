@@ -30,9 +30,9 @@ enable switches or skip installation/payload review.
 | P1 | Todoist | Capture tasks from browsing and inspect active tasks | **Recipe-only ready subset:** personal token, task reads, bounded cursor list, inbox creates | Implement first; no project selection, completion/delete or undocumented request-ID lookup. |
 | P1 | GitHub | Repository context and actionable issues | **Recipe-only ready subset:** personal token, owner-pinned repository reads/issue creates | Implement second; an owner must be fixed in reviewed source, not supplied as an arbitrary path. |
 | P1 | GitLab.com | Project context and issues | **Recipe-only ready subset:** bearer-compatible personal token, numeric project reads/issue creates | Implement third; no self-hosted/private domains, arbitrary project paths or updates/deletes. |
-| P1 | Notion | Personal/team knowledge and pages | **Needs framework work:** required version header and nested request objects; sign-in compatibility also needs acceptance | Record desired scopes and wire fixtures; do not bypass header restrictions. |
+| P1 | Notion | Personal/team knowledge and pages | **Needs framework work:** required version header; nested payloads are available in v3, but sign-in compatibility also needs acceptance | Record desired scopes and wire fixtures; do not bypass header restrictions. |
 | P1 | Slack | Collaborative messages and context | **Needs framework work:** channel destinations, request parameters and application-level `ok` checks; workspace identity/sign-in needs acceptance | Prepare fixtures; never classify `ok:false` as a successful send. |
-| P2 | Asana | Project/task context and task capture | Read shape fits; actual token syntax/sign-in acceptance is unresolved. Writes need nested `data` and workspace/project inputs | Prepare response fixtures/setup notes; do not declare PATs universally compatible with Steed's strict bearer parser. |
+| P2 | Asana | Project/task context and task capture | Read shape fits; actual token syntax/sign-in acceptance is unresolved. Nested `data` is available in v3; workspace/project inputs still need reviewed service profiles | Prepare response fixtures/setup notes; do not declare PATs universally compatible with Steed's strict bearer parser. |
 | P2 | Dropbox | Files and shared material | RPC-style POST reads, request objects and content endpoints exceed current format | Wait for framework support; no credential-bearing arbitrary requests. |
 | P2 | Linear | Issues/projects | GraphQL POST reads, variables and error handling exceed current format | Wait for framework support; do not disguise reads as mutation tools. |
 
@@ -52,7 +52,7 @@ compatible with Steed recipes. Each row links its official starting reference.
 | Priority | Category / candidate | First useful capability | Gate before packaging |
 | --- | --- | --- | --- |
 | P1 | Bookmarks — [Raindrop.io](https://developer.raindrop.io/v1/user/authenticated) | Read collections and saved links; later save browsing references | Bearer/identity shapes appear compatible; verify token format and the `result` success flag. Bookmark creates require an explicit URL input, not a guessed draft-to-URL conversion. |
-| P1 | Structured data — [Airtable](https://airtable.com/developers/web/api/introduction) | Read chosen tables/records; later capture structured notes | Verify `/meta/whoami`, base/table pinning, scopes and offset paging. Record writes need nested payloads and field mappings; framework v3 is in progress, not this handoff's baseline. |
+| P1 | Structured data — [Airtable](https://airtable.com/developers/web/api/introduction) | Read chosen tables/records; later capture structured notes | Verify `/meta/whoami`, base/table pinning, scopes and offset paging. Nested payloads are available in v3, but field mappings and service wire-shape acceptance remain necessary. |
 | P2 | Scheduling — [Calendly](https://developer.calendly.com/api-docs/calendly-api/users/get-current-user) | Read scheduling links and selected meetings | Identity uses a full URI, rejected by the current subject contract. Queries, scopes and provider plan access need verification. Bookings need separately reviewed structured inputs. |
 | P2 | Knowledge — [Readwise / Reader](https://readwise.io/reader_api) | Read saved research/highlights; save selected articles | Authentication is `Authorization: Token`, not Bearer; its auth probe returns 204 without account identity. Needs trusted auth/identity support and explicit URL inputs. |
 | P2 | Tasks — [ClickUp](https://developer.clickup.com/docs/authentication) | Read chosen tasks/lists; capture tasks | Personal tokens use raw Authorization; OAuth bearer tokens are currently non-expiring, incompatible with the current bounded-expiry exchange. Do not pretend PATs work by adding Bearer. |
@@ -113,7 +113,12 @@ open a PR; do not push to `main`, rewrite history or touch another agent's check
 
 The **framework agent** owns `services/`, `ui/`, `agent_mcp.py`, shared existing
 recipe tests, MCP smoke scripts, `README.md`, `DOCUMENTATION.md` and `ROADMAP.md`.
-It is implementing catalog discovery and declarative plans while preserving v1/v2.
+It owns catalog discovery and declarative plans while preserving v1/v2.
+The picker and nested v3 payloads are implemented. V4's first plan subset provides
+2–5 sequential POSTs with prior selected-string bindings, per-step reviews and
+receipts, partial/uncertain stop and no restart/resume. It does not add provider
+headers, query inputs, read steps, revision updates or per-step reconciliation.
+Those shared capabilities remain framework work; do not work around their absence.
 Do not edit these files for a service-specific workaround. Describe missing
 capabilities in the PR/issue and continue with compatible subsets. No credentials,
 real account fixtures, dependency installations or external sends belong in a PR.
