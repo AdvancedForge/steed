@@ -571,7 +571,7 @@ class ArchivedProbeTests(unittest.TestCase):
         before = len(self.calls), len(self.probes)
         self.service = TaskService(self.path, connectors=self.registry)
         self.assertEqual(
-            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 13
+            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 14
         )
         self.assertEqual(
             self.service.connector_store.get(client.task_id, "history-check").state,

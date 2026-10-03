@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "name": "Example Notes",
+  "origin": "https://api.fixture.example",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/me",
+    "subject": "/id",
+    "label": "/email"
+  },
+  "tools": [
+    {
+      "name": "read_note",
+      "description": "Read one selected note",
+      "method": "GET",
+      "path": "/notes/{destination}",
+      "response": [
+        {
+          "label": "title",
+          "pointer": "/title"
+        },
+        {
+          "label": "body",
+          "pointer": "/body"
+        }
+      ]
+    }
+  ]
+}

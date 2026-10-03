@@ -89,10 +89,11 @@ SCOPE = schema(
                     "artifact",
                     "workspace",
                     "worker",
+                    "connector",
                     "app",
                 ],
             },
-            "maxItems": 13,
+            "maxItems": 14,
         },
         "profile": string(140),
         "allow_private_network": {
@@ -146,6 +147,26 @@ def tool(command, description, properties=None, required=()):
 
 
 TOOLS = (
+    tool(
+        "recipe.capabilities",
+        "Discover supported connector recipe format, authentication, limits and a copyable example before writing source. No grant, account or network access is created. Replace the example domain and fields with the actual service's documented API; recipes are untrusted proposals until user review.",
+    ),
+    tool(
+        "recipe.propose",
+        "Propose installing a sealed owned connector-recipe JSON file (16 KiB maximum). Requires workspace and connector task permission. User-only review pins domains, identity request, GET paths, returned fields and source hash. Installation creates no account or execution authority; tokens come from trusted App Connections only. Stable request IDs never replay.",
+        {"file_id": string(64), "request_id": string(64)},
+        ("file_id", "request_id"),
+    ),
+    tool(
+        "recipe.status",
+        "Read an owned connector installation receipt with connector permission. No credentials or installation approval endpoint are exposed.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
+        "recipe.list",
+        "List this task's connector installation receipts with connector permission.",
+    ),
     tool(
         "app.list_tools",
         "Discover browser-configured app tools and trusted effects. No account credentials or authority are returned; no connectors are bundled by default.",

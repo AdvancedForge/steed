@@ -31,6 +31,7 @@ from services.connectors import (
 from services.form_submission import journal_origin
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
+from services.recipe_proposals import RecipeProposals
 from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
 from services.task_downloads import DownloadDestination
@@ -61,6 +62,7 @@ class TaskService(QObject):
         profiles=None,
         connectors=None,
         connector_timeout_ms=30000,
+        connections=None,
     ):
         super().__init__(parent)
         require_owner_thread(self)
@@ -92,6 +94,7 @@ class TaskService(QObject):
         self._closed = False
         self.failure = ""
         self.workers = WorkerManager(self)
+        self.recipes = RecipeProposals(self, connections)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -132,6 +135,14 @@ class TaskService(QObject):
                     self.workers.list, task_id
                 ),
                 "worker.cancel": self._worker_cancel,
+                "recipe.propose": lambda task_id, file_id, request_id: (
+                    self._worker_action(
+                        self.recipes.propose, task_id, file_id, request_id
+                    )
+                ),
+                "recipe.status": self._recipe_status,
+                "recipe.list": self._recipe_list,
+                "recipe.capabilities": self._recipe_capabilities,
                 "app.list_tools": self._app_tools,
                 "app.call_tool": self._app_call,
                 "app.status": self._app_status,
@@ -450,6 +461,7 @@ class TaskService(QObject):
         self._usable()
         try:
             self.workers.deleting(task_id, file_id)
+            self.recipes.cancel_task(task_id, file_id)
             self.workspace.delete(task_id, file_id)
         except (sqlite3.Error, OSError):
             self._fatal(defer_broker_close=True)
@@ -460,6 +472,44 @@ class TaskService(QObject):
         self._usable()
         self._active(task_id)
         return self._worker_action(self.workers.cancel, task_id, request_id)
+
+    def _recipe_status(self, task_id, request_id):
+        self._authorize(task_id, "connector")
+        return self._worker_action(self.recipes.get, task_id, request_id)
+
+    def _recipe_capabilities(self, task_id):
+        import copy
+
+        from services.connector_recipes import RECIPE_EXAMPLE
+
+        self._usable()
+        self._active(task_id)
+        return {
+            "available": self.recipes.connections is not None
+            and self.recipes.connections.recipes is not None,
+            "version": 1,
+            "authentication": ["bearer"],
+            "effects": ["read"],
+            "installation_approval": "exact_recipe",
+            "limits": {
+                "recipe_bytes": 16384,
+                "tools": 10,
+                "response_fields": 10,
+                "proposals_per_task": 20,
+                "pending_per_task": 3,
+            },
+            "example": copy.deepcopy(RECIPE_EXAMPLE),
+        }
+
+    def _recipe_list(self, task_id):
+        self._authorize(task_id, "connector")
+        return self._worker_action(self.recipes.list, task_id)
+
+    def resolve_recipe(self, task_id, request_id, *, approve=False):
+        """Trusted popup/management UI only; agents cannot install recipes."""
+        return self._worker_action(
+            self.recipes.resolve, task_id, request_id, approve=approve
+        )
 
     def _worker_capabilities(self, task_id):
         self._usable()
@@ -1954,6 +2004,7 @@ class TaskService(QObject):
         if live:
             live[1].end(status)
         self.workers.cancel_task(task_id)
+        self.recipes.cancel_task(task_id)
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):

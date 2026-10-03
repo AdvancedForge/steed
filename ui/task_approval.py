@@ -34,6 +34,7 @@ ACTION_LABELS = {
     "artifact": "Save and read task notes/drafts here (kept after the task ends)",
     "workspace": "Create and read task files, including inputs you explicitly share; stage custom integration source (no host-folder access, execution or network permission)",
     "worker": "Request custom Python execution; each exact package needs separate approval (no direct network, host files or subprocesses)",
+    "connector": "Propose new service connections; each exact recipe needs a separate review before installation (no account or network access granted here)",
     "app": "Use the exact app tools/destinations below (results kept here)",
 }
 
@@ -323,6 +324,10 @@ class TaskApprovalQueue(QObject):
                         (task, receipt)
                         for receipt in self.service.workers.store.pending(task.task_id)
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.recipes.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -349,13 +354,23 @@ class TaskApprovalQueue(QObject):
             if key in self.deferred:
                 continue
             from services.connector_reviews import AppReview
+            from services.recipe_proposals import RecipeProposal
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
+            from ui.recipe_review import RecipeReviewDialog
             from ui.worker_approval import WorkerApprovalDialog
 
             try:
                 dialog = (
-                    AppReviewDialog(self.service, task, grant, parent)
+                    RecipeReviewDialog(
+                        self.service.recipes.connections,
+                        self.service.recipes.recipe(grant),
+                        parent,
+                        service=self.service,
+                        proposal=grant,
+                    )
+                    if isinstance(grant, RecipeProposal)
+                    else AppReviewDialog(self.service, task, grant, parent)
                     if isinstance(grant, AppReview)
                     else WorkerApprovalDialog(self.service, task, grant, parent)
                     if isinstance(grant, WorkerReceipt)
@@ -379,11 +394,12 @@ class TaskApprovalQueue(QObject):
 
     def request_key(self, task, item):
         from services.connector_reviews import AppReview
+        from services.recipe_proposals import RecipeProposal
         from services.worker_store import WorkerReceipt
 
         return (
             item.request_key
-            if isinstance(item, (AppReview, WorkerReceipt))
+            if isinstance(item, (AppReview, WorkerReceipt, RecipeProposal))
             else item.grant_id
             if item
             else "recovery:" + task.task_id

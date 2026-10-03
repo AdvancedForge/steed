@@ -9,8 +9,10 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from services.app_accounts import AccountError, AccountStore
 from services.command_broker import require_owner_thread
 from services.connector_policy import connector_name
+from services.connector_recipes import RecipeError, RecipeStore
 from services.connectors import ConnectorRegistry
 from services.google_connector import GoogleConnector, connect_google
+from services.recipe_connector import RecipeConnector, connect_recipe
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,8 @@ class AppProvider:
     setup_hint: str = "Choose the provider's desktop client configuration file."
     client_placeholder: str = "Desktop client configuration"
     setup_url: str = ""
+    authentication: str = "oauth"
+    recipe_sha256: str = ""
 
 
 class AppConnections(QObject):
@@ -30,7 +34,9 @@ class AppConnections(QObject):
 
     changed = pyqtSignal()
 
-    def __init__(self, path, parent=None, *, store=None, providers=None):
+    def __init__(
+        self, path, parent=None, *, store=None, providers=None, recipe_http_factory=None
+    ):
         super().__init__(parent)
         require_owner_thread(self)
         definitions = (
@@ -66,6 +72,16 @@ class AppConnections(QObject):
                 raise ValueError("Invalid trusted app provider")
             self.providers[provider.name] = provider
         self.connectors = ConnectorRegistry()
+        self.recipe_http_factory = recipe_http_factory
+        self.recipes = None
+        self.recipe_failure = ""
+        try:
+            self.recipes = RecipeStore(path.with_name("connector_recipes.json"))
+            for recipe, enabled in self.recipes.list():
+                if enabled:
+                    self.providers[recipe.provider] = self._recipe_provider(recipe)
+        except (RecipeError, OSError):
+            self.recipe_failure = "Connector recipe catalog is unavailable; recipe providers are disabled."
         self.store = None
         self.task_service = None
         self.busy = False
@@ -97,6 +113,98 @@ class AppConnections(QObject):
             )
         for definition in definitions:
             self.connectors.register(definition)
+
+    def _recipe_http(self, recipe):
+        return self.recipe_http_factory(recipe) if self.recipe_http_factory else None
+
+    def _recipe_provider(self, recipe):
+        return AppProvider(
+            recipe.provider,
+            recipe.name,
+            tuple((t.name, t.description) for t in recipe.tools),
+            lambda *args: (_ for _ in ()).throw(
+                AccountError("Use trusted bearer-token connection UI")
+            ),
+            lambda account, store: RecipeConnector(
+                recipe, self.recipes, account, store, http=self._recipe_http(recipe)
+            ).tools(),
+            "Connect this reviewed service with its own API token. It stays in your desktop keyring.",
+            authentication="bearer",
+            recipe_sha256=recipe.sha256,
+        )
+
+    def install_recipe(self, recipe):
+        require_owner_thread(self)
+        if self._closed or self.failure or self.busy or self.recipes is None:
+            raise AccountError("Wait for account setup before installing a recipe")
+        existing = self.providers.get(recipe.provider)
+        if existing is not None and existing.recipe_sha256 != recipe.sha256:
+            raise ValueError("Recipe identity collides with an existing provider")
+        if any(
+            r.provider == recipe.provider and not enabled
+            for r, enabled in self.recipes.list()
+        ):
+            # Removal persists catalog denial before account cleanup. A failed
+            # cleanup must never resurrect an old account or its task grants.
+            for account in self.store.list():
+                if account.provider == recipe.provider:
+                    self.store.disable(account.account_id)
+                    if self.task_service is not None:
+                        self.task_service.disconnect_connector(account.connector)
+                    self.connectors.unregister(account.connector)
+        self.recipes.install(recipe)
+        self.providers[recipe.provider] = self._recipe_provider(recipe)
+        self.message = f"Installed {recipe.name}. Connect its account, then choose allowed actions."
+        self.changed.emit()
+
+    def connect_recipe_account(self, provider_name, token, capabilities):
+        require_owner_thread(self)
+        recipe = next(
+            r
+            for r, enabled in self.recipes.list()
+            if r.provider == provider_name and enabled
+        )
+        self.message = "Verifying this service's account identity…"
+        self._worker(
+            lambda cancelled: connect_recipe(
+                recipe,
+                self.recipes,
+                self.store,
+                token,
+                tuple(capabilities),
+                cancelled,
+                http=self._recipe_http(recipe),
+            )
+        )
+
+    def remove_recipe(self, provider):
+        require_owner_thread(self)
+        if (
+            self._closed
+            or self.failure
+            or self.busy
+            or self.recipes is None
+            or provider not in self.providers
+        ):
+            raise AccountError("Recipe removal is unavailable during account setup")
+        self.recipes.disable(provider)  # Deny interpreter entry before grant cleanup.
+        for account in self.store.list():
+            if account.provider == provider and account.enabled:
+                connector = self.store.disable(account.account_id)
+                if self.task_service is not None:
+                    self.task_service.disconnect_connector(connector)
+                self.connectors.unregister(connector)
+        self.providers.pop(provider, None)
+        accounts = [a.account_id for a in self.store.list() if a.provider == provider]
+        self.message = "Recipe disabled. Removing its local account credentials…"
+
+        def forget(cancelled):
+            for account_id in accounts:
+                self.store.forget_secret(account_id)
+
+        self._worker(
+            forget, success="Connector recipe removed; existing task receipts remain."
+        )
 
     def access_service(self):
         require_owner_thread(self)
