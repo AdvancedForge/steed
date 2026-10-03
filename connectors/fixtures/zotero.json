@@ -1,0 +1,154 @@
+{
+  "provider": "zotero",
+  "status": "gated",
+  "note": "Read-only candidate contract for Zotero. This is reference data for the runtime owner, not a profile: no credential appears here, nothing is installed, and no packaged recipe exists. Every value is synthetic.",
+  "origin": "https://api.zotero.org",
+  "api_version": {
+    "header": "Zotero-API-Version",
+    "pinned": "3",
+    "documented_level": "recommended",
+    "documented": "Use of the Zotero-API-Version header is recommended for production code. API version 3 is currently the default and recommended version, and the response version is returned in the Zotero-API-Version response header.",
+    "blocks_a_read": false,
+    "note": "Because v3 is the documented default, this header is a recommendation rather than a prerequisite. It is recorded so the runtime owner can support a pinned version later, and it is deliberately not counted as a capability gap for a first read."
+  },
+  "headers": {
+    "supported_today": {
+      "Authorization": "Bearer <Zotero API key from the user keyring>",
+      "documented": "API keys can be included as Zotero-API-Key, as Authorization: Bearer, or as a ?key= query parameter, which the documentation marks not recommended. The bearer form is already what the recipe transport carries.",
+      "reference": "https://www.zotero.org/support/dev/web_api/v3/basics"
+    },
+    "credential_derived_alternative": {
+      "Zotero-API-Key": "<Zotero API key from the user keyring>",
+      "documented": "The Zotero-API-Key header is the documented first choice and is the form the identity documentation is written against.",
+      "blocks_a_read": false,
+      "note": "Only needed for users who prefer the header form, and only because the documented identity route is written against it. It is a separate requirement from a static version header."
+    },
+    "never": {
+      "path": "No credential may appear in a path or query. The documented ?key= form is not used.",
+      "documented": "Use of an HTTP header is recommended, as it allows use of URLs returned from the API without modification."
+    }
+  },
+  "identity_contract": {
+    "method": "GET",
+    "path": "/keys/current",
+    "subject_pointer": "/userID",
+    "label_pointer": "/username",
+    "documented": "The syncing documentation uses GET /keys/current to verify key access and shows a response with userID, username and an access object.",
+    "documented_response_shape": {
+      "userID": "integer in the documented example",
+      "username": "string in the documented example",
+      "access": "object with user and groups permission flags in the documented example"
+    },
+    "limitations": [
+      "No formal schema is documented, so field types and nullability are unverified. The username label is treated as required by example only.",
+      "The documentation describes this route as returning information about the key provided in the Zotero-API-Key header. Whether a key carried as Authorization: Bearer is accepted here is unverified, and that is exactly the one thing a framework test would have to prove first.",
+      "The documented example on the reference page is malformed, so only the field names are treated as evidence."
+    ],
+    "identity_documents": {
+      "key_with_username": {
+        "userID": 12345,
+        "username": "Fixture User",
+        "access": {
+          "user": {
+            "library": true,
+            "files": true,
+            "notes": true,
+            "write": true
+          },
+          "groups": {
+            "all": {
+              "library": true,
+              "write": true
+            }
+          }
+        }
+      }
+    },
+    "binding_requirement": "The account's numeric userID appears in every library route, so identity has to hand that value to a later read path."
+  },
+  "read_contract": {
+    "smallest_useful_read": {
+      "method": "GET",
+      "path": "/users/{userID}/items/{itemKey}",
+      "requires_binding": true,
+      "documented": "A specific item in a library is /users/<userID>/items/<itemKey>. Local object keys should conform to the pattern /[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}/, which the reviewed destination character set already accepts.",
+      "projected_fields": [
+        {
+          "label": "key",
+          "pointer": "/key",
+          "documented": "Present in the documented item example."
+        },
+        {
+          "label": "version",
+          "pointer": "/version",
+          "documented": "Present in the documented item example."
+        },
+        {
+          "label": "item_type",
+          "pointer": "/data/itemType",
+          "documented": "Documented as a writable field, and all properties other than itemType, tags, collections and relations are optional."
+        },
+        {
+          "label": "date_added",
+          "pointer": "/data/dateAdded",
+          "documented": "Present in the documented item data."
+        },
+        {
+          "label": "date_modified",
+          "pointer": "/data/dateModified",
+          "documented": "Present in the documented item data."
+        }
+      ],
+      "deliberately_not_projected": {
+        "field": "/data/title",
+        "reason": "Title is not documented as present for every item type. The documented note template has no title field, so projecting it would make a read fail for notes and attachments rather than describe them."
+      },
+      "no_schema_warning": "No formal item schema or required-versus-optional table is documented, so every projected field is backed by the documented example or the documented write semantics rather than by a schema. A framework test should confirm each field against a real library before a profile relies on it."
+    },
+    "listing": {
+      "documented": "A multi-object request returns a JSON array, and when results exceed the limit the API includes pagination links in the HTTP Link header with rel=first, prev, next and last.",
+      "root_array": true,
+      "paging": "limit (1-100, default 25) and start, plus a Link header and a Total-Results header",
+      "reference": "https://www.zotero.org/support/dev/web_api/v3/basics"
+    }
+  },
+  "failure_contract": {
+    "documented_statuses": {
+      "403": "Authentication errors such as an invalid API key or insufficient privileges return 403 Forbidden.",
+      "404": "An invalid request such as an unknown item returns 404 Not Found.",
+      "429": "The API may return 429 Too Many Requests, potentially with a Retry-After header, and clients should wait at least that many seconds or back off exponentially.",
+      "503": "Retry-After can also be included with 503 Service Unavailable during maintenance."
+    },
+    "failure_document": {
+      "status": 403,
+      "documented_body_fields": [],
+      "body_shape_documented": false,
+      "note": "The documentation states the statuses but does not document a JSON error envelope for single reads. A framework test should therefore assert status handling only, and must not depend on an error body field that no official reference documents."
+    },
+    "rate_limit_headers": {
+      "Backoff": "May be included in any response, including successful ones, when the API servers are overloaded.",
+      "Retry-After": "Documented on 429 responses, and also on 503 during maintenance."
+    }
+  },
+  "framework_gap": {
+    "capabilities": ["identity_derived_paths", "pagination"],
+    "minimum_missing_behavior": "Carry a value returned by the identity request, such as the numeric userID, into a later reviewed read path, so a single-item read does not have to pin the account's own id in source. Without that, no useful read exists, because every library route starts with /users/<userID> and no account-scoped alias is documented.",
+    "not_required_for_a_first_read": [
+      "The Zotero-API-Version header, because v3 is the documented default.",
+      "The Zotero-API-Key header, because Authorization: Bearer is documented.",
+      "List paging, which only blocks listing."
+    ],
+    "not_a_gap": "Nothing here requires weakening origin rules, adding a credential to a path, or bypassing a documented restriction."
+  },
+  "local_alternative": {
+    "documented": "A local API also exists on http://localhost:23119, with its own key rules for writes.",
+    "note": "A loopback origin is a separate capability and is not proposed here."
+  },
+  "references": [
+    "https://www.zotero.org/support/dev/web_api/v3/basics",
+    "https://www.zotero.org/support/dev/web_api/v3/syncing",
+    "https://www.zotero.org/support/dev/web_api/v3/types_and_fields",
+    "https://www.zotero.org/support/dev/web_api/v3/write_requests",
+    "https://www.zotero.org/support/dev/web_api/v3/local_api"
+  ]
+}
