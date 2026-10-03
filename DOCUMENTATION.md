@@ -136,21 +136,21 @@ The menu bar has six categories, in this order:
 
 - **General:** Passwords, Fill Login, Downloads, Ad Blocking, Website Permissions,
   Settings and Exit.
+- **Profile:** Create, switch, pop out, rename or delete profiles, open private
+  browsing and use Quick Switch shortcuts.
 - **Tabs:** New Tab, Restore Closed Tab, Close Tab and Reload.
   **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
   that group, and opens Manage Tab Groups. Individual tabs also expose existing
   group selection and grouping actions from their context menu.
+- **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
+  Zoom Out and Reset Zoom.
+- **Cookies:** Clear Browsing History, View Cookies, Clear All Cookies and Use
+  Global Cookies for This Site. Clearing history affects the current profile's
+  visits and address suggestions; it does not clear cookies.
 - **Agents:** Task Permissions, App Connections, Agent File Library, Enable Local
   Agent Access, Agent Connection Setup, Agent Sidebar, Agent Chat Tab and Website
   Chats. Connecting an account, enabling files and approving task actions remain
   separate controls.
-- **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
-  Zoom Out and Reset Zoom.
-- **Profile:** Create, switch, pop out, rename or delete profiles, open private
-  browsing and use Quick Switch shortcuts.
-- **Cookies:** Clear Browsing History, View Cookies, Clear All Cookies and Use
-  Global Cookies for This Site. Clearing history affects the current profile's
-  visits and address suggestions; it does not clear cookies.
 
 Existing keyboard shortcuts continue to work regardless of the menu location.
 
@@ -2645,7 +2645,8 @@ process. Local access is off when the browser starts.
 ### External-agent conversation sidebar
 
 **Agents → Agent Connection Setup…**, also available from the sidebar's
-**Connection Setup…** button, opens a nonmodal setup screen. It enables local
+**Connect another agent…** button (or **More options → Connection setup…** during
+a conversation), opens a nonmodal setup screen. It enables local
 access only when you click **Enable Local Agent Access**, then offers **Copy
 Connection Settings** and **Copy Starter Prompt**. The settings use the running
 Python interpreter, repository and browser data directory, including paths with
@@ -2662,6 +2663,30 @@ setup screen was visually inspected and ordinary startup/render/shutdown passed.
 Steed uses external agents first. Codex chats run in a dedicated external Codex
 CLI process; Steed sends turns through its App Server interface. Other clients
 can still use the task mailbox directly. Steed does not store model credentials.
+
+#### Sidebar setup and everyday use
+
+A new sidebar shows a short welcome with **New Codex chat** and **Connect another
+agent…**. It hides the empty transcript, inactive task controls and the model/
+file/receipt administration until needed. Starting or choosing a conversation
+shows the transcript, message box, **Send**, **Cancel task** and, for connected
+agents, **Share browser tabs…**. Existing conversations appear in the picker.
+
+**More options** is collapsed initially. It contains model selection for a new
+chat, connection settings, the persistent file library, sidebar/tab presentation,
+task permissions/files/receipts, detailed counts and chat clearing. Opening or
+closing options preserves your local draft and creates no task or permission.
+Pending approvals and unanswered agent questions stay visible above the chat
+without expanding options. Private browsing hides these controls and clears
+regular-profile text/drafts; conversation data remains owned by its original task.
+Short chat tabs can scroll the expanded options. Hiding the sidebar preserves
+running tasks; cancellation remains explicit.
+
+Sidebar acceptance: 27 menu/sidebar/web-chat checks pass in 12.606 seconds,
+including setup/active/options states, visible pending permissions, draft
+preservation, private-profile isolation and a short scrolling chat tab. Synthetic
+welcome, conversation, options and menu previews were inspected.
+Log: `/tmp/steed-sidebar-simplified-final.log`.
 
 #### Codex chats from Steed
 
@@ -2849,8 +2874,8 @@ lifetime and each frame's authority must be checked before exposing its content.
    or waiting for your input. The sidebar shows pending messages and when the
    agent's read tool has fetched them; this does not prove the agent understood
    or acted on the text.
-6. Use **Permissions**, **Files**, and **Receipts** to open the selected task's
-   existing controls in a nonmodal window. The sidebar shows counts for pending
+6. Expand **More options** for **Permissions**, **Task files**, and **Receipts**,
+   which open the selected task's controls in a nonmodal window. The sidebar shows counts for pending
    grant, package, recipe and app reviews, files, drafts and app receipts.
    Website, task, package, recipe and payload approvals retain their existing
    separate controls. Conversation text never approves a request.

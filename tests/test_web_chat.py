@@ -58,9 +58,10 @@ class WebChatTests(unittest.TestCase):
 
     def test_short_agent_tab_keeps_all_controls_reachable_by_scrolling(self):
         window = self.window()
-        window.resize(900, 550)
+        window.resize(900, 350)
         window._open_agent_tab()
         scroll = window.agent_sidebar.widget()
+        window.agent_sidebar.more.click()
         self.wait_for(lambda: scroll.verticalScrollBar().maximum() > 0)
         self.assertTrue(window.agent_sidebar.library_button.isEnabled())
 

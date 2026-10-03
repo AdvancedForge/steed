@@ -12,6 +12,17 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Simpler agent sidebar and requested menu order (implemented).** Menus now read
+General, Profile, Tabs, View, Cookies, Agents. First open offers a short welcome,
+New Codex chat and Connect another agent. Selecting a conversation reveals chat,
+Send/Cancel and tab sharing; More options starts collapsed and holds model/setup,
+file library, presentation and task administration. Pending approvals/questions
+remain visible outside the collapsed controls. Drafts, lifecycle, privacy and
+explicit browser authority remain intact. All 27 focused menu/sidebar/web-chat
+checks pass in 12.606 seconds. Synthetic welcome/chat/options/menu previews were
+inspected; final integrated acceptance follows the connector checkpoint below.
+Log: `/tmp/steed-sidebar-simplified-final.log`.
+
 **Reviewed API-version headers (implemented and validated).**
 Recipe version 5 binds 1–4 supported non-secret headers to immutable source.
 The first set is Notion-Version, X-GitHub-Api-Version, Zotero-API-Version and
