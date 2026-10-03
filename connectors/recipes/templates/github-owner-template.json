@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "GitHub (own repositories)",
+  "name": "GitHub (one repository)",
   "origin": "https://api.github.com",
   "authentication": {
     "type": "bearer"
@@ -13,9 +13,9 @@
   "tools": [
     {
       "name": "read_repository",
-      "description": "Read one repository under the owner fixed in this reviewed source",
+      "description": "Read the repository fixed in this reviewed source",
       "method": "GET",
-      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/{destination}",
+      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/REPLACE-WITH-YOUR-GITHUB-REPOSITORY",
       "response": [
         {
           "label": "id",
@@ -32,12 +32,44 @@
       ]
     },
     {
+      "name": "read_issue",
+      "description": "Read one issue by its number in the repository fixed in this reviewed source. body and state_reason are documented as possibly null and are returned as null.",
+      "method": "GET",
+      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/REPLACE-WITH-YOUR-GITHUB-REPOSITORY/issues/{destination}",
+      "response": [
+        {
+          "label": "number",
+          "pointer": "/number"
+        },
+        {
+          "label": "title",
+          "pointer": "/title"
+        },
+        {
+          "label": "state",
+          "pointer": "/state"
+        },
+        {
+          "label": "state_reason",
+          "pointer": "/state_reason"
+        },
+        {
+          "label": "body",
+          "pointer": "/body"
+        },
+        {
+          "label": "url",
+          "pointer": "/html_url"
+        }
+      ]
+    },
+    {
       "name": "create_issue",
-      "description": "Create an issue in one repository under the owner fixed in this reviewed source",
+      "description": "Create an issue in the repository fixed in this reviewed source",
       "method": "POST",
       "effect": "write",
-      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/{destination}/issues",
-      "destination": "resource_id",
+      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/REPLACE-WITH-YOUR-GITHUB-REPOSITORY/issues",
+      "destination": "account",
       "request": {
         "title": "artifact.title",
         "body": "artifact.content"
