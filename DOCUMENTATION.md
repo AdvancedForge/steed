@@ -714,7 +714,14 @@ Results contain at most 32,000 text characters, 200 targets, and 16 frames, with
 URLs are bounded too; links over 2,048 characters cannot be navigated rather than
 executing a truncated destination. Same-origin frames and readable `srcdoc` frames are
 inspected. Cross-origin/sandboxed or unready frames report
-`frame_inaccessible_or_not_ready`; shadow DOM and canvas content are not inspected.
+`frame_inaccessible_or_not_ready`. Open shadow roots contribute bounded text and
+control names, including image alt descriptions. Up to 32 roots at eight levels
+are inspected within the existing node/text/target budgets; exceeding them reports
+`shadow_root_limit`. Closed roots and canvas pixels remain uninspected. Slot/light
+DOM ordering is approximate and reported when slots are observed. Shadow controls
+are observation-only and report `shadow_control_actions_unavailable`; inspect a
+fresh snapshot after changes. Mutations inside inspected roots invalidate
+restricted snapshots, and live targets recheck their own names and host ancestry.
 Truncation and unsupported content are reported, not silently presented as a
 complete page.
 
@@ -912,7 +919,9 @@ action events. Existing journal records are not rewritten.
   observation explicit; a timeout does not prove text is absent from the whole page.
 
 `timeout_ms` defaults to 5,000 and is bounded to 1–10,000. Both conditions return
-`timed_out` on deadline. `PageWaitResult` contains session, condition, status,
+`timed_out` on deadline. If the deadline expires before any text read completes,
+`inspection_not_completed` distinguishes missing evidence from an observed miss.
+`PageWaitResult` contains session, condition, status,
 URL/revision, and limitations; the query and page text are excluded from receipts
 and journal events. Text waits refresh inspection and invalidate old references.
 They allow DOM changes while waiting; navigation, stop, a control action, renderer
@@ -2711,8 +2720,9 @@ Compatibility research (October 3, 2026):
 
 The published page actions do **not** capture everything a human sees. Reads are
 bounded rendered DOM snapshots with opaque references to supported links,
-fields and forms. Snapshot limitations report omitted shadow DOM (including
-open roots), canvas content, form values/editable text, inaccessible frames,
+fields and forms. Bounded open-root text/control-name reads improve component
+coverage; closed roots, shadow-control actions and exact slot ordering remain
+limited. Snapshot limitations report canvas content, form values/editable text, inaccessible frames,
 out-of-scope frame origins and truncation. Images, PDFs, video/audio, visual
 layout, custom widgets and unloaded/virtualized content can be missed. Current
 task pages disable website JavaScript; modern apps may therefore be incomplete

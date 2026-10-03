@@ -19,12 +19,12 @@ capabilities, reusable files and explicit access controls.
 
 ## Branches, ownership and review
 
-Work on a new branch such as `engineering/library-discovery`, preferably in a
+Work on a new branch such as `engineering/request-headers`, preferably in a
 separate checkout/worktree. Do not modify the user's running checkout or profile:
 
 ```bash
 git fetch origin
-git worktree add -b engineering/library-discovery ../steed-library-discovery origin/main
+git worktree add -b engineering/request-headers ../steed-request-headers origin/main
 ```
 
 Verify that the checkout contains `services/file_library.py` and this document.
@@ -35,8 +35,9 @@ test fixtures.
 
 The connector contributor owns `connectors/recipes/`, `connectors/fixtures/`,
 `connectors/SETUP.md` and `tests/test_default_connector_profiles.py`. Leave those
-paths to that contributor. Your first scope is the library backend/UI, its tool
-registration/service integration and library tests. Shared `services/`, `ui/`,
+paths to that contributor. The reviewed discovery branch has merged; the next
+shared runtime scope is reviewed non-secret static headers described below.
+Shared `services/`, `ui/`,
 MCP, root docs and shared-test changes need coordination with the maintainer;
 do not start overlapping runtime work in another contributor's checkout.
 
@@ -93,8 +94,8 @@ Normal websites never receive library access.
 
 ## Completed milestone: make reusable files easy to find
 
-Delivered on `main`. The numbered scope below records what was built and what is
-still open; the following milestone is website observation.
+Delivered on `main` by reviewed merge `e20cfea`. The numbered scope below records
+the original acceptance requirements; do not restart completed discovery work.
 
 1. Add bounded filename/path discovery across enabled roots to the agent API and
    a simple search/filter in the library window. Start with metadata, not content
@@ -118,12 +119,22 @@ still open; the following milestone is website observation.
 Do not add recurring approval prompts. Do not silently switch imports into live
 host-folder access. Deliver this milestone for review before broadening scope.
 
-## Following milestone: improve website observation
+## Observation checkpoint and remaining work
 
-After the first PR is accepted, expand deterministic accessible names/roles and
-coverage signals in `services/browser_agent.py` and its existing page fixtures.
-Start with an audit of the actual current snapshot and target logic, then cover
-labelled controls, open shadow roots, dynamic lists and frame/widget limitations.
+The first observation increment reads bounded open-shadow text/control names and
+image descriptions. Root mutations and live label/host changes invalidate stale
+references; roots have count/depth budgets, values stay omitted, and shadow
+controls remain observation-only. Closed roots, slot ordering, canvas pixels and
+unloaded/virtualized content still have explicit limits. Text-wait deadlines now
+say when no inspection completed. Both actual MCP transports verify component
+text/names and omitted private values, and startup passes. Final evidence is
+recorded in ROADMAP.md.
+
+Expand deterministic accessible names/roles and coverage signals in
+`services/page_inspection.js`, `services/page_inspector.py` and
+`services/browser_backend.py`, using the existing page/live fixtures. There is no
+`services/browser_agent.py` module. Continue with ARIA descriptions, supported
+widget semantics and dynamic/frame coverage after checking the actual code.
 Keep snapshot/target freshness, read/inspect consent and profile boundaries.
 Preserve ordinary JavaScript/network behavior for user-directed live delegation
 and immediate **Take Back**. Do not create a separate restricted live browser.
@@ -174,6 +185,8 @@ folder scope, overlong Unicode cursors and excessive row materialization; added
 Both actual MCP transport journeys pass. See the top of ROADMAP.md for the final
 checkpoint; the earlier branch could not complete these browser/MCP checks in
 its environment, so this evidence comes from maintainer integration.
+The subsequent component-observation checkpoint passes the complete 926-test
+suite in 381.348 seconds, validating both increments together.
 
 Earlier checkpoint evidence: full suite **906 passed** before final polish; final **148
 integration checks passed**, including **27 library regressions**, after all

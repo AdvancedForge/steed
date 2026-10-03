@@ -1337,7 +1337,7 @@ class QtBrowserBackend(QObject):
         deadline = QTimer(self)
         deadline.setSingleShot(True)
         revision = session.revision
-        limitations = ()
+        limitations = ("inspection_not_completed",) if condition == "text" else ()
         reading = None
 
         def cleanup(_):

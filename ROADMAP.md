@@ -12,6 +12,24 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Observation increment (implemented and validated).** Page reads now
+include open-shadow text and root-local control labels, nested components and
+image alt descriptions. A 32-root/eight-level budget joins existing text/node/
+target limits. Root mutation invalidates restricted snapshots; live references
+recheck root-local names and host ancestry. Closed roots, slot ordering, hidden/
+editable values, canvas pixels and shadow-control actions retain explicit limits.
+Short text-wait deadlines distinguish an unfinished inspection from an observed
+miss. New synthetic Chromium checks cover privacy, root/depth limits and stale
+references. The complete suite passes all 926 checks in 381.348 seconds.
+Actual SDK and independent clients pass component text/name/value-omission checks
+over both stdio and HTTP MCP. Startup/local rendering/shutdown passes on Qt 6.11.2.
+Ruff lint/format, JavaScript syntax, whitespace, dependency and local doc-link
+checks pass. The paged library dialog was visually inspected with synthetic data.
+Real provider/desktop daily-use acceptance remains distinct from these fixtures.
+Logs: `/tmp/steed-engineering-final-full.log`,
+`/tmp/steed-observation-{stdio,http}.log`,
+`/tmp/steed-engineering-final-startup.log`.
+
 **Library discovery milestone (engineering branch reviewed and integrated).**
 Reusable files are now findable instead of only reachable by walking every
 folder. `steed_library_search` returns file metadata across every enabled root
@@ -38,8 +56,8 @@ unambiguous paths. All 155 final library/workspace/profile/chat/gateway/service
 checks pass in 82.229 seconds, including a 2,103-file navigation regression.
 Both stdio and HTTP MCP journeys pass with actual SDK and independent clients.
 The contributor's GLX test limitation is resolved
-in this Linux environment. Full regression and following observation work remain
-the next validation checkpoint.
+in this Linux environment. The following observation checkpoint's complete
+926-test run also validates the merged discovery implementation.
 
 **Earlier completed milestone:** a persistent agent
 file library: user-added files/subfolders survive tasks and restart; a clear
@@ -95,10 +113,13 @@ acceptance remains pending. Ruff lint/format, whitespace and local doc links pas
 Logs: `/tmp/steed-chat-final-full.log`,
 `/tmp/steed-chat-final-integration.log`, `/tmp/steed-chat-startup-final.log`.
 
-**Resume checkpoint:** persistent library implementation/validation is complete.
-The next engineering agent works on its own branch and submits milestones for
-maintainer review. Start with library discovery/usability, then observation
-coverage; shared connector capabilities follow corrected provider contracts.
+**Resume checkpoint:** persistent library and reviewed discovery/paging are
+complete; engineering branch `f6c28b4` is integrated by merge `e20cfea`.
+The first open-shadow observation increment and external component acceptance
+are complete. Next shared connector work is reviewed non-secret static request headers,
+using the corrected provider contracts. Deeper accessible semantics and supported
+shadow-control input remain separate follow-ups. Further agents work on their own
+branches and submit milestones for maintainer review.
 See [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md) for ownership, ordered scopes,
 acceptance checks and the review procedure. Release gates remain reference work
 in RELEASE_PLAN.md. Continue connector work under the posted PR instructions.

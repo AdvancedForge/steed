@@ -6,11 +6,12 @@
     const liveFingerprint = node => {
         if (node.outerHTML.length > 65536) return null;
         const attributes = el => Array.from(el.attributes, a => [a.name, a.value]);
+        const parent = el => el.parentElement || el.getRootNode()?.host;
         const ancestors = [];
-        for (let el = node.parentElement; el; el = el.parentElement) ancestors.push(attributes(el));
+        for (let el = parent(node); el; el = parent(el)) ancestors.push(attributes(el));
         const labels = Array.from(node.labels || [], el => el.outerHTML);
         const labelled = (node.getAttribute("aria-labelledby") || "").split(/\s+/).slice(0, 8)
-            .map(id => node.ownerDocument.getElementById(id)?.outerHTML || "");
+            .map(id => node.getRootNode().getElementById(id)?.outerHTML || "");
         return JSON.stringify([node.outerHTML, node.baseURI, ancestors, labels, labelled]);
     };
     const submission = node => {
@@ -181,11 +182,23 @@
         const frames = [], limitations = new Set([
             request.live ? "normal_website_scripts_and_network" : "document_scripts_disabled",
             "form_values_omitted", "editable_text_omitted",
-            "shadow_dom_not_inspected", "canvas_content_not_inspected"
+            "closed_shadow_roots_not_inspected", "canvas_content_not_inspected"
         ]);
         if (request.live) limitations.add("live_targets_revalidated_individually");
         const allowed = new Set(request.origins);
         let remainingText = 32000, remainingTargets = 200, remainingNodes = 12000;
+        let remainingShadowRoots = 32;
+        const shadowRoots = new WeakSet();
+        const shadowFor = (node, depth) => {
+            const root = node.shadowRoot;
+            if (!root) return null;
+            limitations.add("open_shadow_root_present");
+            if (depth >= 8 || (!shadowRoots.has(root) && remainingShadowRoots <= 0)) {
+                limitations.add("shadow_root_limit"); return null;
+            }
+            if (!shadowRoots.has(root)) { shadowRoots.add(root); remainingShadowRoots--; }
+            return root;
+        };
 
         const clean = (text, limit = 256) => String(text || "").slice(0, limit * 4 + 64)
             .replace(/\s+/g, " ").trim().slice(0, limit);
@@ -202,7 +215,7 @@
         const readable = (root, win, limit) => {
             const chunks = [];
             let length = 0;
-            const walk = node => {
+            const walk = (node, shadowDepth = 0) => {
                 if (remainingNodes-- <= 0) { limitations.add("node_limit"); return; }
                 if (node.nodeType === Node.TEXT_NODE) {
                     if (node.nodeValue.length > limit - length) limitations.add("text_truncated");
@@ -210,11 +223,24 @@
                     if (text) { chunks.push(text); length += text.length + 1; }
                     return;
                 }
+                if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+                    for (const child of node.childNodes) {
+                        if (length >= limit || remainingNodes <= 0) break;
+                        walk(child, shadowDepth);
+                    }
+                    return;
+                }
                 if (node.nodeType !== Node.ELEMENT_NODE || excluded(node) || hidden(node, win)) return;
+                if (node.tagName === "IMG") {
+                    const alt = clean(node.getAttribute("alt"), Math.max(0, limit - length));
+                    if (alt) { chunks.push(alt); length += alt.length + 1; }
+                }
                 for (const child of node.childNodes) {
                     if (length >= limit || remainingNodes <= 0) break;
-                    walk(child);
+                    walk(child, shadowDepth);
                 }
+                const shadow = shadowFor(node, shadowDepth);
+                if (shadow && length < limit && remainingNodes > 0) walk(shadow, shadowDepth + 1);
             };
             if (root) walk(root);
             if (length >= limit) limitations.add("text_truncated");
@@ -229,7 +255,7 @@
         };
         const labelFor = (node, doc, win) => {
             const labelled = (node.getAttribute("aria-labelledby") || "").slice(0, 2048).split(/\s+/).slice(0, 8)
-                .map(id => doc.getElementById(id)).filter(Boolean);
+                .map(id => node.getRootNode().getElementById(id)).filter(Boolean);
             const labelledText = clean(labelled.map(label => readable(label, win, 256)).join(" "));
             if (labelledText) return labelledText;
             const aria = clean(node.getAttribute("aria-label"));
@@ -264,82 +290,95 @@
             remainingText = Math.max(0, remainingText - frame.text.length);
 
             const frameElements = [];
-            const walker = doc.createTreeWalker(doc.documentElement, NodeFilter.SHOW_ELEMENT);
-            let node = walker.currentNode;
-            while (node && remainingNodes-- > 0) {
-                // Prune hidden/editable subtrees: their text and descendants are not candidates.
-                if (hidden(node, win) || node.hasAttribute("contenteditable")) {
-                    node = walker.nextSibling();
-                    while (!node && walker.parentNode()) node = walker.nextSibling();
-                    continue;
-                }
-                const tag = node.tagName.toLowerCase(), type = clean(node.getAttribute("type"), 32).toLowerCase();
-                if ((tag === "iframe" || tag === "frame") && frameElements.length < 16) frameElements.push(node);
-                if (node.shadowRoot) limitations.add("open_shadow_root_present");
-                if (tag === "canvas") limitations.add("canvas_present");
-                if (["img", "svg", "video"].includes(tag)) limitations.add("visual_content_present");
-                const role = clean(node.getAttribute("role"), 64).toLowerCase();
-                let kind = "", operations = [], href = null, formAction = null, formMethod = null;
-                const constraints = [];
-                if (tag === "a" && node.hasAttribute("href")) {
-                    kind = "link";
-                    const link = new URL(node.href, doc.baseURI);
-                    if (link.href.length > 2048) constraints.push("link_url_too_long");
-                    else if ((link.protocol === "http:" || link.protocol === "https:") && !link.username && !link.password) {
-                        href = safeUrl(link.href); operations = ["navigate"];
-                    } else constraints.push("unsupported_link_url");
-                } else if (tag === "button") { kind = "button"; operations = ["activate"]; }
-                else if (tag === "input" && type !== "hidden") {
-                    kind = type === "checkbox" || type === "radio" ? type : "input";
-                    operations = [kind === "input" ? "enter" : "activate"];
-                    if (type === "password") { constraints.push("sensitive_field", "values_omitted"); operations = []; }
-                    if (type === "file") {
-                        constraints.push("values_omitted");
-                        operations = request.upload_available && win === window && node.getRootNode() === doc &&
-                            !node.multiple && !node.webkitdirectory ? ["upload"] : [];
-                        if (!operations.length) constraints.push("file_actions_unavailable");
+            const inspectTree = (root, shadowDepth = 0) => {
+                const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+                let node = walker.currentNode;
+                while (node && remainingNodes-- > 0) {
+                    if (node.nodeType !== Node.ELEMENT_NODE) { node = walker.nextNode(); continue; }
+                    // Prune hidden/editable subtrees: their text and descendants are not candidates.
+                    if (hidden(node, win) || node.hasAttribute("contenteditable")) {
+                        node = walker.nextSibling();
+                        while (!node && walker.parentNode()) node = walker.nextSibling();
+                        continue;
                     }
-                    if (type === "submit" || type === "button") { kind = "button"; operations = ["activate"]; }
-                } else if (tag === "textarea") { kind = "textarea"; operations = ["enter"]; }
-                else if (tag === "select") { kind = "select"; operations = ["select"]; }
-                else if (["button", "link", "textbox", "combobox", "checkbox", "radio"].includes(role)) {
-                    kind = "custom"; constraints.push("custom_control_unsupported");
-                    limitations.add("custom_controls_present");
-                }
-                if (kind) {
-                    if (kind === "button") {
-                        const info = submission(node);
-                        if (!info.error) {
-                            operations = ["submit"];
-                            const destination = new URL(info.url);
-                            destination.search = ""; destination.hash = "";
-                            formAction = destination.href; formMethod = info.method;
+                    const tag = node.tagName.toLowerCase(), type = clean(node.getAttribute("type"), 32).toLowerCase();
+                    if ((tag === "iframe" || tag === "frame") && frameElements.length < 16) frameElements.push(node);
+                    if (node.tagName === "SLOT") limitations.add("shadow_slot_order_approximate");
+                    if (tag === "canvas") limitations.add("canvas_present");
+                    if (["img", "svg", "video"].includes(tag)) limitations.add("visual_content_present");
+                    const role = clean(node.getAttribute("role"), 64).toLowerCase();
+                    let kind = "", operations = [], href = null, formAction = null, formMethod = null;
+                    const constraints = [];
+                    if (tag === "a" && node.hasAttribute("href")) {
+                        kind = "link";
+                        const link = new URL(node.href, doc.baseURI);
+                        if (link.href.length > 2048) constraints.push("link_url_too_long");
+                        else if ((link.protocol === "http:" || link.protocol === "https:") && !link.username && !link.password) {
+                            href = safeUrl(link.href); operations = ["navigate"];
+                        } else constraints.push("unsupported_link_url");
+                    } else if (tag === "button") { kind = "button"; operations = ["activate"]; }
+                    else if (tag === "input" && type !== "hidden") {
+                        kind = type === "checkbox" || type === "radio" ? type : "input";
+                        operations = [kind === "input" ? "enter" : "activate"];
+                        if (type === "password") { constraints.push("sensitive_field", "values_omitted"); operations = []; }
+                        if (type === "file") {
+                            constraints.push("values_omitted");
+                            operations = request.upload_available && win === window && node.getRootNode() === doc &&
+                                !node.multiple && !node.webkitdirectory ? ["upload"] : [];
+                            if (!operations.length) constraints.push("file_actions_unavailable");
                         }
-                        else if (request.live && !node.form && (tag === "button" || type === "button")) {
-                            operations = ["activate"];
-                            constraints.push("website_handlers_can_change_data");
+                        if (type === "submit" || type === "button") { kind = "button"; operations = ["activate"]; }
+                    } else if (tag === "textarea") { kind = "textarea"; operations = ["enter"]; }
+                    else if (tag === "select") { kind = "select"; operations = ["select"]; }
+                    else if (["button", "link", "textbox", "combobox", "checkbox", "radio"].includes(role)) {
+                        kind = "custom"; constraints.push("custom_control_unsupported");
+                        limitations.add("custom_controls_present");
+                    }
+                    if (kind) {
+                        if (kind === "button") {
+                            const info = submission(node);
+                            if (!info.error) {
+                                operations = ["submit"];
+                                const destination = new URL(info.url);
+                                destination.search = ""; destination.hash = "";
+                                formAction = destination.href; formMethod = info.method;
+                            }
+                            else if (request.live && !node.form && (tag === "button" || type === "button")) {
+                                operations = ["activate"];
+                                constraints.push("website_handlers_can_change_data");
+                            }
+                            else { operations = []; constraints.push(info.error); }
                         }
-                        else { operations = []; constraints.push(info.error); }
+                        if (kind === "input" && !["text", "search", "email", "url", "tel", "password", "file"].includes(node.type))
+                            constraints.push("control_unsupported");
+                        if (kind === "select" && node.multiple) constraints.push("multiple_selection_unsupported");
+                        if (node.getRootNode() !== doc) {
+                            operations = [];
+                            constraints.push("shadow_control_actions_unavailable");
+                        }
+                        if (remainingTargets <= 0) limitations.add("targets_truncated");
+                        else {
+                            const enabled = !node.matches(":disabled") && node.getAttribute("aria-disabled") !== "true";
+                            const readOnly = node.hasAttribute("readonly") || node.getAttribute("aria-readonly") === "true";
+                            if (!enabled) constraints.push("disabled");
+                            if (readOnly) constraints.push("read_only");
+                            const nodeId = "node:" + state.targets.size;
+                            state.targets.set(nodeId, {node, fingerprint: request.live ? liveFingerprint(node) : null});
+                            frame.targets.push({node_id: nodeId, kind, role: role || kind,
+                                label: labelFor(node, doc, win), enabled, read_only: readOnly, href,
+                                operations, constraints, form_action: formAction, form_method: formMethod});
+                            remainingTargets--;
+                        }
                     }
-                    if (kind === "input" && !["text", "search", "email", "url", "tel", "password", "file"].includes(node.type))
-                        constraints.push("control_unsupported");
-                    if (kind === "select" && node.multiple) constraints.push("multiple_selection_unsupported");
-                    if (remainingTargets <= 0) limitations.add("targets_truncated");
-                    else {
-                        const enabled = !node.matches(":disabled") && node.getAttribute("aria-disabled") !== "true";
-                        const readOnly = node.hasAttribute("readonly") || node.getAttribute("aria-readonly") === "true";
-                        if (!enabled) constraints.push("disabled");
-                        if (readOnly) constraints.push("read_only");
-                        const nodeId = "node:" + state.targets.size;
-                        state.targets.set(nodeId, {node, fingerprint: request.live ? liveFingerprint(node) : null});
-                        frame.targets.push({node_id: nodeId, kind, role: role || kind,
-                            label: labelFor(node, doc, win), enabled, read_only: readOnly, href,
-                            operations, constraints, form_action: formAction, form_method: formMethod});
-                        remainingTargets--;
+                    const shadow = shadowFor(node, shadowDepth);
+                    if (shadow) {
+                        tracked.observer.observe(shadow, {subtree: true, childList: true, characterData: true, attributes: true});
+                        inspectTree(shadow, shadowDepth + 1);
                     }
+                    node = walker.nextNode();
                 }
-                node = walker.nextNode();
-            }
+            };
+            inspectTree(doc.documentElement);
             if (remainingNodes <= 0) limitations.add("node_limit");
 
             let index = 0;

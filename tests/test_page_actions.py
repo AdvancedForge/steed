@@ -410,11 +410,29 @@ class PageActionTests(unittest.TestCase):
             session_id=session_id,
             condition="text",
             text="OLD_SECRET",
-            timeout_ms=20,
+            timeout_ms=500,
         )
         self.assertEqual(outcome.status, "timed_out")
         self.assertIn("form_values_omitted", outcome.limitations)
         self.assertEqual(self.service.backend._sessions[session_id].waits, set())
+
+    def test_wait_timeout_before_a_read_reports_missing_inspection_evidence(self):
+        task_id, _, session_id, _ = self.opened()
+        pending = Future()
+        with patch.object(self.service.backend, "inspect_page", return_value=pending):
+            outcome = self.command(
+                "page.wait",
+                task_id=task_id,
+                session_id=session_id,
+                condition="text",
+                text="Not observed",
+                timeout_ms=20,
+            )
+        self.assertEqual(outcome.status, "timed_out")
+        self.assertEqual(outcome.limitations, ("inspection_not_completed",))
+        self.assertEqual(self.service.backend._sessions[session_id].waits, set())
+        pending.set_exception(PageInspectionError("late_callback"))
+        self.assertEqual(outcome.limitations, ("inspection_not_completed",))
 
     def test_ready_wait_observes_load_completion_and_failure(self):
         task_id, _, session_id, _ = self.opened()
