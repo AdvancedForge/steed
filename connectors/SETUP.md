@@ -319,21 +319,83 @@ installed, and a row is never a default account or an approval.
 
 ### Shared framework work raised by this queue
 
-These are missing capabilities, not connector problems, and are not worked around
-here:
+`connectors/fixtures/shared_capabilities.json` groups the missing capabilities
+so the runtime owner can size one capability instead of eighteen service
+exceptions. Each group records the engine limit it removes, the documented
+requirement per service with an official reference, a minimal synthetic fixture
+contract a framework-side test could use, and what it unblocks. Each assessed row
+in `assessed_candidates.json` lists the group ids it needs, and the tests keep the
+two files in agreement. None of these is worked around in a connector.
 
-- per-request provider headers (Notion `Notion-Version`, Figma `X-Figma-Token`,
-  Zotero `Zotero-API-Version`, Nextcloud `OCS-APIRequest`);
-- non-Bearer token schemes (Readwise `Token`, ClickUp bare tokens, Trello
-  key+token) and a trusted way to accept them;
-- identity shapes beyond a subject string and label, including URI subjects and
-  204 probes;
-- offset, page-number, keyset, `Link`-header and `@odata.nextLink` paging;
-- POST reads with request objects or variables (Dropbox RPC, Linear GraphQL);
-- application-level success flags (`ok:false`, Raindrop `result`, OCS `statuscode`);
-- native OAuth sign-in acceptance, scope normalization and refresh (Microsoft
-  365, Asana, Spotify, Trello OAuth 2.0);
-- an explicitly scoped local-service adapter for Nextcloud and Joplin, without
-  weakening the global HTTPS rule;
-- reconciliation of uncertain writes, so a create could be confirmed by an
-  operation ID rather than a manual check.
+| Capability group | Services that need it |
+| --- | --- |
+| Reviewed static request headers | Notion, Figma, Zotero, Nextcloud |
+| Offset, page-number, keyset, Link-header and nextLink paging | GitHub, GitLab.com, Microsoft 365, Airtable, Raindrop.io, Calendly, Asana, Spotify, Joplin, Zotero, ClickUp, Readwise / Reader |
+| Non-Bearer token schemes and credential placement | Readwise / Reader, ClickUp, Trello, Joplin, Nextcloud, Spotify |
+| Application-level success flags | Slack, Raindrop.io, Nextcloud |
+| Account identity beyond one subject string and one label | Calendly, Readwise / Reader, Spotify, Airtable, Notion, Microsoft 365, Joplin |
+| Native OAuth sign-in, scope normalization and refresh | Microsoft 365, Asana, Spotify, Trello |
+| Reads that are POST requests with request objects | Dropbox, Linear |
+| Approved local and self-hosted service origins | Nextcloud, Joplin, Zotero |
+| Reconciliation of uncertain writes | GitLab.com, Todoist, GitHub, Airtable |
+
+Two notes on how the groups read:
+
+- Readwise / Reader appears under paging because its documented
+  `pageCursor`/`nextPageCursor` contract already matches the reviewed cursor
+  shape. It is gated on authentication and identity, not on paging.
+- Reconciliation of uncertain writes also covers the three shipped starters. A
+  create that fails after dispatch is reported as uncertain today; a confirmed
+  outcome would need a reviewed probe step rather than a blind retry.
+
+Microsoft 365 and every other service needing new header, paging, authentication
+or OAuth support stays explicitly gated until those shared capabilities land.
+Google registration remains deferred. A connector is never packaged merely to
+make the catalog look larger.
+
+---
+
+## Provider acceptance checklist
+
+This checklist is the same for every profile. Automated results and live
+acceptance are recorded separately, and a profile is never described as verified
+on the strength of synthetic tests alone.
+
+### Automated (recorded on every change to the profile)
+
+- [ ] The profile parses with the current interpreter and stays within v1/v2.
+- [ ] Identity selects the documented subject and label, including a nullable
+      label field that is never used as the account label.
+- [ ] Every destination is one reviewed ID; path, query and scheme escapes are
+      rejected before dispatch.
+- [ ] Reads return exactly the documented fields; an omitted optional field fails
+      closed rather than being invented.
+- [ ] Each create sends exactly the reviewed JSON payload, with a payload
+      preview and hash shown before dispatch.
+- [ ] Documented failure, quota and revocation statuses are surfaced, and a
+      create that fails after dispatch is reported as uncertain and never
+      replayed.
+- [ ] Synthetic responses live in `connectors/fixtures/`; no credential, real
+      profile or external send is committed.
+
+### Live acceptance (user-owned, recorded separately, never automated here)
+
+- [ ] **Account**: service, account type, date, and the operator who ran it.
+- [ ] **Consent**: the exact scopes or permissions granted, and the token type
+      (personal token, fine-grained token, OAuth) with its expiry.
+- [ ] **Connect**: the profile's identity request returned the expected subject
+      and label for that real account.
+- [ ] **Read**: at least one real read per tool, with the documented fields
+      present as reviewed.
+- [ ] **Create**: one reviewed create per write tool, with the service's own
+      receipt or resulting item recorded, plus how an uncertain outcome was
+      checked.
+- [ ] **Exclusion check**: no completion, delete, admin or unrelated effect
+      happened, and the reviewed payload matches what the service stored.
+- [ ] **Revocation**: the token was revoked afterwards and Steed shows the
+      account as needing reconnection.
+
+Until every live box is filled in for a service, describe it as a synthetic
+wire-shape subset. Microsoft 365 remains a priority follow-up and is gated on
+OAuth acceptance, `@odata.nextLink` paging and write verification; its read proof
+in `connectors/compatibility/microsoft-read.json` is left unchanged.

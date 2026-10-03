@@ -1,0 +1,566 @@
+{
+  "version": 1,
+  "note": "Shared framework capabilities that the gated service families need, grouped so the runtime owner can size one capability instead of eighteen service exceptions. Each group lists the services that need it, the documented requirement per service, and the minimal synthetic contract that would let a framework-side wire test prove the capability without a live account. Nothing here is a connector instruction: no connector may work around these limits.",
+  "groups": [
+    {
+      "id": "static_headers",
+      "title": "Reviewed static request headers",
+      "engine_limit": "Request headers are limited to Authorization, Accept and Content-Type plus at most one reviewed operation-ID header, so a service that requires its own header on every request cannot be reached at all.",
+      "services": [
+        "Notion",
+        "Figma",
+        "Zotero",
+        "Nextcloud"
+      ],
+      "requirements": [
+        {
+          "service": "Notion",
+          "header": "Notion-Version",
+          "documented": "Every request must carry a Notion-Version header; requests without it are rejected.",
+          "reference": "https://developers.notion.com/reference/versioning"
+        },
+        {
+          "service": "Figma",
+          "header": "X-Figma-Token",
+          "documented": "Personal access tokens are passed in the X-Figma-Token header rather than in Authorization.",
+          "reference": "https://developers.figma.com/docs/rest-api/authentication/"
+        },
+        {
+          "service": "Zotero",
+          "header": "Zotero-API-Version",
+          "documented": "Recommended for production code and echoed back on responses; v3 is also the current default.",
+          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics"
+        },
+        {
+          "service": "Nextcloud",
+          "header": "OCS-APIRequest: true",
+          "documented": "Every OCS call must carry this header, and Accept: application/json selects the JSON representation.",
+          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html"
+        }
+      ],
+      "fixture_contract": {
+        "description": "One identity GET, one read GET and one reviewed write POST per service, each recorded with the exact header set the transport must send.",
+        "samples": [
+          {
+            "service": "Notion",
+            "identity": "no documented identity endpoint; a bot-user or parent-page lookup is a data read",
+            "read": "GET /v1/databases/{id} returning documented property keys",
+            "write_request": "POST /v1/pages with the nested v3 template already implemented",
+            "proves": "the required header is present on every method and the reviewed payload is unchanged"
+          },
+          {
+            "service": "Figma",
+            "identity": "GET /v1/me returning id, handle and an email documented only on that endpoint",
+            "read": "GET /v1/files/{key} returning name and lastModified",
+            "write_request": "none claimed; Figma is read-only in this queue",
+            "proves": "a non-Bearer token header is carried without weakening the Bearer parser"
+          },
+          {
+            "service": "Zotero",
+            "identity": "GET /keys/current returning userID and username",
+            "read": "GET /users/{id}/items returning a root array",
+            "write_request": "none claimed; revisions need separate acceptance",
+            "proves": "an optional version header and a root-array collection can both be read"
+          },
+          {
+            "service": "Nextcloud",
+            "identity": "GET /ocs/v1.php/cloud/user returning an XML or JSON OCS envelope",
+            "read": "GET /ocs/v2.php/apps/files_sharing/api/v1/shares returning the OCS envelope",
+            "write_request": "POST /ocs/v2.php/apps/files_sharing/api/v1/shares with reviewed fields",
+            "proves": "a mandatory non-auth header and an envelope body are handled without weakening origin rules"
+          }
+        ]
+      },
+      "unblocks": [
+        "Notion profiles once sign-in is accepted",
+        "a Figma personal-token read subset",
+        "a Zotero library read subset",
+        "a Nextcloud OCS share subset on an approved host"
+      ]
+    },
+    {
+      "id": "pagination",
+      "title": "Offset, page-number, keyset, Link-header and nextLink paging",
+      "engine_limit": "Only bounded cursor pagination through one reviewed query parameter is followed, so a service that pages any other way returns only its first page and says nothing about the rest.",
+      "services": [
+        "GitHub",
+        "GitLab.com",
+        "Microsoft 365",
+        "Airtable",
+        "Raindrop.io",
+        "Calendly",
+        "Asana",
+        "Spotify",
+        "Joplin",
+        "Zotero",
+        "ClickUp",
+        "Readwise / Reader"
+      ],
+      "requirements": [
+        {
+          "service": "GitHub",
+          "documented": "List endpoints return a Link header with rel=next rather than a cursor field.",
+          "reference": "https://docs.github.com/en/rest/using-the-rest-api/using-pagination"
+        },
+        {
+          "service": "GitLab.com",
+          "documented": "Collections page with page/per_page and return X-Next-Page and Link headers.",
+          "reference": "https://docs.gitlab.com/api/rest/#pagination"
+        },
+        {
+          "service": "Microsoft 365",
+          "documented": "Collections return @odata.nextLink as an absolute URL and @odata.nextLink must be followed to continue.",
+          "reference": "https://learn.microsoft.com/en-us/graph/api/user-list-messages?view=graph-rest-1.0"
+        },
+        {
+          "service": "Airtable",
+          "documented": "List records return an opaque offset string that is sent back as the offset parameter.",
+          "reference": "https://airtable.com/developers/web/api/list-records"
+        },
+        {
+          "service": "Raindrop.io",
+          "documented": "Collections page with page and perpage, where perpage is capped at 50.",
+          "reference": "https://developer.raindrop.io/v1/raindrops/multiple"
+        },
+        {
+          "service": "Calendly",
+          "documented": "Responses carry pagination.next_page as a full URL or null.",
+          "reference": "https://developer.calendly.com/api-docs/overview/api/api-conventions"
+        },
+        {
+          "service": "Asana",
+          "documented": "Collections page with a next_page token passed in the request.",
+          "reference": "https://developers.asana.com/reference/getcollections"
+        },
+        {
+          "service": "Spotify",
+          "documented": "Paging uses offset and limit query parameters.",
+          "reference": "https://developer.spotify.com/documentation/web-api/concepts/api-calls"
+        },
+        {
+          "service": "Joplin",
+          "documented": "Notes use page and limit, while /events uses a cursor property.",
+          "reference": "https://joplinapp.org/help/api/references/rest_api/"
+        },
+        {
+          "service": "Zotero",
+          "documented": "limit and start offsets plus an HTTP Link header with rel=next.",
+          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics"
+        },
+        {
+          "service": "ClickUp",
+          "documented": "Task lists are documented as capped at 100 tasks per page; the exact mechanism is not verified here.",
+          "reference": "https://developer.clickup.com/docs/authentication"
+        },
+        {
+          "service": "Readwise / Reader",
+          "documented": "Cursor paging already matches the reviewed cursor contract: pageCursor in, nextPageCursor out. This service is gated on authentication and identity, not paging.",
+          "reference": "https://readwise.io/reader_api"
+        }
+      ],
+      "fixture_contract": {
+        "description": "Two synthetic pages per service plus the documented stop signal: the first page with its continuation marker and the second page with the marker absent, so a framework test can prove both that a second page is fetched and that the stop is honoured.",
+        "samples": [
+          {
+            "service": "GitHub",
+            "page_one": "an issue array plus a Link header with rel=next",
+            "page_two": "an issue array with no rel=next link",
+            "proves": "Link-header paging advances and stops without following a host outside the origin"
+          },
+          {
+            "service": "Microsoft 365",
+            "page_one": "a value array plus @odata.nextLink pointing at the same origin",
+            "page_two": "a value array with @odata.nextLink absent",
+            "proves": "an absolute nextLink on the reviewed origin is followed once and bounded"
+          },
+          {
+            "service": "Airtable",
+            "page_one": "a records array plus an offset string",
+            "page_two": "a records array with no offset",
+            "proves": "an opaque offset is echoed back unchanged and bounded"
+          }
+        ]
+      },
+      "unblocks": [
+        "GitLab issue listing for a selected project",
+        "GitHub repository issue listing for the pinned repository",
+        "Microsoft Graph collections beyond the first page",
+        "Airtable, Raindrop, Spotify, Asana, Calendly and Zotero listing subsets"
+      ]
+    },
+    {
+      "id": "authentication_schemes",
+      "title": "Non-Bearer token schemes and credential placement",
+      "engine_limit": "Only Authorization: Bearer is accepted, and a credential may never appear in a path or query, so documented Token, bare-token, key-and-token and query-parameter schemes cannot be carried.",
+      "services": [
+        "Readwise / Reader",
+        "ClickUp",
+        "Trello",
+        "Joplin",
+        "Nextcloud",
+        "Spotify"
+      ],
+      "requirements": [
+        {
+          "service": "Readwise / Reader",
+          "documented": "Authorization: Token <token>, not Bearer.",
+          "reference": "https://readwise.io/reader_api"
+        },
+        {
+          "service": "ClickUp",
+          "documented": "A personal token is sent as a bare Authorization header value with no scheme prefix; OAuth access tokens are currently non-expiring.",
+          "reference": "https://developer.clickup.com/docs/authentication"
+        },
+        {
+          "service": "Trello",
+          "documented": "Key and token are sent as query parameters, as a non-standard OAuth header, or in a request body; a new OAuth 2.0 route uses Bearer with PKCE.",
+          "reference": "https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/"
+        },
+        {
+          "service": "Joplin",
+          "documented": "The token is a required query parameter on every call to the local server.",
+          "reference": "https://joplinapp.org/help/api/references/rest_api/"
+        },
+        {
+          "service": "Nextcloud",
+          "documented": "WebDAV uses Basic authentication or session cookies; OCS also accepts an OIDC bearer token.",
+          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/WebDAV/basic.html"
+        },
+        {
+          "service": "Spotify",
+          "documented": "Access tokens are OAuth only; there is no documented personal token.",
+          "reference": "https://developer.spotify.com/documentation/web-api/concepts/access-token"
+        }
+      ],
+      "fixture_contract": {
+        "description": "A credential-shape sample per scheme that proves the token never reaches a path, a query, a log or a task result, and that a rejected scheme fails before dispatch rather than being retried with Bearer.",
+        "samples": [
+          {
+            "service": "Readwise / Reader",
+            "credential": "an opaque token with no Bearer prefix",
+            "identity": "GET /api/v2/auth/ answering 204 with no body",
+            "proves": "a non-Bearer scheme and an identity-less probe are handled without guessing an account"
+          },
+          {
+            "service": "ClickUp",
+            "credential": "a bare personal token value",
+            "identity": "GET /api/v2/user returning user.id and user.username",
+            "proves": "the token is not silently prefixed with Bearer"
+          },
+          {
+            "service": "Trello",
+            "credential": "an OAuth 2.0 access token used with Bearer",
+            "identity": "GET /1/members/me returning id, username and an optional full name",
+            "proves": "the OAuth 2.0 route works without the legacy key and token"
+          }
+        ]
+      },
+      "unblocks": [
+        "a Readwise Reader subset once identity can be established",
+        "a ClickUp subset for one approved token type only",
+        "a Trello subset through OAuth 2.0"
+      ]
+    },
+    {
+      "id": "application_error_flags",
+      "title": "Application-level success flags",
+      "engine_limit": "Only the HTTP status decides success, so a documented HTTP 200 carrying a failure flag would be reported to a task as a completed action.",
+      "services": [
+        "Slack",
+        "Raindrop.io",
+        "Nextcloud"
+      ],
+      "requirements": [
+        {
+          "service": "Slack",
+          "documented": "Web API methods answer HTTP 200 with ok:false and an error field for application errors, so a status-only check would call a failed send a success.",
+          "reference": "https://docs.slack.dev/reference/methods/auth.test/"
+        },
+        {
+          "service": "Raindrop.io",
+          "documented": "Responses carry a result boolean alongside the HTTP status.",
+          "reference": "https://developer.raindrop.io/v1/user/authenticated"
+        },
+        {
+          "service": "Nextcloud",
+          "documented": "OCS answers HTTP 200 with meta.status and meta.statuscode, where 100 means success.",
+          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html"
+        }
+      ],
+      "fixture_contract": {
+        "description": "A success body and a failure body per service that both arrive with HTTP 200, so a test can prove only the success body is reported as applied and the failure body is surfaced as a failure.",
+        "samples": [
+          {
+            "service": "Slack",
+            "success": "{\"ok\": true, ...}",
+            "failure": "{\"ok\": false, \"error\": \"channel_not_found\"}",
+            "proves": "ok:false is never reported as a successful send"
+          },
+          {
+            "service": "Raindrop.io",
+            "success": "{\"result\": true, \"items\": [...]}",
+            "failure": "{\"result\": false, \"errorMessage\": \"...\"}",
+            "proves": "result:false is never reported as a successful write"
+          }
+        ]
+      },
+      "unblocks": [
+        "any Slack subset, which must also gain reviewed channel destinations",
+        "Raindrop.io bookmark creation",
+        "Nextcloud OCS writes"
+      ]
+    },
+    {
+      "id": "identity_shapes",
+      "title": "Account identity beyond one subject string and one label",
+      "engine_limit": "Identity must be one GET returning HTTP 200 JSON with a usable subject string and a non-empty label string, so a URI subject, a 204 probe, an absent identity route or a nullable label cannot bind an account.",
+      "services": [
+        "Calendly",
+        "Readwise / Reader",
+        "Spotify",
+        "Airtable",
+        "Notion",
+        "Microsoft 365",
+        "Joplin"
+      ],
+      "requirements": [
+        {
+          "service": "Calendly",
+          "documented": "The canonical user identifier is a resource URI such as https://api.calendly.com/users/AAAA, with name and slug as separate required fields.",
+          "reference": "https://developer.calendly.com/api-docs/calendly-api/users/get-current-user"
+        },
+        {
+          "service": "Readwise / Reader",
+          "documented": "The only documented probe is GET /api/v2/auth/, which answers 204 with no body and exposes no account identifier.",
+          "reference": "https://readwise.io/reader_api"
+        },
+        {
+          "service": "Spotify",
+          "documented": "GET /v1/me returns account_id as the linkable identifier, while display_name can be null and email needs an extra scope.",
+          "reference": "https://developer.spotify.com/documentation/web-api/reference/get-current-users-profile"
+        },
+        {
+          "service": "Airtable",
+          "documented": "GET /v0/meta/whoami returns id always, and email only when the token has user.email:read.",
+          "reference": "https://airtable.com/developers/web/api/get-user-id-scopes"
+        },
+        {
+          "service": "Notion",
+          "documented": "There is no documented current-user identity route for an integration token.",
+          "reference": "https://developers.notion.com/reference/intro"
+        },
+        {
+          "service": "Microsoft 365",
+          "documented": "GET /v1.0/me returns id and userPrincipalName, while mail can be null for some accounts.",
+          "reference": "https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0"
+        },
+        {
+          "service": "Joplin",
+          "documented": "The API exposes no account identity at all; it serves one local profile.",
+          "reference": "https://joplinapp.org/help/api/references/rest_api/"
+        }
+      ],
+      "fixture_contract": {
+        "description": "One identity document per service that shows the documented subject and label fields, including the nullable and absent cases, so a test can prove an account is bound by a stable identifier rather than a display string that can be absent.",
+        "samples": [
+          {
+            "service": "Spotify",
+            "document": "account_id plus display_name: null",
+            "proves": "a stable subject is used and a null label is surfaced rather than invented"
+          },
+          {
+            "service": "Calendly",
+            "document": "resource.uri as the canonical identifier plus resource.name",
+            "proves": "a URI subject is either accepted explicitly or rejected clearly, never truncated into a bogus id"
+          }
+        ]
+      },
+      "unblocks": [
+        "a Spotify read subset with a stable account identity",
+        "a Calendly identity contract once a URI subject is deliberately supported",
+        "explicitly documenting that Readwise, Notion and Joplin have no bindable identity"
+      ]
+    },
+    {
+      "id": "native_oauth",
+      "title": "Native OAuth sign-in, scope normalization and refresh",
+      "engine_limit": "Bearer recipes accept a token the user supplies; there is no sign-in flow, so scope normalization, refresh and expiry cannot be proven from a recipe.",
+      "services": [
+        "Microsoft 365",
+        "Asana",
+        "Spotify",
+        "Trello"
+      ],
+      "requirements": [
+        {
+          "service": "Microsoft 365",
+          "documented": "Delegated Graph access needs a registered application, PKCE sign-in, normalized scopes and refresh tokens.",
+          "reference": "https://learn.microsoft.com/en-us/graph/auth-v2-user"
+        },
+        {
+          "service": "Asana",
+          "documented": "A personal access token has no refresh and its documented syntax still needs acceptance.",
+          "reference": "https://developers.asana.com/docs/personal-access-token"
+        },
+        {
+          "service": "Spotify",
+          "documented": "Access tokens last one hour and require a refresh flow.",
+          "reference": "https://developer.spotify.com/documentation/web-api/concepts/access-token"
+        },
+        {
+          "service": "Trello",
+          "documented": "OAuth 2.0 access tokens last about an hour with single-use refresh tokens and PKCE S256.",
+          "reference": "https://developer.atlassian.com/cloud/trello/guides/rest-api/oauth-2-authorization-code-flow/"
+        }
+      ],
+      "fixture_contract": {
+        "description": "A synthetic authorization-code exchange and refresh exchange per service, so a framework test can prove that a registered client, PKCE S256, an http://127.0.0.1 callback, scope normalization and refresh all work end to end without a live account.",
+        "samples": [
+          {
+            "service": "Microsoft 365",
+            "token_response": "access_token, token_type Bearer, expires_in, scope, refresh_token",
+            "identity": "GET /v1.0/me returning id and userPrincipalName",
+            "proves": "a delegated token can be obtained, refreshed and bound to one account"
+          }
+        ]
+      },
+      "unblocks": [
+        "the Microsoft 365 read subset this queue calls a priority",
+        "a Spotify read subset",
+        "a Trello read subset through OAuth 2.0",
+        "an Asana subset once its token syntax is accepted"
+      ]
+    },
+    {
+      "id": "post_reads",
+      "title": "Reads that are POST requests with request objects",
+      "engine_limit": "Reads are GET only and writes are single POSTs whose bodies are reviewed flat bindings or templates, so an RPC or GraphQL read cannot be expressed at all.",
+      "services": [
+        "Dropbox",
+        "Linear"
+      ],
+      "requirements": [
+        {
+          "service": "Dropbox",
+          "documented": "RPC-style endpoints are POST /2/... with a JSON request object such as {\"path\": ...} or {\"cursor\": ...}.",
+          "reference": "https://www.dropbox.com/developers/documentation/http/documentation"
+        },
+        {
+          "service": "Linear",
+          "documented": "Queries and mutations are POST /graphql with a query string, variables and an application-level errors array.",
+          "reference": "https://linear.app/developers/graphql"
+        }
+      ],
+      "fixture_contract": {
+        "description": "One synthetic read POST per service with its documented request object and response shape, proving a credential-bearing read body is reviewed before dispatch and that a GraphQL errors array is never reported as a successful read.",
+        "samples": [
+          {
+            "service": "Dropbox",
+            "request": "{\"path\": \"\"} for a root list, {\"cursor\": ...} for a continuation",
+            "response": "{\"entries\": [...], \"has_more\": true, \"cursor\": ...}",
+            "proves": "a POST read is reviewed like a write and its cursor is bounded"
+          },
+          {
+            "service": "Linear",
+            "request": "{\"query\": \"query ...\", \"variables\": {...}}",
+            "response": "{\"data\": {...}, \"errors\": null}",
+            "proves": "a GraphQL errors array is surfaced as a failed read"
+          }
+        ]
+      },
+      "unblocks": [
+        "a Dropbox file listing subset",
+        "a Linear issue listing subset"
+      ]
+    },
+    {
+      "id": "local_service_origins",
+      "title": "Approved local and self-hosted service origins",
+      "engine_limit": "A profile origin is one exact public HTTPS domain with no port, so a local desktop API or a self-hosted instance can never be an origin, and weakening that global rule is not an option.",
+      "services": [
+        "Nextcloud",
+        "Joplin",
+        "Zotero"
+      ],
+      "requirements": [
+        {
+          "service": "Nextcloud",
+          "documented": "Every instance is self-hosted at the user's own host, commonly with a non-default port.",
+          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html"
+        },
+        {
+          "service": "Joplin",
+          "documented": "The clipper server is local, typically http://localhost:41184.",
+          "reference": "https://joplinapp.org/help/api/references/rest_api/"
+        },
+        {
+          "service": "Zotero",
+          "documented": "A local API also exists on http://localhost:23119 with its own key rules.",
+          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics"
+        }
+      ],
+      "fixture_contract": {
+        "description": "A local-origin sample per service plus a user approval record, proving that loopback or private-range access is possible only after an explicit per-service local approval and never by relaxing the public HTTPS rule.",
+        "samples": [
+          {
+            "service": "Joplin",
+            "probe": "GET /ping answering the plain string JoplinClipperServer",
+            "identity": "none exists; the API exposes no account",
+            "proves": "a local service is opt-in, loopback-only and carries no credential in a path"
+          }
+        ]
+      },
+      "unblocks": [
+        "a Joplin note-capture subset for users who approve a local adapter",
+        "a Nextcloud subset for users who approve their own instance"
+      ]
+    },
+    {
+      "id": "uncertain_write_reconciliation",
+      "title": "Reconciliation of uncertain writes",
+      "engine_limit": "A write is dispatched once and an uncertain result is reported as uncertain with no retry, because a profile can carry at most one operation-ID header and one reviewed reconciliation lookup.",
+      "services": [
+        "GitLab.com",
+        "Todoist",
+        "GitHub",
+        "Airtable"
+      ],
+      "requirements": [
+        {
+          "service": "GitLab.com",
+          "documented": "Creating an issue returns no operation identifier that a later lookup could match.",
+          "reference": "https://docs.gitlab.com/api/issues/#create-an-issue"
+        },
+        {
+          "service": "Todoist",
+          "documented": "A created task returns its task id, which a later read could match, but the interpreter has no reviewed post-write probe step.",
+          "reference": "https://developer.todoist.com/api/v1/#tag/Tasks/operation/create_task"
+        },
+        {
+          "service": "GitHub",
+          "documented": "Creating an issue returns the issue number and URL, which a reviewed read could confirm.",
+          "reference": "https://docs.github.com/en/rest/issues/issues#create-an-issue"
+        },
+        {
+          "service": "Airtable",
+          "documented": "Creating a record returns the created record id, which a reviewed read could confirm.",
+          "reference": "https://airtable.com/developers/web/api/create-records"
+        }
+      ],
+      "fixture_contract": {
+        "description": "A dispatched-then-failed write per service followed by the documented read that proves the commit, so a test can show the difference between an uncertain outcome that is later confirmed and one that is not retried blindly.",
+        "samples": [
+          {
+            "service": "GitHub",
+            "created": "an issue number and html_url",
+            "confirm": "GET /repos/{owner}/{repo}/issues/{number}",
+            "proves": "a pinned repository can confirm its own create without a new capability"
+          }
+        ]
+      },
+      "unblocks": [
+        "a confirmed outcome instead of a manual receipt check for the shipped subsets"
+      ]
+    }
+  ]
+}
