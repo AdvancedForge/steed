@@ -33,7 +33,11 @@ from test_recipe_oauth import OAuthHttp
 from test_task_profiles import TaskProfileTests
 
 from browser_window import BrowserWindow
-from services.connector_recipes import RECIPE_OAUTH_EXAMPLE, parse_recipe
+from services.connector_recipes import (
+    RECIPE_OAUTH_EXAMPLE,
+    RECIPE_PAGINATED_EXAMPLE,
+    parse_recipe,
+)
 from ui.recipe_review import RecipeReviewDialog
 from ui.task_dialog import TaskDialog
 from ui.task_recovery import TaskRecoveryDialog
@@ -69,7 +73,7 @@ async def sdk_transport(discovery, endpoint):
             yield reader, writer, None
 
 
-async def recipe_workflow(call, shared, label, *, oauth=False):
+async def recipe_workflow(call, shared, label, *, oauth=False, pagination=False):
     """External clients propose source; only the fixture installs/connects it."""
     task = await call("task.start", objective="Design a synthetic connection recipe")
     shared[label + "_recipe_task"] = task["task_id"]
@@ -79,7 +83,11 @@ async def recipe_workflow(call, shared, label, *, oauth=False):
         and capabilities["installation_approval"] == "exact_recipe"
     )
     source = json.dumps(
-        capabilities["oauth_example"] if oauth else capabilities["example"]
+        capabilities["pagination_example"]
+        if pagination
+        else capabilities["oauth_example"]
+        if oauth
+        else capabilities["example"]
     ).encode()
     provider = parse_recipe(source).provider
     await call("grant.request", scope={"actions": ["workspace", "connector"]})
@@ -105,6 +113,10 @@ async def recipe_workflow(call, shared, label, *, oauth=False):
         data_base64=base64.b64encode(source).decode(),
     )
     await call("workspace.seal", file_id=item["file_id"])
+    preflight = await call("recipe.validate", file_id=item["file_id"])
+    assert preflight["valid"] and preflight["installation_required"]
+    assert preflight["recipe"]["provider"] == provider
+    assert not preflight["provider_semantics_verified"]
     arguments = {"file_id": item["file_id"], "request_id": "fixture-recipe"}
     receipt = await call("recipe.propose", **arguments)
     deadline = time.monotonic() + 15
@@ -149,12 +161,31 @@ async def recipe_workflow(call, shared, label, *, oauth=False):
         result = await call("app.status", request_id="recipe-note")
     assert result["state"] == "succeeded", result
     assert json.loads(result["text"]) == (
-        {"notes": [{"id": "note-1", "title": "Synthetic note"}]}
-        if oauth
-        else {"title": "Fixture note", "body": "Shared task data"}
+        {
+            "notes": [
+                {"id": "note-1", "title": "Synthetic note"},
+                {"id": "note-2", "title": "Next synthetic note"},
+            ],
+            "_pagination": {"pages": 2, "more_available": False},
+        }
+        if pagination
+        else (
+            {"notes": [{"id": "note-1", "title": "Synthetic note"}]}
+            if oauth
+            else {"title": "Fixture note", "body": "Shared task data"}
+        )
     )
     assert (await call("app.call_tool", **arguments)) == result
-    shared[label + ("_oauth_recipe_read" if oauth else "_reviewed_recipe_read")] = True
+    shared[
+        label
+        + (
+            "_paginated_recipe_read"
+            if pagination
+            else "_oauth_recipe_read"
+            if oauth
+            else "_reviewed_recipe_read"
+        )
+    ] = True
     await call("task.finish")
 
 
@@ -750,6 +781,7 @@ async def sdk_client(
             if shared["require_recipes"]:
                 await recipe_workflow(call, shared, "sdk")
                 await recipe_workflow(call, shared, "sdk", oauth=True)
+                await recipe_workflow(call, shared, "sdk", oauth=True, pagination=True)
 
 
 def raw_workflow(request, notify, foreign_session, origin, shared):
@@ -1017,6 +1049,9 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     if shared["require_recipes"]:
         asyncio.run(recipe_workflow(workspace_call, shared, "raw"))
         asyncio.run(recipe_workflow(workspace_call, shared, "raw", oauth=True))
+        asyncio.run(
+            recipe_workflow(workspace_call, shared, "raw", oauth=True, pagination=True)
+        )
     return True
 
 
@@ -1246,6 +1281,9 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             recipe_client = Path(case.directory.name) / "recipe-client.json"
             recipe_client.write_text('{"client_id":"SYNTHETIC_CLIENT"}')
             oauth_source = parse_recipe(json.dumps(RECIPE_OAUTH_EXAMPLE).encode())
+            paginated_source = parse_recipe(
+                json.dumps(RECIPE_PAGINATED_EXAMPLE).encode()
+            )
         upload_source = Path(case.directory.name) / "mcp-upload.txt"
         upload_source.write_bytes(b"SYNTHETIC_MCP_UPLOAD_BYTES")
         shared["raw_workspace_destination"] = str(
@@ -1324,7 +1362,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     shared.get("raw_recipe_task"),
                 )
                 if isinstance(dialog, RecipeReviewDialog):
-                    assert dialog.recipe in (recipe(), oauth_source)
+                    assert dialog.recipe in (recipe(), oauth_source, paginated_source)
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
                     dialog.allow_button.click()  # Trusted synthetic user only.
@@ -1363,7 +1401,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                 shared["approval_popup"] = True
             if require_recipes:
                 manager = case.registry.app_connections
-                for selected in (recipe(), oauth_source):
+                for selected in (recipe(), oauth_source, paginated_source):
                     if selected.provider not in manager.providers or manager.busy:
                         continue
                     accounts = [
@@ -1376,7 +1414,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                             manager.connect_account(
                                 selected.provider,
                                 recipe_client,
-                                ["read_note", "list_notes"],
+                                [t.name for t in selected.tools],
                             )
                         else:
                             manager.connect_recipe_account(

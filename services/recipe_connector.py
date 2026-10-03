@@ -2,9 +2,10 @@
 
 import json
 import re
+from urllib.parse import urlencode
 
 from services.app_accounts import AccountError
-from services.connector_recipes import select
+from services.connector_recipes import RecipeError, page_cursor, select
 from services.connectors import ConnectorOutcome, ConnectorTool
 from services.recipe_http import RecipeHttp, check_cancelled
 from services.recipe_oauth import RecipeOAuthAccess, token_http
@@ -31,6 +32,25 @@ def redact(value, credentials):
             redact(k, credentials): redact(v, credentials) for k, v in value.items()
         }
     return value
+
+
+def tool_description(recipe, account, tool):
+    label = account.label if len(account.label) <= 64 else account.label[:63] + "…"
+    prefix = f"{recipe.name} [{recipe.origin}] ({label}): "
+    suffix = (
+        " (exact resource ID)"
+        if "{destination}" in tool.path
+        else " (destination: account)"
+    )
+    if tool.pagination:
+        suffix += f" (up to {tool.pagination.max_pages} pages)"
+    budget = 512 - len(prefix) - len(suffix)
+    description = (
+        tool.description
+        if len(tool.description) <= budget
+        else tool.description[: budget - 1] + "…"
+    )
+    return prefix + description + suffix
 
 
 def identity(recipe, http, token, cancelled):
@@ -114,13 +134,7 @@ class RecipeConnector:
                 self.account.connector,
                 tool.name,
                 "read",
-                f"{self.recipe.name} [{self.recipe.origin}] ({self.account.label}): "
-                + tool.description
-                + (
-                    " (exact resource ID)"
-                    if "{destination}" in tool.path
-                    else " (destination: account)"
-                ),
+                tool_description(self.recipe, self.account, tool),
                 False,
                 lambda request, cancelled, selected=tool: self.execute(
                     selected, request, cancelled
@@ -164,15 +178,6 @@ class RecipeConnector:
         self.catalog.active(self.recipe)
         self.store.active(self.account)
         check_cancelled(cancelled)
-        result = self.http.request(
-            "GET",
-            self.recipe.origin + tool.path.replace("{destination}", destination),
-            headers={"Authorization": "Bearer " + token},
-            cancelled=cancelled,
-        )
-        check_cancelled(cancelled)
-        self.catalog.active(self.recipe)
-        self.store.active(self.account)
         credentials = tuple(
             value
             for value in (
@@ -182,12 +187,64 @@ class RecipeConnector:
             )
             if isinstance(value, str) and value
         )
+        result = self.read(tool, destination, token, credentials, cancelled)
+        check_cancelled(cancelled)
+        self.catalog.active(self.recipe)
+        self.store.active(self.account)
         text = json.dumps(
-            redact(
-                {label: select(result, path) for label, path in tool.response},
-                credentials,
-            ),
+            redact(result, credentials),
             ensure_ascii=False,
             allow_nan=False,
         )
         return ConnectorOutcome(text=text).validate()
+
+    def read(self, tool, destination, token, credentials, cancelled):
+        base = self.recipe.origin + tool.path.replace("{destination}", destination)
+        url, merged, seen = base, {label: [] for label, _ in tool.response}, set()
+        pages = tool.pagination.max_pages if tool.pagination else 1
+        for index in range(pages):
+            self.catalog.active(self.recipe)
+            self.store.active(self.account)
+            check_cancelled(cancelled)
+            if index and identity(self.recipe, self.http, token, cancelled) != (
+                self.account.subject,
+                self.account.label,
+            ):
+                raise AccountError("Account identity changed during pagination")
+            response = self.http.request(
+                "GET",
+                url,
+                headers={"Authorization": "Bearer " + token},
+                cancelled=cancelled,
+            )
+            check_cancelled(cancelled)
+            self.catalog.active(self.recipe)
+            self.store.active(self.account)
+            selected = {label: select(response, path) for label, path in tool.response}
+            if not tool.pagination:
+                return selected
+            for label, values in selected.items():
+                if not isinstance(values, list):
+                    raise RecipeError("Paginated response fields must be arrays")
+                merged[label].extend(values)
+            cursor = select(response, tool.pagination.cursor)
+            if cursor not in (None, ""):
+                cursor = page_cursor(cursor)
+                if cursor in seen or any(value in cursor for value in credentials):
+                    raise RecipeError(
+                        "Pagination cursor repeated or reflected credentials"
+                    )
+                seen.add(cursor)
+            merged["_pagination"] = {
+                "pages": index + 1,
+                "more_available": cursor not in (None, ""),
+            }
+            ConnectorOutcome(
+                text=json.dumps(
+                    redact(merged, credentials), ensure_ascii=False, allow_nan=False
+                )
+            ).validate()
+            if cursor in (None, ""):
+                break
+            url = base + "?" + urlencode({tool.pagination.parameter: cursor})
+        return merged

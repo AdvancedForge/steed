@@ -152,6 +152,12 @@ TOOLS = (
         "Discover supported connector recipe format, authentication, limits and a copyable example before writing source. No grant, account or network access is created. Replace the example domain and fields with the actual service's documented API; recipes are untrusted proposals until user review.",
     ),
     tool(
+        "recipe.validate",
+        "Preflight sealed owned recipe JSON with workspace and connector permission before asking for installation. Returns bounded grammar diagnostics and compiled domains/tools/destinations; makes no network requests, opens no popup, installs nothing and does not verify the provider's real semantics.",
+        {"file_id": string(64)},
+        ("file_id",),
+    ),
+    tool(
         "recipe.propose",
         "Propose installing a sealed owned connector-recipe JSON file (16 KiB maximum). Requires workspace and connector task permission. User-only review pins domains, identity request, GET paths, returned fields and source hash. Installation creates no account or execution authority; tokens come from trusted App Connections only. Stable request IDs never replay.",
         {"file_id": string(64), "request_id": string(64)},

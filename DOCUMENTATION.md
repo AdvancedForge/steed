@@ -1285,8 +1285,8 @@ Reviewed recipes are the first implemented stage of agent-designed providers. An
 agent describes a bounded REST integration in JSON; Steed interprets it through
 its trusted connector broker. Agents never receive account credentials or install
 Python in the browser. Recipes support native OAuth/PKCE or bearer-token authentication,
-fixed collection paths and resource-specific read-only GET tools. Pagination, writes
-and provider-specific conflict/reconciliation behavior are later milestones. The goal
+fixed collection paths and resource-specific read-only GET tools. Bounded cursor pagination is implemented; writes and provider-specific
+conflict/reconciliation behavior are later milestones. The goal
 is the same account and permission experience as Steed's built-in Google provider.
 Shared Google registration remains deferred independently.
 
@@ -1294,8 +1294,12 @@ To add a service:
 
 1. Ask an agent to design a recipe from the service's official API documentation.
    It calls `steed_recipe_capabilities` for the supported format and limits, requests
-   `workspace` and `connector` permission, uploads/seals the JSON, then calls
-   `steed_recipe_propose` with `file_id` and a stable `request_id`.
+   `workspace` and `connector` permission and uploads/seals the JSON. Call
+   `steed_recipe_validate` first to get grammar diagnostics and compiled domains,
+   account selectors, tools and destinations. It makes no network requests, opens
+   no popup and installs nothing. Correct invalid source in a new sealed file,
+   then call `steed_recipe_propose` with `file_id` and a stable `request_id`.
+   Successful preflight is not approval or verification of provider semantics.
    Alternatively, choose **File → App Connections → Add Connector Recipe…** and
    select a local JSON file.
 2. Review **Add this service connection?**. It shows the actual HTTPS domain,
@@ -1382,6 +1386,32 @@ literal current access/refresh/client-secret values before JSON escaping, includ
 object keys; this is not a general information-flow/taint guarantee against a
 service transforming or disclosing its own credentials.
 
+For a fixed collection path, an optional pagination declaration supports at most
+five pages in one approved tool operation:
+
+```json
+"pagination": {"cursor": "/next", "parameter": "cursor", "max_pages": 3}
+```
+
+The [paginated example](examples/connector_recipes/notes-paginated.json) uses this
+format. The first request uses the exact fixed path with no query. Each response's
+cursor pointer must exist; `null` or an empty string ends pagination. Otherwise it
+must be an ASCII cursor of at most 512 bytes, encoded as the one reviewed query
+parameter. Cursor URLs are never followed as destinations. Selected response
+fields must be arrays; Steed concatenates each selected array and adds
+`_pagination: {pages, more_available}` to the retained result. That output label is
+reserved. At the reviewed page limit, `more_available` truthfully reports remaining
+data without fetching it or exposing a cursor. This is bounded enumeration, not
+an unlimited full-account export or arbitrary page selection.
+
+Identity, catalog, account and cancellation are checked between pages. Repeated or
+credential-reflecting cursors, wrong response shapes and oversized combined output
+fail without publishing partial data. The transport accepts only the configured
+path/parameter and canonical encoded value; extra/duplicate parameters, foreign
+paths and redirects fail before credential dispatch. Each API response remains
+bounded to 128 KiB and the entire result to 16 KiB. Task receipts count a single
+operation with at most the reviewed number of page requests and identity checks.
+
 The HTTPS transport rejects private, reserved, multicast, mapped and mixed DNS
 answers, connects to a validated numeric public address without resolving again,
 and verifies TLS/hostname against the reviewed domain. It ignores proxy settings,
@@ -1426,6 +1456,60 @@ inspected. Logs: `/tmp/steed-recipes-oauth-full.log`,
 `/tmp/steed-recipes-oauth-focused.log`, and
 `/tmp/steed-recipes-oauth-mcp-{stdio,http}.log`. Real-provider consent, refresh
 compatibility and native desktop interaction remain separate acceptance checks.
+
+Preflight/pagination milestone acceptance: **733 regressions passed in 283.392
+seconds**; 55 final recipe checks passed in 6.169 seconds, including a subsequent
+long-metadata discovery/registration fix. Both independent clients completed
+preflight and bearer/OAuth/paginated reads through both MCP transports alongside
+real sandbox document generation. Pagination previews, Ruff/format, doc links,
+53-tool discovery and all three examples passed. Startup crashed while concurrent
+offscreen processes initialized Vulkan; a standalone retry passed. The cause is
+not proven. Logs: `/tmp/steed-recipes-pagination-{full,focused,mcp-stdio,mcp-http}.log`,
+`/tmp/steed-recipes-pagination-startup.log` and
+`/tmp/steed-recipes-pagination-startup-alone.log`. Native desktop and real-account
+acceptance remain separate.
+
+### Agent-designed write boundary
+
+**User approved reviewed create/send recipes.** Recipes now design, install and
+connect read-capable services using Steed's broker, keyring, account switches and
+receipts. Their API semantics remain proposals checked by the user; a declared
+HTTP method or effect cannot prove what an external service actually does.
+
+The user chose to admit agent-designed tools that change external data after
+review, rather than requiring maintained Steed adapters for each service. This
+authorizes the next engineering milestone; real-account effects remain separate
+explicit user tasks. The write implementation is still pending.
+
+Approved direction: admit **reviewed declarative create/send plans**, starting
+with a small fixed REST contract:
+
+- Installation shows actual service/auth domains, OAuth scopes, method/path,
+  declared effect and payload fields. New source versions need new account setup
+  and switches; they cannot inherit prior write authority.
+- Payloads bind only explicitly named task draft fields and Steed's operation ID.
+  JSON serialization is trusted; generated source gets no credentials, custom
+  authorization headers, arbitrary URLs or executable expressions.
+- The initial implementation shows the actual destination/payload before dispatch
+  and reuses exact task permissions, account switches, budgets and live cancellation.
+  Persistent choices must clearly describe the added write/send authority.
+- Receipts persist before dispatch, preserve uncertain outcomes, and never retry
+  uncertain external effects automatically. Where the provider documents request-ID
+  support or lookup, bind it to the receipt and provide a separately authorized
+  read-only reconciliation path. An unsupported lookup remains explicit uncertainty.
+- Edits/replacements require a provider revision/conditional-write contract and
+  before/after review; delete/spend and arbitrary protocol/code adapters stay outside
+  this first milestone. A recipe declaration alone is not proof the API honors a
+  request-ID or revision guard.
+
+The alternative retains recipe reads/OAuth/pagination while adding each service's
+write support through maintained Python adapters. It keeps effect semantics in
+reviewed Steed code but delays agent-built write integration and requires repository
+changes for each service. Shared Google registration stays deferred under either
+choice. After choosing the boundary, acceptance should include synthetic HTTPS
+create/send receipts, timeout after server commit, restart/non-replay, revoked grants,
+identity/source changes, payload review and both external MCP transports before any
+user-owned real-service test.
 
 ### Shared Google registration decision
 
@@ -2286,7 +2370,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 52 input schemas. Names follow the internal command
+Tool discovery publishes 53 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link

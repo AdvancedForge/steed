@@ -154,6 +154,25 @@ class RecipeHttpTests(unittest.TestCase):
             self.request(trusted=False)
         self.assertEqual(self.calls, [])
 
+    def test_only_reviewed_canonical_cursor_queries_are_sent_over_tls(self):
+        self.http = RecipeHttp(
+            "https://api.fixture.example", query_parameters={"/notes": {"cursor"}}
+        )
+        url = "https://api.fixture.example/notes?cursor=PAGE_2%2F%2B%3F%3D%26"
+        self.assertEqual(self.request(url=url), {"text": "SYNTHETIC_DATA"})
+        self.assertEqual(self.calls[0][0], "/notes?cursor=PAGE_2%2F%2B%3F%3D%26")
+        for path in (
+            "/notes?other=1",
+            "/notes?cursor=a&cursor=b",
+            "/notes?cursor=",
+            "/foreign?cursor=a",
+            "/notes?cursor=%2f",
+            "/notes?cursor=" + "x" * 513,
+        ):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                self.http.request("GET", "https://api.fixture.example" + path)
+        self.assertEqual(len(self.calls), 1)
+
     def test_token_exchange_is_pinned_to_its_own_reviewed_domain_and_form(self):
         endpoint = "https://auth.fixture.example/token"
         self.http = RecipeHttp("https://api.fixture.example", token_endpoint=endpoint)

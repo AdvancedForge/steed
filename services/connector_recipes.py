@@ -54,6 +54,17 @@ RECIPE_OAUTH_EXAMPLE = {
     ],
 }
 
+RECIPE_PAGINATED_EXAMPLE = {
+    **RECIPE_OAUTH_EXAMPLE,
+    "name": "Example Paginated Notes",
+    "tools": [
+        {
+            **RECIPE_OAUTH_EXAMPLE["tools"][1],
+            "pagination": {"cursor": "/next", "parameter": "cursor", "max_pages": 3},
+        }
+    ],
+}
+
 
 class RecipeError(ValueError):
     pass
@@ -191,12 +202,38 @@ def resource_id(value):
     return value
 
 
+def query_parameter(value):
+    if not isinstance(value, str) or not re.fullmatch(
+        r"[A-Za-z][A-Za-z0-9_]{0,31}", value
+    ):
+        raise RecipeError("Use one bounded pagination parameter name")
+    return value
+
+
+def page_cursor(value):
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 512
+        or not all(33 <= ord(c) < 127 for c in value)
+    ):
+        raise RecipeError("The API returned an invalid pagination cursor")
+    return value
+
+
+@dataclass(frozen=True)
+class RecipePagination:
+    cursor: str
+    parameter: str
+    max_pages: int
+
+
 @dataclass(frozen=True)
 class RecipeTool:
     name: str
     description: str
     path: str
     response: tuple
+    pagination: RecipePagination | None = None
 
     def destination(self, value):
         if "{destination}" in self.path:
@@ -229,6 +266,20 @@ class ConnectorRecipe:
             "name": self.name,
             "origin": self.origin,
             "authentication": self.authentication.kind,
+            "identity": {
+                "path": self.identity_path,
+                "subject": self.subject_pointer,
+                "label": self.label_pointer,
+            },
+            "oauth": (
+                {
+                    "authorization_endpoint": self.authentication.authorization_endpoint,
+                    "token_endpoint": self.authentication.token_endpoint,
+                    "scopes": list(self.authentication.scopes),
+                }
+                if self.authentication.kind == "oauth_pkce"
+                else None
+            ),
             "tools": [
                 {
                     "name": t.name,
@@ -239,6 +290,15 @@ class ConnectorRecipe:
                     "destination": "resource_id"
                     if "{destination}" in t.path
                     else "account",
+                    "pagination": (
+                        {
+                            "cursor": t.pagination.cursor,
+                            "parameter": t.pagination.parameter,
+                            "max_pages": t.pagination.max_pages,
+                        }
+                        if t.pagination
+                        else None
+                    ),
                     "response_fields": [
                         {"label": k, "pointer": v} for k, v in t.response
                     ],
@@ -271,13 +331,41 @@ def parse_recipe(raw):
             raise RecipeError("Provide 1–10 read tools")
         tools, names = [], set()
         for item in data["tools"]:
-            fields(item, ("name", "description", "method", "path", "response"))
+            fields(
+                item,
+                (
+                    "name",
+                    "description",
+                    "method",
+                    "path",
+                    "response",
+                    *(["pagination"] if "pagination" in item else []),
+                ),
+            )
             name = connector_name(item["name"])
             if name in names or item["method"] != "GET":
                 raise RecipeError(
                     "Recipe tools need unique names and reviewed GET requests"
                 )
             names.add(name)
+            path = request_path(item["path"], destination=True)
+            pagination = None
+            if "pagination" in item:
+                value = item["pagination"]
+                fields(value, ("cursor", "parameter", "max_pages"))
+                if (
+                    "{destination}" in path
+                    or type(value["max_pages"]) is not int
+                    or not 1 <= value["max_pages"] <= 5
+                ):
+                    raise RecipeError(
+                        "Pagination needs a fixed collection path and 1–5 pages"
+                    )
+                pagination = RecipePagination(
+                    pointer(value["cursor"]),
+                    query_parameter(value["parameter"]),
+                    value["max_pages"],
+                )
             if (
                 not isinstance(item["response"], list)
                 or not 1 <= len(item["response"]) <= 10
@@ -287,6 +375,8 @@ def parse_recipe(raw):
             for output in item["response"]:
                 fields(output, ("label", "pointer"))
                 label = printable(output["label"], 80)
+                if pagination and label == "_pagination":
+                    raise RecipeError("_pagination is reserved for collection progress")
                 if label in {p[0] for p in outputs}:
                     raise RecipeError("Response labels must be unique")
                 outputs.append((label, pointer(output["pointer"])))
@@ -294,8 +384,9 @@ def parse_recipe(raw):
                 RecipeTool(
                     name,
                     printable(item["description"], 300),
-                    request_path(item["path"], destination=True),
+                    path,
                     tuple(outputs),
+                    pagination,
                 )
             )
         return ConnectorRecipe(

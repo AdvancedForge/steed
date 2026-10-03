@@ -79,8 +79,17 @@ class OAuthHttp(SyntheticRecipeHttp):
         self.calls.append((method, url, headers, body))
         if url.endswith("/me"):
             return {"id": self.subject, "email": self.label}
-        if url.endswith("/notes"):
-            return {"items": [{"id": "note-1", "title": "Synthetic note"}]}
+        if urlsplit(url).path == "/notes":
+            later = bool(urlsplit(url).query)
+            return {
+                "items": [
+                    {
+                        "id": "note-2" if later else "note-1",
+                        "title": "Next synthetic note" if later else "Synthetic note",
+                    }
+                ],
+                "next": None if later else "PAGE_2/+?=&",
+            }
         return (
             {**self.body, "body": SECRET + " " + ROTATED}
             if self.credential_echo
