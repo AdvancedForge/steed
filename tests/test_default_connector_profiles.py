@@ -984,3 +984,126 @@ class AssessedContractTests(unittest.TestCase):
                         self.assertNotIn("secret", value.lower())
                         if header.lower() in credentials:
                             self.assertIn("<", value)
+
+
+class EmpiricalEvidenceTests(unittest.TestCase):
+    """Documentation, framework tests and a real account prove different things."""
+
+    def setUp(self):
+        self.shared = json.loads(
+            (FIXTURES / "shared_capabilities.json").read_text("utf-8")
+        )
+        self.groups = {group["id"]: group for group in self.shared["groups"]}
+        self.contracts = {
+            provider: json.loads((FIXTURES / (provider + ".json")).read_text("utf-8"))
+            for provider in ("notion", "zotero", "figma")
+        }
+
+    def test_the_evidence_policy_separates_docs_tests_and_a_real_account(self):
+        policy = self.shared["evidence_policy"]
+        self.assertTrue(policy["documentation_proves"])
+        self.assertTrue(policy["framework_tests_prove"])
+        self.assertTrue(policy["only_a_real_account_proves"])
+        joined = " ".join(policy["not_evidence"]).lower()
+        # A mock or fixture is never recorded as provider evidence.
+        self.assertIn("not live provider evidence", joined)
+        self.assertIn(
+            "never recorded as acceptance", policy["how_pending_checks_are_kept"]
+        )
+        self.assertTrue(policy["how_pending_checks_are_kept"])
+
+    def test_every_contract_keeps_its_unproven_questions_pending(self):
+        for provider, contract in self.contracts.items():
+            status = contract["empirical_status"]
+            with self.subTest(provider=provider):
+                self.assertTrue(status["settled_by_documentation"])
+                self.assertTrue(status["pending"])
+                self.assertIn(
+                    "stay pending until a real account is used", status["policy"]
+                )
+                for item in status["pending"]:
+                    self.assertTrue(item["question"].endswith("?"))
+                    self.assertEqual(item["status"], "pending", item["question"])
+                    self.assertTrue(item["settled_by"].endswith("."))
+                    self.assertTrue(item["blocks"])
+
+    def test_credential_and_response_claims_are_never_marked_settled_by_tests(self):
+        for provider, contract in self.contracts.items():
+            questions = " ".join(
+                item["question"].lower()
+                for item in contract["empirical_status"]["pending"]
+            )
+            with self.subTest(provider=provider):
+                # A test can never settle whether a provider accepts a token or
+                # sends a field, so those must still be pending questions.
+                self.assertTrue(
+                    "personal access token" in questions
+                    or "internal integration token" in questions
+                    or "bearer" in questions,
+                    provider + " must keep its credential question pending",
+                )
+
+    def test_figma_does_not_claim_the_document_tree_read_is_small(self):
+        figma = self.contracts["figma"]
+        read = figma["read_contract"]
+        self.assertEqual(read["smallest_useful_read"]["path"], "/v1/files/{key}/meta")
+        self.assertIn(
+            "no document tree",
+            read["smallest_useful_read"]["why_this_endpoint"],
+        )
+        tree = read["document_tree_read"]
+        self.assertEqual(tree["path"], "/v1/files/{key}")
+        self.assertEqual(tree["transport_bound"]["status"], "pending_empirical")
+        self.assertIn("128 KiB", tree["transport_bound"]["engine_fact"])
+        self.assertIn(
+            "publishes no response-size limit",
+            tree["transport_bound"]["documented_provider_fact"],
+        )
+        self.assertIn("query_inputs", figma["framework_gap"]["capabilities"])
+        self.assertTrue(
+            any(
+                "transport bound" in item["question"]
+                for item in figma["empirical_status"]["pending"]
+            )
+        )
+
+    def test_zotero_records_a_pinned_library_alternative_with_disclosure(self):
+        zotero = self.contracts["zotero"]
+        alternative = zotero["pinned_library_id_alternative"]
+        self.assertEqual(alternative["status"], "assessed_alternative")
+        self.assertTrue(alternative["what_it_still_needs"])
+        # The pinned id is user-supplied and the interpreter cannot check it.
+        disclosure = alternative["mismatch_disclosure"]
+        self.assertIn("user-supplied and unchecked", disclosure["required_disclosure"])
+        self.assertIn("does not verify", disclosure["engine_fact"])
+        self.assertIn("404", disclosure["documented_statuses"])
+        # The key's library access flag has to be disclosed too.
+        self.assertIn("access", alternative["scope_disclosure"]["documented"])
+        # One sign-in stays the default goal, and nothing is shipped.
+        self.assertIn("not as a shipped template", alternative["note"])
+        self.assertFalse(
+            (PACKAGED / "templates" / "zotero-library-template.json").exists()
+        )
+
+    def test_query_inputs_are_a_separate_capability_from_pagination_and_headers(self):
+        group = self.groups["query_inputs"]
+        self.assertIn("Figma", group["services"])
+        self.assertIn("request-shaping capability", group["distinct_from"])
+        self.assertNotIn(group["id"], self.groups["pagination"]["id"])
+        self.assertNotIn(group["id"], self.groups["static_headers"]["id"])
+        self.assertNotIn(group["id"], self.groups["credential_headers"]["id"])
+        figma = next(r for r in group["requirements"] if r["service"] == "Figma")
+        self.assertEqual(figma["blocks"], ["single_item_read"])
+        self.assertIn("depth", figma["documented"])
+        for requirement in group["requirements"]:
+            self.assertIn("blocks", requirement)
+            self.assertTrue(requirement["documented"].endswith("."))
+            self.assertTrue(requirement["reference"].startswith("https://"))
+
+    def test_setup_guide_states_the_evidence_split_and_both_corrections(self):
+        guide = (ROOT / "connectors" / "SETUP.md").read_text("utf-8")
+        self.assertIn("What each kind of evidence proves", guide)
+        self.assertIn("proves Steed's own behaviour only", guide)
+        self.assertIn("projecting less is not the same as transferring less", guide)
+        self.assertIn("pinned library id is a real alternative", guide)
+        self.assertIn(self.groups["query_inputs"]["title"], guide)

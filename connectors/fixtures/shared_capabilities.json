@@ -169,7 +169,8 @@
         "Spotify",
         "Joplin",
         "Zotero",
-        "ClickUp"
+        "ClickUp",
+        "Trello"
       ],
       "requirements": [
         {
@@ -256,6 +257,15 @@
           "service": "ClickUp",
           "documented": "Task lists are documented as capped at 100 tasks per page; the exact mechanism is not verified here.",
           "reference": "https://developer.clickup.com/docs/authentication",
+          "blocks": [
+            "lists"
+          ]
+        },
+        {
+          "service": "Trello",
+          "documented": "Collections document before and since parameters derived from creation dates, with a documented 1,000 result cap, and no cursor.",
+          "reference": "https://developer.atlassian.com/cloud/trello/guides/rest-api/api-introduction/",
+          "documented_level": "documented creation-date paging",
           "blocks": [
             "lists"
           ]
@@ -848,6 +858,151 @@
       "unblocks": [
         "a confirmed outcome instead of a manual receipt check for the shipped subsets"
       ]
+    },
+    {
+      "id": "query_inputs",
+      "title": "Reviewed fixed query inputs",
+      "engine_limit": "The only query a reviewed profile may send is the single pagination parameter for a cursor, so a documented request-shaping parameter such as depth, ids, $select, $filter, view, sort, market or count cannot be expressed at all.",
+      "services": [
+        "Figma",
+        "Microsoft 365",
+        "Airtable",
+        "Asana",
+        "ClickUp",
+        "Raindrop.io",
+        "Spotify",
+        "Calendly",
+        "Joplin"
+      ],
+      "distinct_from": "This is a request-shaping capability, not authentication, not a header and not pagination. Only one reviewed query parameter exists today, and it is reserved for the reviewed cursor.",
+      "requirements": [
+        {
+          "service": "Figma",
+          "documented": "GET /v1/files/:key documents depth as a positive integer for how deep to traverse and ids as a comma separated list of nodes, and both are the only documented way to limit what a document read returns.",
+          "reference": "https://developers.figma.com/docs/rest-api/file-endpoints/",
+          "documented_level": "required to bound a document read",
+          "blocks": [
+            "single_item_read"
+          ]
+        },
+        {
+          "service": "Microsoft 365",
+          "documented": "Collection endpoints document $select, $filter, $top, $skiptoken and $orderby as request shaping, while $skiptoken paging is separate.",
+          "reference": "https://learn.microsoft.com/en-us/graph/api/user-list-messages?view=graph-rest-1.0",
+          "documented_level": "documented request shaping",
+          "blocks": [
+            "single_item_read",
+            "lists"
+          ]
+        },
+        {
+          "service": "Airtable",
+          "documented": "List records documents view, sort and fields parameters for shaping a table read.",
+          "reference": "https://airtable.com/developers/web/api/list-records",
+          "documented_level": "documented request shaping",
+          "blocks": [
+            "lists"
+          ]
+        },
+        {
+          "service": "Asana",
+          "documented": "Collection endpoints document opt_fields to limit returned fields.",
+          "reference": "https://developers.asana.com/reference/getcollections",
+          "documented_level": "documented request shaping",
+          "blocks": [
+            "lists"
+          ]
+        },
+        {
+          "service": "ClickUp",
+          "documented": "List endpoints document include_closed and date_range parameters that shape the result set.",
+          "reference": "https://developer.clickup.com/docs/authentication",
+          "documented_level": "documented request shaping",
+          "blocks": [
+            "lists"
+          ]
+        },
+        {
+          "service": "Raindrop.io",
+          "documented": "Collections document search, sort and nested parameters.",
+          "reference": "https://developer.raindrop.io/v1/raindrops/multiple",
+          "documented_level": "documented request shaping",
+          "blocks": [
+            "lists"
+          ]
+        },
+        {
+          "service": "Spotify",
+          "documented": "Endpoints document market to scope results, alongside limit and offset.",
+          "reference": "https://developer.spotify.com/documentation/web-api/concepts/api-calls",
+          "documented_level": "documented request shaping",
+          "blocks": [
+            "lists"
+          ]
+        },
+        {
+          "service": "Calendly",
+          "documented": "Collection endpoints document count and other request shaping.",
+          "reference": "https://developer.calendly.com/api-docs/overview/api/api-conventions",
+          "documented_level": "documented request shaping",
+          "blocks": [
+            "lists"
+          ]
+        },
+        {
+          "service": "Joplin",
+          "documented": "Note endpoints document fields, order_by, order_dir and page.",
+          "reference": "https://joplinapp.org/help/api/references/rest_api/",
+          "documented_level": "documented request shaping",
+          "blocks": [
+            "lists"
+          ]
+        }
+      ],
+      "fixture_contract": {
+        "description": "One documented request with the shaping parameter and one without, per service, so a framework test can prove the parameter is sent as written, is bounded, and is refused when it is not reviewed.",
+        "samples": [
+          {
+            "service": "Figma",
+            "with_input": "GET /v1/files/fixture-file-key?depth=1",
+            "without_input": "GET /v1/files/fixture-file-key",
+            "proves": "a reviewed depth input is sent verbatim and an unreviewed query is refused before dispatch"
+          },
+          {
+            "service": "Microsoft 365",
+            "with_input": "GET /v1.0/me/messages?$select=subject&$top=5",
+            "without_input": "GET /v1.0/me/messages",
+            "proves": "several reviewed inputs compose deterministically and stay inside the reviewed origin"
+          }
+        ]
+      },
+      "unblocks": [
+        "a bounded Figma document read once identity and the token header are settled",
+        "field- and filter-shaped reads for Microsoft 365, Airtable, Asana, ClickUp, Raindrop.io, Spotify, Calendly and Joplin"
+      ]
     }
-  ]
+  ],
+  "evidence_policy": {
+    "principle": "Keep three kinds of claim apart, and never let a test stand in for a provider.",
+    "documentation_proves": [
+      "That an endpoint, field, header, parameter or status exists, and what it is documented to mean.",
+      "What a response shape is documented to look like, including which fields are documented as nullable or absent."
+    ],
+    "framework_tests_prove": [
+      "That Steed parses, reviews, bounds and dispatches a documented shape correctly.",
+      "That a payload, identity check, refusal or uncertain outcome happens before or instead of a request.",
+      "That the engine rejects a destination, header or body shape it was never reviewed for."
+    ],
+    "only_a_real_account_proves": [
+      "That a provider accepts a credential in the placement a profile uses, for example a bearer-carried API key on an identity route documented against a different header.",
+      "That a documented nullable or conditional field is actually sent, and how often.",
+      "That a real response fits the transport bounds, or that a rate limit allows a subset to be useful.",
+      "That an account was consented, connected and revoked."
+    ],
+    "not_evidence": [
+      "A mock or synthetic fixture proves Steed's own behaviour only; it is not live provider evidence and is never recorded as acceptance.",
+      "An unverified live observation is behaviour, not documentation, and is recorded as unverified rather than as a contract."
+    ],
+    "how_pending_checks_are_kept": "Every candidate contract carries an empirical_status block: what documentation settles, what is still pending, and what a real account would settle. Pending items stay pending until a recorded live run exists, and a pending item is never recorded as acceptance. No test result and no unverified live observation promotes one."
+  }
 }
