@@ -351,6 +351,7 @@ two files in agreement. None of these is worked around in a connector.
 | Native OAuth sign-in, scope normalization and refresh | Microsoft 365, Asana, Spotify, Trello |
 | Reads that are POST requests with request objects | Dropbox, Linear, Notion |
 | Approved local and self-hosted service origins | Nextcloud, Joplin, Zotero |
+| Reviewed fixed query inputs | Figma, Microsoft 365, Airtable, Asana, ClickUp, Raindrop.io, Spotify, Calendly, Joplin |
 | Reconciliation of uncertain writes | GitLab.com, Todoist, GitHub, Airtable |
 
 Each requirement inside a group declares what it actually blocks, using
@@ -368,6 +369,11 @@ a family from looking blocked when only its listing is:
 - **Binding an identity-derived account id into a later read path** is Zotero's
   real blocker for a first read: every library route starts with
   `/users/<userID>` and no account-scoped alias is documented.
+- **Reviewed fixed query inputs** are a separate request-shaping capability, not
+  authentication, not a header and not pagination. Only the reviewed cursor exists
+  today. For Figma it is what bounds a document read (`depth`, `ids`); for the
+  others it shapes a listing (`$select`, `view`, `sort`, `market`, `count` and the
+  equivalents).
 - **Paging** never blocks identity or a single-item read; it only blocks listing.
   Two cursor protocols are already supported and are explicitly *not* counted:
   Readwise / Reader (`pageCursor`/`nextPageCursor`) and Notion's data-source query
@@ -456,13 +462,57 @@ What each one needs before a profile could exist:
 | Candidate | Blocks a first read | Only blocks later work |
 | --- | --- | --- |
 | Notion | the required `Notion-Version` header, and a label contract that tolerates the documented null `name` | data-source listing, which is a POST read |
-| Zotero | binding the account's own `userID` into `/users/{userID}/items/{itemKey}`, with no documented alias | `Link`-header listing; the recommended version header |
-| Figma | carrying a personal access token in `X-Figma-Token` | nothing for metadata reads; image and design content are separate capabilities |
+| Zotero | nothing structural: see the pinned-library alternative below | `Link`-header listing; the recommended version header |
+| Figma | carrying a personal access token in `X-Figma-Token` | a document read, which needs a fixed `depth` query input |
+
+**Figma: projecting less is not the same as transferring less.** `GET /v1/files/{key}`
+documents the `document` node tree as a non-optional field of its response, and
+Steed's transport fails any response body over 128 KiB, so a metadata-only
+*projection* cannot make that endpoint small: the whole tree crosses the network
+first. The contract therefore uses `GET /v1/files/{key}/meta`, the documented
+endpoint whose return value contains no tree, and records the `file_metadata:read`
+scope it needs. Figma publishes no response-size limit for any file endpoint, so
+whether a real file of ordinary size fits the transport bound stays **pending**,
+not claimed. Bounding a document read would additionally need a reviewed fixed
+`depth` or `ids` input, which the transport cannot send today.
+
+**Zotero: a pinned library id is a real alternative, not a workaround.** Binding
+the account's own `userID` into `/users/{userID}/items/{itemKey}` stays the default
+goal, because one sign-in should need no user-supplied account numbers. It is an
+onboarding improvement rather than a hard blocker, though: a user-owned template
+can fix the numeric library id in reviewed source, exactly as the GitHub template
+fixes an owner and repository, and a limited read-only subset then works today.
+Such a template must disclose, in the reviewed source text itself, that the number
+is user-supplied and unchecked, that a mismatch appears only as the service's own
+error, and which library access flag the key needs. No such template is shipped
+here; it is recorded as an assessed alternative.
 
 Figma's `GET /v1/me` is documented as a Tier 3 endpoint needing the
 `current_user:read` scope. Tiers are rate-limit tiers, not plan gates, and whether
 a personal access token may call it is not documented; a framework test should
 settle that before relying on it.
+
+### What each kind of evidence proves
+
+Candidate contracts separate three kinds of claim, so a test is never mistaken for
+a provider:
+
+- **Documentation proves** that an endpoint, field, header, parameter or status
+  exists, and what it is documented to mean, including which fields are documented
+  as nullable or conditionally absent.
+- **Framework tests prove** that Steed parses, reviews, bounds and dispatches a
+  documented shape correctly, and that a payload, identity check, refusal or
+  uncertain outcome happens instead of a request. A mock or synthetic fixture
+  proves Steed's own behaviour only.
+- **Only a real account proves** that a provider accepts a credential in the
+  placement a profile uses, that a documented nullable field is actually sent, that
+  a real response fits the transport bounds, and that an account was consented,
+  connected and revoked.
+
+Every candidate contract therefore carries an `empirical_status` block: what the
+documentation settles, what is still **pending**, and what a real account would
+settle. Pending items stay pending. No test result, and no unverified live
+observation, promotes one.
 
 ---
 
