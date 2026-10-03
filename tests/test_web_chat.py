@@ -56,6 +56,14 @@ class WebChatTests(unittest.TestCase):
         self.assertEqual(sidebar.composer.toPlainText(), "Unsent draft")
         self.assertNotIn(tab, window.tabs)
 
+    def test_short_agent_tab_keeps_all_controls_reachable_by_scrolling(self):
+        window = self.window()
+        window.resize(900, 550)
+        window._open_agent_tab()
+        scroll = window.agent_sidebar.widget()
+        self.wait_for(lambda: scroll.verticalScrollBar().maximum() > 0)
+        self.assertTrue(window.agent_sidebar.library_button.isEnabled())
+
     def test_agent_tab_persists_and_reopens_as_native_ui(self):
         window = self.window()
         tab = window._open_agent_tab()

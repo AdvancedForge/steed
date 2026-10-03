@@ -82,6 +82,8 @@ class TaskService(QObject):
         self.app_reviews = ConnectorReviews(self.store)
         self.app_plans = AppPlans(self)
         self.workspace = TaskWorkspace(self.store)
+        self._library = None
+        self._library_path = path.with_name("agent_library.sqlite")
         self._connector_jobs = {}
         self.connector_timeout_ms = connector_timeout_ms
         self.profiles = profiles
@@ -134,6 +136,35 @@ class TaskService(QObject):
                 "workspace.read": self._workspace_read,
                 "workspace.export": self._workspace_export,
                 "workspace.stage_extension": self._workspace_stage_extension,
+                "library.folders": lambda task_id: self._library_run(
+                    task_id, "folders", enabled_only=True
+                ),
+                "library.list": lambda task_id, folder_id, **args: self._library_run(
+                    task_id, "list", folder_id, **args
+                ),
+                "library.read": lambda task_id, folder_id, **args: self._library_run(
+                    task_id, "read", folder_id, **args
+                ),
+                "library.mkdir": lambda task_id, folder_id, path: self._library_run(
+                    task_id, "mkdir", folder_id, path
+                ),
+                "library.write_begin": lambda task_id, folder_id, **args: (
+                    self._library_run(task_id, "begin", folder_id, task=task_id, **args)
+                ),
+                "library.write_chunk": lambda task_id, write_id, **args: (
+                    self._library_write(task_id, "chunk", write_id, **args)
+                ),
+                "library.write_commit": lambda task_id, write_id: self._library_write(
+                    task_id, "commit", write_id
+                ),
+                "library.remove": lambda task_id, folder_id, **args: self._library_run(
+                    task_id, "remove", folder_id, task=task_id, **args
+                ),
+                "library.restore": lambda task_id, folder_id, path: self._library_run(
+                    task_id, "restore", folder_id, path
+                ),
+                "library.import_workspace": self._library_import_workspace,
+                "library.save_workspace": self._library_save_workspace,
                 "worker.run": lambda task_id, extension_id, request_id, runtime="stdlib": (
                     self._worker_action(
                         self.workers.run, task_id, extension_id, request_id, runtime
@@ -326,6 +357,114 @@ class TaskService(QObject):
         self._authorize(task_id, "workspace")
         try:
             result = getattr(self.workspace, method)(task_id, *args)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        self.changed.emit()
+        return result
+
+    @property
+    def library(self):
+        require_owner_thread(self)
+        self._usable()
+        if self._library is None:
+            from services.file_library import FileLibrary
+
+            self._library = FileLibrary(self._library_path)
+        return self._library
+
+    def _library_run(self, task_id, method, folder_id=None, *args, **kwargs):
+        self._usable()
+        self._active(task_id)
+        try:
+            library = self.library
+            if folder_id is not None:
+                library.folder(folder_id, agent=True)
+            if method == "folders":
+                result = library.folders(**kwargs)
+            elif method == "begin":
+                kwargs.pop("task", None)
+                result = library.begin(task_id, folder_id, **kwargs)
+            else:
+                result = getattr(library, method)(folder_id, *args, **kwargs)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        if method not in ("folders", "list", "read", "begin"):
+            self.changed.emit()
+        return result
+
+    def _library_write(self, task_id, method, write_id, **args):
+        self._usable()
+        self._active(task_id)
+        try:
+            library = self.library
+            item = library.write_info(task_id, write_id)
+            library.folder(item["folder"], agent=True)
+            result = getattr(library, method)(task_id, write_id, **args)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+        if method == "commit":
+            self.changed.emit()
+        return result
+
+    def _library_import_workspace(self, task_id, folder_id, path, revision):
+        self._authorize(task_id, "workspace")
+        library = self.library
+        library.folder(folder_id, agent=True)
+        # Validate the current revision before taking an immutable worker input.
+        library.read(folder_id, path, revision, limit=1)
+        row = library.row(folder_id, path)
+        data = row["data"]
+        if (
+            len(data) > MAX_FILE_BYTES
+            or hashlib.sha256(data).hexdigest() != row["sha256"]
+        ):
+            raise ValueError(
+                "Import an intact library file of at most 8 MiB into a task"
+            )
+        name = f"library-{folder_id[:8]}-{hashlib.sha256(path.encode()).hexdigest()[:16]}-r{revision}-{Path(path).name[:64]}"
+        try:
+            return self._store_shared_file(task_id, name, data)
+        except (sqlite3.Error, OSError):
+            self._fatal(defer_broker_close=True)
+            raise
+
+    def _library_save_workspace(
+        self, task_id, folder_id, path, file_id, expected_revision=0
+    ):
+        self._authorize(task_id, "workspace")
+        library = self.library
+        library.folder(folder_id, agent=True)
+        item = self.workspace.get(task_id, file_id)
+        if item.status != "sealed":
+            raise ValueError("Save a sealed workspace file")
+        data = self.workspace.bytes(task_id, file_id)
+        request_id = hashlib.sha256(
+            f"{folder_id}:{path}:{file_id}:{expected_revision}".encode()
+        ).hexdigest()
+        import base64
+
+        try:
+            write = library.begin(
+                task_id,
+                folder_id,
+                path,
+                request_id,
+                len(data),
+                item.sha256,
+                expected_revision,
+            )
+            if write["state"] == "building":
+                for offset in range(0, len(data), 32768):
+                    library.chunk(
+                        task_id,
+                        write["id"],
+                        offset,
+                        base64.b64encode(data[offset : offset + 32768]).decode(),
+                    )
+            result = library.commit(task_id, write["id"])
         except (sqlite3.Error, OSError):
             self._fatal(defer_broker_close=True)
             raise
@@ -2198,6 +2337,12 @@ class TaskService(QObject):
         self._active(task_id)
         if status not in TERMINAL_STATUSES:
             raise ValueError("Choose a terminal task status")
+        if self._library is not None:
+            try:
+                self._library.cancel_task(task_id)
+            except (sqlite3.Error, OSError):
+                self._fatal(defer_broker_close=True)
+                raise
         live = self._grants.pop(task_id, None)
         if live:
             live[1].end(status)
@@ -2300,6 +2445,8 @@ class TaskService(QObject):
                     self._finish_task(task.task_id, "interrupted")
         finally:
             self.workers.close()
+            if self._library is not None:
+                self._library.close()
             self._grants.clear()
             self._sessions.clear()
             try:

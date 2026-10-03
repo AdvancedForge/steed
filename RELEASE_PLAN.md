@@ -4,6 +4,10 @@ Assessment: October 3, 2026. This is a proposed release contract, not a claim th
 Steed is ready to ship. Detailed implementation history remains in ROADMAP.md;
 setup remains in DOCUMENTATION.md. Recheck this list against each release tag.
 
+Current priority is daily-workflow engineering, as clarified by the user after
+this assessment. This document is parked release backlog, not the active work
+sequence. Persistent reusable agent folders are the next implemented workflow.
+
 ## Product vision and proposed release boundary
 
 Steed should be a useful browser where people bring their preferred external
