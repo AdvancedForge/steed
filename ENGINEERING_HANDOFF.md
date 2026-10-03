@@ -16,6 +16,24 @@ and password-manager improvements remain deferred. No rebuild is proposed.
 External agents retain their own tools; Steed supplies communication, browser
 capabilities, reusable files and explicit access controls.
 
+## Latest Codex/sidebar follow-up
+
+The user reports Codex answering that it will work, then disconnecting. The exact
+live task is not reproduced. Shared runtime now supports the current question RPC,
+standalone clock reads before/after turns, and foreign-thread notification exclusion.
+Unknown optional host RPCs receive method-not-found; they gain no authority.
+Owned-turn identities and malformed-data limits remain enforced. Failure text
+includes a content-free stage/event and exception class. Do not inspect real
+credentials/transcripts to diagnose this; use isolated fixtures and reported event
+names. Any uncertain external effects remain subject to the existing receipt rules.
+
+Transient native activity feeds the sidebar's Sending/Thinking/Working/Replying/
+Waiting/Ready card and queued-message count. Generic MCP execution stays explicitly
+unknown. Light/dark sections and speaker headers keep plain-text rendering;
+advanced details remain collapsed. Installed Codex 0.159.2 passes offline native
+follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for logs.
+Manual configurable UI remains the next substantive layout scope.
+
 ## Branches, ownership and review
 
 Work on a new branch such as `engineering/configurable-layout`, preferably in a
@@ -205,6 +223,19 @@ revision guards and transforms need their own types. Contributor-owned data/fixt
 paths remain separate. Coordinate the runtime increment before parallel work.
 
 ## Validation and checkpoint evidence
+
+Final behavior acceptance: **954 regressions pass in 385.787 seconds**. Final
+palette/menu follow-up passes two checks in 1.518 seconds; revised light/dark
+working previews were inspected. Startup/local render/shutdown passes on Qt 6.11.2.
+Ruff lint/format, dependency, whitespace, eight recipe examples and local document
+links pass. Both actual MCP transport workflows passed at the preceding v6
+checkpoint; installed Codex 0.159.2 passes isolated direct-tool and code-runtime
+follow-ups/tool calls. Live-account failure reproduction remains a separate check.
+Logs: `/tmp/steed-codex-activity-full.log`,
+`/tmp/steed-codex-activity-final-ui.log`, `/tmp/steed-codex-activity-startup.log`,
+`/tmp/steed-codex-activity-native{,-direct}.log`.
+
+Previous v6/menu checkpoint:
 
 Integrated acceptance: **948 regressions pass in 385.504 seconds**. Actual SDK
 and independent-client MCP journeys pass over stdio and authenticated HTTP with

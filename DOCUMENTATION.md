@@ -2735,6 +2735,15 @@ regular-profile text/drafts; conversation data remains owned by its original tas
 Short chat tabs can scroll the expanded options. Hiding the sidebar preserves
 running tasks; cancellation remains explicit.
 
+The activity card shows **Sending**, **Thinking**, **Working**, **Replying**,
+**Needs your input** or **Ready** for native Codex chats, with a thin busy indicator
+and queued follow-up count. These are transient runtime states; they do not expose
+reasoning text or establish that an external action succeeded. Other MCP clients
+show **External agent connected** because Steed cannot observe their execution.
+Conversation and message entry have distinct headings, sender highlighting and
+primary buttons. Light/dark appearance follows the browser; details stay under
+More options. Messages remain plain text.
+
 Sidebar acceptance: 27 menu/sidebar/web-chat checks pass in 12.606 seconds,
 including setup/active/options states, visible pending permissions, draft
 preservation, private-profile isolation and a short scrolling chat tab. Synthetic
@@ -2744,7 +2753,7 @@ Log: `/tmp/steed-sidebar-simplified-final.log`.
 #### Codex chats from Steed
 
 1. Install a current [Codex CLI](https://developers.openai.com/codex/cli) and sign
-   in once with `codex login`. The integration is tested with Codex 0.160.0 and
+   in once with `codex login`. The integration has offline checks with Codex 0.159.2 and 0.160.0 and
    uses its App Server protocol and bundled code runtime. Older runtimes
    may be incompatible; failed setup leaves a cancelled, read-only task.
 2. Install Steed's optional adapter dependencies:
@@ -2805,6 +2814,43 @@ child and its adapter. This never controls another Codex instance or its daemon.
 Restart/disconnect retains Steed history but does not reconnect, retry turns,
 replay queued text or resume external writes. Start a new chat with fresh task
 permissions; historical conversation is not automatically sent to it.
+
+#### Codex connection troubleshooting
+
+Restart Steed after updating this checkout and start a **new** Codex chat. Ended
+chats retain history and do not reconnect or automatically replay work.
+
+The adapter supports the current `item/tool/requestUserInput` method as well as
+the older question name. It answers the installed CLI's `currentTime/read` with
+whole Unix seconds, including before/after a turn and for background threads.
+This clock reply grants no Steed access. Notifications from other native Codex
+threads are excluded from this chat; malformed or mismatched events within the
+owned turn still fail. Unknown optional host RPCs receive a method-not-found
+protocol error instead of causing Steed to terminate the connection. This does
+not implement or approve the unsupported request.
+
+These contracts were checked against the installed CLI's generated schemas and
+[official App Server documentation](https://learn.chatgpt.com/docs/app-server).
+Questions and native approvals remain separate from Steed grants. Genuine
+connection/protocol failure now identifies only the handling stage/event and
+exception class, without request bodies, commands, account details or stderr.
+If it persists, report that event name and whether the task was using a tool or
+requesting input; check receipts before repeating an uncertain external action.
+
+The user's exact live-account disconnection has not been reproduced. Isolated
+native checks and synthetic tool/question/clock/child-event regressions validate
+these compatibility fixes; they do not establish that every Codex task works.
+
+Final behavior acceptance: **954 regressions pass in 385.787 seconds**. Final
+palette/menu follow-up passes two checks in 1.518 seconds; revised light/dark
+working previews were inspected. Startup/local render/shutdown passes on Qt 6.11.2.
+Ruff lint/format, dependency, whitespace, eight recipe examples and local document
+links pass. Both actual MCP transport workflows passed at the preceding v6
+checkpoint; installed Codex 0.159.2 passes isolated direct-tool and code-runtime
+follow-ups/tool calls. Live-account failure reproduction remains a separate check.
+Logs: `/tmp/steed-codex-activity-full.log`,
+`/tmp/steed-codex-activity-final-ui.log`, `/tmp/steed-codex-activity-startup.log`,
+`/tmp/steed-codex-activity-native{,-direct}.log`.
 
 #### Personal agents and website coverage
 

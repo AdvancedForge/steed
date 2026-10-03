@@ -108,6 +108,71 @@ class AgentProviderTests(unittest.TestCase):
         self.assertIn("Agent fetched", self.sidebar.status.text())
         self.assertEqual(len(self.drivers), 1)
 
+    def test_clock_optional_rpc_and_child_events_keep_followups_connected(self):
+        for mode in ("clock", "unsupported-rpc", "child-events"):
+            with self.subTest(mode=mode):
+                task = self.chat(mode)
+                self.send("Begin working")
+                self.complete(task)
+                self.send("Continue")
+                self.complete(task, 2)
+                self.wait_for(
+                    lambda task=task: self.manager.status(task) == "Codex ready"
+                )
+                self.assertIn(task, self.manager.chats)
+                self.assertNotIn("CHILD_PRIVATE", self.sidebar.transcript.toPlainText())
+                self.assertEqual(self.service.store.grants(task), [])
+                self.service.cancel_task(task)
+
+    def test_native_tool_event_changes_the_visible_working_state(self):
+        task = self.chat("tool-work")
+        self.send("Use a tool")
+        self.wait_for(lambda: "working" in self.sidebar.activity_title.text())
+        self.assertFalse(self.sidebar.busy.isHidden())
+        self.complete(task)
+        self.wait_for(lambda: self.manager.status(task) == "Codex ready")
+        self.assertIn("ready", self.sidebar.activity_title.text())
+        self.assertTrue(self.sidebar.busy.isHidden())
+
+    def test_foreign_thread_reply_is_never_imported_or_treated_as_our_turn(self):
+        task = self.chat("wrong-thread")
+        self.send("Owned prompt")
+        self.wait_for(lambda: self.manager.status(task) == "Codex ready")
+        self.assertIn(task, self.manager.chats)
+        self.assertFalse(any(m["role"] == "agent" for m in self.messages(task)))
+        self.assertEqual(self.service.store.grants(task), [])
+
+    def test_current_question_method_uses_the_existing_answer_popup(self):
+        task = self.chat("question-current")
+        self.send("Ask me before working")
+        self.wait_for(lambda: self.manager.chats[task]["requests"])
+        self.assertEqual(self.manager.activity(task)["state"], "waiting")
+        self.assertIn("needs your input", self.sidebar.activity_title.text())
+        self.sidebar.show_requests()
+        dialog = self.sidebar._request_dialogs[(task, "native-request")]
+        dialog.answers["choice"][0].setCurrentIndex(1)
+        dialog.allow.click()
+        self.complete(task)
+        self.assertEqual(self.service.store.grants(task), [])
+
+    def test_working_states_and_queue_are_visible_without_task_details(self):
+        task = self.chat("hang")
+        self.send("Start")
+        self.assertEqual(self.manager.activity(task)["state"], "sending")
+        self.assertIn("Sending", self.sidebar.activity_title.text())
+        self.manager._accepted(task, self.messages(task)[0]["message_id"])
+        self.assertIn("thinking", self.sidebar.activity_title.text())
+        self.drivers[-1].activity.emit("working")
+        self.assertIn("working", self.sidebar.activity_title.text())
+        self.assertFalse(self.sidebar.busy.isHidden())
+        self.send("Follow-up")
+        self.assertIn("1 follow-up", self.sidebar.activity_hint.text())
+        self.drivers[-1].activity.emit("replying")
+        self.assertIn("replying", self.sidebar.activity_title.text())
+        self.assertFalse(self.sidebar.more.isChecked())
+        self.sidebar.cancel.click()
+        self.assertTrue(self.sidebar.busy.isHidden())
+
     def test_busy_queue_keeps_order_and_does_not_duplicate(self):
         task = self.chat()
         first = self.service.send_message(task, "First")
@@ -262,7 +327,7 @@ class AgentProviderTests(unittest.TestCase):
             "malformed",
             "oversized",
             "host-request",
-            "wrong-thread",
+            "wrong-turn",
         ):
             with self.subTest(mode=mode):
                 task = self.chat(mode)

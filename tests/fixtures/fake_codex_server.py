@@ -110,6 +110,8 @@ for line in sys.stdin:
         scope = {"threadId": thread, "turnId": turn}
         if mode == "wrong-thread":
             scope["threadId"] = "other-thread"
+        elif mode == "wrong-turn":
+            scope["turnId"] = "other-turn"
         answer = "Synthetic reply: " + text
         if mode == "long":
             answer = "🌍" * 2500
@@ -119,13 +121,28 @@ for line in sys.stdin:
                 "item/agentMessage/delta",
                 {**scope, "itemId": "reply", "delta": answer[:8]},
             )
+        if mode == "clock":
+            emit(
+                {
+                    "id": "early-clock",
+                    "method": "currentTime/read",
+                    "params": {"threadId": thread},
+                }
+            )
+            assert (
+                type(json.loads(sys.stdin.readline())["result"]["currentTimeAt"]) is int
+            )
         emit({"id": request["id"], "result": result})
-        if mode in ("approval", "question", "permission"):
+        if mode in ("approval", "question", "question-current", "permission"):
             params = {**scope, "itemId": "native-item", "startedAtMs": 1}
             method = "item/commandExecution/requestApproval"
             params["command"] = "synthetic-native-command"
-            if mode == "question":
-                method = "tool/requestUserInput"
+            if mode in ("question", "question-current"):
+                method = (
+                    "item/tool/requestUserInput"
+                    if mode == "question-current"
+                    else "tool/requestUserInput"
+                )
                 params["isBlocking"] = True
                 params["questions"] = [
                     {
@@ -144,12 +161,70 @@ for line in sys.stdin:
             emit({"id": "native-request", "method": method, "params": params})
             response = json.loads(sys.stdin.readline())
             assert response["id"] == "native-request" and "result" in response
-            if mode == "question":
+            if mode in ("question", "question-current"):
                 assert response["result"]["answers"]["choice"]["answers"] == ["Plain"]
             elif mode == "permission":
                 assert response["result"]["permissions"] == {}
             else:
                 assert response["result"]["decision"] == "acceptForSession"
+        if mode == "child-events":
+            child = {"threadId": "synthetic-child", "turnId": "child-turn"}
+            event(
+                "turn/started",
+                {"threadId": child["threadId"], "turn": {"id": child["turnId"]}},
+            )
+            event(
+                "item/started",
+                {**child, "item": {"type": "reasoning", "id": "child-item"}},
+            )
+            event(
+                "item/agentMessage/delta",
+                {**child, "itemId": "child-item", "delta": "CHILD_PRIVATE"},
+            )
+            event(
+                "item/completed",
+                {
+                    **child,
+                    "item": {
+                        "type": "agentMessage",
+                        "id": "child-item",
+                        "text": "CHILD_PRIVATE",
+                    },
+                },
+            )
+            event(
+                "turn/completed",
+                {
+                    "threadId": child["threadId"],
+                    "turn": {"id": child["turnId"], "status": "completed"},
+                },
+            )
+        if mode in ("clock", "unsupported-rpc"):
+            emit(
+                {
+                    "id": "optional-request",
+                    "method": "currentTime/read"
+                    if mode == "clock"
+                    else "synthetic/optional",
+                    "params": {
+                        "threadId": "synthetic-clock-child"
+                        if mode == "clock"
+                        else thread
+                    },
+                }
+            )
+            response = json.loads(sys.stdin.readline())
+            assert response["id"] == "optional-request"
+            if mode == "clock":
+                assert type(response["result"]["currentTimeAt"]) is int
+            else:
+                assert response["error"]["code"] == -32601
+        if mode == "tool-work":
+            event(
+                "item/started",
+                {**scope, "item": {"type": "commandExecution", "id": "tool"}},
+            )
+            time.sleep(0.35)
         if mode != "early-events":
             event(
                 "item/agentMessage/delta",
@@ -168,5 +243,16 @@ for line in sys.stdin:
             "turn/completed",
             {"threadId": thread, "turn": {"id": turn, "status": "completed"}},
         )
+        if mode == "clock":
+            emit(
+                {
+                    "id": "finished-clock",
+                    "method": "currentTime/read",
+                    "params": {"threadId": thread},
+                }
+            )
+            assert (
+                type(json.loads(sys.stdin.readline())["result"]["currentTimeAt"]) is int
+            )
         continue
     emit({"id": request["id"], "result": result})

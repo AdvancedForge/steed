@@ -35,7 +35,7 @@ class AgentRequestDialog(QDialog):
         )
         title.setWordWrap(True)
         layout.addWidget(title)
-        if self.method == "tool/requestUserInput":
+        if self.method in ("tool/requestUserInput", "item/tool/requestUserInput"):
             questions = self.params.get("questions", [])
             if not 1 <= len(questions) <= 3:
                 raise ValueError("Unsupported agent question count")
@@ -109,7 +109,8 @@ class AgentRequestDialog(QDialog):
         )
         self.session.setVisible(
             not self.answers
-            and self.method != "tool/requestUserInput"
+            and self.method
+            not in ("tool/requestUserInput", "item/tool/requestUserInput")
             and (decisions is None or "acceptForSession" in decisions)
         )
         self.session.clicked.connect(lambda: self.complete("acceptForSession"))

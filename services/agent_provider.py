@@ -9,6 +9,7 @@ class AgentProvider(QObject):
     ready = pyqtSignal()
     accepted = pyqtSignal(str)
     message = pyqtSignal(str, str, bool)
+    activity = pyqtSignal(str)
     turn_done = pyqtSignal()
     failed = pyqtSignal(str)
 

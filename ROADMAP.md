@@ -12,6 +12,39 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Codex tool-transition compatibility and readable activity (implemented and validated).**
+The user reported a reply promising work followed by a generic connection failure.
+Current question requests and standalone clock reads are supported; unrelated
+Codex thread notifications are excluded from the bound conversation rather than
+ending it. Unsupported optional host RPCs get method-not-found, never approval.
+Owned-turn mismatch/malformed-data checks remain. Failures show content-free
+handling stage/event and exception class for further diagnosis. The exact live
+account failure is unconfirmed; do not claim a universal compatibility fix.
+
+The sidebar now has a light/dark activity card, distinct conversation/composer
+headings, colored speaker headers, emphasized Send/New Chat buttons and visible
+Sending/Thinking/Working/Replying/Waiting/Ready states with queued-message count.
+A thin busy indicator remains active until native work finishes. Other MCP clients
+retain an explicit unknown-execution-state label. Detailed connection/permission
+status moves into More options; pending approvals/questions stay visible.
+All 54 focused provider/sidebar/web-chat checks pass in 23.713 seconds. Installed
+Codex 0.159.2 passes offline streamed follow-ups/task-bound tool calls through both
+direct-tool and code-runtime model fixtures; no real account or external model
+requests were made. Source/working light/dark previews were inspected.
+Logs: `/tmp/steed-codex-activity-focused-final.log`,
+`/tmp/steed-codex-activity-native{,-direct}.log`.
+
+Final behavior acceptance: **954 regressions pass in 385.787 seconds**. Final
+palette/menu follow-up passes two checks in 1.518 seconds; revised light/dark
+working previews were inspected. Startup/local render/shutdown passes on Qt 6.11.2.
+Ruff lint/format, dependency, whitespace, eight recipe examples and local document
+links pass. Both actual MCP transport workflows passed at the preceding v6
+checkpoint; installed Codex 0.159.2 passes isolated direct-tool and code-runtime
+follow-ups/tool calls. Live-account failure reproduction remains a separate check.
+Logs: `/tmp/steed-codex-activity-full.log`,
+`/tmp/steed-codex-activity-final-ui.log`, `/tmp/steed-codex-activity-startup.log`,
+`/tmp/steed-codex-activity-native{,-direct}.log`.
+
 **Simpler agent sidebar and requested menu order (implemented).** Menus now read
 General, Profile, Tabs, View, Cookies, Agents. First open offers a short welcome,
 New Codex chat and Connect another agent. Selecting a conversation reveals chat,
