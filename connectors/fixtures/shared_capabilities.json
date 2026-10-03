@@ -22,7 +22,14 @@
             "Authorization": "Bearer <integration token supplied by the user>",
             "Notion-Version": "2026-03-11"
           },
-          "version_sensitive": "Response shapes are version specific. Since 2025-09-03 a database read returns a data_sources array and its documented response has no properties field; the older retrieve-a-database page is deprecated for versions up to and including 2022-06-28."
+          "version_sensitive": "Response shapes are version specific. Since 2025-09-03 a database read returns a data_sources array and its documented response has no properties field; the older retrieve-a-database page is deprecated for versions up to and including 2022-06-28.",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ],
+          "documented_level": "required on every request"
         },
         {
           "service": "Figma",
@@ -34,13 +41,22 @@
           "service": "Zotero",
           "header": "Zotero-API-Version",
           "documented": "Recommended for production code and echoed back on responses; v3 is also the current default.",
-          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics"
+          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
+          "blocks": [],
+          "documented_level": "recommended, not required"
         },
         {
           "service": "Nextcloud",
           "header": "OCS-APIRequest: true",
           "documented": "Every OCS call must carry this header, and Accept: application/json selects the JSON representation.",
-          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html"
+          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ],
+          "documented_level": "required on every OCS call"
         }
       ],
       "fixture_contract": {
@@ -85,6 +101,60 @@
       ]
     },
     {
+      "id": "credential_headers",
+      "title": "Credential-derived token headers",
+      "engine_limit": "Only Authorization: Bearer is accepted, so a service whose documented personal token travels in its own header cannot be reached, and the token must never be moved into a path or query.",
+      "services": [
+        "Figma",
+        "Zotero"
+      ],
+      "distinct_from": "This is a different requirement from sending a static version header. Zotero needs neither: Authorization: Bearer with an API key is documented, and its version header is only recommended. Figma needs no version header at all but does need X-Figma-Token for a personal access token.",
+      "requirements": [
+        {
+          "service": "Figma",
+          "header": "X-Figma-Token",
+          "documented": "You can do so by passing the token to the API in the X-Figma-Token header of your request.",
+          "reference": "https://developers.figma.com/docs/rest-api/personal-access-tokens/",
+          "documented_level": "required for personal access tokens",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists"
+          ],
+          "header_example": {
+            "X-Figma-Token": "<personal access token from the user keyring>"
+          }
+        },
+        {
+          "service": "Zotero",
+          "header": "Zotero-API-Key",
+          "documented": "API keys can be included as Zotero-API-Key, as Authorization: Bearer, or as a ?key= query parameter, which the documentation marks not recommended. The bearer form is already supported.",
+          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
+          "documented_level": "documented alternative to Bearer",
+          "blocks": [],
+          "header_example": {
+            "Zotero-API-Key": "<Zotero API key from the user keyring>"
+          }
+        }
+      ],
+      "fixture_contract": {
+        "description": "A synthetic token value per scheme proving it is carried only in the documented header, never in a path or a query, and that a service expecting a scheme prefix is never silently given one.",
+        "samples": [
+          {
+            "service": "Figma",
+            "credential": "an opaque personal access token in X-Figma-Token",
+            "identity": "GET /v1/me returning id, handle and an email documented only on that endpoint",
+            "proves": "a credential-derived header is carried without weakening the Bearer parser or inventing a scheme prefix",
+            "fixture": "connectors/fixtures/figma.json"
+          }
+        ]
+      },
+      "unblocks": [
+        "a Figma read-only metadata subset for users who approve a personal access token",
+        "the Zotero-API-Key header form for users who prefer it over Bearer"
+      ]
+    },
+    {
       "id": "pagination",
       "title": "Offset, page-number, keyset, Link-header and nextLink paging",
       "engine_limit": "Only bounded cursor pagination through one reviewed query parameter is followed, so a service that pages any other way returns only its first page and says nothing about the rest.",
@@ -99,69 +169,96 @@
         "Spotify",
         "Joplin",
         "Zotero",
-        "ClickUp",
-        "Readwise / Reader"
+        "ClickUp"
       ],
       "requirements": [
         {
           "service": "GitHub",
           "documented": "List endpoints return a Link header with rel=next rather than a cursor field.",
-          "reference": "https://docs.github.com/en/rest/using-the-rest-api/using-pagination"
+          "reference": "https://docs.github.com/en/rest/using-the-rest-api/using-pagination",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "GitLab.com",
           "documented": "Collections page with page/per_page and return X-Next-Page and Link headers.",
-          "reference": "https://docs.gitlab.com/api/rest/#pagination"
+          "reference": "https://docs.gitlab.com/api/rest/#pagination",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "Microsoft 365",
           "documented": "Collections return @odata.nextLink as an absolute URL and @odata.nextLink must be followed to continue.",
-          "reference": "https://learn.microsoft.com/en-us/graph/api/user-list-messages?view=graph-rest-1.0"
+          "reference": "https://learn.microsoft.com/en-us/graph/api/user-list-messages?view=graph-rest-1.0",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "Airtable",
           "documented": "List records return an opaque offset string that is sent back as the offset parameter.",
-          "reference": "https://airtable.com/developers/web/api/list-records"
+          "reference": "https://airtable.com/developers/web/api/list-records",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "Raindrop.io",
           "documented": "Collections page with page and perpage, where perpage is capped at 50.",
-          "reference": "https://developer.raindrop.io/v1/raindrops/multiple"
+          "reference": "https://developer.raindrop.io/v1/raindrops/multiple",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "Calendly",
           "documented": "Responses carry pagination.next_page as a full URL or null.",
-          "reference": "https://developer.calendly.com/api-docs/overview/api/api-conventions"
+          "reference": "https://developer.calendly.com/api-docs/overview/api/api-conventions",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "Asana",
           "documented": "Collections page with a next_page token passed in the request.",
-          "reference": "https://developers.asana.com/reference/getcollections"
+          "reference": "https://developers.asana.com/reference/getcollections",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "Spotify",
           "documented": "Paging uses offset and limit query parameters.",
-          "reference": "https://developer.spotify.com/documentation/web-api/concepts/api-calls"
+          "reference": "https://developer.spotify.com/documentation/web-api/concepts/api-calls",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "Joplin",
           "documented": "Notes use page and limit, while /events uses a cursor property.",
-          "reference": "https://joplinapp.org/help/api/references/rest_api/"
+          "reference": "https://joplinapp.org/help/api/references/rest_api/",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "Zotero",
           "documented": "limit and start offsets plus an HTTP Link header with rel=next.",
-          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics"
+          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
+          "blocks": [
+            "lists"
+          ]
         },
         {
           "service": "ClickUp",
           "documented": "Task lists are documented as capped at 100 tasks per page; the exact mechanism is not verified here.",
-          "reference": "https://developer.clickup.com/docs/authentication"
-        },
-        {
-          "service": "Readwise / Reader",
-          "documented": "Cursor paging already matches the reviewed cursor contract: pageCursor in, nextPageCursor out. This service is gated on authentication and identity, not paging.",
-          "reference": "https://readwise.io/reader_api"
+          "reference": "https://developer.clickup.com/docs/authentication",
+          "blocks": [
+            "lists"
+          ]
         }
       ],
       "fixture_contract": {
@@ -192,7 +289,14 @@
         "GitHub repository issue listing for the pinned repository",
         "Microsoft Graph collections beyond the first page",
         "Airtable, Raindrop, Spotify, Asana, Calendly and Zotero listing subsets"
-      ]
+      ],
+      "already_supported": {
+        "services": [
+          "Readwise / Reader",
+          "Notion"
+        ],
+        "documented": "Readwise / Reader documents pageCursor in and nextPageCursor out, and Notion's data source query documents start_cursor in and next_cursor out. Both already match the reviewed bounded cursor contract, so neither is counted as a missing pagination capability. Readwise / Reader stays gated on its authentication scheme and its identity-less probe."
+      }
     },
     {
       "id": "authentication_schemes",
@@ -210,32 +314,61 @@
         {
           "service": "Readwise / Reader",
           "documented": "Authorization: Token <token>, not Bearer.",
-          "reference": "https://readwise.io/reader_api"
+          "reference": "https://readwise.io/reader_api",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "ClickUp",
           "documented": "A personal token is sent as a bare Authorization header value with no scheme prefix; OAuth access tokens are currently non-expiring.",
-          "reference": "https://developer.clickup.com/docs/authentication"
+          "reference": "https://developer.clickup.com/docs/authentication",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Trello",
           "documented": "Key and token are sent as query parameters, as a non-standard OAuth header, or in a request body; a new OAuth 2.0 route uses Bearer with PKCE.",
-          "reference": "https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/"
+          "reference": "https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Joplin",
           "documented": "The token is a required query parameter on every call to the local server.",
-          "reference": "https://joplinapp.org/help/api/references/rest_api/"
+          "reference": "https://joplinapp.org/help/api/references/rest_api/",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Nextcloud",
           "documented": "WebDAV uses Basic authentication or session cookies; OCS also accepts an OIDC bearer token.",
-          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/WebDAV/basic.html"
+          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/WebDAV/basic.html",
+          "blocks": [
+            "single_item_read",
+            "writes"
+          ]
         },
         {
           "service": "Spotify",
           "documented": "Access tokens are OAuth only; there is no documented personal token.",
-          "reference": "https://developer.spotify.com/documentation/web-api/concepts/access-token"
+          "reference": "https://developer.spotify.com/documentation/web-api/concepts/access-token",
+          "blocks": []
         }
       ],
       "fixture_contract": {
@@ -280,17 +413,33 @@
         {
           "service": "Slack",
           "documented": "Web API methods answer HTTP 200 with ok:false and an error field for application errors, so a status-only check would call a failed send a success.",
-          "reference": "https://docs.slack.dev/reference/methods/auth.test/"
+          "reference": "https://docs.slack.dev/reference/methods/auth.test/",
+          "blocks": [
+            "identity",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Raindrop.io",
           "documented": "Responses carry a result boolean alongside the HTTP status.",
-          "reference": "https://developer.raindrop.io/v1/user/authenticated"
+          "reference": "https://developer.raindrop.io/v1/user/authenticated",
+          "blocks": [
+            "identity",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Nextcloud",
           "documented": "OCS answers HTTP 200 with meta.status and meta.statuscode, where 100 means success.",
-          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html"
+          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         }
       ],
       "fixture_contract": {
@@ -317,6 +466,41 @@
       ]
     },
     {
+      "id": "identity_derived_paths",
+      "title": "Binding an identity-derived account id into a later read path",
+      "engine_limit": "A path may contain at most one caller-supplied destination segment, and no value returned by the identity request can be placed into a later path, so a service whose library routes start with the account's own numeric id has no usable read.",
+      "services": [
+        "Zotero"
+      ],
+      "requirements": [
+        {
+          "service": "Zotero",
+          "documented": "Requests for data in a specific library begin with /users/<userID> or /groups/<groupID>. No account-scoped alias is documented: /users/me is not documented anywhere in the reference.",
+          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
+          "documented_level": "required for any library read",
+          "blocks": [
+            "single_item_read",
+            "lists"
+          ]
+        }
+      ],
+      "fixture_contract": {
+        "description": "A synthetic identity document whose subject is the account id, followed by the read that must embed it, so a framework test can prove the value is carried from identity into a reviewed path instead of being pinned in source.",
+        "samples": [
+          {
+            "service": "Zotero",
+            "identity": "GET /keys/current returning userID 12345",
+            "read": "GET /users/12345/items/ABCD2345 with the item key as the caller destination",
+            "proves": "an identity-derived value reaches a later path without widening the destination character set",
+            "fixture": "connectors/fixtures/zotero.json"
+          }
+        ]
+      },
+      "unblocks": [
+        "a Zotero read-only item subset without pinning the account's own user id in reviewed source"
+      ]
+    },
+    {
       "id": "identity_shapes",
       "title": "Account identity beyond one subject string and one label",
       "engine_limit": "Identity must be one GET returning HTTP 200 JSON with a usable subject string and a non-empty label string, so a URI subject, a 204 probe, an absent identity route or a nullable label cannot bind an account.",
@@ -333,37 +517,56 @@
         {
           "service": "Calendly",
           "documented": "The canonical user identifier is a resource URI such as https://api.calendly.com/users/AAAA, with name and slug as separate required fields.",
-          "reference": "https://developer.calendly.com/api-docs/calendly-api/users/get-current-user"
+          "reference": "https://developer.calendly.com/api-docs/calendly-api/users/get-current-user",
+          "blocks": [
+            "identity"
+          ]
         },
         {
           "service": "Readwise / Reader",
           "documented": "The only documented probe is GET /api/v2/auth/, which answers 204 with no body and exposes no account identifier.",
-          "reference": "https://readwise.io/reader_api"
+          "reference": "https://readwise.io/reader_api",
+          "blocks": [
+            "identity"
+          ]
         },
         {
           "service": "Spotify",
           "documented": "GET /v1/me returns account_id as the linkable identifier, while display_name can be null and email needs an extra scope.",
-          "reference": "https://developer.spotify.com/documentation/web-api/reference/get-current-users-profile"
+          "reference": "https://developer.spotify.com/documentation/web-api/reference/get-current-users-profile",
+          "blocks": [
+            "identity"
+          ]
         },
         {
           "service": "Airtable",
           "documented": "GET /v0/meta/whoami returns id always, and email only when the token has user.email:read.",
-          "reference": "https://airtable.com/developers/web/api/get-user-id-scopes"
+          "reference": "https://airtable.com/developers/web/api/get-user-id-scopes",
+          "blocks": [
+            "identity"
+          ]
         },
         {
           "service": "Notion",
           "documented": "GET /v1/users/me is documented, and object and id are documented as always present, but the user object marks name as oneOf string or null, so a bot with no name has no non-empty label.",
-          "reference": "https://developers.notion.com/reference/get-self"
+          "reference": "https://developers.notion.com/reference/get-self",
+          "blocks": [
+            "identity"
+          ]
         },
         {
           "service": "Microsoft 365",
           "documented": "GET /v1.0/me returns id and userPrincipalName, while mail can be null for some accounts.",
-          "reference": "https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0"
+          "reference": "https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0",
+          "blocks": []
         },
         {
           "service": "Joplin",
           "documented": "The API exposes no account identity at all; it serves one local profile.",
-          "reference": "https://joplinapp.org/help/api/references/rest_api/"
+          "reference": "https://joplinapp.org/help/api/references/rest_api/",
+          "blocks": [
+            "identity"
+          ]
         }
       ],
       "fixture_contract": {
@@ -401,22 +604,46 @@
         {
           "service": "Microsoft 365",
           "documented": "Delegated Graph access needs a registered application, PKCE sign-in, normalized scopes and refresh tokens.",
-          "reference": "https://learn.microsoft.com/en-us/graph/auth-v2-user"
+          "reference": "https://learn.microsoft.com/en-us/graph/auth-v2-user",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Asana",
           "documented": "A personal access token has no refresh and its documented syntax still needs acceptance.",
-          "reference": "https://developers.asana.com/docs/personal-access-token"
+          "reference": "https://developers.asana.com/docs/personal-access-token",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Spotify",
           "documented": "Access tokens last one hour and require a refresh flow.",
-          "reference": "https://developer.spotify.com/documentation/web-api/concepts/access-token"
+          "reference": "https://developer.spotify.com/documentation/web-api/concepts/access-token",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Trello",
           "documented": "OAuth 2.0 access tokens last about an hour with single-use refresh tokens and PKCE S256.",
-          "reference": "https://developer.atlassian.com/cloud/trello/guides/rest-api/oauth-2-authorization-code-flow/"
+          "reference": "https://developer.atlassian.com/cloud/trello/guides/rest-api/oauth-2-authorization-code-flow/",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         }
       ],
       "fixture_contract": {
@@ -450,17 +677,28 @@
         {
           "service": "Dropbox",
           "documented": "RPC-style endpoints are POST /2/... with a JSON request object such as {\"path\": ...} or {\"cursor\": ...}.",
-          "reference": "https://www.dropbox.com/developers/documentation/http/documentation"
+          "reference": "https://www.dropbox.com/developers/documentation/http/documentation",
+          "blocks": [
+            "identity",
+            "lists"
+          ]
         },
         {
           "service": "Linear",
           "documented": "Queries and mutations are POST /graphql with a query string, variables and an application-level errors array.",
-          "reference": "https://linear.app/developers/graphql"
+          "reference": "https://linear.app/developers/graphql",
+          "blocks": [
+            "identity",
+            "lists"
+          ]
         },
         {
           "service": "Notion",
-          "documented": "Querying a data source is POST /v1/data_sources/{data_source_id}/query with an optional request body and next_cursor paging, so a Notion listing cannot be a GET.",
-          "reference": "https://developers.notion.com/reference/query-a-data-source"
+          "documented": "Querying a data source is POST /v1/data_sources/{data_source_id}/query with an optional body and start_cursor in and next_cursor out, so the paging itself already matches the reviewed cursor contract while the request shape does not.",
+          "reference": "https://developers.notion.com/reference/query-a-data-source",
+          "blocks": [
+            "lists"
+          ]
         }
       ],
       "fixture_contract": {
@@ -505,17 +743,35 @@
         {
           "service": "Nextcloud",
           "documented": "Every instance is self-hosted at the user's own host, commonly with a non-default port.",
-          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html"
+          "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Joplin",
           "documented": "The clipper server is local, typically http://localhost:41184.",
-          "reference": "https://joplinapp.org/help/api/references/rest_api/"
+          "reference": "https://joplinapp.org/help/api/references/rest_api/",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         },
         {
           "service": "Zotero",
           "documented": "A local API also exists on http://localhost:23119 with its own key rules.",
-          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics"
+          "reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
+          "blocks": [
+            "identity",
+            "single_item_read",
+            "lists",
+            "writes"
+          ]
         }
       ],
       "fixture_contract": {
@@ -548,22 +804,34 @@
         {
           "service": "GitLab.com",
           "documented": "Creating an issue returns no operation identifier that a later lookup could match.",
-          "reference": "https://docs.gitlab.com/api/issues/#create-an-issue"
+          "reference": "https://docs.gitlab.com/api/issues/#create-an-issue",
+          "blocks": [
+            "writes"
+          ]
         },
         {
           "service": "Todoist",
           "documented": "A created task returns its task id, which a later read could match, but the interpreter has no reviewed post-write probe step.",
-          "reference": "https://developer.todoist.com/api/v1/#tag/Tasks/operation/create_task"
+          "reference": "https://developer.todoist.com/api/v1/#tag/Tasks/operation/create_task",
+          "blocks": [
+            "writes"
+          ]
         },
         {
           "service": "GitHub",
           "documented": "Creating an issue returns the issue number and URL, which a reviewed read could confirm.",
-          "reference": "https://docs.github.com/en/rest/issues/issues#create-an-issue"
+          "reference": "https://docs.github.com/en/rest/issues/issues#create-an-issue",
+          "blocks": [
+            "writes"
+          ]
         },
         {
           "service": "Airtable",
           "documented": "Creating a record returns the created record id, which a reviewed read could confirm.",
-          "reference": "https://airtable.com/developers/web/api/create-records"
+          "reference": "https://airtable.com/developers/web/api/create-records",
+          "blocks": [
+            "writes"
+          ]
         }
       ],
       "fixture_contract": {

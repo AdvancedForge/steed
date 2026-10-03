@@ -292,8 +292,8 @@ installed, and a row is never a default account or an approval.
 | Readwise / Reader | gated | `Authorization: Token`; auth probe returns 204 with no identity |
 | ClickUp | gated | bare personal token header; non-expiring OAuth tokens |
 | Trello | gated | key+token credentials, or OAuth 2.0 PKCE acceptance |
-| Figma | gated | personal tokens use `X-Figma-Token` |
-| Zotero | gated | version header, root-array collections, Link-header paging |
+| Figma | gated | personal tokens need `X-Figma-Token`; no version header is documented |
+| Zotero | gated | account `userID` must be bound into library paths; listing needs Link-header paging |
 | Nextcloud | gated | self-hosted host with port, WebDAV/XML, mandatory OCS header |
 | Joplin | gated | local plaintext origin, query-parameter token, no identity |
 | Spotify | gated | OAuth-only access, nullable label, offset paging |
@@ -341,8 +341,10 @@ two files in agreement. None of these is worked around in a connector.
 
 | Capability group | Services that need it |
 | --- | --- |
-| Reviewed static request headers | Notion, Figma, Zotero, Nextcloud |
-| Offset, page-number, keyset, Link-header and nextLink paging | GitHub, GitLab.com, Microsoft 365, Airtable, Raindrop.io, Calendly, Asana, Spotify, Joplin, Zotero, ClickUp, Readwise / Reader |
+| Reviewed static request headers | Notion, Nextcloud, Zotero |
+| Credential-derived token headers | Figma, Zotero |
+| Binding an identity-derived account id into a later read path | Zotero |
+| Offset, page-number, keyset, Link-header and nextLink paging | GitHub, GitLab.com, Microsoft 365, Airtable, Raindrop.io, Calendly, Asana, Spotify, Joplin, Zotero, ClickUp |
 | Non-Bearer token schemes and credential placement | Readwise / Reader, ClickUp, Trello, Joplin, Nextcloud, Spotify |
 | Application-level success flags | Slack, Raindrop.io, Nextcloud |
 | Account identity beyond one subject string and one label | Calendly, Readwise / Reader, Spotify, Airtable, Notion, Microsoft 365, Joplin |
@@ -350,6 +352,27 @@ two files in agreement. None of these is worked around in a connector.
 | Reads that are POST requests with request objects | Dropbox, Linear, Notion |
 | Approved local and self-hosted service origins | Nextcloud, Joplin, Zotero |
 | Reconciliation of uncertain writes | GitLab.com, Todoist, GitHub, Airtable |
+
+Each requirement inside a group declares what it actually blocks, using
+`identity`, `single_item_read`, `lists` and `writes`. That separation is what keeps
+a family from looking blocked when only its listing is:
+
+- **Reviewed static request headers** block a first read only for Notion and
+  Nextcloud, where the header is documented as required on every request. Zotero's
+  `Zotero-API-Version` is documented as *recommended*, and v3 is the documented
+  default, so it blocks nothing yet.
+- **Credential-derived token headers** are a different requirement from a static
+  version header and are tracked separately. Figma needs `X-Figma-Token` for a
+  personal access token and documents no version header at all; Zotero documents
+  `Authorization: Bearer` with an API key, so it needs neither.
+- **Binding an identity-derived account id into a later read path** is Zotero's
+  real blocker for a first read: every library route starts with
+  `/users/<userID>` and no account-scoped alias is documented.
+- **Paging** never blocks identity or a single-item read; it only blocks listing.
+  Two cursor protocols are already supported and are explicitly *not* counted:
+  Readwise / Reader (`pageCursor`/`nextPageCursor`) and Notion's data-source query
+  (`start_cursor`/`next_cursor`). Readwise stays gated on its authentication
+  scheme and its identity-less probe, not on paging.
 
 ### Notion assessment notes
 
@@ -387,19 +410,59 @@ Official references: [Retrieve your token's bot user](https://developers.notion.
 [Query a data source](https://developers.notion.com/reference/query-a-data-source),
 [Upgrade guide 2025-09-03](https://developers.notion.com/reference/upgrade-guide-2025-09-03).
 
-Two notes on how the groups read:
-
-- Readwise / Reader appears under paging because its documented
-  `pageCursor`/`nextPageCursor` contract already matches the reviewed cursor
-  shape. It is gated on authentication and identity, not on paging.
-- Reconciliation of uncertain writes also covers the three shipped starters. A
-  create that fails after dispatch is reported as uncertain today; a confirmed
-  outcome would need a reviewed probe step rather than a blind retry.
+Reconciliation of uncertain writes also covers the three shipped starters. A
+create that fails after dispatch is reported as uncertain today; a confirmed
+outcome would need a reviewed probe step rather than a blind retry.
 
 Microsoft 365 and every other service needing new header, paging, authentication
 or OAuth support stays explicitly gated until those shared capabilities land.
 Google registration remains deferred. A connector is never packaged merely to
 make the catalog look larger.
+
+---
+
+## Candidate contracts
+
+`connectors/fixtures/notion.json`, `connectors/fixtures/zotero.json` and
+`connectors/fixtures/figma.json` are implementation-ready reference contracts for
+the priority gated families. They are **not** profiles: nothing is installed, no
+packaged recipe exists for any of them, and no placeholder profile is shipped. Each
+contract carries, in the same shape:
+
+- `origin` and an `api_version` that is either pinned to one explicit version or
+  recorded as not required, with `blocks_a_read` stating which it is;
+- the exact header placement, split into what the transport supports today, what
+  would need a credential-derived header, and what must never appear in a path or
+  query;
+- the identity request with its exact response fields, including the nullable and
+  conditionally-absent cases, plus whether identity has to hand a value to a later
+  path;
+- the smallest useful read, with every projected field tied to a documented
+  reference and a stated reason for each field deliberately not projected;
+- one realistic failure, with the documented statuses and an explicit
+  `body_shape_documented` flag so a test never depends on an undocumented error
+  envelope;
+- `framework_gap`: the minimum missing behavior, the capabilities it belongs to,
+  and what is **not** required for a first read.
+
+Where the documentation is silent, the contract says so instead of guessing. Three
+examples: Zotero publishes no formal item schema, so `data.title` is not projected
+because a note has no title; Figma publishes no global error body and does not list
+401; Notion documents only `code` and `message` on errors, so no envelope fields
+are assumed.
+
+What each one needs before a profile could exist:
+
+| Candidate | Blocks a first read | Only blocks later work |
+| --- | --- | --- |
+| Notion | the required `Notion-Version` header, and a label contract that tolerates the documented null `name` | data-source listing, which is a POST read |
+| Zotero | binding the account's own `userID` into `/users/{userID}/items/{itemKey}`, with no documented alias | `Link`-header listing; the recommended version header |
+| Figma | carrying a personal access token in `X-Figma-Token` | nothing for metadata reads; image and design content are separate capabilities |
+
+Figma's `GET /v1/me` is documented as a Tier 3 endpoint needing the
+`current_user:read` scope. Tiers are rate-limit tiers, not plan gates, and whether
+a personal access token may call it is not documented; a framework test should
+settle that before relying on it.
 
 ---
 
@@ -447,3 +510,18 @@ Until every live box is filled in for a service, describe it as a synthetic
 wire-shape subset. Microsoft 365 remains a priority follow-up and is gated on
 OAuth acceptance, `@odata.nextLink` paging and write verification; its read proof
 in `connectors/compatibility/microsoft-read.json` is left unchanged.
+
+### Per-provider worksheet
+
+`connectors/fixtures/acceptance_worksheet.json` holds one row per shipped
+provider, with the synthetic expectations the automated checks already produce and
+a separate block of **empty** live fields: setup and least permission, identity
+result, read result, reviewed-create preview, uncertain-write handling,
+disconnect and revoke behaviour, date, API version, and whether the case was
+synthetic or live.
+
+Every live field is empty on purpose. Filling one requires a maintainer-approved
+live acceptance task, a user-owned token, and agreement on what may be created in a
+real account. A synthetic fixture is never promoted to a live result by editing the
+file, and no account has been connected and no test object has been sent to create
+these rows.
