@@ -8,6 +8,7 @@ service, connects a real account or contacts a provider.
 import copy
 import hashlib
 import json
+import os
 import re
 import tempfile
 import threading
@@ -20,6 +21,7 @@ from app_connector_support import MemorySecrets
 
 from services.app_accounts import AccountError, AccountStore
 from services.app_oauth import ApiError
+from services.bundled_recipes import BundledRecipes
 from services.connector_recipes import RecipeError, RecipeStore, parse_recipe
 from services.connectors import ConnectorRequest
 from services.recipe_connector import RecipeConnector, connect_recipe
@@ -57,17 +59,17 @@ def fixture_data(provider):
     return json.loads((FIXTURES / (provider + ".json")).read_text("utf-8"))
 
 
-def draft_artifact():
+def draft_artifact(content=DRAFT, title=TITLE):
     return TaskArtifact(
         "profile-artifact",
         "profile-task",
-        TITLE,
+        title,
         "text",
-        len(DRAFT),
-        hashlib.sha256(DRAFT.encode("utf-8")).hexdigest(),
+        len(content),
+        hashlib.sha256(content.encode("utf-8")).hexdigest(),
         (),
         "fixture",
-        DRAFT,
+        content,
     )
 
 
@@ -153,14 +155,14 @@ class ProfileCase(unittest.TestCase):
             self.cancelled,
         )
 
-    def reviewed_create(self, adapter, name, destination):
+    def reviewed_create(self, adapter, name, destination, artifact=None):
         request = ConnectorRequest(
             "create",
             adapter.account.connector,
             name,
             "write",
             destination,
-            draft_artifact(),
+            artifact or draft_artifact(),
             "a" * 32,
         )
         definition = self.definition(adapter, name)
@@ -516,6 +518,33 @@ class GitLabProfileTests(ProfileCase):
             [("/api/v4/projects/7/issues", {"title": TITLE, "description": DRAFT})],
         )
 
+    def test_quick_action_text_is_warned_about_and_sent_verbatim(self):
+        draft = "/assign @fixture-user\n/confidential\nPlease triage this draft."
+        title = "Fixture /close title"
+        artifact = draft_artifact(draft, title)
+        request, definition, review = self.reviewed_create(
+            self.adapter, "create_issue", "7", artifact
+        )
+        # The tool description carries the warning a source review would show.
+        self.assertIn("quick action", definition.description)
+        self.assertIn("/confidential", definition.description)
+        self.assertEqual(
+            json.loads(review.before), {"title": title, "description": draft}
+        )
+        self.assertEqual(
+            json.loads(review.context)["payload_sha256"],
+            hashlib.sha256(review.before.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            definition.execute(replace(request, review=review), self.cancelled).state,
+            "succeeded",
+        )
+        path, payload = self.api.posts[0]
+        self.assertEqual(path, "/api/v4/projects/7/issues")
+        # The reviewed draft is submitted verbatim: no command is stripped,
+        # escaped or described as plain prose.
+        self.assertEqual(payload, {"title": title, "description": draft})
+
     def test_no_operation_lookup_claims_to_prove_a_create(self):
         for tool in self.recipe.tools:
             self.assertIsNone(tool.reconciliation)
@@ -663,3 +692,20 @@ class AssessedCandidateQueueTests(unittest.TestCase):
             with self.subTest(service=entry["name"]):
                 self.assertGreater(len(entry["gate"]), 60)
                 self.assertTrue(entry["gate"].endswith("."))
+
+
+class PackagedSelectorTests(unittest.TestCase):
+    @unittest.skipUnless(
+        hasattr(os, "O_NOFOLLOW"),
+        "packaged reads use POSIX O_NOFOLLOW, which Windows Python lacks",
+    )
+    def test_picker_offers_only_installable_profiles_through_bundled_recipes(self):
+        catalog = BundledRecipes()
+        entries = catalog.list()
+        self.assertEqual([entry.slug for entry in entries], ["gitlab", "todoist"])
+        for entry in entries:
+            with self.subTest(slug=entry.slug):
+                self.assertEqual(catalog.select(entry).sha256, entry.recipe.sha256)
+        # The owner template stays outside the picker on every platform.
+        with self.assertRaises(OSError):
+            catalog.read("github-owner-template")
