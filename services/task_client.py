@@ -11,6 +11,8 @@ CLIENT_COMMANDS = frozenset(
         "task.capabilities",
         "browser.context",
         "task.events",
+        "conversation.read",
+        "conversation.reply",
         "task.finish",
         "task.recover",
         "task.recovery",

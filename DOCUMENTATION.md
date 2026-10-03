@@ -2524,6 +2524,107 @@ process. Local access is off when the browser starts.
    The same connection can then start another task; it receives a new identity
    and must request fresh permissions. An active task cannot be replaced.
 
+### External-agent conversation sidebar
+
+Steed uses external agents first. The sidebar communicates with the agent that
+owns an existing MCP task; the browser does not launch models, store model keys,
+or automatically start a new agent turn.
+
+1. Complete the local MCP setup above and connect your external agent client.
+2. Ask the agent to call `steed_task_start` and keep that connection open. Give
+   the task a recognizable objective so you can choose it in Steed.
+3. Open **View → Agent Sidebar**, or press `Ctrl+Shift+A`. Select the connected
+   task from the list. The dock can move between the left and right sides.
+4. Type a message and click **Send**, or press `Ctrl+Enter`. Only the submitted
+   text is shared. Unsent drafts remain in that window and are not sent when
+   changing tasks or hiding the sidebar. Messages have an 8 KiB UTF-8 limit.
+5. Have the agent call `steed_conversation_read`, reply with
+   `steed_conversation_reply`, and check for additional messages while working
+   or waiting for your input. The sidebar shows pending messages and when the
+   agent's read tool has fetched them; this does not prove the agent understood
+   or acted on the text.
+6. Use **Permissions**, **Files**, and **Receipts** to open the selected task's
+   existing controls in a nonmodal window. The sidebar shows counts for pending
+   grant, package, recipe and app reviews, files, drafts and app receipts.
+   Website, task, package, recipe and payload approvals retain their existing
+   separate controls. Conversation text never approves a request.
+7. Hiding or closing the sidebar keeps the task running. **Cancel Task** ends
+   it explicitly. Finish a final reply before calling `steed_task_finish`.
+   Adapter disconnects still cancel unfinished tasks; restarting the browser
+   retains history and marks active tasks and incomplete replies interrupted.
+
+Suggested instruction for a connected external agent:
+
+> Start a Steed task called “Browser collaboration”. Read its conversation
+> mailbox, respond through conversation.reply, and check for follow-up messages
+> while working. Request exact permissions for any page, file or app actions.
+
+An ordinary MCP client may only run its agent after a prompt in that client's
+own UI. **Send** queues a message for the task; it cannot wake such an idle
+client. The agent must participate in the mailbox protocol. This first version
+has no provider-specific wake-up integration, autonomous runner, reconnect or
+conversation replay into another task. Each new task needs fresh permissions.
+
+#### Conversation tool protocol
+
+`steed_conversation_read` accepts optional `after` (initially `0`) and `limit`
+(1–16, default 16). It returns `messages`, `cursor`, and `has_more`. Save the
+returned cursor and fetch again until `has_more` is false. Poll for follow-ups at
+a modest interval, such as once a second, while the external agent is active.
+The cursor represents message updates, not chronological display order: order
+messages by `created_sequence` and replace the record with the same `message_id`
+when its `sequence` changes. A streaming reply can therefore appear after a later
+user message in a change page while retaining its original position in the UI.
+
+A complete reply:
+
+```json
+{"message_id": "reply-1", "text": "I have checked the page."}
+```
+
+A streaming reply uses cumulative text and consecutive revisions:
+
+```json
+{"message_id": "reply-2", "text": "Checking", "state": "streaming", "revision": 0}
+{"message_id": "reply-2", "text": "Checking the page…", "state": "streaming", "revision": 1}
+{"message_id": "reply-2", "text": "Checking the page… Done.", "state": "complete", "revision": 2}
+```
+
+Default state is `complete`, default revision is `0`. Exact current-revision
+retries return the same message without adding another activity event. Changed
+repeats, skipped revisions, text replacements and edits after completion fail.
+Start a new stable message ID for a longer reply. Limits are 256 message records,
+1 MiB retained text and 2,048 post/update events per task; returned pages fit the
+existing gateway response bound. Task identity is assigned by the browser, never
+accepted from MCP arguments. Agents can neither post user messages nor clear a
+conversation, approve requests or read another connection's task messages.
+
+The trusted **Clear Chat** button removes message bodies from task rows in both
+windows and subsequent tool reads, retaining content-free tombstones so old IDs
+cannot be reused. It does not undo actions or remove copies already fetched by
+an external client. It is not forensic secure erasure. Activity events retain
+only message identity, role, revision and state. Conversation bodies live in the
+private task database; schema 16 adds messages and read markers while preserving
+older journals and receipts. Historical conversations are not automatically
+shared by task recovery.
+
+The incognito search profile disables the sidebar conversation, clears visible
+text and unsent drafts, and requires selecting a task again after returning to
+regular browsing. A task's existing approved profile stays pinned when you switch
+regular browser profiles. Multiple windows can view the same task's sent messages;
+unsent drafts stay local to each window. The sidebar loads only when opened, so
+ordinary browser startup does not initialize agent task storage through this UI.
+
+Automated sidebar validation (October 3, 2026): the full suite passed 813 tests
+in 316.979 seconds, followed by 46 final agent/UI tests in 11.874 seconds and 12
+conversation tests in 2.302 seconds. Independent SDK/raw clients exchanged actual
+sidebar prompts and streamed replies over stdio and authenticated HTTP while
+completing the existing shared browsing, recipe and document-worker workflows.
+Startup/render/shutdown and the synthetic dock preview passed. The first full
+run crashed during offscreen Vulkan initialization before any test ran; a
+standalone retry passed. These fixtures do not demonstrate that a particular
+idle agent client can wake or that real accounts have passed acceptance.
+
 ### HTTP connection
 
 Enable local agent access in Steed, then start a separate adapter process:
@@ -2575,7 +2676,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 53 input schemas. Names follow the internal command
+Tool discovery publishes 55 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -2583,7 +2684,7 @@ navigation, supported control edits, native form submission, scoped uploads and
 downloads, scrolling, waits,
 watching, retained drafts, configured app operations, evidence, and task lifecycle
 are available. Approval, task enumeration,
-raw cookies, JavaScript, arbitrary selectors, file bytes, and raw Qt objects
+raw cookies, JavaScript, arbitrary selectors, unshared file bytes, and raw Qt objects
 are not exposed by this adapter. `steed_session_watch` needs explicit `attach`
 permission and opens a browser-owned window; taking and returning control are
 trusted user actions, unavailable to external clients.

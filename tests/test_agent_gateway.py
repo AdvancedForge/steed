@@ -89,6 +89,76 @@ class AgentGatewayTests(unittest.TestCase):
         )
         self.assertEqual(self.service.store.list_tasks(), [])
 
+    def test_conversations_are_bound_to_one_agent_without_site_authority(self):
+        first, second = self.connect(), self.connect()
+        task, other = self.start(first), self.start(second)
+        self.service.send_message(task, "Explicit sidebar prompt")
+        result = self.call(first, "conversation.read")["result"]
+        self.assertEqual(result["messages"][0]["text"], "Explicit sidebar prompt")
+        self.assertEqual(
+            self.call(second, "conversation.read")["result"]["messages"], []
+        )
+        self.assertIn("error", self.call(second, "conversation.read", task_id=task))
+        self.assertIn(
+            "error",
+            self.call(
+                first,
+                "conversation.reply",
+                message_id="reply",
+                text="Forged",
+                role="user",
+            ),
+        )
+        self.assertIn("error", self.call(first, "conversation.clear"))
+        reply = self.call(
+            first,
+            "conversation.reply",
+            message_id="reply",
+            text="Part",
+            state="streaming",
+        )["result"]
+        final = self.call(
+            first, "conversation.reply", message_id="reply", text="Part two", revision=1
+        )["result"]
+        self.assertEqual(final["created_sequence"], reply["created_sequence"])
+        self.assertEqual(self.service.store.grants(task), [])
+        self.assertEqual(self.service.store.grants(other), [])
+        self.assertFalse(self.service._sessions)
+        self.assertEqual(
+            self.call(first, "session.open")["error"]["code"], "approval_required"
+        )
+
+    def test_disconnect_retains_interrupted_reply_and_blocks_sending(self):
+        socket = self.connect()
+        task = self.start(socket)
+        self.call(
+            socket,
+            "conversation.reply",
+            message_id="reply",
+            text="Partial",
+            state="streaming",
+        )
+        socket.abort()
+        self.wait_for(lambda: task not in self.service.external_tasks)
+        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        self.assertEqual(
+            self.service.messages.read(task)["messages"][0]["state"], "interrupted"
+        )
+        with self.assertRaises(ValueError):
+            self.service.send_message(task, "Must not send")
+
+    def test_new_task_on_same_connection_cannot_read_previous_conversation(self):
+        socket = self.connect()
+        task = self.start(socket)
+        self.service.send_message(task, "Private prior conversation")
+        self.call(socket, "task.finish")
+        other = self.start(socket)
+        self.assertNotIn(task, self.service.external_tasks)
+        self.assertIn(other, self.service.external_tasks)
+        self.assertEqual(
+            self.call(socket, "conversation.read")["result"]["messages"], []
+        )
+
     def test_recovery_shares_only_user_selected_material_with_the_requesting_connection(
         self,
     ):
