@@ -19,7 +19,8 @@
       "errors": "maintained provider",
       "host": "googleapis.com",
       "status": "maintained",
-      "gate": "Owned by the framework provider. Shared registration is deferred; do not add a parallel recipe."
+      "gate": "Owned by the framework provider. Shared registration is deferred; do not add a parallel recipe.",
+      "capabilities": []
     },
     {
       "name": "Todoist",
@@ -31,7 +32,10 @@
       "errors": "HTTP status codes",
       "host": "api.todoist.com",
       "status": "packaged",
-      "gate": "None outstanding for the shipped subset. Broader authority needs its own reviewed profile."
+      "gate": "None outstanding for the shipped subset. Broader authority needs its own reviewed profile.",
+      "capabilities": [
+        "uncertain_write_reconciliation"
+      ]
     },
     {
       "name": "GitHub",
@@ -43,7 +47,11 @@
       "errors": "HTTP status codes",
       "host": "api.github.com",
       "status": "template",
-      "gate": "The owner must be fixed in newly reviewed source, so the profile is an imported template rather than a packaged default."
+      "gate": "The owner must be fixed in newly reviewed source, so the profile is an imported template rather than a packaged default.",
+      "capabilities": [
+        "pagination",
+        "uncertain_write_reconciliation"
+      ]
     },
     {
       "name": "GitLab.com",
@@ -55,7 +63,11 @@
       "errors": "HTTP status codes",
       "host": "gitlab.com",
       "status": "packaged",
-      "gate": "None outstanding for the shipped subset. Self-hosted domains are out of scope."
+      "gate": "None outstanding for the shipped subset. Self-hosted domains are out of scope.",
+      "capabilities": [
+        "pagination",
+        "uncertain_write_reconciliation"
+      ]
     },
     {
       "name": "Microsoft 365",
@@ -67,7 +79,12 @@
       "errors": "HTTP status codes with an OData error body",
       "host": "graph.microsoft.com",
       "status": "gated",
-      "gate": "Selected GETs fit with an already obtained delegated token, but native OAuth registration, token response shape, refresh and scope acceptance, nextLink paging and writes are all unverified. Full native OAuth is shared framework work."
+      "gate": "Selected GETs fit with an already obtained delegated token, but native OAuth registration, token response shape, refresh and scope acceptance, nextLink paging and writes are all unverified. Full native OAuth is shared framework work.",
+      "capabilities": [
+        "identity_shapes",
+        "native_oauth",
+        "pagination"
+      ]
     },
     {
       "name": "Notion",
@@ -79,7 +96,11 @@
       "errors": "HTTP status codes with a documented code/message body",
       "host": "api.notion.com",
       "status": "gated",
-      "gate": "Every request must carry the Notion-Version header, which the current header contract cannot add. Nested v3 payloads exist, and sign-in compatibility still needs acceptance. The header requirement must not be bypassed."
+      "gate": "Every request must carry the Notion-Version header, which the current header contract cannot add. Nested v3 payloads exist, and sign-in compatibility still needs acceptance. The header requirement must not be bypassed.",
+      "capabilities": [
+        "identity_shapes",
+        "static_headers"
+      ]
     },
     {
       "name": "Slack",
@@ -91,7 +112,10 @@
       "errors": "HTTP 200 with ok:false for application errors",
       "host": "slack.com",
       "status": "gated",
-      "gate": "Channel destinations need reviewed conversation inputs, and an ok:false body must never be reported as a successful send. Application-level error checking and channel selection are missing shared capabilities."
+      "gate": "Channel destinations need reviewed conversation inputs, and an ok:false body must never be reported as a successful send. Application-level error checking and channel selection are missing shared capabilities.",
+      "capabilities": [
+        "application_error_flags"
+      ]
     },
     {
       "name": "Asana",
@@ -103,7 +127,11 @@
       "errors": "HTTP status codes with a documented error body",
       "host": "app.asana.com",
       "status": "gated",
-      "gate": "Read shapes and nested v3 payloads fit, but token syntax and sign-in need live acceptance, and workspace or project identifiers need reviewed service inputs. Do not declare personal access tokens universally compatible before that check."
+      "gate": "Read shapes and nested v3 payloads fit, but token syntax and sign-in need live acceptance, and workspace or project identifiers need reviewed service inputs. Do not declare personal access tokens universally compatible before that check.",
+      "capabilities": [
+        "native_oauth",
+        "pagination"
+      ]
     },
     {
       "name": "Dropbox",
@@ -115,7 +143,10 @@
       "errors": "HTTP status codes with an RPC error envelope",
       "host": "api.dropboxapi.com",
       "status": "gated",
-      "gate": "Reads are POST requests carrying request objects, which the read contract does not support. Wait for framework support; do not build credential-bearing arbitrary requests."
+      "gate": "Reads are POST requests carrying request objects, which the read contract does not support. Wait for framework support; do not build credential-bearing arbitrary requests.",
+      "capabilities": [
+        "post_reads"
+      ]
     },
     {
       "name": "Linear",
@@ -127,7 +158,10 @@
       "errors": "HTTP status codes with an errors array",
       "host": "api.linear.app",
       "status": "gated",
-      "gate": "Reads are GraphQL POSTs with variables and an application-level errors array, which the current format cannot express. Do not disguise a read as a write tool."
+      "gate": "Reads are GraphQL POSTs with variables and an application-level errors array, which the current format cannot express. Do not disguise a read as a write tool.",
+      "capabilities": [
+        "post_reads"
+      ]
     },
     {
       "name": "Raindrop.io",
@@ -139,7 +173,11 @@
       "errors": "HTTP status codes plus an application result boolean",
       "host": "api.raindrop.io",
       "status": "gated",
-      "gate": "Bearer looks right, but the origin needs the /rest/v1 path prefix, the result flag needs verifying so a false result is never read as success, listing is offset paged, and bookmark creates need an explicit reviewed URL input."
+      "gate": "Bearer looks right, but the origin needs the /rest/v1 path prefix, the result flag needs verifying so a false result is never read as success, listing is offset paged, and bookmark creates need an explicit reviewed URL input.",
+      "capabilities": [
+        "application_error_flags",
+        "pagination"
+      ]
     },
     {
       "name": "Airtable",
@@ -151,7 +189,12 @@
       "errors": "HTTP status codes with an error object",
       "host": "api.airtable.com",
       "status": "gated",
-      "gate": "Bearer and identity work on paper, but a base and table must be pinned in reviewed source, the optional email label needs a fallback, offset paging is unsupported, and field mappings need wire-shape acceptance. Nested v3 payloads exist but do not solve those."
+      "gate": "Bearer and identity work on paper, but a base and table must be pinned in reviewed source, the optional email label needs a fallback, offset paging is unsupported, and field mappings need wire-shape acceptance. Nested v3 payloads exist but do not solve those.",
+      "capabilities": [
+        "identity_shapes",
+        "pagination",
+        "uncertain_write_reconciliation"
+      ]
     },
     {
       "name": "Calendly",
@@ -163,7 +206,11 @@
       "errors": "HTTP status codes with a title/message body",
       "host": "api.calendly.com",
       "status": "gated",
-      "gate": "The identity subject is a URI, which the current subject contract rejects, and the next page is a full URL that cannot be followed. Queries, scopes and plan access need verification before any profile."
+      "gate": "The identity subject is a URI, which the current subject contract rejects, and the next page is a full URL that cannot be followed. Queries, scopes and plan access need verification before any profile.",
+      "capabilities": [
+        "identity_shapes",
+        "pagination"
+      ]
     },
     {
       "name": "Readwise / Reader",
@@ -175,7 +222,12 @@
       "errors": "HTTP status codes",
       "host": "readwise.io",
       "status": "gated",
-      "gate": "The token scheme is not Bearer and the only documented probe returns no identity at all, so an account cannot be bound to a reviewed profile. Needs trusted auth and identity support, plus explicit reviewed URL inputs for saves."
+      "gate": "The token scheme is not Bearer and the only documented probe returns no identity at all, so an account cannot be bound to a reviewed profile. Needs trusted auth and identity support, plus explicit reviewed URL inputs for saves.",
+      "capabilities": [
+        "authentication_schemes",
+        "identity_shapes",
+        "pagination"
+      ]
     },
     {
       "name": "ClickUp",
@@ -187,7 +239,11 @@
       "errors": "HTTP status codes with a documented code",
       "host": "api.clickup.com",
       "status": "gated",
-      "gate": "A bare personal token cannot be carried by the Bearer-only transport, and a non-expiring OAuth token does not fit bounded expiry and refresh. Do not prepend Bearer to a personal token."
+      "gate": "A bare personal token cannot be carried by the Bearer-only transport, and a non-expiring OAuth token does not fit bounded expiry and refresh. Do not prepend Bearer to a personal token.",
+      "capabilities": [
+        "authentication_schemes",
+        "pagination"
+      ]
     },
     {
       "name": "Trello",
@@ -199,7 +255,11 @@
       "errors": "HTTP status codes",
       "host": "api.trello.com",
       "status": "gated",
-      "gate": "Legacy key and token credentials do not fit the Bearer transport, and the OAuth 2.0 route needs native PKCE registration and identity acceptance first. Verify registration, PKCE and identity before choosing a supported route."
+      "gate": "Legacy key and token credentials do not fit the Bearer transport, and the OAuth 2.0 route needs native PKCE registration and identity acceptance first. Verify registration, PKCE and identity before choosing a supported route.",
+      "capabilities": [
+        "authentication_schemes",
+        "native_oauth"
+      ]
     },
     {
       "name": "Figma",
@@ -211,7 +271,10 @@
       "errors": "HTTP status codes, with an err property on some endpoints",
       "host": "api.figma.com",
       "status": "gated",
-      "gate": "The documented personal-token header is not supported, and the OAuth route needs app and callback setup plus scope acceptance. Binary image and file delivery is a separate workspace capability."
+      "gate": "The documented personal-token header is not supported, and the OAuth route needs app and callback setup plus scope acceptance. Binary image and file delivery is a separate workspace capability.",
+      "capabilities": [
+        "static_headers"
+      ]
     },
     {
       "name": "Zotero",
@@ -223,7 +286,12 @@
       "errors": "HTTP status codes, with 429 plus Retry-After when limited",
       "host": "api.zotero.org",
       "status": "gated",
-      "gate": "Bearer identity works on paper, but the documented Zotero-API-Version header is not carried, collections return root arrays that the flat response contract cannot select, paging is offset plus Link header, and write revisions need acceptance."
+      "gate": "Bearer identity works on paper, but the documented Zotero-API-Version header is not carried, collections return root arrays that the flat response contract cannot select, paging is offset plus Link header, and write revisions need acceptance.",
+      "capabilities": [
+        "local_service_origins",
+        "pagination",
+        "static_headers"
+      ]
     },
     {
       "name": "Nextcloud",
@@ -235,7 +303,13 @@
       "errors": "HTTP 200 with an OCS meta status and statuscode 100 for success",
       "host": "the user's own instance, with a port and self-hosted path",
       "status": "gated",
-      "gate": "A self-hosted host with a port cannot be a profile origin, WebDAV needs methods and XML, OCS needs a mandatory extra header, and success is reported in the body rather than the status. Needs an explicitly scoped local-network adapter, not weaker global HTTPS rules."
+      "gate": "A self-hosted host with a port cannot be a profile origin, WebDAV needs methods and XML, OCS needs a mandatory extra header, and success is reported in the body rather than the status. Needs an explicitly scoped local-network adapter, not weaker global HTTPS rules.",
+      "capabilities": [
+        "application_error_flags",
+        "authentication_schemes",
+        "local_service_origins",
+        "static_headers"
+      ]
     },
     {
       "name": "Joplin",
@@ -247,7 +321,13 @@
       "errors": "HTTP status codes with an error description",
       "host": "http://localhost:41184 on the user's own machine",
       "status": "gated",
-      "gate": "A local plaintext origin with a query-parameter token cannot be a profile origin, and no account identity exists to bind. Needs a distinct user-approved local-service adapter, and tokens must stay out of recipe paths, logs and results."
+      "gate": "A local plaintext origin with a query-parameter token cannot be a profile origin, and no account identity exists to bind. Needs a distinct user-approved local-service adapter, and tokens must stay out of recipe paths, logs and results.",
+      "capabilities": [
+        "authentication_schemes",
+        "identity_shapes",
+        "local_service_origins",
+        "pagination"
+      ]
     },
     {
       "name": "Spotify",
@@ -259,7 +339,13 @@
       "errors": "HTTP status codes with an error status, message and reason",
       "host": "api.spotify.com",
       "status": "gated",
-      "gate": "OAuth-only access needs native sign-in, scope and refresh acceptance, the account label can be null, listing is offset paged, and playback or playlist writes are separate effects that read access does not imply."
+      "gate": "OAuth-only access needs native sign-in, scope and refresh acceptance, the account label can be null, listing is offset paged, and playback or playlist writes are separate effects that read access does not imply.",
+      "capabilities": [
+        "authentication_schemes",
+        "identity_shapes",
+        "native_oauth",
+        "pagination"
+      ]
     }
   ]
 }

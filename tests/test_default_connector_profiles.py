@@ -821,3 +821,66 @@ class PackagedSelectorTests(unittest.TestCase):
         # The owner template stays outside the picker on every platform.
         with self.assertRaises(OSError):
             catalog.read("github-owner-template")
+
+
+class SharedCapabilityGroupTests(unittest.TestCase):
+    def setUp(self):
+        self.registry = json.loads(
+            (FIXTURES / "shared_capabilities.json").read_text("utf-8")
+        )
+        self.groups = self.registry["groups"]
+        self.rows = json.loads(
+            (FIXTURES / "assessed_candidates.json").read_text("utf-8")
+        )["services"]
+        self.names = {row["name"] for row in self.rows}
+
+    def test_each_group_states_the_limit_it_removes_and_who_needs_it(self):
+        ids = [group["id"] for group in self.groups]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertGreaterEqual(len(ids), 5)
+        for group in self.groups:
+            with self.subTest(group=group["id"]):
+                self.assertTrue(group["title"])
+                self.assertTrue(group["engine_limit"].endswith("."))
+                self.assertTrue(group["services"])
+                self.assertTrue(group["unblocks"])
+                # Every named service must exist in the assessment queue.
+                for name in group["services"]:
+                    self.assertIn(name, self.names)
+                self.assertTrue(group["requirements"])
+                for requirement in group["requirements"]:
+                    self.assertIn(requirement["service"], group["services"])
+                    self.assertTrue(requirement["documented"].endswith("."))
+                    self.assertTrue(requirement["reference"].startswith("https://"))
+
+    def test_every_group_carries_a_minimal_fixture_contract(self):
+        for group in self.groups:
+            contract = group["fixture_contract"]
+            with self.subTest(group=group["id"]):
+                self.assertTrue(contract["description"].endswith("."))
+                self.assertTrue(contract["samples"])
+                for sample in contract["samples"]:
+                    self.assertIn(sample["service"], self.names)
+                    self.assertTrue(sample["proves"])
+
+    def test_assessed_rows_and_groups_agree_on_the_needed_capabilities(self):
+        grouped = {}
+        for group in self.groups:
+            for name in group["services"]:
+                grouped.setdefault(name, set()).add(group["id"])
+        for row in self.rows:
+            with self.subTest(service=row["name"]):
+                self.assertEqual(
+                    set(row["capabilities"]), grouped.get(row["name"], set())
+                )
+                if row["status"] == "gated":
+                    self.assertTrue(row["capabilities"], row["name"])
+
+    def test_setup_guide_documents_every_group(self):
+        guide = (ROOT / "connectors" / "SETUP.md").read_text("utf-8")
+        for group in self.groups:
+            with self.subTest(group=group["id"]):
+                self.assertTrue(
+                    group["title"] in guide,
+                    group["title"] + " is missing from SETUP.md",
+                )
