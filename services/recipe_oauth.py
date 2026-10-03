@@ -83,6 +83,8 @@ def token_response(result, scopes):
 
 
 def token_http(recipe, http=None):
+    from services.recipe_plans import transport_path
+
     return http or RecipeHttp(
         recipe.origin,
         token_endpoint=recipe.authentication.token_endpoint,
@@ -96,9 +98,14 @@ def token_http(recipe, http=None):
             if tool.pagination
         },
         post_rules=[
-            (t.path, t.idempotency_header, bool(t.request_template))
-            for t in recipe.tools
-            if t.effect != "read"
+            (
+                transport_path(step.path),
+                step.idempotency_header,
+                bool(step.request_template),
+            )
+            for tool in recipe.tools
+            if tool.effect != "read"
+            for step in (tool.steps or (tool,))
         ],
     )
 

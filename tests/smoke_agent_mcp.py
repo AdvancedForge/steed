@@ -43,6 +43,7 @@ from services.connector_recipes import (
     RECIPE_NESTED_EXAMPLE,
     RECIPE_OAUTH_EXAMPLE,
     RECIPE_PAGINATED_EXAMPLE,
+    RECIPE_PLAN_EXAMPLE,
     parse_recipe,
 )
 from ui.app_review import AppReviewDialog
@@ -82,7 +83,15 @@ async def sdk_transport(discovery, endpoint):
 
 
 async def recipe_workflow(
-    call, shared, label, *, oauth=False, pagination=False, writing=False, nested=False
+    call,
+    shared,
+    label,
+    *,
+    oauth=False,
+    pagination=False,
+    writing=False,
+    nested=False,
+    plan=False,
 ):
     """External clients propose source; only the fixture installs/connects it."""
     task = await call("task.start", objective="Design a synthetic connection recipe")
@@ -93,7 +102,9 @@ async def recipe_workflow(
         and capabilities["installation_approval"] == "exact_recipe"
     )
     source = json.dumps(
-        capabilities["nested_example"]
+        capabilities["plan_example"]
+        if plan
+        else capabilities["nested_example"]
         if nested
         else capabilities["write_example"]
         if writing
@@ -170,15 +181,21 @@ async def recipe_workflow(
                         "effect": "write",
                         "destination": "account",
                     },
-                    {
-                        "connector": connector,
-                        "tool": "create_note",
-                        "effect": "read",
-                        "destination": "account",
-                    },
                     *(
                         []
-                        if nested
+                        if plan
+                        else [
+                            {
+                                "connector": connector,
+                                "tool": "create_note",
+                                "effect": "read",
+                                "destination": "account",
+                            }
+                        ]
+                    ),
+                    *(
+                        []
+                        if nested or plan
                         else [
                             {
                                 "connector": connector,
@@ -202,7 +219,7 @@ async def recipe_workflow(
             ("send", "send_message", "email:recipient@example.test"),
             ("uncertain-create", "create_note", "account"),
         ):
-            if nested and tool == "send_message":
+            if (nested or plan) and tool == "send_message":
                 continue
             arguments = {
                 "connector": connector,
@@ -221,7 +238,7 @@ async def recipe_workflow(
                 "uncertain" if request_id == "uncertain-create" else "succeeded"
             ), result
             assert await call("app.call_tool", **arguments) == result
-            if request_id == "uncertain-create":
+            if request_id == "uncertain-create" and not plan:
                 await call("app.reconcile", request_id=request_id)
                 while (await call("app.status", request_id=request_id))[
                     "state"
@@ -233,6 +250,8 @@ async def recipe_workflow(
             + (
                 "_reviewed_nested_recipe_writes"
                 if nested
+                else "_reviewed_plan_recipe_writes"
+                if plan
                 else "_reviewed_recipe_writes"
             )
         ] = True
@@ -884,6 +903,7 @@ async def sdk_client(
                 await recipe_workflow(call, shared, "sdk", oauth=True, pagination=True)
                 await recipe_workflow(call, shared, "sdk", writing=True)
                 await recipe_workflow(call, shared, "sdk", writing=True, nested=True)
+                await recipe_workflow(call, shared, "sdk", writing=True, plan=True)
 
 
 def raw_workflow(request, notify, foreign_session, origin, shared):
@@ -1157,6 +1177,9 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         asyncio.run(recipe_workflow(workspace_call, shared, "raw", writing=True))
         asyncio.run(
             recipe_workflow(workspace_call, shared, "raw", writing=True, nested=True)
+        )
+        asyncio.run(
+            recipe_workflow(workspace_call, shared, "raw", writing=True, plan=True)
         )
     return True
 
@@ -1477,6 +1500,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         paginated_source,
                         write_recipe(),
                         parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
+                        parse_recipe(json.dumps(RECIPE_PLAN_EXAMPLE).encode()),
                     )
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
@@ -1493,22 +1517,46 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                             json.dumps(RECIPE_NESTED_EXAMPLE).encode()
                         ).sha256
                     )
-                    assert nested or context["source_sha256"] == write_recipe().sha256
-                    assert context["url"] in (
-                        "https://api.fixture.example/notes",
-                        "https://api.fixture.example/messages",
+                    plan = (
+                        context["source_sha256"]
+                        == parse_recipe(json.dumps(RECIPE_PLAN_EXAMPLE).encode()).sha256
                     )
+                    assert (
+                        nested
+                        or plan
+                        or context["source_sha256"] == write_recipe().sha256
+                    )
+                    assert (
+                        context["url"]
+                        in (
+                            "https://api.fixture.example/notes",
+                            "https://api.fixture.example/messages",
+                        )
+                        or plan
+                        and context["url"].startswith(
+                            "https://api.fixture.example/notes/created-"
+                        )
+                        and context["url"].endswith("/comments")
+                    )
+                    nested = nested or plan and context["step"] == 1
                     assert (
                         payload["data"]["operation_id"]
                         if nested
                         else payload["operation_id"]
                     ) == context["operation_id"]
                     assert (
-                        payload["data"]["body"]["text"] if nested else payload["body"]
+                        payload["data"]["body"]["text"]
+                        if nested
+                        else payload["comment"]
+                        if plan
+                        else payload["body"]
                     ) == dialog.review.after_text
                     if context["effect"] == "send":
                         assert payload["to"] == "recipient@example.test"
-                    if dialog.review.request_id == "uncertain-create":
+                    if (
+                        dialog.review.request_id == "uncertain-create"
+                        or context.get("plan_request_id") == "uncertain-create"
+                    ):
                         write_http.fail_once = True
                     dialog.grab().save(
                         f"/tmp/steed-recipe-write-{transport}-preview.png"
@@ -1555,6 +1603,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     paginated_source,
                     write_recipe(),
                     parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
+                    parse_recipe(json.dumps(RECIPE_PLAN_EXAMPLE).encode()),
                 ):
                     if selected.provider not in manager.providers or manager.busy:
                         continue
@@ -1577,7 +1626,11 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                                 [t.name for t in selected.tools],
                             )
                     elif not shared.get(selected.provider + "_access_enabled"):
-                        manager.set_access(accounts[0].account_id, "read", True)
+                        if any(
+                            t.effect == "read" or t.reconciliation
+                            for t in selected.tools
+                        ):
+                            manager.set_access(accounts[0].account_id, "read", True)
                         shared[selected.provider + "_access_enabled"] = True
             session_id = shared.get("session_id")
             watcher = case.service._watchers.get(session_id)
@@ -1657,11 +1710,14 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             assert shared["raw_reviewed_recipe_writes"]
             assert shared["sdk_reviewed_nested_recipe_writes"]
             assert shared["raw_reviewed_nested_recipe_writes"]
+            assert shared["sdk_reviewed_plan_recipe_writes"]
+            assert shared["raw_reviewed_plan_recipe_writes"]
             assert shared["recipe_payload_review_popup"]
-            assert len(write_http.payloads) == 10
-            assert len(write_http.operations) == 10
+            assert len(write_http.payloads) == 16
+            assert len(write_http.operations) == 16
             assert sum("to" in payload for payload in write_http.payloads) == 2
-            assert sum("data" in payload for payload in write_http.payloads) == 4
+            assert sum("data" in payload for payload in write_http.payloads) == 8
+            assert sum("comment" in payload for payload in write_http.payloads) == 2
         case.wait_for(
             lambda: any(path == "/mcp-user-post" for path, _, _ in case.posted)
         )

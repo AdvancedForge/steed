@@ -68,6 +68,7 @@ class RecipeWrites:
                 "operation_id": operation,
                 "operation_header": tool.idempotency_header or None,
                 "payload_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+                **dict(tool.plan_context),
             },
             ensure_ascii=False,
             indent=2,

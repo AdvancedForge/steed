@@ -309,7 +309,9 @@ establishes those results. Password improvements remain deferred at the user's r
   transforms and revision-guarded edits needed for broader Google-level capability.
   Recommended direction: declarative plans first, preserving one reviewed payload
   per mutation, exact step authority and no continuation after uncertain completion.
-  Request-plan implementation is next; no generated code runs in the browser.
+  The first sequential POST subset is implemented; read steps, transforms,
+  revision guards and per-step reconciliation remain ahead. No generated code
+  runs in the browser.
   See the [concrete design comparison](DOCUMENTATION.md#complex-provider-workflow-decision).
   Google registration remains deferred independently.
 
@@ -321,7 +323,7 @@ establishes those results. Password improvements remain deferred at the user's r
   passed in 14.370 seconds after popup/fixture refinements. Stdio MCP completed
   nested creates and lost-reply reconciliation from both independent clients;
   authenticated HTTP completed the same checks. Source/payload previews were
-  inspected. Ordered result-dependent execution is next; provider-specific headers,
+  inspected. Ordered result-dependent POST execution follows below; provider-specific headers,
   sign-in and API semantics still require separate acceptance.
 
 - **Parallel connector handoff — published implementation scope:**
@@ -341,6 +343,25 @@ establishes those results. Password improvements remain deferred at the user's r
   symlink and special-file entries are skipped. Six focused regressions passed;
   the synthetic picker was visually inspected. Starter service data remains the
   other contributor's isolated work; compatibility proofs are not shipped defaults.
+
+- **Sequential request plans implemented:** recipe v4 adds 2–5 ordered POST steps,
+  prior selected-string bindings and one bounded result-derived path segment.
+  Each mutation has a journaled child receipt, independent operation ID, durable
+  payload hash and default-Deny Step N/M review. Failure, denial, revocation,
+  cancellation, timeout or uncertainty stops later writes; partial completion is
+  retained and restart never resumes. Schema 15 owns links on the Qt thread;
+  future child slots are reserved within receipt quotas. Clearing parent results
+  clears children and stops pending work. Read steps, transforms, headers, revision
+  edits and per-step reconciliation are not in this first subset. Both SDK/raw
+  clients completed success and uncertain-stop sequences over stdio/authenticated
+  HTTP alongside document workers. All 791 final regressions passed in 284.704
+  seconds; 88 final recipe checks passed in 19.453 seconds. Legacy migrations
+  preserve earlier receipts and events while adding schema 15. Four starter
+  compatibility checks, standalone startup/render/shutdown, Ruff/format,
+  whitespace, 52 local link targets and six recipe examples passed; source/step
+  previews were visually inspected.
+  Logs: `/tmp/steed-plans-{final-full,final-recipes,mcp-stdio,mcp-http,startup}.log`.
+  See the [implemented format](DOCUMENTATION.md#sequential-connector-request-plans).
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage

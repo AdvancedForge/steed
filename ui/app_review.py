@@ -68,6 +68,11 @@ class AppReviewDialog(QDialog):
             summary.setText(
                 summary.text()
                 + f"\n{details['method']} {details['url']}\nAccount: {details['account']}"
+                + (
+                    f"\nPlan step {details['step']}/{details['steps']}: {details['step_name']}\nApprove only this step. Later steps need separate reviews; stopping does not undo completed steps."
+                    if "plan_request_id" in details
+                    else ""
+                )
             )
         for title, content in contents:
             editor = QPlainTextEdit(content)

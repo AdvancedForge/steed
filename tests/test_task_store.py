@@ -160,7 +160,7 @@ class TaskStoreTests(unittest.TestCase):
         self.assertEqual(self.store.grants(), [])
         with sqlite3.connect(self.path) as connection:
             self.assertEqual(
-                connection.execute("PRAGMA user_version").fetchone()[0], 14
+                connection.execute("PRAGMA user_version").fetchone()[0], 15
             )
 
     def test_partially_added_worker_columns_can_finish_migration(self):

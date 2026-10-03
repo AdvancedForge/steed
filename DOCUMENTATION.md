@@ -1627,25 +1627,82 @@ clients have completed reviewed creates/sends and timeout/reconciliation through
 stdio and authenticated HTTP, alongside reads and real sandboxed document workers.
 No real accounts or desktop secrets were used.
 
+### Sequential connector request plans
+
+**Implemented: recipe version 4 sequential POST plans.** Version 1–3 recipes remain
+compatible. A v4 POST tool uses the v3 nested request format for its first step;
+optional `plan` contains 1–4 following POST step objects, giving 2–5 total steps.
+Each following step has `name`, `description`, `method`, `path`, `request`,
+`response` and optionally `idempotency_header`. It inherits the parent's declared
+effect and destination. Reads, mixed effects, arbitrary code, loops, branches,
+reconciliation and revision edits are outside this first subset.
+
+The [sequential note example](examples/connector_recipes/notes-plan.json) creates a
+note, then appends a comment using the first response's selected ID. Bind previous
+selected fields with `{"$bind": "step.create_note.id"}`. Step and referenced field
+names must be lowercase identifiers; forward/unknown references are rejected.
+Outputs bound into JSON must be strings of at most 4096 UTF-8 bytes without NUL.
+At most one full path segment can bind either `{destination}` or an earlier field
+such as `{step.create_note.id}`; that field must pass the existing resource-ID
+validator, never supply a URL, query, slash or traversal. Normal nested payload
+limits and draft-content/recipient requirements apply to **every** mutation.
+
+Calling the existing `app.call_tool` creates a parent receipt and a journaled child
+receipt for each step. Each child has its own operation ID, payload hash and
+default-Deny popup showing the actual URL/account/draft plus **Step N/M**. Previous
+results are frozen into its payload before review. Approval is only for that child;
+the next step requires another materialized preview. Source/account/live grants,
+owned artifact and durable review hash are checked again before dispatch. Sequencing
+and SQLite stay on the Qt owner thread; workers receive only the selected step.
+
+Poll the parent with `app.status`. Its `reference` identifies the current child
+while active; its JSON `text.steps` lists child request/operation IDs, states and
+payload hashes. A completed child can be inspected through `app.status` under the
+same exact task grant. Successful plans report `succeeded`; if later work is denied
+or cannot run after a successful mutation, the parent reports `failed` with its
+successful/failed child history. An uncertain child makes the parent `uncertain`.
+Completed effects are not rolled back. No later step runs after uncertainty,
+denial, cancellation, revocation, timeout or failed preparation, and repeated parent
+request IDs return their existing receipt instead of starting again.
+
+Task storage schema 15 retains parent/child links without storing request bodies in
+the event journal. Restart interrupts active plans, scrubs pending previews and
+preserves partial/uncertain receipts without resuming. Plan children reserve slots
+within the existing 50-receipt task limit. Clearing a parent's results also clears
+its child results and stops pending work; clearing a child stops its active plan.
+Confirm uncertain effects manually; this first plan format has no automatic
+retry or reconciliation.
+Native sign-in and real-provider semantics remain separate acceptance checks.
+
+Plan milestone acceptance: **791 final regressions passed in 284.704 seconds**;
+88 final recipe checks passed in 19.453 seconds. Both independent SDK/raw clients
+completed reviewed create→append sequences and uncertain-first-step stops over
+stdio and authenticated HTTP MCP alongside real PDF/XLSX/PNG sandbox workers.
+Four unchanged starter compatibility checks passed. Legacy migration, receipt
+reservation, hostile/unknown bindings, payload hash changes, timeout/late reply,
+revocation, result clearing and restart/partial-completion paths are covered.
+Standalone startup/render/shutdown, Ruff/format, whitespace, 52 local link targets
+and all six recipe examples passed. Source and Step N/M previews were visually
+inspected. Logs:
+`/tmp/steed-plans-{final-full,final-recipes,mcp-stdio,mcp-http,startup}.log`.
+No live provider accounts or native desktop acceptance were tested.
+
 ### Complex provider workflow decision
 
 The next architectural boundary is how agent-designed connectors handle provider
 logic beyond a single reviewed JSON request. Steed's Google implementation uses
 provider-specific destination checks, multipart creation, revision-aware edits
 and marker-based reconciliation. Other workflows may need dependent mutations. Today's recipes
-have one POST and selected response fields; version 3 now represents nested request
-objects, but not result-dependent follow-up requests, partial multi-step completion or
-revision-guarded edits.
+version 4 represents nested payloads and bounded result-dependent POST sequences
+with partial completion receipts. Read steps, provider-specific transformations,
+revision-guarded edits and read-only per-step reconciliation remain future work.
 
-A proposed next design keeps source declarative: bounded nested templates and
-ordered request steps, compiled by trusted Steed code. A parent receipt would own
-one durable receipt per step; each mutation's fully materialized payload would need
-review, and no later write would run after uncertain completion. Read-only probes
-would reconcile exact step IDs. Credentials stay in the broker, and generated
-workers could prepare drafts but cannot execute arbitrary connector code there.
-Nested templates are implemented; ordered execution and durable per-step storage
-are the next milestone. Read probes, provider transforms and revision guards remain
-separate follow-ups.
+The chosen design keeps source declarative: trusted Steed code compiles templates
+and ordered steps. A parent owns a durable child receipt for each mutation and
+each fully materialized payload needs review. Later writes stop after uncertain
+completion. Credentials stay in the broker; generated workers can prepare drafts
+but cannot execute arbitrary connector code there. Future read-only probes should
+reconcile exact step IDs without automatically continuing a stopped plan.
 
 The alternative is a broker-backed sandboxed adapter package: generated code computes
 provider logic in the local worker, while typed broker calls own credentials,
