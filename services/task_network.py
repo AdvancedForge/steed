@@ -35,9 +35,10 @@ window.__steedTaskNetwork = null;
 
 
 class TaskNetwork(QObject):
-    def __init__(self, page, parent=None):
+    def __init__(self, page, parent=None, *, live=False):
         super().__init__(parent)
         self.page = page
+        self.live = live
         self.ready = Future()
         self.closed = False
         self.attempts = 0
@@ -63,13 +64,17 @@ class TaskNetwork(QObject):
             self._fail()
             return
         self.started = True
-        self.frontend.runJavaScript(PREPARE_SCRIPT)
+        script = PREPARE_SCRIPT
+        if self.live:
+            script = script.replace("{bypass: true}", "{bypass: false}")
+        self.frontend.runJavaScript(script)
 
     def _fail(self):
         self.healthy = False
         self.input.cancel("native_input_unavailable")
-        self.page.network_ready = False
-        self.page.triggerAction(QWebEnginePage.WebAction.Stop)
+        if not self.live and not sip.isdeleted(self.page):
+            self.page.network_ready = False
+            self.page.triggerAction(QWebEnginePage.WebAction.Stop)
         self.timer.stop()
         if not self.ready.done():
             self.ready.set_exception(
@@ -100,6 +105,7 @@ class TaskNetwork(QObject):
     def close(self):
         self.closed = True
         self._fail()
-        self.page.setDevToolsPage(None)
+        if not sip.isdeleted(self.page):
+            self.page.setDevToolsPage(None)
         sip.delete(self.frontend)
         sip.delete(self.frontend_profile)

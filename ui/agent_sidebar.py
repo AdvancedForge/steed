@@ -92,6 +92,9 @@ class AgentSidebar(QDockWidget):
         self.clear.clicked.connect(self.clear_messages)
         buttons.addWidget(self.clear)
         layout.addLayout(buttons)
+        self.delegate = QPushButton("Delegate current tab…")
+        self.delegate.clicked.connect(self.delegate_tabs)
+        layout.addWidget(self.delegate)
         tools = QHBoxLayout()
         self.agent_requests = QPushButton("Agent requests")
         self.agent_requests.clicked.connect(self.show_requests)
@@ -251,6 +254,7 @@ class AgentSidebar(QDockWidget):
     def _unavailable(self):
         for button in (
             self.send,
+            self.delegate,
             self.cancel,
             self.clear,
             self.new_chat,
@@ -357,12 +361,37 @@ class AgentSidebar(QDockWidget):
                 if self._private
                 else "Select a task. Enable Local Agent Access in File to connect an agent."
             )
+        self.delegate.setEnabled(active and hasattr(self.parent(), "delegate_tabs"))
         self.send.setEnabled(active)
         self.composer.setEnabled(active)
         self.cancel.setEnabled(usable and task.status in ACTIVE_STATUSES)
         self.clear.setEnabled(usable)
         for button in self.details:
             button.setEnabled(usable)
+
+    def delegate_tabs(self):
+        from PyQt6.QtWidgets import QInputDialog
+
+        if not self.delegate.isEnabled():
+            return
+        choice, accepted = QInputDialog.getItem(
+            self,
+            "Share live tabs with this agent",
+            "Tabs to delegate:",
+            ["Current tab", "All open tabs on this profile (up to 10)"],
+            0,
+            False,
+        )
+        if not accepted:
+            return
+        try:
+            self.parent().delegate_tabs(
+                self._task_id, whole_profile=choice != "Current tab"
+            )
+        except (ValueError, RuntimeError, sqlite3.Error, OSError) as error:
+            self.error.setText(str(error))
+        else:
+            self.error.clear()
 
     def send_message(self):
         if not self.send.isEnabled():

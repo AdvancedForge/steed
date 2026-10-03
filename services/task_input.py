@@ -94,7 +94,10 @@ class TaskInput(QObject):
             raise ValueError("Unsupported native input batch")
         return self._run(
             INPUT_SCRIPT,
-            {"keys": [KEYS[name] for name in names], "viewport": viewport},
+            {
+                "keys": [KEYS[name] for name in names],
+                "viewport": viewport and not self.network.live,
+            },
             validate,
         )
 

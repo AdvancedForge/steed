@@ -206,6 +206,7 @@ class PageInspector(QObject):
                 "snapshot_id": snapshot_id,
                 "origins": grant.scope.origins,
                 "upload_available": "upload" in grant.scope.actions,
+                "live": metadata.mode == "live",
             },
             validate,
             consume,

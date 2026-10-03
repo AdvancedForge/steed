@@ -15,10 +15,13 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QDialog,
+    QHBoxLayout,
     QInputDialog,
+    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
+    QPushButton,
     QSizePolicy,
     QStatusBar,
     QVBoxLayout,
@@ -408,6 +411,18 @@ class BrowserWindow(QMainWindow):
         self.find_bar = FindBar(self.navigation)
         self.find_bar.closed.connect(self._focus_page)
         layout.addWidget(self.find_bar)
+        self.live_bar = QWidget()
+        live_layout = QHBoxLayout(self.live_bar)
+        self.live_label = QLabel()
+        self.live_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.live_label.setWordWrap(True)
+        live_layout.addWidget(self.live_label, 1)
+        self.take_back_button = QPushButton("Take Back")
+        self.take_back_button.clicked.connect(self._take_back_current_tab)
+        live_layout.addWidget(self.take_back_button)
+        self.live_bar.hide()
+        layout.addWidget(self.live_bar)
+        self._live_tasks = None
         # Tab container
         self.tab_container = QWidget()
         self.tab_container.setSizePolicy(
@@ -765,6 +780,53 @@ class BrowserWindow(QMainWindow):
         self.address_bar.set_forward_enabled(cur.history().canGoForward())
         self._update_window_title(cur.url())
         self.status_bar.showMessage(f"Tab {index + 1} of {len(self.tabs)}")
+        self._refresh_live_control()
+
+    def _bind_live_tasks(self, service):
+        if self._live_tasks is service:
+            return
+        self._live_tasks = service
+        service.changed.connect(self._refresh_live_control)
+        self._refresh_live_control()
+
+    def _refresh_live_control(self):
+        tab = self.tabs[self.current_tab_index] if self.tabs else None
+        service = self._live_tasks
+        session_id = (
+            service.backend.live_session(tab)
+            if service is not None and tab is not None
+            else None
+        )
+        self.live_bar.setVisible(session_id is not None and not self._closing)
+        if session_id is not None:
+            snapshot = service.backend.inspect(session_id)
+            self.live_label.setText(
+                f"Agent task {snapshot.task_id[:8]} controls this tab · Normal website activity continues"
+            )
+
+    def _take_back_tab(self, tab):
+        if self._live_tasks is not None:
+            self._live_tasks.live_tabs.release_id(tab.tab_id)
+
+    def _take_back_current_tab(self):
+        if self.tabs:
+            tab = self.tabs[self.current_tab_index]
+            self._take_back_tab(tab)
+            tab.setFocus()
+
+    def delegate_tabs(self, task_id, *, whole_profile=False):
+        service = self.profile_manager.registry.tasks
+        if whole_profile:
+            name = self.profile_manager.current_profile_name
+            tabs = [
+                tab
+                for owner in service.profiles.owners
+                if owner.current_profile_name == name
+                for tab in getattr(owner.parent(), "tabs", ())
+            ]
+        else:
+            tabs = [self.tabs[self.current_tab_index]] if self.tabs else []
+        return service.live_tabs.request(task_id, tabs)
 
     def _navigate_to_url(self, url_text: str):
         if not self.tabs:
@@ -772,6 +834,7 @@ class BrowserWindow(QMainWindow):
         self._navigate_tab_to_url(self.tabs[self.current_tab_index], url_text)
 
     def _navigate_tab_to_url(self, tab: BrowserTab, url_text: str):
+        self._take_back_tab(tab)
         self.navigation.navigate(tab, self._text_to_qurl(url_text))
 
     def _text_to_qurl(self, url_text: str) -> QUrl:
@@ -780,14 +843,17 @@ class BrowserWindow(QMainWindow):
 
     def _go_back(self):
         if self.tabs:
+            self._take_back_current_tab()
             self.navigation.action(self.tabs[self.current_tab_index], "back")
 
     def _go_forward(self):
         if self.tabs:
+            self._take_back_current_tab()
             self.navigation.action(self.tabs[self.current_tab_index], "forward")
 
     def _reload(self):
         if self.tabs:
+            self._take_back_current_tab()
             self.navigation.action(self.tabs[self.current_tab_index], "reload")
 
     def _open_find(self):
@@ -1224,6 +1290,7 @@ class BrowserWindow(QMainWindow):
     @staticmethod
     def _dispose_tab(tab: BrowserTab) -> None:
         """Stop a tab and detach its callbacks before scheduling deletion."""
+        tab.browser_window._take_back_tab(tab)
         for signal in (
             tab.urlChanged,
             tab.titleChanged,

@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 from ui.task_recovery import TaskRecoveryDialog
 
 ACTION_LABELS = {
+    "live": "Control tabs you explicitly share, with normal JavaScript and background network activity (website handlers can change account data). Take Back ends access to a tab immediately.",
     "navigate": "Open links on these sites",
     "inspect": "See page addresses and titles",
     "read": "Read page text and control labels",
@@ -101,6 +102,28 @@ class TaskApprovalDialog(QDialog):
         summary.setWordWrap(True)
         summary.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout.addWidget(summary)
+        if "live" in scope["actions"]:
+            titles = []
+            for owner, grant_id, reference in service.live_tabs.offers.values():
+                view = reference()
+                if (
+                    owner == task.task_id
+                    and grant_id == grant.grant_id
+                    and view is not None
+                    and not sip.isdeleted(view)
+                ):
+                    titles.append(view.title()[:256] or "Untitled tab")
+            selected = WrappedLabel(
+                "Shared tabs: "
+                + (
+                    ", ".join(titles)
+                    if titles
+                    else "None yet. Share tabs through the agent sidebar; this approval alone does not expose ordinary tabs."
+                )
+            )
+            selected.setTextFormat(Qt.TextFormat.PlainText)
+            selected.setWordWrap(True)
+            layout.addWidget(selected)
         if service.store.recovery(task.task_id)["status"] == "approved":
             recovery_notice = WrappedLabel(
                 "Follow-up task: these are fresh permissions. Previously shared drafts/evidence do not restore old access or authorize replaying completed or uncertain writes."
@@ -174,7 +197,11 @@ class TaskApprovalDialog(QDialog):
                 if scope["allow_private_network"]
                 else ""
             )
-            + "Task scripts are unavailable. "
+            + (
+                "Live tabs keep normal scripts and background requests. "
+                if "live" in scope["actions"]
+                else "Task scripts are unavailable. "
+            )
             + (
                 "Forms send their current fields, including hidden site tokens. "
                 + (
@@ -192,10 +219,13 @@ class TaskApprovalDialog(QDialog):
         layout.addWidget(notice)
         more = QPushButton("Show limits")
         self.limits = WrappedLabel(
-            f"Up to {scope['max_operations']} operations, {scope['max_requests']} "
-            f"network requests and {scope['max_sessions']} sessions.\n"
-            "GET/HEAD requests can have website effects. DNS routes are not pinned.\n"
-            "Form values and editable text are omitted from page reads."
+            f"Up to {scope['max_operations']} operations and {scope['max_sessions']} sessions.\n"
+            + (
+                "Live website background requests are not filtered or counted.\n"
+                if "live" in scope["actions"]
+                else f"Up to {scope['max_requests']} network requests. GET/HEAD can have website effects. DNS routes are not pinned.\n"
+            )
+            + "Form values and editable text are omitted from page reads."
             + (
                 "\nApp tool identifiers:\n"
                 + "\n".join(

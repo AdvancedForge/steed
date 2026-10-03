@@ -10,6 +10,8 @@ CLIENT_COMMANDS = frozenset(
         "task.status",
         "task.capabilities",
         "browser.context",
+        "browser.tabs",
+        "session.adopt",
         "task.events",
         "conversation.read",
         "conversation.reply",

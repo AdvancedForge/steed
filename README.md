@@ -13,7 +13,7 @@ browsing profiles and direct KeePassXC password management.
 - Cookie controls, a global-cookie baseline, downloads, and ad blocking.
 - In-browser KeePassXC login selection, filling, and explicit saving.
 - A desktop launcher, dark mode, and familiar navigation shortcuts.
-- A toggleable agent sidebar with Codex chats and task controls.
+- A toggleable agent sidebar with Codex chats, live-tab delegation and Take Back.
 
 ## Quick start
 
@@ -44,7 +44,8 @@ file transfers and retained drafts/receipts. Agent-built Python packages can gen
 attachments and compose approved app tools in an isolated local worker after
 exact-package/environment approval. An optional document bundle adds PDF, XLSX and
 image generation. Users share selected input files and export results from
-Task Permissions. Active website scripts and generic extensions remain planned.
+Task Permissions. Explicitly delegated live tabs keep normal website scripts and
+page state; restricted task pages remain available. Generic extensions remain planned.
 Use **File → Agent Connection Setup** for copyable client settings.
 Open **View → Agent Sidebar** (`Ctrl+Shift+A`) to message a connected task;
 choose **New Codex Chat** for automatic message delivery after signing into
