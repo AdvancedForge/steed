@@ -3,15 +3,18 @@
 import sqlite3
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtGui import QColor, QKeySequence, QShortcut, QTextCursor, QTextFormat
 from PyQt6.QtWidgets import (
     QComboBox,
     QDockWidget,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QScrollArea,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -45,8 +48,11 @@ class AgentSidebar(QDockWidget):
         self._private = False
         self._choices = []
         body = QWidget()
+        body.setObjectName("agentBody")
+        self._style_mode = None
         layout = QVBoxLayout(body)
         self.welcome = QLabel()
+        self.welcome.setObjectName("agentWelcome")
         self.welcome.setWordWrap(True)
         self.welcome.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.welcome)
@@ -54,6 +60,7 @@ class AgentSidebar(QDockWidget):
         start_buttons = QHBoxLayout(self.start_controls)
         start_buttons.setContentsMargins(0, 0, 0, 0)
         self.new_chat = QPushButton("New Codex chat")
+        self.new_chat.setObjectName("agentPrimary")
         self.new_chat.clicked.connect(self.start_chat)
         self.new_chat.setVisible(providers is not None)
         start_buttons.addWidget(self.new_chat)
@@ -71,34 +78,63 @@ class AgentSidebar(QDockWidget):
         self.tasks.setAccessibleName("External agent task")
         self.tasks.currentIndexChanged.connect(self._select)
         layout.addWidget(self.tasks)
+        self.activity_card = QFrame()
+        self.activity_card.setObjectName("agentActivityCard")
+        activity_layout = QVBoxLayout(self.activity_card)
+        activity_layout.setContentsMargins(12, 10, 12, 10)
+        self.activity_title = QLabel()
+        self.activity_title.setObjectName("agentActivityTitle")
+        self.activity_title.setWordWrap(True)
+        self.activity_hint = QLabel()
+        self.activity_hint.setWordWrap(True)
+        self.activity_hint.setTextFormat(Qt.TextFormat.PlainText)
+        self.busy = QProgressBar()
+        self.busy.setRange(0, 0)
+        self.busy.setTextVisible(False)
+        self.busy.setFixedHeight(4)
+        activity_layout.addWidget(self.activity_title)
+        activity_layout.addWidget(self.activity_hint)
+        activity_layout.addWidget(self.busy)
+        layout.addWidget(self.activity_card)
         self.status = QLabel()
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self.status)
         self.error = QLabel()
+        self.error.setObjectName("agentError")
         self.error.setWordWrap(True)
         self.error.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.error)
         self.pending = QPushButton()
+        self.pending.setObjectName("agentAttention")
         self.pending.clicked.connect(lambda: self.open_details("Permissions"))
         layout.addWidget(self.pending)
         self.agent_requests = QPushButton("Answer agent")
+        self.agent_requests.setObjectName("agentAttention")
         self.agent_requests.clicked.connect(self.show_requests)
         layout.addWidget(self.agent_requests)
         self._request_dialogs = {}
         self.conversation = QWidget()
         chat_layout = QVBoxLayout(self.conversation)
         chat_layout.setContentsMargins(0, 0, 0, 0)
+        conversation_title = QLabel("Conversation")
+        conversation_title.setObjectName("agentSectionTitle")
+        chat_layout.addWidget(conversation_title)
         self.transcript = QPlainTextEdit()
+        self.transcript.setObjectName("agentTranscript")
         self.transcript.setReadOnly(True)
         self.transcript.setAccessibleName("Agent conversation")
         chat_layout.addWidget(self.transcript, 1)
+        message_title = QLabel("Your message")
+        message_title.setObjectName("agentSectionTitle")
+        chat_layout.addWidget(message_title)
         self.composer = QPlainTextEdit()
+        self.composer.setObjectName("agentComposer")
         self.composer.setPlaceholderText("Write a message… (Ctrl+Enter to send)")
         self.composer.setMaximumHeight(100)
         self.composer.setAccessibleName("Message to selected agent")
         chat_layout.addWidget(self.composer)
         self.send = QPushButton("Send")
+        self.send.setObjectName("agentPrimary")
         self.send.clicked.connect(self.send_message)
         send_controls = QHBoxLayout()
         send_controls.addWidget(self.send)
@@ -111,12 +147,15 @@ class AgentSidebar(QDockWidget):
         chat_layout.addWidget(self.delegate)
         layout.addWidget(self.conversation, 1)
         self.more = QPushButton("More options ▸")
+        self.more.setObjectName("agentMore")
         self.more.setCheckable(True)
         self.more.toggled.connect(self._show_options)
         layout.addWidget(self.more)
         self.tools_panel = QWidget()
         tools_layout = QVBoxLayout(self.tools_panel)
-        tools_layout.setContentsMargins(0, 0, 0, 0)
+        self.tools_panel.setObjectName("agentTools")
+        tools_layout.setContentsMargins(10, 10, 10, 10)
+        tools_layout.addWidget(self.status)
         self.model = QComboBox()
         self.model.setAccessibleName("Codex model")
         self.model.addItem("Codex default", None)
@@ -188,6 +227,133 @@ class AgentSidebar(QDockWidget):
             self.providers.requested.connect(self._request_added)
         self.refresh()
 
+    def _apply_style(self):
+        config = getattr(self.browser_window, "config", None)
+        dark = bool(getattr(config, "dark_mode", False))
+        if dark == self._style_mode:
+            return
+        self._style_mode = dark
+        bg, panel, ink, border, soft, blue = (
+            ("#202630", "#293341", "#ecf1f7", "#48576c", "#233f62", "#9dc8ff")
+            if dark
+            else ("#f3f6fb", "#ffffff", "#24344a", "#c7d2e2", "#e9f2ff", "#245ba7")
+        )
+        self.setStyleSheet(f"""
+            QWidget#agentBody {{ background: {bg}; color: {ink}; }}
+            QLabel {{ color: {ink}; background: transparent; border: none; }}
+            QLabel#agentWelcome, QFrame#agentActivityCard, QWidget#agentTools {{
+                background: {panel}; border: 1px solid {border}; border-radius: 8px;
+            }}
+            QLabel#agentWelcome {{ padding: 12px; }}
+            QLabel#agentSectionTitle {{ font-weight: 600; padding-top: 3px; }}
+            QLabel#agentActivityTitle {{ font-weight: 600; font-size: 14px; color: {blue}; }}
+            QPlainTextEdit, QComboBox {{ background: {panel}; color: {ink};
+                border: 1px solid {border}; border-radius: 6px; padding: 6px; }}
+            QPlainTextEdit#agentComposer:focus {{ border: 2px solid {blue}; }}
+            QPushButton {{ padding: 6px; border: 1px solid {border};
+                border-radius: 5px; background: {panel}; color: {ink}; }}
+            QPushButton:hover {{ background: {soft}; }}
+            QPushButton#agentPrimary {{ background: #315fc4; color: white;
+                border-color: #315fc4; font-weight: 600; }}
+            QPushButton:disabled, QPushButton#agentPrimary:disabled {{ color: {border}; background: {bg}; border-color: {border}; }}
+            QPushButton#agentAttention {{ border: 2px solid #b87916; }}
+            QPushButton#agentMore {{ text-align: left; background: {bg}; }}
+            QLabel#agentError {{ border: 1px solid #bd655f; padding: 8px; }}
+            QProgressBar {{ border: none; background: {soft}; }}
+            QProgressBar::chunk {{ background: #4878d9; }}
+        """)
+        self._highlight_speakers()
+
+    def _highlight_speakers(self):
+        selections, line = [], 0
+        for message in sorted(
+            self._messages.values(), key=lambda m: m["created_sequence"]
+        ):
+            if message["state"] == "cleared":
+                continue
+            mark = QTextEdit.ExtraSelection()
+            mark.cursor = QTextCursor(
+                self.transcript.document().findBlockByNumber(line)
+            )
+            mark.format.setFontWeight(600)
+            mark.format.setBackground(
+                QColor(
+                    ("#233f62" if message["role"] == "user" else "#29443a")
+                    if self._style_mode
+                    else "#e9f2ff"
+                    if message["role"] == "user"
+                    else "#edf3ed"
+                )
+            )
+            mark.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+            selections.append(mark)
+            line += message["text"].count("\n") + 3
+        self.transcript.setExtraSelections(selections)
+
+    def _update_activity(self, usable, active):
+        if not usable:
+            self.busy.hide()
+            return
+        report = (
+            self.providers.activity(self._task_id)
+            if self.providers is not None and hasattr(self.providers, "activity")
+            else None
+        )
+        state = report["state"] if report else "external" if active else "history"
+        title, hint = {
+            "connecting": (
+                "Connecting to Codex…",
+                "Starting the agent and its Steed connection.",
+            ),
+            "sending": ("Sending…", "Waiting for Codex to accept your message."),
+            "thinking": (
+                "Codex is thinking…",
+                "Your message was accepted; the agent is preparing its next step.",
+            ),
+            "working": (
+                "Codex is working…",
+                "The agent is using tools. You can browse or queue a follow-up.",
+            ),
+            "replying": (
+                "Codex is replying…",
+                "The reply is arriving below. Work continues until the agent finishes.",
+            ),
+            "waiting": (
+                "Codex needs your input",
+                "Use Answer agent above to answer a question or review a request.",
+            ),
+            "ready": (
+                "Codex is ready",
+                "Send a message to continue this conversation.",
+            ),
+            "external": (
+                "External agent connected",
+                "Messages are delivered through Steed. This client's working state is not available.",
+            ),
+            "history": (
+                "Conversation ended",
+                "Saved messages are available below. Start a new chat to continue.",
+            ),
+        }.get(
+            state,
+            ("Agent status unavailable", "Open More options for connection details."),
+        )
+        if report and report["queued"]:
+            hint += f" {report['queued']} follow-up message(s) queued."
+        if (
+            not report
+            and self.providers
+            and self.providers.status(self._task_id)
+            and not active
+        ):
+            title = "Codex chat stopped"
+            hint = self.providers.status(self._task_id)
+        self.activity_title.setText(title)
+        self.activity_hint.setText(hint)
+        self.busy.setVisible(
+            state in ("connecting", "sending", "thinking", "working", "replying")
+        )
+
     def _show_options(self, expanded):
         self.tools_panel.setVisible(expanded and not self._private)
         self.more.setText("More options ▾" if expanded else "More options ▸")
@@ -215,6 +381,7 @@ class AgentSidebar(QDockWidget):
         self._body_layout.setStretch(self._spacer_index, 0 if usable else 1)
         self.tasks.setVisible(available and self.tasks.count() > 1)
         self.status.setVisible(usable)
+        self.activity_card.setVisible(usable)
         self.conversation.setVisible(usable)
         self.cancel.setVisible(usable and self.cancel.isEnabled())
         self.delegate.setVisible(usable and self.delegate.isEnabled())
@@ -345,6 +512,7 @@ class AgentSidebar(QDockWidget):
             if self.tasks.currentData() != self._task_id:
                 self._select()
             self._refresh_conversation()
+            self._apply_style()
         except (sqlite3.Error, OSError, RuntimeError, ValueError):
             self.tasks.blockSignals(False)
             self._unavailable()
@@ -362,6 +530,7 @@ class AgentSidebar(QDockWidget):
             button.setEnabled(False)
         self.composer.setEnabled(False)
         self.transcript.clear()
+        self.transcript.setExtraSelections([])
         self.status.setText("Conversation is unavailable.")
         self.summary.clear()
         self.error.setText(
@@ -377,6 +546,7 @@ class AgentSidebar(QDockWidget):
         self._cursor = 0
         self.composer.setPlainText(self._drafts.get(self._task_id, ""))
         self.transcript.clear()
+        self.transcript.setExtraSelections([])
         self.error.clear()
         try:
             self._refresh_conversation()
@@ -427,6 +597,7 @@ class AgentSidebar(QDockWidget):
                     if m["state"] != "cleared"
                 )
                 self.transcript.setPlainText(text)
+                self._highlight_speakers()
                 scroll.setValue(scroll.maximum() if at_end else position)
             grants = self.service.store.grants(task_id)
             permission = grants[-1] if grants else None
@@ -480,6 +651,7 @@ class AgentSidebar(QDockWidget):
         for button in self.details:
             button.setEnabled(usable)
         self._update_layout(usable, pending=counts["pending"])
+        self._update_activity(usable, active)
 
     def delegate_tabs(self):
         from PyQt6.QtWidgets import QInputDialog

@@ -98,6 +98,32 @@ class AgentSidebarTests(unittest.TestCase):
             sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(second))
             self.assertFalse(sidebar.agent_requests.isVisible())
 
+    def test_light_dark_sections_and_speaker_headers_preserve_plain_text(self):
+        window, sidebar = self.sidebar()
+        task = self.connect_task(sidebar)
+        self.service.send_message(task, "Hello 🌍")
+        self.command(
+            "conversation.reply",
+            task_id=task,
+            message_id="styled",
+            text="<b>Literal reply</b>",
+        )
+        self.assertIn("<b>Literal reply</b>", sidebar.transcript.toPlainText())
+        self.assertEqual(len(sidebar.transcript.extraSelections()), 2)
+        self.assertIn("External agent connected", sidebar.activity_title.text())
+        self.assertTrue(sidebar.busy.isHidden())
+        self.assertFalse(sidebar.tools_panel.isVisible())
+        light = sidebar.styleSheet()
+        window.config.dark_mode = True
+        window.apply_dark_mode()
+        self.assertNotEqual(sidebar.styleSheet(), light)
+        self.assertIn("#202630", sidebar.styleSheet())
+        self.assertEqual(len(sidebar.transcript.extraSelections()), 2)
+        self.assertEqual(self.service.store.grants(task), [])
+        sidebar.set_private(True)
+        self.assertFalse(sidebar.activity_card.isVisible())
+        self.assertEqual(sidebar.transcript.toPlainText(), "")
+
     def test_managed_codex_chat_is_shared_and_access_toggle_stops_it(self):
         first_window, first = self.sidebar()
         second_window, second = self.sidebar()

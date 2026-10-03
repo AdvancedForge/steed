@@ -263,6 +263,11 @@ class CodexProvider(AgentProvider):
             self._event(method, params)
 
     def _event(self, method, params):
+        # App Server can publish child/background thread notifications on this
+        # transport. They must neither become this chat's text nor end its task.
+        thread = params.get("threadId")
+        if isinstance(thread, str) and self.thread_id and thread != self.thread_id:
+            return
         if (
             method == "serverRequest/resolved"
             and params.get("threadId") == self.thread_id
@@ -291,6 +296,25 @@ class CodexProvider(AgentProvider):
                 raise ValueError("Early event limit exceeded")
             self.early_events.append((method, params))
             return
+        if method == "item/started" and self.turn_id:
+            if params.get("turnId") != self.turn_id:
+                raise ValueError("Unexpected activity turn")
+            kind = params.get("item", {}).get("type")
+            if kind == "reasoning":
+                self.activity.emit("thinking")
+            elif kind in (
+                "commandExecution",
+                "fileChange",
+                "mcpToolCall",
+                "dynamicToolCall",
+                "webSearch",
+                "imageGeneration",
+                "collabAgentToolCall",
+                "subAgentActivity",
+                "imageView",
+                "contextCompaction",
+            ):
+                self.activity.emit("working")
         if method == "turn/started":
             if (
                 params.get("threadId") != self.thread_id
@@ -302,6 +326,7 @@ class CodexProvider(AgentProvider):
             if params.get("threadId") != self.thread_id or turn != self.turn_id:
                 raise ValueError("Unexpected provider message")
             if method == "item/agentMessage/delta":
+                self.activity.emit("replying")
                 self.message.emit(params["itemId"], params["delta"], False)
             elif (
                 method == "item/completed"
@@ -323,6 +348,55 @@ class CodexProvider(AgentProvider):
             )
 
     def _host_request(self, value):
+        # The clock request is independent of a model turn, including just after
+        # its reply. The current installed CLI schema specifies whole Unix seconds.
+        if value.get("method") == "currentTime/read":
+            request_id, params = value.get("id"), value.get("params", {})
+            if (
+                type(request_id) not in (str, int)
+                or len(str(request_id)) > 128
+                or not isinstance(params, dict)
+                or not isinstance(params.get("threadId"), str)
+                or not 1 <= len(params["threadId"]) <= 128
+            ):
+                raise ValueError("Unexpected clock request")
+            self._write(
+                {"id": request_id, "result": {"currentTimeAt": int(time.time())}}
+            )
+            return
+        request_id, method, params = (
+            value["id"],
+            value["method"],
+            value.get("params", {}),
+        )
+        supported = {
+            "item/commandExecution/requestApproval",
+            "item/fileChange/requestApproval",
+            "tool/requestUserInput",
+            "item/tool/requestUserInput",
+            "item/permissions/requestApproval",
+        }
+        if method not in supported:
+            if (
+                type(request_id) not in (str, int)
+                or len(str(request_id)) > 128
+                or not isinstance(method, str)
+                or len(method) > 128
+                or not isinstance(params, dict)
+            ):
+                raise ValueError("Invalid unsupported request")
+            # Optional/new host RPCs get a protocol error, never silent approval
+            # or a dead transport. Codex can report/recover the unsupported step.
+            self._write(
+                {
+                    "id": request_id,
+                    "error": {
+                        "code": -32601,
+                        "message": "Steed does not implement this Codex client request.",
+                    },
+                }
+            )
+            return
         if self.sending:
             params = value.get("params", {})
             self.early_bytes += len(json.dumps(value).encode())
@@ -336,20 +410,8 @@ class CodexProvider(AgentProvider):
                 raise ValueError("Early request limit exceeded")
             self.early_events.append(("__host_request", value))
             return
-        request_id, method, params = (
-            value["id"],
-            value["method"],
-            value.get("params", {}),
-        )
-        supported = {
-            "item/commandExecution/requestApproval",
-            "item/fileChange/requestApproval",
-            "tool/requestUserInput",
-            "item/permissions/requestApproval",
-        }
         if (
-            method not in supported
-            or type(request_id) not in (str, int)
+            type(request_id) not in (str, int)
             or len(str(request_id)) > 128
             or request_id in self.requests
             or len(self.requests) >= 8
@@ -377,6 +439,7 @@ class CodexProvider(AgentProvider):
 
     def _read(self):
         self.buffer.extend(bytes(self.process.read(LINE_LIMIT + 1)))
+        context = "notification"
         try:
             while b"\n" in self.buffer and not self.stopped:
                 raw, _, rest = self.buffer.partition(b"\n")
@@ -389,6 +452,19 @@ class CodexProvider(AgentProvider):
                 if not isinstance(value, dict):
                     raise ValueError("Invalid provider envelope")
                 if "id" in value and "method" in value:
+                    context = (
+                        value["method"]
+                        if value["method"]
+                        in {
+                            "currentTime/read",
+                            "item/tool/requestUserInput",
+                            "tool/requestUserInput",
+                            "item/commandExecution/requestApproval",
+                            "item/fileChange/requestApproval",
+                            "item/permissions/requestApproval",
+                        }
+                        else "unsupported host request"
+                    )
                     self._host_request(value)
                     continue
                 if "id" in value:
@@ -400,8 +476,21 @@ class CodexProvider(AgentProvider):
                     ):
                         raise ValueError("Provider request failed")
                     callback, _ = self.pending.pop(request_id)
+                    context = callback.__name__
                     callback(value["result"])
                 else:
+                    context = (
+                        value["method"]
+                        if value["method"]
+                        in {
+                            "turn/started",
+                            "turn/completed",
+                            "item/started",
+                            "item/completed",
+                            "item/agentMessage/delta",
+                        }
+                        else "notification"
+                    )
                     self._event(value["method"], value.get("params", {}))
             if len(self.buffer) > LINE_LIMIT:
                 raise ValueError("Provider output limit")
@@ -415,9 +504,11 @@ class CodexProvider(AgentProvider):
             UnicodeError,
             RuntimeError,
             RecursionError,
-        ):
+        ) as error:
             self._fail(
-                "Codex connection failed or is incompatible. Update Codex CLI and start a new chat; existing work will not be retried."
+                f"Codex connection failed while handling {context} ({type(error).__name__}). "
+                "Start a new chat; existing work will not be retried. "
+                "Report this event name if it happens again."
             )
 
     def _timeouts(self):

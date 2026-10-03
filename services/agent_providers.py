@@ -103,6 +103,7 @@ class AgentProviders(QObject):
                 "bytes": 0,
                 "discard_reply": False,
                 "requests": {},
+                "activity": "connecting",
             }
             self.chats[task.task_id] = chat
             self.states[task.task_id] = "Starting Codex…"
@@ -119,6 +120,7 @@ class AgentProviders(QObject):
             driver.message.connect(
                 lambda item, text, final: self._message(task.task_id, item, text, final)
             )
+            driver.activity.connect(lambda state: self._activity(task.task_id, state))
             driver.turn_done.connect(lambda: self._done(task.task_id))
             driver.failed.connect(lambda error: self._failed(task.task_id, error))
             self.changed.emit()
@@ -175,6 +177,30 @@ class AgentProviders(QObject):
             self.chats.get(task_id, {}).get("ready")
         )
 
+    def activity(self, task_id):
+        """Transient UI state; never infer another client's execution from reads."""
+        chat = self.chats.get(task_id)
+        if chat is None:
+            return None
+        state = "waiting" if chat["requests"] else chat["activity"]
+        return {"state": state, "queued": len(chat["queue"])}
+
+    def _activity(self, task_id, state):
+        chat = self.chats.get(task_id)
+        if (
+            chat is not None
+            and chat["current"]
+            and state
+            in (
+                "thinking",
+                "working",
+                "replying",
+            )
+            and chat["activity"] != state
+        ):
+            chat["activity"] = state
+            self.changed.emit()
+
     @provider_callback
     def _ready(self, task_id):
         chat = self.chats.get(task_id)
@@ -187,6 +213,7 @@ class AgentProviders(QObject):
             self._failed(task_id, "Codex connected to an unexpected task.")
             return
         chat["ready"] = True
+        chat["activity"] = "ready"
         chat["binding_file"].unlink(missing_ok=True)
         self.states[task_id] = "Codex ready"
         self.changed.emit()
@@ -200,6 +227,7 @@ class AgentProviders(QObject):
         chat["seen"].add(message["message_id"])
         chat["queue"].append(message)
         self._next(task_id)
+        self.changed.emit()
 
     @provider_callback
     def _next(self, task_id):
@@ -216,6 +244,7 @@ class AgentProviders(QObject):
             QTimer.singleShot(0, lambda: self._next(task_id))
             return
         chat["current"] = message
+        chat["activity"] = "sending"
         self.states[task_id] = "Codex replying… (follow-up messages queue)"
         self.changed.emit()
         try:
@@ -235,6 +264,7 @@ class AgentProviders(QObject):
                 task_id, "Unexpected Codex turn; messages will not be retried."
             )
             return
+        chat["activity"] = "thinking"
         self.service.messages.acknowledge(task_id, {"messages": [chat["current"]]})
         self.service.changed.emit()
 
@@ -345,6 +375,7 @@ class AgentProviders(QObject):
                 item["final"] = True
             self._flush_task(task_id)
             chat["current"] = None
+            chat["activity"] = "ready"
             chat["discard_reply"] = False
             chat["items"].clear()
             self.states[task_id] = "Codex ready"

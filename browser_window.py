@@ -511,6 +511,10 @@ class BrowserWindow(QMainWindow):
         else:
             self.setStyleSheet("")
 
+        sidebar = getattr(self, "agent_sidebar", None)
+        if sidebar is not None:
+            sidebar._apply_style()
+
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):
         self._update_window_title()
