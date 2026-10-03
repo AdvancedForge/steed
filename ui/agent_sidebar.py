@@ -305,13 +305,6 @@ class AgentSidebar(QDockWidget):
                 dialog.reject()
             elif not available:
                 dialog.reject()
-        pending_count = (
-            len(self.providers.chats.get(self._task_id, {}).get("requests", {}))
-            if self.providers
-            else 0
-        )
-        self.agent_requests.setText(f"Answer agent ({pending_count})…")
-        self.agent_requests.setEnabled(available and pending_count > 0)
         self.new_chat.setEnabled(available)
         self.model.setEnabled(available)
         try:
@@ -398,6 +391,13 @@ class AgentSidebar(QDockWidget):
             and not self.service._closed
             and not self.service.failure
         )
+        pending_count = (
+            len(self.providers.chats.get(task_id, {}).get("requests", {}))
+            if self.providers and usable
+            else 0
+        )
+        self.agent_requests.setText(f"Answer agent ({pending_count})…")
+        self.agent_requests.setEnabled(usable and pending_count > 0)
         active = False
         counts = {"pending": 0}
         if usable:
