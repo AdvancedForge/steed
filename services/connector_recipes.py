@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from services.connector_policy import connector_name
+from services.recipe_templates import JsonTemplate, json_template
 from services.task_workspace import unique_object
 from utils import save_json
 
@@ -107,6 +108,26 @@ RECIPE_WRITE_EXAMPLE = {
             },
             "response": [{"label": "id", "pointer": "/id"}],
         },
+    ],
+}
+
+RECIPE_NESTED_EXAMPLE = {
+    **RECIPE_EXAMPLE,
+    "version": 3,
+    "name": "Example Nested Notes",
+    "tools": [
+        {
+            **RECIPE_WRITE_EXAMPLE["tools"][1],
+            "request": {
+                "data": {
+                    "title": {"$bind": "artifact.title"},
+                    "body": {"text": {"$bind": "artifact.content"}, "format": "text"},
+                    "operation_id": {"$bind": "operation_id"},
+                    "tags": ["created-in-steed"],
+                    "published": False,
+                }
+            },
+        }
     ],
 }
 
@@ -298,6 +319,7 @@ class RecipeTool:
     request: tuple = ()
     idempotency_header: str = ""
     reconciliation: RecipeReconciliation | None = None
+    request_template: JsonTemplate | None = None
 
     @property
     def method(self):
@@ -369,7 +391,12 @@ class ConnectorRecipe:
                     "method": t.method,
                     "path": t.path,
                     "destination": t.destination_type,
-                    "request": dict(t.request),
+                    "request": t.request_template.source()
+                    if t.request_template
+                    else dict(t.request),
+                    "request_format": "json_template"
+                    if t.request_template
+                    else "flat_bindings",
                     "idempotency_header": t.idempotency_header or None,
                     "requires_payload_review": t.effect != "read",
                     "reconciliation": (
@@ -414,7 +441,7 @@ def parse_recipe(raw):
         fields(
             data, ("version", "name", "origin", "authentication", "identity", "tools")
         )
-        if type(data["version"]) is not int or data["version"] not in (1, 2):
+        if type(data["version"]) is not int or data["version"] not in (1, 2, 3):
             raise RecipeError("Unsupported connector recipe version")
         auth = authentication(data["authentication"])
         identity = data["identity"]
@@ -425,7 +452,7 @@ def parse_recipe(raw):
         for item in data["tools"]:
             if not isinstance(item, dict):
                 raise RecipeError("Provide tool objects")
-            writing = data["version"] == 2 and item.get("method") == "POST"
+            writing = data["version"] >= 2 and item.get("method") == "POST"
             fields(
                 item,
                 (
@@ -464,6 +491,7 @@ def parse_recipe(raw):
                 "",
                 None,
             )
+            template = None
             if writing:
                 effect, destination_kind = item["effect"], item["destination"]
                 if (
@@ -481,24 +509,29 @@ def parse_recipe(raw):
                         "Send needs one email recipient; resource writes need a destination path segment"
                     )
                 value = item["request"]
-                if not isinstance(value, dict) or not 1 <= len(value) <= 10:
-                    raise RecipeError("Choose 1–10 flat JSON request bindings")
-                for key, source in value.items():
-                    query_parameter(key)
-                    if source not in (
-                        "artifact.title",
-                        "artifact.content",
-                        "destination",
-                        "operation_id",
-                    ):
-                        raise RecipeError(
-                            "Request fields must bind draft title/content, destination, or operation ID"
-                        )
-                bindings = tuple(value.items())
+                if data["version"] == 3:
+                    template = json_template(value)
+                    sources = template.bindings()
+                else:
+                    if not isinstance(value, dict) or not 1 <= len(value) <= 10:
+                        raise RecipeError("Choose 1–10 flat JSON request bindings")
+                    for key, source in value.items():
+                        query_parameter(key)
+                        if source not in (
+                            "artifact.title",
+                            "artifact.content",
+                            "destination",
+                            "operation_id",
+                        ):
+                            raise RecipeError(
+                                "Request fields must bind draft title/content, destination, or operation ID"
+                            )
+                    bindings = tuple(value.items())
+                    sources = set(value.values())
                 if (
-                    "artifact.content" not in value.values()
+                    "artifact.content" not in sources
                     or effect == "send"
-                    and "destination" not in value.values()
+                    and "destination" not in sources
                 ):
                     raise RecipeError(
                         "Write the reviewed draft content; sends must bind the recipient"
@@ -516,7 +549,7 @@ def parse_recipe(raw):
                         raise RecipeError(
                             "Reconciliation needs one complete {operation_id} segment"
                         )
-                    if not header and "operation_id" not in value.values():
+                    if not header and "operation_id" not in sources:
                         raise RecipeError(
                             "Reconciliation needs an operation ID in the request"
                         )
@@ -577,6 +610,7 @@ def parse_recipe(raw):
                     bindings,
                     header,
                     reconciliation,
+                    template,
                 )
             )
         return ConnectorRecipe(

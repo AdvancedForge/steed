@@ -40,6 +40,7 @@ from test_task_profiles import TaskProfileTests
 
 from browser_window import BrowserWindow
 from services.connector_recipes import (
+    RECIPE_NESTED_EXAMPLE,
     RECIPE_OAUTH_EXAMPLE,
     RECIPE_PAGINATED_EXAMPLE,
     parse_recipe,
@@ -81,7 +82,7 @@ async def sdk_transport(discovery, endpoint):
 
 
 async def recipe_workflow(
-    call, shared, label, *, oauth=False, pagination=False, writing=False
+    call, shared, label, *, oauth=False, pagination=False, writing=False, nested=False
 ):
     """External clients propose source; only the fixture installs/connects it."""
     task = await call("task.start", objective="Design a synthetic connection recipe")
@@ -92,7 +93,9 @@ async def recipe_workflow(
         and capabilities["installation_approval"] == "exact_recipe"
     )
     source = json.dumps(
-        capabilities["write_example"]
+        capabilities["nested_example"]
+        if nested
+        else capabilities["write_example"]
         if writing
         else capabilities["pagination_example"]
         if pagination
@@ -173,12 +176,18 @@ async def recipe_workflow(
                         "effect": "read",
                         "destination": "account",
                     },
-                    {
-                        "connector": connector,
-                        "tool": "send_message",
-                        "effect": "send",
-                        "destination": "email:recipient@example.test",
-                    },
+                    *(
+                        []
+                        if nested
+                        else [
+                            {
+                                "connector": connector,
+                                "tool": "send_message",
+                                "effect": "send",
+                                "destination": "email:recipient@example.test",
+                            }
+                        ]
+                    ),
                 ],
             },
         )
@@ -193,6 +202,8 @@ async def recipe_workflow(
             ("send", "send_message", "email:recipient@example.test"),
             ("uncertain-create", "create_note", "account"),
         ):
+            if nested and tool == "send_message":
+                continue
             arguments = {
                 "connector": connector,
                 "tool": tool,
@@ -217,7 +228,14 @@ async def recipe_workflow(
                 ] != "succeeded":
                     assert time.monotonic() < deadline
                     await asyncio.sleep(0.02)
-        shared[label + "_reviewed_recipe_writes"] = True
+        shared[
+            label
+            + (
+                "_reviewed_nested_recipe_writes"
+                if nested
+                else "_reviewed_recipe_writes"
+            )
+        ] = True
         await call("task.finish")
         return
     task = await call("task.start", objective="Read one note from the reviewed service")
@@ -865,6 +883,7 @@ async def sdk_client(
                 await recipe_workflow(call, shared, "sdk", oauth=True)
                 await recipe_workflow(call, shared, "sdk", oauth=True, pagination=True)
                 await recipe_workflow(call, shared, "sdk", writing=True)
+                await recipe_workflow(call, shared, "sdk", writing=True, nested=True)
 
 
 def raw_workflow(request, notify, foreign_session, origin, shared):
@@ -1136,6 +1155,9 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
             recipe_workflow(workspace_call, shared, "raw", oauth=True, pagination=True)
         )
         asyncio.run(recipe_workflow(workspace_call, shared, "raw", writing=True))
+        asyncio.run(
+            recipe_workflow(workspace_call, shared, "raw", writing=True, nested=True)
+        )
     return True
 
 
@@ -1351,7 +1373,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             write_http = WriteRecipeHttp()
             manager.recipe_http_factory = lambda selected: (
                 write_http
-                if selected.version == 2
+                if selected.version >= 2
                 else oauth_http
                 if selected.authentication.kind == "oauth_pkce"
                 else SyntheticRecipeHttp()
@@ -1454,6 +1476,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         oauth_source,
                         paginated_source,
                         write_recipe(),
+                        parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
                     )
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
@@ -1464,13 +1487,25 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     assert dialog.windowTitle() == "Review App Action"
                     context = json.loads(dialog.review.context)
                     payload = json.loads(dialog.review.before_text)
-                    assert context["source_sha256"] == write_recipe().sha256
+                    nested = (
+                        context["source_sha256"]
+                        == parse_recipe(
+                            json.dumps(RECIPE_NESTED_EXAMPLE).encode()
+                        ).sha256
+                    )
+                    assert nested or context["source_sha256"] == write_recipe().sha256
                     assert context["url"] in (
                         "https://api.fixture.example/notes",
                         "https://api.fixture.example/messages",
                     )
-                    assert payload["operation_id"] == context["operation_id"]
-                    assert payload["body"] == dialog.review.after_text
+                    assert (
+                        payload["data"]["operation_id"]
+                        if nested
+                        else payload["operation_id"]
+                    ) == context["operation_id"]
+                    assert (
+                        payload["data"]["body"]["text"] if nested else payload["body"]
+                    ) == dialog.review.after_text
                     if context["effect"] == "send":
                         assert payload["to"] == "recipient@example.test"
                     if dialog.review.request_id == "uncertain-create":
@@ -1519,6 +1554,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     oauth_source,
                     paginated_source,
                     write_recipe(),
+                    parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
                 ):
                     if selected.provider not in manager.providers or manager.busy:
                         continue
@@ -1619,10 +1655,13 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
         if require_recipes:
             assert shared["sdk_reviewed_recipe_writes"]
             assert shared["raw_reviewed_recipe_writes"]
+            assert shared["sdk_reviewed_nested_recipe_writes"]
+            assert shared["raw_reviewed_nested_recipe_writes"]
             assert shared["recipe_payload_review_popup"]
-            assert len(write_http.payloads) == 6
-            assert len(write_http.operations) == 6
+            assert len(write_http.payloads) == 10
+            assert len(write_http.operations) == 10
             assert sum("to" in payload for payload in write_http.payloads) == 2
+            assert sum("data" in payload for payload in write_http.payloads) == 4
         case.wait_for(
             lambda: any(path == "/mcp-user-post" for path, _, _ in case.posted)
         )

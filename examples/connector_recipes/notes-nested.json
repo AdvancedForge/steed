@@ -1,0 +1,56 @@
+{
+  "version": 3,
+  "name": "Example Nested Notes",
+  "origin": "https://api.fixture.example",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/me",
+    "subject": "/id",
+    "label": "/email"
+  },
+  "tools": [
+    {
+      "name": "create_note",
+      "description": "Create a note after reviewing its payload",
+      "method": "POST",
+      "effect": "write",
+      "path": "/notes",
+      "destination": "account",
+      "request": {
+        "data": {
+          "title": {
+            "$bind": "artifact.title"
+          },
+          "body": {
+            "text": {
+              "$bind": "artifact.content"
+            },
+            "format": "text"
+          },
+          "operation_id": {
+            "$bind": "operation_id"
+          },
+          "tags": [
+            "created-in-steed"
+          ],
+          "published": false
+        }
+      },
+      "idempotency_header": "Idempotency-Key",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        }
+      ],
+      "reconciliation": {
+        "path": "/operations/{operation_id}",
+        "operation_id": "/operation_id",
+        "status": "/status",
+        "success": "succeeded"
+      }
+    }
+  ]
+}

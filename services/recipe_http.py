@@ -19,6 +19,7 @@ from services.connector_recipes import (
     recipe_origin,
     request_path,
 )
+from services.recipe_templates import json_template
 from services.task_workspace import unique_object
 
 
@@ -37,16 +38,22 @@ class RecipeHttp:
             request_path(path): frozenset(query_parameter(p) for p in parameters)
             for path, parameters in (query_parameters or {}).items()
         }
-        self.post_rules = tuple(
-            (
-                request_path(path, destination=True),
-                idempotency_header(header) if header else "",
+        rules = []
+        for rule in post_rules:
+            if len(rule) not in (2, 3) or len(rule) == 3 and type(rule[2]) is not bool:
+                raise ValueError("Use a reviewed POST rule")
+            path, header = rule[:2]
+            rules.append(
+                (
+                    request_path(path, destination=True),
+                    idempotency_header(header) if header else "",
+                    rule[2] if len(rule) == 3 else False,
+                )
             )
-            for path, header in post_rules
-        )
+        self.post_rules = tuple(rules)
 
-    def post_header(self, path, headers):
-        for template, header in self.post_rules:
+    def post_rule(self, path, headers, payload):
+        for template, header, nested in self.post_rules:
             pattern = re.escape(template).replace(
                 re.escape("{destination}"), r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}"
             )
@@ -58,6 +65,16 @@ class RecipeHttp:
                 and ".." not in path
                 and set(headers) == required
             ):
+                if nested:
+                    json_template(payload, bindings=False)
+                elif (
+                    not isinstance(payload, dict)
+                    or not 1 <= len(payload) <= 10
+                    or any(
+                        not isinstance(v, str) or "\x00" in v for v in payload.values()
+                    )
+                ):
+                    continue
                 return header
         raise ValueError("POST path is not in the reviewed recipe")
 
@@ -110,7 +127,10 @@ class RecipeHttp:
             ):
                 raise ValueError("Use a bounded trusted token exchange form")
         elif api_post:
-            header = self.post_header(parts.path, headers)
+            if not isinstance(body, bytes) or not 1 <= len(body) <= 16384:
+                raise ValueError("Use a bounded JSON POST")
+            payload = json.loads(body, object_pairs_hook=unique_object)
+            header = self.post_rule(parts.path, headers, payload)
             required = {"Authorization", "Content-Type"} | (
                 {header} if header else set()
             )
@@ -130,13 +150,6 @@ class RecipeHttp:
                 or not 1 <= len(body) <= 16384
             ):
                 raise ValueError("Use the reviewed JSON POST and trusted operation ID")
-            payload = json.loads(body, object_pairs_hook=unique_object)
-            if (
-                not isinstance(payload, dict)
-                or not 1 <= len(payload) <= 10
-                or any(not isinstance(v, str) or "\x00" in v for v in payload.values())
-            ):
-                raise ValueError("Use a bounded flat JSON request")
         elif set(headers) - {"Authorization", "Accept"}:
             raise ValueError("Unsupported recipe headers")
         check_cancelled(cancelled)
