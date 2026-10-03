@@ -154,10 +154,14 @@ class AppConnectionsDialog(QDialog):
     def _capabilities(self):
         for check in self.capabilities.values():
             self.capability_layout.removeWidget(check)
+            check.hide()
             check.deleteLater()
         self.capabilities = {}
         provider = self.manager.providers.get(self.provider.currentData())
         if provider is not None:
+            if getattr(self, "_client_provider", None) != provider.name:
+                self.client.clear()
+                self._client_provider = provider.name
             self.setup_button.setVisible(provider.authentication != "bearer")
             if provider.authentication == "bearer":
                 self.setup_button.setChecked(False)

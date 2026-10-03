@@ -251,9 +251,26 @@ establishes those results. Password improvements remain deferred at the user's r
   Review and connection previews were inspected. Logs: `/tmp/steed-recipes-full.log`,
   `/tmp/steed-recipes-focused.log`, `/tmp/steed-recipes-mcp-{stdio,http}.log`, and
   `/tmp/steed-recipes-startup.log`. All data and credentials were synthetic.
-- **Next recipe engineering milestones:** add bounded collection reads and generic
-  native OAuth/PKCE with reusable keyring client setup, then evaluate reviewed write
-  plans, revisions, idempotency and reconciliation against built-in quality. Existing
+- **Latest recipe checkpoint — native OAuth and collection reads:**
+  reviewed sources now declare exact authorization/token endpoints and scopes.
+  User-owned native client setup is imported once and reused through the keyring;
+  sign-in uses external-browser PKCE/state/loopback callbacks. Refresh rotation is
+  persisted only after identity verification; failed/revoked setup cannot publish
+  data or resurrect credentials. Fixed collection paths use explicit destination
+  `account`; source/tool limits and the existing read switch still apply. Provider
+  UI identifies the actual domain/account and clears client files on provider
+  changes. Current secret literals are redacted before JSON escaping. Example:
+  `examples/connector_recipes/notes-oauth.json`. Acceptance: **723 regressions passed
+  in 295.840 seconds**; 45 final recipe checks passed in 6.286 seconds, including
+  subsequent malformed-catalog and immediate UI-refresh fixes. Both SDK/raw clients
+  completed bearer and native OAuth collection workflows over stdio and authenticated
+  HTTP, alongside real sandbox document generation. Review/setup previews were
+  inspected and Ruff/format passed. Logs: `/tmp/steed-recipes-oauth-full.log`,
+  `/tmp/steed-recipes-oauth-focused.log`, and
+  `/tmp/steed-recipes-oauth-mcp-{stdio,http}.log`. All accounts were synthetic.
+- **Next recipe engineering milestones:** add preflight diagnostics and bounded
+  collection pagination, then evaluate reviewed write plans, revisions, idempotency
+  and reconciliation against built-in quality. Existing
   Google remains the provider-specific reference. Shared Google registration remains
   deferred. No generic network or credential permission is granted to generated code.
 

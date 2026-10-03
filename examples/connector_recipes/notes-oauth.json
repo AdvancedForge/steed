@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "name": "Example OAuth Notes",
+  "origin": "https://api.fixture.example",
+  "authentication": {
+    "type": "oauth_pkce",
+    "authorization_endpoint": "https://auth.fixture.example/authorize",
+    "token_endpoint": "https://auth.fixture.example/token",
+    "scopes": [
+      "profile",
+      "notes.read"
+    ]
+  },
+  "identity": {
+    "path": "/me",
+    "subject": "/id",
+    "label": "/email"
+  },
+  "tools": [
+    {
+      "name": "read_note",
+      "description": "Read one selected note",
+      "method": "GET",
+      "path": "/notes/{destination}",
+      "response": [
+        {
+          "label": "title",
+          "pointer": "/title"
+        },
+        {
+          "label": "body",
+          "pointer": "/body"
+        }
+      ]
+    },
+    {
+      "name": "list_notes",
+      "description": "Read this account's notes",
+      "method": "GET",
+      "path": "/notes",
+      "response": [
+        {
+          "label": "notes",
+          "pointer": "/items"
+        }
+      ]
+    }
+  ]
+}

@@ -33,7 +33,7 @@ class RecipeReviewDialog(QDialog):
         summary = QLabel(
             f"Service: {recipe.name}\nDomain: {recipe.origin}\n"
             "Installs these exact API requests. Connecting an account and allowing task access are separate steps. "
-            "This service receives its own token; credentials stay in Steed's desktop keyring. "
+            "Credentials stay in Steed's desktop keyring. "
             "Check that the listed requests really read data from the intended service."
         )
         summary.setTextFormat(Qt.TextFormat.PlainText)
@@ -42,11 +42,24 @@ class RecipeReviewDialog(QDialog):
         review = QPlainTextEdit()
         review.setReadOnly(True)
         review.setPlainText(
-            f"Account identity: GET {recipe.identity_path}\n"
+            (
+                f"OAuth sign-in: {recipe.authentication.authorization_endpoint}\n"
+                f"Token exchange/refresh: {recipe.authentication.token_endpoint}\n"
+                f"Requested OAuth scopes: {', '.join(recipe.authentication.scopes)}\n"
+                "Native PKCE; user-supplied app client stays in keyring.\n\n"
+                if recipe.authentication.kind == "oauth_pkce"
+                else "Authentication: this service's bearer token\n\n"
+            )
+            + f"Account identity: GET {recipe.identity_path}\n"
             f"Account ID: {recipe.subject_pointer}\nAccount label: {recipe.label_pointer}\n\n"
             + "\n\n".join(
                 f"READ: {t.description}\nGET {t.path}\nReturns: "
                 + ", ".join(f"{label} ({path})" for label, path in t.response)
+                + (
+                    "\nDestination: exact resource ID"
+                    if "{destination}" in t.path
+                    else "\nDestination: account (fixed collection)"
+                )
                 for t in recipe.tools
             )
             + "\n\nRecipe SHA-256: "

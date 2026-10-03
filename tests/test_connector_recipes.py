@@ -23,6 +23,23 @@ from services.recipe_connector import RecipeConnector, connect_recipe
 
 
 class RecipeValidationTests(unittest.TestCase):
+    def test_malformed_catalog_source_types_fail_without_interpreter_exceptions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.json"
+            for value in (None, 1, True, [], {}):
+                path.write_text(
+                    json.dumps(
+                        {
+                            "version": 1,
+                            "recipes": [
+                                {"sha256": "bad", "recipe": value, "enabled": True}
+                            ],
+                        }
+                    )
+                )
+                with self.subTest(value=value), self.assertRaises(RecipeError):
+                    RecipeStore(path)
+
     def test_public_https_origins_have_no_aliases_credentials_or_local_hosts(self):
         for origin in (
             "http://api.example.com",

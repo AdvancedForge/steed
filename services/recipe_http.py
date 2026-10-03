@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from services.app_accounts import AccountError
 from services.app_oauth import ApiError
-from services.connector_recipes import recipe_origin
+from services.connector_recipes import recipe_endpoint, recipe_origin
 from services.task_workspace import unique_object
 
 
@@ -20,15 +20,18 @@ def check_cancelled(cancelled):
 
 
 class RecipeHttp:
-    def __init__(self, origin):
+    def __init__(self, origin, *, token_endpoint=""):
         self.origin = recipe_origin(origin)
+        self.token_endpoint = recipe_endpoint(token_endpoint) if token_endpoint else ""
 
     def request(self, method, url, *, headers=None, body=None, cancelled=None):
         parts = urlsplit(url)
+        token_request = bool(
+            self.token_endpoint and method == "POST" and url == self.token_endpoint
+        )
         if (
-            method != "GET"
-            or body is not None
-            or url != self.origin + parts.path
+            not token_request
+            and (method != "GET" or body is not None or url != self.origin + parts.path)
             or not parts.path.startswith("/")
             or parts.path.startswith("//")
         ):
@@ -36,7 +39,15 @@ class RecipeHttp:
                 "Recipe request differs from its reviewed origin or method"
             )
         headers = headers or {}
-        if set(headers) - {"Authorization", "Accept"}:
+        if token_request:
+            if (
+                headers != {"Content-Type": "application/x-www-form-urlencoded"}
+                or not isinstance(body, bytes)
+                or not 1 <= len(body) <= 32768
+                or not body.isascii()
+            ):
+                raise ValueError("Use a bounded trusted token exchange form")
+        elif set(headers) - {"Authorization", "Accept"}:
             raise ValueError("Unsupported recipe headers")
         check_cancelled(cancelled)
         deadline = time.monotonic() + 10
@@ -59,6 +70,8 @@ class RecipeHttp:
             ):
                 raise ApiError()
             check_cancelled(cancelled)
+            if time.monotonic() >= deadline:
+                raise ApiError()
             family, kind, protocol, _, address = addresses[0]
             channel = socket.socket(family, kind, protocol)
             channel.settimeout(max(0.01, deadline - time.monotonic()))
@@ -69,20 +82,23 @@ class RecipeHttp:
             connection = http.client.HTTPConnection(parts.hostname, 443)
             connection.sock = channel
             check_cancelled(cancelled)
+            if time.monotonic() >= deadline:
+                raise ApiError()
             channel.settimeout(max(0.01, deadline - time.monotonic()))
             connection.request(
-                "GET",
+                method,
                 parts.path,
                 headers={
                     "Host": parts.hostname,
                     "Accept": "application/json",
                     **headers,
                 },
+                body=body,
             )
             # HTTPConnection.getresponse() closes its socket immediately for
             # Connection: close / HTTP 1.0. Keep ownership until the bounded body
             # read finishes so its timeout remains adjustable between reads.
-            response = http.client.HTTPResponse(channel, method="GET")
+            response = http.client.HTTPResponse(channel, method=method)
             response.begin()
             if (
                 response.status != 200

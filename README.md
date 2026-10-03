@@ -47,7 +47,7 @@ Task Permissions. Active website scripts and generic extensions remain planned.
 Google Docs/Gmail connections keep credentials in the desktop keyring and offer
 persistent account access switches. Real-account acceptance remains pending.
 Agents can also propose reviewed connector recipes for new read-only REST services;
-Steed owns the account token, execution, permission switches and revocation.
+Steed owns OAuth sign-in or token setup, execution, permission switches and revocation.
 [Recipe setup](DOCUMENTATION.md#agent-designed-connector-recipes) describes this
 first stage and its limits. See
 [agent setup](DOCUMENTATION.md#local-agent-access-mcp) and

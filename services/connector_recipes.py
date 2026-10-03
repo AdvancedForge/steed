@@ -33,6 +33,27 @@ RECIPE_EXAMPLE = {
     ],
 }
 
+RECIPE_OAUTH_EXAMPLE = {
+    **RECIPE_EXAMPLE,
+    "name": "Example OAuth Notes",
+    "authentication": {
+        "type": "oauth_pkce",
+        "authorization_endpoint": "https://auth.fixture.example/authorize",
+        "token_endpoint": "https://auth.fixture.example/token",
+        "scopes": ["profile", "notes.read"],
+    },
+    "tools": [
+        *RECIPE_EXAMPLE["tools"],
+        {
+            "name": "list_notes",
+            "description": "Read this account's notes",
+            "method": "GET",
+            "path": "/notes",
+            "response": [{"label": "notes", "pointer": "/items"}],
+        },
+    ],
+}
+
 
 class RecipeError(ValueError):
     pass
@@ -79,12 +100,62 @@ def request_path(value, *, destination=False):
         or not re.fullmatch(r"/[A-Za-z0-9/_.,:@=-]*", template)
         or any(p in {".", "..", ""} for p in template[1:].split("/"))
         or destination
-        and value.count("{destination}") != 1
+        and (
+            value.count("{destination}") > 1
+            or "{destination}" in value
+            and "{destination}" not in value.split("/")
+        )
     ):
         raise RecipeError(
-            "Use a fixed API path; tool paths need one {destination} segment"
+            "Use a fixed API path with at most one complete {destination} segment"
         )
     return value
+
+
+def recipe_endpoint(value):
+    printable(value, 768)
+    parsed = urlsplit(value)
+    origin = recipe_origin("https://" + (parsed.hostname or ""))
+    path = request_path(parsed.path)
+    if value != origin + path:
+        raise RecipeError("Use an exact public HTTPS authentication endpoint")
+    return value
+
+
+@dataclass(frozen=True)
+class RecipeAuthentication:
+    kind: str = "bearer"
+    authorization_endpoint: str = ""
+    token_endpoint: str = ""
+    scopes: tuple = ()
+
+
+def authentication(value):
+    if not isinstance(value, dict):
+        raise RecipeError("Choose recipe authentication")
+    if value.get("type") == "bearer":
+        fields(value, ("type",))
+        return RecipeAuthentication()
+    fields(value, ("type", "authorization_endpoint", "token_endpoint", "scopes"))
+    if value["type"] != "oauth_pkce" or not isinstance(value["scopes"], list):
+        raise RecipeError("Choose bearer or native OAuth PKCE authentication")
+    scopes = value["scopes"]
+    if (
+        not 1 <= len(scopes) <= 20
+        or any(
+            not isinstance(s, str)
+            or not re.fullmatch(r"[\x21\x23-\x5b\x5d-\x7e]{1,200}", s)
+            for s in scopes
+        )
+        or len(set(scopes)) != len(scopes)
+    ):
+        raise RecipeError("Choose 1–20 unique bounded OAuth scopes")
+    return RecipeAuthentication(
+        "oauth_pkce",
+        recipe_endpoint(value["authorization_endpoint"]),
+        recipe_endpoint(value["token_endpoint"]),
+        tuple(scopes),
+    )
 
 
 def pointer(value):
@@ -127,6 +198,13 @@ class RecipeTool:
     path: str
     response: tuple
 
+    def destination(self, value):
+        if "{destination}" in self.path:
+            return resource_id(value)
+        if value != "account":
+            raise RecipeError("Use destination account for this fixed collection path")
+        return value
+
 
 @dataclass(frozen=True)
 class ConnectorRecipe:
@@ -138,6 +216,7 @@ class ConnectorRecipe:
     subject_pointer: str
     label_pointer: str
     tools: tuple
+    authentication: RecipeAuthentication = RecipeAuthentication()
 
     @property
     def provider(self):
@@ -149,7 +228,7 @@ class ConnectorRecipe:
             "sha256": self.sha256,
             "name": self.name,
             "origin": self.origin,
-            "authentication": "bearer",
+            "authentication": self.authentication.kind,
             "tools": [
                 {
                     "name": t.name,
@@ -157,6 +236,9 @@ class ConnectorRecipe:
                     "effect": "read",
                     "method": "GET",
                     "path": t.path,
+                    "destination": "resource_id"
+                    if "{destination}" in t.path
+                    else "account",
                     "response_fields": [
                         {"label": k, "pointer": v} for k, v in t.response
                     ],
@@ -182,9 +264,7 @@ def parse_recipe(raw):
         )
         if type(data["version"]) is not int or data["version"] != 1:
             raise RecipeError("Unsupported connector recipe version")
-        fields(data["authentication"], ("type",))
-        if data["authentication"]["type"] != "bearer":
-            raise RecipeError("This recipe version supports user-entered bearer tokens")
+        auth = authentication(data["authentication"])
         identity = data["identity"]
         fields(identity, ("path", "subject", "label"))
         if not isinstance(data["tools"], list) or not 1 <= len(data["tools"]) <= 10:
@@ -227,6 +307,7 @@ def parse_recipe(raw):
             pointer(identity["subject"]),
             pointer(identity["label"]),
             tuple(tools),
+            auth,
         )
     except (KeyError, TypeError, UnicodeError, RecursionError, ValueError) as error:
         if isinstance(error, RecipeError):
@@ -258,6 +339,8 @@ class RecipeStore:
                 raise RecipeError("Invalid recipe catalog")
             for entry in data["recipes"]:
                 fields(entry, ("sha256", "recipe", "enabled"))
+                if not isinstance(entry["recipe"], str):
+                    raise RecipeError("Invalid recipe catalog source")
                 recipe = parse_recipe(entry["recipe"].encode("utf-8"))
                 if (
                     recipe.sha256 != entry["sha256"]

@@ -18,6 +18,7 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -28,9 +29,11 @@ from mock_app_connector import register_mock_apps
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineHttpRequest, QWebEngineSettings
 from recipe_support import TOKEN, SyntheticRecipeHttp, recipe
+from test_recipe_oauth import OAuthHttp
 from test_task_profiles import TaskProfileTests
 
 from browser_window import BrowserWindow
+from services.connector_recipes import RECIPE_OAUTH_EXAMPLE, parse_recipe
 from ui.recipe_review import RecipeReviewDialog
 from ui.task_dialog import TaskDialog
 from ui.task_recovery import TaskRecoveryDialog
@@ -66,7 +69,7 @@ async def sdk_transport(discovery, endpoint):
             yield reader, writer, None
 
 
-async def recipe_workflow(call, shared, label):
+async def recipe_workflow(call, shared, label, *, oauth=False):
     """External clients propose source; only the fixture installs/connects it."""
     task = await call("task.start", objective="Design a synthetic connection recipe")
     shared[label + "_recipe_task"] = task["task_id"]
@@ -75,7 +78,10 @@ async def recipe_workflow(call, shared, label):
         capabilities["available"]
         and capabilities["installation_approval"] == "exact_recipe"
     )
-    source = json.dumps(capabilities["example"]).encode()
+    source = json.dumps(
+        capabilities["oauth_example"] if oauth else capabilities["example"]
+    ).encode()
+    provider = parse_recipe(source).provider
     await call("grant.request", scope={"actions": ["workspace", "connector"]})
 
     async def approved():
@@ -111,7 +117,12 @@ async def recipe_workflow(call, shared, label):
     tools = []
     while not tools:
         assert time.monotonic() < deadline
-        tools = [t for t in await call("app.list_tools") if t["tool"] == "read_note"]
+        tools = [
+            t
+            for t in await call("app.list_tools")
+            if t["tool"] == ("list_notes" if oauth else "read_note")
+            and t["connector"].startswith(provider + "_")
+        ]
         await asyncio.sleep(0.02)
     assert len(tools) == 1
     await call("task.finish")
@@ -119,8 +130,8 @@ async def recipe_workflow(call, shared, label):
     shared[label + "_recipe_task"] = task["task_id"]
     arguments = {
         "connector": tools[0]["connector"],
-        "tool": "read_note",
-        "destination": "note-1",
+        "tool": "list_notes" if oauth else "read_note",
+        "destination": "account" if oauth else "note-1",
     }
     await call(
         "grant.request",
@@ -137,12 +148,13 @@ async def recipe_workflow(call, shared, label):
         await asyncio.sleep(0.02)
         result = await call("app.status", request_id="recipe-note")
     assert result["state"] == "succeeded", result
-    assert json.loads(result["text"]) == {
-        "title": "Fixture note",
-        "body": "Shared task data",
-    }
+    assert json.loads(result["text"]) == (
+        {"notes": [{"id": "note-1", "title": "Synthetic note"}]}
+        if oauth
+        else {"title": "Fixture note", "body": "Shared task data"}
+    )
     assert (await call("app.call_tool", **arguments)) == result
-    shared[label + "_reviewed_recipe_read"] = True
+    shared[label + ("_oauth_recipe_read" if oauth else "_reviewed_recipe_read")] = True
     await call("task.finish")
 
 
@@ -737,6 +749,7 @@ async def sdk_client(
             shared["sdk_recovery_write_not_replayed"] = True
             if shared["require_recipes"]:
                 await recipe_workflow(call, shared, "sdk")
+                await recipe_workflow(call, shared, "sdk", oauth=True)
 
 
 def raw_workflow(request, notify, foreign_session, origin, shared):
@@ -1003,6 +1016,7 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     shared["raw_recovery_write_not_replayed"] = True
     if shared["require_recipes"]:
         asyncio.run(recipe_workflow(workspace_call, shared, "raw"))
+        asyncio.run(recipe_workflow(workspace_call, shared, "raw", oauth=True))
     return True
 
 
@@ -1176,6 +1190,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
     case.setUp()
     worker = None
     http_process = None
+    oauth_patch = None
     shared, errors = (
         {"require_documents": require_documents, "require_recipes": require_recipes},
         [],
@@ -1213,7 +1228,24 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
         if require_recipes:
             manager = case.registry.app_connections
             manager.store.secrets = MemorySecrets()
-            manager.recipe_http_factory = lambda selected: SyntheticRecipeHttp()
+            oauth_http = OAuthHttp()
+            manager.recipe_http_factory = lambda selected: (
+                oauth_http
+                if selected.authentication.kind == "oauth_pkce"
+                else SyntheticRecipeHttp()
+            )
+            oauth_patch = patch(
+                "services.recipe_oauth.desktop_authorization",
+                return_value=(
+                    "SYNTHETIC_CODE",
+                    "SYNTHETIC_VERIFIER",
+                    "http://127.0.0.1:12345/callback",
+                ),
+            )
+            oauth_patch.start()
+            recipe_client = Path(case.directory.name) / "recipe-client.json"
+            recipe_client.write_text('{"client_id":"SYNTHETIC_CLIENT"}')
+            oauth_source = parse_recipe(json.dumps(RECIPE_OAUTH_EXAMPLE).encode())
         upload_source = Path(case.directory.name) / "mcp-upload.txt"
         upload_source.write_bytes(b"SYNTHETIC_MCP_UPLOAD_BYTES")
         shared["raw_workspace_destination"] = str(
@@ -1292,7 +1324,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     shared.get("raw_recipe_task"),
                 )
                 if isinstance(dialog, RecipeReviewDialog):
-                    assert dialog.recipe == recipe()
+                    assert dialog.recipe in (recipe(), oauth_source)
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
                     dialog.allow_button.click()  # Trusted synthetic user only.
@@ -1331,19 +1363,28 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                 shared["approval_popup"] = True
             if require_recipes:
                 manager = case.registry.app_connections
-                if recipe().provider in manager.providers and not manager.busy:
+                for selected in (recipe(), oauth_source):
+                    if selected.provider not in manager.providers or manager.busy:
+                        continue
                     accounts = [
                         a
                         for a in manager.store.list()
-                        if a.provider == recipe().provider and a.enabled
+                        if a.provider == selected.provider and a.enabled
                     ]
                     if not accounts:
-                        manager.connect_recipe_account(
-                            recipe().provider, TOKEN, ["read_note"]
-                        )
-                    elif not shared.get("recipe_access_enabled"):
+                        if selected.authentication.kind == "oauth_pkce":
+                            manager.connect_account(
+                                selected.provider,
+                                recipe_client,
+                                ["read_note", "list_notes"],
+                            )
+                        else:
+                            manager.connect_recipe_account(
+                                selected.provider, TOKEN, ["read_note"]
+                            )
+                    elif not shared.get(selected.provider + "_access_enabled"):
                         manager.set_access(accounts[0].account_id, "read", True)
-                        shared["recipe_access_enabled"] = True
+                        shared[selected.provider + "_access_enabled"] = True
             session_id = shared.get("session_id")
             watcher = case.service._watchers.get(session_id)
             if (
@@ -1479,6 +1520,8 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             worker.join()
         case.tearDown()
         case.tearDownClass()
+        if oauth_patch is not None:
+            oauth_patch.stop()
 
 
 if __name__ == "__main__":

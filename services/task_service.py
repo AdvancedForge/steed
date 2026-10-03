@@ -480,7 +480,7 @@ class TaskService(QObject):
     def _recipe_capabilities(self, task_id):
         import copy
 
-        from services.connector_recipes import RECIPE_EXAMPLE
+        from services.connector_recipes import RECIPE_EXAMPLE, RECIPE_OAUTH_EXAMPLE
 
         self._usable()
         self._active(task_id)
@@ -488,7 +488,11 @@ class TaskService(QObject):
             "available": self.recipes.connections is not None
             and self.recipes.connections.recipes is not None,
             "version": 1,
-            "authentication": ["bearer"],
+            "authentication": ["bearer", "oauth_pkce"],
+            "destinations": {
+                "resource": "one exact resource ID",
+                "collection": "account",
+            },
             "effects": ["read"],
             "installation_approval": "exact_recipe",
             "limits": {
@@ -497,8 +501,10 @@ class TaskService(QObject):
                 "response_fields": 10,
                 "proposals_per_task": 20,
                 "pending_per_task": 3,
+                "oauth_scopes": 20,
             },
             "example": copy.deepcopy(RECIPE_EXAMPLE),
+            "oauth_example": copy.deepcopy(RECIPE_OAUTH_EXAMPLE),
         }
 
     def _recipe_list(self, task_id):
