@@ -145,6 +145,49 @@ class LiveTabsTests(unittest.TestCase):
         self.assertIsNone(view.page().devToolsPage())
         self.assertEqual(view.title(), "Clicked")
 
+    def test_live_shadow_labels_and_host_changes_revalidate_target_references(self):
+        window, view = self.window()
+        self.value(
+            view.page(),
+            """
+            const root = document.querySelector('#shadow').shadowRoot;
+            root.innerHTML='<span id="name">Live component action</span><button aria-labelledby="name">Icon</button>';
+            true;
+        """,
+        )
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        button = next(
+            t for t in snapshot.frames[0].targets if t.label == "Live component action"
+        )
+        self.assertEqual(button.operations, ())
+        self.value(
+            view.page(),
+            "document.querySelector('#shadow').shadowRoot.querySelector('#name').textContent='Changed action'; true",
+        )
+        with self.assertRaises(PageInspectionError):
+            self.command(
+                "page.target",
+                task_id=task,
+                session_id=session,
+                snapshot_id=snapshot.snapshot_id,
+                target_id=button.target_id,
+            )
+        snapshot = self.inspect(task, session)
+        button = next(
+            t for t in snapshot.frames[0].targets if t.label == "Changed action"
+        )
+        self.value(view.page(), "document.querySelector('#shadow').hidden=true; true")
+        with self.assertRaises(PageInspectionError):
+            self.command(
+                "page.target",
+                task_id=task,
+                session_id=session,
+                snapshot_id=snapshot.snapshot_id,
+                target_id=button.target_id,
+            )
+        self.assertNotIn("Changed action", repr(self.inspect(task, session)))
+
     def test_live_form_submit_runs_handlers_without_claiming_site_success(self):
         window, view = self.window()
         task, _, session = self.share(window)

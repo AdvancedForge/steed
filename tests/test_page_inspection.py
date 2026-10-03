@@ -101,6 +101,105 @@ class PageInspectionTests(unittest.TestCase):
             target_id=target.target_id,
         )
 
+    def test_open_shadow_reads_nested_content_names_and_omits_private_values(self):
+        task, _, session, page = self.session()
+        self.load(
+            session,
+            page,
+            '<div id="host"></div><button><img alt="Save report"></button>',
+        )
+        self.script(
+            page,
+            """
+            const root = document.querySelector('#host').attachShadow({mode:'open'});
+            root.innerHTML = '<h2>Component report</h2><span id="name">Component name</span>' +
+                '<input aria-labelledby="name" value="SHADOW_VALUE_SECRET">' +
+                '<input type="password" value="SHADOW_PASSWORD_SECRET">' +
+                '<div contenteditable>SHADOW_EDITABLE_SECRET</div><div id="nested"></div>';
+            root.querySelector('#nested').attachShadow({mode:'open'}).innerHTML =
+                '<p>Nested report details</p><img alt="Revenue chart">'; true;
+        """,
+        )
+        snapshot = self.inspect(task, session)
+        self.assertIn("Component report", snapshot.frames[0].text)
+        self.assertIn("Nested report details", snapshot.frames[0].text)
+        self.assertIn("Revenue chart", snapshot.frames[0].text)
+        self.assertNotIn("SHADOW_VALUE_SECRET", repr(snapshot))
+        self.assertNotIn("SHADOW_PASSWORD_SECRET", repr(snapshot))
+        self.assertNotIn("SHADOW_EDITABLE_SECRET", repr(snapshot))
+        field = next(
+            t for t in snapshot.frames[0].targets if t.label == "Component name"
+        )
+        self.assertEqual(field.operations, ())
+        self.assertIn("shadow_control_actions_unavailable", field.constraints)
+        self.assertEqual(self.target(task, session, snapshot, field), field)
+        self.assertIn("Save report", [t.label for t in snapshot.frames[0].targets])
+        self.assertIn("closed_shadow_roots_not_inspected", snapshot.limitations)
+        self.assertNotIn("shadow_dom_not_inspected", snapshot.limitations)
+
+    def test_shadow_mutation_invalidates_restricted_snapshot(self):
+        task, _, session, page = self.session()
+        self.load(session, page, '<div id="host"></div>')
+        self.script(
+            page,
+            """
+            const root = document.querySelector('#host').attachShadow({mode:'open'});
+            root.innerHTML = '<button>Component action</button><p id="status">Before</p>'; true;
+        """,
+        )
+        snapshot = self.inspect(task, session)
+        button = snapshot.frames[0].targets[0]
+        self.script(
+            page,
+            "document.querySelector('#host').shadowRoot.querySelector('#status').textContent='After'; true",
+        )
+        with self.assertRaises(PageInspectionError):
+            self.target(task, session, snapshot, button)
+        self.assertIn("After", self.inspect(task, session).frames[0].text)
+
+    def test_shadow_root_budget_and_hidden_closed_content_are_reported(self):
+        task, _, session, page = self.session()
+        self.load(
+            session, page, '<div id="hidden" hidden></div><div id="closed"></div>'
+        )
+        self.script(
+            page,
+            """
+            document.querySelector('#hidden').attachShadow({mode:'open'}).innerHTML='<p>HIDDEN_SHADOW_SECRET</p>';
+            document.querySelector('#closed').attachShadow({mode:'closed'}).innerHTML='<p>CLOSED_SHADOW_SECRET</p>';
+            for (let i=0; i<40; i++) {
+                const host = document.createElement('div'); document.body.append(host);
+                host.attachShadow({mode:'open'}).innerHTML='<p>Public component '+i+'</p><button>Action '+i+'</button>';
+            } true;
+        """,
+        )
+        snapshot = self.inspect(task, session)
+        self.assertNotIn("HIDDEN_SHADOW_SECRET", repr(snapshot))
+        self.assertNotIn("CLOSED_SHADOW_SECRET", repr(snapshot))
+        self.assertIn("shadow_root_limit", snapshot.limitations)
+        self.assertLessEqual(len(snapshot.frames[0].targets), 32)
+        self.assertIn("Public component 0", snapshot.frames[0].text)
+        self.assertNotIn("Public component 39", snapshot.frames[0].text)
+
+    def test_shadow_root_depth_limit_stops_nested_component_traversal(self):
+        task, _, session, page = self.session()
+        self.load(session, page, '<div id="host"></div>')
+        self.script(
+            page,
+            """
+            let host = document.querySelector('#host');
+            for(let i=0; i<12; i++) {
+                const root=host.attachShadow({mode:'open'});
+                root.innerHTML='<p>Depth '+i+'</p><div></div>';
+                host=root.querySelector('div');
+            } true;
+        """,
+        )
+        snapshot = self.inspect(task, session)
+        self.assertIn("Depth 7", snapshot.frames[0].text)
+        self.assertNotIn("Depth 8", snapshot.frames[0].text)
+        self.assertIn("shadow_root_limit", snapshot.limitations)
+
     def test_target_navigation_reports_a_loaded_document_and_invalidates_old_targets(
         self,
     ):
