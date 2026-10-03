@@ -448,3 +448,114 @@ class GitHubOwnerTemplateTests(ProfileCase):
         outcome = definition.execute(replace(request, review=review), self.cancelled)
         self.assertEqual(outcome.state, "not_applied")
         self.assertEqual(self.api.posts, [])
+
+
+class GitLabProfileTests(ProfileCase):
+    def setUp(self):
+        self.recipe = packaged_recipe("gitlab")
+        self.adapter = self.install(self.recipe, "gitlab")
+
+    def test_identity_uses_the_documented_user_id_and_username(self):
+        self.assertEqual(self.recipe.identity_path, "/api/v4/user")
+        self.assertEqual(self.recipe.subject_pointer, "/id")
+        self.assertEqual(self.recipe.label_pointer, "/username")
+        self.assertEqual(self.adapter.account.subject, "42")
+        self.assertEqual(self.adapter.account.label, "fixture-user")
+
+    def test_project_reads_use_a_numeric_id_segment_only(self):
+        result = self.read(self.adapter, "read_project", "7")
+        self.assertEqual(result.state, "succeeded")
+        self.assertEqual(
+            json.loads(result.text),
+            {
+                "id": 7,
+                "name": "fixture-owner/fixture-project",
+                "url": "https://gitlab.com/fixture-owner/fixture-project",
+            },
+        )
+        self.assertEqual(
+            self.api.calls[-1][1], "https://gitlab.com/api/v4/projects/7"
+        )
+        self.assertEqual(self.api.posts, [])
+        project = self.recipe.tools[0]
+        for value in (
+            "fixture-owner/fixture-project",
+            "../7",
+            "7?private_token=x",
+            "https://gitlab.com/api/v4/projects/7",
+            "7#note",
+        ):
+            with self.subTest(value=value), self.assertRaises(RecipeError):
+                project.destination(value)
+
+    def test_issue_create_sends_the_reviewed_draft_to_the_selected_project(self):
+        request, definition, review = self.reviewed_create(
+            self.adapter, "create_issue", "7"
+        )
+        self.assertEqual(json.loads(review.before), {"title": TITLE, "description": DRAFT})
+        context = json.loads(review.context)
+        self.assertEqual(
+            context["url"], "https://gitlab.com/api/v4/projects/7/issues"
+        )
+        self.assertEqual(context["destination"], "7")
+        self.assertIsNone(context["operation_header"])
+        self.assertEqual(
+            definition.execute(request, self.cancelled).state, "not_applied"
+        )
+        self.assertEqual(self.api.posts, [])
+        result = definition.execute(replace(request, review=review), self.cancelled)
+        self.assertEqual(result.state, "succeeded")
+        self.assertEqual(
+            json.loads(result.text),
+            {
+                "id": 7001,
+                "iid": 1,
+                "url": "https://gitlab.com/fixture-owner/fixture-project/-/issues/1",
+            },
+        )
+        self.assertEqual(
+            self.api.posts,
+            [("/api/v4/projects/7/issues", {"title": TITLE, "description": DRAFT})],
+        )
+
+    def test_no_operation_lookup_claims_to_prove_a_create(self):
+        for tool in self.recipe.tools:
+            self.assertIsNone(tool.reconciliation)
+            self.assertEqual(tool.idempotency_header, "")
+            self.assertIsNone(self.definition(self.adapter, tool.name).reconcile)
+        request, definition, review = self.reviewed_create(
+            self.adapter, "create_issue", "7"
+        )
+        self.api.fail("POST", "/api/v4/projects/7/issues", 429)
+        outcome = definition.execute(replace(request, review=review), self.cancelled)
+        self.assertEqual(outcome.state, "uncertain")
+        self.assertIn("Check its receipt", outcome.text)
+        self.assertEqual(len(self.api.posts), 1)
+        # Nothing is replayed and nothing is reconciled automatically.
+        self.api.failure = None
+        self.assertEqual(self.read(self.adapter, "read_project", "7").state, "succeeded")
+        self.assertEqual(len(self.api.posts), 1)
+
+    def test_incomplete_create_response_is_uncertain_rather_than_succeeded(self):
+        request, definition, review = self.reviewed_create(
+            self.adapter, "create_issue", "7"
+        )
+        del self.api.data["created"]["web_url"]
+        result = definition.execute(replace(request, review=review), self.cancelled)
+        self.assertEqual(result.state, "uncertain")
+        self.assertEqual(len(self.api.posts), 1)
+
+    def test_missing_scope_and_unknown_project_fail_before_any_write(self):
+        request, definition, review = self.reviewed_create(
+            self.adapter, "create_issue", "7"
+        )
+        self.api.fail("POST", "/api/v4/projects/7/issues", 403)
+        self.assertEqual(
+            definition.execute(replace(request, review=review), self.cancelled).state,
+            "uncertain",
+        )
+        self.assertEqual(len(self.api.posts), 1)
+        self.api.failure = ("GET", "/api/v4/projects/7", 404)
+        with self.assertRaises(ApiError):
+            self.read(self.adapter, "read_project", "7")
+        self.assertEqual(len(self.api.posts), 1)

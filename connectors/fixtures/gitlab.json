@@ -1,0 +1,65 @@
+{
+  "provider": "gitlab",
+  "references": [
+    "https://docs.gitlab.com/api/rest/authentication/",
+    "https://docs.gitlab.com/api/users/#retrieve-the-current-user",
+    "https://docs.gitlab.com/api/projects/#get-single-project",
+    "https://docs.gitlab.com/api/issues/#create-an-issue"
+  ],
+  "notes": [
+    "GitLab.com accepts a personal access token in the Authorization: Bearer header.",
+    "GET /api/v4/user returns a numeric id and a username; both are always present for an authenticated account.",
+    "Project routes take a numeric project ID as one URL segment. A namespace path such as group/project cannot be expressed, because a reviewed path segment never contains a slash.",
+    "POST /api/v4/projects/:id/issues requires title and accepts description. GitLab interprets leading slash commands in an issue title or description as quick actions, so Steed sends the reviewed draft unchanged and never strips or guesses them.",
+    "GitLab answers unknown or invisible projects with 404, and a token without the api scope with 403."
+  ],
+  "identity": {
+    "/api/v4/user": {
+      "id": 42,
+      "username": "fixture-user",
+      "name": "Fixture User",
+      "state": "active",
+      "web_url": "https://gitlab.com/fixture-user"
+    }
+  },
+  "routes": {
+    "/api/v4/user": {
+      "id": 42,
+      "username": "fixture-user",
+      "name": "Fixture User",
+      "state": "active",
+      "web_url": "https://gitlab.com/fixture-user"
+    },
+    "/api/v4/projects/7": {
+      "id": 7,
+      "description": "Fixture project",
+      "name": "Fixture project",
+      "path_with_namespace": "fixture-owner/fixture-project",
+      "web_url": "https://gitlab.com/fixture-owner/fixture-project",
+      "visibility": "private"
+    }
+  },
+  "created": {
+    "id": 7001,
+    "iid": 1,
+    "project_id": 7,
+    "title": "Fixture title",
+    "description": "Reviewed draft",
+    "state": "opened",
+    "web_url": "https://gitlab.com/fixture-owner/fixture-project/-/issues/1"
+  },
+  "errors": {
+    "rate_limited": {
+      "status": 429,
+      "documented": "GitLab returns 429 when the instance rate limit for the user is reached."
+    },
+    "missing_scope": {
+      "status": 403,
+      "documented": "A token without the api scope cannot create issues and receives 403 Forbidden."
+    },
+    "unknown_project": {
+      "status": 404,
+      "documented": "An unknown or non-visible project returns 404 Project Not Found."
+    }
+  }
+}
