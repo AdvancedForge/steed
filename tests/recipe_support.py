@@ -48,7 +48,11 @@ class WriteRecipeHttp:
             assert headers["Content-Type"] == "application/json"
             payload = json.loads(body)
             self.payloads.append(payload)
-            operation = payload["operation_id"]
+            operation = (
+                payload["operation_id"]
+                if "operation_id" in payload
+                else payload["data"]["operation_id"]
+            )
             result = {
                 "operation_id": operation,
                 "status": "succeeded",

@@ -1,5 +1,6 @@
 """User-only review of actual recipe domains, API paths and returned fields."""
 
+import json
 import sqlite3
 
 from PyQt6.QtCore import Qt
@@ -64,7 +65,14 @@ class RecipeReviewDialog(QDialog):
                 )
                 + (
                     "\nPayload bindings: "
-                    + ", ".join(f"{k} ← {v}" for k, v in t.request)
+                    + (
+                        "\n"
+                        + json.dumps(
+                            t.request_template.source(), ensure_ascii=False, indent=2
+                        )
+                        if t.request_template
+                        else ", ".join(f"{k} ← {v}" for k, v in t.request)
+                    )
                     + "\nPayload approval required for every action; no automatic retry.\nOperation header: "
                     + (t.idempotency_header or "none")
                     + (

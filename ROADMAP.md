@@ -313,6 +313,17 @@ establishes those results. Password improvements remain deferred at the user's r
   See the [concrete design comparison](DOCUMENTATION.md#complex-provider-workflow-decision).
   Google registration remains deferred independently.
 
+- **Nested request templates implemented:** recipe v3 supports immutable bounded
+  objects/arrays/literals with explicit draft, destination and operation-ID string
+  bindings. Exact serialized payload review and single-dispatch receipts remain
+  mandatory; v1/v2 stay compatible. Depth, node, item and byte limits apply before
+  HTTP entry. All 774 regressions passed in 299.980 seconds; 71 final recipe checks
+  passed in 14.370 seconds after popup/fixture refinements. Stdio MCP completed
+  nested creates and lost-reply reconciliation from both independent clients;
+  authenticated HTTP completed the same checks. Source/payload previews were
+  inspected. Ordered result-dependent execution is next; provider-specific headers,
+  sign-in and API semantics still require separate acceptance.
+
 - **Parallel connector handoff — published implementation scope:**
   [priority list and ownership](connectors/HANDOFF.md) identifies Todoist,
   owner-pinned GitHub and GitLab.com starter subsets that execute through unchanged

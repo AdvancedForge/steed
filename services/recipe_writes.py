@@ -46,7 +46,9 @@ class RecipeWrites:
             "operation_id": operation,
         }
         payload = json.dumps(
-            {k: sources[v] for k, v in tool.request},
+            tool.request_template.materialize(sources)
+            if tool.request_template
+            else {k: sources[v] for k, v in tool.request},
             ensure_ascii=False,
             allow_nan=False,
             indent=2,

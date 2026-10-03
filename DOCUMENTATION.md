@@ -1495,6 +1495,40 @@ defaults; the picker is empty until reviewed starter profiles are packaged.
 Six catalog/picker regressions passed, including changed-source rejection, safe
 file discovery, and installation granting neither account nor task access.
 
+**Version 3 nested JSON templates:** GET tools retain the existing format. POST
+`request` can contain nested objects, arrays and JSON literals. Bind draft data
+with an explicit single-key object such as `{"$bind": "artifact.content"}`;
+supported bindings are `artifact.title`, `artifact.content`, `destination` and
+`operation_id`. Plain strings are literals, even when they look like binding
+names. Binding substitutes the string without interpreting JSON, HTML, code,
+expressions or URLs inside it. Objects containing `$bind` must contain exactly
+that supported binding; it is reserved template syntax.
+
+Every write must bind draft content; every send must also bind its one approved
+email recipient. Limit templates to 10 top-level fields, 20 fields/items per
+object/array, 100 total nodes, depth 8 and a final preview/body of 16 KiB. Numbers
+must be finite; integers must fit the exact JSON number range ±(2^53−1). Literal
+strings cannot contain NUL. Steed freezes the parsed template and exposes a fresh
+copy in recipe metadata. The transport permits nested bodies only for reviewed
+nested POST rules; v2 bodies remain flat. User approval covers the actual
+serialized body, URL, source hash, account, draft hash and operation ID.
+
+The [nested example](examples/connector_recipes/notes-nested.json) is synthetic.
+Nested payloads are the first part of declarative request plans. They do not yet
+add custom headers, query inputs, root-array POSTs, revision guards, response
+conditions, result-derived bindings or multi-step execution; provider sign-in
+and API semantics still require separate acceptance.
+
+Nested-template acceptance: **774 regressions passed in 299.980 seconds**;
+71 final recipe checks passed in 14.370 seconds, including subsequent popup/fixture
+refinements. Both SDK/raw clients completed nested creates, lost-reply exact-operation
+reconciliation and no-replay checks over stdio and authenticated HTTP MCP alongside
+actual PDF/XLSX/PNG workers. Source and payload previews were visually inspected.
+Ruff/format and dependency checks passed. Logs:
+`/tmp/steed-nested-recipes-{full,final-focused,mcp-stdio,mcp-http}.log`.
+These are synthetic account/API checks; live provider/native desktop acceptance
+remains separate.
+
 **Implemented: reviewed declarative creates/sends.** Version 1 read recipes remain
 compatible. Version 2 may mix the existing GET format with POST tools. The
 [create/send example](examples/connector_recipes/notes-writes.json) is synthetic;
@@ -1599,8 +1633,8 @@ The next architectural boundary is how agent-designed connectors handle provider
 logic beyond a single reviewed JSON request. Steed's Google implementation uses
 provider-specific destination checks, multipart creation, revision-aware edits
 and marker-based reconciliation. Other workflows may need dependent mutations. Today's recipes
-have one POST and selected response fields; they cannot yet represent nested request
-objects, result-dependent follow-up requests, partial multi-step completion or
+have one POST and selected response fields; version 3 now represents nested request
+objects, but not result-dependent follow-up requests, partial multi-step completion or
 revision-guarded edits.
 
 A proposed next design keeps source declarative: bounded nested templates and
@@ -1609,7 +1643,9 @@ one durable receipt per step; each mutation's fully materialized payload would n
 review, and no later write would run after uncertain completion. Read-only probes
 would reconcile exact step IDs. Credentials stay in the broker, and generated
 workers could prepare drafts but cannot execute arbitrary connector code there.
-This requires new plan/storage semantics and is not implemented.
+Nested templates are implemented; ordered execution and durable per-step storage
+are the next milestone. Read probes, provider transforms and revision guards remain
+separate follow-ups.
 
 The alternative is a broker-backed sandboxed adapter package: generated code computes
 provider logic in the local worker, while typed broker calls own credentials,
