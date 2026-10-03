@@ -312,6 +312,126 @@ class FileLibraryTests(unittest.TestCase):
         self.assertTrue(self.library.row(self.folder, "project")["deleted"])
         self.assertTrue(self.library.row(self.folder, "project/file")["deleted"])
 
+    def test_search_returns_metadata_across_roots_with_literal_queries(self):
+        other = self.library.create_folder("Other")
+        hidden = self.library.create_folder("Hidden")
+        self.library.import_files(
+            self.folder,
+            [
+                ("project/report.txt", b"first"),
+                ("naïve 100%_done.md", b"unicode"),
+                ("project/report.txt.bak", b"stale"),
+            ],
+        )
+        self.library.import_files(
+            other, [("project/report.txt", b"second"), ("project/trash.txt", b"gone")]
+        )
+        self.library.import_files(hidden, [("secret.txt", b"hidden")])
+        for folder in (self.folder, other):
+            self.library.enable(folder, True)
+
+        # The same file name in two roots stays distinguishable.
+        found = self.library.search("report.txt")["entries"]
+        self.assertEqual(
+            sorted((e["folder_id"], e["folder"], e["path"]) for e in found),
+            sorted(
+                [
+                    (self.folder, "Research", "project/report.txt"),
+                    (other, "Other", "project/report.txt"),
+                    (self.folder, "Research", "project/report.txt.bak"),
+                ]
+            ),
+        )
+        # Metadata is enough to read the right file with the existing interface.
+        self.assertEqual({e["revision"] for e in found}, {1})
+        self.assertEqual({e["kind"] for e in found}, {"file"})
+        for entry in found:
+            data = self.library.read(
+                entry["folder_id"], entry["path"], entry["revision"]
+            )
+            expected = {other: b"second", self.folder: b"first"}.get(entry["folder_id"])
+            if entry["path"].endswith(".bak"):
+                expected = b"stale"
+            self.assertEqual(base64.b64decode(data["data_base64"]), expected)
+
+        # Query punctuation is literal, never a wildcard.
+        self.assertEqual(
+            [e["path"] for e in self.library.search("100%_done")["entries"]],
+            ["naïve 100%_done.md"],
+        )
+        self.assertEqual(
+            sorted(e["path"] for e in self.library.search("%")["entries"]),
+            ["naïve 100%_done.md"],
+        )
+        self.assertEqual(self.library.search("100X_done")["entries"], [])
+
+        # Disabled roots, Trash and recovery data never appear.
+        self.assertEqual(self.library.search("secret")["entries"], [])
+        self.assertEqual(
+            self.library.search("trash.txt")["entries"][0]["folder_id"], other
+        )
+        self.library.remove(other, "project/trash.txt", 1)
+        self.assertEqual(self.library.search("trash.txt")["entries"], [])
+        # Browsing groups each root in folder-name order, then path order.
+        browse = self.library.search("")["entries"]
+        self.assertEqual(
+            [e["folder"] for e in browse], sorted(e["folder"] for e in browse)
+        )
+        self.assertEqual(
+            [e["path"] for e in browse if e["folder"] == "Research"],
+            sorted(e["path"] for e in browse if e["folder"] == "Research"),
+        )
+
+    def test_search_paging_is_deterministic_bounded_and_validates_cursors(self):
+        self.library.enable(self.folder, True)
+        self.library.import_files(
+            self.folder, [(f"page/file{index:02d}.txt", b"x") for index in range(12)]
+        )
+        seen, cursor, pages = [], "", 0
+        while True:
+            page = self.library.search("page/file", after=cursor, limit=5)
+            self.assertLessEqual(len(page["entries"]), 5)
+            self.assertEqual(page["truncated"], page["has_more"])
+            seen += [(e["folder_id"], e["path"]) for e in page["entries"]]
+            cursor, pages = page["cursor"], pages + 1
+            if not page["has_more"] or pages > 10:
+                break
+        self.assertEqual(len(seen), 12)
+        self.assertEqual(len(set(seen)), 12)
+        # Paging visits exactly what one uncapped call returns, in the same order.
+        self.assertEqual(
+            seen,
+            [
+                (e["folder_id"], e["path"])
+                for e in self.library.search("page/file", limit=200)["entries"]
+            ],
+        )
+        # An empty result set is explicit rather than an error.
+        empty = self.library.search("nothing-matches-this")
+        self.assertEqual((empty["entries"], empty["has_more"]), ([], False))
+        for bad in ("garbage", "[1]", "[]", '["a"]', "[1,2]", "[1,2,3,4]", '{"a":1}'):
+            with self.assertRaises(ValueError):
+                self.library.search("page", after=bad)
+        with self.assertRaises(ValueError):
+            self.library.search("page", limit=0)
+        # A stale revision from search still cannot be read after an edit.
+        entry = self.library.search("page/file00")["entries"][0]
+        self.write("page/file00.txt", b"changed", expected=entry["revision"])
+        with self.assertRaises(ValueError):
+            self.library.read(entry["folder_id"], entry["path"], entry["revision"])
+
+    def test_search_unicode_cursor_can_be_used_for_the_next_page(self):
+        folder = self.library.create_folder("研" * 128)
+        self.library.enable(folder, True)
+        self.library.import_files(
+            folder, [("文" * 100 + suffix, b"x") for suffix in ("a", "b")]
+        )
+        first = self.library.search("文", limit=1)
+        self.assertLessEqual(len(first["cursor"]), 1024)
+        second = self.library.search("文", limit=1, after=first["cursor"])
+        self.assertFalse(second["has_more"])
+        self.assertEqual(second["entries"][0]["path"], "文" * 100 + "b")
+
 
 class FileLibraryServiceTests(unittest.TestCase):
     @classmethod
@@ -365,6 +485,45 @@ class FileLibraryServiceTests(unittest.TestCase):
                 path="inputs/data.bin",
                 revision=1,
             )
+
+    def test_agent_search_discovers_shared_files_from_a_new_task(self):
+        self.service.library.enable(self.folder, True)
+        found = self.call("library.search", query="data.bin")
+        self.assertEqual([e["path"] for e in found["entries"]], ["inputs/data.bin"])
+        entry = found["entries"][0]
+        self.assertEqual((entry["folder_id"], entry["folder"]), (self.folder, "Shared"))
+        self.assertEqual(entry["revision"], 1)
+
+        # A brand new task locates and reuses the file with no per-file/task grant.
+        new_task = self.task()
+        reused = self.call("library.search", client=new_task, query="data.bin")
+        self.assertEqual(reused["entries"][0]["revision"], entry["revision"])
+        data = self.call(
+            "library.read",
+            client=new_task,
+            folder_id=entry["folder_id"],
+            path=entry["path"],
+            revision=entry["revision"],
+        )
+        self.assertEqual(base64.b64decode(data["data_base64"]), b"input\x00\xff")
+        self.assertEqual(self.service.store.grants(new_task.task_id), [])
+
+        # Scoping to a disabled folder is refused, and disabling hides it at once.
+        other = self.service.library.create_folder("Off")
+        with self.assertRaises(ValueError):
+            self.call("library.search", query="data.bin", folder_id=other)
+        self.service.library.enable(self.folder, False)
+        self.assertEqual(self.call("library.search", query="data.bin")["entries"], [])
+
+    def test_agent_search_folder_scope_does_not_return_another_enabled_root(self):
+        other = self.service.library.create_folder("Other shared folder")
+        for folder in (self.folder, other):
+            self.service.library.enable(folder, True)
+        self.service.library.import_files(other, [("inputs/data.bin", b"other")])
+        result = self.call("library.search", folder_id=self.folder, query="data.bin")
+        self.assertEqual([e["folder_id"] for e in result["entries"]], [self.folder])
+        result = self.call("library.search", folder_id=other, query="data.bin")
+        self.assertEqual([e["folder_id"] for e in result["entries"]], [other])
 
     def test_agent_cannot_enable_folders_clear_recovery_or_supply_task_identity(self):
         self.service.library.enable(self.folder, True)
@@ -546,6 +705,88 @@ class FileLibraryServiceTests(unittest.TestCase):
             dialog.export()
         self.assertEqual(destination.read_bytes(), b"Never replace this")
         dialog.reject()
+        sip.delete(dialog)
+
+    def test_dialog_filter_is_literal_bounded_and_cleared_on_close(self):
+        dialog = FileLibraryDialog(self.service)
+        dialog.enabled.setChecked(True)
+        for name, data in (
+            ("notes/report.txt", b"first"),
+            ("notes/100%_done.md", b"literal"),
+            ("deep/summary.txt", b"second"),
+        ):
+            self.service.library.import_files(self.folder, [(name, data)])
+
+        def labels():
+            dialog.refresh()
+            found = []
+            stack = [
+                dialog.files.topLevelItem(i)
+                for i in range(dialog.files.topLevelItemCount())
+            ]
+            while stack:
+                item = stack.pop()
+                found.append(item.text(0))
+                stack.extend(item.child(i) for i in range(item.childCount()))
+            return sorted(found)
+
+        self.assertEqual(
+            labels(),
+            [
+                "100%_done.md",
+                "data.bin",
+                "deep",
+                "inputs",
+                "notes",
+                "report.txt",
+                "summary.txt",
+            ],
+        )
+        dialog.filter.setText("report")
+        self.assertEqual(labels(), ["notes/report.txt"])
+        # Punctuation is literal, so % never stands in for any character.
+        dialog.filter.setText("%")
+        self.assertEqual(labels(), ["notes/100%_done.md"])
+        dialog.filter.setText("100X_done")
+        self.assertEqual(labels(), [])
+        # Filter state does not survive closing the dialog.
+        dialog.filter.setText("report")
+        dialog.reject()
+        self.assertEqual(dialog.filter.text(), "")
+        sip.delete(dialog)
+
+    def test_dialog_paging_reaches_files_beyond_the_old_ceiling_and_resets(self):
+        count = 2103
+        for start in range(0, count, 500):
+            self.service.library.import_files(
+                self.folder,
+                [
+                    (f"bulk/report-{i:04}.txt", b"x")
+                    for i in range(start, min(start + 500, count))
+                ],
+            )
+        dialog = FileLibraryDialog(self.service)
+        dialog.filter.setText("report-")
+        seen = []
+        while True:
+            self.assertLessEqual(dialog.files.topLevelItemCount(), 200)
+            seen.extend(
+                dialog.files.topLevelItem(i).text(0)
+                for i in range(dialog.files.topLevelItemCount())
+            )
+            if not dialog.next_page.isEnabled():
+                break
+            dialog.next_page.click()
+        self.assertEqual(seen, [f"bulk/report-{i:04}.txt" for i in range(count)])
+        self.assertTrue(dialog.previous_page.isEnabled())
+        dialog.previous_page.click()
+        self.assertEqual(dialog.files.topLevelItem(0).text(0), "bulk/report-1800.txt")
+        dialog.filter.setText("report-2102")
+        self.assertFalse(dialog.previous_page.isEnabled())
+        self.assertFalse(dialog.next_page.isEnabled())
+        self.assertEqual(dialog.files.topLevelItem(0).text(0), "bulk/report-2102.txt")
+        dialog.reject()
+        self.assertEqual(dialog._page_history, [])
         sip.delete(dialog)
 
 

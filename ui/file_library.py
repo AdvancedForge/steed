@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTreeWidget,
@@ -24,6 +25,8 @@ from PyQt6.QtWidgets import (
 from services.file_library import FILE_BYTES, read_import
 from services.task_downloads import DownloadDestination
 
+PAGE_ROWS = 200
+
 
 class FileLibraryDialog(QDialog):
     def __init__(self, service, parent=None):
@@ -33,6 +36,10 @@ class FileLibraryDialog(QDialog):
         self.resize(850, 620)
         self._loading = False
         self._job = None
+        self._page_context = None
+        self._page_after = ""
+        self._page_history = []
+        self._page_last = ""
         self._executor = ThreadPoolExecutor(max_workers=1)
         layout = QVBoxLayout(self)
         notice = QLabel(
@@ -59,11 +66,28 @@ class FileLibraryDialog(QDialog):
         self.trash = QCheckBox("Show Trash")
         self.trash.toggled.connect(self.refresh)
         layout.addWidget(self.trash)
+        self.filter = QLineEdit()
+        self.filter.setAccessibleName("Filter library entries")
+        self.filter.setPlaceholderText("Filter by name or path (empty shows all)…")
+        self.filter.setClearButtonEnabled(True)
+        self.filter.setMaxLength(512)
+        self.filter.textChanged.connect(self.refresh)
+        layout.addWidget(self.filter)
         self.files = QTreeWidget()
         self.files.setHeaderLabels(["Name", "Type", "Bytes", "Revision"])
         self.files.setColumnWidth(0, 400)
         self.files.setAccessibleName("Library files and subfolders")
         layout.addWidget(self.files, 1)
+        paging = QHBoxLayout()
+        self.previous_page = QPushButton("Previous page")
+        self.previous_page.clicked.connect(self.show_previous_page)
+        paging.addWidget(self.previous_page)
+        self.page_label = QLabel()
+        paging.addWidget(self.page_label, 1)
+        self.next_page = QPushButton("Next page")
+        self.next_page.clicked.connect(self.show_next_page)
+        paging.addWidget(self.next_page)
+        layout.addLayout(paging)
         buttons = QHBoxLayout()
         self.import_buttons = []
         for label, slot in (
@@ -100,6 +124,7 @@ class FileLibraryDialog(QDialog):
         self.refresh()
 
     def profile_changed(self, name):
+        self.clear_filter()
         self.files.clear()
         self.folders.blockSignals(True)
         self.folders.clear()
@@ -108,6 +133,7 @@ class FileLibraryDialog(QDialog):
     def done(self, result):
         if not self._detached:
             self._detached = True
+            self.clear_filter()
             self.service.changed.disconnect(self.refresh)
             if self.parent() is not None:
                 self.parent().profile_manager.profile_changed.disconnect(
@@ -139,6 +165,25 @@ class FileLibraryDialog(QDialog):
             self.status.setText(str(error))
             return None
 
+    def clear_filter(self):
+        self.filter.blockSignals(True)
+        self.filter.clear()
+        self.filter.blockSignals(False)
+        self._page_context = None
+        self._page_after = ""
+        self._page_history.clear()
+
+    def show_next_page(self):
+        if self.next_page.isEnabled():
+            self._page_history.append(self._page_after)
+            self._page_after = self._page_last
+            self.refresh()
+
+    def show_previous_page(self):
+        if self._page_history:
+            self._page_after = self._page_history.pop()
+            self.refresh()
+
     def refresh(self):
         if self._loading or self.service._closed or getattr(self, "_detached", False):
             return
@@ -166,13 +211,29 @@ class FileLibraryDialog(QDialog):
                 else None
             )
             self.files.clear()
+            query = self.filter.text()
+            context = (folder_id, self.trash.isChecked(), query)
+            if context != self._page_context:
+                self._page_context = context
+                self._page_after = ""
+                self._page_history.clear()
+            self.next_page.setEnabled(False)
+            self.previous_page.setEnabled(bool(self._page_history))
+            self.page_label.setText(f"Page {len(self._page_history) + 1}")
             if folder_id:
+                # Literal filtering and keyset paging bound each Qt repaint.
                 rows = self.service.library.db.execute(
-                    "SELECT path,kind,revision,sha256,deleted,length(data) AS byte_count FROM entries WHERE folder=? AND deleted=? ORDER BY path LIMIT 2000",
-                    (folder_id, int(self.trash.isChecked())),
-                )
+                    "SELECT path,kind,revision,sha256,deleted,length(data) AS byte_count FROM entries WHERE folder=? AND deleted=? AND instr(path,?)>0 AND path>? ORDER BY path LIMIT ?",
+                    (
+                        folder_id,
+                        int(self.trash.isChecked()),
+                        query,
+                        self._page_after,
+                        PAGE_ROWS + 1,
+                    ),
+                ).fetchall()
                 nodes = {}
-                for row in rows:
+                for row in rows[:PAGE_ROWS]:
                     item = QTreeWidgetItem(
                         [
                             row["path"].rsplit("/", 1)[-1],
@@ -186,11 +247,24 @@ class FileLibraryDialog(QDialog):
                     if parent in nodes:
                         nodes[parent].addChild(item)
                     else:
+                        # Filtering/paging can omit parents; retain the full path
+                        # so equal leaf names cannot look like the same file.
+                        item.setText(0, row["path"])
                         self.files.addTopLevelItem(item)
+                    item.setToolTip(0, row["path"])
                     nodes[row["path"]] = item
                     if row["path"] == old_path:
                         self.files.setCurrentItem(item)
                 self.files.expandAll()
+                self.next_page.setEnabled(len(rows) > PAGE_ROWS)
+                self._page_last = (
+                    rows[min(len(rows), PAGE_ROWS) - 1]["path"]
+                    if rows
+                    else self._page_after
+                )
+                self.page_label.setText(
+                    f"Page {len(self._page_history) + 1} · {min(len(rows), PAGE_ROWS)} entries"
+                )
         except (OSError, sqlite3.Error, ValueError, RuntimeError) as error:
             self.status.setText(str(error))
         finally:

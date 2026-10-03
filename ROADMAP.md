@@ -10,7 +10,38 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 ## Current work — October 3, 2026
 
 **Priority: daily workflow engineering.** Public-release work remains reference
-backlog; it is not the active agenda. The completed milestone is a persistent agent
+backlog; it is not the active agenda.
+
+**Library discovery milestone (engineering branch reviewed and integrated).**
+Reusable files are now findable instead of only reachable by walking every
+folder. `steed_library_search` returns file metadata across every enabled root
+in one call — folder id, folder name, relative path, kind, current revision and
+size — which is exactly what `steed_library_read` and `steed_library_write_begin`
+already need, so an agent can locate a nested input and reuse it from a new task
+without listing folders one at a time. Matching is a literal substring of the
+path, so `%` and `_` are never wildcards. Results are ordered by folder name then
+path and paged with an opaque cursor, and identical file names in different roots
+stay distinguishable by folder id. Disabled roots, Trash and old versions are
+never returned, and access is rechecked on every call, so disabling a folder
+hides it immediately. Each call fetches one page plus a sentinel, reporting
+`has_more`/`truncated` when another page can be retrieved. A **Filter** box
+applies the same literal match to the selected folder; 200-row Next/Previous
+pages replace the old ceiling, and filter/navigation clear on profile change or
+close. Discovery is metadata only: no content indexing, no decision model, no
+recurring approval prompts, and imports remain copies.
+
+Reviewed branch head `f6c28b4` and retained its search/tool/filter/smoke work.
+Maintainer corrections: honor an enabled `folder_id` restriction (the branch
+discarded it), keep Unicode cursors within the published limit, fetch only the
+requested page, and replace 20,000-widget refreshes with actual UI paging and
+unambiguous paths. All 155 final library/workspace/profile/chat/gateway/service
+checks pass in 82.229 seconds, including a 2,103-file navigation regression.
+Both stdio and HTTP MCP journeys pass with actual SDK and independent clients.
+The contributor's GLX test limitation is resolved
+in this Linux environment. Full regression and following observation work remain
+the next validation checkpoint.
+
+**Earlier completed milestone:** a persistent agent
 file library: user-added files/subfolders survive tasks and restart; a clear
 folder enable switch gives connected agents full file access without repeated
 uploads or per-file/task approvals. Old versions and Trash support recovery,
@@ -41,15 +72,15 @@ privacy review are concrete release work; feature coverage alone is insufficient
 License, package/support target and cloud-agent release scope remain owner choices.
 
 Connector [PR #2](https://github.com/AdvancedForge/steed/pull/2) was re-reviewed at
-`c1821fe`: all 72 Linux profile/catalog/interpreter/compatibility/HTTP checks pass,
-including 37 profile tests and the actual selector path, without skips. Earlier
-selector and GitLab warning requests are addressed. Review now requests factual
-corrections for Notion token identity/versioned fixtures, GitHub issue reads that
-can return pull requests, and GitLab description/comment quick-action wording.
-[Review](https://github.com/AdvancedForge/steed/pull/2#pullrequestreview-5402272122)
-and [detailed continuation](https://github.com/AdvancedForge/steed/pull/2#issuecomment-5972430276)
-preserve contributor-owned paths and require corrections before merge. The PR
-remains unmerged; no live account acceptance is claimed.
+`d94f093`: all 75 Linux profile/catalog/interpreter/compatibility/HTTP checks pass,
+including 40 profile tests and the actual selector path, without skips. Prior
+corrections are addressed; the shipped starter subsets receive a positive
+engineering assessment. [Review](https://github.com/AdvancedForge/steed/pull/2#pullrequestreview-5402708365)
+and [five continuation milestones](https://github.com/AdvancedForge/steed/pull/2#issuecomment-5973415389)
+cover workflow completeness, additional supported templates, executable provider
+contracts, broader families and lifecycle testing. Candidate contracts need
+careful transport-size/onboarding distinctions; the PR remains unmerged, and no
+live account acceptance is claimed.
 
 Chat presentation milestone: native agent conversation can move between sidebar
 and a saved/restorable tab; normal HTTPS website chats can move the same page

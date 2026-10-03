@@ -521,11 +521,17 @@ async def sdk_client(
                 "task.start", objective="Complete a synthetic form beside the user"
             )
             shared["task_id"] = task["task_id"]
+            # A brand new task finds the earlier task's output by search.
+            reused = await call("library.search", query="results.bin")
+            match = [e for e in reused["entries"] if e["path"] == "sdk/results.bin"]
+            assert len(match) == 1
+            found = match[0]
+            assert found["folder_id"] == shared["library_id"]
             persisted = await call(
                 "library.read",
-                folder_id=shared["library_id"],
-                path="sdk/results.bin",
-                revision=1,
+                folder_id=found["folder_id"],
+                path=found["path"],
+                revision=found["revision"],
             )
             assert (
                 base64.b64decode(persisted["data_base64"])
@@ -982,11 +988,29 @@ async def conversation_workflow(call, shared, label, task_id):
 async def library_workflow(call, shared, label):
     folders = await call("library.folders")
     assert {f["id"] for f in folders} == {shared["library_id"]}
+    # Locate the input by name instead of a known path, and never see the
+    # disabled folder that exists alongside it.
+    found = await call("library.search", query="reference.bin")
+    assert [e["path"] for e in found["entries"]] == ["inputs/reference.bin"]
+    entry = found["entries"][0]
+    assert entry["folder_id"] == shared["library_id"]
+    assert entry["folder"] == "Synthetic persistent inputs"
+    assert entry["revision"] == 1 and entry["kind"] == "file"
+    assert found["truncated"] is False and found["has_more"] is False
+    assert await call("library.search", query="nothing-matches-this") == {
+        "entries": [],
+        "cursor": "",
+        "has_more": False,
+        "truncated": False,
+    }
+    # Browsing every enabled root still cannot reveal the disabled folder.
+    browse = await call("library.search")
+    assert {e["folder_id"] for e in browse["entries"]} == {shared["library_id"]}
     data = await call(
         "library.read",
-        folder_id=shared["library_id"],
-        path="inputs/reference.bin",
-        revision=1,
+        folder_id=entry["folder_id"],
+        path=entry["path"],
+        revision=entry["revision"],
     )
     assert base64.b64decode(data["data_base64"]) == b"PERSISTENT_LIBRARY_INPUT\x00\xff"
     payload = b"PERSISTENT_LIBRARY_OUTPUT\x00\xff"

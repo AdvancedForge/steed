@@ -287,6 +287,16 @@ TOOLS = (
         ("folder_id",),
     ),
     tool(
+        "library.search",
+        "Find reusable files across enabled persistent folders by name or path without listing every folder first. Metadata only: folder_id, folder name, path, kind, revision and size, which are exactly the values library.read and library.write_begin need. Matching is a literal substring of the path, so % and _ are not wildcards. Disabled folders, Trash and old versions are never returned. Omit the query to browse across enabled folders. Page with the returned cursor; truncated=true means results were capped.",
+        {
+            "query": {"type": "string", "maxLength": 512},
+            "folder_id": string(64),
+            "after": {"type": "string", "maxLength": 1024},
+            "limit": integer(1, 200),
+        },
+    ),
+    tool(
         "library.read",
         "Read binary bytes from an enabled library file in chunks. Pass its current revision from library.list; a changed file fails instead of mixing revisions. Use base64 chunks; no arbitrary host file access.",
         {
