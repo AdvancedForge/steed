@@ -1,0 +1,74 @@
+{
+  "provider": "github",
+  "references": [
+    "https://docs.github.com/en/rest/users/users#get-the-authenticated-user",
+    "https://docs.github.com/en/rest/repos/repos#get-a-repository",
+    "https://docs.github.com/en/rest/issues/issues#create-an-issue",
+    "https://docs.github.com/en/rest/about-the-rest-api/api-versions",
+    "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+  ],
+  "notes": [
+    "GET /user returns a numeric id and a login. Its email field is null unless the token has user:email, so /login is the reviewed account label and /email is never used.",
+    "A repository read and an issue create both take a repository name as the single {destination} segment under the owner written in the reviewed source.",
+    "POST /repos/{owner}/{repo}/issues accepts title as required and body as an optional string; the reviewed profile sends only those two fields.",
+    "GitHub documents an unversioned default REST API version. Steed does not pin a version header, so behaviour follows GitHub's current documented default."
+  ],
+  "owner": "fixture-owner",
+  "identity": {
+    "/user": {
+      "login": "fixture-user",
+      "id": 42,
+      "node_id": "MDQ6VXNlcjQy",
+      "avatar_url": "https://avatars.example.test/u/42",
+      "url": "https://api.github.com/users/fixture-user",
+      "type": "User",
+      "site_admin": false,
+      "email": null
+    }
+  },
+  "routes": {
+    "/user": {
+      "login": "fixture-user",
+      "id": 42,
+      "url": "https://api.github.com/users/fixture-user",
+      "type": "User",
+      "site_admin": false,
+      "email": null
+    },
+    "/repos/fixture-owner/fixture-repo": {
+      "id": 7,
+      "node_id": "MDEwOlJlcG9zaXRvcnk3",
+      "name": "fixture-repo",
+      "full_name": "fixture-owner/fixture-repo",
+      "private": false,
+      "html_url": "https://github.com/fixture-owner/fixture-repo",
+      "default_branch": "main"
+    }
+  },
+  "created": {
+    "id": 9001,
+    "node_id": "I_kwDOExample",
+    "number": 1,
+    "title": "Fixture title",
+    "state": "open",
+    "html_url": "https://github.com/fixture-owner/fixture-repo/issues/1",
+    "user": {
+      "login": "fixture-user",
+      "id": 42
+    }
+  },
+  "errors": {
+    "secondary_rate_limit": {
+      "status": 403,
+      "documented": "GitHub returns 403 with a documented message when a secondary rate limit is hit, and 429 for a primary limit."
+    },
+    "revoked_token": {
+      "status": 401,
+      "documented": "An expired, revoked or malformed token returns 401 Bad credentials."
+    },
+    "wrong_owner": {
+      "status": 404,
+      "documented": "A repository that is missing, or not visible to the token's repository selection, returns 404 rather than 403."
+    }
+  }
+}
