@@ -45,6 +45,7 @@ attachments and compose approved app tools in an isolated local worker after
 exact-package/environment approval. An optional document bundle adds PDF, XLSX and
 image generation. Users share selected input files and export results from
 Task Permissions. Active website scripts and generic extensions remain planned.
+Use **File → Agent Connection Setup** for copyable client settings.
 Open **View → Agent Sidebar** (`Ctrl+Shift+A`) to message a connected task;
 external agents must use the [conversation tools](DOCUMENTATION.md#external-agent-conversation-sidebar).
 Google Docs/Gmail connections keep credentials in the desktop keyring and offer

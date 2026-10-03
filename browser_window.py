@@ -153,6 +153,7 @@ class BrowserWindow(QMainWindow):
         self._child_windows: list[BrowserWindow] = []
         self._password_dialog = None
         self.agent_sidebar = None
+        self.agent_setup_dialog = None
         self.setup_window()
         self.setup_menus()
         self.setup_ui()
@@ -289,6 +290,9 @@ class BrowserWindow(QMainWindow):
         registry.agent_access_changed.connect(self.agent_access_action.setChecked)
         self.agent_access_action.triggered.connect(self._set_agent_access)
         file_menu.insertAction(task_action, self.agent_access_action)
+        setup_agent_action = QAction("Agent Connection Setup…", self)
+        setup_agent_action.triggered.connect(self._open_agent_setup)
+        file_menu.insertAction(task_action, setup_agent_action)
         edit_menu = menubar.addMenu("Edit")
         self.find_action = QAction("Find in Page...", self)
         self.find_action.setShortcut(QKeySequence("Ctrl+F"))
@@ -462,12 +466,32 @@ class BrowserWindow(QMainWindow):
             self.addDockWidget(
                 Qt.DockWidgetArea.RightDockWidgetArea, self.agent_sidebar
             )
+            self.agent_sidebar.setup_requested.connect(self._open_agent_setup)
             self.agent_sidebar.visibilityChanged.connect(
                 self.agent_sidebar_action.setChecked
             )
         if self.agent_sidebar is not None:
             self.agent_sidebar.set_private(self.profile_manager.is_search_profile())
             self.agent_sidebar.setVisible(visible)
+
+    def _open_agent_setup(self):
+        if self._closing:
+            return
+        if self.agent_setup_dialog is None:
+            from ui.agent_setup import AgentSetupDialog
+
+            self.agent_setup_dialog = AgentSetupDialog(
+                self.profile_manager.registry, self
+            )
+            self.agent_setup_dialog.enable_requested.connect(
+                lambda: self._set_agent_access(True)
+            )
+            self.agent_setup_dialog.finished.connect(
+                lambda: setattr(self, "agent_setup_dialog", None)
+            )
+        self.agent_setup_dialog.show()
+        self.agent_setup_dialog.raise_()
+        self.agent_setup_dialog.activateWindow()
 
     def _update_window_title(self, url=None):
         profile_name = self.profile_manager.current_profile_name
