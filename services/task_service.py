@@ -53,6 +53,8 @@ class TaskService(QObject):
 
     failed = pyqtSignal(str)
     changed = pyqtSignal()
+    user_message_sent = pyqtSignal(str, object)
+    conversation_cleared = pyqtSignal(str)
 
     def __init__(
         self,
@@ -1198,12 +1200,14 @@ class TaskService(QObject):
             raise ValueError("External agent is not connected")
         result = self.messages.post_user(task_id, text)
         self.changed.emit()
+        self.user_message_sent.emit(task_id, result)
         return result
 
     def clear_messages(self, task_id):
         require_owner_thread(self)
         self._usable()
         self.messages.clear(task_id)
+        self.conversation_cleared.emit(task_id)
         self.changed.emit()
 
     def _client_denied(self, task_id, reason):

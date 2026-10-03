@@ -4,6 +4,7 @@ import json
 import os
 import stat
 import unittest
+from unittest.mock import patch
 
 import test_task_services as fixtures
 from PyQt6.QtNetwork import QLocalSocket
@@ -68,6 +69,61 @@ class AgentGatewayTests(unittest.TestCase):
         return self.call(socket, "task.start", objective="Synthetic external task")[
             "result"
         ]["task_id"]
+
+    def bound_connection(self, binding, *, accepted=True):
+        socket = QLocalSocket()
+        self.sockets.append(socket)
+        socket.connectToServer(self.gateway.socket_path)
+        self.wait_for(
+            lambda: socket.state() == QLocalSocket.LocalSocketState.ConnectedState
+        )
+        socket.write(
+            json.dumps({"token": self.gateway.token, "task_binding": binding}).encode()
+            + b"\n"
+        )
+        if accepted:
+            self.assertEqual(self.receive(socket), {"connected": True})
+        else:
+            self.wait_for(
+                lambda: socket.state() == QLocalSocket.LocalSocketState.UnconnectedState
+            )
+        return socket
+
+    def test_managed_binding_is_single_use_and_cannot_replace_or_impersonate(self):
+        task = self.service._create("Trusted chat")
+        binding = self.gateway.bind_task(task.task_id)
+        socket = self.bound_connection(binding)
+        self.assertEqual(
+            self.call(socket, "task.status")["result"]["task_id"], task.task_id
+        )
+        self.assertIn("error", self.call(socket, "task.start", objective="Replacement"))
+        self.assertIn(
+            "error",
+            self.call(socket, "conversation.reply", message_id="forged", text="Forged"),
+        )
+        self.assertIn("error", self.call(socket, "task.status", task_id="someone-else"))
+        self.bound_connection(binding, accepted=False)
+        self.assertEqual(len(self.service.store.list_tasks()), 1)
+        self.assertEqual(self.service.store.grants(task.task_id), [])
+
+    def test_expired_revoked_and_cancelled_bindings_fail_without_new_authority(self):
+        for mode in ("expired", "revoked", "cancelled"):
+            with self.subTest(mode=mode):
+                task = self.service._create("Unconnected chat")
+                binding = self.gateway.bind_task(task.task_id)
+                if mode == "expired":
+                    with patch(
+                        "services.agent_gateway.time.monotonic", return_value=10**12
+                    ):
+                        self.bound_connection(binding, accepted=False)
+                elif mode == "revoked":
+                    self.gateway.revoke_binding(binding)
+                    self.bound_connection(binding, accepted=False)
+                else:
+                    self.service.cancel_task(task.task_id)
+                    self.bound_connection(binding, accepted=False)
+                self.assertNotIn(task.task_id, self.service.external_tasks)
+                self.assertEqual(self.service.store.grants(task.task_id), [])
 
     def approved_session(self, socket, task_id):
         grant = self.call(

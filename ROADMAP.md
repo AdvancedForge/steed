@@ -1115,15 +1115,56 @@ read markers, and opens that task's permissions/files/app receipts. Closing the
 dock preserves the task; cancellation remains explicit. Ordinary browsing and
 shared-profile collaboration retain their existing authority boundaries.
 
-The external client must actively read/reply through the task mailbox. Idle
-client wake-up, provider-specific agent launch, automatic reconnect and task
-reassignment are not implemented. A future wake-up integration needs a concrete
-external client lifecycle and API decision; it must not imply broad new browser
-permissions. Reviewed connector/file customization remains in scope, while
-declarative browser styling/features need an installation/versioning/rollback
-contract before execution.
+Generic external clients must actively read/reply through the task mailbox;
+provider-specific automatic delivery is now implemented for Codex. Automatic
+reconnect, task reassignment and wake-up for other clients remain pending.
+Reviewed connector/file customization remains in scope, while declarative browser
+styling/features need an installation/versioning/rollback contract before execution.
 
 Built-in agent hosting, scheduling, autonomous planning, and model-account
 management need a separate proposal after the collaboration layer is proven.
 That proposal must address OS isolation, billing, credentials, resources, and
 recovery.
+
+
+## October 3, 2026 — native Codex communication milestone
+
+Implemented a shared external-provider interface and **New Codex Chat** in the
+sidebar. Send starts native turns; streamed answers and queued follow-ups stay
+on one task/thread. Dedicated CLI processes use Codex's own sign-in, normal
+settings/tools/MCP services and permission policy. Newer bundled code runtime
+support is included, following the user's choice; native approvals/questions
+are relayed through readable nonmodal popups. Steed permissions remain separate.
+
+Single-use expiring bindings attach the native MCP connection to exactly one
+browser task. Cancellation/access disable/last-window shutdown stop the owned
+process group, revoke unused bindings and retain read-only history. Clearing
+chat suppresses erased replies and removes queued prompts without replay.
+Profile privacy, multiwindow ownership, UTF-8 limits and storage failures have
+regression coverage. No model credentials or runtime stderr are stored by Steed.
+
+Validation: native Codex 0.160.0 with synthetic loopback Responses, GPT-6.1 Sol
+code-runtime Steed status round trip and streaming follow-ups passed. Direct-tool
+GPT-5.4 native calls, both MCP transports with document/recipe workflows and
+ordinary browser startup/render/shutdown also passed. The full suite passed
+**846 tests in 326.979 seconds** (`/tmp/steed-codex-final-full.log`); final
+focused popup/sidebar checks cover subsequent UI refinements. Ruff lint/format
+and whitespace checks passed.
+Real account/model availability and desktop acceptance remain manual checks.
+
+**Direction reaffirmed:** external agents keep their normal independent
+capabilities; Steed provides communication and browser tools. The user's request
+for taking over current profiles/tabs is distinct from existing-profile task
+pages and is not yet implemented. Next browser milestone: user-directed live-tab
+handoff with preserved page/JavaScript, approved tab discovery/search, visible
+controller, immediate return and borrowed-page cleanup. Add visual evidence and
+broader widget/frame coverage; current DOM actions deliberately report omissions.
+
+**External-agent integration research:** Muse supports custom service connectors;
+dots uses enabled plugins/local computer connections. Neither cloud agent can
+reach Steed's loopback endpoint without a local bridge or authenticated remote
+transport. Instinct's public custom MCP setup was not verified. Detailed sources
+and the compatibility matrix are in DOCUMENTATION.md. A cloud bridge requires
+choosing its hosting/authentication/tunnel model before publishing an endpoint.
+Google production registration remains deferred; connector implementation handoff
+paths remain reserved for the other contributor.

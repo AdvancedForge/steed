@@ -1,13 +1,16 @@
 """Sidebar interaction leaves page authority and task lifecycle explicit."""
 
 import sqlite3
+import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import test_task_profiles as fixtures
 from PyQt6.QtCore import Qt
 
 from browser_window import BrowserWindow
+from services.codex_provider import CodexProvider
 from ui.task_dialog import TaskDialog
 
 
@@ -33,6 +36,43 @@ class AgentSidebarTests(unittest.TestCase):
         self.service.external_connection(task.task_id, True)
         sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(task.task_id))
         return task.task_id
+
+    def test_managed_codex_chat_is_shared_and_access_toggle_stops_it(self):
+        first_window, first = self.sidebar()
+        second_window, second = self.sidebar()
+        providers = self.registry.agent_providers
+        self.assertEqual(providers.chats, {})
+        self.assertIsNone(self.registry.agent_gateway)
+        providers.factory = lambda parent: CodexProvider(
+            parent,
+            command=[
+                sys.executable,
+                str(Path(__file__).parent / "fixtures" / "fake_codex_server.py"),
+                "normal",
+            ],
+        )
+        first.new_chat.click()
+        task = next(iter(providers.chats))
+        self.wait_for(lambda: providers.status(task) == "Codex ready")
+        second.tasks.setCurrentIndex(second.tasks.findData(task))
+        first.composer.setPlainText("First window")
+        first.send.click()
+        second.composer.setPlainText("Second window")
+        second.send.click()
+        self.wait_for(
+            lambda: "Synthetic reply: Second window" in second.transcript.toPlainText()
+        )
+        self.assertIn("Synthetic reply: Second window", first.transcript.toPlainText())
+        self.assertEqual(self.service.store.grants(task), [])
+        first_window.close()
+        self.assertIn(task, providers.chats)
+        self.assertTrue(second.send.isEnabled())
+        self.assertTrue(second_window.agent_access_action.isChecked())
+        second_window.agent_access_action.trigger()
+        self.assertIsNone(self.registry.agent_gateway)
+        self.assertEqual(providers.chats, {})
+        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        self.assertFalse(second.send.isEnabled())
 
     def test_send_and_stream_are_plain_text_without_grants(self):
         _, sidebar = self.sidebar()

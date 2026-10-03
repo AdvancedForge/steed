@@ -455,7 +455,9 @@ class BrowserWindow(QMainWindow):
 
             try:
                 self.agent_sidebar = AgentSidebar(
-                    self.profile_manager.registry.tasks, self
+                    self.profile_manager.registry.tasks,
+                    self,
+                    providers=self.profile_manager.registry.agent_providers,
                 )
             except (OSError, ValueError, RuntimeError, sqlite3.Error):
                 self.agent_sidebar_action.setChecked(False)

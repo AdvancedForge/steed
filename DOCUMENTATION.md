@@ -2541,9 +2541,115 @@ switch and resets on browser restart. Seven setup regressions plus existing
 agent/sidebar checks passed together (53 tests in 13.277 seconds); the final
 setup screen was visually inspected and ordinary startup/render/shutdown passed.
 
-Steed uses external agents first. The sidebar communicates with the agent that
-owns an existing MCP task; the browser does not launch models, store model keys,
-or automatically start a new agent turn.
+Steed uses external agents first. Codex chats run in a dedicated external Codex
+CLI process; Steed sends turns through its App Server interface. Other clients
+can still use the task mailbox directly. Steed does not store model credentials.
+
+#### Codex chats from Steed
+
+1. Install a current [Codex CLI](https://developers.openai.com/codex/cli) and sign
+   in once with `codex login`. The integration is tested with Codex 0.160.0 and
+   uses its App Server protocol and bundled code runtime. Older runtimes
+   may be incompatible; failed setup leaves a cancelled, read-only task.
+2. Install Steed's optional adapter dependencies:
+   `.venv/bin/python -m pip install -r requirements-mcp.txt`.
+3. Open **View → Agent Sidebar** (`Ctrl+Shift+A`) and choose **New Codex Chat**.
+   This explicitly enables local agent access for this browser run and starts a
+   new task. No MCP client configuration or starter prompt is required.
+   The model selector can use your Codex default or request GPT-5.4 for this chat
+   without changing Codex's saved configuration. Direct Steed tools were verified
+   with GPT-5.4 and code-runtime Steed calls with GPT-6.1 Sol in offline native
+   fixtures; your account must still provide the selected model.
+4. When the status says **Codex ready**, type a message and press **Send** or
+   `Ctrl+Enter`. Codex starts a turn automatically. Follow-ups queue in order while
+   a reply is running, then continue the same live Codex thread and Steed task.
+
+Codex uses its own account/configuration and model selection. Its account
+authentication stays with Codex; Steed neither copies credentials nor handles
+login/logout. Model requests use that account and its limits/billing. Up to two
+Steed-started Codex chats can run together; all browser windows share their task
+state while keeping unsent drafts local to each window. Opening the sidebar or
+setup screen alone never launches Codex.
+
+Steed preserves Codex's normal tools, configured MCP services, sandbox and
+approval policy. It enables the bundled code runtime used by newer models and
+adds one task-bound Steed MCP connection. Codex can research, code and use its
+own integrations independently of Steed. Its normal capabilities are governed by
+Codex's settings; Steed is a communication and browser-tool provider, not an OS
+sandbox around the external agent. An installed native runtime is a trusted local
+program with the same access it normally has outside this browser.
+
+Each chat uses a dedicated CLI process and new ephemeral thread. A private,
+single-use task capability binds its Steed connection; Steed verifies that task
+before enabling Send. Malformed/oversized output, foreign task/turn identities,
+startup failure and disconnect stop delivery without automatic replay. Runtime
+stderr, account details and message bodies are not added to activity events.
+
+Native Codex questions and command/file/network approval requests appear as
+nonmodal popups while the selected chat is visible. **Agent requests** opens
+pending requests when the sidebar was hidden. **Allow once**, **Allow for this
+chat** and **Deny** answer native requests; questions accept an option or text.
+These answers do not grant any Steed browser or connector authority. Codex's own
+policy determines when it needs approval; Steed does not request an extra prompt
+for actions already allowed by that policy. Clearing Steed chat does not erase
+Codex's active thread, local files or external effects.
+
+Messages still grant no Steed page, profile, connector or worker access. Codex
+requests the same Steed permissions and payload reviews as any other MCP agent;
+use **Permissions**, **Files**, and **Receipts** beside the conversation. Replies
+are streamed as plain text, coalesced and split at UTF-8 boundaries within existing
+chat limits. No message bodies, account details or runtime stderr enter activity
+events. **Clear Chat** removes queued prompts and suppresses the rest of an erased
+reply; text already sent cannot be recalled from the external agent.
+
+Hiding the dock keeps the chat running. **Cancel Task**, disabling local agent
+access, ending the task or closing the last browser window stops the dedicated
+child and its adapter. This never controls another Codex instance or its daemon.
+Restart/disconnect retains Steed history but does not reconnect, retry turns,
+replay queued text or resume external writes. Start a new chat with fresh task
+permissions; historical conversation is not automatically sent to it.
+
+#### Personal agents and website coverage
+
+Steed's stdio MCP adapter works with local clients that can launch a process.
+Its authenticated HTTP adapter binds to loopback; a cloud agent cannot reach
+that address directly. The browser must be running for either transport.
+Connecting a third-party client grants no page access: it starts its own task,
+requests an exact profile/site scope and uses the published inspection/action
+and conversation tools. Its host must actively poll the mailbox; generic MCP
+alone does not wake an idle agent or deliver a user message to its chat UI.
+
+Compatibility research (October 3, 2026):
+
+| Agent | Verified integration route | Remaining work |
+| --- | --- | --- |
+| Codex | Dedicated native App Server and task-bound local MCP, including newer code runtime | Real-account desktop acceptance |
+| Muse | Official [custom connector guidance](https://www.meta.com/help/artificial-intelligence/1687253048996149/) supports service API access | Confirm custom HTTP/MCP authentication and transport in an actual account; do not assume direct local-process support |
+| ChatGPT dots | [Dots documentation](https://learn.chatgpt.com/docs/dots) supports enabled plugins and a separately connected local computer | Package and verify a Steed plugin/local bridge or authenticated remote connection; sidebar message delivery is separate |
+| Instinct | [Official product page](https://instinct.com/) describes app/device access | No public custom MCP client setup was verified; cannot claim Steed compatibility yet |
+
+The published page actions do **not** capture everything a human sees. Reads are
+bounded rendered DOM snapshots with opaque references to supported links,
+fields and forms. Snapshot limitations report omitted shadow DOM (including
+open roots), canvas content, form values/editable text, inaccessible frames,
+out-of-scope frame origins and truncation. Images, PDFs, video/audio, visual
+layout, custom widgets and unloaded/virtualized content can be missed. Current
+task pages disable website JavaScript; modern apps may therefore be incomplete
+or unusable even when an ordinary user tab works. Agents should inspect the
+capability report and snapshot limitations rather than claim a complete view.
+
+Existing-profile permission shares cookies/login state with ordinary browsing;
+it currently creates a separate task page. **Watch / Take control / Return
+control** preserves that task page. It does not adopt an already-open user tab.
+User-requested live tab/profile delegation remains planned: preserve the actual
+page and normal website execution, expose approved tab discovery/search and
+visual evidence, show the active controller, and return control immediately
+without deleting the user's tab when a task ends. This needs its own engine and
+ownership acceptance; it must not silently reload a tab into the restricted task
+backend or imply that ordinary JavaScript's background traffic obeys task
+network restrictions.
+
+#### Other external clients
 
 1. Complete the local MCP setup above and connect your external agent client.
 2. Ask the agent to call `steed_task_start` and keep that connection open. Give
@@ -2576,9 +2682,10 @@ Suggested instruction for a connected external agent:
 
 An ordinary MCP client may only run its agent after a prompt in that client's
 own UI. **Send** queues a message for the task; it cannot wake such an idle
-client. The agent must participate in the mailbox protocol. This first version
-has no provider-specific wake-up integration, autonomous runner, reconnect or
-conversation replay into another task. Each new task needs fresh permissions.
+client. The agent must participate in the mailbox protocol. Automatic turn
+delivery currently applies to Steed-started Codex chats only. Reconnect and
+conversation replay into another task remain unavailable. Each new task needs
+fresh permissions.
 
 #### Conversation tool protocol
 
@@ -2902,6 +3009,7 @@ QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python test
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --transport http
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --documents --recipes
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --transport http --documents --recipes
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_codex_provider.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_google_connector.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_google_documents.py
 python tests/smoke_password_manager.py
@@ -2978,6 +3086,20 @@ It saves `/tmp/steed-google-document-receipts.png` and
 establish real account, consent, certificate or desktop-keyring acceptance.
 
 ## Verification record
+
+Codex sidebar integration (October 3, 2026): the deterministic provider suite
+exercises real child processes, Qt IPC and synthetic Steed tasks without models
+or accounts. Coverage includes automatic turns, ordered/deduplicated follow-ups,
+early notifications, UTF-8 chunks, clearing during a stream, cancellation,
+incognito, task/connection isolation and failed sign-in/configuration/protocols.
+The separate `tests/smoke_codex_provider.py` requires an installed Codex CLI and
+uses a temporary authentication/configuration directory, a loopback model
+endpoint and a harmless inherited MCP marker. It verifies a native newer-model
+code-runtime call into the bound Steed task, streaming follow-ups, native
+capability preservation and adapter shutdown without external model calls.
+Pass `gpt-5.4` to check the direct-tool path. Real authenticated model replies and
+desktop browsing acceptance remain separate user checks. Validation totals are
+tracked in ROADMAP.md.
 
 Document worker bundle (October 2, 2026): **679 tests passed in 314.002 seconds**
 (`/tmp/steed-documents-full-final.log`). Sixty-one final worker checks passed in
