@@ -45,6 +45,10 @@ Logs: `/tmp/steed-codex-activity-full.log`,
 `/tmp/steed-codex-activity-final-ui.log`, `/tmp/steed-codex-activity-startup.log`,
 `/tmp/steed-codex-activity-native{,-direct}.log`.
 
+Connector contributor coordination: [v6 runtime coordination and next steps](https://github.com/AdvancedForge/steed/pull/2#issuecomment-5974337618)
+was posted after publishing `11a28e9`. Provider data ownership and the separate
+next-head review remain unchanged.
+
 **Simpler agent sidebar and requested menu order (implemented).** Menus now read
 General, Profile, Tabs, View, Cookies, Agents. First open offers a short welcome,
 New Codex chat and Connect another agent. Selecting a conversation reveals chat,
