@@ -31,11 +31,14 @@ close. Discovery is metadata only: no content indexing, no decision model, no
 recurring approval prompts, and imports remain copies.
 
 Validation so far: 29 library checks pass on Linux (18 backend, 11 service/UI),
-together with 38 workspace/recovery checks and a clean Ruff lint/format run.
-Smaller-than-expected evidence: the browser-profile suites abort in this
-environment because constructing a persistent `QWebEngineProfile` needs GLX, which
-this headless runner cannot provide, so the full-suite and MCP smoke journeys
-still need a display-capable Linux run before a PR.
+together with 38 workspace/recovery checks and a clean Ruff lint/format run. The
+MCP smoke journey now discovers the shared input by search and re-finds the first
+task's output from a new task; every new assertion was replayed against the real
+library backend and passes, but the journey itself could not be executed here.
+Smaller-than-expected evidence: the browser-profile suites and both MCP smoke
+transports abort in this environment because constructing a persistent
+`QWebEngineProfile` needs GLX, which this headless runner cannot provide, so the
+full-suite and smoke runs still need a display-capable Linux run before a PR.
 
 **Earlier completed milestone:** a persistent agent
 file library: user-added files/subfolders survive tasks and restart; a clear
