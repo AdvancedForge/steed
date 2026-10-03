@@ -15,9 +15,9 @@ previews. They use synthetic accounts and an in-memory keyring. Four automated
 checks pass; no live service/account or provider consent flow has been tested.
 
 These are **importable starter subsets**, not full-featured default connectors.
-Steed currently loads built-in Google plus user-reviewed installed recipes. A shared
-catalog/picker is needed to show packaged recipes automatically. The framework agent
-owns that one-time change; connector contributors will supply data under
+Steed loads built-in Google plus user-reviewed installed recipes. Commit `6eaa4ff`
+adds **App Connections → Add a Service…**, a shared packaged JSON picker. Connector
+contributors supply data under
 `connectors/recipes/`. Default availability must not silently connect accounts,
 enable switches or skip installation/payload review.
 
@@ -39,6 +39,37 @@ enable switches or skip installation/payload review.
 Priorities express product usefulness, not claimed popularity or completed support.
 Implement the three ready subsets first; Microsoft is a high-priority follow-up,
 not an excuse to widen the current authentication or network contract.
+
+## Wider connector queue
+
+The user requested more variety after the initial shortlist. These candidates
+are **API-assessed backlog, not additional verified recipe-only implementations**.
+Keep the three proven subsets above first; promote a candidate only after its
+documented auth/identity/error contract passes a synthetic wire-shape test. A
+working external MCP server also does not automatically make its underlying API
+compatible with Steed recipes. Each row links its official starting reference.
+
+| Priority | Category / candidate | First useful capability | Gate before packaging |
+| --- | --- | --- | --- |
+| P1 | Bookmarks — [Raindrop.io](https://developer.raindrop.io/v1/user/authenticated) | Read collections and saved links; later save browsing references | Bearer/identity shapes appear compatible; verify token format and the `result` success flag. Bookmark creates require an explicit URL input, not a guessed draft-to-URL conversion. |
+| P1 | Structured data — [Airtable](https://airtable.com/developers/web/api/introduction) | Read chosen tables/records; later capture structured notes | Verify `/meta/whoami`, base/table pinning, scopes and offset paging. Record writes need nested payloads and field mappings; framework v3 is in progress, not this handoff's baseline. |
+| P2 | Scheduling — [Calendly](https://developer.calendly.com/api-docs/calendly-api/users/get-current-user) | Read scheduling links and selected meetings | Identity uses a full URI, rejected by the current subject contract. Queries, scopes and provider plan access need verification. Bookings need separately reviewed structured inputs. |
+| P2 | Knowledge — [Readwise / Reader](https://readwise.io/reader_api) | Read saved research/highlights; save selected articles | Authentication is `Authorization: Token`, not Bearer; its auth probe returns 204 without account identity. Needs trusted auth/identity support and explicit URL inputs. |
+| P2 | Tasks — [ClickUp](https://developer.clickup.com/docs/authentication) | Read chosen tasks/lists; capture tasks | Personal tokens use raw Authorization; OAuth bearer tokens are currently non-expiring, incompatible with the current bounded-expiry exchange. Do not pretend PATs work by adding Bearer. |
+| P2 | Boards — [Trello](https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/) | Read boards/cards; capture cards | Legacy key+token/OAuth1 differs from Bearer. New OAuth2 also exists; independently verify registration, native PKCE and identity before choosing a supported route. |
+| P2 | Design — [Figma](https://developers.figma.com/docs/rest-api/authentication/) | Read selected design/file metadata and comments | Personal tokens use a service-specific header; OAuth has app/callback requirements. Confirm a compatible sign-in and scopes; binary image delivery is a separate workspace capability. |
+| P2 | Research — [Zotero](https://www.zotero.org/support/dev/web_api/v3/basics) | Read selected references; later capture citations | Bearer API-key auth exists, but verify an account-bound identity endpoint without placing a secret in its URL. Library pinning, version headers, root-array responses and write revisions need acceptance. |
+| P2 | Private cloud — [Nextcloud](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/WebDAV/basic.html) | Read/export user-selected files and calendar material | WebDAV uses methods/XML/binary beyond the JSON recipe engine. Private/local servers need an explicitly scoped local-network adapter, not weakened global HTTPS rules. |
+| P2 | Local notes — [Joplin](https://joplinapp.org/help/api/references/rest_api/) | Capture a note and read selected notes | Local HTTP API with query-token auth requires a distinct user-approved local-service adapter. Keep tokens out of recipe paths, logs and task results. |
+| P3 | Personal media — [Spotify](https://developer.spotify.com/documentation/web-api/reference/get-current-users-profile) | Read chosen playlist metadata | API/profile shape is a candidate; verify current developer access, nullable labels and OAuth scopes/refresh. Playback control and playlist mutations are separate effects and are not inferred from read access. |
+
+This is 21 service families including the first shortlist, spanning productivity,
+developer tools, communication, files, knowledge, structured data, research,
+bookmarks, design, scheduling and media. It is a menu of useful integrations,
+not a promise to install every service by default. Start with common choices and
+let users opt into the rest. Framework blockers stay with the framework agent;
+the connector contributor can prepare source links, desired scopes and synthetic
+fixtures in their owned paths without changing shared runtime code.
 
 ## Verified starter contracts
 
