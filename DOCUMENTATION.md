@@ -2753,6 +2753,62 @@ delivery currently applies to Steed-started Codex chats only. Reconnect and
 conversation replay into another task remain unavailable. Each new task needs
 fresh permissions.
 
+#### Chat tabs and website chats
+
+Choose **View → Agent Chat Tab** or **Open as tab** in the agent sidebar to move
+the same Steed conversation into a full browser tab. **Show sidebar** returns it
+to the dock. Sent messages, selected task and unsent draft survive the move;
+closing the tab hides the conversation and keeps its task running. Normal saved
+tab restoration can reopen this native UI. Its address is `steed:agents`; it
+does not load a remote page or confer browser permission. Incognito still clears
+and disables the native conversation.
+
+For website subscriptions, choose **View → Website Chats → ChatGPT / Claude /
+Gemini**. These open `chatgpt.com`, `claude.ai` and `gemini.google.com` in normal
+tabs using the current profile's ordinary cookies and sign-in. Open another
+HTTPS chat website normally to use it too. Choose **Current tab in chat sidebar**
+to move that exact page beside your browsing. **Back to tab**, or selecting its
+existing tab, returns it without reloading or copying its conversation. Changing
+profiles closes the old profile's chat view. Private website chats use the
+incognito profile; a provider's server-side retention still applies.
+
+To pass instructions:
+
+1. Open a website chat. While browsing the source page, choose **View → Website
+   Chats → Share instructions with a chat…**, or **Share instructions…** in the
+   website-chat sidebar.
+2. Write the instructions in the preview dialog. Optionally include the current
+   page's title, address and selected text. This starts unchecked; no full page,
+   history, cookies, files, credentials or MCP tokens are automatically included.
+   Context is labelled untrusted. URL user information, queries and fragments
+   are removed; inspect selected text for anything you do not want to share.
+3. Review the exact bounded prompt (at most 8 KiB UTF-8). **Copy instructions**
+   puts it on your system clipboard for manual pasting. **Paste into chat**
+   focuses one unambiguous visible textarea/contenteditable and uses native
+   browser paste, so ordinary website input handlers run. If no unique composer
+   is found, use Copy and choose the field yourself.
+4. Review and send in the website. Steed does not press Enter, submit the form,
+   scrape the reply or treat the message as permission approval. Closing the
+   preview, navigating/reloading the destination or switching profiles blocks
+   late paste. Profile changes clear the preview's unsent content. Clipboard
+   copies remain subject to your desktop clipboard history.
+
+Web chat and tool connection are separate. A prompt cannot make a website's
+cloud model reach Steed's local socket/loopback MCP endpoint. Claude's remote
+connectors originate in its cloud infrastructure and require a reachable server
+([official network requirements](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)).
+OpenAI documents an outbound private-server tunnel, with its own workspace and
+authentication controls
+([Secure MCP Tunnel design](https://developers.openai.com/blog/connect-private-mcp-servers-to-openai-products));
+Steed has not integrated or validated it. Google's documented remote MCP support
+for its agent API
+([agent API guide](https://ai.google.dev/gemini-api/docs/antigravity-agent))
+does not establish arbitrary MCP support in an ordinary Gemini website chat.
+Actual capabilities depend on the chosen product/account. Continue using native
+Codex chats or a configured local external agent for current Steed tool access.
+An authenticated cloud pairing/bridge is a separate pending milestone; no local
+browser authority is exposed to website JavaScript.
+
 #### Conversation tool protocol
 
 `steed_conversation_read` accepts optional `after` (initially `0`) and `limit`

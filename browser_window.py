@@ -110,6 +110,7 @@ class BrowserTab(QWebEngineView):
         self.browser_window = window
         self.group = None
         self.group_id = None
+        self.native_panel = None
         self.tab_id = uuid4().hex
         # Runtime references must stay distinct when windows restore saved IDs.
         self.agent_tab_id = uuid4().hex
@@ -135,6 +136,11 @@ class BrowserTab(QWebEngineView):
     def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> "BrowserTab":
         return self.browser_window._new_tab(return_tab=True)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.native_panel is not None:
+            self.native_panel.setGeometry(self.rect())
+
 
 class BrowserWindow(QMainWindow):
     """Main browser window."""
@@ -152,6 +158,8 @@ class BrowserWindow(QMainWindow):
         self.cookie_manager = None
         self.history = None
         self.tabs: list[BrowserTab] = []
+        self.agent_tab = None
+        self.web_chat_dock = None
         self.current_tab_index = 0
         self._restoring_tabs = False
         self.closed_tabs = ClosedTabHistory()
@@ -319,6 +327,24 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         view_menu.addAction(self.agent_sidebar_action)
+        agents_tab_action = QAction("Agent Chat Tab", self)
+        agents_tab_action.triggered.connect(lambda: self._open_agent_tab())
+        view_menu.addAction(agents_tab_action)
+        web_chats_menu = view_menu.addMenu("Website Chats")
+        from ui.web_chat import WEB_CHATS
+
+        for label, url in WEB_CHATS.items():
+            action = web_chats_menu.addAction(label)
+            action.triggered.connect(
+                lambda checked=False, url=url: self._new_tab(url=url)
+            )
+        web_chats_menu.addSeparator()
+        web_chats_menu.addAction("Current tab in chat sidebar").triggered.connect(
+            self._dock_web_chat
+        )
+        web_chats_menu.addAction("Share instructions with a chat…").triggered.connect(
+            self._choose_web_chat
+        )
         self.zoom_in_action = QAction("Zoom In", self)
         self.zoom_in_action.setShortcuts(
             [QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")]
@@ -467,6 +493,11 @@ class BrowserWindow(QMainWindow):
             self.agent_sidebar.set_private(profile_name == "search")
 
     def _toggle_agent_sidebar(self, visible):
+        if self.agent_tab is not None and visible:
+            tab = self.agent_tab
+            self._return_agent_sidebar(tab)
+            if len(self.tabs) > 1:
+                self._close_tab(self.tabs.index(tab))
         if self.agent_sidebar is None and visible:
             from ui.agent_sidebar import AgentSidebar
 
@@ -487,11 +518,110 @@ class BrowserWindow(QMainWindow):
             )
             self.agent_sidebar.setup_requested.connect(self._open_agent_setup)
             self.agent_sidebar.visibilityChanged.connect(
-                self.agent_sidebar_action.setChecked
+                lambda shown: self.agent_sidebar_action.setChecked(
+                    shown and self.agent_tab is None
+                )
             )
         if self.agent_sidebar is not None:
             self.agent_sidebar.set_private(self.profile_manager.is_search_profile())
             self.agent_sidebar.setVisible(visible)
+
+    def _open_agent_tab(self):
+        if self.agent_tab in self.tabs:
+            self._switch_tab(self.tabs.index(self.agent_tab))
+            return self.agent_tab
+        return self._new_tab(
+            url="steed:agents", title="External Agents", return_tab=True
+        )
+
+    def _embed_agent_sidebar(self, tab):
+        self._toggle_agent_sidebar(True)
+        if self.agent_sidebar is None:
+            return
+        self.removeDockWidget(self.agent_sidebar)
+        tab.agent_panel = True
+        self.agent_tab = tab
+        # QWebEngineView owns its internal layout; overlay the native panel
+        # without replacing or deleting that engine-owned layout.
+        self.agent_sidebar.setParent(tab)
+        tab.native_panel = self.agent_sidebar
+        self.agent_sidebar.setTitleBarWidget(QWidget(self.agent_sidebar))
+        self.agent_sidebar.setGeometry(tab.rect())
+        self.agent_sidebar.show()
+        self.agent_sidebar.raise_()
+        self.agent_sidebar_action.setChecked(False)
+        self.tab_bar.set_tab_title(self.tabs.index(tab), "External Agents")
+        self.address_bar.set_url("steed:agents")
+
+    def _return_agent_sidebar(self, tab):
+        if tab is not self.agent_tab:
+            return
+        self.agent_tab = None
+        tab.agent_panel = False
+        tab.native_panel = None
+        self.agent_sidebar.setParent(self)
+        self.agent_sidebar.setTitleBarWidget(None)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.agent_sidebar)
+        self.agent_sidebar.hide()
+
+    def _dock_web_chat(self):
+        from ui.web_chat import WebChatDock
+
+        if not self.tabs:
+            return
+        view = self.tabs[self.current_tab_index]
+        if getattr(view, "agent_panel", False) or view.url().scheme() != "https":
+            QMessageBox.information(
+                self, "Website chat", "Open an HTTPS chat website first."
+            )
+            return
+        if self.web_chat_dock is None:
+            self.web_chat_dock = WebChatDock(self)
+            self.addDockWidget(
+                Qt.DockWidgetArea.RightDockWidgetArea, self.web_chat_dock
+            )
+        others = [t for t in self.tabs if t is not view]
+        if not others:
+            others = [self._new_tab(url="about:blank", return_tab=True)]
+        self.web_chat_dock.adopt(view)
+        self._switch_tab(self.tabs.index(others[0]))
+
+    def _choose_web_chat(self):
+        from ui.web_chat import WEB_CHATS
+
+        hosts = {QUrl(url).host() for url in WEB_CHATS.values()}
+        choices = [
+            t
+            for t in self.tabs
+            if t.url().scheme() == "https" and t.url().host() in hosts
+        ]
+        if (
+            self.web_chat_dock
+            and self.web_chat_dock.view not in choices
+            and self.web_chat_dock.view
+        ):
+            choices.append(self.web_chat_dock.view)
+        if not choices:
+            QMessageBox.information(
+                self, "Website chat", "Open a chat from View → Website Chats first."
+            )
+            return
+        labels = [
+            f"{i + 1}. {t.url().host()} — {t.title()[:80]}"
+            for i, t in enumerate(choices)
+        ]
+        label, ok = QInputDialog.getItem(
+            self, "Share instructions", "Choose destination chat:", labels, 0, False
+        )
+        if ok:
+            self._share_web_chat(choices[labels.index(label)])
+
+    def _share_web_chat(self, view):
+        from ui.web_chat import WebChatPromptDialog
+
+        dialog = WebChatPromptDialog(self, view)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.show()
 
     def _open_agent_setup(self):
         if self._closing:
@@ -676,10 +806,16 @@ class BrowserWindow(QMainWindow):
         if not url:
             url = home
 
-        qurl = self._text_to_qurl(url)
+        agent_panel = url == "steed:agents"
+        source_tab = self.tabs[self.current_tab_index] if self.tabs else None
+        if agent_panel and self.agent_tab in self.tabs:
+            self._switch_tab(self.tabs.index(self.agent_tab))
+            return self.agent_tab if return_tab else None
+        qurl = self._text_to_qurl("about:blank" if agent_panel else url)
 
         profile = self.profile_manager.current_profile
         tab = BrowserTab(profile, self.tab_container, self)
+        tab.agent_source = source_tab if agent_panel else None
         self.tab_layout.addWidget(tab)
         self._connect_page_signals(tab.page())
 
@@ -701,6 +837,8 @@ class BrowserWindow(QMainWindow):
 
         # Start loading only after signals and tab bookkeeping are ready.
         self.navigation.navigate(tab, qurl)
+        if agent_panel:
+            self._embed_agent_sidebar(tab)
 
         if not self._restoring_tabs:
             self._save_current_tabs()
@@ -715,7 +853,9 @@ class BrowserWindow(QMainWindow):
         active = self.tabs[self.current_tab_index]
         tab = self.tabs.pop(index)
         state = TabState(
-            tab.url().toString() or tab.page().requestedUrl().toString(),
+            "steed:agents"
+            if getattr(tab, "agent_panel", False)
+            else tab.url().toString() or tab.page().requestedUrl().toString(),
             tab.title() or self.tab_bar.tab_bar.tabText(index),
             tab.group,
             tab.tab_id,
@@ -767,17 +907,36 @@ class BrowserWindow(QMainWindow):
     def _switch_tab(self, index: int):
         if not (0 <= index < len(self.tabs)):
             return
+        previous = (
+            self.tabs[self.current_tab_index]
+            if 0 <= self.current_tab_index < len(self.tabs)
+            else None
+        )
+        if (
+            getattr(self.tabs[index], "agent_panel", False)
+            and previous is not self.tabs[index]
+            and not getattr(previous, "agent_panel", False)
+        ):
+            self.tabs[index].agent_source = previous
         self.current_tab_index = index
+        if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
+            self.web_chat_dock.release()
         self.tab_bar.set_current_tab(index)
 
         # Hide all tabs
         for i, t in enumerate(self.tabs):
-            t.setVisible(i == index)
+            t.setVisible(
+                i == index or bool(self.web_chat_dock and self.web_chat_dock.view is t)
+            )
         # Update address bar and navigation buttons
         cur = self.tabs[index]
         self.find_bar.set_page(cur.page())
         self._update_zoom()
-        self.address_bar.set_url(cur.url().toString())
+        self.address_bar.set_url(
+            "steed:agents"
+            if getattr(cur, "agent_panel", False)
+            else cur.url().toString()
+        )
         self.address_bar.set_back_enabled(cur.history().canGoBack())
         self.address_bar.set_forward_enabled(cur.history().canGoForward())
         self._update_window_title(cur.url())
@@ -825,9 +984,16 @@ class BrowserWindow(QMainWindow):
                 for owner in service.profiles.owners
                 if owner.current_profile_name == name
                 for tab in getattr(owner.parent(), "tabs", ())
+                if not getattr(tab, "agent_panel", False)
+                and tab.url().scheme() in ("http", "https")
             ]
         else:
             tabs = [self.tabs[self.current_tab_index]] if self.tabs else []
+            if tabs and getattr(tabs[0], "agent_panel", False):
+                source = tabs[0].agent_source
+                if source not in self.tabs:
+                    raise ValueError("Select a browsing tab before delegating it")
+                tabs = [source]
         return service.live_tabs.request(task_id, tabs)
 
     def _navigate_to_url(self, url_text: str):
@@ -836,6 +1002,8 @@ class BrowserWindow(QMainWindow):
         self._navigate_tab_to_url(self.tabs[self.current_tab_index], url_text)
 
     def _navigate_tab_to_url(self, tab: BrowserTab, url_text: str):
+        if getattr(tab, "agent_panel", False):
+            self._return_agent_sidebar(tab)
         self._take_back_tab(tab)
         self.navigation.navigate(tab, self._text_to_qurl(url_text))
 
@@ -973,11 +1141,15 @@ class BrowserWindow(QMainWindow):
         if not self.tabs or not (0 <= self.current_tab_index < len(self.tabs)):
             return
 
-        if tab == self.tabs[self.current_tab_index]:
+        if tab == self.tabs[self.current_tab_index] and not getattr(
+            tab, "agent_panel", False
+        ):
             self.address_bar.set_url(url.toString())
             self._update_window_title(url)
 
     def _on_tab_title_changed(self, tab: BrowserTab, title: str):
+        if getattr(tab, "agent_panel", False):
+            return
         if tab in self.tabs:
             idx = self.tabs.index(tab)
             if len(title) > 30:
@@ -1023,9 +1195,13 @@ class BrowserWindow(QMainWindow):
         for tab in self.tabs:
             group = tab.group
             url = tab.url().toString() or tab.page().requestedUrl().toString()
+            if getattr(tab, "agent_panel", False):
+                url = "steed:agents"
             if not url:
                 url = self.config.get("home_page", "https://www.google.com")
             title = tab.title() or "New Tab"
+            if getattr(tab, "agent_panel", False):
+                title = "External Agents"
             if not title or title == "about:blank":
                 title = "New Tab"
 
@@ -1293,6 +1469,10 @@ class BrowserWindow(QMainWindow):
     def _dispose_tab(tab: BrowserTab) -> None:
         """Stop a tab and detach its callbacks before scheduling deletion."""
         tab.browser_window._take_back_tab(tab)
+        window = tab.browser_window
+        window._return_agent_sidebar(tab)
+        if window.web_chat_dock and window.web_chat_dock.view is tab:
+            window.web_chat_dock.release()
         for signal in (
             tab.urlChanged,
             tab.titleChanged,

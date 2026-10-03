@@ -9,6 +9,38 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 3, 2026
 
+Public-release audit and proposed gates now live in
+[RELEASE_PLAN.md](RELEASE_PLAN.md). This separates a supported Linux beta from a
+stable daily-browser release and the broader agent-collaboration vision. Missing
+license/distribution/engine-update policy, CI, desktop acceptance and security/
+privacy review are concrete release work; feature coverage alone is insufficient.
+License, package/support target and cloud-agent release scope remain owner choices.
+
+Connector [PR #2](https://github.com/AdvancedForge/steed/pull/2) was reviewed on
+Linux: 26 starter-profile, 6 bundled-recipe and 46 connector checks passed (78),
+plus actual catalog loading/selection. No blocking defects found; comments request
+catalog-path coverage and visible GitLab quick-action semantics. Continuation
+instructions preserve contributor-owned recipe/fixture/setup/test paths. The PR
+remains unmerged and live account acceptance is pending.
+
+Chat presentation milestone: native agent conversation can move between sidebar
+and a saved/restorable tab; normal HTTPS website chats can move the same page
+between tab/sidebar. Instructions use exact preview, opt-in selected context,
+copy/native paste and user-controlled send. This does not connect cloud models to
+the local MCP endpoint. Full regressions passed: 883 checks in 373.049 seconds;
+after final profile/delegation fixes, all 115 browser/live/sidebar/web-chat
+integration checks passed in 90.419 seconds (including 12 new chat regressions).
+Startup/render/shutdown passed with Qt 6.11.2. Settled native-tab and prompt
+previews were visually checked using synthetic data; real provider login/composer
+acceptance remains pending. Ruff lint/format, whitespace and local doc links pass.
+Logs: `/tmp/steed-chat-final-full.log`,
+`/tmp/steed-chat-final-integration.log`, `/tmp/steed-chat-startup-final.log`.
+
+**Resume checkpoint:** complete the public-release engineering gates in
+RELEASE_PLAN.md; continue connector work under the posted PR instructions.
+Cloud-agent transport/pairing needs a separate product decision. Google shared
+registration and password improvements remain deferred. No rewrite is proposed.
+
 Latest browser milestones: [live-tab delegation](#live-tab-delegation-and-coverage-signals--october-3-2026)
 (`d7544a0`) preserves normal website behavior and adds immediate Take Back;
 [approved viewport evidence](#approved-viewport-evidence--october-3-2026) adds bounded

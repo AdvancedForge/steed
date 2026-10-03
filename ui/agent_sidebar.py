@@ -26,6 +26,7 @@ class AgentSidebar(QDockWidget):
     def __init__(self, service, parent=None, *, providers=None):
         super().__init__("External Agents", parent)
         self.service = service
+        self.browser_window = parent
         self.providers = providers
         self.setObjectName("externalAgentSidebar")
         self.setAllowedAreas(
@@ -54,6 +55,17 @@ class AgentSidebar(QDockWidget):
         self.setup = QPushButton("Connection Setup…")
         self.setup.clicked.connect(lambda: self.setup_requested.emit())
         layout.addWidget(self.setup)
+        display = QHBoxLayout()
+        for label, method in (
+            ("Open as tab", "_open_agent_tab"),
+            ("Show sidebar", "_toggle_agent_sidebar"),
+        ):
+            button = QPushButton(label)
+            button.clicked.connect(
+                lambda checked=False, method=method: self.change_display(method)
+            )
+            display.addWidget(button)
+        layout.addLayout(display)
         self.model = QComboBox()
         self.model.setAccessibleName("Codex model")
         self.model.addItem("Codex default", None)
@@ -139,6 +151,14 @@ class AgentSidebar(QDockWidget):
     def _request_added(self, task_id, request_id, payload):
         if task_id == self._task_id and not self._private and self.isVisible():
             self._show_request(task_id, request_id, payload)
+
+    def change_display(self, method):
+        window = self.browser_window
+        if window is not None:
+            if method == "_toggle_agent_sidebar":
+                window._toggle_agent_sidebar(True)
+            else:
+                window._open_agent_tab()
 
     def show_requests(self):
         if self._private or self.providers is None:
@@ -361,7 +381,9 @@ class AgentSidebar(QDockWidget):
                 if self._private
                 else "Select a task. Enable Local Agent Access in File to connect an agent."
             )
-        self.delegate.setEnabled(active and hasattr(self.parent(), "delegate_tabs"))
+        self.delegate.setEnabled(
+            active and hasattr(self.browser_window, "delegate_tabs")
+        )
         self.send.setEnabled(active)
         self.composer.setEnabled(active)
         self.cancel.setEnabled(usable and task.status in ACTIVE_STATUSES)
@@ -378,14 +400,14 @@ class AgentSidebar(QDockWidget):
             self,
             "Share live tabs with this agent",
             "Tabs to delegate:",
-            ["Current tab", "All open tabs on this profile (up to 10)"],
+            ["Current tab", "All open website tabs on this profile (up to 10)"],
             0,
             False,
         )
         if not accepted:
             return
         try:
-            self.parent().delegate_tabs(
+            self.browser_window.delegate_tabs(
                 self._task_id, whole_profile=choice != "Current tab"
             )
         except (ValueError, RuntimeError, sqlite3.Error, OSError) as error:

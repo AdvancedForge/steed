@@ -13,7 +13,7 @@ browsing profiles and direct KeePassXC password management.
 - Cookie controls, a global-cookie baseline, downloads, and ad blocking.
 - In-browser KeePassXC login selection, filling, and explicit saving.
 - A desktop launcher, dark mode, and familiar navigation shortcuts.
-- A toggleable agent sidebar with Codex chats, live-tab delegation and Take Back.
+- Agent chats in a sidebar or tab, website chats, live-tab delegation and Take Back.
 
 ## Quick start
 
@@ -70,3 +70,4 @@ Bookmarks and generic extension support are planned.
   troubleshooting, development checks, and technical design.
 - [ROADMAP.md](ROADMAP.md): current progress, remaining browser checks, and future
   milestones.
+- [RELEASE_PLAN.md](RELEASE_PLAN.md): public beta and stable-release gates.
