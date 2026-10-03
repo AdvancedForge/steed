@@ -47,6 +47,7 @@ class AgentProviders(QObject):
         self.factory = factory
         self.chats = {}
         self.states = {}
+        self.model_reports = {}
         self.service.user_message_sent.connect(self._send)
         self.service.conversation_cleared.connect(self._clear)
         self.service.changed.connect(self._check_tasks)
@@ -121,6 +122,9 @@ class AgentProviders(QObject):
                 lambda item, text, final: self._message(task.task_id, item, text, final)
             )
             driver.activity.connect(lambda state: self._activity(task.task_id, state))
+            driver.model_reported.connect(
+                lambda report: self._model_reported(task.task_id, report)
+            )
             driver.turn_done.connect(lambda: self._done(task.task_id))
             driver.failed.connect(lambda error: self._failed(task.task_id, error))
             self.changed.emit()
@@ -184,6 +188,22 @@ class AgentProviders(QObject):
             return None
         state = "waiting" if chat["requests"] else chat["activity"]
         return {"state": state, "queued": len(chat["queue"])}
+
+    def model_info(self, task_id):
+        """Only runtime reports count; the requested/default selection is no proof."""
+        report = self.model_reports.get(task_id)
+        if report is None:
+            return None
+        return {**report, "live": task_id in self.chats}
+
+    def _model_reported(self, task_id, report):
+        if task_id not in self.chats:
+            return
+        if report is None:
+            self.model_reports.pop(task_id, None)
+        else:
+            self.model_reports[task_id] = dict(report)
+        self.changed.emit()
 
     def _activity(self, task_id, state):
         chat = self.chats.get(task_id)

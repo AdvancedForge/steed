@@ -39,6 +39,8 @@ for line in sys.stdin:
         servers = params["config"]["mcp_servers"]
         assert "synthetic-other" not in servers
         server_name = next(k for k in servers if k.startswith("steed_"))
+        assert servers[server_name]["default_tools_approval_mode"] == "approve"
+        assert servers[server_name]["tool_timeout_sec"] == 75
         args = servers[server_name]["args"]
         binding_path = args[args.index("--task-binding-file") + 1]
         with open(binding_path) as handle:
@@ -55,12 +57,19 @@ for line in sys.stdin:
         assert json.loads(pipe.readline()) == {"connected": True}
         result = {
             "thread": {"id": thread},
+            "model": "synthetic-runtime-model",
+            "modelProvider": "synthetic",
             "approvalPolicy": "never",
             "runtimeWorkspaceRoots": [],
             "activePermissionProfile": {"id": "steed_chat"},
         }
         if mode == "unsafe-profile":
             result["activePermissionProfile"] = {"id": ":danger-full-access"}
+        if mode == "model-unreported":
+            result.pop("model")
+            result.pop("modelProvider")
+        elif mode == "model-invalid":
+            result["model"] = "<script>synthetic</script>\ninvalid"
     elif method == "mcpServerStatus/list":
         assert params["threadId"] == thread
         assert params["serverName"] == server_name
@@ -116,6 +125,16 @@ for line in sys.stdin:
         if mode == "long":
             answer = "🌍" * 2500
         event("turn/started", {"threadId": thread, "turn": {"id": turn}})
+        if mode == "model-rerouted-early":
+            event(
+                "model/rerouted",
+                {
+                    **scope,
+                    "fromModel": "synthetic-runtime-model",
+                    "toModel": "synthetic-rerouted-model",
+                    "reason": "highRiskCyberActivity",
+                },
+            )
         if mode == "early-events":
             event(
                 "item/agentMessage/delta",
@@ -133,6 +152,25 @@ for line in sys.stdin:
                 type(json.loads(sys.stdin.readline())["result"]["currentTimeAt"]) is int
             )
         emit({"id": request["id"], "result": result})
+        if mode in (
+            "model-rerouted",
+            "model-foreign-reroute",
+            "model-invalid-reroute",
+        ) or (mode == "model-rerouted-once" and turn_counter == 1):
+            event(
+                "model/rerouted",
+                {
+                    **scope,
+                    "threadId": "foreign-thread"
+                    if mode == "model-foreign-reroute"
+                    else thread,
+                    "fromModel": "synthetic-runtime-model",
+                    "toModel": "<invalid>\nmodel"
+                    if mode == "model-invalid-reroute"
+                    else "synthetic-rerouted-model",
+                    "reason": "highRiskCyberActivity",
+                },
+            )
         if mode in ("approval", "question", "question-current", "permission"):
             params = {**scope, "itemId": "native-item", "startedAtMs": 1}
             method = "item/commandExecution/requestApproval"

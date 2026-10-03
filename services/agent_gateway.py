@@ -199,11 +199,11 @@ class AgentConnection(QObject):
         ):
             raise ValueError("Invalid request envelope")
         request_id = request["id"]
+        spec = TOOLS_BY_NAME.get(request["tool"])
         if self.pending is not None:
-            self._error(request_id, "request_in_progress")
+            self._error(request_id, "request_in_progress", spec)
             return
         try:
-            spec = TOOLS_BY_NAME.get(request["tool"])
             if spec is None:
                 raise ValueError("Unknown tool")
             spec.validate(request["arguments"])
@@ -231,7 +231,9 @@ class AgentConnection(QObject):
             future = self.client.submit(spec.command, **request["arguments"])
             self.pending = future
             self.deadline.start(30000)
-            future.add_done_callback(lambda result: self._complete(request_id, result))
+            future.add_done_callback(
+                lambda result: self._complete(request_id, result, spec)
+            )
         except Exception as error:
             service = self.gateway.service
             if self.client is not None and not service._closed and not service.failure:
@@ -239,26 +241,46 @@ class AgentConnection(QObject):
                     service.store.record_event(
                         self.client.task_id,
                         "permission.denied",
-                        {"reason": "external_request_rejected"},
+                        {
+                            "reason": "external_request_rejected",
+                            "command": spec.command if spec else "unknown_tool",
+                            "code": getattr(error, "code", "invalid_request"),
+                            "stage": "validation",
+                        },
                     )
                 except Exception:
                     service._fatal()
                     return
-            self._error(request_id, getattr(error, "code", "invalid_request"))
+            self._error(request_id, getattr(error, "code", "invalid_request"), spec)
 
-    def _error(self, request_id, code):
+    def _error(self, request_id, code, spec=None):
         # Never return exception strings, secrets, storage paths, or tracebacks.
+        message = {
+            "request_in_progress": "Another call is pending. This call was not dispatched; wait for it to finish.",
+            "invalid_request": "Use the published tool schema. Discovery tools take {} without task_id; task identity belongs to this connection. Discovery needs no grant or separate enable switch.",
+            "approval_required": "Request the exact scope with steed_grant_request and wait for an approved steed_grant_list entry. Discovery tools need no grant.",
+            "task_inactive": "This task has ended. Start a new chat or task; enabling discovery cannot restore an ended task.",
+        }.get(
+            code, "Task operation failed; check scope, references, and approval status."
+        )
+        if spec and spec.command == "browser.tabs" and code == "approval_required":
+            message = (
+                "Live tab listing requires the user's Share browser tabs handoff "
+                "and live/read approval. This does not block task capabilities, "
+                "browser context, enabled library folders or connector discovery."
+            )
         self._send(
             {
                 "id": request_id,
                 "error": {
                     "code": code,
-                    "message": "Task operation failed; check scope, references, and approval status.",
+                    "message": message,
+                    **({"tool": spec.name} if spec else {}),
                 },
             }
         )
 
-    def _complete(self, request_id, future):
+    def _complete(self, request_id, future, spec):
         if self.closed:
             return
         self.pending = None
@@ -266,7 +288,19 @@ class AgentConnection(QObject):
         try:
             self._send({"id": request_id, "result": json_value(future.result())})
         except Exception as error:
-            self._error(request_id, getattr(error, "code", "operation_failed"))
+            code = getattr(error, "code", "operation_failed")
+            service = self.gateway.service
+            if self.client is not None and not service._closed and not service.failure:
+                try:
+                    service.store.record_event(
+                        self.client.task_id,
+                        "client.rejected",
+                        {"command": spec.command, "code": code, "stage": "execution"},
+                    )
+                except Exception:
+                    service._fatal()
+                    return
+            self._error(request_id, code, spec)
 
     def close(self):
         if self.closed:

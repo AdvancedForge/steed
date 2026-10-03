@@ -88,11 +88,19 @@ class AgentSidebar(QDockWidget):
         self.activity_hint = QLabel()
         self.activity_hint.setWordWrap(True)
         self.activity_hint.setTextFormat(Qt.TextFormat.PlainText)
+        self.running_model = QLabel()
+        self.running_model.setWordWrap(True)
+        self.running_model.setTextFormat(Qt.TextFormat.PlainText)
+        self.running_model.setAccessibleName("Model reported by the running agent")
+        self.running_model.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self.busy = QProgressBar()
         self.busy.setRange(0, 0)
         self.busy.setTextVisible(False)
         self.busy.setFixedHeight(4)
         activity_layout.addWidget(self.activity_title)
+        activity_layout.addWidget(self.running_model)
         activity_layout.addWidget(self.activity_hint)
         activity_layout.addWidget(self.busy)
         layout.addWidget(self.activity_card)
@@ -157,10 +165,16 @@ class AgentSidebar(QDockWidget):
         tools_layout.setContentsMargins(10, 10, 10, 10)
         tools_layout.addWidget(self.status)
         self.model = QComboBox()
-        self.model.setAccessibleName("Codex model")
+        self.model.setAccessibleName("Model for new Codex chats")
+        self.model.setToolTip(
+            "Choose the model for a new chat. This does not change an existing conversation."
+        )
         self.model.addItem("Codex default", None)
         self.model.addItem("GPT-5.4 (tested direct Steed tools)", "gpt-5.4")
         self.model.setVisible(providers is not None)
+        self.model_caption = QLabel("Model for new chats")
+        self.model_caption.setVisible(providers is not None)
+        tools_layout.addWidget(self.model_caption)
         tools_layout.addWidget(self.model)
         self.connection_settings = QPushButton("Connection setup…")
         self.connection_settings.clicked.connect(lambda: self.setup_requested.emit())
@@ -293,7 +307,23 @@ class AgentSidebar(QDockWidget):
     def _update_activity(self, usable, active):
         if not usable:
             self.busy.hide()
+            self.running_model.clear()
             return
+        model = (
+            self.providers.model_info(self._task_id)
+            if self.providers is not None and hasattr(self.providers, "model_info")
+            else None
+        )
+        if model:
+            text = "Model: " + model["model"]
+            if model.get("provider"):
+                text += " · " + model["provider"]
+            text += " (reported by Codex)" if model["live"] else " (last reported)"
+            if model["source"] == "rerouted":
+                text += "\nCodex rerouted this turn from " + model["from_model"] + "."
+        else:
+            text = "Model: not reported by the agent"
+        self.running_model.setText(text)
         report = (
             self.providers.activity(self._task_id)
             if self.providers is not None and hasattr(self.providers, "activity")

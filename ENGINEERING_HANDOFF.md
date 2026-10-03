@@ -18,6 +18,30 @@ capabilities, reusable files and explicit access controls.
 
 ## Latest Codex/sidebar follow-up
 
+The latest user says the native chat now stays connected but its agent reports
+rejected access discovery, and asks to see the actual running model. The new
+checkpoint fixes native tool admission and concurrent MCP requests; do not undo
+`default_tools_approval_mode = "approve"` on the dedicated Steed server or replace
+the bounded FIFO with immediate sibling rejection. `auto` was reproduced rejecting
+permission requests before browser dispatch; `approve` admits the transport to
+Steed's unchanged authorization/review layer, not permission for arbitrary
+external effects. Inherited servers/sandbox/OS settings remain native. MCP calls
+that were dispatched must still never be automatically replayed.
+
+The card uses runtime `thread/start` model/provider and `model/rerouted` metadata,
+not the requested selector value. Foreign threads cannot change it; owned-turn
+checks and early-event buffering apply. Generic clients/missing metadata stay
+unreported. Model reports are transient for this browser run; an ended chat is
+marked last-reported. Keep new-chat selection separate from current model identity.
+Known failed commands/codes/stages are value-free diagnostics; do not put request
+arguments, exceptions, file bodies or credentials in them. Grant-free discovery
+does not include live tabs: those still need user sharing and live/read approval.
+Restart/new-chat is required to pick up changed native settings/instructions.
+See the current ROADMAP.md acceptance record for final tests/logs. The original
+live account task was not executed; no applications were submitted by these checks.
+
+The preceding follow-up addressed the original disconnect:
+
 The user reports Codex answering that it will work, then disconnecting. The exact
 live task is not reproduced. Shared runtime now supports the current question RPC,
 standalone clock reads before/after turns, and foreign-thread notification exclusion.

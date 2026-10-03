@@ -134,6 +134,82 @@ class AgentGatewayTests(unittest.TestCase):
         self.service.approve_grant(task_id, grant["grant_id"])
         return self.call(socket, "session.open")["result"]["session_id"]
 
+    def test_bound_chat_can_discover_before_requesting_exact_permission(self):
+        task = self.service._create("Synthetic resource discovery")
+        socket = self.bound_connection(self.gateway.bind_task(task.task_id))
+        enabled = self.service.library.create_folder("Synthetic enabled inputs")
+        self.service.library.enable(enabled, True)
+        self.service.library.create_folder("Synthetic disabled inputs")
+        for name in (
+            "task.capabilities",
+            "browser.context",
+            "library.folders",
+            "app.list_tools",
+        ):
+            with self.subTest(name=name):
+                result = self.call(socket, name)
+                self.assertIn("result", result)
+                if name == "library.folders":
+                    self.assertEqual([f["id"] for f in result["result"]], [enabled])
+        self.assertEqual(self.service.store.grants(task.task_id), [])
+        tab_error = self.call(socket, "browser.tabs")["error"]
+        self.assertEqual(tab_error["code"], "approval_required")
+        self.assertIn("Share browser tabs", tab_error["message"])
+        self.assertIn("result", self.call(socket, "library.folders"))
+        denied = self.call(socket, "session.open")["error"]
+        self.assertEqual(denied["code"], "approval_required")
+        self.assertEqual(denied["tool"], "steed_session_open")
+        grant = self.call(socket, "grant.request", scope={"actions": ["workspace"]})[
+            "result"
+        ]
+        self.assertEqual(grant["status"], "requested")
+        self.service.approve_grant(task.task_id, grant["grant_id"])
+        self.assertEqual(
+            self.call(socket, "grant.list")["result"][-1]["status"], "approved"
+        )
+
+    def test_discovery_rejection_reports_safe_tool_and_schema_guidance(self):
+        socket = self.connect()
+        task_id = self.start(socket)
+        private_value = "SYNTHETIC_PRIVATE_REQUEST_VALUE"
+        rejected = self.call(socket, "library.folders", task_id=private_value)
+        self.assertEqual(rejected["error"]["code"], "invalid_request")
+        self.assertEqual(rejected["error"]["tool"], "steed_library_folders")
+        self.assertIn("without task_id", rejected["error"]["message"])
+        self.assertNotIn(private_value, json.dumps(rejected))
+        event = self.service.store.events(task_id)[-1]
+        self.assertEqual(event.payload["command"], "library.folders")
+        self.assertEqual(event.payload["stage"], "validation")
+        self.assertNotIn(private_value, json.dumps(event.payload))
+        self.assertIn("result", self.call(socket, "library.folders"))
+
+    def test_execution_failure_names_the_tool_without_exposing_exception_text(self):
+        socket = self.connect()
+        task_id = self.start(socket)
+        private_value = "SYNTHETIC_PRIVATE_BACKEND_FAILURE"
+        with patch.object(
+            self.service.backend,
+            "capabilities",
+            side_effect=RuntimeError(private_value),
+        ):
+            rejected = self.call(socket, "task.capabilities")
+        self.assertEqual(rejected["error"]["tool"], "steed_task_capabilities")
+        self.assertEqual(rejected["error"]["code"], "operation_failed")
+        event = self.service.store.events(task_id)[-1]
+        self.assertEqual(event.kind, "client.rejected")
+        self.assertEqual(
+            event.payload,
+            {
+                "command": "task.capabilities",
+                "code": "operation_failed",
+                "stage": "execution",
+            },
+        )
+        self.assertNotIn(
+            private_value, json.dumps(rejected) + json.dumps(event.payload)
+        )
+        self.assertIn("result", self.call(socket, "task.capabilities"))
+
     def test_authentication_and_private_discovery(self):
         self.assertEqual(stat.S_IMODE(self.gateway.discovery.stat().st_mode), 0o600)
         self.assertEqual(

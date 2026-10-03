@@ -2744,6 +2744,15 @@ Conversation and message entry have distinct headings, sender highlighting and
 primary buttons. Light/dark appearance follows the browser; details stay under
 More options. Messages remain plain text.
 
+The card also shows **Model: … (reported by Codex)**, using the resolved model and
+provider returned by the running App Server thread. A reported model reroute
+updates the name and shows the previous model for that turn. **Model for new
+chats** in More options selects a future chat; changing it does not change the
+selected conversation. Missing/invalid runtime metadata and other MCP clients
+show **Model: not reported by the agent**, rather than guessing from the selector.
+After a chat ends, its name is marked **last reported** for this browser run;
+these transient reports are not restored from old chat history after restart.
+
 Sidebar acceptance: 27 menu/sidebar/web-chat checks pass in 12.606 seconds,
 including setup/active/options states, visible pending permissions, draft
 preservation, private-profile isolation and a short scrolling chat tab. Synthetic
@@ -2785,6 +2794,15 @@ Codex's settings; Steed is a communication and browser-tool provider, not an OS
 sandbox around the external agent. An installed native runtime is a trusted local
 program with the same access it normally has outside this browser.
 
+The dedicated task-bound Steed server uses Codex's `approve` tool-admission mode.
+The former `auto` setting could reject tools before they reached Steed, including
+resource discovery and permission requests. Only this new Steed server entry is
+changed; inherited server policies and Codex's sandbox/OS approvals remain native.
+Admission does not grant browser, connector, worker or write authority: Steed's
+scope checks, enabled-folder decisions, approval popups and payload reviews still
+apply. The values are documented in the official OpenAI
+[Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
 Each chat uses a dedicated CLI process and new ephemeral thread. A private,
 single-use task capability binds its Steed connection; Steed verifies that task
 before enabling Send. Malformed/oversized output, foreign task/turn identities,
@@ -2807,6 +2825,27 @@ are streamed as plain text, coalesced and split at UTF-8 boundaries within exist
 chat limits. No message bodies, account details or runtime stderr enter activity
 events. **Clear Chat** removes queued prompts and suppresses the rest of an erased
 reply; text already sent cannot be recalled from the external agent.
+
+#### When an agent says discovery was rejected
+
+There is no separate discovery switch for an active Steed connection. Agents can
+call `steed_task_capabilities`, `steed_browser_context`, `steed_library_folders`
+and `steed_app_list_tools` with `{}` before requesting a grant. Task identity is
+bound to the connection; supplying `task_id` is invalid. Empty folder/connector
+lists mean nothing is enabled/available. Enable the intended folder in **File
+library** or connect the service in **App Connections**; discovery itself does
+not connect accounts or expose disabled folders. Enabled library folders already
+permit file access without repeated task grants.
+
+`steed_browser_tabs` has a different requirement: use **Share browser tabs…** and
+approve live/read access first. Rejection of that call does not disable library,
+connector or capability discovery. Other browser/connector access uses
+`steed_grant_request` with the exact scope, then `steed_grant_list` to check approval.
+Failures report a known tool name and code where available; journal diagnostics
+record only command, code and validation/execution stage, never argument values
+or exception text. Restart Steed and start a new Codex chat to load changed native
+connection settings/instructions. Existing conversations keep their original
+runtime configuration.
 
 Hiding the dock keeps the chat running. **Cancel Task**, disabling local agent
 access, ending the task or closing the last browser window stops the dedicated
@@ -3349,7 +3388,17 @@ is bypassed. Requests are limited to 64 KiB and responses to 1 MiB. Authenticati
 times out after five seconds; an operation exceeding 30 seconds closes its
 connection and cancels its task. Disabling access, journal failure, disconnect,
 and last-window shutdown remove access and dispose owned pages before profiles.
-Rejected tool/argument requests with an assigned task record a value-free denial event.
+The MCP adapter queues up to 32 active/waiting calls per connection, transmitting
+one at a time. Parallel discovery therefore does not reject sibling requests.
+Queue waiting is bounded to 35 seconds; overflow/queue-timeout errors explicitly
+say that the affected call was not dispatched. Cancellation while waiting leaves
+the active call alone. Cancellation/failure after dispatch closes the connection,
+fails queued calls and never replays a potentially uncertain operation.
+The dedicated Codex entry allows 75 seconds for a tool call, covering queue
+admission plus its bounded dispatched response; the gateway's 30-second operation
+timeout still applies. Other MCP clients choose their own transport deadlines.
+Rejected tool/argument requests with an assigned task record a value-free denial
+event; execution failures record a value-free `client.rejected` diagnostic.
 Local processes running as your user can read the connection token and request
 new tasks; they still cannot adopt another connection's task or approve grants.
 
@@ -3467,8 +3516,13 @@ uses a temporary authentication/configuration directory, a loopback model
 endpoint and a harmless inherited MCP marker. It verifies a native newer-model
 code-runtime call into the bound Steed task, streaming follow-ups, native
 capability preservation and adapter shutdown without external model calls.
-Pass `gpt-5.4` to check the direct-tool path. Real authenticated model replies and
-desktop browsing acceptance remain separate user checks. Validation totals are
+The native smoke also checks the reported model, concurrent capabilities/context/
+enabled-folder/connector discovery, live-tab denial without a user handoff, and a
+synthetic workspace grant explicitly approved by the fixture's user, under a
+native never-ask policy. It uses no real files/accounts and opens no page or
+external application. Pass `gpt-5.4` to check the direct-tool path. Real
+authenticated model replies and desktop browsing acceptance remain separate user
+checks. Validation totals are
 tracked in ROADMAP.md.
 
 Document worker bundle (October 2, 2026): **679 tests passed in 314.002 seconds**

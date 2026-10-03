@@ -403,6 +403,83 @@ class AgentProviderTests(unittest.TestCase):
         task = next(iter(self.manager.chats))
         self.wait_for(lambda: self.manager.status(task) == "Codex ready")
         self.assertEqual(self.drivers[-1].model, "gpt-5.4")
+        self.assertIn("synthetic-runtime-model", self.sidebar.running_model.text())
+        self.assertNotIn("gpt-5.4", self.sidebar.running_model.text())
+        self.assertFalse(self.sidebar.more.isChecked())
+        self.assertFalse(self.sidebar.running_model.isHidden())
+        self.sidebar.model.setCurrentIndex(0)
+        self.assertEqual(self.drivers[-1].model, "gpt-5.4")
+        self.assertIn("synthetic-runtime-model", self.sidebar.running_model.text())
         with self.assertRaises(ValueError):
             self.manager.new_chat(model="invalid model/argument")
         self.assertEqual(len(self.service.store.list_tasks()), 1)
+
+    def test_unreported_or_invalid_model_is_never_inferred_from_selection(self):
+        for mode in ("model-unreported", "model-invalid"):
+            with self.subTest(mode=mode):
+                task = self.chat(mode)
+                self.assertEqual(
+                    self.sidebar.running_model.text(),
+                    "Model: not reported by the agent",
+                )
+                self.send("Still connected")
+                self.complete(task)
+                self.assertIn(task, self.manager.chats)
+                self.assertEqual(self.service.store.grants(task), [])
+                self.service.cancel_task(task)
+
+    def test_runtime_model_reroute_and_early_notification_are_visible(self):
+        for mode in ("model-rerouted", "model-rerouted-early"):
+            with self.subTest(mode=mode):
+                task = self.chat(mode)
+                self.send("Synthetic turn")
+                self.complete(task)
+                self.assertEqual(
+                    self.manager.model_info(task)["model"], "synthetic-rerouted-model"
+                )
+                self.assertIn("rerouted this turn", self.sidebar.running_model.text())
+                self.assertIn(
+                    "synthetic-runtime-model", self.sidebar.running_model.text()
+                )
+                self.service.cancel_task(task)
+                self.assertIn("last reported", self.sidebar.running_model.text())
+
+    def test_foreign_model_reroute_cannot_change_the_selected_chat(self):
+        task = self.chat("model-foreign-reroute")
+        self.send("Owned turn")
+        self.complete(task)
+        self.assertEqual(
+            self.manager.model_info(task)["model"], "synthetic-runtime-model"
+        )
+        self.assertNotIn("rerouted", self.sidebar.running_model.text())
+
+    def test_invalid_reroute_marks_the_model_unknown_and_keeps_chat_connected(self):
+        task = self.chat("model-invalid-reroute")
+        self.send("Synthetic turn")
+        self.complete(task)
+        self.assertIsNone(self.manager.model_info(task))
+        self.assertEqual(
+            self.sidebar.running_model.text(), "Model: not reported by the agent"
+        )
+        self.assertIn(task, self.manager.chats)
+
+    def test_new_turn_does_not_inherit_the_previous_turns_reroute(self):
+        task = self.chat("model-rerouted-once")
+        self.send("Rerouted turn")
+        self.complete(task)
+        self.assertIn("synthetic-rerouted-model", self.sidebar.running_model.text())
+        self.send("Normal next turn")
+        self.complete(task, 2)
+        self.assertEqual(self.manager.model_info(task)["source"], "thread")
+        self.assertIn("synthetic-runtime-model", self.sidebar.running_model.text())
+        self.assertNotIn("rerouted", self.sidebar.running_model.text())
+
+    def test_model_reports_remain_scoped_when_switching_conversations(self):
+        first = self.chat("model-rerouted")
+        self.send("First")
+        self.complete(first)
+        second = self.chat()
+        self.assertNotIn("synthetic-rerouted-model", self.sidebar.running_model.text())
+        self.sidebar.tasks.setCurrentIndex(self.sidebar.tasks.findData(first))
+        self.assertIn("synthetic-rerouted-model", self.sidebar.running_model.text())
+        self.assertEqual(self.manager.model_info(second)["source"], "thread")
