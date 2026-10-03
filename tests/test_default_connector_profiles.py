@@ -745,7 +745,7 @@ class GitLabProfileTests(ProfileCase):
 
 
 PACKAGED_SLUGS = {"gitlab.json", "todoist.json"}
-TEMPLATE_NAMES = {"github-owner-template.json"}
+TEMPLATE_NAMES = {"github-owner-template.json", "gitlab-project-template.json"}
 
 
 class PackagedCatalogTests(unittest.TestCase):
@@ -1107,3 +1107,115 @@ class EmpiricalEvidenceTests(unittest.TestCase):
         self.assertIn("projecting less is not the same as transferring less", guide)
         self.assertIn("pinned library id is a real alternative", guide)
         self.assertIn(self.groups["query_inputs"]["title"], guide)
+
+
+class GitLabProjectTemplateTests(ProfileCase):
+    """A per-project template, because a project ID and an issue IID are both fixed."""
+
+    PLACEHOLDER = "REPLACE-WITH-YOUR-GITLAB-PROJECT-ID"
+
+    def setUp(self):
+        self.template = (
+            PACKAGED / "templates" / "gitlab-project-template.json"
+        ).read_bytes()
+        self.assertIn(self.PLACEHOLDER.encode(), self.template)
+        # The documented user step: copy the template and fix one project ID.
+        self.recipe = parse_recipe(
+            self.template.replace(self.PLACEHOLDER.encode(), b"7")
+        )
+        self.adapter = self.install(self.recipe, "gitlab")
+
+    def test_template_stays_out_of_the_picker_until_a_project_is_fixed(self):
+        self.assertNotIn("gitlab-project-template.json", packaged_slugs())
+        unedited = parse_recipe(self.template)
+        for tool in unedited.tools:
+            with self.subTest(tool=tool.name):
+                self.assertEqual(tool.path.count(self.PLACEHOLDER), 1)
+        self.assertEqual(
+            [t.name for t in unedited.tools if "{destination}" in t.path],
+            ["read_issue"],
+        )
+        # No source ships a real account, owner or project.
+        for path in sorted(PACKAGED.rglob("*.json")):
+            body = path.read_bytes()
+            self.assertNotIn(b"octocat", body, path.name)
+            self.assertNotIn(b"fixture-owner", body, path.name)
+
+    def test_issue_read_uses_the_per_project_iid_and_returns_nulls_explicitly(self):
+        result = self.read(self.adapter, "read_issue", "3")
+        self.assertEqual(
+            json.loads(result.text),
+            {
+                "iid": 3,
+                "title": "Documented issue with a body",
+                "state": "opened",
+                "description": "Documented issue body",
+                "url": "https://gitlab.com/fixture-owner/fixture-project/-/issues/3",
+            },
+        )
+        self.assertEqual(
+            self.api.calls[-1][1],
+            "https://gitlab.com/api/v4/projects/7/issues/3",
+        )
+        empty = json.loads(self.read(self.adapter, "read_issue", "4").text)
+        self.assertIsNone(empty["description"])
+        self.assertIn(
+            '"description": null', self.read(self.adapter, "read_issue", "4").text
+        )
+        self.assertEqual(self.api.posts, [])
+
+    def test_only_fields_documented_for_every_tier_are_projected(self):
+        issue = next(t for t in self.recipe.tools if t.name == "read_issue")
+        self.assertEqual(
+            [label for label, _ in issue.response],
+            ["iid", "title", "state", "description", "url"],
+        )
+        # Documented as tier-conditional or not documented at all, so a Free tier
+        # response cannot break the read.
+        for pointer in ("/weight", "/epic", "/health_status", "/assignee", "/links"):
+            self.assertNotIn(pointer, [p for _, p in issue.response])
+
+    def test_issue_destinations_reject_anything_but_one_iid(self):
+        issue = self.recipe.tools[1]
+        self.assertEqual(issue.destination("3"), "3")
+        for value in ("3/notes", "../3", "7/issues/3", "3?scope=all", "https://x/3"):
+            with self.subTest(value=value), self.assertRaises(RecipeError):
+                issue.destination(value)
+        # A global issue ID is not valid on this route; only the IID is documented.
+        self.assertEqual(
+            self.definition(self.adapter, "read_issue").description.count("IID"), 1
+        )
+
+    def test_missing_or_invisible_issue_fails_closed_without_a_write(self):
+        self.api.fail("GET", "/api/v4/projects/7/issues/3", 404)
+        with self.assertRaises(ApiError):
+            self.read(self.adapter, "read_issue", "3")
+        self.assertEqual(self.api.posts, [])
+        with self.assertRaises((RecipeError, KeyError, ApiError)):
+            self.read(self.adapter, "read_issue", "9999")
+
+    def test_created_issue_can_be_confirmed_by_reading_its_returned_iid(self):
+        request, definition, review = self.reviewed_create(
+            self.adapter, "create_issue", "account"
+        )
+        result = definition.execute(replace(request, review=review), self.cancelled)
+        self.assertEqual(result.state, "succeeded")
+        created = json.loads(result.text)
+        self.assertEqual(created["iid"], 1)
+        self.assertEqual(
+            self.api.posts,
+            [("/api/v4/projects/7/issues", {"title": TITLE, "description": DRAFT})],
+        )
+        # The documented confirm read exists and is usable by hand...
+        self.api.data["routes"]["/api/v4/projects/7/issues/1"] = dict(
+            self.api.data["routes"]["/api/v4/projects/7/issues/3"],
+            iid=1,
+            title=TITLE,
+            description=DRAFT,
+        )
+        confirmed = json.loads(self.read(self.adapter, "read_issue", "1").text)
+        self.assertEqual(confirmed["title"], TITLE)
+        self.assertEqual(confirmed["description"], DRAFT)
+        # ...and Steed still never runs it on its own.
+        self.assertEqual(len(self.api.posts), 1)
+        self.assertIsNone(self.definition(self.adapter, "create_issue").reconcile)

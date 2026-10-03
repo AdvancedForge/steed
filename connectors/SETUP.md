@@ -218,6 +218,51 @@ listing is left out because GitLab pages with an offset and a `Link` header, whi
 the current cursor pagination cannot follow; that is shared framework work, not a
 connector workaround.
 
+### Per-project template (issue reads)
+
+`connectors/recipes/templates/gitlab-project-template.json` is a **template, not a
+packaged profile**, for the same reason the GitHub one is: a reviewed issue read
+needs the numeric project ID *and* the issue IID, and a reviewed path may carry only
+one caller-supplied segment. So the template fixes one project ID in source, exactly
+as the GitHub template fixes an owner and repository, and the caller selects the
+issue:
+
+| Action | Wire contract |
+| --- | --- |
+| Read the reviewed project | `GET /api/v4/projects/{pinned id}` |
+| Read one issue | `GET /api/v4/projects/{pinned id}/issues/{destination}` by per-project IID |
+| Create issue | `POST /api/v4/projects/{pinned id}/issues` with `title` and `description` |
+
+1. Copy the template to your own location, for example `~/steed-gitlab-project.json`.
+2. Replace every `REPLACE-WITH-YOUR-GITLAB-PROJECT-ID` with the **numeric** project
+   ID. GitLab also accepts a URL-encoded namespace path, but a reviewed path segment
+   never contains a slash, so the numeric ID is the only form this subset can use.
+   The project's ID appears on its GitLab page, and `GET /api/v4/projects/{id}`
+   confirms it.
+3. Import the copy with **App Connections → Add Connector Recipe…**, read the source
+   review and install it. Repeat per project.
+
+Notes on the issue read:
+
+- The route takes the issue's **per-project IID**, which GitLab documents as an
+  integer. Its own example uses `GET /projects/42/issues/5`, and states that the
+  global issue ID is not valid there.
+- GitLab publishes no field schema for a single issue, so only fields present in the
+  documented read and create examples are projected: `iid`, `title`, `state`,
+  `description` and `web_url`.
+- `description` is documented as possibly null and is returned as an explicit null.
+- `weight`, `epic` and `health_status` are documented as present only on Premium or
+  Ultimate issues, so they are deliberately not projected: a Free tier response omits
+  them and selecting them would make the read fail. The deprecated `assignee` field
+  is not projected either, since GitLab documents `assignees` as its replacement.
+- A missing issue and an issue the token cannot see both answer `404` in GitLab's
+  general troubleshooting table, so the two are not distinguishable and the read fails
+  closed either way.
+- The documented create response includes `iid` and `web_url`, so a created issue can
+  be confirmed by reading that IID afterwards. That confirm read exists and Steed can
+  use it, but no reconciliation step runs it automatically: an uncertain create is
+  still reported as uncertain for you to check by hand.
+
 Notes on the wire shape:
 
 - Destinations are numeric project IDs. A namespace path cannot be expressed,
@@ -256,7 +301,9 @@ Official references:
 - [GitLab REST authentication](https://docs.gitlab.com/api/rest/authentication/)
 - [Retrieve the current user](https://docs.gitlab.com/api/users/#retrieve-the-current-user)
 - [Get single project](https://docs.gitlab.com/api/projects/#get-single-project)
+- [Retrieve a project issue](https://docs.gitlab.com/api/issues/#retrieve-a-project-issue)
 - [Create an issue](https://docs.gitlab.com/api/issues/#create-an-issue)
+- [API troubleshooting](https://docs.gitlab.com/api/rest/troubleshooting/)
 - [Quick actions](https://docs.gitlab.com/user/project/quick_actions/)
 
 
@@ -279,7 +326,7 @@ installed, and a row is never a default account or an approval.
 | Google | maintained | Framework-owned provider; no parallel recipe |
 | Todoist | packaged | none outstanding for the shipped subset |
 | GitHub | template | owner must be fixed in newly reviewed source |
-| GitLab.com | packaged | none outstanding for the shipped subset |
+| GitLab.com | packaged + template | none outstanding for the shipped subset |
 | Microsoft 365 | gated | native OAuth, `@odata.nextLink` paging and writes unverified |
 | Notion | gated | required `Notion-Version` header, nullable identity label, POST-read data-source query |
 | Slack | gated | channel destinations and `ok:false` error checking |
