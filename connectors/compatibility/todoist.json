@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "name": "Todoist starter",
+  "origin": "https://api.todoist.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/api/v1/user",
+    "subject": "/id",
+    "label": "/email"
+  },
+  "tools": [
+    {
+      "name": "read_task",
+      "description": "Read one Todoist task",
+      "method": "GET",
+      "path": "/api/v1/tasks/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "content",
+          "pointer": "/content"
+        },
+        {
+          "label": "description",
+          "pointer": "/description"
+        }
+      ]
+    },
+    {
+      "name": "list_tasks",
+      "description": "Read up to three pages of active tasks",
+      "method": "GET",
+      "path": "/api/v1/tasks",
+      "response": [
+        {
+          "label": "tasks",
+          "pointer": "/results"
+        }
+      ],
+      "pagination": {
+        "cursor": "/next_cursor",
+        "parameter": "cursor",
+        "max_pages": 3
+      }
+    },
+    {
+      "name": "create_task",
+      "description": "Create an inbox task from the reviewed draft",
+      "method": "POST",
+      "effect": "write",
+      "path": "/api/v1/tasks",
+      "destination": "account",
+      "request": {
+        "content": "artifact.title",
+        "description": "artifact.content"
+      },
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "content",
+          "pointer": "/content"
+        }
+      ]
+    }
+  ]
+}

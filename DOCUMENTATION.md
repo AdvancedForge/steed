@@ -1602,7 +1602,11 @@ authority, payload approvals and per-step receipts. That offers wider protocol a
 transform support but adds an executable adapter trust boundary and ongoing sandbox
 compatibility work. Existing attachment workers have no connector credential or
 network access. No generated Python would run inside the browser under either design.
-This choice needs user input before either execution architecture is implemented.
+The user chose declarative request plans first on October 3, 2026. Implementation
+continues in that direction. See the [connector implementation handoff](connectors/HANDOFF.md)
+for independently owned provider recipes and verified current-runtime subsets.
+The framework work owns shared catalog discovery and plan execution; service
+contributors do not edit the shared broker or UI.
 
 ### Shared Google registration decision
 

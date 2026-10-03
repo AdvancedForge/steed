@@ -7,7 +7,7 @@ execution, and evidence; external agents provide planning and generation.
 See [DOCUMENTATION.md](DOCUMENTATION.md) for setup and implementation details,
 including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
-## Current work — October 2, 2026
+## Current work — October 3, 2026
 
 Document bundle milestone: the optional maintained `documents-v1` worker creates
 PDFs, XLSX spreadsheets and images. Its pinned wheels live outside browser Python;
@@ -304,15 +304,24 @@ establishes those results. Password improvements remain deferred at the user's r
   inspected. Logs: `/tmp/steed-recipe-writes-{full,final-recipes,mcp-stdio,mcp-http,startup}.log`.
   Real-provider/native desktop acceptance remains separate. See the
   [implemented format](DOCUMENTATION.md#agent-designed-write-boundary).
-- **Next major engineering decision — complex provider execution:** choose bounded
-  declarative request plans with trusted per-step receipts, or broker-backed sandboxed
-  adapter packages. This affects result-dependent multi-call writes, provider-specific
+- **Approved next architecture — declarative request plans:** the user chose bounded
+  declarative plans with trusted per-step receipts before sandboxed adapter packages. This affects result-dependent multi-call writes, provider-specific
   transforms and revision-guarded edits needed for broader Google-level capability.
   Recommended direction: declarative plans first, preserving one reviewed payload
   per mutation, exact step authority and no continuation after uncertain completion.
-  Neither execution architecture is implemented; no generated code runs in the
-  browser. See the [concrete design comparison](DOCUMENTATION.md#complex-provider-workflow-decision).
+  Request-plan implementation is next; no generated code runs in the browser.
+  See the [concrete design comparison](DOCUMENTATION.md#complex-provider-workflow-decision).
   Google registration remains deferred independently.
+
+- **Parallel connector handoff — published implementation scope:**
+  [priority list and ownership](connectors/HANDOFF.md) identifies Todoist,
+  owner-pinned GitHub and GitLab.com starter subsets that execute through unchanged
+  v2 recipes. Four synthetic wire-shape compatibility checks passed; Microsoft reads
+  are a conditional bearer-token subset, not verified integrated OAuth. Notion,
+  Slack and broader integrations have explicit framework gaps. Another agent owns
+  new provider data/fixtures/setup and its isolated test file; this agent owns the
+  shared catalog/picker and declarative plan runtime. Default discovery requires
+  one generic catalog addition and must preserve explicit recipe/account review.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
