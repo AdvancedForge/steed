@@ -119,6 +119,32 @@ class BrowserConnection:
                 pass
 
 
+def tool_result(result, *, images=False):
+    """Expose image evidence as MCP image content, not duplicated base64 text."""
+    from mcp import types
+
+    value = result.get("result")
+    content = []
+    structured = result
+    if images and isinstance(value, dict) and "image" in value:
+        picture = value["image"]
+        structured = {
+            **result,
+            "result": {key: item for key, item in value.items() if key != "image"},
+        }
+        content.append(
+            types.ImageContent(
+                type="image", data=picture["data"], mimeType=picture["mime_type"]
+            )
+        )
+    content.insert(
+        0, types.TextContent(type="text", text=json.dumps(structured, allow_nan=False))
+    )
+    return types.CallToolResult(
+        content=content, structuredContent=structured, isError="error" in result
+    )
+
+
 def create_server(discovery, *, expected_epoch=None, binding_file=None):
     import anyio
     from mcp import types
@@ -187,13 +213,7 @@ def create_server(discovery, *, expected_epoch=None, binding_file=None):
                     "message": "Task connection closed; site effects may be unknown. Do not automatically retry.",
                 }
             }
-        return types.CallToolResult(
-            content=[
-                types.TextContent(type="text", text=json.dumps(result, allow_nan=False))
-            ],
-            structuredContent=result,
-            isError="error" in result,
-        )
+        return tool_result(result, images=name == "steed_page_capture")
 
     return server
 

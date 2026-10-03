@@ -9,6 +9,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 3, 2026
 
+Latest browser milestones: [live-tab delegation](#live-tab-delegation-and-coverage-signals--october-3-2026)
+(`d7544a0`) preserves normal website behavior and adds immediate Take Back;
+[approved viewport evidence](#approved-viewport-evidence--october-3-2026) adds bounded
+native MCP images. DOM coverage signals help agents decide when a visual read is
+needed. Accessibility and broader frame/widget coverage come next. All 873
+regressions and native image delivery over both MCP transports passed.
+
 Document bundle milestone: the optional maintained `documents-v1` worker creates
 PDFs, XLSX spreadsheets and images. Its pinned wheels live outside browser Python;
 each run verifies/copies them into a read-only sandbox mount. Package approvals
@@ -90,11 +97,12 @@ The user reports few complaints during daily use and authorized proceeding after
 the checks available to the assistant. A1 is implemented, and A2 supports private
 and concurrently shared existing-profile grants, with automatic approval popups.
 Exact download destinations, upload source files and upload origins are implemented;
-active-page authority still needs native engine support.
+restricted active-page network containment still needs native engine support.
+Explicitly delegated live tabs now use normal browser execution instead.
 A3 includes content inspection, stale-target validation, observed link navigation,
 scriptless control edits, native form submission, scrolling, bounded waits, and
 scoped native attachment downloads and single-file multipart uploads.
-Active document scripts are deferred following the bounded engine assessment;
+Active document scripts on restricted task pages are deferred following the bounded engine assessment;
 scripted/custom forms and complete SPA acceptance remain pending. A4 includes
 opt-in local IPC and working stdio/HTTP MCP adapters for current task operations.
 A7 is in progress: users can watch the same task page, take control through
@@ -109,6 +117,11 @@ establishes those results. Password improvements remain deferred at the user's r
 
 ### Resume checkpoint
 
+- **Latest live/browser checkpoint:** `d7544a0`, normal page/script preservation,
+  explicit current-tab/profile selection, controller banner, immediate Take Back
+  and per-control live revalidation. 149 focused regressions passed. The current
+  viewport-evidence milestone adds distinct visual consent and bounded MCP image
+  delivery; finish its verification below before proceeding to accessibility.
 - **Earlier Google checkpoint:** exact Google folder destinations (`e74dd12`),
   document/tab inspection, bounded tab reads and immutable draft appends with
   current-revision preconditions. Atomic operation ranges support read-only
@@ -1199,8 +1212,45 @@ identity/state retention, normal background POST, native handlers, pending input
 revocation, loading, scope isolation, multiwindow/profile lifecycle and permission
 replacement. Ruff lint/format and whitespace checks pass.
 
-**Next:** approved viewport visual evidence, accessibility semantics and broader
+**Next:** approved viewport visual evidence (implemented in the following milestone), accessibility semantics and broader
 frame/widget coverage; use coverage-driven deterministic routing first. Real
 signed-in desktop acceptance remains a manual check. Cloud personal-agent access
 still requires a local bridge or a separately chosen hosting/authentication model.
 Google production registration and password improvements remain deferred.
+
+
+### Approved viewport evidence — October 3, 2026
+
+**Implemented:** `visual` is a separately described permission for native viewport
+screenshots, including visible field values and embedded content omitted from
+DOM reads. `page.capture` returns an MCP image content block plus bounded metadata
+through the same stdio/HTTP adapter. Base64 pixels are not duplicated in text or
+structured results and are not retained in the task journal. Other tool response
+shapes remain unchanged.
+
+Captures require an owned, visible view, approved top-level origin and read/visual
+authority. The private bundled frontend captures without changing viewport,
+scroll, normal scripts or service workers. Revocation, Take Back, navigation and
+view/lifetime checks prevent late evidence release. JPEGs are limited to 1280×960
+pixels and 256,000 bytes; clipping and viewport-only limitations remain explicit.
+Native frontend failure reports an unavailable observation and grants no fallback
+script/coordinate access.
+
+**Validation:** all 873 regressions passed in 357.385 seconds. Native pixel/canvas
+and viewport checks, clipping/size bounds, distinct consent, pending-capture
+revocation and multiwindow runtime tab identity passed. SDK and independent raw
+clients received native JPEG image blocks over stdio and authenticated HTTP.
+Installed Codex direct and code-runtime transport checks passed with synthetic
+loopback responses. Startup/render/shutdown passed with Qt 6.11.2; the settled
+approval popup was visually checked with synthetic data. Ruff lint/format and
+whitespace checks passed. Real signed-in desktop acceptance remains outstanding.
+Logs: `/tmp/steed-live-visual-final-full.log`,
+`/tmp/steed-live-visual-stdio.log`, `/tmp/steed-live-visual-http.log`,
+`/tmp/steed-visual-startup-final.log`.
+
+**Next observation work:** accessibility semantics, independently scoped frame
+reads and native/custom-widget coverage. Route observations from deterministic
+coverage signals first; external agents can already choose viewport evidence.
+A lightweight ranking/router can be added when representative browsing tasks show
+where it improves coverage or latency. No automatic claim of “all important
+information,” implicit history access or remote cloud endpoint is introduced.

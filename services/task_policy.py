@@ -30,6 +30,7 @@ SUPPORTED_ACTIONS = frozenset(
         "connector",
         "app",
         "live",
+        "visual",
     }
 )
 

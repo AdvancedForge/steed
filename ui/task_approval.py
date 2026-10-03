@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 from ui.task_recovery import TaskRecoveryDialog
 
 ACTION_LABELS = {
+    "visual": "See viewport screenshots, including visible form values and embedded content from other sites (images are returned to the agent, not saved in the task journal)",
     "live": "Control tabs you explicitly share, with normal JavaScript and background network activity (website handlers can change account data). Take Back ends access to a tab immediately.",
     "navigate": "Open links on these sites",
     "inspect": "See page addresses and titles",

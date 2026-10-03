@@ -495,6 +495,11 @@ async def sdk_client(
             initialized = await client.initialize()
             shared["protocol_version"] = initialized.protocolVersion
             names = {tool.name for tool in (await client.list_tools()).tools}
+            assert {
+                "steed_page_capture",
+                "steed_browser_tabs",
+                "steed_session_adopt",
+            } <= names
             assert "steed_page_submit" in names
             assert "steed_workspace_stage_extension" in names
             assert "steed_grant_approve" not in names
@@ -543,6 +548,7 @@ async def sdk_client(
                         "navigate",
                         "inspect",
                         "read",
+                        "visual",
                         "attach",
                         "edit",
                         "submit",
@@ -620,6 +626,16 @@ async def sdk_client(
             link = await target("Open form")
             await call("page.navigate", **link)
             await call("session.watch", session_id=session_id)
+            picture = await client.call_tool(
+                "steed_page_capture", {"session_id": session_id}
+            )
+            assert not picture.isError, picture
+            assert [part.type for part in picture.content] == ["text", "image"]
+            assert picture.content[1].mimeType == "image/jpeg"
+            assert base64.b64decode(picture.content[1].data).startswith(b"\xff\xd8\xff")
+            assert "image" not in picture.structuredContent["result"]
+            assert picture.structuredContent["result"]["source"] == "native_viewport"
+            shared["sdk_native_viewport_image"] = True
             old_field = await target("Message")
             shared["takeover_requested"] = True
             deadline = time.monotonic() + 15

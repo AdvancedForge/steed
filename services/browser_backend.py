@@ -73,6 +73,7 @@ class BrowserBackend(Protocol):
     def navigate(self, session_id: str, url: str) -> SessionSnapshot: ...
     def inspect(self, session_id: str) -> SessionSnapshot: ...
     def inspect_page(self, session_id: str): ...
+    def capture_page(self, session_id: str): ...
     def inspect_target(self, session_id: str, snapshot_id: str, target_id: str): ...
     def navigate_observed(self, session_id: str, url: str): ...
     def act(self, session_id, action_id, snapshot_id, target_id, arguments): ...
@@ -195,7 +196,7 @@ class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
 class QtSession:
     task_id: str
     profile: QWebEngineProfile
-    page: TaskPage
+    page: QWebEnginePage
     grant: LiveGrant
     owns_profile: bool = True
     views: list[QWebEngineView] = field(default_factory=list)
@@ -604,6 +605,50 @@ class QtBrowserBackend(QObject):
         return self.inspector.inspect(
             self.inspect(session_id), session.page, session.grant, validate
         )
+
+    def capture_page(self, session_id):
+        from services.page_capture import capture_viewport
+
+        session, validate_read = self._read_context(session_id)
+        view = session.borrowed_view or next(
+            (v for v in session.views if not sip.isdeleted(v)), None
+        )
+        if view is None or not view.isVisible():
+            raise PageInspectionError("visible_view_required")
+        session.grant.check("visual", url=session.page.url().toString())
+        if session.pending_action is not None:
+            raise PageInspectionError("session_busy")
+        if session.network is None:
+            if session.page.devToolsPage() is not None:
+                raise PageInspectionError("native_frontend_in_use")
+            session.network = TaskNetwork(
+                session.page, self, live=session.borrowed_view is not None
+            )
+        revision = session.revision
+
+        def validate():
+            validate_read()
+            session.grant.check("visual", url=session.page.url().toString())
+            if sip.isdeleted(view) or not view.isVisible():
+                raise PageInspectionError("visible_view_required")
+
+        result = capture_viewport(session.network, validate)
+        session.waits.add(result)
+        result.add_done_callback(lambda _: session.waits.discard(result))
+        response = Future()
+
+        def completed(source):
+            try:
+                data = source.result()
+                validate()
+                response.set_result(
+                    {"session_id": session_id, "revision": revision, **data}
+                )
+            except Exception as error:
+                response.set_exception(error)
+
+        result.add_done_callback(completed)
+        return response
 
     def inspect_target(self, session_id, snapshot_id, target_id):
         session, validate = self._read_context(session_id)

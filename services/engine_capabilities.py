@@ -27,6 +27,7 @@ class EngineCapabilities:
     live_tab_delegation: bool = True
     live_website_scripts: bool = True
     live_network_policy: str = "normal_browser_background_traffic"
+    observation_sources: tuple[str, ...] = ("rendered_dom", "native_viewport")
 
 
 def qt_engine_capabilities() -> EngineCapabilities:

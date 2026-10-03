@@ -2685,6 +2685,21 @@ remain opaque and no arbitrary script, selector or coordinate tool is exposed.
 
 #### Website observation coverage
 
+With `visual` and `read` permission, `steed_page_capture` returns the current
+viewport as a native MCP image plus metadata. It needs a visible borrowed tab or
+watched task view. Hidden tabs need `session.watch` first. The browser checks the
+page's origin and lifetime again before releasing pixels, and Take Back cancels
+pending captures. No image bytes are written to the task journal.
+
+Visual approval includes visible field values and embedded content from other
+sites, even frames omitted from DOM reads. It is separate from text-read approval;
+restricted-page permissions do not silently expand. The sidebar's live delegation
+popup explicitly includes visual permission. The bounded JPEG is at most
+1280×960 pixels and 256,000 bytes; metadata reports clipping and viewport-only
+coverage. The native frontend preserves the original viewport, scroll, scripts
+and normal service-worker behavior. It opens no debugging listener. Image pixels
+are untrusted site content and do not confer click/selector authority.
+
 `page.inspect` provides bounded rendered DOM text and native controls, with flags
 for truncation, inaccessible/out-of-scope frames, observed open shadow roots,
 canvas, images/video/SVG and custom widgets. It distinguishes live website
@@ -2695,9 +2710,8 @@ These flags describe coverage gaps, not a guarantee of completeness.
 text, labels, links, headings and frames deterministically; then use accessibility
 semantics and viewport images where DOM coverage is insufficient. A lightweight
 model can route the next observation and rank relevant evidence within a budget.
-It cannot recover unloaded content or guarantee that nothing was missed. The
-current milestone adds coverage signals; visual and accessibility fallbacks are
-tracked next. Native frame inspection is available in Qt's
+It cannot recover unloaded content or guarantee that nothing was missed. The current milestone adds coverage signals and approved viewport images.
+Accessibility and broader frame/widget inspection are tracked next. Native frame inspection is available in Qt's
 [QWebEngineFrame API](https://doc.qt.io/qt-6.11/qwebengineframe.html), but frame
 lifetime and each frame's authority must be checked before exposing its content.
 
@@ -2850,7 +2864,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 57 input schemas. Names follow the internal command
+Tool discovery publishes 58 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -2860,8 +2874,12 @@ watching, retained drafts, configured app operations, evidence, and task lifecyc
 are available. Approval, task enumeration,
 raw cookies, JavaScript, arbitrary selectors, unshared file bytes, and raw Qt objects
 are not exposed by this adapter. `steed_session_watch` needs explicit `attach`
-permission and opens a browser-owned window; taking and returning control are
-trusted user actions, unavailable to external clients.
+permission and opens a browser-owned window for restricted task pages. On a live
+session it brings the original tab/window forward. Taking/returning control and
+live-tab selection are trusted user actions. See
+[live delegation](#delegate-normal-live-tabs) and
+[visual observation](#website-observation-coverage) for the separate normal-browser
+mode and viewport image tool.
 
 `steed_browser_context` needs an active task but no site grant. It returns
 `window_id`, `profile`, `profile_selector`, `shared_profile_available`, and
@@ -2897,7 +2915,7 @@ the adapter as described above. To collaborate on an approved task page:
    so clients can wait for the handoff.
 
 This first takeover supports the same approved, scriptless actions as agent
-tasks. Direct clicking/typing inside the rendered page, website scripts,
+restricted tasks. Direct clicking/typing inside the watched task page, website scripts,
 password/multiple-file/folder forms, and custom controls remain unavailable. Site restrictions,
 operation budgets, and grant deadlines still apply during user control;
 ordinary browsing windows remain usable on the same profile.

@@ -166,8 +166,8 @@ class LiveTabsTests(unittest.TestCase):
         window, view = self.window()
         task, _, session = self.share(window)
         tabs = self.command("browser.tabs", task_id=task)["tabs"]
-        self.assertEqual([tab["tab_id"] for tab in tabs], [view.tab_id])
-        adopted = self.command("session.adopt", task_id=task, tab_id=view.tab_id)
+        self.assertEqual([tab["tab_id"] for tab in tabs], [view.agent_tab_id])
+        adopted = self.command("session.adopt", task_id=task, tab_id=view.agent_tab_id)
         self.assertEqual(adopted.session_id, session)
         policy = view.original_policy
         self.assertEqual(view.focusPolicy(), Qt.FocusPolicy.NoFocus)
@@ -177,7 +177,7 @@ class LiveTabsTests(unittest.TestCase):
         self.assertFalse(sip.isdeleted(view.page()))
         self.assertEqual(self.command("browser.tabs", task_id=task)["tabs"], [])
         with self.assertRaises(TaskPermissionError):
-            self.command("session.adopt", task_id=task, tab_id=view.tab_id)
+            self.command("session.adopt", task_id=task, tab_id=view.agent_tab_id)
         with self.assertRaises(TaskPermissionError):
             self.inspect(task, session)
         self.assertEqual(self.service.store.get(task).status, "running")
@@ -251,7 +251,7 @@ class LiveTabsTests(unittest.TestCase):
             self.assertIs(view.page(), page)
             self.assertFalse(sip.isdeleted(page))
             self.assertIsNone(self.service.backend.live_session(view))
-            self.assertNotIn(view.tab_id, self.service.live_tabs.offers)
+            self.assertNotIn(view.agent_tab_id, self.service.live_tabs.offers)
             self.assertFalse(window.live_bar.isVisible())
 
     def test_unshared_tabs_cross_task_and_incognito_are_not_exposed(self):
@@ -260,9 +260,9 @@ class LiveTabsTests(unittest.TestCase):
         task, _, _ = self.share(window)
         other = self.task()
         with self.assertRaises(TaskPermissionError):
-            self.command("session.adopt", task_id=other, tab_id=view.tab_id)
+            self.command("session.adopt", task_id=other, tab_id=view.agent_tab_id)
         with self.assertRaises(TaskPermissionError):
-            self.command("session.adopt", task_id=task, tab_id=other_view.tab_id)
+            self.command("session.adopt", task_id=task, tab_id=other_view.agent_tab_id)
         self.assertEqual(len(self.command("browser.tabs", task_id=task)["tabs"]), 1)
         other_window._switch_to_profile("search")
         with self.assertRaises(ValueError):
@@ -281,18 +281,20 @@ class LiveTabsTests(unittest.TestCase):
         task, _, session = self.share(window)
         window._switch_to_profile("default")
         self.assertNotIn(session, self.service._sessions)
-        self.assertNotIn(view.tab_id, self.service.live_tabs.offers)
+        self.assertNotIn(view.agent_tab_id, self.service.live_tabs.offers)
 
     def test_whole_profile_selection_shares_current_tabs_across_windows_only(self):
         first, first_view = self.window()
         second, second_view = self.window()
+        second_view.tab_id = first_view.tab_id  # Same saved state in two windows.
         third, third_view = self.window("default")
         task = self.task()
         grant = first.delegate_tabs(task, whole_profile=True)
         self.service.approve_grant(task, grant.grant_id)
         tabs = self.command("browser.tabs", task_id=task)["tabs"]
         self.assertEqual(
-            {tab["tab_id"] for tab in tabs}, {first_view.tab_id, second_view.tab_id}
+            {tab["tab_id"] for tab in tabs},
+            {first_view.agent_tab_id, second_view.agent_tab_id},
         )
         self.assertTrue(first.live_bar.isVisible())
         self.assertTrue(second.live_bar.isVisible())
@@ -335,6 +337,70 @@ class LiveTabsTests(unittest.TestCase):
         self.service.deny_grant(task, request.grant_id)
         self.assertFalse(window.live_bar.isVisible())
         self.assertFalse(sip.isdeleted(view.page()))
+
+    def test_live_target_ignores_unrelated_updates_but_rejects_changed_controls(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        target = next(t for t in snapshot.frames[0].targets if t.label == "Run action")
+        self.value(
+            view.page(), "document.querySelector('h1').textContent='Live clock'; true"
+        )
+        result = self.act(task, session, snapshot, target)
+        self.assertEqual(result.status, "dispatched")
+        snapshot = self.inspect(task, session)
+        target = next(t for t in snapshot.frames[0].targets if t.label == "Run action")
+        self.value(
+            view.page(),
+            "document.querySelector('#action').textContent='Changed action'; true",
+        )
+        with self.assertRaises(PageInspectionError):
+            self.act(task, session, snapshot, target)
+        self.assertEqual(self.value(view.page(), "window.clicked"), 1)
+
+    def test_navigation_outside_scope_returns_tab_and_hides_destination(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        url = self.origin.replace("127.0.0.1", "localhost") + "/outside"
+        self.value(view.page(), "location.href=" + repr(url))
+        self.wait_for(lambda: session not in self.service._sessions)
+        self.assertFalse(window.live_bar.isVisible())
+        self.assertNotIn(view.agent_tab_id, self.service.live_tabs.offers)
+        with self.assertRaises(TaskPermissionError):
+            self.command("session.inspect", task_id=task, session_id=session)
+        self.assertNotIn(url, repr(self.service.store.events(task)))
+        self.wait_for(lambda: not view.page().isLoading())
+        self.assertFalse(sip.isdeleted(view.page()))
+
+    def test_pending_tab_offer_cannot_be_stolen_and_deny_releases_selection(self):
+        window, view = self.window()
+        task = self.task()
+        grant = window.delegate_tabs(task)
+        other = self.task()
+        with self.assertRaises(ValueError):
+            window.delegate_tabs(other)
+        self.service.deny_grant(task, grant.grant_id)
+        self.assertNotIn(view.agent_tab_id, self.service.live_tabs.offers)
+        other_grant = window.delegate_tabs(other)
+        self.assertEqual(other_grant.status, "requested")
+
+    def test_live_scope_without_trusted_tab_selection_exposes_no_tabs(self):
+        window, view = self.window()
+        task = self.task()
+        grant = self.command(
+            "grant.request",
+            task_id=task,
+            scope={
+                "origins": [self.origin],
+                "actions": ["live", "read", "inspect"],
+                "profile": "existing:work",
+                "allow_private_network": True,
+            },
+        )
+        self.service.approve_grant(task, grant.grant_id)
+        self.assertEqual(self.command("browser.tabs", task_id=task)["tabs"], [])
+        with self.assertRaises(TaskPermissionError):
+            self.command("session.adopt", task_id=task, tab_id=view.agent_tab_id)
 
     def test_task_client_cannot_request_trusted_handoff_or_approval(self):
         client = TaskClient(self.task(), self.service.broker)
