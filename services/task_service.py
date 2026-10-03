@@ -173,6 +173,7 @@ class TaskService(QObject):
                 "session.navigate": self._navigate,
                 "session.inspect": self._inspect,
                 "page.inspect": self._inspect_page,
+                "page.capture": self._capture_page,
                 "page.target": self._inspect_target,
                 "page.navigate": self._navigate_target,
                 "page.act": self._act,
@@ -1535,7 +1536,7 @@ class TaskService(QObject):
                     grant[1].check("read", url=snapshot.url)
                 except TaskPermissionError:
                     view = self.backend.live_view(snapshot.session_id)
-                    self.live_tabs.release_id(view.tab_id)
+                    self.live_tabs.release_id(view.agent_tab_id)
                     return
             self.store.record_event(
                 snapshot.task_id, "session.updated", self._metadata_evidence(snapshot)
@@ -1578,7 +1579,7 @@ class TaskService(QObject):
         self._owned(task_id, session_id, allow_user=True)
         grant = self._authorize(task_id, "inspect")
         snapshot = self.backend.inspect(session_id)
-        grant.check("inspect", url=snapshot.url)
+        grant.check("inspect", url=snapshot.url or "about:blank")
         return snapshot
 
     def _inspect_page(self, task_id, session_id):
@@ -1602,6 +1603,34 @@ class TaskService(QObject):
 
         return self._read_result(
             task_id, session_id, grant, source, "page.inspected", evidence
+        )
+
+    def _capture_page(self, task_id, session_id):
+        self._owned(task_id, session_id)
+        grant = self._authorize(task_id, "visual")
+        grant.check("read")
+        self.store.record_event(
+            task_id, "page.capture_requested", {"session_id": session_id}
+        )
+        source = self.backend.capture_page(session_id)
+        return self._read_result(
+            task_id,
+            session_id,
+            grant,
+            source,
+            "page.captured",
+            lambda evidence: {
+                key: evidence[key]
+                for key in (
+                    "session_id",
+                    "revision",
+                    "width",
+                    "height",
+                    "viewport_clipped",
+                    "source",
+                    "limitations",
+                )
+            },
         )
 
     def _inspect_target(self, task_id, session_id, snapshot_id, target_id):
@@ -2160,7 +2189,7 @@ class TaskService(QObject):
             watcher.session_ended()
         if getattr(self.backend.inspect(session_id), "mode", "restricted") == "live":
             view = self.backend.live_view(session_id)
-            self.live_tabs.offers.pop(view.tab_id, None)
+            self.live_tabs.offers.pop(view.agent_tab_id, None)
         self.backend.close_session(session_id)
         self.store.record_event(task_id, "session.closed", {"session_id": session_id})
         self.changed.emit()

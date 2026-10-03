@@ -111,6 +111,8 @@ class BrowserTab(QWebEngineView):
         self.group = None
         self.group_id = None
         self.tab_id = uuid4().hex
+        # Runtime references must stay distinct when windows restore saved IDs.
+        self.agent_tab_id = uuid4().hex
         page = BrowserPage(
             profile, self, config=window.config if window is not None else None
         )
@@ -806,7 +808,7 @@ class BrowserWindow(QMainWindow):
 
     def _take_back_tab(self, tab):
         if self._live_tasks is not None:
-            self._live_tasks.live_tabs.release_id(tab.tab_id)
+            self._live_tasks.live_tabs.release_id(tab.agent_tab_id)
 
     def _take_back_current_tab(self):
         if self.tabs:

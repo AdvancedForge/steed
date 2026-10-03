@@ -34,7 +34,7 @@ class LiveTabs:
         for view in views:
             if sip.isdeleted(view):
                 raise ValueError("Tab closed before delegation")
-            offer = self.offers.get(view.tab_id)
+            offer = self.offers.get(view.agent_tab_id)
             if offer is not None and offer[0] != task_id:
                 raise ValueError("This tab is already shared with another task")
             window = view.browser_window
@@ -74,6 +74,7 @@ class LiveTabs:
                     "edit",
                     "scroll",
                     "submit",
+                    "visual",
                 }
             ),
             allow_private_network=values.get("allow_private_network", False)
@@ -93,9 +94,15 @@ class LiveTabs:
         for view in views:
             view.browser_window._bind_live_tasks(service)
         for view in views:
-            self.offers[view.tab_id] = (task_id, record.grant_id, weakref.ref(view))
+            self.offers[view.agent_tab_id] = (
+                task_id,
+                record.grant_id,
+                weakref.ref(view),
+            )
             # BrowserWindow also returns authority before disposing a tab.
-            view.destroyed.connect(lambda _=None, key=view.tab_id: self.release_id(key))
+            view.destroyed.connect(
+                lambda _=None, key=view.agent_tab_id: self.release_id(key)
+            )
         self.activate(task_id)
         service.changed.emit()
         return record

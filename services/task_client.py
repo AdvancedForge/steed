@@ -50,6 +50,7 @@ CLIENT_COMMANDS = frozenset(
         "session.navigate",
         "session.inspect",
         "page.inspect",
+        "page.capture",
         "page.target",
         "page.navigate",
         "page.act",
