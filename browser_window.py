@@ -160,6 +160,7 @@ class BrowserWindow(QMainWindow):
         self.tabs: list[BrowserTab] = []
         self.agent_tab = None
         self.web_chat_dock = None
+        self.file_library_dialog = None
         self.current_tab_index = 0
         self._restoring_tabs = False
         self.closed_tabs = ClosedTabHistory()
@@ -296,6 +297,12 @@ class BrowserWindow(QMainWindow):
         apps_action = QAction("App Connections...", self)
         apps_action.triggered.connect(self._open_app_connections)
         file_menu.insertAction(task_action, apps_action)
+        self.file_library_action = QAction("Agent File Library…", self)
+        self.file_library_action.triggered.connect(self._open_file_library)
+        self.file_library_action.setEnabled(
+            not self.profile_manager.is_search_profile()
+        )
+        file_menu.insertAction(task_action, self.file_library_action)
         self.agent_access_action = QAction("Enable Local Agent Access", self)
         self.agent_access_action.setCheckable(True)
         registry = self.profile_manager.registry
@@ -489,6 +496,7 @@ class BrowserWindow(QMainWindow):
     def _on_profile_changed(self, profile_name: str):
         self._update_window_title()
         self._update_profile_shortcuts()
+        self.file_library_action.setEnabled(profile_name != "search")
         if self.agent_sidebar is not None:
             self.agent_sidebar.set_private(profile_name == "search")
 
@@ -641,6 +649,26 @@ class BrowserWindow(QMainWindow):
         self.agent_setup_dialog.show()
         self.agent_setup_dialog.raise_()
         self.agent_setup_dialog.activateWindow()
+
+    def _open_file_library(self):
+        if self._closing or self.profile_manager.is_search_profile():
+            return
+        if self.file_library_dialog is None:
+            from ui.file_library import FileLibraryDialog
+
+            try:
+                self.file_library_dialog = FileLibraryDialog(
+                    self.profile_manager.registry.tasks, self
+                )
+            except (ValueError, OSError, RuntimeError, sqlite3.Error) as error:
+                QMessageBox.warning(self, "Agent File Library", str(error))
+                return
+            self.file_library_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            self.file_library_dialog.finished.connect(
+                lambda: setattr(self, "file_library_dialog", None)
+            )
+        self.file_library_dialog.show()
+        self.file_library_dialog.raise_()
 
     def _update_window_title(self, url=None):
         profile_name = self.profile_manager.current_profile_name
@@ -1515,6 +1543,8 @@ class BrowserWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        if self.file_library_dialog is not None:
+            self.file_library_dialog.reject()
         if self.agent_sidebar is not None:
             self.agent_sidebar.detach()
         self.find_bar.close_find(clear_query=True)

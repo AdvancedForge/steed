@@ -513,9 +513,26 @@ async def sdk_client(
                 return outcome.structuredContent["result"]
 
             task = await call(
+                "task.start", objective="Persist files before a new agent task"
+            )
+            await library_workflow(call, shared, "sdk")
+            await call("task.finish", status="completed")
+            task = await call(
                 "task.start", objective="Complete a synthetic form beside the user"
             )
             shared["task_id"] = task["task_id"]
+            persisted = await call(
+                "library.read",
+                folder_id=shared["library_id"],
+                path="sdk/results.bin",
+                revision=1,
+            )
+            assert (
+                base64.b64decode(persisted["data_base64"])
+                == b"PERSISTENT_LIBRARY_OUTPUT\x00\xff"
+            )
+            assert await call("grant.list") == []
+            shared["sdk_library_new_task_reuse"] = True
             await conversation_workflow(call, shared, "sdk", task["task_id"])
             worker_support = await call("worker.capabilities")
             assert (
@@ -962,6 +979,38 @@ async def conversation_workflow(call, shared, label, task_id):
     shared[label + "_conversation_verified"] = True
 
 
+async def library_workflow(call, shared, label):
+    folders = await call("library.folders")
+    assert {f["id"] for f in folders} == {shared["library_id"]}
+    data = await call(
+        "library.read",
+        folder_id=shared["library_id"],
+        path="inputs/reference.bin",
+        revision=1,
+    )
+    assert base64.b64decode(data["data_base64"]) == b"PERSISTENT_LIBRARY_INPUT\x00\xff"
+    payload = b"PERSISTENT_LIBRARY_OUTPUT\x00\xff"
+    item = await call(
+        "library.write_begin",
+        folder_id=shared["library_id"],
+        path=f"{label}/results.bin",
+        request_id=f"{label}-library-write",
+        byte_count=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    await call(
+        "library.write_chunk",
+        write_id=item["id"],
+        offset=0,
+        data_base64=base64.b64encode(payload).decode(),
+    )
+    receipt = await call("library.write_commit", write_id=item["id"])
+    assert receipt["state"] == "committed" and receipt["revision"] == 1
+    assert await call("library.write_commit", write_id=item["id"]) == receipt
+    assert await call("grant.list") == []
+    shared[label + "_persistent_library"] = True
+
+
 def raw_workflow(request, notify, foreign_session, origin, shared):
     request(
         "initialize",
@@ -1028,6 +1077,8 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
 
     async def conversation_call(command, **arguments):
         return call(command, **arguments)
+
+    asyncio.run(library_workflow(conversation_call, shared, "raw"))
 
     asyncio.run(
         conversation_workflow(
@@ -1431,6 +1482,15 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
         window._switch_to_profile("work")
         window.show()
         window.agent_sidebar_action.trigger()
+        shared["library_id"] = case.service.library.create_folder(
+            "Synthetic persistent inputs"
+        )
+        case.service.library.import_files(
+            shared["library_id"],
+            [("inputs/reference.bin", b"PERSISTENT_LIBRARY_INPUT\x00\xff")],
+        )
+        case.service.library.enable(shared["library_id"], True)
+        case.service.library.create_folder("Synthetic disabled folder")
         user = window.tabs[window.current_tab_index].page()
         loaded = []
         user.loadFinished.connect(loaded.append)

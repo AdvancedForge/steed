@@ -1018,6 +1018,81 @@ Draft** asks for confirmation and removes the stored draft with a content-free
 receipt; this trusted user action is unavailable to agents. It does not promise
 forensic erasure from SQLite journals, free pages or external copies.
 
+### Persistent agent file library
+
+Use **File → Agent File Library…**, or **File Library…** in the agent sidebar,
+to keep reusable files outside individual tasks:
+
+1. Choose **New library folder…** and name it, for example `Research`.
+2. Use **Add files…** or **Add folder…**. Imports copy regular files, subfolders
+   and empty directories into Steed; originals remain unchanged. Select a
+   subfolder first to add files inside it. Symlinks and special files are rejected.
+   Reading selected files happens in the background, and each import commits as
+   one operation. Closing the window cancels pending publication.
+3. Turn on **Full file access for all connected agents**. This gives every
+   authenticated connected agent read/create/edit/remove access throughout that
+   folder, including future contents and subfolders, across tasks and restarts.
+   No repeated per-file or task-grant popup is needed for library operations.
+   Folders start disabled. Enable only folders whose contents you intend agents
+   and their model/process providers to receive.
+4. Ask your agent: “Use my Research library folder, read the project notes and
+   save your revised report back into it.” The agent discovers enabled folders
+   through MCP; it does not need a local host path or another upload.
+5. Disable the same switch to stop further access immediately. Unfinished writes
+   are cancelled and cannot resume simply because you re-enable the folder.
+   Copies an agent has already read cannot be retracted.
+
+This is an explicitly shared library across regular browser profiles, separate
+from browsing cookies/history and per-task workspaces. Websites never receive
+library access. The library UI is unavailable in incognito and closes/clears on
+profile changes; independent agent access previously enabled on a library folder
+remains in effect until you disable it. No library permission authorizes code
+execution, browser actions or app-account access. External agents keep their own
+host tools/permissions; the library does not limit those tools.
+
+**Remove** moves files or complete subfolders to **Show Trash**. Choose an entry
+there and **Restore** to recover it. **Versions…** restores an older file edit
+as a new current revision. Agents cannot silently overwrite a newer edit: writes
+require the listed revision, and directory revisions change with descendants.
+**Export file…** copies a current file to a new chosen location. **Clear recovery
+copies…** permanently clears the selected library folder's Trash/old versions
+after confirmation; current files remain. These controls do not promise forensic
+SQLite erasure or remove copies already exported/fetched.
+
+Storage is local in `~/.custom_browser/agent_library.sqlite`, with private file
+permissions and a separate schema from tasks. Current limits are 50 library root
+folders, 64 MiB per file, 512 MiB total including versions and pending writes,
+500 import entries at once, and bounded metadata/history counts. The UI displays
+up to 2,000 entries; agents paginate direct children. Files are stored as data,
+never rendered/executed automatically. Reads and uploads use 32 KiB chunks.
+These are resource limits, not repeated approval requirements.
+
+| MCP tool | Use |
+| --- | --- |
+| `steed_library_folders` | Discover enabled root IDs/names; disabled roots are hidden. |
+| `steed_library_list` | List direct children with `folder_id`, optional `path`, `after`, `limit`; recurse into directories. |
+| `steed_library_read` | Read base64 bytes with `folder_id`, `path`, current `revision`, optional `offset`/`limit`; changed revisions fail. |
+| `steed_library_mkdir` | Create a relative subfolder and missing parents. |
+| `steed_library_write_begin` | Bind `request_id`, path, byte count, SHA-256 and expected revision; `0` creates a new name. |
+| `steed_library_write_chunk` | Append canonical base64 at the next offset to an owned `write_id`; identical retries are harmless. |
+| `steed_library_write_commit` | Verify length/hash and publish atomically; committed repeats return the original receipt without replay. |
+| `steed_library_remove` | Move a file/subdirectory to recoverable Trash with its expected revision. |
+| `steed_library_restore` | Restore a known removed file/subdirectory inside an enabled root. |
+| `steed_library_import_workspace` | Copy a current library file into a sealed task input; requires workspace permission. |
+| `steed_library_save_workspace` | Save a sealed task output into an enabled library root; requires workspace permission and expected revision. |
+
+The workspace bridge removes repeated uploading for local generators. Import a
+library file, use its returned `file_id` in the existing worker protocol, then
+save the sealed output back to the library. Normal workspace/code/app permissions
+still apply; library access alone does not execute a package. Task workspace
+limits remain 8 MiB/file and 32 MiB/task. Pending library writes are task-owned;
+cancelled tasks cannot continue them. Restart discards unfinished writes without
+replaying edits. Files and enable switches remain available to later tasks.
+
+Linked/live host directories, filesystem mounts, automatic indexing/content
+search, drag-and-drop and larger configurable quotas remain possible follow-ups.
+The first milestone is a persistent managed library with explicit folder access.
+
 ### Generated files and custom integration packages
 
 Agents can supply arbitrary file formats through a task-owned workspace: PDFs,
@@ -2920,7 +2995,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 58 input schemas. Names follow the internal command
+Tool discovery publishes 69 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link

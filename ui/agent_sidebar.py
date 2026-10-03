@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -55,6 +56,11 @@ class AgentSidebar(QDockWidget):
         self.setup = QPushButton("Connection Setup…")
         self.setup.clicked.connect(lambda: self.setup_requested.emit())
         layout.addWidget(self.setup)
+        self.library_button = QPushButton("File Library…")
+        self.library_button.clicked.connect(
+            lambda: self.browser_window._open_file_library()
+        )
+        layout.addWidget(self.library_button)
         display = QHBoxLayout()
         for label, method in (
             ("Open as tab", "_open_agent_tab"),
@@ -138,7 +144,10 @@ class AgentSidebar(QDockWidget):
         )
         privacy.setWordWrap(True)
         layout.addWidget(privacy)
-        self.setWidget(body)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        self.setWidget(scroll)
         shortcut = QShortcut(QKeySequence("Ctrl+Return"), self.composer)
         shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         shortcut.activated.connect(self.send_message)
@@ -206,6 +215,9 @@ class AgentSidebar(QDockWidget):
         self.refresh()
 
     def refresh(self):
+        self.library_button.setEnabled(
+            not self._private and hasattr(self.browser_window, "_open_file_library")
+        )
         available = (
             not self._private and not self.service._closed and not self.service.failure
         )

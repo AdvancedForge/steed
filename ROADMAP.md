@@ -9,6 +9,30 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 3, 2026
 
+**Priority: daily workflow engineering.** Public-release work remains reference
+backlog; it is not the active agenda. The completed milestone is a persistent agent
+file library: user-added files/subfolders survive tasks and restart; a clear
+folder enable switch gives connected agents full file access without repeated
+uploads or per-file/task approvals. Old versions and Trash support recovery,
+revision checks protect concurrent edits, and task/workspace bridges allow
+generators to reuse inputs and keep outputs. Library access is independent of
+browser/profile and execution permission. Imports are copies into a managed,
+globally shared regular-profile library; linked host directories are not mounted.
+
+Validation: the complete suite passed 906 checks before final recovery/export/
+lifecycle polish. After those changes, all 148 library/workspace/profile/chat/
+gateway/service checks passed in 80.971 seconds, including 27 library checks and
+the short chat-tab scroll regression. Actual SDK and independent-client journeys
+passed over both stdio and HTTP: enabled-folder discovery, binary CRUD, repeated
+commit receipts and reuse from a new task without per-file/task grants. Existing
+document-worker and recipe workflows passed in those journeys. Startup/local
+render/shutdown passed on Qt 6.11.2. The settled library dialog was visually
+inspected using synthetic files. Ruff lint/format, whitespace and dependency
+checks pass. Real desktop/agent daily-use acceptance is still separate.
+Logs: `/tmp/steed-library-full.log`, `/tmp/steed-library-final-integration.log`,
+`/tmp/steed-library-stdio.log`, `/tmp/steed-library-http.log`,
+`/tmp/steed-library-startup.log`; temporary logs are not portable release evidence.
+
 Public-release audit and proposed gates now live in
 [RELEASE_PLAN.md](RELEASE_PLAN.md). This separates a supported Linux beta from a
 stable daily-browser release and the broader agent-collaboration vision. Missing
@@ -16,12 +40,16 @@ license/distribution/engine-update policy, CI, desktop acceptance and security/
 privacy review are concrete release work; feature coverage alone is insufficient.
 License, package/support target and cloud-agent release scope remain owner choices.
 
-Connector [PR #2](https://github.com/AdvancedForge/steed/pull/2) was reviewed on
-Linux: 26 starter-profile, 6 bundled-recipe and 46 connector checks passed (78),
-plus actual catalog loading/selection. No blocking defects found; comments request
-catalog-path coverage and visible GitLab quick-action semantics. Continuation
-instructions preserve contributor-owned recipe/fixture/setup/test paths. The PR
-remains unmerged and live account acceptance is pending.
+Connector [PR #2](https://github.com/AdvancedForge/steed/pull/2) was re-reviewed at
+`c1821fe`: all 72 Linux profile/catalog/interpreter/compatibility/HTTP checks pass,
+including 37 profile tests and the actual selector path, without skips. Earlier
+selector and GitLab warning requests are addressed. Review now requests factual
+corrections for Notion token identity/versioned fixtures, GitHub issue reads that
+can return pull requests, and GitLab description/comment quick-action wording.
+[Review](https://github.com/AdvancedForge/steed/pull/2#pullrequestreview-5402272122)
+and [detailed continuation](https://github.com/AdvancedForge/steed/pull/2#issuecomment-5972430276)
+preserve contributor-owned paths and require corrections before merge. The PR
+remains unmerged; no live account acceptance is claimed.
 
 Chat presentation milestone: native agent conversation can move between sidebar
 and a saved/restorable tab; normal HTTPS website chats can move the same page
@@ -36,8 +64,13 @@ acceptance remains pending. Ruff lint/format, whitespace and local doc links pas
 Logs: `/tmp/steed-chat-final-full.log`,
 `/tmp/steed-chat-final-integration.log`, `/tmp/steed-chat-startup-final.log`.
 
-**Resume checkpoint:** complete the public-release engineering gates in
-RELEASE_PLAN.md; continue connector work under the posted PR instructions.
+**Resume checkpoint:** persistent library implementation/validation is complete.
+The next engineering agent works on its own branch and submits milestones for
+maintainer review. Start with library discovery/usability, then observation
+coverage; shared connector capabilities follow corrected provider contracts.
+See [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md) for ownership, ordered scopes,
+acceptance checks and the review procedure. Release gates remain reference work
+in RELEASE_PLAN.md. Continue connector work under the posted PR instructions.
 Cloud-agent transport/pairing needs a separate product decision. Google shared
 registration and password improvements remain deferred. No rewrite is proposed.
 
