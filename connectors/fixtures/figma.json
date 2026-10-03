@@ -64,46 +64,111 @@
   "read_contract": {
     "smallest_useful_read": {
       "method": "GET",
-      "path": "/v1/files/{key}",
-      "scope": "file_content:read",
-      "tier": "Tier 1",
-      "documented": "The file key can be parsed from any Figma file url of the form https://www.figma.com/:file_type/:file_key/:file_name.",
+      "path": "/v1/files/{key}/meta",
+      "scope": "file_metadata:read",
+      "tier": "Tier 3",
+      "documented": "Returns the metadata for the file referred to by :key. The file key can be parsed from any Figma file url of the form https://www.figma.com/:file_type/:file_key/:file_name.",
+      "why_this_endpoint": "Projecting a few metadata pointers does not make GET /v1/files/:key a small response. That endpoint documents the document node tree as a non-optional field of its return value, so the whole tree crosses the network before any projection happens. GET file metadata is the documented endpoint whose return value contains no document tree, which is why it, not the projection, is the smallest useful read here.",
       "projected_fields": [
         {
           "label": "name",
-          "pointer": "/name",
-          "documented": "String return value on the file endpoint."
+          "pointer": "/file/name",
+          "documented": "String in the documented file metadata object."
         },
         {
-          "label": "role",
-          "pointer": "/role",
-          "documented": "String return value on the file endpoint."
+          "label": "folder_name",
+          "pointer": "/file/folder_name",
+          "documented": "String in the documented file metadata object."
         },
         {
-          "label": "last_modified",
-          "pointer": "/lastModified",
-          "documented": "String return value, described as metadata."
-        },
-        {
-          "label": "version",
-          "pointer": "/version",
-          "documented": "String return value, described as metadata."
+          "label": "last_touched_at",
+          "pointer": "/file/last_touched_at",
+          "documented": "String in the documented file metadata object."
         },
         {
           "label": "editor_type",
-          "pointer": "/editorType",
-          "documented": "String return value on the file endpoint."
+          "pointer": "/file/editorType",
+          "documented": "String in the documented file metadata object."
+        },
+        {
+          "label": "version",
+          "pointer": "/file/version",
+          "documented": "String in the documented file metadata object."
+        },
+        {
+          "label": "role",
+          "pointer": "/file/role",
+          "documented": "String in the documented file metadata object."
+        },
+        {
+          "label": "url",
+          "pointer": "/file/url",
+          "documented": "String in the documented file metadata object."
         }
       ],
-      "deliberately_not_projected": {
-        "fields": ["/document", "/components", "/componentSets", "/styles", "/thumbnailUrl"],
-        "reason": "The document tree and component maps can be very large, and thumbnailUrl is a short-lived signed URL. A first subset projects file metadata only, so the response stays small and bounded."
+      "response_shape": {
+        "file": {
+          "name": "Fixture file",
+          "folder_name": "Fixture folder",
+          "last_touched_at": "2025-01-16T10:30:00Z",
+          "creator": {
+            "id": "fixture-user-id",
+            "handle": "fixture-user",
+            "img_url": null
+          },
+          "last_touched_by": {
+            "id": "fixture-user-id",
+            "handle": "fixture-user",
+            "img_url": null
+          },
+          "thumbnail_url": "https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/fixture.png",
+          "editorType": "figma",
+          "version": "1234567890",
+          "role": "owner",
+          "link_access": "view",
+          "url": "https://www.figma.com/design/fixture-file-key/fixture-file"
+        }
       },
-      "no_schema_warning": "No nullability is documented for any file field, so a framework test should confirm each projected field against a real file before a profile relies on it."
+      "deliberately_not_projected": {
+        "fields": [
+          "/file/creator",
+          "/file/last_touched_by",
+          "/file/thumbnail_url"
+        ],
+        "reason": "Nested user objects and a signed thumbnail URL add payload and a short-lived value without helping a first metadata read, and no nullability is documented for any of them."
+      },
+      "documented_rate_limits": "GET file metadata is documented as a Tier 3 endpoint. Tier 3 limits are documented at up to 10 per minute for View and Collab seats and at higher per-minute limits for Dev and Full seats by plan, and the documentation warns that View seat limits can be lower in practice.",
+      "documentation_inconsistency": "The rate-limit prose refers to GET file metadata as a Tier 2 endpoint limited to about six requests per month, while the tier table and the endpoint page both place it in Tier 3. Which statement governs is unverified."
+    },
+    "document_tree_read": {
+      "method": "GET",
+      "path": "/v1/files/{key}",
+      "scope": "file_content:read",
+      "tier": "Tier 1",
+      "documented": "The name, lastModified, thumbnailUrl, editorType, linkAccess and version attributes are all metadata of the retrieved file, and the document attribute contains a Node of type DOCUMENT, which the documented schema marks as a non-optional field.",
+      "traversal_parameters": {
+        "ids": "Documented: a comma separated list of nodes to return, and for historical reasons top-level canvas nodes are always returned regardless. The response also notes a quirk that may be removed in a future version.",
+        "depth": "Documented: a positive integer for how deep into the document tree to traverse, where 1 returns only Pages and 2 returns Pages and all top level objects. Not setting it returns all nodes, and whether 0 is valid is not documented.",
+        "version": "Documented: a specific version ID, defaulting to the current version when omitted.",
+        "geometry": "Documented as paths to export vector data.",
+        "plugin_data": "Documented as a comma separated list of plugin IDs or shared.",
+        "branch_data": "Documented, boolean, defaulting to false."
+      },
+      "transport_bound": {
+        "engine_fact": "Steed's recipe transport reads a response body in bounded chunks and fails the request with an API error once the body exceeds 128 KiB, in services/recipe_http.py.",
+        "consequence": "A file read therefore succeeds or fails on the size of the whole response, before any projection. Selecting five metadata pointers does not reduce what crosses the network.",
+        "documented_provider_fact": "Figma publishes no response-size limit or size guidance for any file endpoint. The only size statement on the file endpoint page is about rendered images, up to 32 megapixels.",
+        "status": "pending_empirical",
+        "pending": "Whether a real design file of ordinary size fits inside the transport bound cannot be answered from documentation on either side, and is not claimed either way."
+      },
+      "requirements_for_any_document_read": [
+        "A reviewed fixed query input for depth or ids, because the transport today accepts only the reviewed pagination parameter.",
+        "Acceptance that a bounded document read is useful at all, given the documented rate limits."
+      ]
     },
     "binary_content": {
-      "documented": "GET /v1/images/:key returns a map from node ids to URLs of rendered images, and the documentation warns that image values may be null when rendering failed and that image assets expire after 30 days. GET /v1/files/:key/images returns URLs that expire sooner.",
-      "note": "No endpoint returns image bytes as base64, so serving design or image content is a separate workspace capability and is not part of any read subset."
+      "documented": "GET /v1/images/:key returns a map from node ids to URLs of rendered images, warns that a map value may be null when rendering failed, and documents that the image assets will expire after 30 days. GET /v1/files/:key/images returns URLs that expire in no more than 14 days.",
+      "note": "No endpoint returns image bytes, so serving design or image content stays a separate workspace capability."
     },
     "paging": "The file endpoints are not documented as paged."
   },
@@ -130,12 +195,20 @@
     }
   },
   "framework_gap": {
-    "capabilities": ["credential_headers"],
-    "minimum_missing_behavior": "Carry a user credential in a service-specific token header such as X-Figma-Token, without pretending it is a Bearer token and without putting it in a path or query. This is a different requirement from sending a static version header, and the two must be tracked separately.",
+    "capabilities": [
+      "credential_headers",
+      "query_inputs"
+    ],
+    "minimum_missing_behavior": "Carry a user credential in a service-specific token header such as X-Figma-Token, without pretending it is a Bearer token and without putting it in a path or query. That alone keeps the metadata endpoint out of reach today.",
     "not_required_for_a_first_read": [
       "Any version or date header, since Figma documents none and carries the version in the path.",
-      "OAuth sign-in, if a personal access token may call the identity and file endpoints, which a framework test should confirm first.",
+      "OAuth sign-in, if a personal access token may call the identity and file metadata endpoints, which only a real account can settle.",
+      "A fixed depth query input, because GET file metadata returns no document tree.",
       "List paging, which the file endpoints do not document."
+    ],
+    "required_for_a_document_read": [
+      "A reviewed fixed query input for depth or ids, which is listed as its own capability.",
+      "An empirical answer on whether a real file response fits the transport bound."
     ],
     "not_a_gap": "Nothing here requires weakening origin rules, adding a credential to a path, or bypassing a documented restriction."
   },
@@ -149,5 +222,40 @@
     "https://developers.figma.com/docs/rest-api/file-endpoints/",
     "https://developers.figma.com/docs/rest-api/rate-limits/",
     "https://developers.figma.com/docs/rest-api/errors/"
-  ]
+  ],
+  "empirical_status": {
+    "policy": "Documentation proves what an endpoint offers. A framework test can only prove Steed's own behaviour against a documented shape. Neither can show that a provider accepts a credential or sends a field, so those stay pending until a real account is used.",
+    "settled_by_documentation": [
+      "GET file metadata exists, needs file_metadata:read, is documented as Tier 3, and its return value contains no document tree.",
+      "GET /v1/files/:key documents the document tree as a non-optional field and documents depth and ids as the only traversal limits.",
+      "No response-size limit is documented for any file endpoint.",
+      "Tier 3 limits are documented per seat type and plan, with a stated View seat caveat."
+    ],
+    "pending": [
+      {
+        "question": "Does a personal access token authenticate GET /v1/me?",
+        "status": "pending",
+        "settled_by": "a real account with a personal access token, since the endpoint page frames the route around OAuth 2.",
+        "blocks": "any Figma identity binding"
+      },
+      {
+        "question": "Are id, handle, img_url and email present and non-null for a real personal-access-token account?",
+        "status": "pending",
+        "settled_by": "a real account response; no nullability is documented.",
+        "blocks": "trusting the label pointer"
+      },
+      {
+        "question": "Does a real file metadata response fit inside the transport bound, and does a real file response fit it with a documented depth?",
+        "status": "pending",
+        "settled_by": "a real file of ordinary size, on both the metadata and the document route.",
+        "blocks": "any claim that a Figma read subset is practical"
+      },
+      {
+        "question": "Is GET file metadata governed by the Tier 3 table or by the stale Tier 2 prose?",
+        "status": "pending",
+        "settled_by": "the OpenAPI description or Figma support, since the pages disagree.",
+        "blocks": "quoting a rate limit for a live acceptance record"
+      }
+    ]
+  }
 }
