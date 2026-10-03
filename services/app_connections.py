@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from services.app_accounts import AccountError, AccountStore
+from services.bundled_recipes import BundledRecipes
 from services.command_broker import require_owner_thread
 from services.connector_policy import connector_name
 from services.connector_recipes import RecipeError, RecipeStore
@@ -36,7 +37,14 @@ class AppConnections(QObject):
     changed = pyqtSignal()
 
     def __init__(
-        self, path, parent=None, *, store=None, providers=None, recipe_http_factory=None
+        self,
+        path,
+        parent=None,
+        *,
+        store=None,
+        providers=None,
+        recipe_http_factory=None,
+        bundled_directory=None,
     ):
         super().__init__(parent)
         require_owner_thread(self)
@@ -74,6 +82,7 @@ class AppConnections(QObject):
             self.providers[provider.name] = provider
         self.connectors = ConnectorRegistry()
         self.recipe_http_factory = recipe_http_factory
+        self.bundled_recipes = BundledRecipes(bundled_directory)
         self.recipes = None
         self.recipe_failure = ""
         try:
