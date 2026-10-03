@@ -84,3 +84,80 @@ Official references:
 
 - [Todoist API](https://developer.todoist.com/api/v1/)
 - [Todoist authorization and scopes](https://developer.todoist.com/api/v1/#tag/Authorization)
+
+---
+
+## GitHub
+
+`connectors/recipes/templates/github-owner-template.json`, origin
+`https://api.github.com`, bearer authentication with a fine-grained personal
+access token.
+
+This one is a **template, not a packaged profile**, because the owner has to be
+fixed in source you reviewed. A packaged file with a placeholder owner would be
+offered in the picker while being unable to reach anything, so the template lives
+outside the packaged catalog and is imported deliberately.
+
+Scope shipped:
+
+| Action | Wire contract |
+| --- | --- |
+| Identity | `GET /user`, subject `/id`, label `/login` |
+| Read one repository | `GET /repos/{owner}/{destination}` returning `/id`, `/full_name`, `/html_url` |
+| Create issue | `POST /repos/{owner}/{destination}/issues` with `title` and `body` |
+
+Deliberately excluded: arbitrary owners or repositories chosen at call time, issue
+updates and comments, pull requests, releases, and list pagination.
+
+Notes on the wire shape:
+
+- `GET /user` returns a `login` and a numeric `id`. Its `email` is `null` unless
+  the token can read it, so a private email is never the account label.
+- Only the repository **name** is a `{destination}` segment, and the owner is
+  written into the reviewed path. A destination such as `other-owner/repo`,
+  `../../other/repo`, or anything with a query or scheme is rejected before any
+  request.
+- Issue creation sends exactly `title` and `body`. No labels, assignees, projects
+  or milestone are inferred from the draft.
+- Steed does not pin an `X-GitHub-Api-Version` header, so requests use GitHub's
+  documented unversioned default. Version pinning is not claimed.
+- GitHub applies primary and secondary rate limits (documented as 5,000 requests
+  per hour for authenticated REST requests, plus secondary limits). Steed does not
+  retry; a create that fails after dispatch is reported as uncertain, so check
+  GitHub's own issue list before resending.
+
+### Owner step (user-owned)
+
+1. Copy `connectors/recipes/templates/github-owner-template.json` to your own
+   location, for example `~/steed-github.json`.
+2. Replace every `REPLACE-WITH-YOUR-GITHUB-OWNER` with the owner that holds your
+   repositories, for example `my-github-login`. The reviewed source review shows
+   the resulting paths before anything is installed.
+3. In Steed choose **App Connections → Add Connector Recipe…**, select the copy,
+   read the source review and install it.
+4. Connect the account with the token below, then choose the actions to expose.
+
+### Least-permission setup
+
+1. In GitHub open **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token**.
+2. Set a short expiry, choose the account, and restrict **Repository access** to
+   only the repositories you want, rather than "All repositories".
+3. Grant only **Issues: Read and write** (or **Issues: Read-only** if you only
+   want reads). Repository metadata access that the token needs is granted
+   automatically. Do not add Contents, Pull requests, Actions, Administration or
+   any "Account permissions" scope.
+4. Paste the token into Steed's Connect step. Steed stores it in the desktop
+   keyring and never writes it into a recipe, task or result.
+5. Revoke it in the same GitHub page at any time; disconnecting in Steed removes
+   the stored credential.
+
+Official references:
+
+- [Get the authenticated user](https://docs.github.com/en/rest/users/users#get-the-authenticated-user)
+- [Get a repository](https://docs.github.com/en/rest/repos/repos#get-a-repository)
+- [Create an issue](https://docs.github.com/en/rest/issues/issues#create-an-issue)
+- [REST API versions](https://docs.github.com/en/rest/about-the-rest-api/api-versions)
+- [Rate limits for the REST API](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
+- [Fine-grained personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+

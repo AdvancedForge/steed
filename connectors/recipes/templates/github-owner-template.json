@@ -1,0 +1,61 @@
+{
+  "version": 2,
+  "name": "GitHub (own repositories)",
+  "origin": "https://api.github.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/user",
+    "subject": "/id",
+    "label": "/login"
+  },
+  "tools": [
+    {
+      "name": "read_repository",
+      "description": "Read one repository under the owner fixed in this reviewed source",
+      "method": "GET",
+      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "name",
+          "pointer": "/full_name"
+        },
+        {
+          "label": "url",
+          "pointer": "/html_url"
+        }
+      ]
+    },
+    {
+      "name": "create_issue",
+      "description": "Create an issue in one repository under the owner fixed in this reviewed source",
+      "method": "POST",
+      "effect": "write",
+      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/{destination}/issues",
+      "destination": "resource_id",
+      "request": {
+        "title": "artifact.title",
+        "body": "artifact.content"
+      },
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "number",
+          "pointer": "/number"
+        },
+        {
+          "label": "url",
+          "pointer": "/html_url"
+        }
+      ]
+    }
+  ]
+}
