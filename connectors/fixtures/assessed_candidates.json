@@ -96,7 +96,7 @@
       "errors": "HTTP status codes with a documented code and message body",
       "host": "api.notion.com",
       "status": "gated",
-      "gate": "Identity is documented, but the Notion-Version header is required on every request, the identity label can be null, and the database and data-source split means a current database read returns data_sources rather than properties. Listing needs POST reads as well, so the header, label and POST-read capabilities are all required.",
+      "gate": "Identity is documented at GET /v1/users/me, but Notion-Version is required on every request and the documented user object marks name as oneOf string or null, so a bot with no name has no non-empty label. Since 2025-09-03 a database read returns data_sources rather than properties, and querying a data source is a POST read. The header and the label are what stand between this family and a single-item read.",
       "capabilities": [
         "identity_shapes",
         "post_reads",
@@ -226,8 +226,7 @@
       "gate": "The token scheme is not Bearer and the only documented probe returns no identity at all, so an account cannot be bound to a reviewed profile. Needs trusted auth and identity support, plus explicit reviewed URL inputs for saves.",
       "capabilities": [
         "authentication_schemes",
-        "identity_shapes",
-        "pagination"
+        "identity_shapes"
       ]
     },
     {
@@ -266,14 +265,15 @@
       "name": "Figma",
       "family": "design",
       "reference": "https://developers.figma.com/docs/rest-api/authentication/",
-      "auth": "Personal access tokens use the X-Figma-Token header; OAuth uses Authorization: Bearer",
+      "auth": "X-Figma-Token header for personal access tokens; Authorization: Bearer for OAuth",
       "identity": "GET /v1/me returns id, handle and an email only on that endpoint",
       "paging": "File endpoints are not paged",
       "errors": "HTTP status codes, with an err property on some endpoints",
       "host": "api.figma.com",
       "status": "gated",
-      "gate": "The documented personal-token header is not supported, and the OAuth route needs app and callback setup plus scope acceptance. Binary image and file delivery is a separate workspace capability.",
+      "gate": "A personal access token travels in the X-Figma-Token header and no version header is documented at all, so the one requirement is a credential-derived token header. Identity is documented at GET /v1/me as a Tier 3 endpoint needing the current_user:read scope; tiers are rate-limit tiers rather than plan gates, and whether a personal token may call it is unverified.",
       "capabilities": [
+        "credential_headers",
         "static_headers"
       ]
     },
@@ -281,14 +281,16 @@
       "name": "Zotero",
       "family": "research",
       "reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
-      "auth": "Zotero-API-Key header, or Authorization: Bearer <API key>",
+      "auth": "Authorization: Bearer <API key>, Zotero-API-Key header, or ?key= (not recommended)",
       "identity": "GET /keys/current returns userID and username",
       "paging": "limit and start offsets plus a Link header; not followed",
       "errors": "HTTP status codes, with 429 plus Retry-After when limited",
       "host": "api.zotero.org",
       "status": "gated",
-      "gate": "Bearer identity works on paper, but the documented Zotero-API-Version header is not carried, collections return root arrays that the flat response contract cannot select, paging is offset plus Link header, and write revisions need acceptance.",
+      "gate": "Authorization: Bearer with an API key is documented and API version 3 is the documented default, so neither a token header nor a version header blocks a read. What blocks it is that every library route starts with /users/<userID> with no account-scoped alias, so the account's own id must be bound from identity into a later path, and the documented identity route is written against the API-key header. Listing additionally needs Link-header paging.",
       "capabilities": [
+        "credential_headers",
+        "identity_derived_paths",
         "local_service_origins",
         "pagination",
         "static_headers"

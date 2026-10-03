@@ -1,0 +1,153 @@
+{
+  "provider": "figma",
+  "status": "gated",
+  "note": "Read-only candidate contract for Figma. This is reference data for the runtime owner, not a profile: no credential appears here, nothing is installed, and no packaged recipe exists. Every value is synthetic.",
+  "origin": "https://api.figma.com",
+  "api_version": {
+    "documented_level": "none",
+    "documented": "No API version or date header appears on the REST documentation, and the version is carried in the path as /v1. The only documented response headers are the rate-limit set.",
+    "blocks_a_read": false,
+    "note": "Figma needs no static version header. That is a separate requirement from the credential-derived token header below, and the two must not be conflated."
+  },
+  "headers": {
+    "credential_derived_required_for_personal_tokens": {
+      "X-Figma-Token": "<personal access token from the user keyring>",
+      "documented": "You can do so by passing the token to the API in the X-Figma-Token header of your request.",
+      "blocks_a_read": true,
+      "reference": "https://developers.figma.com/docs/rest-api/personal-access-tokens/"
+    },
+    "oauth_alternative": {
+      "Authorization": "Bearer <OAuth access token from the user keyring>",
+      "documented": "When you call the API, pass a Bearer authorization header.",
+      "blocks_a_read": false,
+      "note": "This route is compatible with the transport that exists today, but it also needs native OAuth sign-in, so it is not a shortcut around the token header.",
+      "reference": "https://developers.figma.com/docs/rest-api/oauth-apps/"
+    },
+    "token_endpoint_only": {
+      "Authorization": "Basic <base64 client_id:client_secret>",
+      "documented": "Basic authentication is documented for POST https://api.figma.com/v1/oauth/token only, not for resource calls.",
+      "note": "Recorded so the token exchange is not mistaken for a resource-call scheme."
+    }
+  },
+  "identity_contract": {
+    "method": "GET",
+    "path": "/v1/me",
+    "subject_pointer": "/id",
+    "label_pointer": "/handle",
+    "scope": "current_user:read",
+    "tier": {
+      "documented": "This is a Tier 3 endpoint and requires the current_user:read scope.",
+      "documented_meaning": "Tiers are rate-limit tiers, not plan gates. Tier 3, which includes the users endpoints, is documented at up to 10 requests per minute for View and Collab seats, and at higher limits for Dev and Full seats depending on plan.",
+      "reference": "https://developers.figma.com/docs/rest-api/rate-limits/",
+      "correction": "An earlier assessment treated Tier 3 as a paid-plan requirement. The official rate-limit documentation defines tiers by seat type and plan limits, not as a plan gate."
+    },
+    "documented_response_fields": {
+      "id": "String, documented as the unique stable id of the user.",
+      "handle": "String, documented as the name of the user.",
+      "img_url": "String, documented as the URL link to the user's profile image.",
+      "email": "String, documented as present only on the /v1/me endpoint."
+    },
+    "identity_documents": {
+      "user_with_email": {
+        "id": "fixture-user-id",
+        "handle": "fixture-user",
+        "img_url": "https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/fixture.png",
+        "email": "fixture@example.test"
+      }
+    },
+    "limitations": [
+      "No field nullability is documented, so the label is treated as required by documentation of the field's presence only.",
+      "The page frames the endpoint around OAuth 2. Whether a personal access token may call /v1/me is not documented, so a personal-token profile must prove identity before it relies on it.",
+      "email is documented as conditionally present, so it is never used as the account label; handle is."
+    ]
+  },
+  "read_contract": {
+    "smallest_useful_read": {
+      "method": "GET",
+      "path": "/v1/files/{key}",
+      "scope": "file_content:read",
+      "tier": "Tier 1",
+      "documented": "The file key can be parsed from any Figma file url of the form https://www.figma.com/:file_type/:file_key/:file_name.",
+      "projected_fields": [
+        {
+          "label": "name",
+          "pointer": "/name",
+          "documented": "String return value on the file endpoint."
+        },
+        {
+          "label": "role",
+          "pointer": "/role",
+          "documented": "String return value on the file endpoint."
+        },
+        {
+          "label": "last_modified",
+          "pointer": "/lastModified",
+          "documented": "String return value, described as metadata."
+        },
+        {
+          "label": "version",
+          "pointer": "/version",
+          "documented": "String return value, described as metadata."
+        },
+        {
+          "label": "editor_type",
+          "pointer": "/editorType",
+          "documented": "String return value on the file endpoint."
+        }
+      ],
+      "deliberately_not_projected": {
+        "fields": ["/document", "/components", "/componentSets", "/styles", "/thumbnailUrl"],
+        "reason": "The document tree and component maps can be very large, and thumbnailUrl is a short-lived signed URL. A first subset projects file metadata only, so the response stays small and bounded."
+      },
+      "no_schema_warning": "No nullability is documented for any file field, so a framework test should confirm each projected field against a real file before a profile relies on it."
+    },
+    "binary_content": {
+      "documented": "GET /v1/images/:key returns a map from node ids to URLs of rendered images, and the documentation warns that image values may be null when rendering failed and that image assets expire after 30 days. GET /v1/files/:key/images returns URLs that expire sooner.",
+      "note": "No endpoint returns image bytes as base64, so serving design or image content is a separate workspace capability and is not part of any read subset."
+    },
+    "paging": "The file endpoints are not documented as paged."
+  },
+  "failure_contract": {
+    "documented_statuses": {
+      "400": "Parameters are invalid or malformed.",
+      "403": "The request was valid but the server refuses action, including when the caller lacks permissions or uses HTTP instead of HTTPS. The file endpoint documents 403 for an invalid or expired developer or OAuth token.",
+      "404": "The requested file or resource was not found. The file endpoint documents 404 when the specified file was not found.",
+      "429": "Requests may be throttled or rate limited; the documentation asks the client to wait and retries, typically after a minute."
+    },
+    "no_401_documented": "The errors documentation does not list 401, so a profile must not rely on 401 for an invalid token.",
+    "failure_document": {
+      "status": 403,
+      "documented_body_fields": [],
+      "body_shape_documented": false,
+      "documented_message": "The developer / OAuth token is invalid or expired.",
+      "note": "No global JSON error envelope is documented for Figma. The err property appears only as a response field on the images endpoint. A framework test should assert status handling only and must not depend on an undocumented error body."
+    },
+    "rate_limit_headers": {
+      "Retry-After": "Integer, how long before retrying, in seconds.",
+      "X-Figma-Plan-Tier": "String enum, documented on 429 responses.",
+      "X-Figma-Rate-Limit-Type": "String enum, documented on 429 responses.",
+      "X-Figma-Upgrade-Link": "String, documented on 429 responses."
+    }
+  },
+  "framework_gap": {
+    "capabilities": ["credential_headers"],
+    "minimum_missing_behavior": "Carry a user credential in a service-specific token header such as X-Figma-Token, without pretending it is a Bearer token and without putting it in a path or query. This is a different requirement from sending a static version header, and the two must be tracked separately.",
+    "not_required_for_a_first_read": [
+      "Any version or date header, since Figma documents none and carries the version in the path.",
+      "OAuth sign-in, if a personal access token may call the identity and file endpoints, which a framework test should confirm first.",
+      "List paging, which the file endpoints do not document."
+    ],
+    "not_a_gap": "Nothing here requires weakening origin rules, adding a credential to a path, or bypassing a documented restriction."
+  },
+  "references": [
+    "https://developers.figma.com/docs/rest-api/introduction/",
+    "https://developers.figma.com/docs/rest-api/authentication/",
+    "https://developers.figma.com/docs/rest-api/personal-access-tokens/",
+    "https://developers.figma.com/docs/rest-api/oauth-apps/",
+    "https://developers.figma.com/docs/rest-api/users-endpoints/",
+    "https://developers.figma.com/docs/rest-api/users-types/",
+    "https://developers.figma.com/docs/rest-api/file-endpoints/",
+    "https://developers.figma.com/docs/rest-api/rate-limits/",
+    "https://developers.figma.com/docs/rest-api/errors/"
+  ]
+}
