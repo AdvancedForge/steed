@@ -24,8 +24,8 @@ from services.app_oauth import ApiError
 from services.bundled_recipes import BundledRecipes
 from services.connector_recipes import RecipeError, RecipeStore, parse_recipe
 from services.connectors import ConnectorRequest
-from services.recipe_http import RecipeHttp
 from services.recipe_connector import RecipeConnector, connect_recipe
+from services.recipe_http import RecipeHttp
 from services.task_artifacts import TaskArtifact
 
 ROOT = Path(__file__).resolve().parents[1]
