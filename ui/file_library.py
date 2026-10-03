@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTreeWidget,
@@ -21,7 +22,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from services.file_library import FILE_BYTES, read_import
+from services.file_library import FILE_BYTES, SEARCH_ROWS, read_import
 from services.task_downloads import DownloadDestination
 
 
@@ -59,6 +60,12 @@ class FileLibraryDialog(QDialog):
         self.trash = QCheckBox("Show Trash")
         self.trash.toggled.connect(self.refresh)
         layout.addWidget(self.trash)
+        self.filter = QLineEdit()
+        self.filter.setAccessibleName("Filter library entries")
+        self.filter.setPlaceholderText("Filter by name or path (empty shows all)…")
+        self.filter.setClearButtonEnabled(True)
+        self.filter.textChanged.connect(self.refresh)
+        layout.addWidget(self.filter)
         self.files = QTreeWidget()
         self.files.setHeaderLabels(["Name", "Type", "Bytes", "Revision"])
         self.files.setColumnWidth(0, 400)
@@ -100,6 +107,7 @@ class FileLibraryDialog(QDialog):
         self.refresh()
 
     def profile_changed(self, name):
+        self.clear_filter()
         self.files.clear()
         self.folders.blockSignals(True)
         self.folders.clear()
@@ -108,6 +116,7 @@ class FileLibraryDialog(QDialog):
     def done(self, result):
         if not self._detached:
             self._detached = True
+            self.clear_filter()
             self.service.changed.disconnect(self.refresh)
             if self.parent() is not None:
                 self.parent().profile_manager.profile_changed.disconnect(
@@ -139,6 +148,11 @@ class FileLibraryDialog(QDialog):
             self.status.setText(str(error))
             return None
 
+    def clear_filter(self):
+        self.filter.blockSignals(True)
+        self.filter.clear()
+        self.filter.blockSignals(False)
+
     def refresh(self):
         if self._loading or self.service._closed or getattr(self, "_detached", False):
             return
@@ -166,13 +180,16 @@ class FileLibraryDialog(QDialog):
                 else None
             )
             self.files.clear()
+            query = self.filter.text()
             if folder_id:
+                # instr keeps the filter literal, so % and _ never act as
+                # wildcards, and the row cap bounds one repaint.
                 rows = self.service.library.db.execute(
-                    "SELECT path,kind,revision,sha256,deleted,length(data) AS byte_count FROM entries WHERE folder=? AND deleted=? ORDER BY path LIMIT 2000",
-                    (folder_id, int(self.trash.isChecked())),
-                )
+                    "SELECT path,kind,revision,sha256,deleted,length(data) AS byte_count FROM entries WHERE folder=? AND deleted=? AND instr(path,?)>0 ORDER BY path LIMIT ?",
+                    (folder_id, int(self.trash.isChecked()), query, SEARCH_ROWS + 1),
+                ).fetchall()
                 nodes = {}
-                for row in rows:
+                for row in rows[:SEARCH_ROWS]:
                     item = QTreeWidgetItem(
                         [
                             row["path"].rsplit("/", 1)[-1],
@@ -191,6 +208,11 @@ class FileLibraryDialog(QDialog):
                     if row["path"] == old_path:
                         self.files.setCurrentItem(item)
                 self.files.expandAll()
+                if len(rows) > SEARCH_ROWS:
+                    self.status.setText(
+                        f"Showing the first {SEARCH_ROWS} entries. Narrow the "
+                        "filter to reach later ones."
+                    )
         except (OSError, sqlite3.Error, ValueError, RuntimeError) as error:
             self.status.setText(str(error))
         finally:

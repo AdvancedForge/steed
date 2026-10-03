@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import json
 import os
 import sqlite3
 import stat
@@ -12,6 +13,8 @@ from uuid import uuid4
 FILE_BYTES = 64 * 1024 * 1024
 LIBRARY_BYTES = 512 * 1024 * 1024
 CHUNK_BYTES = 32768
+# Discovery returns metadata only, over a bounded scan of enabled roots.
+SEARCH_ROWS = 20000
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS folders (
@@ -195,6 +198,93 @@ class FileLibrary:
             "entries": items[:limit],
             "cursor": items[min(len(items), limit) - 1]["path"] if items else after,
             "has_more": len(items) > limit,
+        }
+
+    @staticmethod
+    def _search_cursor(cursor):
+        """Decode an opaque search cursor into its (folder name, folder id, path)."""
+        if cursor in ("", None):
+            return None
+        if not isinstance(cursor, str) or len(cursor) > 1024:
+            raise ValueError("Give the after cursor returned by a previous search")
+        try:
+            decoded = json.loads(cursor)
+        except ValueError:
+            raise ValueError(
+                "Give the after cursor returned by a previous search"
+            ) from None
+        if (
+            not isinstance(decoded, list)
+            or len(decoded) != 3
+            or not all(isinstance(part, str) and part for part in decoded)
+        ):
+            raise ValueError("Give the after cursor returned by a previous search")
+        relative_path(decoded[2], root=True)
+        return decoded
+
+    @staticmethod
+    def _search_query(query):
+        """Validate a discovery query. Punctuation stays literal, never a pattern."""
+        if not isinstance(query, str) or not query.isprintable() or len(query) > 512:
+            raise ValueError("Search text must be at most 512 printable characters")
+        return query
+
+    def search(self, query="", after="", limit=200, *, folder_id=None):
+        """Find entry metadata across enabled roots without reading file contents.
+
+        This is the agent-facing discovery surface, so only enabled roots are
+        ever considered. Results are ordered by folder name then path so paging
+        is deterministic and groups each root together, and each row carries its
+        folder id and name so identical file names in different roots stay
+        distinguishable. ``instr`` gives literal substring matching, so ``%`` and
+        ``_`` in a query are never wildcards.
+        """
+        self.check()
+        query = self._search_query(query)
+        position = self._search_cursor(after)
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ValueError("List between 1 and 200 entries")
+        if folder_id is not None:
+            # Re-checked on every call so a root disabled since discovery hides.
+            self.folder(folder_id, agent=True)
+        # The SQL scan is capped so one call stays bounded even with many matches.
+        scan = SEARCH_ROWS
+        rows = self.db.execute(
+            "SELECT e.folder AS folder_id, f.name AS folder, e.path, e.kind,"
+            " e.revision, e.sha256, length(e.data) AS byte_count"
+            " FROM entries e JOIN folders f ON f.id=e.folder"
+            " WHERE e.deleted=0 AND f.enabled=1"
+            " AND (? IS NULL OR e.folder=?)"
+            " AND instr(e.path, ?)>0"
+            " AND (? IS NULL OR (f.name, e.folder, e.path) > (?, ?, ?))"
+            " ORDER BY f.name, e.folder, e.path LIMIT ?",
+            (
+                folder_id,
+                folder_id,
+                query,
+                position[0] if position else None,
+                position[0] if position else None,
+                position[1] if position else None,
+                position[2] if position else None,
+                scan,
+            ),
+        ).fetchall()
+        entries = [dict(row) for row in rows[:limit]]
+        return {
+            "entries": entries,
+            "cursor": (
+                json.dumps(
+                    [
+                        entries[-1]["folder"],
+                        entries[-1]["folder_id"],
+                        entries[-1]["path"],
+                    ]
+                )
+                if entries
+                else after
+            ),
+            "has_more": len(rows) > limit,
+            "truncated": len(rows) >= SEARCH_ROWS,
         }
 
     def capacity(self, incoming=0):
