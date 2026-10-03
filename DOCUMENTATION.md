@@ -132,11 +132,10 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 
 ### Menu Options
 
-The menu bar has five categories, in this order:
+The menu bar has six categories, in this order:
 
 - **General:** Passwords, Fill Login, Downloads, Ad Blocking, Website Permissions,
-  Settings and Exit. **General → Profiles** contains profile creation, switching,
-  pop-out, renaming and deletion, private browsing and Quick Switch shortcuts.
+  Settings and Exit.
 - **Tabs:** New Tab, Restore Closed Tab, Close Tab and Reload.
   **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
   that group, and opens Manage Tab Groups. Individual tabs also expose existing
@@ -147,6 +146,8 @@ The menu bar has five categories, in this order:
   separate controls.
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
   Zoom Out and Reset Zoom.
+- **Profile:** Create, switch, pop out, rename or delete profiles, open private
+  browsing and use Quick Switch shortcuts.
 - **Cookies:** Clear Browsing History, View Cookies, Clear All Cookies and Use
   Global Cookies for This Site. Clearing history affects the current profile's
   visits and address suggestions; it does not clear cookies.
@@ -265,10 +266,10 @@ a supported password-manager option.
 
 ### Creating and Switching Profiles
 
-1. Go to **General → Profiles → New Profile**
+1. Go to **Profile → New Profile**
 2. Enter a profile name
 3. The browser will switch to the new profile
-4. Use **General → Profiles → Switch Profile** to change profiles
+4. Use **Profile → Switch Profile** to change profiles
 
 ### Search Profile (Incognito)
 
@@ -279,9 +280,9 @@ The search profile is a special profile that:
 - Doesn't save tabs
 - Keeps browsing data in memory for the application registry's lifetime; switching away or closing one of several windows does not reset that shared in-memory profile
 
-Access it via **General → Profiles → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
+Access it via **Profile → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
 
-**General → Profiles → Quick Switch** lists existing profiles immediately at startup.
+**Profile → Quick Switch** lists existing profiles immediately at startup.
 The numbered shortcuts work before the menu is opened. Ordinary profiles are
 listed alphabetically, including `default` and `global`.
 

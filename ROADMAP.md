@@ -13,12 +13,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 backlog; it is not the active agenda.
 
 **Menu organization (implemented).** General is first and contains everyday
-settings, passwords, downloads, website permissions and a Profiles submenu.
+settings, passwords, downloads and website permissions. Profile remains its own
+top-level menu with creation, switching, pop-out, private browsing and Quick Switch.
 Tabs gathers tab commands and a Tab Groups submenu with current-tab assignment,
 removal and collapse/expand actions. Agents gathers every existing agent control,
 including native/web chat, file library, connections and local MCP setup. View
 contains address focus, find and zoom; Cookies includes browsing-history clearing.
-File/Edit and the separate Profile/Tab Groups categories are removed. Keyboard
+File/Edit and the separate Tab Groups category are removed. Keyboard
 shortcuts, profile Quick Switch and history/profile isolation remain intact.
 Documentation uses the new menu paths. All 114 browser/menu/agent-access/setup/
 sidebar/web-chat checks pass in 68.864 seconds; Ruff lint/format and whitespace

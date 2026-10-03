@@ -117,16 +117,14 @@ class BrowserTests(unittest.TestCase):
         menus = {
             action.text(): action.menu() for action in self.window.menuBar().actions()
         }
-        self.assertEqual(list(menus), ["General", "Tabs", "Agents", "View", "Cookies"])
+        self.assertEqual(
+            list(menus), ["General", "Tabs", "Agents", "View", "Profile", "Cookies"]
+        )
         self.assertIn(self.window.reload_action, menus["Tabs"].actions())
         self.assertIn(self.window.find_action, menus["View"].actions())
         self.assertIn(self.window.agent_sidebar_action, menus["Agents"].actions())
         self.assertIn(self.window.file_library_action, menus["Agents"].actions())
-        profiles = next(
-            action.menu()
-            for action in menus["General"].actions()
-            if action.text() == "Profiles"
-        )
+        profiles = menus["Profile"]
         self.assertIn(
             self.window.profile_shortcuts_menu.menuAction(), profiles.actions()
         )
