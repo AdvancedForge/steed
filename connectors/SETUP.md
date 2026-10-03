@@ -281,7 +281,7 @@ installed, and a row is never a default account or an approval.
 | GitHub | template | owner must be fixed in newly reviewed source |
 | GitLab.com | packaged | none outstanding for the shipped subset |
 | Microsoft 365 | gated | native OAuth, `@odata.nextLink` paging and writes unverified |
-| Notion | gated | every request needs a `Notion-Version` header |
+| Notion | gated | required `Notion-Version` header, nullable identity label, POST-read data-source query |
 | Slack | gated | channel destinations and `ok:false` error checking |
 | Asana | gated | token syntax/sign-in acceptance and workspace inputs |
 | Dropbox | gated | reads are RPC-style POST request objects |
@@ -347,9 +347,45 @@ two files in agreement. None of these is worked around in a connector.
 | Application-level success flags | Slack, Raindrop.io, Nextcloud |
 | Account identity beyond one subject string and one label | Calendly, Readwise / Reader, Spotify, Airtable, Notion, Microsoft 365, Joplin |
 | Native OAuth sign-in, scope normalization and refresh | Microsoft 365, Asana, Spotify, Trello |
-| Reads that are POST requests with request objects | Dropbox, Linear |
+| Reads that are POST requests with request objects | Dropbox, Linear, Notion |
 | Approved local and self-hosted service origins | Nextcloud, Joplin, Zotero |
 | Reconciliation of uncertain writes | GitLab.com, Todoist, GitHub, Airtable |
+
+### Notion assessment notes
+
+Notion stays gated, but for narrower and better-documented reasons than a missing
+identity route. The synthetic contract is `connectors/fixtures/notion.json`.
+
+- Identity is documented: `GET /v1/users/me` is titled *Retrieve your token's bot
+  user* and returns the user associated with the token. `object` and `id` are
+  documented as always present, so the subject is stable.
+- The documented user object marks `name` as *oneOf string or null*, so a bot with
+  no name has no non-empty label. That is a label-contract limitation, distinct
+  from an absent identity route, and the fixture carries one document with a name
+  and one with `null`.
+- `Notion-Version` is documented as required on all REST API requests. Documented
+  versions are `2026-03-11`, `2025-09-03`, `2022-06-28`, `2022-02-22`,
+  `2021-08-16` and `2021-05-13`. The fixture is bound to `2026-03-11`, and every
+  expected response below is version-specific.
+- Since `2025-09-03`, databases and data sources are split: `GET /v1/databases/{id}`
+  returns a `data_sources` array and its documented response has **no**
+  `properties`, while `GET /v1/data_sources/{id}` is the home of the properties
+  schema. The older retrieve-a-database page is deprecated for versions up to and
+  including `2022-06-28`, so a version-free fixture would point the runtime owner
+  at the wrong wire contract. The two id types are not interchangeable.
+- Querying a data source is `POST /v1/data_sources/{id}/query`, so Notion listing
+  needs POST reads as well as the header.
+- No credential appears in the fixture or in any header example; the token is a
+  placeholder and lives in the user's keyring.
+
+Official references: [Retrieve your token's bot user](https://developers.notion.com/reference/get-self),
+[User object](https://developers.notion.com/reference/user),
+[Versioning](https://developers.notion.com/reference/versioning),
+[Changes by version](https://developers.notion.com/reference/changes-by-version),
+[Retrieve a database](https://developers.notion.com/reference/retrieve-database),
+[Retrieve a data source](https://developers.notion.com/reference/retrieve-a-data-source),
+[Query a data source](https://developers.notion.com/reference/query-a-data-source),
+[Upgrade guide 2025-09-03](https://developers.notion.com/reference/upgrade-guide-2025-09-03).
 
 Two notes on how the groups read:
 

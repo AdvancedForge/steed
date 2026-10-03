@@ -91,14 +91,15 @@
       "family": "knowledge",
       "reference": "https://developers.notion.com/reference/versioning",
       "auth": "Authorization: Bearer <internal integration token>",
-      "identity": "No documented identity endpoint; bot user info is a separate route",
-      "paging": "start_cursor query parameter with has_more",
-      "errors": "HTTP status codes with a documented code/message body",
+      "identity": "GET /v1/users/me returns the user associated with the token; subject /id and label /name, where the documented user object marks name as oneOf string or null",
+      "paging": "start_cursor query parameter with next_cursor and has_more; querying a data source is a POST read",
+      "errors": "HTTP status codes with a documented code and message body",
       "host": "api.notion.com",
       "status": "gated",
-      "gate": "Every request must carry the Notion-Version header, which the current header contract cannot add. Nested v3 payloads exist, and sign-in compatibility still needs acceptance. The header requirement must not be bypassed.",
+      "gate": "Identity is documented, but the Notion-Version header is required on every request, the identity label can be null, and the database and data-source split means a current database read returns data_sources rather than properties. Listing needs POST reads as well, so the header, label and POST-read capabilities are all required.",
       "capabilities": [
         "identity_shapes",
+        "post_reads",
         "static_headers"
       ]
     },
