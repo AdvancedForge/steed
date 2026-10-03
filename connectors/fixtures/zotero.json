@@ -131,7 +131,10 @@
     }
   },
   "framework_gap": {
-    "capabilities": ["identity_derived_paths", "pagination"],
+    "capabilities": [
+      "identity_derived_paths",
+      "pagination"
+    ],
     "minimum_missing_behavior": "Carry a value returned by the identity request, such as the numeric userID, into a later reviewed read path, so a single-item read does not have to pin the account's own id in source. Without that, no useful read exists, because every library route starts with /users/<userID> and no account-scoped alias is documented.",
     "not_required_for_a_first_read": [
       "The Zotero-API-Version header, because v3 is the documented default.",
@@ -150,5 +153,67 @@
     "https://www.zotero.org/support/dev/web_api/v3/types_and_fields",
     "https://www.zotero.org/support/dev/web_api/v3/write_requests",
     "https://www.zotero.org/support/dev/web_api/v3/local_api"
-  ]
+  ],
+  "pinned_library_id_alternative": {
+    "summary": "A limited read-only subset can exist before identity-derived path binding exists, by having the user fix their own numeric library id in a reviewed source file, exactly as the GitHub template fixes an owner and repository.",
+    "shape": {
+      "artifact": "a user-owned template under connectors/recipes/templates/, never a packaged default",
+      "identity": "GET /keys/current, subject /userID, label /username",
+      "reads": "GET /users/<pinned numeric library id>/items/{destination} where the destination is the item key",
+      "path_shape": "one pinned segment plus one caller-supplied destination segment, which the reviewed path rules already allow",
+      "writes": "none; this queue proposes no Zotero write, because write revisions need their own acceptance"
+    },
+    "what_it_still_needs": [
+      "Identity has to work with the credential form the user chose, which is the pending empirical question below.",
+      "Field projections have to be confirmed against a real library, because no item schema is published."
+    ],
+    "mismatch_disclosure": {
+      "engine_fact": "A pinned path segment is reviewed source, not a value the interpreter can compare with the identity subject. The interpreter re-checks identity against the stored account, but it does not verify that a number written in a path equals the account's own user id.",
+      "consequence": "If the pinned id belongs to another library or account, the request is simply sent and the service answers on its own terms.",
+      "documented_statuses": "An unknown item is documented as 404, and an invalid key or insufficient privileges as 403. What a malformed library id returns is not documented, so no status is promised here.",
+      "required_disclosure": "The guide for such a template must say, in the source review text itself, that the numeric library id is user-supplied and unchecked, and that a mismatch appears only as the service's own error."
+    },
+    "scope_disclosure": {
+      "documented": "The identity response carries an access object with user flags for library, files, notes and write, and group flags for library and write.",
+      "required_disclosure": "A key without library read access cannot read items at all, so a live acceptance record should note the library flag that was granted, and no write permission is needed for a read-only subset."
+    },
+    "status": "assessed_alternative",
+    "note": "This is recorded as an assessment, not as a shipped template. One sign-in with no user-supplied account numbers stays the default goal, and the pinned id is the interim route rather than the destination."
+  },
+  "empirical_status": {
+    "policy": "Documentation proves what an endpoint offers. A framework test can only prove Steed's own behaviour against a documented shape. Neither can show that a provider accepts a credential or sends a field, so those stay pending until a real account is used.",
+    "settled_by_documentation": [
+      "Authorization: Bearer with an API key is a documented way to authenticate, and the query form is documented as not recommended.",
+      "Zotero-API-Version is documented as recommended rather than required, with version 3 as the current default.",
+      "Library routes begin with /users/<userID> or /groups/<groupID>, and no account-scoped alias is documented anywhere in the reference.",
+      "A multi-object request returns a JSON array and paging uses limit, start and a Link header.",
+      "An invalid key or insufficient privileges is documented as 403, an unknown item as 404, and rate limiting as 429 with Retry-After."
+    ],
+    "pending": [
+      {
+        "question": "Does GET /keys/current accept a key carried as Authorization: Bearer, or only the Zotero-API-Key header?",
+        "status": "pending",
+        "settled_by": "a real account, since the documentation describes this route as returning information about the key provided in the Zotero-API-Key header.",
+        "blocks": "any Zotero identity binding, including the pinned-library-id alternative"
+      },
+      {
+        "question": "Are userID and username present and non-null for a real key?",
+        "status": "pending",
+        "settled_by": "a real identity response; the documented example is malformed and publishes no schema.",
+        "blocks": "trusting the subject and label pointers"
+      },
+      {
+        "question": "Which item data fields exist for every item type in a real library?",
+        "status": "pending",
+        "settled_by": "a real library spanning several item types, since no schema is published and a note has no title.",
+        "blocks": "any field projection beyond key, version and itemType"
+      },
+      {
+        "question": "Is there any JSON error envelope for a single read?",
+        "status": "pending",
+        "settled_by": "a real failing read; the documentation states statuses but publishes no error body.",
+        "blocks": "asserting anything about an error body"
+      }
+    ]
+  }
 }
