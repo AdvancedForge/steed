@@ -3,8 +3,10 @@
 ## Start here
 
 The persistent agent file-library milestone is complete in the commit containing
-this document. Branch from that checkpoint on `main`, not the older chat-only
-checkpoint `9d1e37f`. Read `AGENTS.md`, the top of `ROADMAP.md`, and
+this document. A later `main` checkpoint adds bounded library discovery
+(`steed_library_search` plus the library window filter), so branch from the
+current tip of `main`, not from the older chat-only checkpoint `9d1e37f`. Read
+`AGENTS.md`, the top of `ROADMAP.md`, and
 [library instructions](DOCUMENTATION.md#persistent-agent-file-library) first.
 Historical roadmap checkpoints describe earlier milestones; the current-work
 section and this handoff take precedence for the next engineering scope.
@@ -56,12 +58,21 @@ unavailable: record the engineering assessment as a COMMENT instead.
 - `ui/file_library.py`: **File → Agent File Library…** and sidebar entry, copy
   selected files/folders in a background reader, enable access, create subfolders,
   export, Trash, Versions and user-only confirmed recovery cleanup.
-- `services/task_service.py`, `task_client.py`, `agent_tools.py`: eleven library
+- `services/task_service.py`, `task_client.py`, `agent_tools.py`: twelve library
   commands exposed through both MCP transports and native agent chat. Total
-  published tools: 69. Stable request IDs and expected revisions govern edits.
+  published tools: 70. Stable request IDs and expected revisions govern edits.
   The workspace bridge reuses library inputs and retains sealed outputs.
 - `browser_window.py`, `ui/agent_sidebar.py`: shared-window ownership, private
   profile UI guards and scrollable controls in short native chat tabs.
+- `services/file_library.py`, `ui/file_library.py`: bounded metadata discovery
+  across enabled roots. `steed_library_search` returns folder id/name, relative
+  path, kind, current revision and size in one call, matched as a literal path
+  substring so `%`/`_` are never wildcards, ordered by folder name then path for
+  deterministic cursor paging, with identical names in different roots kept
+  distinguishable by folder id. Disabled roots, Trash and old versions are never
+  returned and access is rechecked per call. The window filter uses the same
+  literal match and reports when a row cap hid later entries. Metadata only: no
+  content indexing, no decision model, no new approval prompts.
 
 Preserve these decisions: imports are **copies**, not live host mounts. A root
 enable switch explicitly grants **all authenticated connected agents** recursive
@@ -74,12 +85,16 @@ bridges still require workspace permission. Agents cannot enable roots, choose
 host paths, purge recovery copies or execute files through this interface.
 
 Limits: 64 MiB/library file, 512 MiB including recovery/staging, 50 roots,
-500 entries/import, 32 KiB chunks. UI currently displays up to 2,000 entries;
-agents paginate children. Worker workspace limits remain 8 MiB/file, 32 MiB/task.
+500 entries/import, 32 KiB chunks. UI currently displays up to 2,000 entries and
+says so when more match; agents page with `steed_library_search`. Worker workspace
+limits remain 8 MiB/file, 32 MiB/task.
 The database is private local storage, not an encrypted vault or forensic erase.
 Normal websites never receive library access.
 
-## Next milestone: make reusable files easy to find
+## Completed milestone: make reusable files easy to find
+
+Delivered on `main`. The numbered scope below records what was built and what is
+still open; the following milestone is website observation.
 
 1. Add bounded filename/path discovery across enabled roots to the agent API and
    a simple search/filter in the library window. Start with metadata, not content
@@ -152,7 +167,18 @@ Run native Qt suites/smokes serially; concurrent graphics processes have caused
 unrelated crashes. Socket, worker and namespace fixtures may require execution
 outside the filesystem sandbox. Use temporary profiles and synthetic accounts.
 
-Checkpoint evidence: full suite **906 passed** before final polish; final **148
+Discovery evidence: **67 targeted checks pass on Linux** (18 library backend, 11
+library service/UI, 21 workspace, 17 workspace recovery) and Ruff lint/format are
+clean. Two gaps remain before this is PR-ready: the browser-profile suites
+(`test_task_services`, `test_agent_sidebar`, `test_web_chat`,
+`test_agent_gateway`) and both MCP smoke transports abort with
+`Could not initialize GLX`, because constructing a persistent `QWebEngineProfile`
+needs GLX and the runner used had no display. Every new smoke assertion was
+replayed directly against the library backend and passes, but the journeys
+themselves still need a display-capable Linux run. The previous checkpoint's
+evidence below is not re-verified for this change.
+
+Earlier checkpoint evidence: full suite **906 passed** before final polish; final **148
 integration checks passed**, including **27 library regressions**, after all
 changes. Both stdio and HTTP SDK/independent-client MCP journeys passed, including
 document workers/recipe workflows and persistent files reused by another task.
