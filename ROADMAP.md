@@ -232,16 +232,30 @@ establishes those results. Password improvements remain deferred at the user's r
   checks passed, so native desktop acceptance remains tracked independently.
   All profiles, files and account effects were synthetic.
 
-- **Next major engineering decision — agent-built providers:** document generation
-  and composition of trusted app tools are available. Adding a new external service
-  requires a network/authentication trust boundary. Recommend user-reviewed,
-  versioned declarative connector recipes interpreted by Steed's trusted broker,
-  with credentials outside generated code and a bounded read-only REST first stage.
-  Alternative: custom sandboxed HTTP adapters behind a credential gateway, with
-  broader protocol support and additional policy/lifecycle work. See the
-  [concrete proposal](DOCUMENTATION.md#new-provider-integration-decision).
-  Implementation waits for this architecture choice; Google registration remains
-  deferred independently.
+- **Latest engineering checkpoint — reviewed connector recipes:** the user chose
+  recipes as the first agent-designed provider path, targeting built-in Google
+  quality. Version 1 accepts immutable reviewed JSON for exact public HTTPS domains,
+  verified account identities, bearer-token/keyring setup and selected read-only
+  fields. Schema 14 adds task-owned proposal receipts; a nonmodal default-Deny
+  popup installs exact source only. Installation grants no credentials, account
+  access or task authority. Custom accounts reuse app switches, exact destinations,
+  operation budgets, retained receipts and revocation. Removal persists denial
+  before cleanup; failed removal/reinstallation cannot resurrect account access.
+  Public-address pinning, TLS verification and redirect/private-network rejection
+  constrain the transport. See [workflow and limits](DOCUMENTATION.md#agent-designed-connector-recipes).
+  Acceptance: **707 regressions passed in 297.745 seconds**; all 28 focused recipe
+  checks passed in 4.567 seconds. SDK and independent raw clients proposed,
+  reviewed, connected and read a synthetic recipe over stdio and authenticated
+  HTTP alongside actual sandbox PDF/XLSX/PNG generation. Startup/render/shutdown,
+  Ruff/format, dependency health, whitespace and local documentation links passed.
+  Review and connection previews were inspected. Logs: `/tmp/steed-recipes-full.log`,
+  `/tmp/steed-recipes-focused.log`, `/tmp/steed-recipes-mcp-{stdio,http}.log`, and
+  `/tmp/steed-recipes-startup.log`. All data and credentials were synthetic.
+- **Next recipe engineering milestones:** add bounded collection reads and generic
+  native OAuth/PKCE with reusable keyring client setup, then evaluate reviewed write
+  plans, revisions, idempotency and reconciliation against built-in quality. Existing
+  Google remains the provider-specific reference. Shared Google registration remains
+  deferred. No generic network or credential permission is granted to generated code.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage

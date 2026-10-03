@@ -108,6 +108,32 @@ class TaskDialog(QDialog):
             workspace_buttons.addWidget(button)
         workspace_layout.addLayout(workspace_buttons)
         self.panels.addTab(workspace, "Workspace")
+        recipes = QWidget()
+        recipe_layout = QVBoxLayout(recipes)
+        recipe_layout.addWidget(
+            QLabel(
+                "Review proposed service connections here. Installation, account connection and allowed actions are separate choices."
+            )
+        )
+        self.recipe_requests = QTableWidget(0, 3)
+        self.recipe_requests.setHorizontalHeaderLabels(["Request", "Provider", "State"])
+        self.recipe_requests.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.recipe_requests.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
+        )
+        self.recipe_requests.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.recipe_requests.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        recipe_layout.addWidget(self.recipe_requests)
+        self.review_recipe_button = QPushButton("Review Connection Recipe…")
+        self.review_recipe_button.clicked.connect(self.review_recipe)
+        recipe_layout.addWidget(self.review_recipe_button)
+        self._recipe_rows = []
+        self.recipe_requests.itemSelectionChanged.connect(self.update_recipe_actions)
+        self.panels.addTab(recipes, "Connector Recipes")
         workers = QWidget()
         worker_layout = QVBoxLayout(workers)
         worker_notice = QLabel(
@@ -814,6 +840,7 @@ class TaskDialog(QDialog):
         self.refresh_activity()
 
     def refresh_workers(self):
+        self.refresh_recipes()
         selected = self.selection()
         previous = self.worker_runs.currentRow()
         self.worker_runs.blockSignals(True)
@@ -851,6 +878,61 @@ class TaskDialog(QDialog):
     def selected_worker(self):
         row = self.worker_runs.currentRow()
         return self._worker_rows[row] if 0 <= row < len(self._worker_rows) else None
+
+    def refresh_recipes(self):
+        selected = self.selection()
+        self._recipe_rows = (
+            self.service.recipes.list(selected[0].task_id)
+            if selected and not self.service.failure and not self.service._closed
+            else []
+        )
+        self.recipe_requests.setRowCount(len(self._recipe_rows))
+        for row, proposal in enumerate(self._recipe_rows):
+            for col, value in enumerate(
+                (
+                    proposal.request_id,
+                    proposal.provider,
+                    proposal.state.replace("_", " "),
+                )
+            ):
+                item = QTableWidgetItem(value)
+                item.setToolTip(proposal.sha256)
+                self.recipe_requests.setItem(row, col, item)
+        self.update_recipe_actions()
+
+    def update_recipe_actions(self):
+        row = self.recipe_requests.currentRow()
+        self.review_recipe_button.setEnabled(
+            bool(
+                not self.service.failure
+                and not self.service._closed
+                and 0 <= row < len(self._recipe_rows)
+                and self._recipe_rows[row].state == "awaiting_approval"
+            )
+        )
+
+    def review_recipe(self):
+        from ui.recipe_review import RecipeReviewDialog
+
+        row = self.recipe_requests.currentRow()
+        if not 0 <= row < len(self._recipe_rows):
+            return
+        proposal = self._recipe_rows[row]
+        try:
+            dialog = RecipeReviewDialog(
+                self.service.recipes.connections,
+                self.service.recipes.recipe(proposal),
+                self,
+                service=self.service,
+                proposal=proposal,
+            )
+            dialog.show()
+        except (OSError, ValueError, KeyError, RuntimeError):
+            QMessageBox.warning(
+                self,
+                "Connector Recipe",
+                "This recipe source is unavailable. Check the task and workspace file.",
+            )
 
     def update_worker_actions(self):
         record = self.selected_worker()

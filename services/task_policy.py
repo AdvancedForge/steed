@@ -27,6 +27,7 @@ SUPPORTED_ACTIONS = frozenset(
         "artifact",
         "workspace",
         "worker",
+        "connector",
         "app",
     }
 )

@@ -1279,32 +1279,93 @@ For implementation background, pip's
 documents hashed binary-only dependencies. Hashes identify selected bytes, not
 trustworthiness; isolation continues to apply.
 
-### New provider integration decision
+### Agent-designed connector recipes
 
-Generated packages now create documents and compose already configured app tools.
-They cannot add a provider, select arbitrary HTTP endpoints or obtain credentials.
-Supporting an agent-built integration for a new service requires deciding how a
-new network/account capability enters Steed's trusted broker.
+Reviewed recipes are the first implemented stage of agent-designed providers. An
+agent describes a bounded REST integration in JSON; Steed interprets it through
+its trusted connector broker. Agents never receive account credentials or install
+Python in the browser. Recipes currently support bearer-token authentication and
+read-only GET tools. OAuth sign-in, collection reads, pagination, writes and
+provider-specific conflict/reconciliation behavior are later milestones. The goal
+is the same account and permission experience as Steed's built-in Google provider.
+Shared Google registration remains deferred independently.
 
-Recommended next design: **user-reviewed declarative connector recipes**. An agent
-stages data describing exact provider domains, authentication requirements, tools,
-HTTP methods/paths, request/response schemas and visible effects. A trusted picker
-shows the actual domains, data and read/write/send scope before installation.
-Steed validates and versions the recipe, owns sign-in/keyring handling, and runs
-requests through its broker. Generated code consumes typed results only. Start
-with bounded read-only REST operations and separately reviewed credentials; writes
-need an effect policy and preview before being enabled. A recipe's declarations
-are untrusted proposals, not self-issued permissions or proof an operation is safe.
+To add a service:
 
-The alternative is custom sandboxed HTTP connector code behind a new credential
-gateway. It supports more protocols, but requires additional endpoint, redirect,
-credential-injection, output and effect validation, plus installation/revocation
-lifecycle. Host-loaded arbitrary connector Python is not part of either proposal.
+1. Ask an agent to design a recipe from the service's official API documentation.
+   It calls `steed_recipe_capabilities` for the supported format and limits, requests
+   `workspace` and `connector` permission, uploads/seals the JSON, then calls
+   `steed_recipe_propose` with `file_id` and a stable `request_id`.
+   Alternatively, choose **File → App Connections → Add Connector Recipe…** and
+   select a local JSON file.
+2. Review **Add this service connection?**. It shows the actual HTTPS domain,
+   identity endpoint, tool paths, selected returned fields and exact source hash.
+   Check that these are the intended service and genuinely read-only API requests;
+   GET is not proof of their semantics. Click **Add Connection Recipe** or **Deny**.
+   Closing leaves an agent proposal pending. Reopen it in
+   **Task Permissions → Connector Recipes → Review Connection Recipe…**.
+3. Select the installed service in **App Connections**, choose its tools, and click
+   **Connect**. Enter that service's API bearer token in the password field. Steed
+   verifies the account ID/label at the reviewed identity endpoint and stores the
+   token only in the desktop Secret Service keyring. It is never a workspace input.
+4. Enable **Read** for that account if agents should access these tools without a
+   popup for every app-only task. Each task still requests exact tool/resource
+   destinations and gets normal budgets, cancellation and retained receipts.
+   With switches off, approve each task separately. Recipe installation itself
+   grants neither account access nor task permission.
+5. Finish the recipe-design task and start a fresh task to use the connected
+   account: Steed's task grants are fixed, so installation does not silently widen
+   its existing grant. Discover the account/tool via `steed_app_list_tools`, then
+   use `steed_app_call_tool` with an exact resource ID as `destination` and a stable
+   `request_id`. Poll `steed_app_status`; the normal receipt keeps selected JSON
+   fields and replay returns the same receipt without repeating the HTTP request.
 
-This choice expands account/network authority beyond today's fixed adapters, so
-it is a user-dependent architecture decision. Neither path is implemented yet.
-Existing generators and trusted Google tools remain usable. Shared Google
-registration is independently deferred; no new provider is published or connected.
+The [example recipe](examples/connector_recipes/notes.json) uses a synthetic
+`.example` domain; it is a format reference, not a working external account.
+Version 1 declares one exact public HTTPS origin, bearer authentication, an
+identity path with JSON pointers for subject and label, and 1–10 named GET tools.
+Each tool path includes exactly one `{destination}`; resource IDs are single,
+bounded ASCII segments, never URLs or queries. Each response selects 1–10 labeled
+JSON pointers (objects and array indexes only). No headers, credentials, executable
+expressions, arbitrary requests, redirects or request bodies are accepted.
+Recipes are at most 16 KiB; API responses at most 128 KiB and retained tool results
+at most 16 KiB. Each task retains at most 20 proposals with three pending at once.
+A catalog retains at most 50 versions and is limited to 2 MiB.
+
+The HTTPS transport rejects private, reserved, multicast, mapped and mixed DNS
+answers, connects to a validated numeric public address without resolving again,
+and verifies TLS/hostname against the reviewed domain. It ignores proxy settings,
+follows no redirects and makes no automatic retries. Identity is verified again
+before every tool read. Changes to identity, catalog or account state deny results.
+Requests and account setup run off the Qt thread; agents cannot supply authorization
+headers or invoke the trusted installation/account methods.
+
+Each recipe hashes its exact source bytes into a new immutable provider identity.
+Even a formatting-only change is a new version with a fresh account and switches
+initially off. **Remove Selected Recipe** persists catalog denial first, revokes
+matching tasks/saved permissions and disables accounts before deleting local
+credentials. A failed cleanup cannot restore an old account upon reinstallation.
+Existing workspace files, drafts and receipts remain independently manageable.
+Catalog and account metadata live beside app settings in
+`~/.custom_browser/connector_recipes.json` and `app_accounts.json`; secrets live
+only in the keyring. An invalid recipe catalog disables recipe providers while
+leaving the built-in Google provider available.
+
+Task storage schema 14 adds content-free recipe proposal receipts. Restart
+interrupts pending installations and never repeats them. Deleting a proposed
+source or ending its task cancels the review. Catalog publication is idempotent
+but separate from SQLite journaling: if journaling fails after installation, the
+catalog can retain the reviewed recipe, with no account, credential or task access
+created. A new trusted connection step is still required.
+
+Recipe milestone acceptance: **707 regressions passed in 297.745 seconds**;
+28 recipe checks passed in 4.567 seconds. SDK/raw clients both completed recipe
+review, synthetic connection and selected-field reads over stdio and authenticated
+HTTP MCP alongside actual sandbox PDF/XLSX/PNG generation. Startup/render/shutdown
+and Ruff/format passed. Logs: `/tmp/steed-recipes-full.log`,
+`/tmp/steed-recipes-focused.log`, `/tmp/steed-recipes-mcp-{stdio,http}.log`, and
+`/tmp/steed-recipes-startup.log`. Review/settings previews were inspected. Real
+service accounts and native desktop interaction remain separate acceptance checks.
 
 ### Shared Google registration decision
 
@@ -2165,7 +2226,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 48 input schemas. Names follow the internal command
+Tool discovery publishes 52 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -2263,8 +2324,7 @@ connection, restores pages/grants or dispatches an old operation.
 
 Copies have independent IDs and lifetime. Deleting an original draft/file does not
 delete shared copies. Draft/file imports, source provenance, evidence and write protections
-commit together in `tasks.sqlite` (current schema 12; no new schema migration for
-file recovery). Copies are checked against their stored size/hash before sharing.
+commit together in `tasks.sqlite` (current schema 14; file recovery itself added no schema migration). Copies are checked against their stored size/hash before sharing.
 Only selected files enter the new workspace, marked `user_shared`; unselected,
 deleted, building and foreign files are rejected. Imported source is data:
 packages need fresh staging and exact code approval. Old package registrations,
@@ -2375,6 +2435,8 @@ QT_QPA_PLATFORM=offscreen python tests/smoke_google_login.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_task_active_content.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --transport http
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --documents --recipes
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_agent_mcp.py --transport http --documents --recipes
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_google_connector.py
 QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python tests/smoke_google_documents.py
 python tests/smoke_password_manager.py
@@ -2388,6 +2450,13 @@ throughout the process. Register profile fixture directories with
 destroy and recreate QApplication between test classes using WebEngine.
 
 The Google compatibility smoke check also needs `openssl`. It uses a temporary loopback HTTPS server, maps the Google account host to that server for this test process, and trusts only its generated certificate key. It never contacts Google or uses an account.
+
+Recipe TLS regressions also require `openssl` and use temporary certificates and a
+local HTTPS server. Their socket fixture maps a validated public numeric address
+to that server without external connections. Recipe account checks use an in-memory
+synthetic keyring. `--recipes` adds source proposal, the actual default-Deny review
+popup, trusted account setup, persistent access and selected-field reads to both
+MCP clients. `--documents` additionally requires the installed optional bundle.
 
 The active-content audit prints JSON with observed requests, STUN packet counts,
 script execution results, and `tested_routes_contained`. Exit zero means its

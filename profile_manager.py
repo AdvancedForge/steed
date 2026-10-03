@@ -114,6 +114,7 @@ class ProfileRegistry(QObject):
                 self,
                 profiles=self,
                 connectors=self.app_connections.connectors,
+                connections=self.app_connections,
             )
             self.app_connections.task_service = self._tasks
             self.task_approvals = TaskApprovalQueue(self, self._tasks)

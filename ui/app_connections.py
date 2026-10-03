@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLayout,
     QLineEdit,
@@ -25,6 +26,8 @@ from PyQt6.QtWidgets import (
 
 from services.app_accounts import AccountError
 from services.connector_access import GROUP_LABELS
+from services.connector_recipes import MAX_RECIPE_BYTES, parse_recipe
+from ui.recipe_review import RecipeReviewDialog
 from ui.task_approval import WrappedLabel
 
 
@@ -72,6 +75,14 @@ class AppConnectionsDialog(QDialog):
         for provider in manager.providers.values():
             self.provider.addItem(provider.title, provider.name)
         layout.addWidget(self.provider)
+        recipes = QHBoxLayout()
+        self.import_recipe_button = QPushButton("Add Connector Recipe…")
+        self.remove_recipe_button = QPushButton("Remove Selected Recipe")
+        self.import_recipe_button.clicked.connect(self.import_recipe)
+        self.remove_recipe_button.clicked.connect(self.remove_recipe)
+        recipes.addWidget(self.import_recipe_button)
+        recipes.addWidget(self.remove_recipe_button)
+        layout.addLayout(recipes)
         self.capability_layout = QHBoxLayout()
         layout.addLayout(self.capability_layout)
         self.capabilities = {}
@@ -147,6 +158,9 @@ class AppConnectionsDialog(QDialog):
         self.capabilities = {}
         provider = self.manager.providers.get(self.provider.currentData())
         if provider is not None:
+            self.setup_button.setVisible(provider.authentication != "bearer")
+            if provider.authentication == "bearer":
+                self.setup_button.setChecked(False)
             if hasattr(self, "connect_button"):
                 self.connect_button.setText("Connect " + provider.title)
             self.setup_link_button.setText("Open " + provider.title + " Setup")
@@ -202,6 +216,21 @@ class AppConnectionsDialog(QDialog):
         if not capabilities:
             self.status.setText("Choose at least one capability.")
             return
+        provider = self.manager.providers[self.provider.currentData()]
+        if provider.authentication == "bearer":
+            token, accepted = QInputDialog.getText(
+                self,
+                "Connect " + provider.title,
+                "Enter this service's API bearer token. It will be verified with the reviewed identity endpoint and stored only in your desktop keyring.",
+                QLineEdit.EchoMode.Password,
+            )
+            if accepted:
+                self._run(
+                    lambda: self.manager.connect_recipe_account(
+                        provider.name, token, capabilities
+                    )
+                )
+            return
         self._run(
             lambda: self.manager.connect_account(
                 self.provider.currentData(),
@@ -220,10 +249,19 @@ class AppConnectionsDialog(QDialog):
 
     def _buttons(self):
         available = not self.manager.busy and not self.manager.failure
-        self.connect_button.setEnabled(available)
+        self.connect_button.setEnabled(
+            available and self.provider.currentData() in self.manager.providers
+        )
         self.disconnect_button.setEnabled(available and self.accounts.currentRow() >= 0)
         self.unlock_button.setEnabled(available)
         self.cancel_button.setEnabled(self.manager.busy)
+        self.import_recipe_button.setEnabled(
+            available and self.manager.recipes is not None
+        )
+        selected = self.manager.providers.get(self.provider.currentData())
+        self.remove_recipe_button.setEnabled(
+            bool(available and selected and selected.recipe_sha256)
+        )
         for widget in (
             self.provider,
             self.client,
@@ -287,6 +325,19 @@ class AppConnectionsDialog(QDialog):
             self.access_panel.setEnabled(False)
 
     def refresh(self):
+        selected_provider = self.provider.currentData()
+        current = [self.provider.itemData(i) for i in range(self.provider.count())]
+        if current != list(self.manager.providers):
+            self.provider.blockSignals(True)
+            self.provider.clear()
+            for provider in self.manager.providers.values():
+                self.provider.addItem(provider.title, provider.name)
+            index = self.provider.findData(selected_provider)
+            self.provider.setCurrentIndex(
+                index if index >= 0 else max(0, self.provider.count() - 1)
+            )
+            self.provider.blockSignals(False)
+            self._capabilities()
         selected = None
         row = self.accounts.currentRow()
         if row >= 0:
@@ -299,7 +350,9 @@ class AppConnectionsDialog(QDialog):
         for row, account in enumerate(accounts):
             for col, value in enumerate(
                 (
-                    account.provider,
+                    self.manager.providers[account.provider].title
+                    if account.provider in self.manager.providers
+                    else account.provider,
                     account.label,
                     ", ".join(account.capabilities),
                     "Connected" if account.enabled else "Disabled",
@@ -315,7 +368,14 @@ class AppConnectionsDialog(QDialog):
         if selected is None and accounts:
             self.accounts.selectRow(len(accounts) - 1)
         self.accounts.blockSignals(False)
-        self.status.setText(self.manager.message)
+        self.status.setText(
+            self.manager.message
+            + (
+                "\n" + self.manager.recipe_failure
+                if self.manager.recipe_failure
+                else ""
+            )
+        )
         if self.manager.message.startswith("Connected ") and not self.manager.busy:
             self.client.clear()
             self.setup_button.setChecked(False)
@@ -327,3 +387,35 @@ class AppConnectionsDialog(QDialog):
     def done(self, result):
         self.manager.cancel()
         super().done(result)
+
+    def import_recipe(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Review Connector Recipe", "", "JSON files (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with Path(path).open("rb") as stream:
+                recipe = parse_recipe(stream.read(MAX_RECIPE_BYTES + 1))
+            dialog = RecipeReviewDialog(self.manager, recipe, self)
+            dialog.show()
+        except (OSError, ValueError):
+            self.status.setText(
+                "Choose a valid connector recipe JSON of at most 16 KiB."
+            )
+
+    def remove_recipe(self):
+        from PyQt6.QtWidgets import QMessageBox
+
+        provider = self.manager.providers.get(self.provider.currentData())
+        if (
+            provider
+            and provider.recipe_sha256
+            and QMessageBox.question(
+                self,
+                "Remove Connection Recipe",
+                f"Remove {provider.title} and disconnect all of its accounts? Existing task receipts will remain.",
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
+            self._run(lambda: self.manager.remove_recipe(provider.name))
