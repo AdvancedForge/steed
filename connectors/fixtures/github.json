@@ -3,17 +3,23 @@
   "references": [
     "https://docs.github.com/en/rest/users/users#get-the-authenticated-user",
     "https://docs.github.com/en/rest/repos/repos#get-a-repository",
+    "https://docs.github.com/en/rest/issues/issues#get-an-issue",
     "https://docs.github.com/en/rest/issues/issues#create-an-issue",
     "https://docs.github.com/en/rest/about-the-rest-api/api-versions",
+    "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api",
     "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
   ],
   "notes": [
     "GET /user returns a numeric id and a login. Its email field is null unless the token has user:email, so /login is the reviewed account label and /email is never used.",
-    "A repository read and an issue create both take a repository name as the single {destination} segment under the owner written in the reviewed source.",
+    "The owner and the repository are both written in the reviewed source, so only an issue number is selected per call. GitHub documents issue_number as a required integer path parameter.",
+    "On an issue, number, title, state and html_url are documented as required; body and state_reason are documented as string or null, and GitHub documents that blank fields are included as null instead of being omitted, so both are returned as explicit nulls.",
+    "The singular assignee field is not selected: it is being removed in the current documented API version, while the assignees array is only optionally present.",
+    "GET an issue documents 200, 301, 304, 404 and 410. A transferred issue answers 301, an issue the token cannot read answers 404, and a deleted issue answers 410; Steed follows no redirect and treats each of those as a failure.",
     "POST /repos/{owner}/{repo}/issues accepts title as required and body as an optional string; the reviewed profile sends only those two fields.",
     "GitHub documents an unversioned default REST API version. Steed does not pin a version header, so behaviour follows GitHub's current documented default."
   ],
   "owner": "fixture-owner",
+  "repository": "fixture-repo",
   "identity": {
     "/user": {
       "login": "fixture-user",
@@ -43,6 +49,38 @@
       "private": false,
       "html_url": "https://github.com/fixture-owner/fixture-repo",
       "default_branch": "main"
+    },
+    "/repos/fixture-owner/fixture-repo/issues/1": {
+      "id": 9001,
+      "node_id": "I_kwDOExample",
+      "number": 1,
+      "title": "Documented issue with no body",
+      "state": "open",
+      "state_reason": null,
+      "body": null,
+      "locked": false,
+      "labels": [],
+      "comments": 0,
+      "created_at": "2025-01-15T10:30:00Z",
+      "updated_at": "2025-01-15T10:30:00Z",
+      "html_url": "https://github.com/fixture-owner/fixture-repo/issues/1",
+      "user": null
+    },
+    "/repos/fixture-owner/fixture-repo/issues/2": {
+      "id": 9002,
+      "node_id": "I_kwDOExample2",
+      "number": 2,
+      "title": "Documented issue with a body",
+      "state": "closed",
+      "state_reason": "completed",
+      "body": "Documented issue body with \"quotes\"",
+      "locked": false,
+      "labels": [],
+      "comments": 0,
+      "created_at": "2025-01-16T10:30:00Z",
+      "updated_at": "2025-01-17T10:30:00Z",
+      "html_url": "https://github.com/fixture-owner/fixture-repo/issues/2",
+      "user": null
     }
   },
   "created": {

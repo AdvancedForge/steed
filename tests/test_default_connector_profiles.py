@@ -387,22 +387,33 @@ class TodoistProfileTests(ProfileCase):
 
 class GitHubOwnerTemplateTests(ProfileCase):
     OWNER = "REPLACE-WITH-YOUR-GITHUB-OWNER"
+    REPOSITORY = "REPLACE-WITH-YOUR-GITHUB-REPOSITORY"
 
     def setUp(self):
         self.template = (
             PACKAGED / "templates" / "github-owner-template.json"
         ).read_bytes()
-        self.assertIn(self.OWNER.encode(), self.template)
-        # The documented user step: copy the template and fix one owner segment.
+        # The documented user step: copy the template and fix the owner and the
+        # repository, so the reviewed source names exactly one repository.
         self.recipe = parse_recipe(
-            self.template.replace(self.OWNER.encode(), b"fixture-owner")
+            self.template.replace(self.OWNER.encode(), b"fixture-owner").replace(
+                self.REPOSITORY.encode(), b"fixture-repo"
+            )
         )
         self.adapter = self.install(self.recipe, "github")
 
-    def test_owner_template_is_not_offered_until_a_user_fixes_an_owner(self):
+    def test_template_is_not_offered_until_a_user_fixes_owner_and_repository(self):
         self.assertNotIn("github-owner-template.json", packaged_slugs())
         unedited = parse_recipe(self.template)
-        self.assertEqual([t.path.count(self.OWNER) for t in unedited.tools], [1, 1])
+        for tool in unedited.tools:
+            with self.subTest(tool=tool.name):
+                self.assertEqual(tool.path.count(self.OWNER), 1)
+                self.assertEqual(tool.path.count(self.REPOSITORY), 1)
+        # Only an issue number is selected at call time.
+        self.assertEqual(
+            [t.name for t in unedited.tools if "{destination}" in t.path],
+            ["read_issue"],
+        )
         # No packaged or template source ships a real account owner.
         for path in sorted(PACKAGED.rglob("*.json")):
             self.assertNotIn(b"octocat", path.read_bytes(), path.name)
@@ -415,8 +426,8 @@ class GitHubOwnerTemplateTests(ProfileCase):
         self.assertEqual(self.adapter.account.subject, "42")
         self.assertEqual(self.adapter.account.label, "fixture-user")
 
-    def test_repository_reads_stay_pinned_to_the_reviewed_owner(self):
-        result = self.read(self.adapter, "read_repository", "fixture-repo")
+    def test_repository_reads_stay_pinned_to_the_reviewed_source(self):
+        result = self.read(self.adapter, "read_repository", "account")
         self.assertEqual(result.state, "succeeded")
         self.assertEqual(
             json.loads(result.text),
@@ -431,19 +442,58 @@ class GitHubOwnerTemplateTests(ProfileCase):
             "https://api.github.com/repos/fixture-owner/fixture-repo",
         )
         self.assertEqual(self.api.posts, [])
+        # No repository, owner or query can be chosen at call time.
         repository = self.recipe.tools[0]
-        for value in (
-            "other-owner/repo",
-            "../../other-owner/repo",
-            "https://github.com/other-owner/repo",
-            "repo?state=open",
-        ):
+        self.assertEqual(repository.destination_type, "account")
+        for value in ("fixture-repo", "other-owner/repo", "repo?state=open"):
             with self.subTest(value=value), self.assertRaises(RecipeError):
                 repository.destination(value)
 
-    def test_issue_create_sends_only_title_and_body_to_the_pinned_owner(self):
+    def test_issue_reads_return_documented_nulls_explicitly(self):
+        empty = self.read(self.adapter, "read_issue", "1")
+        self.assertEqual(
+            json.loads(empty.text),
+            {
+                "number": 1,
+                "title": "Documented issue with no body",
+                "state": "open",
+                "state_reason": None,
+                "body": None,
+                "url": "https://github.com/fixture-owner/fixture-repo/issues/1",
+            },
+        )
+        self.assertIn('"body": null', empty.text)
+        self.assertNotIn(TOKEN, empty.text)
+        self.assertEqual(
+            self.api.calls[-1][1],
+            "https://api.github.com/repos/fixture-owner/fixture-repo/issues/1",
+        )
+        filled = json.loads(self.read(self.adapter, "read_issue", "2").text)
+        self.assertEqual(filled["state"], "closed")
+        self.assertEqual(filled["state_reason"], "completed")
+        self.assertEqual(filled["body"], 'Documented issue body with "quotes"')
+        self.assertEqual(self.api.posts, [])
+        issue = next(t for t in self.recipe.tools if t.name == "read_issue")
+        for value in ("1/comments", "../../issues/1", "1?state=all", "https://x/1"):
+            with self.subTest(value=value), self.assertRaises(RecipeError):
+                issue.destination(value)
+
+    def test_documented_issue_statuses_fail_without_redirects_or_guessing(self):
+        route = "/repos/fixture-owner/fixture-repo/issues/1"
+        for status in (301, 304, 404, 410):
+            with self.subTest(status=status):
+                self.api.fail("GET", route, status)
+                with self.assertRaises(ApiError):
+                    self.read(self.adapter, "read_issue", "1")
+                self.api.failure = None
+        self.assertEqual(self.api.posts, [])
+        # An issue number that does not exist is the service's answer, not ours.
+        with self.assertRaises((RecipeError, KeyError, ApiError)):
+            self.read(self.adapter, "read_issue", "404")
+
+    def test_issue_create_sends_only_title_and_body_to_the_pinned_repository(self):
         request, definition, review = self.reviewed_create(
-            self.adapter, "create_issue", "fixture-repo"
+            self.adapter, "create_issue", "account"
         )
         self.assertEqual(json.loads(review.before), {"title": TITLE, "body": DRAFT})
         context = json.loads(review.context)
@@ -451,7 +501,7 @@ class GitHubOwnerTemplateTests(ProfileCase):
             context["url"],
             "https://api.github.com/repos/fixture-owner/fixture-repo/issues",
         )
-        self.assertEqual(context["destination"], "fixture-repo")
+        self.assertEqual(context["destination"], "account")
         self.assertIsNone(context["operation_header"])
         self.assertEqual(
             context["payload_sha256"],
@@ -483,7 +533,7 @@ class GitHubOwnerTemplateTests(ProfileCase):
 
     def test_rate_limit_after_dispatch_is_uncertain_without_replay(self):
         request, definition, review = self.reviewed_create(
-            self.adapter, "create_issue", "fixture-repo"
+            self.adapter, "create_issue", "account"
         )
         self.api.fail("POST", "/repos/fixture-owner/fixture-repo/issues", 403)
         outcome = definition.execute(replace(request, review=review), self.cancelled)
@@ -491,27 +541,24 @@ class GitHubOwnerTemplateTests(ProfileCase):
         self.assertIn("Check its receipt", outcome.text)
         self.assertEqual(len(self.api.posts), 1)
         self.api.failure = None
-        self.assertEqual(
-            self.read(self.adapter, "read_repository", "fixture-repo").state,
-            "succeeded",
-        )
+        self.assertEqual(self.read(self.adapter, "read_issue", "1").state, "succeeded")
         self.assertEqual(len(self.api.posts), 1)
 
     def test_hidden_repository_and_changed_identity_fail_closed(self):
         self.api.fail("GET", "/repos/fixture-owner/fixture-repo", 404)
         with self.assertRaises(ApiError):
-            self.read(self.adapter, "read_repository", "fixture-repo")
+            self.read(self.adapter, "read_repository", "account")
         self.api.failure = None
         request, definition, review = self.reviewed_create(
-            self.adapter, "create_issue", "fixture-repo"
+            self.adapter, "create_issue", "account"
         )
         self.api.data["routes"]["/user"]["login"] = "renamed-user"
         with self.assertRaises(AccountError):
-            self.read(self.adapter, "read_repository", "fixture-repo")
+            self.read(self.adapter, "read_repository", "account")
         # A changed identity cannot even be reviewed, and an already reviewed
         # payload is refused before dispatch.
         with self.assertRaises(AccountError):
-            self.reviewed_create(self.adapter, "create_issue", "fixture-repo")
+            self.reviewed_create(self.adapter, "create_issue", "account")
         outcome = definition.execute(replace(request, review=review), self.cancelled)
         self.assertEqual(outcome.state, "not_applied")
         self.assertEqual(self.api.posts, [])

@@ -102,30 +102,46 @@ Official references:
 `https://api.github.com`, bearer authentication with a fine-grained personal
 access token.
 
-This one is a **template, not a packaged profile**, because the owner has to be
-fixed in source you reviewed. A packaged file with a placeholder owner would be
-offered in the picker while being unable to reach anything, so the template lives
-outside the packaged catalog and is imported deliberately.
+This one is a **template, not a packaged profile**, because the owner and the
+repository have to be fixed in source you reviewed. A packaged file with
+placeholder values would be offered in the picker while being unable to reach
+anything, so the template lives outside the packaged catalog and is imported
+deliberately. One imported copy covers one repository, which is also the smallest
+thing a fine-grained token can be limited to.
 
 Scope shipped:
 
 | Action | Wire contract |
 | --- | --- |
 | Identity | `GET /user`, subject `/id`, label `/login` |
-| Read one repository | `GET /repos/{owner}/{destination}` returning `/id`, `/full_name`, `/html_url` |
-| Create issue | `POST /repos/{owner}/{destination}/issues` with `title` and `body` |
+| Read the repository | `GET /repos/{owner}/{repository}` returning `/id`, `/full_name`, `/html_url` |
+| Read one issue | `GET /repos/{owner}/{repository}/issues/{destination}` by issue number |
+| Create issue | `POST /repos/{owner}/{repository}/issues` with `title` and `body` |
 
 Deliberately excluded: arbitrary owners or repositories chosen at call time, issue
-updates and comments, pull requests, releases, and list pagination.
+updates and comments, pull requests, releases, and issue-list pagination.
 
 Notes on the wire shape:
 
 - `GET /user` returns a `login` and a numeric `id`. Its `email` is `null` unless
   the token can read it, so a private email is never the account label.
-- Only the repository **name** is a `{destination}` segment, and the owner is
-  written into the reviewed path. A destination such as `other-owner/repo`,
-  `../../other/repo`, or anything with a query or scheme is rejected before any
+- The owner and repository are written into the reviewed path, so only an issue
+  number is a `{destination}` segment. A destination such as `1/comments`,
+  `../../issues/1`, or anything with a query or scheme is rejected before any
   request.
+- On an issue, `number`, `title`, `state` and `html_url` are documented as
+  required, while `body` and `state_reason` are documented as *string or null*.
+  Both nullable fields are returned as an explicit `null` and are described that
+  way in the tool description, so nothing is rewritten or invented. GitHub also
+  documents that blank fields are included as `null` rather than omitted.
+- The singular `assignee` field is not selected: GitHub's current documented API
+  version removes it, and the `assignees` array is only optionally present.
+- `GET` an issue documents `200`, `301`, `304`, `404` and `410`: a transferred
+  issue answers `301`, an issue the token cannot read answers `404`, and a
+  deleted issue answers `410`. Steed follows no redirect, so each of those is
+  surfaced as a failed read rather than retried elsewhere.
+- `state_reason` for an open issue is documented as nullable but not as
+  specifically `null`; the profile passes through whatever GitHub sends.
 - Issue creation sends exactly `title` and `body`. No labels, assignees, projects
   or milestone are inferred from the draft.
 - Steed does not pin an `X-GitHub-Api-Version` header, so requests use GitHub's
@@ -138,10 +154,12 @@ Notes on the wire shape:
 ### Owner step (user-owned)
 
 1. Copy `connectors/recipes/templates/github-owner-template.json` to your own
-   location, for example `~/steed-github.json`.
-2. Replace every `REPLACE-WITH-YOUR-GITHUB-OWNER` with the owner that holds your
-   repositories, for example `my-github-login`. The reviewed source review shows
-   the resulting paths before anything is installed.
+   location, for example `~/steed-github-repository.json`.
+2. Replace every `REPLACE-WITH-YOUR-GITHUB-OWNER` with the owner that holds the
+   repository and every `REPLACE-WITH-YOUR-GITHUB-REPOSITORY` with the repository
+   name, for example `my-github-login` and `my-project`. The reviewed source
+   review shows the resulting paths before anything is installed. Repeat step 1
+   for each repository you want.
 3. In Steed choose **App Connections → Add Connector Recipe…**, select the copy,
    read the source review and install it.
 4. Connect the account with the token below, then choose the actions to expose.
@@ -165,7 +183,9 @@ Official references:
 
 - [Get the authenticated user](https://docs.github.com/en/rest/users/users#get-the-authenticated-user)
 - [Get a repository](https://docs.github.com/en/rest/repos/repos#get-a-repository)
+- [Get an issue](https://docs.github.com/en/rest/issues/issues#get-an-issue)
 - [Create an issue](https://docs.github.com/en/rest/issues/issues#create-an-issue)
+- [Getting started with the REST API](https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api)
 - [REST API versions](https://docs.github.com/en/rest/about-the-rest-api/api-versions)
 - [Rate limits for the REST API](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
 - [Fine-grained personal access tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
