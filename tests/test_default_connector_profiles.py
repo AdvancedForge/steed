@@ -24,6 +24,7 @@ from services.app_oauth import ApiError
 from services.bundled_recipes import BundledRecipes
 from services.connector_recipes import RecipeError, RecipeStore, parse_recipe
 from services.connectors import ConnectorRequest
+from services.recipe_http import RecipeHttp
 from services.recipe_connector import RecipeConnector, connect_recipe
 from services.task_artifacts import TaskArtifact
 
@@ -1219,3 +1220,215 @@ class GitLabProjectTemplateTests(ProfileCase):
         # ...and Steed still never runs it on its own.
         self.assertEqual(len(self.api.posts), 1)
         self.assertIsNone(self.definition(self.adapter, "create_issue").reconcile)
+
+
+CONTRACT_ORIGINS = {
+    "Notion": "https://api.notion.com",
+    "Zotero": "https://api.zotero.org",
+    "Figma": "https://api.figma.com",
+}
+
+
+def contract_case_recipe(case):
+    """Build the recipe a case describes, from documented fields only."""
+
+    request = case["request"]
+    identity = case["identity"]
+    data = {
+        "version": 2,
+        "name": "Contract case " + case["id"],
+        "origin": CONTRACT_ORIGINS[case["provider"]],
+        "authentication": {"type": "bearer"},
+        "identity": {
+            "path": identity["request_path"],
+            "subject": identity["subject"],
+            "label": identity["label"],
+        },
+        "tools": [
+            {
+                "name": "contract_read",
+                "description": "Documented case read " + case["id"],
+                "method": "GET",
+                "path": request["path"],
+                "response": case["read"]["response"],
+            }
+        ],
+    }
+    return parse_recipe(json.dumps(data).encode("utf-8"))
+
+
+class CaseTransport:
+    """Serves one case's documented identity and read responses."""
+
+    def __init__(self, case):
+        self.case = case
+        self.requests = []
+        self.identity = case["identity"]["response"]
+        self.read = case.get("documented_response")
+        self.failure = case.get("failure")
+
+    def request(self, method, url, *, headers=None, body=None, cancelled=None):
+        assert method == "GET" and body is None
+        self.requests.append((method, url, dict(headers)))
+        path = urlsplit(url).path
+        if path == self.case["identity"]["request_path"]:
+            return copy.deepcopy(self.identity)
+        if self.failure is not None:
+            raise ApiError(self.failure["status"])
+        return copy.deepcopy(self.read)
+
+
+class ExecutableContractCaseTests(unittest.TestCase):
+    """Each case states what already passes and the smallest missing behaviour."""
+
+    def setUp(self):
+        self.registry = json.loads(
+            (FIXTURES / "executable_cases.json").read_text("utf-8")
+        )
+        self.cases = self.registry["cases"]
+
+    def case(self, name):
+        return next(c for c in self.cases if c["id"] == name)
+
+    def test_every_case_is_documented_and_states_both_halves_of_its_gap(self):
+        ids = [c["id"] for c in self.cases]
+        self.assertEqual(len(ids), len(set(ids)))
+        for case in self.cases:
+            with self.subTest(case=case["id"]):
+                self.assertIn(case["provider"], CONTRACT_ORIGINS)
+                self.assertIn(case["kind"], self.registry["kinds"])
+                self.assertEqual(case["request"]["method"], "GET")
+                self.assertTrue(case["request"]["path"].startswith("/"))
+                self.assertTrue(case["currently_passes"].endswith("."))
+                self.assertTrue(case["smallest_missing_behavior"].endswith("."))
+                self.assertTrue(case["expected"]["outcome"])
+                if case["kind"] == "dispatch":
+                    self.assertIn("request_path", case["identity"])
+                    self.assertIn("destination", case["read"])
+                    self.assertTrue(case["identity"]["subject"].startswith("/"))
+                    self.assertTrue(case["identity"]["label"].startswith("/"))
+
+    def test_recipes_generated_from_cases_parse_with_the_unchanged_engine(self):
+        for case in self.cases:
+            if case["kind"] != "dispatch":
+                continue
+            with self.subTest(case=case["id"]):
+                recipe = contract_case_recipe(case)
+                self.assertEqual(recipe.origin, CONTRACT_ORIGINS[case["provider"]])
+                self.assertEqual(recipe.tools[0].name, "contract_read")
+                # No credential ever reaches a generated recipe.
+                self.assertNotIn("token", json.dumps(recipe.metadata()).lower())
+
+    def test_dispatch_cases_prove_documented_reads_through_the_adapter(self):
+        for case in self.cases:
+            if case["kind"] != "dispatch":
+                continue
+            expected = case["expected"]
+            with self.subTest(case=case["id"]):
+                recipe = contract_case_recipe(case)
+                transport = CaseTransport(case)
+                if expected["outcome"] == "refused_before_install":
+                    with self.assertRaises(AccountError) as caught:
+                        self.connect(recipe, transport)
+                    self.assertIn(expected["message_fragment"], str(caught.exception))
+                    # The identity request was sent and nothing else was.
+                    self.assertEqual(
+                        [urlsplit(c[1]).path for c in transport.requests],
+                        [case["identity"]["request_path"]],
+                    )
+                    continue
+                adapter = self.connect(recipe, transport)
+                definition = adapter.tools()[0]
+                request = ConnectorRequest(
+                    "read",
+                    adapter.account.connector,
+                    "contract_read",
+                    "read",
+                    case["read"]["destination"],
+                    None,
+                )
+                if expected["outcome"] == "service_failure_not_guessed":
+                    with self.assertRaises(ApiError):
+                        definition.execute(request, self.cancelled)
+                    self.assertEqual(transport.requests[-1][0], "GET")
+                    continue
+                result = definition.execute(request, self.cancelled)
+                self.assertEqual(result.state, expected["outcome"])
+                self.assertEqual(json.loads(result.text), expected["projected"])
+                # The reviewed path is used verbatim and nothing else is called.
+                self.assertEqual(
+                    transport.requests[-1][1],
+                    CONTRACT_ORIGINS[case["provider"]]
+                    + recipe.tools[0].path.replace(
+                        "{destination}", case["read"]["destination"]
+                    ),
+                )
+                self.assertNotIn(TOKEN, result.text)
+
+    def connect(self, recipe, transport):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        catalog = RecipeStore(root / "catalog.json")
+        catalog.install(recipe)
+        accounts = AccountStore(root / "accounts.json", MemorySecrets())
+        self.cancelled = threading.Event()
+        account = connect_recipe(
+            recipe,
+            catalog,
+            accounts,
+            TOKEN,
+            ["contract_read"],
+            self.cancelled,
+            http=transport,
+        )
+        return RecipeConnector(recipe, catalog, account, accounts, http=transport)
+
+    def test_transport_cases_prove_the_header_and_query_gates_refuse_early(self):
+        for name in ("figma_credential_token_header", "notion_static_version_header"):
+            case = self.case(name)
+            with self.subTest(case=name):
+                http = RecipeHttp(CONTRACT_ORIGINS[case["provider"]])
+                with self.assertRaises(ValueError) as caught:
+                    http.request(
+                        "GET",
+                        CONTRACT_ORIGINS[case["provider"]] + case["request"]["path"],
+                        headers=case["request"]["headers"],
+                        cancelled=threading.Event(),
+                    )
+                self.assertIn(
+                    case["expected"]["message_fragment"], str(caught.exception)
+                )
+                self.assertEqual(case["expected"]["outcome"], "refused_before_dispatch")
+
+    def test_an_unreviewed_query_parameter_is_refused_before_dispatch(self):
+        case = self.case("figma_document_read_body_bound")
+        http = RecipeHttp(CONTRACT_ORIGINS["Figma"])
+        with self.assertRaises(ValueError) as caught:
+            http.request(
+                "GET",
+                CONTRACT_ORIGINS["Figma"] + "/v1/files/fixture-file-key?depth=1",
+                headers={"Authorization": "Bearer " + TOKEN},
+                cancelled=threading.Event(),
+            )
+        self.assertIn("pagination parameter", str(caught.exception))
+
+    def test_documented_bounds_stay_recorded_as_pending_not_executable_here(self):
+        for name in (
+            "figma_document_read_body_bound",
+            "figma_oversized_success_is_a_failure",
+        ):
+            case = self.case(name)
+            with self.subTest(case=name):
+                bound = case["engine_bound"]["body_bytes"]
+                self.assertEqual(bound, 128 * 1024)
+                self.assertGreater(case["synthetic_body_bytes"], bound)
+                self.assertIn("services/recipe_http.py", case["engine_bound"]["source"])
+        local = self.case("figma_document_read_body_bound")
+        self.assertEqual(local["expected"]["outcome"], "not_executable_locally")
+        self.assertIn("public HTTPS domain", local["expected"]["reason"])
+        # An oversized success must remain a failure, not a partial read.
+        oversized = self.case("figma_oversized_success_is_a_failure")
+        self.assertEqual(oversized["expected"]["outcome"], "must_remain_a_failure")
+        self.assertEqual(oversized["expected"]["status"], 200)
+        self.assertIn("None", oversized["smallest_missing_behavior"])

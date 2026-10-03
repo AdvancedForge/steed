@@ -1,0 +1,623 @@
+{
+  "version": 1,
+  "note": "Executable contract cases for the gated families. Each case is comparable and states exact method, origin and path, API version, headers split into static and credential-derived values, identity and read projections, a byte bound where the response matters, and the expected outcome. Every case also states which current Steed behaviour already passes and the smallest missing behaviour, so a case can fail because a shared capability is absent rather than because a recipe is wrong. A passing dispatch case proves Steed's behaviour against a documented shape; it never proves that a provider accepts a credential. No credential appears in this file.",
+  "kinds": {
+    "parse": "Build a recipe from the case and assert the interpreter accepts or refuses it.",
+    "dispatch": "Install the generated recipe, connect one synthetic account and execute the case read through RecipeConnector with a synthetic transport serving the documented response.",
+    "transport": "Drive the real RecipeHttp request gate directly, which refuses an unreviewed header or query before any socket work.",
+    "documented_bound": "Record a documented engine or provider bound that cannot be executed locally, with the arithmetic that makes it a bound and the reason it is not executable."
+  },
+  "cases": [
+    {
+      "id": "notion_static_version_header",
+      "provider": "Notion",
+      "kind": "transport",
+      "purpose": "Notion documents Notion-Version as required on every request, so a read must be able to send it.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/users/me",
+        "headers": {
+          "Authorization": "Bearer <integration token>",
+          "Notion-Version": "2026-03-11"
+        }
+      },
+      "expected": {
+        "outcome": "refused_before_dispatch",
+        "raises": "ValueError",
+        "message_fragment": "Unsupported recipe headers"
+      },
+      "currently_passes": "Nothing blocks a Notion read except this: the origin, path and pointer rules are already satisfied.",
+      "smallest_missing_behavior": "One reviewed static header value on a recipe, sent on every request for that origin."
+    },
+    {
+      "id": "notion_database_read_with_label",
+      "provider": "Notion",
+      "kind": "dispatch",
+      "purpose": "A database read projecting only fields present in the documented current-version response.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/databases/{destination}",
+        "headers": {
+          "Authorization": "Bearer <integration token>"
+        }
+      },
+      "api_version": "2026-03-11",
+      "identity": {
+        "request_path": "/v1/users/me",
+        "subject": "/id",
+        "label": "/name",
+        "response": {
+          "object": "user",
+          "id": "e79a0b74-3aba-4149-9f74-0bb5791a6ee6",
+          "name": "Fixture Integration",
+          "avatar_url": null,
+          "type": "bot",
+          "bot": {
+            "owner": {
+              "type": "workspace",
+              "workspace": true
+            },
+            "workspace_id": "2a1b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "workspace_name": "Fixture Workspace"
+          }
+        }
+      },
+      "read": {
+        "destination": "fixture-database-id",
+        "response": [
+          {
+            "label": "id",
+            "pointer": "/id"
+          },
+          {
+            "label": "title",
+            "pointer": "/title"
+          },
+          {
+            "label": "url",
+            "pointer": "/url"
+          },
+          {
+            "label": "parent",
+            "pointer": "/parent"
+          }
+        ]
+      },
+      "documented_response": {
+        "object": "database",
+        "id": "fixture-database-id",
+        "title": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Fixture database",
+              "link": null
+            },
+            "plain_text": "Fixture database",
+            "href": null
+          }
+        ],
+        "description": [],
+        "parent": {
+          "type": "page_id",
+          "page_id": "fixture-page-id"
+        },
+        "is_inline": false,
+        "database_type": null,
+        "in_trash": false,
+        "is_locked": false,
+        "created_time": "2025-01-15T10:30:00.000Z",
+        "last_edited_time": "2025-01-16T10:30:00.000Z",
+        "data_sources": [
+          {
+            "id": "fixture-data-source-id",
+            "name": "Fixture rows"
+          }
+        ],
+        "icon": null,
+        "cover": null,
+        "url": "https://www.notion.so/fixture-database-id",
+        "public_url": null
+      },
+      "expected": {
+        "outcome": "succeeded",
+        "projected": {
+          "id": "fixture-database-id",
+          "title": [
+            {
+              "type": "text",
+              "text": {
+                "content": "Fixture database",
+                "link": null
+              },
+              "plain_text": "Fixture database",
+              "href": null
+            }
+          ],
+          "url": "https://www.notion.so/fixture-database-id",
+          "parent": {
+            "type": "page_id",
+            "page_id": "fixture-page-id"
+          }
+        }
+      },
+      "currently_passes": "Identity selection, path validation, pointer selection and result shaping all already pass for this documented shape; only the required header is missing.",
+      "smallest_missing_behavior": "The reviewed static header from notion_static_version_header.",
+      "provider_acceptance": "pending: an internal integration token is only documented by inference, and the projected fields are not yet confirmed against a real shared database."
+    },
+    {
+      "id": "notion_null_name_identity",
+      "provider": "Notion",
+      "kind": "dispatch",
+      "purpose": "The documented user object marks name as oneOf string or null, so a bot with no name has no label.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/users/me",
+        "headers": {
+          "Authorization": "Bearer <integration token>"
+        }
+      },
+      "identity": {
+        "request_path": "/v1/users/me",
+        "subject": "/id",
+        "label": "/name",
+        "response": {
+          "object": "user",
+          "id": "f0e1d2c3-b4a5-4968-8776-65544332211a",
+          "name": null,
+          "avatar_url": null,
+          "type": "bot",
+          "bot": {
+            "owner": {
+              "type": "workspace",
+              "workspace": true
+            },
+            "workspace_id": "2a1b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "workspace_name": null
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused_before_install",
+        "raises": "AccountError",
+        "message_fragment": "usable account identity"
+      },
+      "currently_passes": "The identity check correctly refuses to invent a label, so a null name fails closed rather than binding a guess.",
+      "smallest_missing_behavior": "Either a documented fallback field for a nameless bot, or an explicit decision to accept a null label and show something other than a display string.",
+      "read": {
+        "destination": "fixture-database-id",
+        "response": [
+          {
+            "label": "id",
+            "pointer": "/id"
+          },
+          {
+            "label": "title",
+            "pointer": "/title"
+          },
+          {
+            "label": "url",
+            "pointer": "/url"
+          },
+          {
+            "label": "parent",
+            "pointer": "/parent"
+          }
+        ]
+      },
+      "documented_response": {
+        "object": "database",
+        "id": "fixture-database-id",
+        "title": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Fixture database",
+              "link": null
+            },
+            "plain_text": "Fixture database",
+            "href": null
+          }
+        ],
+        "description": [],
+        "parent": {
+          "type": "page_id",
+          "page_id": "fixture-page-id"
+        },
+        "is_inline": false,
+        "database_type": null,
+        "in_trash": false,
+        "is_locked": false,
+        "created_time": "2025-01-15T10:30:00.000Z",
+        "last_edited_time": "2025-01-16T10:30:00.000Z",
+        "data_sources": [
+          {
+            "id": "fixture-data-source-id",
+            "name": "Fixture rows"
+          }
+        ],
+        "icon": null,
+        "cover": null,
+        "url": "https://www.notion.so/fixture-database-id",
+        "public_url": null
+      }
+    },
+    {
+      "id": "zotero_pinned_library_item_read",
+      "provider": "Zotero",
+      "kind": "dispatch",
+      "purpose": "A user-pinned numeric library id in reviewed source, with the item key as the caller destination.",
+      "request": {
+        "method": "GET",
+        "path": "/users/12345/items/{destination}",
+        "headers": {
+          "Authorization": "Bearer <API key>"
+        }
+      },
+      "api_version": "3 (documented default; the version header is recommended, not required)",
+      "identity": {
+        "request_path": "/keys/current",
+        "subject": "/userID",
+        "label": "/username",
+        "response": {
+          "userID": 12345,
+          "username": "Fixture User",
+          "access": {
+            "user": {
+              "library": true,
+              "files": true,
+              "notes": true,
+              "write": true
+            },
+            "groups": {
+              "all": {
+                "library": true,
+                "write": true
+              }
+            }
+          }
+        }
+      },
+      "read": {
+        "destination": "ABCD2345",
+        "response": [
+          {
+            "label": "key",
+            "pointer": "/key"
+          },
+          {
+            "label": "version",
+            "pointer": "/version"
+          },
+          {
+            "label": "item_type",
+            "pointer": "/data/itemType"
+          },
+          {
+            "label": "date_added",
+            "pointer": "/data/dateAdded"
+          },
+          {
+            "label": "date_modified",
+            "pointer": "/data/dateModified"
+          }
+        ]
+      },
+      "documented_response": {
+        "key": "ABCD2345",
+        "version": 301,
+        "library": {
+          "type": "users",
+          "id": 12345,
+          "name": "Fixture User",
+          "links": {
+            "alternate": {
+              "href": "https://www.zotero.org/fixture",
+              "type": "text/html"
+            },
+            "self": {
+              "href": "https://api.zotero.org/users/12345",
+              "type": "application/json"
+            }
+          }
+        },
+        "links": {
+          "alternate": {
+            "href": "https://www.zotero.org/fixture/items/ABCD2345",
+            "type": "text/html"
+          },
+          "self": {
+            "href": "https://api.zotero.org/users/12345/items/ABCD2345",
+            "type": "application/json"
+          }
+        },
+        "meta": {
+          "creatorSummary": "Fixture User",
+          "parsedDate": "2025-01-15T10:30:00Z",
+          "lastUpdatedByUser": "fixture",
+          "created": {
+            "user": "fixture",
+            "date": "2025-01-15T10:30:00Z",
+            "version": "0"
+          },
+          "updated": {
+            "date": "2025-01-16T10:30:00Z",
+            "version": "301"
+          }
+        },
+        "data": {
+          "key": "ABCD2345",
+          "version": 301,
+          "itemType": "journalArticle",
+          "libraryCatalog": "",
+          "dateAdded": "2025-01-15T10:30:00Z",
+          "dateModified": "2025-01-16T10:30:00Z",
+          "creators": [
+            {
+              "creatorType": "author",
+              "firstName": "Fixture",
+              "lastName": "Author"
+            }
+          ],
+          "tags": [],
+          "collections": [],
+          "relations": {},
+          "title": "A documented article",
+          "publicationTitle": "Fixture Journal",
+          "volume": "1",
+          "pages": "1-10",
+          "date": "2025-01-15",
+          "series": "",
+          "journalAbbreviation": "",
+          "language": "en",
+          "DOI": "",
+          "ISSN": "",
+          "shortTitle": "",
+          "url": "",
+          "accessDate": "",
+          "archive": "",
+          "archiveLocation": "",
+          "callNumber": "",
+          "rights": "",
+          "extra": ""
+        }
+      },
+      "expected": {
+        "outcome": "succeeded",
+        "projected": {
+          "key": "ABCD2345",
+          "version": 301,
+          "item_type": "journalArticle",
+          "date_added": "2025-01-15T10:30:00Z",
+          "date_modified": "2025-01-16T10:30:00Z"
+        }
+      },
+      "currently_passes": "Bearer auth, the pinned path segment, the documented item-key character set and every projected pointer already pass against this documented shape.",
+      "smallest_missing_behavior": "Nothing structural. One sign-in without a pinned library id still needs binding an identity-derived value into a later path.",
+      "provider_acceptance": "pending: no item schema is published, the documented identity route is written against the Zotero-API-Key header, and which data fields exist for every item type is unverified."
+    },
+    {
+      "id": "zotero_wrong_id_kind",
+      "provider": "Zotero",
+      "kind": "dispatch",
+      "purpose": "A global id is not valid on the library item route, and Steed must not silently reinterpret it.",
+      "request": {
+        "method": "GET",
+        "path": "/users/12345/items/{destination}",
+        "headers": {
+          "Authorization": "Bearer <API key>"
+        }
+      },
+      "identity": {
+        "request_path": "/keys/current",
+        "subject": "/userID",
+        "label": "/username",
+        "response": {
+          "userID": 12345,
+          "username": "Fixture User",
+          "access": {
+            "user": {
+              "library": true,
+              "files": true,
+              "notes": true,
+              "write": true
+            },
+            "groups": {
+              "all": {
+                "library": true,
+                "write": true
+              }
+            }
+          }
+        }
+      },
+      "read": {
+        "destination": "7003",
+        "response": [
+          {
+            "label": "key",
+            "pointer": "/key"
+          }
+        ]
+      },
+      "failure": {
+        "status": 404,
+        "documented": "An invalid request such as an unknown item returns 404 Not Found. What a wrong id kind returns specifically is not documented."
+      },
+      "expected": {
+        "outcome": "service_failure_not_guessed",
+        "raises": "ApiError"
+      },
+      "currently_passes": "The request is dispatched with the caller's exact id, and Steed surfaces the service's answer instead of retrying with another id kind.",
+      "smallest_missing_behavior": "None. This is service behaviour, recorded so a failure is not mistaken for a Steed defect."
+    },
+    {
+      "id": "figma_credential_token_header",
+      "provider": "Figma",
+      "kind": "transport",
+      "purpose": "A personal access token is documented as travelling in X-Figma-Token, not in Authorization.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/me",
+        "headers": {
+          "X-Figma-Token": "<personal access token>"
+        }
+      },
+      "expected": {
+        "outcome": "refused_before_dispatch",
+        "raises": "ValueError",
+        "message_fragment": "Unsupported recipe headers"
+      },
+      "currently_passes": "Nothing blocks a Figma identity read except the credential placement; the origin, path and pointers are already satisfied.",
+      "smallest_missing_behavior": "One reviewed credential-derived header value, carried without inventing a Bearer prefix and never in a path or query."
+    },
+    {
+      "id": "figma_metadata_read_without_tree",
+      "provider": "Figma",
+      "kind": "dispatch",
+      "purpose": "The documented file metadata endpoint returns no document tree, so the read stays small.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/files/{destination}/meta",
+        "headers": {
+          "Authorization": "Bearer <OAuth token>"
+        }
+      },
+      "identity": {
+        "request_path": "/v1/me",
+        "subject": "/id",
+        "label": "/handle",
+        "response": {
+          "id": "fixture-user-id",
+          "handle": "fixture-user",
+          "img_url": "https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/fixture.png",
+          "email": "fixture@example.test"
+        }
+      },
+      "read": {
+        "destination": "fixture-file-key",
+        "response": [
+          {
+            "label": "name",
+            "pointer": "/file/name"
+          },
+          {
+            "label": "folder_name",
+            "pointer": "/file/folder_name"
+          },
+          {
+            "label": "last_touched_at",
+            "pointer": "/file/last_touched_at"
+          },
+          {
+            "label": "editor_type",
+            "pointer": "/file/editorType"
+          },
+          {
+            "label": "version",
+            "pointer": "/file/version"
+          },
+          {
+            "label": "role",
+            "pointer": "/file/role"
+          },
+          {
+            "label": "url",
+            "pointer": "/file/url"
+          }
+        ]
+      },
+      "documented_response": {
+        "file": {
+          "name": "Fixture file",
+          "folder_name": "Fixture folder",
+          "last_touched_at": "2025-01-16T10:30:00Z",
+          "creator": {
+            "id": "fixture-user-id",
+            "handle": "fixture-user",
+            "img_url": null
+          },
+          "last_touched_by": {
+            "id": "fixture-user-id",
+            "handle": "fixture-user",
+            "img_url": null
+          },
+          "thumbnail_url": "https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/fixture.png",
+          "editorType": "figma",
+          "version": "1234567890",
+          "role": "owner",
+          "link_access": "view",
+          "url": "https://www.figma.com/design/fixture-file-key/fixture-file"
+        }
+      },
+      "expected": {
+        "outcome": "succeeded",
+        "projected": {
+          "name": "Fixture file",
+          "folder_name": "Fixture folder",
+          "last_touched_at": "2025-01-16T10:30:00Z",
+          "editor_type": "figma",
+          "version": "1234567890",
+          "role": "owner",
+          "url": "https://www.figma.com/design/fixture-file-key/fixture-file"
+        }
+      },
+      "currently_passes": "Identity, the two-segment pinned path shape with one caller destination, pointer selection and result shaping already pass against this documented shape.",
+      "smallest_missing_behavior": "The credential-derived header from figma_credential_token_header, or an OAuth token the user already holds.",
+      "provider_acceptance": "pending: whether a personal access token may call /v1/me is not documented, and the projected fields are not confirmed against a real file."
+    },
+    {
+      "id": "figma_document_read_body_bound",
+      "provider": "Figma",
+      "kind": "documented_bound",
+      "purpose": "Projecting metadata does not shrink the response: the document route always carries the tree, and the transport bounds the body.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/files/{destination}",
+        "headers": {
+          "Authorization": "Bearer <OAuth token>"
+        },
+        "query": {
+          "depth": "1"
+        }
+      },
+      "documented": "The document attribute contains a Node of type DOCUMENT and is a non-optional field of the return value. depth is documented as a positive integer limiting traversal, and not setting it returns all nodes. No response-size limit is documented for any file endpoint.",
+      "engine_bound": {
+        "body_bytes": 131072,
+        "behaviour": "a response body over 128 KiB fails the request with an API error before any projection",
+        "source": "services/recipe_http.py"
+      },
+      "synthetic_body_bytes": 262144,
+      "expected": {
+        "outcome": "not_executable_locally",
+        "reason": "A profile origin is one exact public HTTPS domain, so the real transport can never be pointed at a loopback fixture and its body bound cannot be exercised locally."
+      },
+      "currently_passes": "Nothing: the requirement is a bounded document read, and the only documented levers are depth or ids, neither of which the transport can send.",
+      "smallest_missing_behavior": "A reviewed fixed query input for depth or ids, plus a live measurement of whether an ordinary file fits the transport bound."
+    },
+    {
+      "id": "figma_oversized_success_is_a_failure",
+      "provider": "Figma",
+      "kind": "documented_bound",
+      "purpose": "A successful HTTP 200 that exceeds the transport bound must still be a failure, never a partial read.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/files/{destination}",
+        "headers": {
+          "Authorization": "Bearer <OAuth token>"
+        }
+      },
+      "engine_bound": {
+        "body_bytes": 131072,
+        "source": "services/recipe_http.py"
+      },
+      "synthetic_body_bytes": 4194304,
+      "expected": {
+        "outcome": "must_remain_a_failure",
+        "status": 200
+      },
+      "currently_passes": "The transport already refuses an oversized body, and this case exists so nobody relaxes that while adding a design subset.",
+      "smallest_missing_behavior": "None. This is a behaviour to preserve."
+    }
+  ]
+}
