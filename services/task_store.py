@@ -21,6 +21,7 @@ from services.task_artifacts import (
     TaskArtifact,
     artifact_input,
 )
+from services.task_messages import MESSAGE_SCHEMA, TaskMessages
 from services.task_recovery import (
     MAX_RECOVERY_ARTIFACTS,
     MAX_RECOVERY_BYTES,
@@ -81,7 +82,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15):
+        if version not in range(17):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -149,7 +150,7 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 15;
+                PRAGMA user_version = 16;
             """
                 + CONNECTOR_SCHEMA
                 + PLAN_SCHEMA
@@ -160,6 +161,7 @@ class TaskStore:
                 + RECIPE_SCHEMA
                 + RULE_SCHEMA
                 + RECOVERY_SCHEMA
+                + MESSAGE_SCHEMA
             )
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():
@@ -404,6 +406,7 @@ class TaskStore:
             raise ValueError("Invalid task state transition")
         with self._db:
             if status in TERMINAL_STATUSES:
+                TaskMessages(self).end(task_id)
                 self._db.execute(
                     "UPDATE task_recoveries SET status = 'ended' WHERE task_id = ? AND status = 'requested'",
                     (task_id,),

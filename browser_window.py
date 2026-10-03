@@ -152,6 +152,7 @@ class BrowserWindow(QMainWindow):
         self.closed_tabs = ClosedTabHistory()
         self._child_windows: list[BrowserWindow] = []
         self._password_dialog = None
+        self.agent_sidebar = None
         self.setup_window()
         self.setup_menus()
         self.setup_ui()
@@ -304,6 +305,11 @@ class BrowserWindow(QMainWindow):
         previous_match.triggered.connect(lambda: self.find_bar.find_next(True))
         edit_menu.addAction(previous_match)
         view_menu = menubar.addMenu("View")
+        self.agent_sidebar_action = QAction("Agent Sidebar", self)
+        self.agent_sidebar_action.setCheckable(True)
+        self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
+        self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
+        view_menu.addAction(self.agent_sidebar_action)
         self.zoom_in_action = QAction("Zoom In", self)
         self.zoom_in_action.setShortcuts(
             [QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")]
@@ -436,6 +442,32 @@ class BrowserWindow(QMainWindow):
     def _on_profile_changed(self, profile_name: str):
         self._update_window_title()
         self._update_profile_shortcuts()
+        if self.agent_sidebar is not None:
+            self.agent_sidebar.set_private(profile_name == "search")
+
+    def _toggle_agent_sidebar(self, visible):
+        if self.agent_sidebar is None and visible:
+            from ui.agent_sidebar import AgentSidebar
+
+            try:
+                self.agent_sidebar = AgentSidebar(
+                    self.profile_manager.registry.tasks, self
+                )
+            except (OSError, ValueError, RuntimeError, sqlite3.Error):
+                self.agent_sidebar_action.setChecked(False)
+                QMessageBox.warning(
+                    self, "External Agents", "The agent sidebar could not be opened."
+                )
+                return
+            self.addDockWidget(
+                Qt.DockWidgetArea.RightDockWidgetArea, self.agent_sidebar
+            )
+            self.agent_sidebar.visibilityChanged.connect(
+                self.agent_sidebar_action.setChecked
+            )
+        if self.agent_sidebar is not None:
+            self.agent_sidebar.set_private(self.profile_manager.is_search_profile())
+            self.agent_sidebar.setVisible(visible)
 
     def _update_window_title(self, url=None):
         profile_name = self.profile_manager.current_profile_name
@@ -1208,6 +1240,8 @@ class BrowserWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        if self.agent_sidebar is not None:
+            self.agent_sidebar.detach()
         self.find_bar.close_find(clear_query=True)
         self.find_bar.set_page(None)
         if self._password_dialog is not None:

@@ -511,6 +511,7 @@ async def sdk_client(
                 "task.start", objective="Complete a synthetic form beside the user"
             )
             shared["task_id"] = task["task_id"]
+            await conversation_workflow(call, shared, "sdk", task["task_id"])
             worker_support = await call("worker.capabilities")
             assert (
                 worker_support["available"]
@@ -906,6 +907,45 @@ async def sdk_client(
                 await recipe_workflow(call, shared, "sdk", writing=True, plan=True)
 
 
+async def conversation_workflow(call, shared, label, task_id):
+    """The desktop fixture sends text; an independent external client replies."""
+    shared[label + "_conversation_task"] = task_id
+    deadline = time.monotonic() + 15
+    page = await call("conversation.read")
+    while not page["messages"]:
+        assert time.monotonic() < deadline, "Sidebar prompt did not arrive"
+        await asyncio.sleep(0.02)
+        page = await call("conversation.read")
+    assert [m["text"] for m in page["messages"]] == [label + " explicit sidebar prompt"]
+    assert (await call("grant.list")) == []
+    partial = await call(
+        "conversation.reply",
+        message_id="sidebar-reply",
+        text="External reply",
+        state="streaming",
+    )
+    final = await call(
+        "conversation.reply",
+        message_id="sidebar-reply",
+        text="External reply complete",
+        revision=1,
+    )
+    assert final["created_sequence"] == partial["created_sequence"]
+    assert (
+        await call(
+            "conversation.reply",
+            message_id="sidebar-reply",
+            text="External reply complete",
+            revision=1,
+        )
+        == final
+    )
+    update = await call("conversation.read", after=page["cursor"])
+    assert update["messages"] == [final]
+    assert (await call("conversation.read", after=update["cursor"]))["messages"] == []
+    shared[label + "_conversation_verified"] = True
+
+
 def raw_workflow(request, notify, foreign_session, origin, shared):
     request(
         "initialize",
@@ -969,6 +1009,15 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         )
         assert not result["isError"], result
         return result["structuredContent"]["result"]
+
+    async def conversation_call(command, **arguments):
+        return call(command, **arguments)
+
+    asyncio.run(
+        conversation_workflow(
+            conversation_call, shared, "raw", shared["raw_approval_task"]
+        )
+    )
 
     call(
         "grant.request",
@@ -1365,6 +1414,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
         case.windows.append(window)
         window._switch_to_profile("work")
         window.show()
+        window.agent_sidebar_action.trigger()
         user = window.tabs[window.current_tab_index].page()
         loaded = []
         user.loadFinished.connect(loaded.append)
@@ -1473,6 +1523,16 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
         user_edit_started = False
         while worker.is_alive() and time.monotonic() < deadline:
             case.app.processEvents()
+            for label in ("sdk", "raw"):
+                task_id = shared.get(label + "_conversation_task")
+                if task_id and not shared.get(label + "_conversation_sent"):
+                    sidebar = window.agent_sidebar
+                    sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(task_id))
+                    assert sidebar.send.isEnabled()
+                    sidebar.composer.setPlainText(label + " explicit sidebar prompt")
+                    sidebar.send.click()
+                    assert sidebar.composer.toPlainText() == ""
+                    shared[label + "_conversation_sent"] = True
             for label, source in (
                 ("sdk", shared.get("task_id")),
                 ("raw", shared.get("raw_approval_task")),
@@ -1705,6 +1765,9 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             time.sleep(0.005)
         assert not worker.is_alive(), "External workflow timed out"
         assert not errors, errors
+        assert (
+            shared["sdk_conversation_verified"] and shared["raw_conversation_verified"]
+        )
         if require_recipes:
             assert shared["sdk_reviewed_recipe_writes"]
             assert shared["raw_reviewed_recipe_writes"]

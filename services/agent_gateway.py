@@ -162,7 +162,10 @@ class AgentConnection(QObject):
                 # Creation and binding happen together on the Qt thread. A
                 # disconnect cannot leave queued creation without an owner.
                 task = self.gateway.service._create(**request["arguments"])
+                if self.client is not None:
+                    self.gateway.service.external_connection(self.client.task_id, False)
                 self.client = self.gateway.service.client(task.task_id)
+                self.gateway.service.external_connection(task.task_id, True)
                 self._send({"id": request_id, "result": json_value(task)})
                 return
             if self.client is None:
@@ -217,6 +220,7 @@ class AgentConnection(QObject):
             self.pending.cancel()
         service = self.gateway.service
         if self.client is not None and not service._closed:
+            service.external_connection(self.client.task_id, False)
             try:
                 if service.store.get(self.client.task_id).status in ACTIVE_STATUSES:
                     service.cancel_task(self.client.task_id)

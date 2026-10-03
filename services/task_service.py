@@ -36,6 +36,7 @@ from services.recipe_proposals import RecipeProposals
 from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
 from services.task_downloads import DownloadDestination
+from services.task_messages import TaskMessages
 from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
 from services.task_recovery import (
     MAX_RECOVERY_ARTIFACTS,
@@ -71,6 +72,8 @@ class TaskService(QObject):
         if app is None or QThread.currentThread() != app.thread():
             raise RuntimeError("Task services require the Qt application thread")
         self.store = TaskStore(path)
+        self.messages = TaskMessages(self.store)
+        self.external_tasks = set()
         self.connectors = connectors if connectors is not None else ConnectorRegistry()
         self.connector_store = ConnectorStore(self.store)
         self.account_access = ConnectorAccess(self.store, self.connectors)
@@ -111,6 +114,8 @@ class TaskService(QObject):
                 "browser.context": self._browser_context,
                 "task.list": self.store.list_tasks,
                 "task.events": self.store.events,
+                "conversation.read": self._read_messages,
+                "conversation.reply": self._reply_message,
                 "task.finish": self._finish_task,
                 "task.recover": self._request_recovery,
                 "task.recovery": self._recovery_info,
@@ -1162,6 +1167,44 @@ class TaskService(QObject):
         self._usable()
         self._active(task_id)
         return TaskClient(task_id, self.broker)
+
+    def external_connection(self, task_id, connected):
+        """Trusted transport reports connection ownership; never an agent command."""
+        require_owner_thread(self)
+        if connected:
+            self.external_tasks.add(task_id)
+        else:
+            self.external_tasks.discard(task_id)
+        self.changed.emit()
+
+    def _read_messages(self, task_id, after=0, limit=16):
+        self._usable()
+        page = self.messages.read(task_id, after, limit)
+        if self.messages.acknowledge(task_id, page):
+            self.changed.emit()
+        return page
+
+    def _reply_message(self, task_id, message_id, text, revision=0, state="complete"):
+        self._usable()
+        result = self.messages.post_agent(task_id, message_id, text, revision, state)
+        self.changed.emit()
+        return result
+
+    def send_message(self, task_id, text):
+        """Trusted UI shares only explicitly entered text with this task's agent."""
+        require_owner_thread(self)
+        self._usable()
+        if task_id not in self.external_tasks:
+            raise ValueError("External agent is not connected")
+        result = self.messages.post_user(task_id, text)
+        self.changed.emit()
+        return result
+
+    def clear_messages(self, task_id):
+        require_owner_thread(self)
+        self._usable()
+        self.messages.clear(task_id)
+        self.changed.emit()
 
     def _client_denied(self, task_id, reason):
         self._deny(task_id, reason)

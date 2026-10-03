@@ -13,6 +13,7 @@ browsing profiles and direct KeePassXC password management.
 - Cookie controls, a global-cookie baseline, downloads, and ad blocking.
 - In-browser KeePassXC login selection, filling, and explicit saving.
 - A desktop launcher, dark mode, and familiar navigation shortcuts.
+- A toggleable external-agent conversation sidebar with task controls.
 
 ## Quick start
 
@@ -44,6 +45,8 @@ attachments and compose approved app tools in an isolated local worker after
 exact-package/environment approval. An optional document bundle adds PDF, XLSX and
 image generation. Users share selected input files and export results from
 Task Permissions. Active website scripts and generic extensions remain planned.
+Open **View → Agent Sidebar** (`Ctrl+Shift+A`) to message a connected task;
+external agents must use the [conversation tools](DOCUMENTATION.md#external-agent-conversation-sidebar).
 Google Docs/Gmail connections keep credentials in the desktop keyring and offer
 persistent account access switches. Real-account acceptance remains pending.
 Agents can propose connector recipes for REST reads, creates and sends,

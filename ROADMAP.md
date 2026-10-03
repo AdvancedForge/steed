@@ -363,6 +363,28 @@ establishes those results. Password improvements remain deferred at the user's r
   Logs: `/tmp/steed-plans-{final-full,final-recipes,mcp-stdio,mcp-http,startup}.log`.
   See the [implemented format](DOCUMENTATION.md#sequential-connector-request-plans).
 
+- **External-agent conversations implemented:** View → Agent Sidebar
+  (`Ctrl+Shift+A`) opens a lazy, movable dock for the selected external MCP task.
+  Explicit user messages, cumulative streamed replies, read indicators, pending
+  review/file/draft/receipt counts and nonmodal task controls are available.
+  Messages grant no browser/app authority; profile grants remain pinned. Hide
+  preserves work; cancel/disconnect/restart retain interrupted history. Incognito
+  disables conversation and clears unsent drafts. Schema 16 retains private,
+  bounded bodies separately from content-free activity events; exact replies are
+  idempotent and cleared IDs remain tombstoned. Agents cannot impersonate users,
+  clear messages or read another connection's conversation.
+  Validation: 813 regressions passed in 316.979 seconds; 46 final agent/UI checks
+  passed in 11.874 seconds and 12 final conversation checks in 2.302 seconds.
+  Independent SDK/raw clients exchanged actual sidebar prompts/replies over both
+  stdio and authenticated HTTP alongside reviewed recipes and document workers.
+  Ordinary user/shared-profile browsing and cleanup passed. Startup/render/shutdown,
+  Ruff/format, whitespace and relative file links passed; the synthetic dock was
+  visually inspected. The first full run hit an offscreen Vulkan initialization
+  crash before any test; the standalone retry passed. Desktop acceptance and idle
+  external-client wake-up remain separate checks.
+  Logs: `/tmp/steed-sidebar-{full,final-focused,messages,mcp-stdio,mcp-http,startup}.log`.
+  See [conversation setup and protocol](DOCUMENTATION.md#external-agent-conversation-sidebar).
+
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
   them. Removing an agent rule revokes linked tasks; disconnecting an app removes
@@ -1072,14 +1094,20 @@ reviewed connector recipes, generated files and eventually declarative browser
 styling/features with visible install, versioning, disable and rollback controls.
 Do not run generated browser Python or treat connector installation as authority.
 
-**Agent conversation sidebar — requested, not implemented:** show/hide beside the
-current page, choose an agent/task, stream conversation and display pending
-permissions, artifacts and receipts. Agents continue to use Steed's MCP tools and
-existing task/profile grants. MCP tool transport alone does not host a chat/model;
-selecting an external agent backend versus a Steed-managed runner is a major
-integration decision before chat execution. Hiding the sidebar should preserve
-the conversation; task cancellation is a separate explicit action. Keep ordinary
-browsing and shared-profile collaboration usable while the agent works.
+**Agent conversation sidebar — external-agent implementation:** the user chose
+external agents first on October 3, 2026. A show/hide dock beside the current page
+selects an existing MCP task, sends explicit text, shows streamed replies and
+read markers, and opens that task's permissions/files/app receipts. Closing the
+dock preserves the task; cancellation remains explicit. Ordinary browsing and
+shared-profile collaboration retain their existing authority boundaries.
+
+The external client must actively read/reply through the task mailbox. Idle
+client wake-up, provider-specific agent launch, automatic reconnect and task
+reassignment are not implemented. A future wake-up integration needs a concrete
+external client lifecycle and API decision; it must not imply broad new browser
+permissions. Reviewed connector/file customization remains in scope, while
+declarative browser styling/features need an installation/versioning/rollback
+contract before execution.
 
 Built-in agent hosting, scheduling, autonomous planning, and model-account
 management need a separate proposal after the collaboration layer is proven.
