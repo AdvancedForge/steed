@@ -33,7 +33,7 @@
     },
     {
       "name": "create_issue",
-      "description": "Create a new issue in one GitLab.com project by its numeric project ID. GitLab treats a leading slash command such as /assign or /confidential in the title or description as a quick action, and the reviewed draft is sent unchanged.",
+      "description": "Create a new issue in one GitLab.com project by its numeric project ID. GitLab recognizes a quick action when a command such as /assign or /confidential starts a line of an issue description or comment; the reviewed draft is sent unchanged.",
       "method": "POST",
       "effect": "write",
       "path": "/api/v4/projects/{destination}/issues",
