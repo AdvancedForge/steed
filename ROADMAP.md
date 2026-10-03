@@ -12,6 +12,35 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Reviewed API-version headers (implemented and validated).**
+Recipe version 5 binds 1–4 supported non-secret headers to immutable source.
+The first set is Notion-Version, X-GitHub-Api-Version, Zotero-API-Version and
+OCS-APIRequest with constrained date/version/flag values. Source and payload
+reviews show them, and identity, all read pages, writes/plan steps and probes
+send exactly the reviewed values. OAuth exchange/refresh excludes API headers.
+Versions 1–4 remain strict and supported. Hash/provider changes prevent old
+accounts/grants/reviews from authorizing changed source; installed old versions
+are unchanged until disabled. Credential-bearing and transport/auth overrides,
+noncanonical names, duplicate keys and injection are rejected. New capabilities
+metadata and a synthetic v5 plan example guide agent-authored recipes. Provider
+contracts and real-account acceptance remain separate; headers alone do not
+unblock every Notion/Zotero/Nextcloud operation. No contributor-owned data changed.
+Next shared scope is reviewed identity-label alternatives for documented nullable
+labels, followed by separately typed query/POST-read contracts as needed.
+
+Validation: the final complete suite passes **938 tests in 375.207 seconds**.
+Both actual MCP SDK/independent-client journeys pass over stdio and authenticated
+HTTP with document workers, reusable library files and v5 reviewed plans; each
+client verifies header metadata, payload context and synthetic dispatch. Exact
+TLS wire tests cover GET/POST and token-exchange separation. Startup/local
+render/shutdown passes on Qt 6.11.2. Source review and the final six-menu layout
+were visually inspected with synthetic fixtures. Ruff lint/format, dependency,
+whitespace, seven recipe examples and local document-link checks pass.
+Live provider accounts and native desktop acceptance remain separate.
+Logs: `/tmp/steed-menus-headers-final-full.log`,
+`/tmp/steed-recipe-headers-corrected.log`,
+`/tmp/steed-headers-mcp-{stdio,http}.log`, `/tmp/steed-headers-startup.log`.
+
 **Menu organization (implemented).** General is first and contains everyday
 settings, passwords, downloads and website permissions. Profile remains its own
 top-level menu with creation, switching, pop-out, private browsing and Quick Switch.
@@ -21,10 +50,12 @@ including native/web chat, file library, connections and local MCP setup. View
 contains address focus, find and zoom; Cookies includes browsing-history clearing.
 File/Edit and the separate Tab Groups category are removed. Keyboard
 shortcuts, profile Quick Switch and history/profile isolation remain intact.
-Documentation uses the new menu paths. All 114 browser/menu/agent-access/setup/
-sidebar/web-chat checks pass in 68.864 seconds; Ruff lint/format and whitespace
-checks pass. A synthetic offscreen preview was inspected.
-Log: `/tmp/steed-menu-regressions.log`.
+Documentation uses the new menu paths. The initial layout passed 114 browser/
+menu/agent-access/setup/sidebar/web-chat checks in 68.864 seconds. The final
+layout retains the top-level Profile menu at the user's request; its regression
+passes in the final 938-test suite above. Synthetic offscreen previews were
+inspected. Ruff lint/format and whitespace checks pass.
+Logs: `/tmp/steed-menu-regressions.log`, `/tmp/steed-menu-final-preview.log`.
 
 **Observation increment (implemented and validated).** Page reads now
 include open-shadow text and root-local control labels, nested components and
@@ -130,8 +161,9 @@ Logs: `/tmp/steed-chat-final-full.log`,
 **Resume checkpoint:** persistent library and reviewed discovery/paging are
 complete; engineering branch `f6c28b4` is integrated by merge `e20cfea`.
 The first open-shadow observation increment and external component acceptance
-are complete. Next shared connector work is reviewed non-secret static request headers,
-using the corrected provider contracts. Deeper accessible semantics and supported
+are complete. Reviewed non-secret API-version headers are implemented; next
+shared connector work is explicit identity-label alternatives using corrected
+provider contracts. Deeper accessible semantics and supported
 shadow-control input remain separate follow-ups. Further agents work on their own
 branches and submit milestones for maintainer review.
 See [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md) for ownership, ordered scopes,
@@ -1251,6 +1283,12 @@ on October 3, 2026. Preserve customization as a product goal: agents should buil
 reviewed connector recipes, generated files and eventually declarative browser
 styling/features with visible install, versioning, disable and rollback controls.
 Do not run generated browser Python or treat connector installation as authority.
+Candidate customization layers: personal layouts/tab-group workspaces, saved
+named workflows/shortcuts, native research/project panels and reviewed connector/
+generator packages. Installation needs a versioned supported UI schema, visible
+data/action scope and update/disable/rollback controls. Start with a concrete
+workflow before widening into general UI/plugin execution. See
+[customization direction](DOCUMENTATION.md#customization-direction-planned).
 
 **Agent conversation sidebar — external-agent implementation:** the user chose
 external agents first on October 3, 2026. A show/hide dock beside the current page

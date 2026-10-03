@@ -51,6 +51,15 @@ class RecipeReviewDialog(QDialog):
                 if recipe.authentication.kind == "oauth_pkce"
                 else "Authentication: this service's bearer token\n\n"
             )
+            + (
+                "Non-secret request headers (every API request; never OAuth token exchange):\n"
+                + "\n".join(
+                    f"{name}: {value}" for name, value in recipe.request_headers
+                )
+                + "\n\n"
+                if recipe.request_headers
+                else ""
+            )
             + f"Account identity: GET {recipe.identity_path}\n"
             f"Account ID: {recipe.subject_pointer}\nAccount label: {recipe.label_pointer}\n\n"
             + "\n\n".join(

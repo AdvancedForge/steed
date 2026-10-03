@@ -5,6 +5,7 @@ import json
 import re
 import threading
 from dataclasses import dataclass
+from datetime import date
 from urllib.parse import urlsplit
 
 from services.connector_policy import connector_name
@@ -13,6 +14,12 @@ from services.task_workspace import unique_object
 from utils import save_json
 
 MAX_RECIPE_BYTES = 16384
+STATIC_HEADER_FORMATS = {
+    "Notion-Version": "YYYY-MM-DD",
+    "X-GitHub-Api-Version": "YYYY-MM-DD",
+    "Zotero-API-Version": "integer 1–99",
+    "OCS-APIRequest": "true",
+}
 
 RECIPE_EXAMPLE = {
     "version": 1,
@@ -160,9 +167,38 @@ RECIPE_PLAN_EXAMPLE = {
     ],
 }
 
+RECIPE_HEADERS_EXAMPLE = {
+    **RECIPE_PLAN_EXAMPLE,
+    "version": 5,
+    "name": "Example Versioned Notes",
+    "request_headers": {"Notion-Version": "2025-09-03"},
+}
+
 
 class RecipeError(ValueError):
     pass
+
+
+def static_request_headers(value):
+    """Compile a bounded, non-secret header set; names use canonical casing."""
+    if not isinstance(value, dict) or not 1 <= len(value) <= 4:
+        raise RecipeError("Provide 1–4 supported non-secret request headers")
+    for name, item in value.items():
+        if name not in STATIC_HEADER_FORMATS or not isinstance(item, str):
+            raise RecipeError("Use a supported non-secret header and string value")
+        if STATIC_HEADER_FORMATS[name] == "YYYY-MM-DD":
+            if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", item):
+                raise RecipeError("Use a canonical API version date")
+            try:
+                date.fromisoformat(item)
+            except ValueError:
+                raise RecipeError("Use a valid API version date") from None
+        elif name == "Zotero-API-Version":
+            if not re.fullmatch(r"[1-9][0-9]?", item):
+                raise RecipeError("Use an API version from 1 to 99")
+        elif item != "true":
+            raise RecipeError("Use true for the reviewed OCS request flag")
+    return tuple(sorted(value.items()))
 
 
 def fields(value, expected):
@@ -387,6 +423,7 @@ class ConnectorRecipe:
     tools: tuple
     authentication: RecipeAuthentication = RecipeAuthentication()
     version: int = 1
+    request_headers: tuple = ()
 
     @property
     def provider(self):
@@ -400,6 +437,7 @@ class ConnectorRecipe:
             "name": self.name,
             "origin": self.origin,
             "authentication": self.authentication.kind,
+            "request_headers": dict(self.request_headers),
             "identity": {
                 "path": self.identity_path,
                 "subject": self.subject_pointer,
@@ -484,11 +522,27 @@ def parse_recipe(raw):
                 RecipeError("Nonfinite recipe number")
             ),
         )
+        if not isinstance(data, dict):
+            raise RecipeError("Provide a connector recipe object")
         fields(
-            data, ("version", "name", "origin", "authentication", "identity", "tools")
+            data,
+            (
+                "version",
+                "name",
+                "origin",
+                "authentication",
+                "identity",
+                "tools",
+                *(["request_headers"] if data.get("version") == 5 else []),
+            ),
         )
-        if type(data["version"]) is not int or data["version"] not in (1, 2, 3, 4):
+        if type(data["version"]) is not int or data["version"] not in (1, 2, 3, 4, 5):
             raise RecipeError("Unsupported connector recipe version")
+        headers = (
+            static_request_headers(data["request_headers"])
+            if data["version"] == 5
+            else ()
+        )
         auth = authentication(data["authentication"])
         identity = data["identity"]
         fields(identity, ("path", "subject", "label"))
@@ -521,7 +575,7 @@ def parse_recipe(raw):
                     ),
                     *(
                         ["plan"]
-                        if data["version"] == 4 and writing and "plan" in item
+                        if data["version"] >= 4 and writing and "plan" in item
                         else []
                     ),
                 ),
@@ -683,6 +737,7 @@ def parse_recipe(raw):
             tuple(tools),
             auth,
             data["version"],
+            headers,
         )
     except (KeyError, TypeError, UnicodeError, RecursionError, ValueError) as error:
         if isinstance(error, RecipeError):

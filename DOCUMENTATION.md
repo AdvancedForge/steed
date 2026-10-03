@@ -1546,6 +1546,17 @@ acceptance remain separate.
 
 ### Agent-designed write boundary
 
+Latest static-header/menu acceptance (October 3, 2026): **938 checks pass in
+375.207 seconds**. Both actual SDK and independent clients complete v5 reviewed
+plans over stdio and authenticated HTTP MCP, alongside document workers and
+persistent library reuse. Exact TLS wire, changed-source/account refusal,
+OAuth refresh/paging, source/payload preview and lost-reply/no-replay checks pass.
+Startup/render/shutdown passes on Qt 6.11.2. Source/menu previews, Ruff/format,
+dependency, whitespace, seven recipe examples and local doc links pass.
+Logs: `/tmp/steed-menus-headers-final-full.log`,
+`/tmp/steed-headers-mcp-{stdio,http}.log`, `/tmp/steed-headers-startup.log`.
+Live provider/native desktop acceptance remains separate.
+
 Packaged service discovery: open **Agents → App Connections → Add a Service…**.
 Steed loads bounded JSON recipes from `connectors/recipes/`; choosing a service
 opens the same default-Deny source review as importing a recipe. This installs
@@ -1560,6 +1571,46 @@ fixtures to another contributor. The compatibility proofs are not installed
 defaults; the picker is empty until reviewed starter profiles are packaged.
 Six catalog/picker regressions passed, including changed-source rejection, safe
 file discovery, and installation granting neither account nor task access.
+
+### Reviewed API-version headers
+
+**Recipe version 5** adds a required root `request_headers` object containing
+1–4 supported non-secret headers. Versions 1–4 keep their existing grammar.
+Version 5 retains nested JSON and sequential plans; use explicit `$bind` objects
+for draft/destination bindings rather than version-2 flat string bindings.
+
+| Canonical header name | Accepted value |
+| --- | --- |
+| `Notion-Version` | A valid date in `YYYY-MM-DD` form |
+| `X-GitHub-Api-Version` | A valid date in `YYYY-MM-DD` form |
+| `Zotero-API-Version` | A string containing an integer from `1` to `99` |
+| `OCS-APIRequest` | The string `true` |
+
+For example, add `"version": 5` and
+`"request_headers": {"Notion-Version": "2025-09-03"}` to an otherwise supported
+recipe. The [versioned sequential example](examples/connector_recipes/notes-headers.json)
+is synthetic; its notes paths are not a Notion connector.
+`steed_recipe_capabilities` publishes the accepted names/formats, supported
+versions, count limit and `headers_example`. Recipe preflight/list metadata
+returns these exact non-secret values.
+
+Source review shows the headers before installation. They apply consistently to
+API identity, each read/page, every reviewed POST/plan step and reconciliation.
+Payload review includes them alongside the exact URL and source hash. A changed
+value creates a different immutable source/provider, so the previous account,
+capabilities and payload approval cannot authorize it. Old installed versions
+remain usable until disabled; replacing a version does not silently change it.
+OAuth authorization and token exchange/refresh never receive these API headers.
+
+Only the four listed names and their constrained values are supported. Other
+names, noncanonical casing, duplicate keys, newline/control injection, arbitrary
+tokens, authentication/cookie/host/transport overrides and operation-ID headers
+are rejected. Credential-derived headers require a separate future authentication
+contract; credentials remain in the keyring. Exact-origin/DNS/TLS/redirect/body
+checks and per-write previews remain in force. Header syntax acceptance does not
+verify a provider's supported version or make a whole service compatible:
+identity labels, pagination, POST reads and payload/response shapes still need
+separate contracts and acceptance.
 
 **Version 3 nested JSON templates:** GET tools retain the existing format. POST
 `request` can contain nested objects, arrays and JSON literals. Bind draft data
@@ -1580,10 +1631,11 @@ nested POST rules; v2 bodies remain flat. User approval covers the actual
 serialized body, URL, source hash, account, draft hash and operation ID.
 
 The [nested example](examples/connector_recipes/notes-nested.json) is synthetic.
-Nested payloads are the first part of declarative request plans. They do not yet
-add custom headers, query inputs, root-array POSTs, revision guards, response
-conditions, result-derived bindings or multi-step execution; provider sign-in
-and API semantics still require separate acceptance.
+Nested payloads are the first part of declarative request plans. Version 4 adds
+bounded result-dependent POST sequences; version 5 adds the reviewed static
+headers above. Arbitrary query inputs, root-array POSTs, revision guards and
+response conditions remain future work; provider sign-in and API semantics
+still require separate acceptance.
 
 Nested-template acceptance: **774 regressions passed in 299.980 seconds**;
 71 final recipe checks passed in 14.370 seconds, including subsequent popup/fixture
@@ -1758,8 +1810,8 @@ No live provider accounts or native desktop acceptance were tested.
 The next architectural boundary is how agent-designed connectors handle provider
 logic beyond a single reviewed JSON request. Steed's Google implementation uses
 provider-specific destination checks, multipart creation, revision-aware edits
-and marker-based reconciliation. Other workflows may need dependent mutations. Today's recipes
-version 4 represents nested payloads and bounded result-dependent POST sequences
+and marker-based reconciliation. Other workflows may need dependent mutations. Recipes from
+version 4 represent nested payloads and bounded result-dependent POST sequences
 with partial completion receipts. Read steps, provider-specific transformations,
 revision-guarded edits and read-only per-step reconciliation remain future work.
 
@@ -4027,6 +4079,30 @@ The Steed application-menu entry was installed on the development machine.
 The following is the target design. The [internal task foundation](#internal-task-services)
 is implemented; full agent features, generic extension support, and bookmarks remain
 future work. Implementation order and status live in [ROADMAP.md](ROADMAP.md).
+
+### Customization direction (planned)
+
+Build on the existing recipes, generated files, local workers and task mailbox.
+Declarative UI customization is not implemented yet. Proposed layers are:
+
+- **Personal layout:** show/hide and reorder supported controls, choose sidebar
+  or chat-tab presentation, save workspaces and reusable tab-group layouts.
+- **Reusable actions:** an agent designs a named workflow such as “summarize
+  these tabs into a report,” reusing supported tools, enabled library inputs and
+  the user's connected services. Expose it in a menu or optional shortcut.
+- **Native panels:** agents compose a research sidebar, reading queue or project
+  dashboard from stable Steed components and explicitly selected data sources.
+- **Integrations and outputs:** reviewed connector recipes and worker generators
+  grow into installable packages with a manifest, supported API version, update
+  review, disable and rollback controls.
+
+Start with one useful workflow and a small supported UI schema. External agents
+keep their own tools; Steed brokers the selected browser/library/app capabilities.
+A custom button or panel inherits existing access choices rather than receiving
+implicit access to every profile. Its data/action scopes are visible during
+installation. Generated code does not run inside the browser process. Arbitrary
+UI frameworks, executable browser plugins and a general application marketplace
+are separate design work; choose a concrete first workflow before widening scope.
 
 ### Agent framework
 

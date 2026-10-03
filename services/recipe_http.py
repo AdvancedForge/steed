@@ -18,6 +18,7 @@ from services.connector_recipes import (
     recipe_endpoint,
     recipe_origin,
     request_path,
+    static_request_headers,
 )
 from services.recipe_templates import json_template
 from services.task_workspace import unique_object
@@ -30,10 +31,21 @@ def check_cancelled(cancelled):
 
 class RecipeHttp:
     def __init__(
-        self, origin, *, token_endpoint="", query_parameters=None, post_rules=()
+        self,
+        origin,
+        *,
+        token_endpoint="",
+        query_parameters=None,
+        post_rules=(),
+        request_headers=None,
     ):
         self.origin = recipe_origin(origin)
         self.token_endpoint = recipe_endpoint(token_endpoint) if token_endpoint else ""
+        self.request_headers = (
+            static_request_headers(request_headers)
+            if request_headers is not None
+            else ()
+        )
         self.query_parameters = {
             request_path(path): frozenset(query_parameter(p) for p in parameters)
             for path, parameters in (query_parameters or {}).items()
@@ -57,8 +69,10 @@ class RecipeHttp:
             pattern = re.escape(template).replace(
                 re.escape("{destination}"), r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}"
             )
-            required = {"Authorization", "Content-Type"} | (
-                {header} if header else set()
+            required = (
+                {"Authorization", "Content-Type"}
+                | ({header} if header else set())
+                | {name for name, _ in self.request_headers}
             )
             if (
                 re.fullmatch(pattern, path)
@@ -118,6 +132,10 @@ class RecipeHttp:
                 "Recipe request differs from its reviewed origin or method"
             )
         headers = headers or {}
+        if not token_request and any(
+            headers.get(name) != value for name, value in self.request_headers
+        ):
+            raise ValueError("Request headers differ from the reviewed recipe")
         if token_request:
             if (
                 headers != {"Content-Type": "application/x-www-form-urlencoded"}
@@ -131,8 +149,10 @@ class RecipeHttp:
                 raise ValueError("Use a bounded JSON POST")
             payload = json.loads(body, object_pairs_hook=unique_object)
             header = self.post_rule(parts.path, headers, payload)
-            required = {"Authorization", "Content-Type"} | (
-                {header} if header else set()
+            required = (
+                {"Authorization", "Content-Type"}
+                | ({header} if header else set())
+                | {name for name, _ in self.request_headers}
             )
             if (
                 set(headers) != required
@@ -150,7 +170,9 @@ class RecipeHttp:
                 or not 1 <= len(body) <= 16384
             ):
                 raise ValueError("Use the reviewed JSON POST and trusted operation ID")
-        elif set(headers) - {"Authorization", "Accept"}:
+        elif set(headers) - (
+            {"Authorization", "Accept"} | {name for name, _ in self.request_headers}
+        ):
             raise ValueError("Unsupported recipe headers")
         check_cancelled(cancelled)
         deadline = time.monotonic() + 10

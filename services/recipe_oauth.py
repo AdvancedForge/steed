@@ -88,6 +88,9 @@ def token_http(recipe, http=None):
     return http or RecipeHttp(
         recipe.origin,
         token_endpoint=recipe.authentication.token_endpoint,
+        request_headers=dict(recipe.request_headers)
+        if recipe.request_headers
+        else None,
         query_parameters={
             tool.path: {
                 t.pagination.parameter
