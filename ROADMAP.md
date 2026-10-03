@@ -20,8 +20,30 @@ file library, presentation and task administration. Pending approvals/questions
 remain visible outside the collapsed controls. Drafts, lifecycle, privacy and
 explicit browser authority remain intact. All 27 focused menu/sidebar/web-chat
 checks pass in 12.606 seconds. Synthetic welcome/chat/options/menu previews were
-inspected; final integrated acceptance follows the connector checkpoint below.
+inspected; final integrated acceptance is recorded in the connector checkpoint below.
 Log: `/tmp/steed-sidebar-simplified-final.log`.
+
+**Reviewed identity-label alternatives (implemented and validated).**
+Recipe v6 declares 1–3 ordered alternatives for a missing/null/empty display label.
+It never guesses a field, masks malformed/secret-bearing data, or relaxes exact
+account-subject binding. Review/preflight/capabilities expose the pointers; v6
+retains nested writes/plans and optionally the v5 static headers. Old versions
+remain strict. Cached and refreshed OAuth identity checks reject known credential
+echoes before storing credentials or dispatching tools. A synthetic v6 example
+and 107 focused recipe regressions pass in 15.864 seconds.
+Log: `/tmp/steed-identity-focused-final.log`. Provider contracts and live accounts
+remain separate; no contributor-owned recipe or fixture was edited.
+
+Integrated acceptance: **948 regressions pass in 385.504 seconds**. Actual SDK
+and independent-client MCP journeys pass over stdio and authenticated HTTP with
+v6 reviewed plans, document workers and persistent library reuse. Startup/local
+render/shutdown passes on Qt 6.11.2; synthetic sidebar/menu/source previews were
+inspected. Ruff lint/format, dependency, whitespace, eight recipe examples and
+local document links pass. One HTTP fixture run hit the SDK's default 5s timeout;
+its bounded timeout now matches the existing raw client's 15s, and the rerun passes.
+Live-provider/native desktop acceptance remains separate. Logs:
+`/tmp/steed-sidebar-identity-full.log`, `/tmp/steed-identity-mcp-stdio.log`,
+`/tmp/steed-identity-mcp-http-final.log`, `/tmp/steed-sidebar-identity-startup.log`.
 
 **Reviewed API-version headers (implemented and validated).**
 Recipe version 5 binds 1–4 supported non-secret headers to immutable source.
@@ -36,8 +58,8 @@ noncanonical names, duplicate keys and injection are rejected. New capabilities
 metadata and a synthetic v5 plan example guide agent-authored recipes. Provider
 contracts and real-account acceptance remain separate; headers alone do not
 unblock every Notion/Zotero/Nextcloud operation. No contributor-owned data changed.
-Next shared scope is reviewed identity-label alternatives for documented nullable
-labels, followed by separately typed query/POST-read contracts as needed.
+Identity-label alternatives are delivered in v6 above. Next connector scope is
+separately typed query/POST-read contracts, followed by provider acceptance.
 
 Validation: the final complete suite passes **938 tests in 375.207 seconds**.
 Both actual MCP SDK/independent-client journeys pass over stdio and authenticated
@@ -172,10 +194,10 @@ Logs: `/tmp/steed-chat-final-full.log`,
 **Resume checkpoint:** persistent library and reviewed discovery/paging are
 complete; engineering branch `f6c28b4` is integrated by merge `e20cfea`.
 The first open-shadow observation increment and external component acceptance
-are complete. Reviewed non-secret API-version headers are implemented; next
-shared connector work is explicit identity-label alternatives using corrected
-provider contracts. Deeper accessible semantics and supported
-shadow-control input remain separate follow-ups. Further agents work on their own
+are complete. Reviewed non-secret API-version headers and explicit identity-label
+alternatives are implemented. Next daily-workflow scope is manual configurable UI;
+next shared connector scope is typed query/POST reads. Deeper accessible semantics
+and supported shadow-control input remain separate follow-ups. Further agents work on their own
 branches and submit milestones for maintainer review.
 See [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md) for ownership, ordered scopes,
 acceptance checks and the review procedure. Release gates remain reference work
@@ -1287,19 +1309,48 @@ provider failures, restarts, and uncertain or duplicate writes. The detailed
 [validation design](DOCUMENTATION.md#end-to-end-validation-and-rollout) records
 the required cases.
 
+## Current engineering queue
+
+Prioritize daily workflow and reuse the existing Qt architecture. The latest
+request distinguishes configurable browser UI from saved agent workflows.
+
+1. **Configurable UI, first milestone:** persisted manual toolbar visibility/order,
+   sidebar position/width, density and named layouts; defaults match today's menu
+   order. Keep Settings/Reset reachable and cover restart and malformed settings.
+   Then add stable component IDs, versioned JSON, preview/apply/export/import and
+   last-working-layout recovery so agents can design layouts. Native component
+   panels and validated appearance settings follow; do not execute generated code
+   in the browser. Details: [customization direction](DOCUMENTATION.md#customization-direction-planned).
+2. **Connector interoperability:** typed read-only POST/query requests and bounded
+   query inputs, then explicit pagination/response contracts. Credential-derived
+   headers, revision guards and transforms need separate reviewed types. The
+   connector contributor owns service data/fixtures and C1–C5 acceptance; review
+   their updated PR before integration. Production Google registration stays deferred.
+3. **Better website understanding:** accessibility labels/descriptions and dynamic
+   content/frame coverage; native actions for supported open-shadow controls.
+   Retain explicit omissions for closed roots/canvas/unsupported frames. Any
+   model-based extraction sending page content or adding cost needs user direction.
+4. **Agent and file workflow polish:** generic external-client reconnect/wake-up,
+   clearer connection health and task recovery, then useful managed-library content
+   discovery and import ergonomics. Cloud-agent pairing and live host-folder
+   mounting are separate user decisions; today's library imports remain copies.
+5. **Browser and release backlog:** bookmarks/session and desktop compatibility
+   acceptance, packaging/engine updates and release ownership/security review.
+   Password-manager changes and shared Google registration remain deferred.
+   [RELEASE_PLAN.md](RELEASE_PLAN.md) tracks public-release gates separately.
+
+Each increment needs a focused commit, meaningful regressions and updated usage/
+acceptance notes. Layout work changes presentation, never browser/app/file authority.
+There is no current requirement for a browser rebuild.
+
 ## Beyond the initial plan
 
-The user reaffirmed agent customization and requested a toggleable agent sidebar
-on October 3, 2026. Preserve customization as a product goal: agents should build
-reviewed connector recipes, generated files and eventually declarative browser
-styling/features with visible install, versioning, disable and rollback controls.
-Do not run generated browser Python or treat connector installation as authority.
-Candidate customization layers: personal layouts/tab-group workspaces, saved
-named workflows/shortcuts, native research/project panels and reviewed connector/
-generator packages. Installation needs a versioned supported UI schema, visible
-data/action scope and update/disable/rollback controls. Start with a concrete
-workflow before widening into general UI/plugin execution. See
-[customization direction](DOCUMENTATION.md#customization-direction-planned).
+Agent customization remains a product goal, including reviewed connector recipes,
+generated files and configurable browser controls. The engineering queue above
+starts with manual layout settings, then a supported declarative UI format and
+agent-designed native panels. Installation/update needs versioning, review,
+disable and rollback. Do not run generated browser Python or treat installation
+as authority. Saved workflows are optional actions, not a substitute for UI settings.
 
 **Agent conversation sidebar — external-agent implementation:** the user chose
 external agents first on October 3, 2026. A show/hide dock beside the current page

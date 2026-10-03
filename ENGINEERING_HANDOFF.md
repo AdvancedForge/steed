@@ -2,11 +2,10 @@
 
 ## Start here
 
-The persistent agent file-library milestone is complete at `7e7596d`.
-The reviewed `f6c28b4` engineering branch adds bounded library discovery
-(`steed_library_search` plus the library window filter), so branch from the
-current tip of `main`, not from the older chat-only checkpoint `9d1e37f`. Read
-`AGENTS.md`, the top of `ROADMAP.md`, and
+Main includes the persistent file library and bounded discovery, open-shadow
+observation, reviewed static API headers, explicit identity-label alternatives,
+and the simplified agent sidebar. Branch from the current tip of `main`, not an
+older chat-only checkpoint. Read `AGENTS.md`, the top of `ROADMAP.md`, and
 [library instructions](DOCUMENTATION.md#persistent-agent-file-library) first.
 Historical roadmap checkpoints describe earlier milestones; the current-work
 section and this handoff take precedence for the next engineering scope.
@@ -19,12 +18,12 @@ capabilities, reusable files and explicit access controls.
 
 ## Branches, ownership and review
 
-Work on a new branch such as `engineering/identity-labels`, preferably in a
+Work on a new branch such as `engineering/configurable-layout`, preferably in a
 separate checkout/worktree. Do not modify the user's running checkout or profile:
 
 ```bash
 git fetch origin
-git worktree add -b engineering/identity-labels ../steed-identity-labels origin/main
+git worktree add -b engineering/configurable-layout ../steed-configurable-layout origin/main
 ```
 
 Verify that the checkout contains `services/file_library.py` and this document.
@@ -36,8 +35,8 @@ test fixtures.
 The connector contributor owns `connectors/recipes/`, `connectors/fixtures/`,
 `connectors/SETUP.md` and `tests/test_default_connector_profiles.py`. Leave those
 paths to that contributor. The reviewed discovery branch has merged; reviewed
-static request headers are now implemented in the shared runtime as described
-below. Shared `services/`, `ui/`, MCP, root docs and shared-test changes need
+static request headers and reviewed identity-label alternatives are implemented
+in the shared runtime as described below. Shared `services/`, `ui/`, MCP, root docs and shared-test changes need
 coordination with the maintainer;
 do not start overlapping runtime work in another contributor's checkout.
 
@@ -172,31 +171,51 @@ usable until disabled. Names with different casing, arbitrary credentials,
 reserved transport/auth headers, duplicate keys and injection are rejected.
 All origin/DNS/TLS/redirect/body checks remain. Exact-wire, source-binding,
 OAuth paging/refresh, uncertainty/no-replay and plan checks cover the contract.
-The actual MCP plan workflow now uses the v5 example with both SDK/raw clients;
-v4 behavior retains unit/integration coverage.
+At the v5 checkpoint, actual MCP plan workflows used the header example with
+both SDK/raw clients; current journeys use v6 as described below. Versions 4/5
+retain unit/integration coverage.
 
-Next useful shared increment: explicit reviewed **identity-label alternatives**
-for providers whose documented primary label can be null, beginning with the
-Notion identity contract. Read the contributor's source-pinned fixture; do not
-claim that headers alone unblock the whole family. Define a small declarative
-ordered pointer fallback with a usable display label, keep subject binding exact,
-reject private/credential-derived labels and bound each alternative. Display the
-identity contract during source review and preserve old schemas. Add null/missing/
-empty/malformed/changed-identity regressions and an actual MCP journey before
-claiming compatibility. Separately, read-only POST/query inputs, credential-derived
-headers, revision guards and transforms need their own typed request contracts;
-do not infer them from a custom header. Connector contributors can opt supported
-subsets into v5 on their branch without modifying shared runtime/UI paths.
+Reviewed **identity-label alternatives are implemented in recipe v6**. Identity
+requires 1–3 distinct ordered pointers; only absent/null/empty labels fall back.
+Malformed/whitespace/secret-bearing values fail; subject and resolved label retain
+exact binding on every authorization/refresh/page. A reviewed subject-pointer
+alternative can use its validated integer-to-string ID. Source review and metadata
+show the order. Versions 1–5 retain strict grammar. V6 preserves nested writes/
+plans and supports optional v5 headers. Capabilities expose `identity_example`;
+`examples/connector_recipes/notes-identity.json` is synthetic. Actual MCP plan
+journeys now use this example; v4/v5 retain regression coverage. No service-data
+files were changed; live-provider acceptance is still separate.
+
+**Next daily-workflow increment: configurable browser UI.** Read the current
+engineering queue and documentation customization plan. Start with persisted
+manual toolbar visibility/order, sidebar side/width, density and named layouts.
+Keep today's defaults and make Settings/Reset always reachable. Use stable
+component IDs and validate configuration; test restart, invalid settings and
+shared-window behavior before adding versioned agent proposals with preview,
+apply/export/import and last-working-layout recovery. Native panels come later.
+Never let layout changes grant profile/library/account capabilities or execute
+agent-generated Python. This work extends Qt; no rebuild is needed.
+
+**Next shared connector increment:** typed read-only POST/query inputs, separate
+from create/send and static headers. Define bounded source/request/response types,
+visible source review, exact approved origin and credential handling, cancellation,
+identity/page rechecks and safe replay behavior before provider adoption. Review
+query semantics against official API contracts. Credential-derived headers,
+revision guards and transforms need their own types. Contributor-owned data/fixture
+paths remain separate. Coordinate the runtime increment before parallel work.
 
 ## Validation and checkpoint evidence
 
-Latest menu/static-header checkpoint: **938 regressions pass in 375.207 seconds**.
-Both actual SDK/independent-client MCP journeys pass over stdio/authenticated HTTP
-with v5 reviewed plans, document workers and persistent library discovery/reuse.
-Startup/render/shutdown passes on Qt 6.11.2. Final source/menu previews were
-inspected with synthetic data; Profile remains a separate top-level menu. Ruff,
-formatting, dependencies, whitespace, seven examples and local doc links pass.
-See ROADMAP.md for logs; live provider/desktop acceptance remains separate.
+Integrated acceptance: **948 regressions pass in 385.504 seconds**. Actual SDK
+and independent-client MCP journeys pass over stdio and authenticated HTTP with
+v6 reviewed plans, document workers and persistent library reuse. Startup/local
+render/shutdown passes on Qt 6.11.2; synthetic sidebar/menu/source previews were
+inspected. Ruff lint/format, dependency, whitespace, eight recipe examples and
+local document links pass. One HTTP fixture run hit the SDK's default 5s timeout;
+its bounded timeout now matches the existing raw client's 15s, and the rerun passes.
+Live-provider/native desktop acceptance remains separate. Logs:
+`/tmp/steed-sidebar-identity-full.log`, `/tmp/steed-identity-mcp-stdio.log`,
+`/tmp/steed-identity-mcp-http-final.log`, `/tmp/steed-sidebar-identity-startup.log`.
 
 Use `.venv/bin/python` and `unittest`. Headless Qt commands need
 `QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu"`.
