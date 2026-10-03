@@ -473,9 +473,7 @@ class GitLabProfileTests(ProfileCase):
                 "url": "https://gitlab.com/fixture-owner/fixture-project",
             },
         )
-        self.assertEqual(
-            self.api.calls[-1][1], "https://gitlab.com/api/v4/projects/7"
-        )
+        self.assertEqual(self.api.calls[-1][1], "https://gitlab.com/api/v4/projects/7")
         self.assertEqual(self.api.posts, [])
         project = self.recipe.tools[0]
         for value in (
@@ -492,11 +490,11 @@ class GitLabProfileTests(ProfileCase):
         request, definition, review = self.reviewed_create(
             self.adapter, "create_issue", "7"
         )
-        self.assertEqual(json.loads(review.before), {"title": TITLE, "description": DRAFT})
-        context = json.loads(review.context)
         self.assertEqual(
-            context["url"], "https://gitlab.com/api/v4/projects/7/issues"
+            json.loads(review.before), {"title": TITLE, "description": DRAFT}
         )
+        context = json.loads(review.context)
+        self.assertEqual(context["url"], "https://gitlab.com/api/v4/projects/7/issues")
         self.assertEqual(context["destination"], "7")
         self.assertIsNone(context["operation_header"])
         self.assertEqual(
@@ -533,7 +531,9 @@ class GitLabProfileTests(ProfileCase):
         self.assertEqual(len(self.api.posts), 1)
         # Nothing is replayed and nothing is reconciled automatically.
         self.api.failure = None
-        self.assertEqual(self.read(self.adapter, "read_project", "7").state, "succeeded")
+        self.assertEqual(
+            self.read(self.adapter, "read_project", "7").state, "succeeded"
+        )
         self.assertEqual(len(self.api.posts), 1)
 
     def test_incomplete_create_response_is_uncertain_rather_than_succeeded(self):
@@ -559,3 +559,107 @@ class GitLabProfileTests(ProfileCase):
         with self.assertRaises(ApiError):
             self.read(self.adapter, "read_project", "7")
         self.assertEqual(len(self.api.posts), 1)
+
+
+PACKAGED_SLUGS = {"gitlab.json", "todoist.json"}
+TEMPLATE_NAMES = {"github-owner-template.json"}
+
+
+class PackagedCatalogTests(unittest.TestCase):
+    def test_only_reviewable_profiles_are_listed_by_the_picker(self):
+        self.assertEqual(set(packaged_slugs()), PACKAGED_SLUGS)
+        self.assertEqual(
+            {p.name for p in (PACKAGED / "templates").glob("*.json")}, TEMPLATE_NAMES
+        )
+        # A template directory is never offered as an installable service.
+        self.assertNotIn("templates", PACKAGED_SLUGS)
+
+    def test_every_packaged_profile_parses_with_the_unchanged_engine(self):
+        for slug in sorted(PACKAGED_SLUGS):
+            with self.subTest(slug=slug):
+                recipe = packaged_recipe(slug[:-5])
+                self.assertLessEqual(recipe.version, 2)
+                self.assertEqual(recipe.authentication.kind, "bearer")
+                self.assertTrue(recipe.tools)
+                for tool in recipe.tools:
+                    self.assertTrue(tool.response)
+                    self.assertEqual(
+                        tool.destination_type in ("account", "resource_id", "email"),
+                        True,
+                    )
+
+
+class AssessedCandidateQueueTests(unittest.TestCase):
+    def setUp(self):
+        self.registry = json.loads(
+            (FIXTURES / "assessed_candidates.json").read_text("utf-8")
+        )
+        self.services = self.registry["services"]
+
+    def test_each_documented_family_is_assessed_once_from_an_official_source(self):
+        names = [entry["name"] for entry in self.services]
+        self.assertEqual(len(names), 21)
+        self.assertEqual(len(set(names)), 21)
+        for entry in self.services:
+            for key in (
+                "family",
+                "reference",
+                "auth",
+                "identity",
+                "paging",
+                "errors",
+                "host",
+                "status",
+                "gate",
+            ):
+                with self.subTest(service=entry["name"], key=key):
+                    self.assertIsInstance(entry[key], str)
+                    self.assertTrue(entry[key].strip())
+            self.assertTrue(entry["reference"].startswith("https://"))
+
+    def test_shipped_profiles_match_the_assessment_and_gated_ones_are_absent(self):
+        by_name = {entry["name"]: entry for entry in self.services}
+        for name, label, host in (
+            ("todoist", "Todoist", "api.todoist.com"),
+            ("gitlab", "GitLab.com", "gitlab.com"),
+        ):
+            with self.subTest(service=name):
+                entry = by_name[label]
+                self.assertEqual(entry["status"], "packaged")
+                self.assertIn("Bearer", entry["auth"])
+                recipe = packaged_recipe(name)
+                self.assertEqual(urlsplit(recipe.origin).hostname, host)
+                self.assertEqual(urlsplit(recipe.origin).hostname, entry["host"])
+        template = parse_recipe(
+            (PACKAGED / "templates" / "github-owner-template.json").read_bytes()
+        )
+        self.assertEqual(by_name["GitHub"]["status"], "template")
+        self.assertIn("Bearer", by_name["GitHub"]["auth"])
+        self.assertEqual(urlsplit(template.origin).hostname, "api.github.com")
+        shipped_origins = {"api.todoist.com", "gitlab.com", "api.github.com"}
+        for entry in self.services:
+            if entry["status"] in ("packaged", "template", "maintained"):
+                continue
+            with self.subTest(service=entry["name"]):
+                self.assertEqual(entry["status"], "gated")
+                # An assessed candidate is never quietly shipped as a profile.
+                self.assertNotIn(entry["host"], shipped_origins)
+                self.assertFalse((PACKAGED / (entry["name"] + ".json")).exists())
+                self.assertFalse((FIXTURES / (entry["name"] + ".json")).exists())
+
+    def test_only_bearer_services_and_public_hosts_can_become_profiles(self):
+        for entry in self.services:
+            if "Bearer" not in entry["auth"]:
+                with self.subTest(service=entry["name"], auth=entry["auth"]):
+                    self.assertIn(entry["status"], ("gated", "maintained"))
+            if "localhost" in entry["host"] or "instance" in entry["host"]:
+                with self.subTest(service=entry["name"], host=entry["host"]):
+                    self.assertEqual(entry["status"], "gated")
+
+    def test_every_gate_is_a_written_explanation(self):
+        for entry in self.services:
+            if entry["status"] != "gated":
+                continue
+            with self.subTest(service=entry["name"]):
+                self.assertGreater(len(entry["gate"]), 60)
+                self.assertTrue(entry["gate"].endswith("."))

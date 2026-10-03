@@ -217,3 +217,92 @@ Official references:
 - [Create an issue](https://docs.gitlab.com/api/issues/#create-an-issue)
 
 
+
+---
+
+## Wider queue: assessed, not shipped
+
+`connectors/fixtures/assessed_candidates.json` records the API assessment for all
+21 service families, including the three shipped above. Each row has one
+official starting reference, the documented authentication header, the documented
+identity route and label, the paging model, the error contract, the host, and the
+gate that must be cleared before a profile may be packaged.
+
+Assessed candidates are **not** connector implementations. Nothing in that file is
+installed, and a row is never a default account or an approval.
+
+| Service | Status | Blocking gate |
+| --- | --- | --- |
+| Google | maintained | Framework-owned provider; no parallel recipe |
+| Todoist | packaged | none outstanding for the shipped subset |
+| GitHub | template | owner must be fixed in newly reviewed source |
+| GitLab.com | packaged | none outstanding for the shipped subset |
+| Microsoft 365 | gated | native OAuth, `@odata.nextLink` paging and writes unverified |
+| Notion | gated | every request needs a `Notion-Version` header |
+| Slack | gated | channel destinations and `ok:false` error checking |
+| Asana | gated | token syntax/sign-in acceptance and workspace inputs |
+| Dropbox | gated | reads are RPC-style POST request objects |
+| Linear | gated | reads are GraphQL POSTs with variables |
+| Raindrop.io | gated | `/rest/v1` prefix, `result` flag, offset paging |
+| Airtable | gated | base/table pinning, optional identity label, offset paging |
+| Calendly | gated | identity is a URI; next page is a full URL |
+| Readwise / Reader | gated | `Authorization: Token`; auth probe returns 204 with no identity |
+| ClickUp | gated | bare personal token header; non-expiring OAuth tokens |
+| Trello | gated | key+token credentials, or OAuth 2.0 PKCE acceptance |
+| Figma | gated | personal tokens use `X-Figma-Token` |
+| Zotero | gated | version header, root-array collections, Link-header paging |
+| Nextcloud | gated | self-hosted host with port, WebDAV/XML, mandatory OCS header |
+| Joplin | gated | local plaintext origin, query-parameter token, no identity |
+| Spotify | gated | OAuth-only access, nullable label, offset paging |
+
+### Engine constraints every gate is measured against
+
+- A profile origin is one exact public HTTPS domain: no port, no path, no
+  credentials. That alone rules out self-hosted and local services.
+- Request headers are limited to `Authorization`, `Accept` and `Content-Type`
+  plus at most one reviewed operation-ID header, so services that require their
+  own header cannot be expressed.
+- Identity must be one GET returning HTTP 200 JSON with a usable subject string
+  and a non-empty label string. A URI subject or an empty `204` probe cannot
+  identify an account.
+- Reads are GET only, with optional bounded cursor pagination through one
+  reviewed query parameter. Offset, page-number, keyset and `Link`-header paging
+  are not followed.
+- A write is a single POST with no automatic retry, and an uncertain write is
+  reported as uncertain because nothing in this subset can reconcile it.
+
+### Promoting a candidate
+
+1. Clear its auth, identity, protocol and runtime gate using official
+   documentation only. Do not bypass a header restriction, and do not disguise a
+   read as a write tool.
+2. Add synthetic documented responses under `connectors/fixtures/` and
+   unchanged-runtime wire-shape tests in
+   `tests/test_default_connector_profiles.py`, covering a nullable identity
+   label, destination escapes, the exact reviewed payload, and the documented
+   failure or quota path.
+3. Promote to `connectors/recipes/<slug>.json` only when those tests pass, then
+   add its least-permission setup section above.
+4. Record live consent and account acceptance separately from automated results.
+   An untested service is never described as fully verified.
+
+### Shared framework work raised by this queue
+
+These are missing capabilities, not connector problems, and are not worked around
+here:
+
+- per-request provider headers (Notion `Notion-Version`, Figma `X-Figma-Token`,
+  Zotero `Zotero-API-Version`, Nextcloud `OCS-APIRequest`);
+- non-Bearer token schemes (Readwise `Token`, ClickUp bare tokens, Trello
+  key+token) and a trusted way to accept them;
+- identity shapes beyond a subject string and label, including URI subjects and
+  204 probes;
+- offset, page-number, keyset, `Link`-header and `@odata.nextLink` paging;
+- POST reads with request objects or variables (Dropbox RPC, Linear GraphQL);
+- application-level success flags (`ok:false`, Raindrop `result`, OCS `statuscode`);
+- native OAuth sign-in acceptance, scope normalization and refresh (Microsoft
+  365, Asana, Spotify, Trello OAuth 2.0);
+- an explicitly scoped local-service adapter for Nextcloud and Joplin, without
+  weakening the global HTTPS rule;
+- reconciliation of uncertain writes, so a create could be confirmed by an
+  operation ID rather than a manual check.
