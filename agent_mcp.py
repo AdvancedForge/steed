@@ -13,6 +13,22 @@ from pathlib import Path
 
 from services.agent_tools import REQUEST_LIMIT, RESPONSE_LIMIT, TOOLS
 
+CALL_LIMIT = 32
+QUEUE_TIMEOUT = 35
+READ_ONLY_COMMANDS = frozenset(
+    (
+        "task.status",
+        "task.capabilities",
+        "grant.list",
+        "browser.context",
+        "browser.tabs",
+        "library.folders",
+        "app.list_tools",
+        "recipe.capabilities",
+        "worker.capabilities",
+    )
+)
+
 
 def read_browser_discovery(discovery):
     """Read only private, user-owned gateway metadata; never expose its token."""
@@ -49,6 +65,7 @@ class BrowserConnection:
         self.reader = self.writer = None
         self.sequence = 0
         self.lock = asyncio.Lock()
+        self.waiting = 0
         self.expected_epoch = None
 
     async def connect(self):
@@ -78,36 +95,63 @@ class BrowserConnection:
             raise RuntimeError("Agent connection was not authenticated")
 
     async def call(self, name, arguments):
-        if self.lock.locked():
-            return {"error": {"code": "request_in_progress"}}
-        async with self.lock:
-            if self.writer is None:
-                raise RuntimeError("Browser connection is unavailable")
-            self.sequence += 1
-            payload = (
-                json.dumps(
-                    {"id": self.sequence, "tool": name, "arguments": arguments},
-                    allow_nan=False,
-                ).encode()
-                + b"\n"
-            )
-            if len(payload) > REQUEST_LIMIT:
-                return {"error": {"code": "request_too_large"}}
+        # Native agents routinely discover several resources in parallel. Keep
+        # one request on the wire, but wait instead of rejecting sibling calls.
+        # Never retry a dispatched operation: its external effects may be unknown.
+        if self.waiting >= CALL_LIMIT:
+            return {
+                "error": {
+                    "code": "request_queue_full",
+                    "message": "Steed's request queue is full. This call was not dispatched; wait for pending calls to finish.",
+                }
+            }
+        self.waiting += 1
+        try:
             try:
-                self.writer.write(payload)
-                await self.writer.drain()
-                raw = await asyncio.wait_for(self.reader.readline(), 35)
-                if not raw or len(raw) > RESPONSE_LIMIT:
-                    raise RuntimeError("Browser connection closed")
-                response = json.loads(raw)
-                if response.pop("id", None) != self.sequence:
-                    raise RuntimeError("Unexpected browser response")
-                return response
-            except BaseException:
-                # Cancellation/timeout may follow a site effect. Dispose the
-                # connection and its task; never retry an uncertain operation.
-                await self.close()
-                raise
+                await asyncio.wait_for(self.lock.acquire(), QUEUE_TIMEOUT)
+            except asyncio.TimeoutError:
+                return {
+                    "error": {
+                        "code": "request_queue_timeout",
+                        "message": "Waiting for another Steed call timed out. This call was not dispatched; wait for pending calls to finish.",
+                    }
+                }
+            try:
+                return await self._call(name, arguments)
+            finally:
+                self.lock.release()
+        finally:
+            self.waiting -= 1
+
+    async def _call(self, name, arguments):
+        """Send once after admission; queued cancellation cannot close the owner."""
+        if self.writer is None:
+            raise RuntimeError("Browser connection is unavailable")
+        self.sequence += 1
+        payload = (
+            json.dumps(
+                {"id": self.sequence, "tool": name, "arguments": arguments},
+                allow_nan=False,
+            ).encode()
+            + b"\n"
+        )
+        if len(payload) > REQUEST_LIMIT:
+            return {"error": {"code": "request_too_large"}}
+        try:
+            self.writer.write(payload)
+            await self.writer.drain()
+            raw = await asyncio.wait_for(self.reader.readline(), 35)
+            if not raw or len(raw) > RESPONSE_LIMIT:
+                raise RuntimeError("Browser connection closed")
+            response = json.loads(raw)
+            if response.pop("id", None) != self.sequence:
+                raise RuntimeError("Unexpected browser response")
+            return response
+        except BaseException:
+            # Cancellation/timeout may follow a site effect. Dispose the
+            # connection and its task; never retry an uncertain operation.
+            await self.close()
+            raise
 
     async def close(self):
         writer, self.writer = self.writer, None
@@ -185,6 +229,20 @@ def create_server(discovery, *, expected_epoch=None, binding_file=None):
             "Reply normally: Steed captures your assistant messages. "
             + server.instructions
         )
+    server.instructions += (
+        " Discovery is already enabled: call steed_task_capabilities, "
+        "steed_browser_context, steed_library_folders and "
+        "steed_app_list_tools with {} before requesting access. Do not supply task_id; "
+        "the connection already owns its task. Empty lists mean no resources are "
+        "enabled or available, not that discovery was denied. Enabled library "
+        "folders already grant file access; they need no additional task grant. "
+        "steed_browser_tabs is different: it lists only user-shared live tabs and "
+        "requires live/read approval. Ask the user to use Share browser tabs if "
+        "needed; a denied tab listing does not disable other discovery tools. "
+        "Use steed_grant_request with the exact scope for browser/connector access "
+        "and poll steed_grant_list. Parallel calls are queued. Report an actual "
+        "tool name and error code if a call fails; do not invent a discovery toggle."
+    )
 
     @server.list_tools()
     async def list_tools():
@@ -194,7 +252,7 @@ def create_server(discovery, *, expected_epoch=None, binding_file=None):
                 description=tool.description,
                 inputSchema=tool.input_schema,
                 annotations=types.ToolAnnotations(readOnlyHint=True)
-                if tool.command == "task.status"
+                if tool.command in READ_ONLY_COMMANDS
                 else None,
             )
             for tool in TOOLS
@@ -206,7 +264,7 @@ def create_server(discovery, *, expected_epoch=None, binding_file=None):
     async def call_tool(name, arguments):
         try:
             result = await server.request_context.lifespan_context.call(name, arguments)
-        except (OSError, ValueError, RuntimeError, TimeoutError):
+        except (OSError, ValueError, RuntimeError, asyncio.TimeoutError):
             result = {
                 "error": {
                     "code": "browser_connection_lost",

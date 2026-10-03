@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import signal
 import sys
@@ -16,6 +17,13 @@ from services.agent_tools import TOOLS
 from services.command_broker import require_owner_thread
 
 LINE_LIMIT = 1024 * 1024
+
+
+def runtime_name(value):
+    """Accept bounded identifiers, never arbitrary configuration or markup."""
+    if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._:/-]{1,128}", value):
+        return value
+    return None
 
 
 def toml_value(value):
@@ -44,6 +52,8 @@ class CodexProvider(AgentProvider):
         self.command = command
         self.environment = environment
         self.model = model
+        self.model_info = None
+        self.thread_model_info = None
         self.process = QProcess(self)
         self.process.setReadChannel(QProcess.ProcessChannel.StandardOutput)
         parameters = QProcess.UnixProcessParameters()
@@ -160,9 +170,14 @@ class CodexProvider(AgentProvider):
             ],
             "required": True,
             "startup_timeout_sec": 30,
+            # Cover bounded queue admission (35s) plus a dispatched reply (35s).
+            "tool_timeout_sec": 75,
             # This grants transport access only. Steed still owns every grant,
             # payload review and receipt; Codex must not add a second approval UI.
-            "default_tools_approval_mode": "auto",
+            # "auto" follows tool hints and still rejects non-read-only calls
+            # under a native never-ask policy. "approve" admits this connection
+            # to Steed, where every actual capability is separately authorized.
+            "default_tools_approval_mode": "approve",
             "enabled_tools": [
                 tool.name
                 for tool in TOOLS
@@ -190,10 +205,24 @@ class CodexProvider(AgentProvider):
             self._thread,
         )
 
+    def _report_model(self, report):
+        if report != self.model_info:
+            self.model_info = dict(report) if report else None
+            self.model_reported.emit(self.model_info)
+
     def _thread(self, result):
         self.thread_id = result["thread"]["id"]
         if not isinstance(self.thread_id, str) or not 1 <= len(self.thread_id) <= 128:
             raise ValueError("Invalid provider thread")
+        model = runtime_name(result.get("model"))
+        if model:
+            self.thread_model_info = {
+                "model": model,
+                "provider": runtime_name(result.get("modelProvider")),
+                "source": "thread",
+                "from_model": None,
+            }
+            self._report_model(self.thread_model_info)
         self._request(
             "mcpServerStatus/list",
             # Codex's all-server inventory can create fresh discovery clients.
@@ -235,6 +264,9 @@ class CodexProvider(AgentProvider):
         if self.stopped or self.thread_id is None or self.turn_id or self.sending:
             raise RuntimeError("Provider is not ready for a message")
         self.sending = message_id
+        # Rerouting is reported for a specific turn. A new turn starts with the
+        # thread's resolved model until Codex reports another reroute.
+        self._report_model(self.thread_model_info)
         self.early_events = []
         self.early_bytes = 0
         self._request(
@@ -290,11 +322,33 @@ class CodexProvider(AgentProvider):
             "item/agentMessage/delta",
             "item/completed",
             "turn/completed",
+            "model/rerouted",
         ):
             self.early_bytes += len(json.dumps(params).encode())
             if len(self.early_events) >= 256 or self.early_bytes > LINE_LIMIT:
                 raise ValueError("Early event limit exceeded")
             self.early_events.append((method, params))
+            return
+        if method == "model/rerouted":
+            if params.get("threadId") != self.thread_id or not self.turn_id:
+                return
+            if params.get("turnId") != self.turn_id:
+                raise ValueError("Unexpected model reroute turn")
+            model = runtime_name(params.get("toModel"))
+            previous = runtime_name(params.get("fromModel"))
+            if model and previous:
+                self._report_model(
+                    {
+                        "model": model,
+                        "provider": (self.thread_model_info or {}).get("provider"),
+                        "source": "rerouted",
+                        "from_model": previous,
+                    }
+                )
+            else:
+                # A reroute with unusable metadata cannot establish that the
+                # thread's earlier model is still the one serving this turn.
+                self._report_model(None)
             return
         if method == "item/started" and self.turn_id:
             if params.get("turnId") != self.turn_id:

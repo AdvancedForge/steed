@@ -27,11 +27,24 @@ class AgentAdapterTests(unittest.IsolatedAsyncioTestCase):
                     await connection.connect()
                 opened.assert_not_called()
 
-    async def test_overlapping_calls_are_rejected_without_queueing(self):
+    async def test_waiting_call_is_not_dispatched_until_the_active_call_releases(self):
         connection = BrowserConnection("unused")
+        writer = Mock(drain=AsyncMock())
+        connection.writer = writer
+        connection.reader = Mock(
+            readline=AsyncMock(return_value=b'{"id":1,"result":{"accepted":true}}\n')
+        )
         async with connection.lock:
-            result = await connection.call("steed_task_start", {"objective": "overlap"})
-        self.assertEqual(result, {"error": {"code": "request_in_progress"}})
+            waiting = asyncio.create_task(
+                connection.call("steed_task_start", {"objective": "overlap"})
+            )
+            await asyncio.sleep(0)
+            self.assertFalse(waiting.done())
+            writer.write.assert_not_called()
+        result = await waiting
+        self.assertEqual(result, {"result": {"accepted": True}})
+        writer.write.assert_called_once()
+        self.assertEqual(connection.waiting, 0)
 
     async def test_insecure_or_symlinked_discovery_never_connects(self):
         with tempfile.TemporaryDirectory() as directory:

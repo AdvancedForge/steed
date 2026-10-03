@@ -12,6 +12,31 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Codex access discovery and reported model (implemented; final validation in progress).**
+The user reports an agent saying access-discovery requests were rejected. Two
+reproducible faults were found: the native Steed MCP entry used `auto` admission,
+which could reject calls before Steed saw them, and the adapter immediately
+rejected siblings of an in-flight request. The dedicated bound entry now uses
+`approve`, while Steed still owns enabled-folder access, scope approvals and
+payload reviews. Other native servers and OS/sandbox policies remain unchanged.
+Parallel calls queue with a 32-call bound/35-second waiting timeout; cancelled
+waiting calls do not close the active call, and dispatched uncertainty is never
+replayed. Discovery instructions explicitly name the zero-argument tools, exclude
+caller-supplied task IDs, explain empty lists and distinguish protected live-tab
+listing from grant-free capability/context/folder/connector discovery. Known
+tool names/codes and value-free rejection stages make future failures traceable.
+
+The visible activity card now reports the thread's actual Codex model/provider,
+updates on owned-turn reroutes (including early events), and labels missing
+metadata as unreported. The selector explicitly applies to new chats. Reports
+are scoped across conversations/windows, retained as last-reported until browser
+restart, and hidden in private browsing. The installed runtime's expanded offline
+workflow discovers resources concurrently, confirms live-tab denial, requests
+one exact workspace grant approved by its synthetic user, and keeps follow-ups
+connected under a native never-ask policy. No real resumes, knowledge-base data,
+account credentials or external applications were used. The original live task
+still needs a new-chat retry after restart; there is no discovery enable switch.
+
 **Codex tool-transition compatibility and readable activity (implemented and validated).**
 The user reported a reply promising work followed by a generic connection failure.
 Current question requests and standalone clock reads are supported; unrelated

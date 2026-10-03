@@ -25,6 +25,11 @@ class Probe(CodexProvider):
         # The dedicated test home has no credentials. Only this probe skips login.
         self._request("config/read", {"includeLayers": False}, self._config)
 
+    def _host_request(self, value):
+        # Only this offline probe records protocol names, never request bodies.
+        self.host_methods.append(value.get("method"))
+        super()._host_request(value)
+
 
 def run(model="gpt-6.1-sol"):
     if shutil.which("codex") is None:
@@ -42,6 +47,7 @@ def run(model="gpt-6.1-sol"):
         marker = root / "unrelated-server-started"
         (native_home / "config.toml").write_text(
             'sandbox_mode = "workspace-write"\n'
+            'approval_policy = "never"\n'
             'model_provider = "synthetic"\n'
             "[model_providers.synthetic]\n"
             'name = "Synthetic offline provider"\n'
@@ -72,6 +78,7 @@ def run(model="gpt-6.1-sol"):
         service = TaskService(root / "tasks.sqlite")
         gateway = AgentGateway(service, root)
         driver = Probe(environment=environment, model=model)
+        driver.host_methods = []
         outcome = []
         replies, turns, accepted = [], [], []
         driver.message.connect(
@@ -80,6 +87,9 @@ def run(model="gpt-6.1-sol"):
         driver.turn_done.connect(lambda: turns.append(True))
         driver.accepted.connect(accepted.append)
         task = service._create("Synthetic native Codex handshake")
+        enabled = service.library.create_folder("Synthetic enabled inputs")
+        service.library.enable(enabled, True)
+        service.library.create_folder("Synthetic disabled inputs")
         binding = chat_home / "binding.json"
         save_json(
             binding,
@@ -104,6 +114,8 @@ def run(model="gpt-6.1-sol"):
                 "Installed Codex could not establish the scoped chat"
             )
             assert marker.exists(), "Native inherited MCP configuration was suppressed"
+            assert driver.model_info["model"] == model
+            assert driver.model_info["provider"] == "synthetic"
             assert service.store.grants(task.task_id) == []
             assert service.messages.read(task.task_id)["messages"] == []
             assert os.stat(binding).st_mode & 0o777 == 0o600
@@ -112,6 +124,12 @@ def run(model="gpt-6.1-sol"):
                 deadline = time.monotonic() + 20
                 while len(turns) < number and time.monotonic() < deadline:
                     app.processEvents()
+                    for grant in service.store.grants(task.task_id):
+                        if grant.status == "requested":
+                            # Only the synthetic user approves this known scope.
+                            # Production still uses the ordinary permission popup.
+                            assert grant.scope["actions"] == ["workspace"]
+                            service.approve_grant(task.task_id, grant.grant_id)
                     time.sleep(0.01)
                 assert len(turns) == number, "Native synthetic reply did not complete"
                 assert accepted[-1] == f"synthetic_message_{number}"
@@ -133,6 +151,31 @@ def run(model="gpt-6.1-sol"):
             assert responses.status_called and responses.status_received, (
                 "Native model fixture did not complete its Steed MCP tool round trip"
             )
+            discovery = responses.results(0)
+            assert set(discovery) == {name for name, _ in responses.workflow[0]}
+            assert all("result" in value for value in discovery.values()), discovery
+            assert "website_scripts" in discovery["steed_task_capabilities"]["result"]
+            assert (
+                discovery["steed_browser_context"]["result"]["source"]
+                == "no_browser_window"
+            )
+            assert [
+                f["name"] for f in discovery["steed_library_folders"]["result"]
+            ] == ["Synthetic enabled inputs"]
+            assert discovery["steed_app_list_tools"]["result"] == []
+            tab_error = responses.results(1)["steed_browser_tabs"]["error"]
+            assert tab_error["code"] == "approval_required"
+            assert "Share browser tabs" in tab_error["message"]
+            requested = responses.results(2)["steed_grant_request"]
+            assert requested.get("result", {}).get("status") == "requested", (
+                requested,
+                driver.host_methods,
+            )
+            grant_result = responses.results(3)["steed_grant_list"]
+            assert "result" in grant_result, (grant_result, driver.host_methods)
+            assert grant_result["result"][-1]["status"] == "approved"
+            assert len(service.store.grants(task.task_id)) == 1
+            assert not service._sessions
             driver.stop()
             deadline = time.monotonic() + 5
             while gateway.connections and time.monotonic() < deadline:
@@ -143,7 +186,7 @@ def run(model="gpt-6.1-sol"):
             )
             assert service.store.get(task.task_id).status == "cancelled"
             print(
-                "Codex handshake, native streamed follow-ups, task binding, native capability preservation and cleanup passed; no external model calls."
+                "Codex handshake, reported model, parallel resource discovery, explicit synthetic grant, streamed follow-ups, task binding, native capability preservation and cleanup passed; no external model calls."
             )
         finally:
             driver.stop()
