@@ -14,9 +14,9 @@ CREATE TABLE IF NOT EXISTS connector_access (
 """
 GROUP_LABELS = {
     "read": "Read supported app data and check recorded results",
-    "write": "Create and add content; replacements still require review",
+    "write": "Create and add content; tools may require payload or replacement review",
     "direct": "Replace content directly, without per-change review",
-    "send": "Send messages to the recipients requested by tasks",
+    "send": "Send messages to requested recipients; tools may require payload review",
     "delete": "Delete supported app data",
     "spend": "Spend money using supported app tools",
 }

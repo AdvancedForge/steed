@@ -28,7 +28,13 @@ from app_connector_support import MemorySecrets
 from mock_app_connector import register_mock_apps
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineHttpRequest, QWebEngineSettings
-from recipe_support import TOKEN, SyntheticRecipeHttp, recipe
+from recipe_support import (
+    TOKEN,
+    SyntheticRecipeHttp,
+    WriteRecipeHttp,
+    recipe,
+    write_recipe,
+)
 from test_recipe_oauth import OAuthHttp
 from test_task_profiles import TaskProfileTests
 
@@ -38,6 +44,7 @@ from services.connector_recipes import (
     RECIPE_PAGINATED_EXAMPLE,
     parse_recipe,
 )
+from ui.app_review import AppReviewDialog
 from ui.recipe_review import RecipeReviewDialog
 from ui.task_dialog import TaskDialog
 from ui.task_recovery import TaskRecoveryDialog
@@ -73,7 +80,9 @@ async def sdk_transport(discovery, endpoint):
             yield reader, writer, None
 
 
-async def recipe_workflow(call, shared, label, *, oauth=False, pagination=False):
+async def recipe_workflow(
+    call, shared, label, *, oauth=False, pagination=False, writing=False
+):
     """External clients propose source; only the fixture installs/connects it."""
     task = await call("task.start", objective="Design a synthetic connection recipe")
     shared[label + "_recipe_task"] = task["task_id"]
@@ -83,7 +92,9 @@ async def recipe_workflow(call, shared, label, *, oauth=False, pagination=False)
         and capabilities["installation_approval"] == "exact_recipe"
     )
     source = json.dumps(
-        capabilities["pagination_example"]
+        capabilities["write_example"]
+        if writing
+        else capabilities["pagination_example"]
         if pagination
         else capabilities["oauth_example"]
         if oauth
@@ -132,12 +143,83 @@ async def recipe_workflow(call, shared, label, *, oauth=False, pagination=False)
         tools = [
             t
             for t in await call("app.list_tools")
-            if t["tool"] == ("list_notes" if oauth else "read_note")
+            if t["tool"]
+            == ("create_note" if writing else "list_notes" if oauth else "read_note")
             and t["connector"].startswith(provider + "_")
         ]
         await asyncio.sleep(0.02)
     assert len(tools) == 1
     await call("task.finish")
+    if writing:
+        task = await call(
+            "task.start", objective="Create and send reviewed synthetic drafts"
+        )
+        shared[label + "_recipe_task"] = task["task_id"]
+        connector = tools[0]["connector"]
+        await call(
+            "grant.request",
+            scope={
+                "actions": ["app", "artifact"],
+                "connector_permissions": [
+                    {
+                        "connector": connector,
+                        "tool": "create_note",
+                        "effect": "write",
+                        "destination": "account",
+                    },
+                    {
+                        "connector": connector,
+                        "tool": "create_note",
+                        "effect": "read",
+                        "destination": "account",
+                    },
+                    {
+                        "connector": connector,
+                        "tool": "send_message",
+                        "effect": "send",
+                        "destination": "email:recipient@example.test",
+                    },
+                ],
+            },
+        )
+        await approved()
+        artifact = await call(
+            "artifact.store",
+            title="Synthetic recipe payload",
+            content='SYNTHETIC_REVIEWED_DRAFT with "quotes" and\nnewlines',
+        )
+        for request_id, tool, destination in (
+            ("create", "create_note", "account"),
+            ("send", "send_message", "email:recipient@example.test"),
+            ("uncertain-create", "create_note", "account"),
+        ):
+            arguments = {
+                "connector": connector,
+                "tool": tool,
+                "destination": destination,
+                "request_id": request_id,
+                "artifact_id": artifact["artifact_id"],
+            }
+            result = await call("app.call_tool", **arguments)
+            deadline = time.monotonic() + 15
+            while result["state"] in {"requested", "dispatched"}:
+                assert time.monotonic() < deadline
+                await asyncio.sleep(0.02)
+                result = await call("app.status", request_id=request_id)
+            assert result["state"] == (
+                "uncertain" if request_id == "uncertain-create" else "succeeded"
+            ), result
+            assert await call("app.call_tool", **arguments) == result
+            if request_id == "uncertain-create":
+                await call("app.reconcile", request_id=request_id)
+                while (await call("app.status", request_id=request_id))[
+                    "state"
+                ] != "succeeded":
+                    assert time.monotonic() < deadline
+                    await asyncio.sleep(0.02)
+        shared[label + "_reviewed_recipe_writes"] = True
+        await call("task.finish")
+        return
     task = await call("task.start", objective="Read one note from the reviewed service")
     shared[label + "_recipe_task"] = task["task_id"]
     arguments = {
@@ -782,6 +864,7 @@ async def sdk_client(
                 await recipe_workflow(call, shared, "sdk")
                 await recipe_workflow(call, shared, "sdk", oauth=True)
                 await recipe_workflow(call, shared, "sdk", oauth=True, pagination=True)
+                await recipe_workflow(call, shared, "sdk", writing=True)
 
 
 def raw_workflow(request, notify, foreign_session, origin, shared):
@@ -1052,6 +1135,7 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         asyncio.run(
             recipe_workflow(workspace_call, shared, "raw", oauth=True, pagination=True)
         )
+        asyncio.run(recipe_workflow(workspace_call, shared, "raw", writing=True))
     return True
 
 
@@ -1264,8 +1348,11 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             manager = case.registry.app_connections
             manager.store.secrets = MemorySecrets()
             oauth_http = OAuthHttp()
+            write_http = WriteRecipeHttp()
             manager.recipe_http_factory = lambda selected: (
-                oauth_http
+                write_http
+                if selected.version == 2
+                else oauth_http
                 if selected.authentication.kind == "oauth_pkce"
                 else SyntheticRecipeHttp()
             )
@@ -1362,11 +1449,37 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     shared.get("raw_recipe_task"),
                 )
                 if isinstance(dialog, RecipeReviewDialog):
-                    assert dialog.recipe in (recipe(), oauth_source, paginated_source)
+                    assert dialog.recipe in (
+                        recipe(),
+                        oauth_source,
+                        paginated_source,
+                        write_recipe(),
+                    )
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
                     dialog.allow_button.click()  # Trusted synthetic user only.
                     shared["recipe_review_popup"] = True
+                elif isinstance(dialog, AppReviewDialog):
+                    assert dialog.deny_button.isDefault()
+                    assert dialog.windowTitle() == "Review App Action"
+                    context = json.loads(dialog.review.context)
+                    payload = json.loads(dialog.review.before_text)
+                    assert context["source_sha256"] == write_recipe().sha256
+                    assert context["url"] in (
+                        "https://api.fixture.example/notes",
+                        "https://api.fixture.example/messages",
+                    )
+                    assert payload["operation_id"] == context["operation_id"]
+                    assert payload["body"] == dialog.review.after_text
+                    if context["effect"] == "send":
+                        assert payload["to"] == "recipient@example.test"
+                    if dialog.review.request_id == "uncertain-create":
+                        write_http.fail_once = True
+                    dialog.grab().save(
+                        f"/tmp/steed-recipe-write-{transport}-preview.png"
+                    )
+                    dialog.approve_button.click()  # Trusted synthetic user only.
+                    shared["recipe_payload_review_popup"] = True
                 elif isinstance(dialog, WorkerApprovalDialog):
                     assert (
                         "generated.zip" in dialog.source.toPlainText()
@@ -1401,7 +1514,12 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                 shared["approval_popup"] = True
             if require_recipes:
                 manager = case.registry.app_connections
-                for selected in (recipe(), oauth_source, paginated_source):
+                for selected in (
+                    recipe(),
+                    oauth_source,
+                    paginated_source,
+                    write_recipe(),
+                ):
                     if selected.provider not in manager.providers or manager.busy:
                         continue
                     accounts = [
@@ -1418,7 +1536,9 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                             )
                         else:
                             manager.connect_recipe_account(
-                                selected.provider, TOKEN, ["read_note"]
+                                selected.provider,
+                                TOKEN,
+                                [t.name for t in selected.tools],
                             )
                     elif not shared.get(selected.provider + "_access_enabled"):
                         manager.set_access(accounts[0].account_id, "read", True)
@@ -1496,6 +1616,13 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             time.sleep(0.005)
         assert not worker.is_alive(), "External workflow timed out"
         assert not errors, errors
+        if require_recipes:
+            assert shared["sdk_reviewed_recipe_writes"]
+            assert shared["raw_reviewed_recipe_writes"]
+            assert shared["recipe_payload_review_popup"]
+            assert len(write_http.payloads) == 6
+            assert len(write_http.operations) == 6
+            assert sum("to" in payload for payload in write_http.payloads) == 2
         case.wait_for(
             lambda: any(path == "/mcp-user-post" for path, _, _ in case.posted)
         )
@@ -1568,7 +1695,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--recipes",
         action="store_true",
-        help="Propose a reviewed synthetic recipe and read its connected API through both protocol clients",
+        help="Review synthetic recipes, read their APIs, approve creates/sends and reconcile without replay through both protocol clients",
     )
     parser.add_argument(
         "--documents",

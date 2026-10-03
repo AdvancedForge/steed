@@ -487,6 +487,7 @@ class TaskService(QObject):
             RECIPE_EXAMPLE,
             RECIPE_OAUTH_EXAMPLE,
             RECIPE_PAGINATED_EXAMPLE,
+            RECIPE_WRITE_EXAMPLE,
         )
 
         self._usable()
@@ -494,13 +495,16 @@ class TaskService(QObject):
         return {
             "available": self.recipes.connections is not None
             and self.recipes.connections.recipes is not None,
-            "version": 1,
+            "version": 2,
+            "supported_versions": [1, 2],
             "authentication": ["bearer", "oauth_pkce"],
             "destinations": {
                 "resource": "one exact resource ID",
                 "collection": "account",
+                "email": "email:recipient@example.com (one ASCII mailbox)",
             },
-            "effects": ["read"],
+            "effects": ["read", "write", "send"],
+            "write_approval": "exact_payload_every_action",
             "installation_approval": "exact_recipe",
             "limits": {
                 "recipe_bytes": 16384,
@@ -511,10 +515,13 @@ class TaskService(QObject):
                 "oauth_scopes": 20,
                 "pagination_pages": 5,
                 "pagination_cursor_bytes": 512,
+                "request_fields": 10,
+                "payload_bytes": 16384,
             },
             "example": copy.deepcopy(RECIPE_EXAMPLE),
             "oauth_example": copy.deepcopy(RECIPE_OAUTH_EXAMPLE),
             "pagination_example": copy.deepcopy(RECIPE_PAGINATED_EXAMPLE),
+            "write_example": copy.deepcopy(RECIPE_WRITE_EXAMPLE),
         }
 
     def _recipe_list(self, task_id):

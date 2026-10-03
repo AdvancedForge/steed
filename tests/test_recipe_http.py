@@ -205,6 +205,114 @@ class RecipeHttpTests(unittest.TestCase):
             self.request()
         self.assertEqual(len(self.calls), 1)
 
+    def test_reviewed_json_post_is_pinned_with_exact_body_and_operation_header(self):
+        self.http = RecipeHttp(
+            "https://api.fixture.example",
+            post_rules=[
+                ("/notes", "Idempotency-Key"),
+                ("/folders/{destination}/notes", ""),
+            ],
+        )
+        headers = {
+            "Authorization": "Bearer SYNTHETIC_TOKEN",
+            "Content-Type": "application/json",
+            "Idempotency-Key": "a" * 32,
+        }
+        body = b'{"title":"Fixture", "body":"draft\\nwith quotes \\""}'
+        self.status = 201
+        self.assertEqual(
+            self.request(
+                method="POST",
+                url="https://api.fixture.example/notes",
+                headers=headers,
+                body=body,
+            ),
+            {"text": "SYNTHETIC_DATA"},
+        )
+        self.assertEqual(self.forms, [body])
+        self.assertEqual(self.calls[0][1]["Host"], "api.fixture.example")
+        self.assertEqual(self.calls[0][1]["Idempotency-Key"], "a" * 32)
+        for url, bad_headers, bad_body in (
+            ("https://foreign.example/notes", headers, body),
+            ("https://api.fixture.example/foreign", headers, body),
+            ("https://api.fixture.example/notes?cursor=x", headers, body),
+            (
+                "https://api.fixture.example/notes",
+                {**headers, "Cookie": "private"},
+                body,
+            ),
+            (
+                "https://api.fixture.example/notes",
+                {**headers, "Idempotency-Key": "x\r\nHost: foreign.example"},
+                body,
+            ),
+            (
+                "https://api.fixture.example/notes",
+                headers,
+                b'{"body": {"nested": "unsupported"}}',
+            ),
+            ("https://api.fixture.example/notes", headers, b'{"body":"a","body":"b"}'),
+            ("https://api.fixture.example/notes", headers, b"x" * 16385),
+            (
+                "https://api.fixture.example/folders/../notes",
+                {k: v for k, v in headers.items() if k != "Idempotency-Key"},
+                body,
+            ),
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                self.http.request("POST", url, headers=bad_headers, body=bad_body)
+        self.assertEqual(len(self.calls), 1)
+        self.request(
+            method="POST",
+            url="https://api.fixture.example/folders/folder-1/notes",
+            headers={k: v for k, v in headers.items() if k != "Idempotency-Key"},
+            body=body,
+        )
+        self.assertEqual(len(self.calls), 2)
+
+    def test_post_error_redirect_accepted_or_empty_reply_never_retries(self):
+        self.http = RecipeHttp(
+            "https://api.fixture.example", post_rules=[("/notes", "")]
+        )
+        headers = {
+            "Authorization": "Bearer SYNTHETIC_TOKEN",
+            "Content-Type": "application/json",
+        }
+        for status in (202, 204, 302, 401, 500):
+            self.status = status
+            with self.subTest(status=status), self.assertRaises(ApiError):
+                self.request(
+                    method="POST",
+                    url="https://api.fixture.example/notes",
+                    headers=headers,
+                    body=b'{"body":"draft"}',
+                )
+        self.assertEqual(len(self.calls), 5)
+
+    def test_shared_post_paths_can_use_distinct_reviewed_operation_headers(self):
+        self.http = RecipeHttp(
+            "https://api.fixture.example",
+            post_rules=[
+                ("/notes", ""),
+                ("/notes", "Idempotency-Key"),
+                ("/notes", "X-Request-ID"),
+            ],
+        )
+        for header in ("", "Idempotency-Key", "X-Request-ID"):
+            headers = {
+                "Authorization": "Bearer SYNTHETIC_TOKEN",
+                "Content-Type": "application/json",
+            }
+            if header:
+                headers[header] = "a" * 32
+            self.request(
+                method="POST",
+                url="https://api.fixture.example/notes",
+                headers=headers,
+                body=b'{"body":"draft"}',
+            )
+        self.assertEqual(len(self.calls), 3)
+
     def test_private_mixed_mapped_multicast_and_empty_dns_answers_are_denied_before_connect(
         self,
     ):
