@@ -40,10 +40,10 @@ from test_task_profiles import TaskProfileTests
 
 from browser_window import BrowserWindow
 from services.connector_recipes import (
+    RECIPE_HEADERS_EXAMPLE,
     RECIPE_NESTED_EXAMPLE,
     RECIPE_OAUTH_EXAMPLE,
     RECIPE_PAGINATED_EXAMPLE,
-    RECIPE_PLAN_EXAMPLE,
     parse_recipe,
 )
 from ui.app_review import AppReviewDialog
@@ -102,7 +102,7 @@ async def recipe_workflow(
         and capabilities["installation_approval"] == "exact_recipe"
     )
     source = json.dumps(
-        capabilities["plan_example"]
+        capabilities["headers_example"]
         if plan
         else capabilities["nested_example"]
         if nested
@@ -142,6 +142,11 @@ async def recipe_workflow(
     assert preflight["valid"] and preflight["installation_required"]
     assert preflight["recipe"]["provider"] == provider
     assert not preflight["provider_semantics_verified"]
+    if plan:
+        assert capabilities["request_headers"]["Notion-Version"] == "YYYY-MM-DD"
+        assert preflight["recipe"]["request_headers"] == {
+            "Notion-Version": "2025-09-03"
+        }
     arguments = {"file_id": item["file_id"], "request_id": "fixture-recipe"}
     receipt = await call("recipe.propose", **arguments)
     deadline = time.monotonic() + 15
@@ -255,6 +260,8 @@ async def recipe_workflow(
                 else "_reviewed_recipe_writes"
             )
         ] = True
+        if plan:
+            shared[label + "_reviewed_header_recipe_writes"] = True
         await call("task.finish")
         return
     task = await call("task.start", objective="Read one note from the reviewed service")
@@ -1683,7 +1690,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         paginated_source,
                         write_recipe(),
                         parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
-                        parse_recipe(json.dumps(RECIPE_PLAN_EXAMPLE).encode()),
+                        parse_recipe(json.dumps(RECIPE_HEADERS_EXAMPLE).encode()),
                     )
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
@@ -1702,7 +1709,9 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     )
                     plan = (
                         context["source_sha256"]
-                        == parse_recipe(json.dumps(RECIPE_PLAN_EXAMPLE).encode()).sha256
+                        == parse_recipe(
+                            json.dumps(RECIPE_HEADERS_EXAMPLE).encode()
+                        ).sha256
                     )
                     assert (
                         nested
@@ -1721,6 +1730,10 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         )
                         and context["url"].endswith("/comments")
                     )
+                    if plan:
+                        assert context["request_headers"] == {
+                            "Notion-Version": "2025-09-03"
+                        }
                     nested = nested or plan and context["step"] == 1
                     assert (
                         payload["data"]["operation_id"]
@@ -1786,7 +1799,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     paginated_source,
                     write_recipe(),
                     parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
-                    parse_recipe(json.dumps(RECIPE_PLAN_EXAMPLE).encode()),
+                    parse_recipe(json.dumps(RECIPE_HEADERS_EXAMPLE).encode()),
                 ):
                     if selected.provider not in manager.providers or manager.busy:
                         continue
@@ -1898,6 +1911,12 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             assert shared["raw_reviewed_nested_recipe_writes"]
             assert shared["sdk_reviewed_plan_recipe_writes"]
             assert shared["raw_reviewed_plan_recipe_writes"]
+            assert shared["sdk_reviewed_header_recipe_writes"]
+            assert shared["raw_reviewed_header_recipe_writes"]
+            header_calls = [c for c in write_http.calls if "Notion-Version" in c[2]]
+            assert sum(c[0] == "POST" for c in header_calls) == 6
+            assert any(c[0] == "GET" and c[1].endswith("/me") for c in header_calls)
+            assert all(c[2]["Notion-Version"] == "2025-09-03" for c in header_calls)
             assert shared["recipe_payload_review_popup"]
             assert len(write_http.payloads) == 16
             assert len(write_http.operations) == 16

@@ -55,6 +55,7 @@ class OAuthHttp(SyntheticRecipeHttp):
         self.posts, self.access, self.rotated = [], TOKEN, TOKEN + "_ROTATED"
         self.token_change, self.no_refresh, self.credential_echo = {}, False, False
         self.on_post = None
+        self.request_headers = {}
 
     def request(self, method, url, *, headers=None, body=None, cancelled=None):
         if method == "POST":
@@ -75,7 +76,10 @@ class OAuthHttp(SyntheticRecipeHttp):
             if not self.no_refresh:
                 result["refresh_token"] = ROTATED if refresh else REFRESH
             return {**result, **self.token_change}
-        assert headers == {"Authorization": "Bearer " + self.access}
+        assert headers == {
+            **self.request_headers,
+            "Authorization": "Bearer " + self.access,
+        }
         self.calls.append((method, url, headers, body))
         if url.endswith("/me"):
             return {"id": self.subject, "email": self.label}
@@ -186,6 +190,31 @@ class RecipeOAuthTests(unittest.TestCase):
         self.read(connector)
         self.assertEqual(len(self.http.posts), 2)
         self.assertEqual(sum(call[1].endswith("/me") for call in self.http.calls), 4)
+
+    def test_version_headers_follow_identity_refresh_and_every_read_page(self):
+        source = json.loads(self.recipe.raw)
+        source.update(version=5, request_headers={"Notion-Version": "2025-09-03"})
+        source["tools"][-1]["pagination"] = {
+            "cursor": "/next",
+            "parameter": "cursor",
+            "max_pages": 3,
+        }
+        self.recipe = parse_recipe(json.dumps(source).encode())
+        self.catalog.install(self.recipe)
+        self.http.request_headers = dict(self.recipe.request_headers)
+        account = self.connect()
+        connector = self.connector(account)
+        result = self.read(connector, "list_notes", "account")
+        self.assertEqual(len(json.loads(result.text)["notes"]), 2)
+        connector.oauth.cached["expires_at"] = time.time() - 1
+        self.read(connector, "list_notes", "account")
+        self.assertEqual(len(self.http.posts), 3)
+        self.assertTrue(
+            all(
+                headers["Notion-Version"] == "2025-09-03"
+                for _, _, headers, _ in self.http.calls
+            )
+        )
 
     def test_expired_cached_access_rotates_again_with_the_new_refresh_token(self):
         account = self.connect()

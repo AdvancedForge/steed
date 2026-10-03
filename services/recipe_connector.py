@@ -62,7 +62,7 @@ def identity(recipe, http, token, cancelled):
     result = http.request(
         "GET",
         recipe.origin + recipe.identity_path,
-        headers={"Authorization": "Bearer " + token},
+        headers={**dict(recipe.request_headers), "Authorization": "Bearer " + token},
         cancelled=cancelled,
     )
     subject, label = (
@@ -94,7 +94,12 @@ def connect_recipe(
         raise AccountError("Select supported recipe tools")
     token = bearer_token(token)
     store.secrets.check()
-    http = http or RecipeHttp(recipe.origin)
+    http = http or RecipeHttp(
+        recipe.origin,
+        request_headers=dict(recipe.request_headers)
+        if recipe.request_headers
+        else None,
+    )
     subject, label = identity(recipe, http, token, cancelled)
     catalog.active(recipe)
     check_cancelled(cancelled)
@@ -245,7 +250,10 @@ class RecipeConnector:
             response = self.http.request(
                 "GET",
                 url,
-                headers={"Authorization": "Bearer " + token},
+                headers={
+                    **dict(self.recipe.request_headers),
+                    "Authorization": "Bearer " + token,
+                },
                 cancelled=cancelled,
             )
             check_cancelled(cancelled)

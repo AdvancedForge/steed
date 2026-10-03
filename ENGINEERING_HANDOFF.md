@@ -19,12 +19,12 @@ capabilities, reusable files and explicit access controls.
 
 ## Branches, ownership and review
 
-Work on a new branch such as `engineering/request-headers`, preferably in a
+Work on a new branch such as `engineering/identity-labels`, preferably in a
 separate checkout/worktree. Do not modify the user's running checkout or profile:
 
 ```bash
 git fetch origin
-git worktree add -b engineering/request-headers ../steed-request-headers origin/main
+git worktree add -b engineering/identity-labels ../steed-identity-labels origin/main
 ```
 
 Verify that the checkout contains `services/file_library.py` and this document.
@@ -35,10 +35,10 @@ test fixtures.
 
 The connector contributor owns `connectors/recipes/`, `connectors/fixtures/`,
 `connectors/SETUP.md` and `tests/test_default_connector_profiles.py`. Leave those
-paths to that contributor. The reviewed discovery branch has merged; the next
-shared runtime scope is reviewed non-secret static headers described below.
-Shared `services/`, `ui/`,
-MCP, root docs and shared-test changes need coordination with the maintainer;
+paths to that contributor. The reviewed discovery branch has merged; reviewed
+static request headers are now implemented in the shared runtime as described
+below. Shared `services/`, `ui/`, MCP, root docs and shared-test changes need
+coordination with the maintainer;
 do not start overlapping runtime work in another contributor's checkout.
 
 Commit each completed milestone on your branch, push it, and open/update a PR.
@@ -156,20 +156,47 @@ The contributor has [five substantial milestones](https://github.com/AdvancedFor
 The connector PR was not merged during the engineering integration. Re-review any
 new head before merge; fixtures are not live account proof.
 
-Once the contracts are corrected, the smallest useful shared framework increment
-is reviewed **non-secret static headers**, such as API-version headers. Plan it
-with the maintainer and keep connector data owned by the contributor. Bind headers
-to reviewed source/hash, display them during source review, apply them consistently
-to identity/read/write requests and invalidate old approvals on source changes.
-Preserve old recipes and transport origin/DNS/redirect/payload checks. Reject
-attempts to override authentication, host, cookies or transport/framing headers;
-bound names/values/counts and reject newline injection and duplicate names.
-Credential-derived headers such as Figma's token need a separate authenticated
-contract, not token literals in a recipe. Headers alone do not imply that a whole
-service is supported; nullable identities, paging and response envelopes remain
-separate requirements. Runtime tests must prove the exact wire header set.
+The static-header milestone is implemented: version 5 requires 1–4 canonical
+`request_headers` with constrained non-secret values. Supported names are
+`Notion-Version`, `X-GitHub-Api-Version`, `Zotero-API-Version` and `OCS-APIRequest`.
+Versions 1–4 are unchanged. Version 5 retains v3 nested `$bind` requests and v4
+plans. `steed_recipe_capabilities` exposes names/formats, limits and a synthetic
+`headers_example`; `examples/connector_recipes/notes-headers.json` is the same
+source. This example is not a live Notion implementation.
+
+Source review and payload context show exact headers; identity, reads/paging,
+writes/plan steps and reconciliation apply them. OAuth exchange/refresh never
+receives them. Changed headers create a new source hash/provider; previous
+accounts/grants/reviews cannot migrate to it. Old installed versions remain
+usable until disabled. Names with different casing, arbitrary credentials,
+reserved transport/auth headers, duplicate keys and injection are rejected.
+All origin/DNS/TLS/redirect/body checks remain. Exact-wire, source-binding,
+OAuth paging/refresh, uncertainty/no-replay and plan checks cover the contract.
+The actual MCP plan workflow now uses the v5 example with both SDK/raw clients;
+v4 behavior retains unit/integration coverage.
+
+Next useful shared increment: explicit reviewed **identity-label alternatives**
+for providers whose documented primary label can be null, beginning with the
+Notion identity contract. Read the contributor's source-pinned fixture; do not
+claim that headers alone unblock the whole family. Define a small declarative
+ordered pointer fallback with a usable display label, keep subject binding exact,
+reject private/credential-derived labels and bound each alternative. Display the
+identity contract during source review and preserve old schemas. Add null/missing/
+empty/malformed/changed-identity regressions and an actual MCP journey before
+claiming compatibility. Separately, read-only POST/query inputs, credential-derived
+headers, revision guards and transforms need their own typed request contracts;
+do not infer them from a custom header. Connector contributors can opt supported
+subsets into v5 on their branch without modifying shared runtime/UI paths.
 
 ## Validation and checkpoint evidence
+
+Latest menu/static-header checkpoint: **938 regressions pass in 375.207 seconds**.
+Both actual SDK/independent-client MCP journeys pass over stdio/authenticated HTTP
+with v5 reviewed plans, document workers and persistent library discovery/reuse.
+Startup/render/shutdown passes on Qt 6.11.2. Final source/menu previews were
+inspected with synthetic data; Profile remains a separate top-level menu. Ruff,
+formatting, dependencies, whitespace, seven examples and local doc links pass.
+See ROADMAP.md for logs; live provider/desktop acceptance remains separate.
 
 Use `.venv/bin/python` and `unittest`. Headless Qt commands need
 `QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu"`.

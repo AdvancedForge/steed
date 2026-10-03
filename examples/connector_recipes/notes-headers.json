@@ -1,0 +1,78 @@
+{
+  "version": 5,
+  "name": "Example Versioned Notes",
+  "origin": "https://api.fixture.example",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/me",
+    "subject": "/id",
+    "label": "/email"
+  },
+  "tools": [
+    {
+      "name": "create_note",
+      "description": "Create a note after reviewing its payload",
+      "method": "POST",
+      "effect": "write",
+      "path": "/notes",
+      "destination": "account",
+      "request": {
+        "data": {
+          "title": {
+            "$bind": "artifact.title"
+          },
+          "body": {
+            "text": {
+              "$bind": "artifact.content"
+            },
+            "format": "text"
+          },
+          "operation_id": {
+            "$bind": "operation_id"
+          },
+          "tags": [
+            "created-in-steed"
+          ],
+          "published": false
+        }
+      },
+      "idempotency_header": "Idempotency-Key",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        }
+      ],
+      "plan": [
+        {
+          "name": "append_note",
+          "description": "Append reviewed text to the newly created note",
+          "method": "POST",
+          "path": "/notes/{step.create_note.id}/comments",
+          "request": {
+            "note_id": {
+              "$bind": "step.create_note.id"
+            },
+            "comment": {
+              "$bind": "artifact.content"
+            },
+            "operation_id": {
+              "$bind": "operation_id"
+            }
+          },
+          "response": [
+            {
+              "label": "id",
+              "pointer": "/id"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "request_headers": {
+    "Notion-Version": "2025-09-03"
+  }
+}

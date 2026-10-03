@@ -644,11 +644,13 @@ class TaskService(QObject):
 
         from services.connector_recipes import (
             RECIPE_EXAMPLE,
+            RECIPE_HEADERS_EXAMPLE,
             RECIPE_NESTED_EXAMPLE,
             RECIPE_OAUTH_EXAMPLE,
             RECIPE_PAGINATED_EXAMPLE,
             RECIPE_PLAN_EXAMPLE,
             RECIPE_WRITE_EXAMPLE,
+            STATIC_HEADER_FORMATS,
         )
 
         self._usable()
@@ -656,8 +658,9 @@ class TaskService(QObject):
         return {
             "available": self.recipes.connections is not None
             and self.recipes.connections.recipes is not None,
-            "version": 4,
-            "supported_versions": [1, 2, 3, 4],
+            "version": 5,
+            "supported_versions": [1, 2, 3, 4, 5],
+            "request_headers": dict(STATIC_HEADER_FORMATS),
             "authentication": ["bearer", "oauth_pkce"],
             "destinations": {
                 "resource": "one exact resource ID",
@@ -682,6 +685,7 @@ class TaskService(QObject):
                 "template_nodes": 100,
                 "template_items": 20,
                 "plan_steps": 5,
+                "request_headers": 4,
             },
             "example": copy.deepcopy(RECIPE_EXAMPLE),
             "oauth_example": copy.deepcopy(RECIPE_OAUTH_EXAMPLE),
@@ -689,6 +693,7 @@ class TaskService(QObject):
             "write_example": copy.deepcopy(RECIPE_WRITE_EXAMPLE),
             "nested_example": copy.deepcopy(RECIPE_NESTED_EXAMPLE),
             "plan_example": copy.deepcopy(RECIPE_PLAN_EXAMPLE),
+            "headers_example": copy.deepcopy(RECIPE_HEADERS_EXAMPLE),
         }
 
     def _recipe_list(self, task_id):

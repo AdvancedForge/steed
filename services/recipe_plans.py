@@ -95,7 +95,7 @@ def compile_plan(first, following, source):
             "request": normal(item["request"]),
         }
         compiled = parse_recipe(
-            json.dumps({**source, "version": 3, "tools": [packet]}).encode()
+            json.dumps({**source, "tools": [packet]}).encode()
         ).tools[0]
         steps.append(
             replace(

@@ -67,6 +67,11 @@ class RecipeWrites:
                 "artifact_sha256": artifact.sha256,
                 "operation_id": operation,
                 "operation_header": tool.idempotency_header or None,
+                **(
+                    {"request_headers": dict(owner.recipe.request_headers)}
+                    if owner.recipe.request_headers
+                    else {}
+                ),
                 "payload_sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
                 **dict(tool.plan_context),
             },
@@ -88,6 +93,7 @@ class RecipeWrites:
                 raise RecipeError("Approve this exact payload first")
             token, credentials = owner.authorize(cancelled)
             headers = {
+                **dict(owner.recipe.request_headers),
                 "Authorization": "Bearer " + token,
                 "Content-Type": "application/json",
             }
@@ -146,7 +152,10 @@ class RecipeWrites:
             response = owner.http.request(
                 "GET",
                 owner.recipe.origin + rule.path.replace("{operation_id}", operation),
-                headers={"Authorization": "Bearer " + token},
+                headers={
+                    **dict(owner.recipe.request_headers),
+                    "Authorization": "Bearer " + token,
+                },
                 cancelled=cancelled,
             )
             check_cancelled(cancelled)
