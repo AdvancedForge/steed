@@ -46,7 +46,10 @@ Scope shipped:
 | --- | --- |
 | Identity | `GET /api/v1/user`, subject `/id`, label `/email` |
 | Read one task | `GET /api/v1/tasks/{destination}` returning `/id` and `/content` |
+| Read one task with its description | `GET /api/v1/tasks/{destination}` also returning `/description` |
 | List tasks | `GET /api/v1/tasks`, `/results`, cursor `next_cursor`, at most 3 pages |
+| Read one project | `GET /api/v1/projects/{destination}` returning `/id`, `/name`, `/is_shared`, `/is_favorite` |
+| List projects | `GET /api/v1/projects`, `/results`, cursor `next_cursor`, at most 3 pages |
 | Create inbox task | `POST /api/v1/tasks` with `content` and `description` only |
 
 Deliberately excluded: project or section selection, task completion, deletion,
@@ -58,10 +61,16 @@ Notes on the wire shape:
 - Todoist's own identity document also returns the account's personal API token
   in a top-level `token` field. Only `/id` and `/email` are selected, so that
   value is never placed in a result, review or task context.
-- `description` is optional on a task. The packaged profile therefore selects
-  only `/id` and `/content`, so a task without a description still reads. A
-  profile that selects a field the service omitted fails the read instead of
-  inventing a value.
+- `description` is documented as optional on a task. `read_task` therefore stays
+  minimal, so a task without a description still reads, and `read_task_detail`
+  returns the description for a task that documents one. If a response omits the
+  description, the detail read fails closed instead of inventing a value.
+- `GET /api/v1/projects` documents the same `results` plus `next_cursor` shape as
+  tasks, so project listing is bounded the same way.
+- The documented project response is a union of the personal and workspace
+  project views. Only fields present in both are selected; the workspace-only
+  `access`, `role` and `inbox_project` fields are deliberately not selected, so a
+  workspace project does not fail the read.
 - Todoist publishes per-endpoint request limits and returns an HTTP error status
   when one is exceeded. `list_tasks` is bounded to three pages; Steed does not
   retry, and a quota failure on a create is reported as uncertain rather than
