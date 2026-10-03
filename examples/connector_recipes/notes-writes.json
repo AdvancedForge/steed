@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "name": "Example Notes and Messages",
+  "origin": "https://api.fixture.example",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/me",
+    "subject": "/id",
+    "label": "/email"
+  },
+  "tools": [
+    {
+      "name": "read_note",
+      "description": "Read one selected note",
+      "method": "GET",
+      "path": "/notes/{destination}",
+      "response": [
+        {
+          "label": "title",
+          "pointer": "/title"
+        },
+        {
+          "label": "body",
+          "pointer": "/body"
+        }
+      ]
+    },
+    {
+      "name": "create_note",
+      "description": "Create a note after reviewing its payload",
+      "method": "POST",
+      "effect": "write",
+      "path": "/notes",
+      "destination": "account",
+      "request": {
+        "title": "artifact.title",
+        "body": "artifact.content",
+        "operation_id": "operation_id"
+      },
+      "idempotency_header": "Idempotency-Key",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        }
+      ],
+      "reconciliation": {
+        "path": "/operations/{operation_id}",
+        "operation_id": "/operation_id",
+        "status": "/status",
+        "success": "succeeded"
+      }
+    },
+    {
+      "name": "send_message",
+      "description": "Send a message to one reviewed recipient",
+      "method": "POST",
+      "effect": "send",
+      "path": "/messages",
+      "destination": "email",
+      "request": {
+        "to": "destination",
+        "subject": "artifact.title",
+        "body": "artifact.content",
+        "operation_id": "operation_id"
+      },
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        }
+      ]
+    }
+  ]
+}

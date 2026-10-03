@@ -34,7 +34,7 @@ class RecipeReviewDialog(QDialog):
             f"Service: {recipe.name}\nDomain: {recipe.origin}\n"
             "Installs these exact API requests. Connecting an account and allowing task access are separate steps. "
             "Credentials stay in Steed's desktop keyring. "
-            "Check that the listed requests really read data from the intended service."
+            "Check each request's actual API behavior. Creates and sends require a separate payload preview and approval every time."
         )
         summary.setTextFormat(Qt.TextFormat.PlainText)
         summary.setWordWrap(True)
@@ -53,12 +53,27 @@ class RecipeReviewDialog(QDialog):
             + f"Account identity: GET {recipe.identity_path}\n"
             f"Account ID: {recipe.subject_pointer}\nAccount label: {recipe.label_pointer}\n\n"
             + "\n\n".join(
-                f"READ: {t.description}\nGET {t.path}\nReturns: "
+                f"{t.effect.upper()}: {t.description}\n{t.method} {t.path}\nReturns: "
                 + ", ".join(f"{label} ({path})" for label, path in t.response)
                 + (
                     "\nDestination: exact resource ID"
-                    if "{destination}" in t.path
+                    if t.destination_type == "resource_id"
+                    else "\nDestination: one exact email recipient"
+                    if t.destination_type == "email"
                     else "\nDestination: account (fixed collection)"
+                )
+                + (
+                    "\nPayload bindings: "
+                    + ", ".join(f"{k} ← {v}" for k, v in t.request)
+                    + "\nPayload approval required for every action; no automatic retry.\nOperation header: "
+                    + (t.idempotency_header or "none")
+                    + (
+                        f"\nReconcile: GET {t.reconciliation.path}; exact operation ID {t.reconciliation.operation_id}; status {t.reconciliation.status} = {t.reconciliation.success}"
+                        if t.reconciliation
+                        else "\nReconciliation: not configured"
+                    )
+                    if t.effect != "read"
+                    else ""
                 )
                 + (
                     f"\nPagination: up to {t.pagination.max_pages} pages; query parameter {t.pagination.parameter}; next cursor {t.pagination.cursor}; selected fields must be arrays"

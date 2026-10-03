@@ -95,6 +95,9 @@ def token_http(recipe, http=None):
             for tool in recipe.tools
             if tool.pagination
         },
+        post_rules=[
+            (t.path, t.idempotency_header) for t in recipe.tools if t.effect != "read"
+        ],
     )
 
 

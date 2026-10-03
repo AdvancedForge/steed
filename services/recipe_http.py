@@ -3,6 +3,7 @@
 import http.client
 import ipaddress
 import json
+import re
 import socket
 import ssl
 import time
@@ -11,6 +12,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from services.app_accounts import AccountError
 from services.app_oauth import ApiError
 from services.connector_recipes import (
+    idempotency_header,
     page_cursor,
     query_parameter,
     recipe_endpoint,
@@ -26,21 +28,49 @@ def check_cancelled(cancelled):
 
 
 class RecipeHttp:
-    def __init__(self, origin, *, token_endpoint="", query_parameters=None):
+    def __init__(
+        self, origin, *, token_endpoint="", query_parameters=None, post_rules=()
+    ):
         self.origin = recipe_origin(origin)
         self.token_endpoint = recipe_endpoint(token_endpoint) if token_endpoint else ""
         self.query_parameters = {
             request_path(path): frozenset(query_parameter(p) for p in parameters)
             for path, parameters in (query_parameters or {}).items()
         }
+        self.post_rules = tuple(
+            (
+                request_path(path, destination=True),
+                idempotency_header(header) if header else "",
+            )
+            for path, header in post_rules
+        )
+
+    def post_header(self, path, headers):
+        for template, header in self.post_rules:
+            pattern = re.escape(template).replace(
+                re.escape("{destination}"), r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}"
+            )
+            required = {"Authorization", "Content-Type"} | (
+                {header} if header else set()
+            )
+            if (
+                re.fullmatch(pattern, path)
+                and ".." not in path
+                and set(headers) == required
+            ):
+                return header
+        raise ValueError("POST path is not in the reviewed recipe")
 
     def request(self, method, url, *, headers=None, body=None, cancelled=None):
         parts = urlsplit(url)
         token_request = bool(
             self.token_endpoint and method == "POST" and url == self.token_endpoint
         )
+        api_post = method == "POST" and not token_request
         target = parts.path
         if parts.query and not token_request:
+            if api_post:
+                raise ValueError("Recipe POST queries are not supported")
             query = parse_qs(
                 parts.query,
                 strict_parsing=True,
@@ -59,7 +89,11 @@ class RecipeHttp:
             target += "?" + parts.query
         if (
             not token_request
-            and (method != "GET" or body is not None or url != self.origin + target)
+            and (
+                (method != "GET" and not api_post)
+                or (not api_post and body is not None)
+                or url != self.origin + target
+            )
             or not parts.path.startswith("/")
             or parts.path.startswith("//")
         ):
@@ -75,6 +109,34 @@ class RecipeHttp:
                 or not body.isascii()
             ):
                 raise ValueError("Use a bounded trusted token exchange form")
+        elif api_post:
+            header = self.post_header(parts.path, headers)
+            required = {"Authorization", "Content-Type"} | (
+                {header} if header else set()
+            )
+            if (
+                set(headers) != required
+                or headers.get("Content-Type") != "application/json"
+                or not isinstance(headers.get("Authorization"), str)
+                or not re.fullmatch(
+                    r"Bearer [A-Za-z0-9._~+/-]{8,8192}={0,2}", headers["Authorization"]
+                )
+                or header
+                and (
+                    not isinstance(headers[header], str)
+                    or not re.fullmatch(r"[a-f0-9]{32}", headers[header])
+                )
+                or not isinstance(body, bytes)
+                or not 1 <= len(body) <= 16384
+            ):
+                raise ValueError("Use the reviewed JSON POST and trusted operation ID")
+            payload = json.loads(body, object_pairs_hook=unique_object)
+            if (
+                not isinstance(payload, dict)
+                or not 1 <= len(payload) <= 10
+                or any(not isinstance(v, str) or "\x00" in v for v in payload.values())
+            ):
+                raise ValueError("Use a bounded flat JSON request")
         elif set(headers) - {"Authorization", "Accept"}:
             raise ValueError("Unsupported recipe headers")
         check_cancelled(cancelled)
@@ -129,7 +191,7 @@ class RecipeHttp:
             response = http.client.HTTPResponse(channel, method=method)
             response.begin()
             if (
-                response.status != 200
+                response.status not in ((200, 201) if api_post else (200,))
                 or response.getheader("Content-Encoding", "identity") != "identity"
             ):
                 raise ApiError(response.status)

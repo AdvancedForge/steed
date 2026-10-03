@@ -287,15 +287,32 @@ establishes those results. Password improvements remain deferred at the user's r
   passed; pagination previews were inspected. Logs:
   `/tmp/steed-recipes-pagination-{full,focused,mcp-stdio,mcp-http}.log` and
   `/tmp/steed-recipes-pagination-startup-alone.log`. All accounts/data were synthetic.
-- **Next milestone — reviewed create/send recipes, approved by the user:**
-  reviewed agent source may add create/send effects through bounded declarative
-  broker plans. Implement exact
-  payload previews, task/account authority, persistent receipts and no automatic
-  replay after an uncertain outcome. Edits require revisions/conditional requests;
-  delete/spend and arbitrary adapter code remain outside the first write milestone.
-  See the [concrete proposal](DOCUMENTATION.md#agent-designed-write-boundary).
-  Recipe writes are not implemented yet; built-in Google remains the provider-specific
-  reference. Shared Google registration remains deferred independently.
+- **Latest recipe checkpoint — reviewed creates/sends:** version 2 preserves v1
+  reads and adds single POST create/send tools with bounded flat draft bindings,
+  one exact email recipient for sends, optional receipt operation headers and exact-ID
+  read-only probes. Installation lists actual effects/paths/bindings; every mutation
+  needs a default-Deny **Review App Action** popup with its exact payload/account/URL.
+  Saved permissions and account switches never skip this payload review. Source,
+  identity, account and live authority are rechecked; uncertain results and same-ID
+  replays never resend. Preview content is scrubbed on decisions/restart. OAuth form
+  exchange remains separate from pinned API POSTs. Acceptance: **755 regressions
+  passed in 297.778 seconds**; 63 final recipe checks passed in 12.762 seconds,
+  including a subsequent shared-path/header fix. Both SDK/raw MCP transports passed
+  synthetic create/send and post-commit uncertainty/reconciliation alongside real
+  document workers. Standalone startup/render/shutdown, Ruff/format, whitespace,
+  four example parses and local doc links passed; source/create/send previews were
+  inspected. Logs: `/tmp/steed-recipe-writes-{full,final-recipes,mcp-stdio,mcp-http,startup}.log`.
+  Real-provider/native desktop acceptance remains separate. See the
+  [implemented format](DOCUMENTATION.md#agent-designed-write-boundary).
+- **Next major engineering decision — complex provider execution:** choose bounded
+  declarative request plans with trusted per-step receipts, or broker-backed sandboxed
+  adapter packages. This affects result-dependent multi-call writes, provider-specific
+  transforms and revision-guarded edits needed for broader Google-level capability.
+  Recommended direction: declarative plans first, preserving one reviewed payload
+  per mutation, exact step authority and no continuation after uncertain completion.
+  Neither execution architecture is implemented; no generated code runs in the
+  browser. See the [concrete design comparison](DOCUMENTATION.md#complex-provider-workflow-decision).
+  Google registration remains deferred independently.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
   **File → Website Permissions** and **Task Permissions → Saved Approvals** manage

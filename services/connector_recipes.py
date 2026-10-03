@@ -65,6 +65,51 @@ RECIPE_PAGINATED_EXAMPLE = {
     ],
 }
 
+RECIPE_WRITE_EXAMPLE = {
+    **RECIPE_EXAMPLE,
+    "version": 2,
+    "name": "Example Notes and Messages",
+    "tools": [
+        *RECIPE_EXAMPLE["tools"],
+        {
+            "name": "create_note",
+            "description": "Create a note after reviewing its payload",
+            "method": "POST",
+            "effect": "write",
+            "path": "/notes",
+            "destination": "account",
+            "request": {
+                "title": "artifact.title",
+                "body": "artifact.content",
+                "operation_id": "operation_id",
+            },
+            "idempotency_header": "Idempotency-Key",
+            "response": [{"label": "id", "pointer": "/id"}],
+            "reconciliation": {
+                "path": "/operations/{operation_id}",
+                "operation_id": "/operation_id",
+                "status": "/status",
+                "success": "succeeded",
+            },
+        },
+        {
+            "name": "send_message",
+            "description": "Send a message to one reviewed recipient",
+            "method": "POST",
+            "effect": "send",
+            "path": "/messages",
+            "destination": "email",
+            "request": {
+                "to": "destination",
+                "subject": "artifact.title",
+                "body": "artifact.content",
+                "operation_id": "operation_id",
+            },
+            "response": [{"label": "id", "pointer": "/id"}],
+        },
+    ],
+}
+
 
 class RecipeError(ValueError):
     pass
@@ -228,15 +273,49 @@ class RecipePagination:
 
 
 @dataclass(frozen=True)
+class RecipeReconciliation:
+    path: str
+    operation_id: str
+    status: str
+    success: str
+
+
+def idempotency_header(value):
+    if value not in ("Idempotency-Key", "X-Idempotency-Key", "X-Request-ID"):
+        raise RecipeError("Choose a supported operation ID header")
+    return value
+
+
+@dataclass(frozen=True)
 class RecipeTool:
     name: str
     description: str
     path: str
     response: tuple
     pagination: RecipePagination | None = None
+    effect: str = "read"
+    destination_kind: str = ""
+    request: tuple = ()
+    idempotency_header: str = ""
+    reconciliation: RecipeReconciliation | None = None
+
+    @property
+    def method(self):
+        return "GET" if self.effect == "read" else "POST"
+
+    @property
+    def destination_type(self):
+        return self.destination_kind or (
+            "resource_id" if "{destination}" in self.path else "account"
+        )
 
     def destination(self, value):
-        if "{destination}" in self.path:
+        if self.destination_type == "email":
+            from services.google_connector import email_destination
+
+            email_destination(value)
+            return value
+        if self.destination_type == "resource_id":
             return resource_id(value)
         if value != "account":
             raise RecipeError("Use destination account for this fixed collection path")
@@ -254,6 +333,7 @@ class ConnectorRecipe:
     label_pointer: str
     tools: tuple
     authentication: RecipeAuthentication = RecipeAuthentication()
+    version: int = 1
 
     @property
     def provider(self):
@@ -261,6 +341,7 @@ class ConnectorRecipe:
 
     def metadata(self):
         return {
+            "version": self.version,
             "provider": self.provider,
             "sha256": self.sha256,
             "name": self.name,
@@ -284,12 +365,23 @@ class ConnectorRecipe:
                 {
                     "name": t.name,
                     "description": t.description,
-                    "effect": "read",
-                    "method": "GET",
+                    "effect": t.effect,
+                    "method": t.method,
                     "path": t.path,
-                    "destination": "resource_id"
-                    if "{destination}" in t.path
-                    else "account",
+                    "destination": t.destination_type,
+                    "request": dict(t.request),
+                    "idempotency_header": t.idempotency_header or None,
+                    "requires_payload_review": t.effect != "read",
+                    "reconciliation": (
+                        {
+                            "path": t.reconciliation.path,
+                            "operation_id": t.reconciliation.operation_id,
+                            "status": t.reconciliation.status,
+                            "success": t.reconciliation.success,
+                        }
+                        if t.reconciliation
+                        else None
+                    ),
                     "pagination": (
                         {
                             "cursor": t.pagination.cursor,
@@ -322,15 +414,18 @@ def parse_recipe(raw):
         fields(
             data, ("version", "name", "origin", "authentication", "identity", "tools")
         )
-        if type(data["version"]) is not int or data["version"] != 1:
+        if type(data["version"]) is not int or data["version"] not in (1, 2):
             raise RecipeError("Unsupported connector recipe version")
         auth = authentication(data["authentication"])
         identity = data["identity"]
         fields(identity, ("path", "subject", "label"))
         if not isinstance(data["tools"], list) or not 1 <= len(data["tools"]) <= 10:
-            raise RecipeError("Provide 1–10 read tools")
+            raise RecipeError("Provide 1–10 tools")
         tools, names = [], set()
         for item in data["tools"]:
+            if not isinstance(item, dict):
+                raise RecipeError("Provide tool objects")
+            writing = data["version"] == 2 and item.get("method") == "POST"
             fields(
                 item,
                 (
@@ -340,15 +435,105 @@ def parse_recipe(raw):
                     "path",
                     "response",
                     *(["pagination"] if "pagination" in item else []),
+                    *(["effect", "destination", "request"] if writing else []),
+                    *(
+                        ["idempotency_header"]
+                        if writing and "idempotency_header" in item
+                        else []
+                    ),
+                    *(
+                        ["reconciliation"]
+                        if writing and "reconciliation" in item
+                        else []
+                    ),
                 ),
             )
             name = connector_name(item["name"])
-            if name in names or item["method"] != "GET":
+            if name in names or item["method"] not in (
+                ("GET", "POST") if writing else ("GET",)
+            ):
                 raise RecipeError(
-                    "Recipe tools need unique names and reviewed GET requests"
+                    "Recipe tools need unique names and supported requests"
                 )
             names.add(name)
             path = request_path(item["path"], destination=True)
+            effect, destination_kind, bindings, header, reconciliation = (
+                "read",
+                "",
+                (),
+                "",
+                None,
+            )
+            if writing:
+                effect, destination_kind = item["effect"], item["destination"]
+                if (
+                    effect not in ("write", "send")
+                    or destination_kind not in ("account", "resource_id", "email")
+                    or "pagination" in item
+                ):
+                    raise RecipeError(
+                        "POST tools need create/write or send, an exact destination, and no pagination"
+                    )
+                if (effect == "send") != (destination_kind == "email") or (
+                    "{destination}" in path
+                ) != (destination_kind == "resource_id"):
+                    raise RecipeError(
+                        "Send needs one email recipient; resource writes need a destination path segment"
+                    )
+                value = item["request"]
+                if not isinstance(value, dict) or not 1 <= len(value) <= 10:
+                    raise RecipeError("Choose 1–10 flat JSON request bindings")
+                for key, source in value.items():
+                    query_parameter(key)
+                    if source not in (
+                        "artifact.title",
+                        "artifact.content",
+                        "destination",
+                        "operation_id",
+                    ):
+                        raise RecipeError(
+                            "Request fields must bind draft title/content, destination, or operation ID"
+                        )
+                bindings = tuple(value.items())
+                if (
+                    "artifact.content" not in value.values()
+                    or effect == "send"
+                    and "destination" not in value.values()
+                ):
+                    raise RecipeError(
+                        "Write the reviewed draft content; sends must bind the recipient"
+                    )
+                if "idempotency_header" in item:
+                    header = idempotency_header(item["idempotency_header"])
+                if "reconciliation" in item:
+                    r = item["reconciliation"]
+                    fields(r, ("path", "operation_id", "status", "success"))
+                    printable(r["path"], 512)
+                    if (
+                        r["path"].count("{operation_id}") != 1
+                        or "{destination}" in r["path"]
+                    ):
+                        raise RecipeError(
+                            "Reconciliation needs one complete {operation_id} segment"
+                        )
+                    if not header and "operation_id" not in value.values():
+                        raise RecipeError(
+                            "Reconciliation needs an operation ID in the request"
+                        )
+                    rpath = request_path(
+                        r["path"].replace("{operation_id}", "{destination}"),
+                        destination=True,
+                    )
+                    if "{destination}" not in rpath:
+                        raise RecipeError(
+                            "Reconciliation needs one complete {operation_id} segment"
+                        )
+                    reconciliation = RecipeReconciliation(
+                        rpath.replace("{destination}", "{operation_id}"),
+                        pointer(r["operation_id"]),
+                        pointer(r["status"]),
+                        printable(r["success"], 80),
+                    )
             pagination = None
             if "pagination" in item:
                 value = item["pagination"]
@@ -387,6 +572,11 @@ def parse_recipe(raw):
                     path,
                     tuple(outputs),
                     pagination,
+                    effect,
+                    destination_kind,
+                    bindings,
+                    header,
+                    reconciliation,
                 )
             )
         return ConnectorRecipe(
@@ -399,6 +589,7 @@ def parse_recipe(raw):
             pointer(identity["label"]),
             tuple(tools),
             auth,
+            data["version"],
         )
     except (KeyError, TypeError, UnicodeError, RecursionError, ValueError) as error:
         if isinstance(error, RecipeError):

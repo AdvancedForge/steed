@@ -1,6 +1,7 @@
 """Trusted before/after review; generated text is never rendered as HTML."""
 
 import difflib
+import json
 
 from PyQt6.QtWidgets import (
     QDialog,
@@ -16,14 +17,23 @@ class AppReviewDialog(QDialog):
     def __init__(self, service, task, review, parent=None):
         super().__init__(parent)
         self.service, self.review = service, review
+        self.task_id = task.task_id
         self.request_key = review.request_key
         self.setWindowTitle("Review Document Change")
         self.resize(760, 560)
         layout = QVBoxLayout(self)
         receipt = service.connector_store.get(task.task_id, review.request_id)
         definition = service.connectors.get(receipt.connector, receipt.tool)
+        payload_review = definition.review_kind == "payload"
+        if payload_review:
+            self.setWindowTitle("Review App Action")
+        explanation = (
+            "Approve this exact payload once. The service's API defines what it does. An uncertain result will not be retried automatically."
+            if payload_review
+            else "Replace the selected tab's body with the draft below. Formatting may change. If the document changed since this preview, the write will be rejected."
+        )
         summary = QLabel(
-            f"Task: {task.objective}\n{definition.description}\nDestination: {receipt.destination}\nReplace the selected tab's body with the draft below. Formatting may change. If the document changed since this preview, the write will be rejected."
+            f"Task: {task.objective}\n{definition.description}\nAction: {receipt.effect}\nDestination: {receipt.destination}\n{explanation}"
         )
         from PyQt6.QtCore import Qt
 
@@ -40,21 +50,40 @@ class AppReviewDialog(QDialog):
                 lineterm="",
             )
         )
-        for title, content in (
-            ("Changes", diff),
-            ("Current text", review.before_text),
-            ("Proposed text", review.after_text),
-        ):
+        contents = (
+            (
+                ("Request Payload", review.before_text),
+                ("Request Details", review.context),
+                ("Draft", review.after_text),
+            )
+            if payload_review
+            else (
+                ("Changes", diff),
+                ("Current text", review.before_text),
+                ("Proposed text", review.after_text),
+            )
+        )
+        if payload_review:
+            details = json.loads(review.context)
+            summary.setText(
+                summary.text()
+                + f"\n{details['method']} {details['url']}\nAccount: {details['account']}"
+            )
+        for title, content in contents:
             editor = QPlainTextEdit(content)
             editor.setReadOnly(True)
             tabs.addTab(editor, title)
         layout.addWidget(tabs)
         self.status = QLabel()
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.buttons = QDialogButtonBox()
         self.approve_button = self.buttons.addButton(
-            "Apply This Change", QDialogButtonBox.ButtonRole.AcceptRole
+            ("Send This Message" if receipt.effect == "send" else "Create This Item")
+            if payload_review
+            else "Apply This Change",
+            QDialogButtonBox.ButtonRole.AcceptRole,
         )
         self.deny_button = self.buttons.addButton(
             "Deny", QDialogButtonBox.ButtonRole.RejectRole
@@ -72,7 +101,7 @@ class AppReviewDialog(QDialog):
             )
         except Exception:
             self.status.setText(
-                "This change is no longer eligible. Check the task permission and receipt, then create a fresh proposal if needed."
+                "This action is no longer eligible. Check the task permission and receipt, then create a fresh proposal if needed."
             )
             try:
                 pending = (

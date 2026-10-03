@@ -87,6 +87,7 @@ class ConnectorTool:
     validate_destination: object = None
     prepare_review: object = None
     access_group: str = ""
+    review_kind: str = "document"
 
 
 class ConnectorRegistry:
@@ -100,6 +101,9 @@ class ConnectorRegistry:
         connector_name(definition.tool)
         if (
             definition.effect not in EFFECTS
+            or definition.review_kind not in {"document", "payload"}
+            or definition.review_kind == "payload"
+            and definition.prepare_review is None
             or definition.access_group not in {"", "direct"}
             or (definition.access_group == "direct" and definition.effect != "write")
             or type(definition.requires_artifact) is not bool
@@ -114,7 +118,7 @@ class ConnectorRegistry:
                 and (
                     not callable(definition.prepare_review)
                     or not definition.requires_artifact
-                    or definition.effect != "write"
+                    or definition.effect not in {"write", "send"}
                 )
             )
         ):

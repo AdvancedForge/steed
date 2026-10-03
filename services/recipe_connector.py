@@ -38,7 +38,9 @@ def tool_description(recipe, account, tool):
     label = account.label if len(account.label) <= 64 else account.label[:63] + "…"
     prefix = f"{recipe.name} [{recipe.origin}] ({label}): "
     suffix = (
-        " (exact resource ID)"
+        " (one exact email recipient; payload review)"
+        if tool.destination_type == "email"
+        else " (exact resource ID)"
         if "{destination}" in tool.path
         else " (destination: account)"
     )
@@ -129,17 +131,35 @@ class RecipeConnector:
         )
 
     def tools(self):
+        from services.recipe_writes import RecipeWrites
+
+        writes = RecipeWrites(self)
         return [
             ConnectorTool(
                 self.account.connector,
                 tool.name,
-                "read",
+                tool.effect,
                 tool_description(self.recipe, self.account, tool),
-                False,
-                lambda request, cancelled, selected=tool: self.execute(
-                    selected, request, cancelled
-                ),
+                tool.effect != "read",
+                lambda request, cancelled, selected=tool: (
+                    self.execute if selected.effect == "read" else writes.execute
+                )(selected, request, cancelled),
                 validate_destination=tool.destination,
+                prepare_review=(
+                    lambda request, cancelled, selected=tool: writes.prepare(
+                        selected, request, cancelled
+                    )
+                )
+                if tool.effect != "read"
+                else None,
+                reconcile=(
+                    lambda probe, cancelled, selected=tool: writes.reconcile(
+                        selected, probe, cancelled
+                    )
+                )
+                if tool.reconciliation
+                else None,
+                review_kind="payload" if tool.effect != "read" else "document",
             )
             for tool in self.recipe.tools
             if tool.name in self.account.capabilities
@@ -156,6 +176,22 @@ class RecipeConnector:
         ):
             raise ValueError("Recipe request does not match the configured tool")
         destination = tool.destination(request.destination)
+        token, credentials = self.authorize(cancelled)
+        result = self.read(tool, destination, token, credentials, cancelled)
+        check_cancelled(cancelled)
+        self.catalog.active(self.recipe)
+        self.store.active(self.account)
+        text = json.dumps(
+            redact(result, credentials),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        return ConnectorOutcome(text=text).validate()
+
+    def authorize(self, cancelled):
+        self.catalog.active(self.recipe)
+        self.store.active(self.account)
+        check_cancelled(cancelled)
         credential = (
             self.oauth.credential(cancelled)
             if self.oauth
@@ -187,16 +223,7 @@ class RecipeConnector:
             )
             if isinstance(value, str) and value
         )
-        result = self.read(tool, destination, token, credentials, cancelled)
-        check_cancelled(cancelled)
-        self.catalog.active(self.recipe)
-        self.store.active(self.account)
-        text = json.dumps(
-            redact(result, credentials),
-            ensure_ascii=False,
-            allow_nan=False,
-        )
-        return ConnectorOutcome(text=text).validate()
+        return token, credentials
 
     def read(self, tool, destination, token, credentials, cancelled):
         base = self.recipe.origin + tool.path.replace("{destination}", destination)

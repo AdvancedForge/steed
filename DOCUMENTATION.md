@@ -1285,8 +1285,9 @@ Reviewed recipes are the first implemented stage of agent-designed providers. An
 agent describes a bounded REST integration in JSON; Steed interprets it through
 its trusted connector broker. Agents never receive account credentials or install
 Python in the browser. Recipes support native OAuth/PKCE or bearer-token authentication,
-fixed collection paths and resource-specific read-only GET tools. Bounded cursor pagination is implemented; writes and provider-specific
-conflict/reconciliation behavior are later milestones. The goal
+fixed collection paths, resource reads and bounded cursor pagination. Version 2 adds
+reviewed create/send POST tools and optional exact-operation read probes. Provider-specific
+edits and multi-step workflows remain later milestones. The goal
 is the same account and permission experience as Steed's built-in Google provider.
 Shared Google registration remains deferred independently.
 
@@ -1305,8 +1306,8 @@ To add a service:
 2. Review **Add this service connection?**. It shows the actual HTTPS domain,
    identity endpoint, tool paths, selected returned fields and exact source hash.
    OAuth recipes also show both authorization/token endpoints and every scope.
-   Check that these are the intended service and genuinely read-only API requests;
-   GET is not proof of their semantics. Click **Add Connection Recipe** or **Deny**.
+   Check the actual service, declared effects and payload bindings against its API documentation;
+   a method or declared effect is not proof of what that service does. Click **Add Connection Recipe** or **Deny**.
    Closing leaves an agent proposal pending. Reopen it in
    **Task Permissions → Connector Recipes → Review Connection Recipe…**.
 3. Select the installed service in **App Connections**, choose its tools, and click
@@ -1315,8 +1316,9 @@ To add a service:
    Access…**, then sign in through your system browser. Future connections reuse
    client setup from the keyring. Steed verifies the account ID/label at the reviewed
    identity endpoint. Credentials are never workspace inputs.
-4. Enable **Read** for that account if agents should access these tools without a
-   popup for every app-only task. Each task still requests exact tool/resource
+4. Enable the account's **Read**, **Write** or **Send** switches if agents should
+   request those tools without a permission popup for every app-only task.
+   Recipe creates/sends still require an exact payload approval for every action. Each task still requests exact tool/resource
    destinations and gets normal budgets, cancellation and retained receipts.
    With switches off, approve each task separately. Recipe installation itself
    grants neither account access nor task permission.
@@ -1327,6 +1329,11 @@ To add a service:
    fixed collection path, as `destination` and a stable
    `request_id`. Poll `steed_app_status`; the normal receipt keeps selected JSON
    fields and replay returns the same receipt without repeating the HTTP request.
+   For creates/sends, request both `app` and `artifact` permission, store the draft
+   with `steed_artifact_store`, and pass its owned `artifact_id`. Review **Review App
+   Action**: account, exact URL, destination and **Request Payload**. Approve once
+   with **Create This Item** or **Send This Message**, or choose **Deny**. The
+   **Draft** tab displays the original text. Only the trusted browser UI can approve.
 
 The [example recipe](examples/connector_recipes/notes.json) uses a synthetic
 `.example` domain; it is a format reference, not a working external account.
@@ -1416,7 +1423,9 @@ The HTTPS transport rejects private, reserved, multicast, mapped and mixed DNS
 answers, connects to a validated numeric public address without resolving again,
 and verifies TLS/hostname against the reviewed domain. It ignores proxy settings,
 follows no redirects and makes no automatic retries. Identity is verified again
-before every tool read. Changes to identity, catalog or account state deny results.
+before each tool read, write preview, write dispatch and reconciliation probe.
+Changes to identity, catalog or account state deny entry/results. After write dispatch,
+an interrupted or malformed response remains uncertain because the service may have committed.
 Requests and account setup run off the Qt thread; agents cannot supply authorization
 headers or invoke the trusted installation/account methods.
 
@@ -1471,45 +1480,129 @@ acceptance remain separate.
 
 ### Agent-designed write boundary
 
-**User approved reviewed create/send recipes.** Recipes now design, install and
-connect read-capable services using Steed's broker, keyring, account switches and
-receipts. Their API semantics remain proposals checked by the user; a declared
-HTTP method or effect cannot prove what an external service actually does.
+**Implemented: reviewed declarative creates/sends.** Version 1 read recipes remain
+compatible. Version 2 may mix the existing GET format with POST tools. The
+[create/send example](examples/connector_recipes/notes-writes.json) is synthetic;
+it is not a live service integration. `steed_recipe_capabilities` publishes all
+supported versions, bindings, limits and examples. Installation review does not
+connect an account, enable switches or authorize a task.
 
-The user chose to admit agent-designed tools that change external data after
-review, rather than requiring maintained Steed adapters for each service. This
-authorizes the next engineering milestone; real-account effects remain separate
-explicit user tasks. The write implementation is still pending.
+A POST tool declares the ordinary name/description/path/response fields plus:
 
-Approved direction: admit **reviewed declarative create/send plans**, starting
-with a small fixed REST contract:
+```json
+{
+  "name": "create_note",
+  "description": "Create a reviewed note",
+  "method": "POST",
+  "effect": "write",
+  "path": "/notes",
+  "destination": "account",
+  "request": {
+    "title": "artifact.title",
+    "body": "artifact.content",
+    "operation_id": "operation_id"
+  },
+  "idempotency_header": "Idempotency-Key",
+  "response": [{"label": "id", "pointer": "/id"}],
+  "reconciliation": {
+    "path": "/operations/{operation_id}",
+    "operation_id": "/operation_id",
+    "status": "/status",
+    "success": "succeeded"
+  }
+}
+```
 
-- Installation shows actual service/auth domains, OAuth scopes, method/path,
-  declared effect and payload fields. New source versions need new account setup
-  and switches; they cannot inherit prior write authority.
-- Payloads bind only explicitly named task draft fields and Steed's operation ID.
-  JSON serialization is trusted; generated source gets no credentials, custom
-  authorization headers, arbitrary URLs or executable expressions.
-- The initial implementation shows the actual destination/payload before dispatch
-  and reuses exact task permissions, account switches, budgets and live cancellation.
-  Persistent choices must clearly describe the added write/send authority.
-- Receipts persist before dispatch, preserve uncertain outcomes, and never retry
-  uncertain external effects automatically. Where the provider documents request-ID
-  support or lookup, bind it to the receipt and provide a separately authorized
-  read-only reconciliation path. An unsupported lookup remains explicit uncertainty.
-- Edits/replacements require a provider revision/conditional-write contract and
-  before/after review; delete/spend and arbitrary protocol/code adapters stay outside
-  this first milestone. A recipe declaration alone is not proof the API honors a
-  request-ID or revision guard.
+- `effect` is `write` (create/add) or `send`. Writes use destination `account` with
+  a fixed path, or `resource_id` with one complete `{destination}` segment. Sends
+  require `email` and one `email:recipient@example.com` destination; their path is
+  fixed and their payload must bind `destination`. Email payload bindings omit the
+  `email:` prefix. Recipient lists, display names and header injection are rejected.
+- `request` has 1–10 flat fields with bounded ASCII names. Values bind only
+  `artifact.title`, `artifact.content`, `destination` or `operation_id`.
+  At least one field must use draft content. No literals, nested templates, raw
+  JSON interpolation, expressions, cookies, arbitrary headers or credential bindings
+  are supported. Trusted JSON serialization preserves quotes/newlines as data.
+  The entire serialized payload, including title, operation ID and JSON escaping,
+  is limited to 16 KiB; a maximum-size draft may exceed this and be rejected.
+- Optional `idempotency_header` accepts `Idempotency-Key`, `X-Idempotency-Key` or
+  `X-Request-ID`, populated only with the receipt's generated operation ID. This
+  correlates requests; it does not prove that a service deduplicates them.
+- Optional `reconciliation` uses one reviewed GET path with a complete
+  `{operation_id}` segment. The POST must carry that ID in a bound field or supported
+  header. A probe succeeds only when the returned ID exactly matches the receipt
+  and the selected status equals the reviewed success value. It returns the same
+  selected response fields. Missing results, mismatches, errors and pending statuses
+  remain uncertain; absence never proves an action was not applied. The task needs
+  a separate exact `read` permission for that tool to call `steed_app_reconcile`.
 
-The alternative retains recipe reads/OAuth/pagination while adding each service's
-write support through maintained Python adapters. It keeps effect semantics in
-reviewed Steed code but delays agent-built write integration and requires repository
-changes for each service. Shared Google registration stays deferred under either
-choice. After choosing the boundary, acceptance should include synthetic HTTPS
-create/send receipts, timeout after server commit, restart/non-replay, revoked grants,
-identity/source changes, payload review and both external MCP transports before any
-user-owned real-service test.
+Every create/send requires the default-Deny payload popup even when account
+switches or saved task permissions approve app access. Review binds source hash,
+account/subject, exact destination, operation ID, draft hash, title and serialized
+payload. Steed rechecks those inputs and live authority before the single POST.
+Pending preview content is scrubbed after approval/denial/cancellation and on restart;
+receipts remain durable. Agents and local workers cannot approve their own writes.
+
+The trusted transport permits POST only on reviewed API path templates with exact
+JSON/authentication headers and the configured operation header. The OAuth form
+exchange remains separate and pinned to its reviewed token endpoint. TLS, public
+numeric-address pinning, response limits, no proxies and no redirects apply to both.
+Only JSON replies with HTTP 200/201 are accepted; the selected fields represent the
+service's acknowledgement, not proof of eventual message delivery. Other statuses,
+missing/oversized fields, disconnects and cancellation after HTTP entry remain
+uncertain. A same-ID replay returns its receipt and never makes a second POST.
+No automatic write retry occurs, consistent with [HTTP's non-idempotent retry
+boundary](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2).
+
+The user chose reviewed agent recipes instead of requiring a maintained Steed adapter
+for each service's write support. Actual API behavior still depends on the service;
+verify its semantics during source review. New source versions get fresh accounts
+and switches. Real-account effects require their own explicit user tasks. Shared
+Google registration remains deferred. Edits/replacements need a revision/conditional
+write contract; delete/spend and executable connector adapters are outside this
+implemented format.
+
+Create/send acceptance: **755 regressions passed in 297.778 seconds**; 63 final
+recipe checks passed in 12.762 seconds, including a subsequent shared-POST-path
+operation-header fix. Both SDK/raw MCP transports passed, standalone startup/render/
+shutdown passed, and Ruff/format, whitespace, four example parses and local doc links
+passed. Source/create/send popup previews were inspected. Logs:
+`/tmp/steed-recipe-writes-full.log`, `/tmp/steed-recipe-writes-final-recipes.log`,
+`/tmp/steed-recipe-writes-mcp-{stdio,http}.log`, and
+`/tmp/steed-recipe-writes-startup.log`. Real-provider and native desktop acceptance
+remain separate. Focused tests
+cover owned drafts, recipient scope, forged/missing approvals, exact preview bytes,
+OAuth refresh/form separation, overflow, source/account identity changes, revocation
+before/after dispatch, restart/non-replay and exact-operation probes. Both SDK/raw
+clients have completed reviewed creates/sends and timeout/reconciliation through
+stdio and authenticated HTTP, alongside reads and real sandboxed document workers.
+No real accounts or desktop secrets were used.
+
+### Complex provider workflow decision
+
+The next architectural boundary is how agent-designed connectors handle provider
+logic beyond a single reviewed JSON request. Steed's Google implementation uses
+provider-specific destination checks, multipart creation, revision-aware edits
+and marker-based reconciliation. Other workflows may need dependent mutations. Today's recipes
+have one POST and selected response fields; they cannot yet represent nested request
+objects, result-dependent follow-up requests, partial multi-step completion or
+revision-guarded edits.
+
+A proposed next design keeps source declarative: bounded nested templates and
+ordered request steps, compiled by trusted Steed code. A parent receipt would own
+one durable receipt per step; each mutation's fully materialized payload would need
+review, and no later write would run after uncertain completion. Read-only probes
+would reconcile exact step IDs. Credentials stay in the broker, and generated
+workers could prepare drafts but cannot execute arbitrary connector code there.
+This requires new plan/storage semantics and is not implemented.
+
+The alternative is a broker-backed sandboxed adapter package: generated code computes
+provider logic in the local worker, while typed broker calls own credentials,
+authority, payload approvals and per-step receipts. That offers wider protocol and
+transform support but adds an executable adapter trust boundary and ongoing sandbox
+compatibility work. Existing attachment workers have no connector credential or
+network access. No generated Python would run inside the browser under either design.
+This choice needs user input before either execution architecture is implemented.
 
 ### Shared Google registration decision
 
@@ -2600,7 +2693,8 @@ local HTTPS server. Their socket fixture maps a validated public numeric address
 to that server without external connections. Recipe account checks use an in-memory
 synthetic keyring. `--recipes` adds source proposal, the actual default-Deny review
 popup, trusted account setup, persistent access and selected-field reads to both
-MCP clients. `--documents` additionally requires the installed optional bundle.
+MCP clients. Version 2 also exercises exact payload previews, create/send receipts,
+uncertain completion and read-only reconciliation without write replay. `--documents` additionally requires the installed optional bundle.
 
 The active-content audit prints JSON with observed requests, STUN packet counts,
 script execution results, and `tested_routes_contained`. Exit zero means its
