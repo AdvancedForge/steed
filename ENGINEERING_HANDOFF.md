@@ -56,7 +56,7 @@ unavailable: record the engineering assessment as a COMMENT instead.
   enable switches, relative paths, binary chunks, revisions, atomic imports/
   commits, old versions, recursive Trash and recovery. Interrupted/cancelled
   writes never replay. Disabling cancels unfinished writes immediately.
-- `ui/file_library.py`: **File → Agent File Library…** and sidebar entry, copy
+- `ui/file_library.py`: **Agents → Agent File Library…** and sidebar entry, copy
   selected files/folders in a background reader, enable access, create subfolders,
   export, Trash, Versions and user-only confirmed recovery cleanup.
 - `services/task_service.py`, `task_client.py`, `agent_tools.py`: twelve library

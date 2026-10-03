@@ -12,6 +12,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Menu organization (implemented).** General is first and contains everyday
+settings, passwords, downloads, website permissions and a Profiles submenu.
+Tabs gathers tab commands and a Tab Groups submenu with current-tab assignment,
+removal and collapse/expand actions. Agents gathers every existing agent control,
+including native/web chat, file library, connections and local MCP setup. View
+contains address focus, find and zoom; Cookies includes browsing-history clearing.
+File/Edit and the separate Profile/Tab Groups categories are removed. Keyboard
+shortcuts, profile Quick Switch and history/profile isolation remain intact.
+Documentation uses the new menu paths. All 114 browser/menu/agent-access/setup/
+sidebar/web-chat checks pass in 68.864 seconds; Ruff lint/format and whitespace
+checks pass. A synthetic offscreen preview was inspected.
+Log: `/tmp/steed-menu-regressions.log`.
+
 **Observation increment (implemented and validated).** Page reads now
 include open-shadow text and root-local control labels, nested components and
 image alt descriptions. A 32-root/eight-level budget joins existing text/node/
@@ -493,7 +506,7 @@ establishes those results. Password improvements remain deferred at the user's r
   Logs: `/tmp/steed-plans-{final-full,final-recipes,mcp-stdio,mcp-http,startup}.log`.
   See the [implemented format](DOCUMENTATION.md#sequential-connector-request-plans).
 
-- **External-agent conversations implemented:** View → Agent Sidebar
+- **External-agent conversations implemented:** Agents → Agent Sidebar
   (`Ctrl+Shift+A`) opens a lazy, movable dock for the selected external MCP task.
   Explicit user messages, cumulative streamed replies, read indicators, pending
   review/file/draft/receipt counts and nonmodal task controls are available.
@@ -515,7 +528,7 @@ establishes those results. Password improvements remain deferred at the user's r
   Logs: `/tmp/steed-sidebar-{full,final-focused,messages,mcp-stdio,mcp-http,startup}.log`.
   See [conversation setup and protocol](DOCUMENTATION.md#external-agent-conversation-sidebar).
 
-- **External-client setup simplified:** File → Agent Connection Setup… and the
+- **External-client setup simplified:** Agents → Agent Connection Setup… and the
   sidebar's Connection Setup… button open one nonmodal screen with explicit local
   opt-in, copyable interpreter/adapter/discovery settings and a mailbox starter
   prompt. No gateway token is read/copied, no client is launched/configured and
@@ -530,7 +543,7 @@ establishes those results. Password improvements remain deferred at the user's r
   Logs: `/tmp/steed-agent-setup-{focused,preview,startup}.log`.
 
 - **Latest usability checkpoint:** reusable approvals for both permission systems;
-  **File → Website Permissions** and **Task Permissions → Saved Approvals** manage
+  **General → Website Permissions** and **Task Permissions → Saved Approvals** manage
   them. Removing an agent rule revokes linked tasks; disconnecting an app removes
   matching rules. Private website choices remain in memory. Google setup has a
   collapsible one-time import, reusable OS-keyring configuration and a forget
@@ -621,7 +634,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   started. Revisit native support when a maintained build or reproducible bounded
   integration is available; website scripts remain unavailable. See the
   [assessment](DOCUMENTATION.md#bounded-engine-feasibility-assessment).
-- **Local MCP implemented:** File → Enable Local Agent Access opts in for this
+- **Local MCP implemented:** Agents → Enable Local Agent Access opts in for this
   run. A private authenticated Unix socket connects the optional official-SDK
   stdio adapter to the running Qt process. Thirty-six published tool schemas use
   connection-bound active-task identity and the existing broker/grant checks. Clients
@@ -779,7 +792,7 @@ commit `47ba170` and native-input commit `c23c6ce` remain earlier checkpoints.
   A synthetic Microsoft provider uses the same setup/grant/receipt system without
   Google-specific changes to task policy; a real Microsoft/MCP adapter remains future work.
 - **Next account acceptance checkpoint:** supply a user-controlled Google Cloud
-  Desktop OAuth client and complete consent via File → App Connections, then run
+  Desktop OAuth client and complete consent via Agents → App Connections, then run
   an explicitly approved small real Doc/email task. No real account was connected;
   tools remain absent until configured. Setup and limitations are documented in
   [Google app connections](DOCUMENTATION.md#google-app-connections).
@@ -961,7 +974,7 @@ SQLite. Acceptance: a deterministic client operates a task session without AI.
 Implemented for the current task backend:
 
 - Pending scopes gain authority only through user approval in the automatic
-  popup or **File → Task Permissions**.
+  popup or **Agents → Task Permissions**.
   Clients have task-bound handles and cannot approve themselves or impersonate
   another task.
 - Exact origins, supported actions, session counts, monotonic expiry, operation

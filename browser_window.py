@@ -227,117 +227,120 @@ class BrowserWindow(QMainWindow):
 
     def setup_menus(self):
         menubar = self.menuBar()
-        # File menu
-        file_menu = menubar.addMenu("File")
+        general_menu = menubar.addMenu("General")
+        tabs_menu = menubar.addMenu("Tabs")
+        agents_menu = menubar.addMenu("Agents")
+        view_menu = menubar.addMenu("View")
+        cookies_menu = menubar.addMenu("Cookies")
         new_tab_action = QAction("New Tab", self)
         new_tab_action.setShortcut(QKeySequence("Ctrl+T"))
         new_tab_action.triggered.connect(lambda: self._new_tab())
-        file_menu.addAction(new_tab_action)
+        tabs_menu.addAction(new_tab_action)
         restore_tab_action = QAction("Restore Closed Tab", self)
         restore_tab_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
         restore_tab_action.triggered.connect(self._restore_closed_tab)
         self.restore_tab_action = restore_tab_action
         restore_tab_action.setEnabled(False)
-        file_menu.addAction(restore_tab_action)
+        tabs_menu.addAction(restore_tab_action)
         close_tab_action = QAction("Close Tab", self)
         close_tab_action.setShortcut(QKeySequence("Ctrl+W"))
         close_tab_action.triggered.connect(self._close_current_tab)
-        file_menu.addAction(close_tab_action)
+        tabs_menu.addAction(close_tab_action)
         self.reload_action = QAction("Reload", self)
         self.reload_action.setShortcuts([QKeySequence("Ctrl+R"), QKeySequence("F5")])
         self.reload_action.triggered.connect(self._reload)
-        file_menu.addAction(self.reload_action)
+        tabs_menu.addAction(self.reload_action)
         focus_address_action = QAction("Go to Address Bar", self)
         focus_address_action.setShortcut(QKeySequence("Ctrl+L"))
         focus_address_action.triggered.connect(lambda: self.address_bar.focus_address())
-        file_menu.addAction(focus_address_action)
+        view_menu.addAction(focus_address_action)
         clear_history_action = QAction("Clear Browsing History...", self)
         clear_history_action.triggered.connect(self._clear_browsing_history)
-        file_menu.addAction(clear_history_action)
+        cookies_menu.addAction(clear_history_action)
+        cookies_menu.addSeparator()
         passwords_action = QAction("Passwords...", self)
         passwords_action.triggered.connect(lambda: self._open_passwords())
-        file_menu.addAction(passwords_action)
+        general_menu.addAction(passwords_action)
         fill_login_action = QAction("Fill Login", self)
         fill_login_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
         fill_login_action.triggered.connect(
             lambda: self._open_passwords(auto_fill=True)
         )
-        file_menu.addAction(fill_login_action)
+        general_menu.addAction(fill_login_action)
         downloads_action = QAction("Downloads...", self)
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(
             lambda: DownloadDialog(self.download_manager, self).exec()
         )
-        file_menu.addAction(downloads_action)
+        general_menu.addAction(downloads_action)
         adblock_action = QAction("Ad Blocking...", self)
         adblock_action.triggered.connect(
             lambda: AdBlockDialog(self.adblock, self).exec()
         )
-        file_menu.addAction(adblock_action)
-        file_menu.addSeparator()
+        general_menu.addAction(adblock_action)
+        general_menu.addSeparator()
         settings_action = QAction("Settings...", self)
         settings_action.setShortcut(QKeySequence("Ctrl+,"))
         settings_action.triggered.connect(self._open_settings)
-        file_menu.addAction(settings_action)
-        file_menu.addSeparator()
+        general_menu.addAction(settings_action)
+        general_menu.addSeparator()
         exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
         task_action = QAction("Task Permissions...", self)
         task_action.triggered.connect(self._open_tasks)
-        file_menu.insertAction(exit_action, task_action)
+        agents_menu.addAction(task_action)
         site_action = QAction("Website Permissions...", self)
         site_action.triggered.connect(
             lambda: SitePermissionsDialog(
                 self.profile_manager.registry.site_permissions, self
             ).exec()
         )
-        file_menu.insertAction(task_action, site_action)
+        general_menu.addAction(site_action)
         apps_action = QAction("App Connections...", self)
         apps_action.triggered.connect(self._open_app_connections)
-        file_menu.insertAction(task_action, apps_action)
+        agents_menu.addAction(apps_action)
         self.file_library_action = QAction("Agent File Library…", self)
         self.file_library_action.triggered.connect(self._open_file_library)
         self.file_library_action.setEnabled(
             not self.profile_manager.is_search_profile()
         )
-        file_menu.insertAction(task_action, self.file_library_action)
+        agents_menu.addAction(self.file_library_action)
         self.agent_access_action = QAction("Enable Local Agent Access", self)
         self.agent_access_action.setCheckable(True)
         registry = self.profile_manager.registry
         self.agent_access_action.setChecked(registry.agent_gateway is not None)
         registry.agent_access_changed.connect(self.agent_access_action.setChecked)
         self.agent_access_action.triggered.connect(self._set_agent_access)
-        file_menu.insertAction(task_action, self.agent_access_action)
+        agents_menu.addAction(self.agent_access_action)
         setup_agent_action = QAction("Agent Connection Setup…", self)
         setup_agent_action.triggered.connect(self._open_agent_setup)
-        file_menu.insertAction(task_action, setup_agent_action)
-        edit_menu = menubar.addMenu("Edit")
+        agents_menu.addAction(setup_agent_action)
+        view_menu.addSeparator()
         self.find_action = QAction("Find in Page...", self)
         self.find_action.setShortcut(QKeySequence("Ctrl+F"))
         self.find_action.triggered.connect(self._open_find)
-        edit_menu.addAction(self.find_action)
+        view_menu.addAction(self.find_action)
         next_match = QAction("Find Next", self)
         next_match.setShortcuts([QKeySequence("F3"), QKeySequence("Ctrl+G")])
         next_match.triggered.connect(lambda: self.find_bar.find_next())
-        edit_menu.addAction(next_match)
+        view_menu.addAction(next_match)
         previous_match = QAction("Find Previous", self)
         previous_match.setShortcuts(
             [QKeySequence("Shift+F3"), QKeySequence("Ctrl+Shift+G")]
         )
         previous_match.triggered.connect(lambda: self.find_bar.find_next(True))
-        edit_menu.addAction(previous_match)
-        view_menu = menubar.addMenu("View")
+        view_menu.addAction(previous_match)
+        agents_menu.addSeparator()
         self.agent_sidebar_action = QAction("Agent Sidebar", self)
         self.agent_sidebar_action.setCheckable(True)
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
-        view_menu.addAction(self.agent_sidebar_action)
+        agents_menu.addAction(self.agent_sidebar_action)
         agents_tab_action = QAction("Agent Chat Tab", self)
         agents_tab_action.triggered.connect(lambda: self._open_agent_tab())
-        view_menu.addAction(agents_tab_action)
-        web_chats_menu = view_menu.addMenu("Website Chats")
+        agents_menu.addAction(agents_tab_action)
+        web_chats_menu = agents_menu.addMenu("Website Chats")
         from ui.web_chat import WEB_CHATS
 
         for label, url in WEB_CHATS.items():
@@ -352,6 +355,7 @@ class BrowserWindow(QMainWindow):
         web_chats_menu.addAction("Share instructions with a chat…").triggered.connect(
             self._choose_web_chat
         )
+        view_menu.addSeparator()
         self.zoom_in_action = QAction("Zoom In", self)
         self.zoom_in_action.setShortcuts(
             [QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")]
@@ -366,8 +370,7 @@ class BrowserWindow(QMainWindow):
         self.zoom_reset_action.setShortcut(QKeySequence("Ctrl+0"))
         self.zoom_reset_action.triggered.connect(lambda: self._zoom())
         view_menu.addAction(self.zoom_reset_action)
-        # Profile menu
-        profile_menu = menubar.addMenu("Profile")
+        profile_menu = general_menu.addMenu("Profiles")
         new_profile_action = QAction("New Profile...", self)
         new_profile_action.triggered.connect(self._create_profile)
         profile_menu.addAction(new_profile_action)
@@ -399,13 +402,29 @@ class BrowserWindow(QMainWindow):
         # Quick shortcuts submenu
         self.profile_shortcuts_menu = QMenu("Quick Switch", self)
         profile_menu.addMenu(self.profile_shortcuts_menu)
-        # Tab Groups menu
-        group_menu = menubar.addMenu("Tab Groups")
+        general_menu.addSeparator()
+        general_menu.addAction(exit_action)
+        tabs_menu.addSeparator()
+        group_menu = tabs_menu.addMenu("Tab Groups")
+        group_menu.addAction("Set Current Tab Group…").triggered.connect(
+            lambda: self._handle_group_rename_request(self.current_tab_index)
+        )
+        group_menu.addAction("Remove Current Tab from Group").triggered.connect(
+            lambda: self._clear_tab_group(self.current_tab_index)
+        )
+        toggle_group_action = group_menu.addAction("Collapse / Expand Current Group")
+        toggle_group_action.triggered.connect(self._toggle_current_tab_group)
+        group_menu.aboutToShow.connect(
+            lambda: toggle_group_action.setEnabled(
+                0 <= self.current_tab_index < len(self.tabs)
+                and self.tabs[self.current_tab_index].group_id
+                in self.tab_manager.groups
+            )
+        )
+        group_menu.addSeparator()
         manage_groups_action = QAction("Manage Tab Groups...", self)
         manage_groups_action.triggered.connect(self._manage_tab_groups)
         group_menu.addAction(manage_groups_action)
-        # Cookies menu
-        cookies_menu = menubar.addMenu("Cookies")
         view_cookies_action = QAction("View Cookies...", self)
         view_cookies_action.triggered.connect(self._view_cookies)
         cookies_menu.addAction(view_cookies_action)
@@ -1448,6 +1467,12 @@ class BrowserWindow(QMainWindow):
         group.collapsed = not group.collapsed
         self.tab_manager.save_groups()
         self._sync_tab_group_labels()
+
+    def _toggle_current_tab_group(self):
+        if 0 <= self.current_tab_index < len(self.tabs):
+            group_id = self.tabs[self.current_tab_index].group_id
+            if group_id in self.tab_manager.groups:
+                self.toggle_group(group_id)
 
     def _toggle_named_group(self, name):
         group = self.tab_manager.ensure_group(name)

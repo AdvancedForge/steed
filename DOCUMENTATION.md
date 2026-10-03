@@ -98,7 +98,7 @@ The browser preserves explicit Chromium options and enables PipeWire screen capt
 
 ### Google sign-in
 
-Google sign-in compatibility is enabled by default in **File → Settings**. It sends a Firefox User-Agent to `https://accounts.google.com/`, following [qutebrowser's account-host workaround](https://github.com/qutebrowser/qutebrowser/issues/5182). Other sites use your configured/default User-Agent. Main-page GET redirects into or out of the account host are restarted to avoid Qt losing the per-site header; POST requests are never replayed.
+Google sign-in compatibility is enabled by default in **General → Settings**. It sends a Firefox User-Agent to `https://accounts.google.com/`, following [qutebrowser's account-host workaround](https://github.com/qutebrowser/qutebrowser/issues/5182). Other sites use your configured/default User-Agent. Main-page GET redirects into or out of the account host are restarted to avoid Qt losing the per-site header; POST requests are never replayed.
 
 Restart with `.venv/bin/python main.py`, then open `https://accounts.google.com/` and sign in normally. The compatibility setting takes precedence over the global User-Agent override for this host. Reload sign-in tabs after changing the setting.
 
@@ -132,53 +132,28 @@ The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use th
 
 ### Menu Options
 
-**File Menu:**
+The menu bar has five categories, in this order:
 
-- New Tab
-- Restore Closed Tab
-- Close Tab
-- Reload
-- Go to Address Bar
-- Clear Browsing History...
-- Passwords...
-- Fill Login
-- Downloads...
-- Task Permissions...: Review, approve, deny, revoke, or cancel task requests
-- Website Permissions...: Review and forget saved website approvals
-- App Connections...: Connect provider accounts for approved tasks
-- Ad Blocking...
-- Settings...
-- Exit
+- **General:** Passwords, Fill Login, Downloads, Ad Blocking, Website Permissions,
+  Settings and Exit. **General → Profiles** contains profile creation, switching,
+  pop-out, renaming and deletion, private browsing and Quick Switch shortcuts.
+- **Tabs:** New Tab, Restore Closed Tab, Close Tab and Reload.
+  **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
+  that group, and opens Manage Tab Groups. Individual tabs also expose existing
+  group selection and grouping actions from their context menu.
+- **Agents:** Task Permissions, App Connections, Agent File Library, Enable Local
+  Agent Access, Agent Connection Setup, Agent Sidebar, Agent Chat Tab and Website
+  Chats. Connecting an account, enabling files and approving task actions remain
+  separate controls.
+- **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
+  Zoom Out and Reset Zoom.
+- **Cookies:** Clear Browsing History, View Cookies, Clear All Cookies and Use
+  Global Cookies for This Site. Clearing history affects the current profile's
+  visits and address suggestions; it does not clear cookies.
 
-**Edit Menu:** Find in Page, Find Next, Find Previous.
+Existing keyboard shortcuts continue to work regardless of the menu location.
 
-**View Menu:** Zoom In, Zoom Out, Reset Zoom.
-
-**Profile Menu:**
-
-- New Profile...
-- Switch Profile...
-- Pop out Profile...: Open a profile in a second window
-- Rename Profile...
-- Delete Profile...: Archives a profile (recoverable)
-- Pop Out Search Profile (Incognito)
-- Switch to Search Profile (Incognito)
-- Quick Switch: Per-profile shortcuts
-
-**Tab Groups Menu:**
-
-- Manage Tab Groups...
-
-Individual tabs also expose **Set Group…**, **Set to existing**, **Clear Group**, and
-**Collapse / Expand Group** from their context menu.
-
-**Cookies Menu:**
-
-- View Cookies...: Open cookie manager dialog
-- Clear All Cookies: Delete all cookies for current profile
-- Use Global Cookies for This Site...: Reset the current site's baseline
-
-Dark mode is available in **File → Settings**.
+Dark mode is available in **General → Settings**.
 
 ### Website permissions
 
@@ -198,7 +173,7 @@ These choices remain in memory for the shared Search profile's lifetime and
 disappear when Steed closes. Private browsing never inherits regular approvals.
 Screen sharing still requires choosing a screen or window each time.
 
-Use **File → Website Permissions** to forget a choice and make future requests
+Use **General → Website Permissions** to forget a choice and make future requests
 ask again. Forgetting does not promise to terminate an existing capture; close
 the tab using your camera, microphone or screen to stop it. Website approvals
 never authorize agents: task pages continue to deny engine permissions.
@@ -230,7 +205,7 @@ windows using that profile. Incognito suggestions stay in memory and do not
 include ordinary profile history. Local files and URLs containing embedded
 usernames/passwords are excluded.
 
-Use **File → Clear Browsing History...** to clear the current profile's saved
+Use **Cookies → Clear Browsing History...** to clear the current profile's saved
 visits and suggestions. Subsequent visits start a new history.
 
 ### Third-Party Password Managers
@@ -290,10 +265,10 @@ a supported password-manager option.
 
 ### Creating and Switching Profiles
 
-1. Go to **Profile → New Profile**
+1. Go to **General → Profiles → New Profile**
 2. Enter a profile name
 3. The browser will switch to the new profile
-4. Use **Profile → Switch Profile** to change profiles
+4. Use **General → Profiles → Switch Profile** to change profiles
 
 ### Search Profile (Incognito)
 
@@ -304,9 +279,9 @@ The search profile is a special profile that:
 - Doesn't save tabs
 - Keeps browsing data in memory for the application registry's lifetime; switching away or closing one of several windows does not reset that shared in-memory profile
 
-Access it via **Profile → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
+Access it via **General → Profiles → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
 
-**Profile → Quick Switch** lists existing profiles immediately at startup.
+**General → Profiles → Quick Switch** lists existing profiles immediately at startup.
 The numbered shortcuts work before the menu is opened. Ordinary profiles are
 listed alphabetically, including `default` and `global`.
 
@@ -329,9 +304,9 @@ Existing profiles are migrated conservatively: pre-existing cookies remain local
 
 ## Downloads and ad blocking
 
-Open **File → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history. Interrupted downloads are not automatically restarted.
+Open **General → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history. Interrupted downloads are not automatically restarted.
 
-Open **File → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, or add host-name exceptions. Only a small bootstrap rule set ships with the browser; download the full lists for broader coverage. Rule compilation runs off the GUI thread, and a failed update keeps the last working rules. Network blocking applies immediately, while cosmetic (CSS) hiding is re-applied on page load — reload pages after changing exceptions. Same-origin frames, including nested frames and `srcdoc`, receive their own CSS rules; each pass covers up to 32 documents and eight frame levels. Cross-origin frames cannot be inspected. Scriptlets and resource redirects are not enabled, and unsupported filters are not presented as full uBlock compatibility.
+Open **General → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, or add host-name exceptions. Only a small bootstrap rule set ships with the browser; download the full lists for broader coverage. Rule compilation runs off the GUI thread, and a failed update keeps the last working rules. Network blocking applies immediately, while cosmetic (CSS) hiding is re-applied on page load — reload pages after changing exceptions. Same-origin frames, including nested frames and `srcdoc`, receive their own CSS rules; each pass covers up to 32 documents and eight frame levels. Cross-origin frames cannot be inspected. Scriptlets and resource redirects are not enabled, and unsupported filters are not presented as full uBlock compatibility.
 
 ## Configuration
 
@@ -515,7 +490,7 @@ The task service is available to trusted in-process Python controllers through
 `window.profile_manager.registry.tasks`. It is initialized only on demand and
 shared across windows using the same application registry. This is a developer
 API; the optional [local MCP adapter](#local-agent-access-mcp) exposes a bounded
-subset through private IPC. **File → Task Permissions**
+subset through private IPC. **Agents → Task Permissions**
 provides user approval, denial, revocation, and cancellation. A client can propose
 a scope but cannot approve it through the command broker.
 
@@ -535,7 +510,7 @@ network access cannot be added. Separate rules are never combined. Each matching
 task gets a fresh bounded grant and its own duration/budgets; rules are not an
 aggregate lifetime spending limit. Expanded requests still show a popup.
 
-Manage rules in **File → Task Permissions → Saved Approvals**. **Forget and Revoke
+Manage rules in **Agents → Task Permissions → Saved Approvals**. **Forget and Revoke
 Access** removes the rule and revokes all active tasks approved through it.
 Revoking one task leaves its saved rule intact. Disconnecting an app account
 removes matching rules and revokes matching grants; reconnecting creates a new
@@ -639,7 +614,7 @@ bound client, and use that client to submit `grant.request` with this scope:
 A nonmodal **Allow task access?** popup opens automatically in a browser window.
 Review the task, profile, sites, actions, and duration, then click **Approve** or
 **Deny**. Requests queue one at a time. Closing/Escape leaves a request pending;
-review it later in **File → Task Permissions**, which also provides revocation.
+review it later in **Agents → Task Permissions**, which also provides revocation.
 Requests made before a window opens wait for one. A client only submits
 `grant.request`; approval is never available through its command handle.
 Then submit `session.open` through the client. Use the returned `session_id` for
@@ -981,7 +956,7 @@ No retry, pause/resume, file execution, or file-content API is supplied. There
 are at most 100 download records per session. An evidence failure after physical
 publication disables task access; reconcile the destination before retrying.
 
-In **File → Task Permissions**, select a task, then open **Activity** for its
+In **Agents → Task Permissions**, select a task, then open **Activity** for its
 latest 200 journal events or **Downloads** for progress, approved destination,
 byte counts and results. Select a pending transfer and click **Cancel Selected
 Download** to stop that file while retaining the task. Completed/failed receipts
@@ -1020,7 +995,7 @@ and its metadata receipt commit together. Titles/body stay out of journal events
 Content is retained as local plaintext in owner-only `tasks.sqlite`, not encrypted
 or automatically sent to any provider, app or website.
 
-In **File → Task Permissions → Artifacts**, choose a draft to review it as plain
+In **Agents → Task Permissions → Artifacts**, choose a draft to review it as plain
 text. Markdown/HTML do not run scripts, load images or follow links. Completed and
 interrupted tasks retain drafts for user review after restart. **Delete Selected
 Draft** asks for confirmation and removes the stored draft with a content-free
@@ -1029,7 +1004,7 @@ forensic erasure from SQLite journals, free pages or external copies.
 
 ### Persistent agent file library
 
-Use **File → Agent File Library…**, or **File Library…** in the agent sidebar,
+Use **Agents → Agent File Library…**, or **File Library…** in the agent sidebar,
 to keep reusable files outside individual tasks:
 
 1. Choose **New library folder…** and name it, for example `Research`.
@@ -1116,7 +1091,7 @@ Steed stores and exports those bytes. Agents can supply bytes they already gener
 or build a [local Python worker](#running-an-agent-built-local-worker) to create a
 missing generator or integration using supported app tools.
 
-For users, open **File → Task Permissions → Workspace**, then select the task:
+For users, open **Agents → Task Permissions → Workspace**, then select the task:
 
 1. **Share File With Task…** selects one regular local file. Its snapshot becomes
    readable by the connected agent while that task has approved `workspace`
@@ -1207,7 +1182,7 @@ no page, reads no task/user files and grants no execution or account access.
 Concurrent callers share the cached check; agents cannot force repeats or supply
 probe code. Actual package runs independently recheck setup and permissions.
 
-Users can click **File → Task Permissions → Workers → Check Worker Setup** to
+Users can click **Agents → Task Permissions → Workers → Check Worker Setup** to
 retry after installing dependencies or correcting machine policy. The UI stays
 responsive, reports readiness or setup guidance, and never exposes exception
 details. Restart resets the support snapshot; shutdown ends a pending check.
@@ -1236,7 +1211,7 @@ deployment option.
    runtime, Python or bundle bytes need fresh approval. Decisions end on restart.
 5. Poll `steed_worker_status`, then read/export the generated Workspace files.
    Users can review receipts, reopen pending reviews and cancel runs under
-   **File → Task Permissions → Workers**. Closing the popup leaves review pending.
+   **Agents → Task Permissions → Workers**. Closing the popup leaves review pending.
 
 `steed_worker_list` returns owned receipts; `steed_worker_cancel` stops an owned run.
 States are `awaiting_approval`, `running`, `cancelling`, `succeeded`, `failed`,
@@ -1391,7 +1366,7 @@ To add a service:
    no popup and installs nothing. Correct invalid source in a new sealed file,
    then call `steed_recipe_propose` with `file_id` and a stable `request_id`.
    Successful preflight is not approval or verification of provider semantics.
-   Alternatively, choose **File → App Connections → Add Connector Recipe…** and
+   Alternatively, choose **Agents → App Connections → Add Connector Recipe…** and
    select a local JSON file.
 2. Review **Add this service connection?**. It shows the actual HTTPS domain,
    identity endpoint, tool paths, selected returned fields and exact source hash.
@@ -1570,7 +1545,7 @@ acceptance remain separate.
 
 ### Agent-designed write boundary
 
-Packaged service discovery: open **File → App Connections → Add a Service…**.
+Packaged service discovery: open **Agents → App Connections → Add a Service…**.
 Steed loads bounded JSON recipes from `connectors/recipes/`; choosing a service
 opens the same default-Deny source review as importing a recipe. This installs
 only the reviewed source. Connect its account, enable its action switches, and
@@ -1925,7 +1900,7 @@ writes disable access. Restart marks unresolved dispatched writes/reconciliation
 uncertain and queued requests cancelled; it neither replays calls nor restores
 grants. Recovery stays observable even if a provider acknowledgement was lost.
 
-In **File → Task Permissions → Apps**, review owned destinations, states, request
+In **Agents → Task Permissions → Apps**, review owned destinations, states, request
 IDs, references and result text, cancel a running operation, or reconcile an
 uncertain result while its original task/grant remains active. Finished/interrupted
 receipts remain readable by the user. Shared archived receipts can also be checked
@@ -1936,7 +1911,7 @@ A client cannot adopt another task's ledger.
 
 ### Clearing saved app results
 
-Open **File → Task Permissions → Apps** and select a receipt. **Clear Saved Result**
+Open **Agents → Task Permissions → Apps** and select a receipt. **Clear Saved Result**
 removes its saved provider text and link after confirmation. A **Previous** row
 clears the original receipt and its shared recovery summaries. **Clear This Task’s
 Results** clears the selected task's own receipts (up to fifty); Previous rows
@@ -1965,7 +1940,7 @@ policies remain future work.
 
 ### Google app connections
 
-**File → App Connections** now provides persistent switches for each connected
+**Agents → App Connections** now provides persistent switches for each connected
 account: read/check results, create/add content, direct replacements, sending,
 and any supported delete/spend tools. Sign-in alone grants no task authority.
 Turn on only the actions you want to allow without another app-task prompt.
@@ -2018,7 +1993,7 @@ To configure Google:
    production client. The import ignores endpoints supplied by the JSON and uses
    fixed Google HTTPS endpoints. Google's [desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app)
    describes client creation and the system-browser/loopback flow.
-4. Open **File → App Connections**, select **Google Docs and folders** and/or **Send
+4. Open **Agents → App Connections**, select **Google Docs and folders** and/or **Send
    Gmail**, expand **Set Up App Access…**, and choose the JSON once. **Open Google
    Setup** links to the Cloud client page. Click **Connect Google**. Steed saves
    the app configuration in your desktop keyring for subsequent connections;
@@ -2038,7 +2013,7 @@ To configure Google:
 6. Enable the account access switches you want to reuse. Matching bounded app-only
    tasks proceed without a popup. Otherwise, approve the task popup only for the
    account, tool and destination you intend.
-   Review results in **File → Task Permissions → Apps** and drafts in **Artifacts**.
+   Review results in **Agents → Task Permissions → Apps** and drafts in **Artifacts**.
    **Disconnect Account** disables the connection, denies pending
    requests and revokes active grants using it before attempting keyring deletion.
    If the keyring is locked, unlock it and retry removal; the connection stays disabled.
@@ -2564,7 +2539,7 @@ process. Local access is off when the browser starts.
    .venv/bin/python -m pip install -r requirements-mcp.txt
    ```
 
-2. Start Steed and select **File → Enable Local Agent Access**. This enables
+2. Start Steed and select **Agents → Enable Local Agent Access**. This enables
    local connections for the current browser run; it grants no site access.
 3. Configure your MCP client to launch the adapter. For clients using an
    `mcpServers` configuration, substitute the absolute repository paths:
@@ -2608,7 +2583,7 @@ process. Local access is off when the browser starts.
 5. Read the nonmodal approval popup and choose **Approve** or **Deny**. The client
    polls `steed_grant_list` for the decision, then opens a session with the exact
    approved profile. You can keep browsing on that same profile.
-6. Revoke/cancel through **File → Task Permissions**, or disable local agent
+6. Revoke/cancel through **Agents → Task Permissions**, or disable local agent
    access to cancel connected tasks. Closing the adapter cancels its unfinished
    task. Use `steed_task_finish` after completing a workflow.
    The same connection can then start another task; it receives a new identity
@@ -2616,7 +2591,7 @@ process. Local access is off when the browser starts.
 
 ### External-agent conversation sidebar
 
-**File → Agent Connection Setup…**, also available from the sidebar's
+**Agents → Agent Connection Setup…**, also available from the sidebar's
 **Connection Setup…** button, opens a nonmodal setup screen. It enables local
 access only when you click **Enable Local Agent Access**, then offers **Copy
 Connection Settings** and **Copy Starter Prompt**. The settings use the running
@@ -2626,7 +2601,7 @@ clients without `mcpServers` JSON can use the displayed command and arguments.
 Opening the screen or copying settings creates no task, launches no agent and
 grants no page/app access. The screen never reads or copies gateway tokens. If
 the optional MCP SDK is absent, it shows a one-time installation command; it
-does not run the installer. The enable state follows the existing File-menu
+does not run the installer. The enable state follows the existing Agents-menu
 switch and resets on browser restart. Seven setup regressions plus existing
 agent/sidebar checks passed together (53 tests in 13.277 seconds); the final
 setup screen was visually inspected and ordinary startup/render/shutdown passed.
@@ -2643,7 +2618,7 @@ can still use the task mailbox directly. Steed does not store model credentials.
    may be incompatible; failed setup leaves a cancelled, read-only task.
 2. Install Steed's optional adapter dependencies:
    `.venv/bin/python -m pip install -r requirements-mcp.txt`.
-3. Open **View → Agent Sidebar** (`Ctrl+Shift+A`) and choose **New Codex Chat**.
+3. Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) and choose **New Codex Chat**.
    This explicitly enables local agent access for this browser run and starts a
    new task. No MCP client configuration or starter prompt is required.
    The model selector can use your Codex default or request GPT-5.4 for this chat
@@ -2811,7 +2786,7 @@ lifetime and each frame's authority must be checked before exposing its content.
 1. Complete the local MCP setup above and connect your external agent client.
 2. Ask the agent to call `steed_task_start` and keep that connection open. Give
    the task a recognizable objective so you can choose it in Steed.
-3. Open **View → Agent Sidebar**, or press `Ctrl+Shift+A`. Select the connected
+3. Open **Agents → Agent Sidebar**, or press `Ctrl+Shift+A`. Select the connected
    task from the list. The dock can move between the left and right sides.
 4. Type a message and click **Send**, or press `Ctrl+Enter`. Only the submitted
    text is shared. Unsent drafts remain in that window and are not sent when
@@ -2846,7 +2821,7 @@ fresh permissions.
 
 #### Chat tabs and website chats
 
-Choose **View → Agent Chat Tab** or **Open as tab** in the agent sidebar to move
+Choose **Agents → Agent Chat Tab** or **Open as tab** in the agent sidebar to move
 the same Steed conversation into a full browser tab. **Show sidebar** returns it
 to the dock. Sent messages, selected task and unsent draft survive the move;
 closing the tab hides the conversation and keeps its task running. Normal saved
@@ -2854,7 +2829,7 @@ tab restoration can reopen this native UI. Its address is `steed:agents`; it
 does not load a remote page or confer browser permission. Incognito still clears
 and disables the native conversation.
 
-For website subscriptions, choose **View → Website Chats → ChatGPT / Claude /
+For website subscriptions, choose **Agents → Website Chats → ChatGPT / Claude /
 Gemini**. These open `chatgpt.com`, `claude.ai` and `gemini.google.com` in normal
 tabs using the current profile's ordinary cookies and sign-in. Open another
 HTTPS chat website normally to use it too. Choose **Current tab in chat sidebar**
@@ -2865,7 +2840,7 @@ incognito profile; a provider's server-side retention still applies.
 
 To pass instructions:
 
-1. Open a website chat. While browsing the source page, choose **View → Website
+1. Open a website chat. While browsing the source page, choose **Agents → Website
    Chats → Share instructions with a chat…**, or **Share instructions…** in the
    website-chat sidebar.
 2. Write the instructions in the preview dialog. Optionally include the current
@@ -3046,7 +3021,7 @@ the adapter as described above. To collaborate on an approved task page:
 1. Have the agent request `attach` and `read` with its site/profile scope.
    Include `navigate`, `edit`, `scroll`, and `submit` only as needed; the usual
    approval popup applies.
-2. Open **File → Task Permissions**, select the task and its session, then click
+2. Open **Agents → Task Permissions**, select the task and its session, then click
    **Watch Page**. The agent can also call `steed_session_watch` with its
    `session_id` to open this window.
 3. Watching shows the same page and profile while the agent continues. The
@@ -3096,7 +3071,7 @@ connection, restores pages/grants or dispatches an old operation.
    receipt summaries. Receipt text is limited to 512 characters with an explicit
    truncation flag. Source profile/scope is historical information only.
 3. Click **Share Selected Material**, or **Deny** to disclose nothing. Closing or
-   Escape leaves the request pending; reopen it in **File → Task Permissions →
+   Escape leaves the request pending; reopen it in **Agents → Task Permissions →
    Recovery → Choose Recovery Material…**. This tab also shows retained context.
 4. The agent polls `steed_task_recovery`. After approval it receives only the
    selected context, new artifact IDs and `context.imported_files` mappings.
@@ -3172,7 +3147,7 @@ is running stays uncertain until that worker ends. Late older workers cannot era
 independently confirmed evidence. Restart retains source mappings without replaying provider
 requests. Google Drive's absent search result never proves `not_applied`.
 
-**File → Task Permissions → Apps** shows shared receipts as **Previous** rows.
+**Agents → Task Permissions → Apps** shows shared receipts as **Previous** rows.
 Select an uncertain row and use **Reconcile Uncertain Result** after fresh read
 approval. The new check appears as a separate READ receipt. Archived receipts of
 checks themselves are not original provider operations: choose the original task
