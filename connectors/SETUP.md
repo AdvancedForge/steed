@@ -75,6 +75,10 @@ Notes on the wire shape:
   when one is exceeded. `list_tasks` is bounded to three pages; Steed does not
   retry, and a quota failure on a create is reported as uncertain rather than
   resent.
+- **No expiry is documented for a Todoist personal token**, so treat it as
+  long-lived and revoke it in the same settings screen. OAuth access tokens, by
+  contrast, are documented to expire an hour after issue, and an invalid or expired
+  token answers `401` with the documented `UNAUTHORIZED` error code.
 
 ### Least-permission setup
 
@@ -153,6 +157,9 @@ Notes on the wire shape:
   or milestone are inferred from the draft.
 - Steed does not pin an `X-GitHub-Api-Version` header, so requests use GitHub's
   documented unversioned default. Version pinning is not claimed.
+- Set a short expiry on the fine-grained token: the documented `expires_in` value is
+  between 1 and 366 days, `none` for a non-expiring token, and 30 days by default or
+  less under an organization lifetime policy.
 - GitHub applies primary and secondary rate limits (documented as 5,000 requests
   per hour for authenticated REST requests, plus secondary limits). Steed does not
   retry; a create that fails after dispatch is reported as uncertain, so check
@@ -224,8 +231,18 @@ Notes on the wire shape:
   find the number it needs.
 - `due_on`, `start_on` and `owner` on a project, and `due_on`, `start_on`,
   `assignee`, `completed_at` and `parent` on a task, are documented as possibly
-  null and are returned as explicit nulls. The profile projects only fields present
-  in the documented schema, because the schemas declare no required list.
+  null and are returned as explicit nulls.
+- **Asana publishes no default field list.** The documented signal is the per-field
+  `[Opt In]` marker, and a field without it is returned by default. Every projected
+  field here is unmarked: `gid`, `resource_type`, `name`, `notes`, `archived`,
+  `completed`, `due_on`, `start_on`, `owner`, `assignee`, `completed_at` and
+  `permalink_url`. The opt-in fields are deliberately **not** projected: `created_by`,
+  `dependencies`, `dependents`, `external`, `html_notes`, `num_subtasks`,
+  `current_status.html_text`, `project_brief` and `created_from_template`. `notes` is
+  not opt-in, so it is projected; `html_notes` is, so it is not.
+- The only field Asana documents as always returned is the `gid` of an included
+  object. `permalink_url` has no opt-in marker, so it is expected by default, but
+  that is an expectation rather than a documented guarantee.
 - Errors are HTTP status codes plus a JSON `errors` array, so there is no
   application-level flag that could mask a failure.
 - Collections are **not** included: listing pages with `limit` and `offset` and
@@ -247,7 +264,10 @@ Notes on the wire shape:
 
 Because a personal access token has exactly the access of the user who created it,
 the narrowest reduction available to a user is a dedicated Asana account with access
-to only the projects or tasks you intend to read.
+to only the projects or tasks you intend to read. Asana documents personal access
+tokens as **persistent by default**, with no documented expiry duration, so treat one
+as long-lived: revoke it from **My Apps** when it is no longer needed, and review it
+regularly the way Asana's own guidance says.
 
 Official references:
 
@@ -341,6 +361,10 @@ Notes on the wire shape:
 - Nothing here proves that a create committed. There is no reviewed
   reconciliation route and no idempotency header, so an uncertain create is
   reported as uncertain and you check the GitLab issue list yourself.
+- A GitLab token expires at **midnight UTC** on its expiry date. With no date set
+  the expiry is 365 days out and cannot exceed 365 days by default; an expired
+  token stops working and cannot be reactivated, so replace it rather than reusing
+  it.
 
 ### Least-permission setup
 
@@ -681,7 +705,7 @@ authentication with an access token or test token. Read-only.
 | Action | Wire contract |
 | --- | --- |
 | Identity | `GET /rest/v1/user`, subject `/user/_id`, label `/user/fullName` |
-| Read one collection | `GET /rest/v1/collections/{destination}` by numeric collection ID |
+| Read one collection | `GET /rest/v1/collection/{destination}` by numeric collection ID |
 | List root collections | `GET /rest/v1/collections`, projecting `/items` |
 
 Notes on the wire shape:
@@ -694,13 +718,20 @@ Notes on the wire shape:
 - A collection's identifier is `_id`, not `id`, and a single collection is wrapped in
   an `item` object. The root list is under `items`. There is no `hidden` field on a
   collection; `hidden` exists only on a group inside the user document.
+- Raindrop documents the single-collection route in the **singular**,
+  `GET /rest/v1/collection/{id}`, while the root list is the plural
+  `GET /rest/v1/collections`. There is no documented plural per-collection route, so
+  the reviewed path uses the documented singular form.
 - The documentation warns that responses can carry fields it does not describe and
   that using them is unsafe, so only documented fields are projected.
-- **Success is signalled twice.** A failure document is
-  `{"result": false, "error": ..., "errorMessage": ...}` and carries no `items`, so a
-  failed collection read fails closed rather than looking like an empty account. The
-  `result` flag itself is still not checked, which is a shared application-error-flag
-  gap and the reason no Raindrop write is offered.
+- **Success is signalled twice.** No failure body is documented for these two GET
+  routes, so nothing here claims one. What *is* documented is that every failure
+  example elsewhere uses `{"result": false, "error": ..., "errorMessage": ...}` and
+  never includes an `item` or `items` key, which is why a failed read is expected to
+  fail closed instead of looking like an empty account. Whether a `result: false`
+  document can arrive with HTTP 200 is not documented, so the profile neither
+  relies on the status alone nor checks the flag. That is a shared
+  application-error-flag gap and the reason no Raindrop write is offered.
 - Listing is documented as `page` and `perpage`, so no cursor is declared and only
   the documented single response is read.
 - Rate limits are documented as 120 requests per minute per authenticated user for
