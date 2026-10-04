@@ -4,6 +4,7 @@ import importlib.util
 import re
 import sqlite3
 import tempfile
+import time
 from collections import deque
 from functools import wraps
 from pathlib import Path
@@ -17,6 +18,9 @@ from services.command_broker import require_owner_thread
 from services.task_messages import MESSAGE_BYTES, TASK_BYTES
 from services.task_store import ACTIVE_STATUSES
 from utils import save_json
+
+# Retained per conversation so the UI can say when the agent last reported.
+REPORTED_LIMIT = 256
 
 
 def provider_callback(method):
@@ -53,6 +57,8 @@ class AgentProviders(QObject):
         self.factories.update(factories or {})
         self.chats = {}
         self.states = {}
+        self.stopped = {}
+        self.reported = {}
         self.model_reports = {}
         self.agent_names = {}
         self.service.user_message_sent.connect(self._send)
@@ -223,6 +229,7 @@ class AgentProviders(QObject):
         chat = self.chats.get(task_id)
         if chat is None:
             return
+        self._report(task_id)
         chat["requests"][request_id] = {"payload": payload, "claimed": False}
         self.states[task_id] = f"{chat['agent']} needs your input"
         self.requested.emit(task_id, request_id, payload)
@@ -231,6 +238,7 @@ class AgentProviders(QObject):
     def _resolve_request(self, task_id, request_id):
         chat = self.chats.get(task_id)
         if chat is not None:
+            self._report(task_id)
             chat["requests"].pop(request_id, None)
             self.changed.emit()
 
@@ -256,6 +264,25 @@ class AgentProviders(QObject):
 
     def status(self, task_id):
         return self.states.get(task_id, "")
+
+    def connection(self, task_id):
+        """Why a conversation is reachable, without inferring any model state."""
+        chat = self.chats.get(task_id)
+        return {
+            "live": chat is not None,
+            "reason": "" if chat is not None else self.stopped.get(task_id, ""),
+            "detail": self.states.get(task_id, ""),
+            "reported_at": self.reported.get(task_id),
+            "queued": len(chat["queue"]) if chat is not None else 0,
+            "requests": len(chat["requests"]) if chat is not None else 0,
+        }
+
+    def _report(self, task_id):
+        """Note that the runtime reported something for this conversation."""
+        self.reported.pop(task_id, None)
+        self.reported[task_id] = time.time()
+        while len(self.reported) > REPORTED_LIMIT:
+            self.reported.pop(next(iter(self.reported)))
 
     def can_send(self, task_id):
         return task_id not in self.states or bool(
@@ -298,6 +325,7 @@ class AgentProviders(QObject):
     def _model_reported(self, task_id, report):
         if task_id not in self.chats:
             return
+        self._report(task_id)
         if report is None:
             self.model_reports.pop(task_id, None)
         else:
@@ -306,9 +334,11 @@ class AgentProviders(QObject):
 
     def _activity(self, task_id, state):
         chat = self.chats.get(task_id)
+        if chat is None:
+            return
+        self._report(task_id)
         if (
-            chat is not None
-            and chat["current"]
+            chat["current"]
             and state
             in (
                 "thinking",
@@ -335,6 +365,7 @@ class AgentProviders(QObject):
         if not bound or task_id not in self.service.external_tasks:
             self._failed(task_id, f"{chat['agent']} connected to an unexpected task.")
             return
+        self._report(task_id)
         chat["ready"] = True
         chat["activity"] = "ready"
         chat["binding_file"].unlink(missing_ok=True)
@@ -385,6 +416,7 @@ class AgentProviders(QObject):
         chat = self.chats.get(task_id)
         if chat is None:
             return
+        self._report(task_id)
         if chat["current"] is None or chat["current"]["message_id"] != message_id:
             self._failed(
                 task_id, "Unexpected agent turn; messages will not be retried."
@@ -398,6 +430,7 @@ class AgentProviders(QObject):
         chat = self.chats.get(task_id)
         if chat is None:
             return
+        self._report(task_id)
         if chat["discard_reply"]:
             return
         try:
@@ -496,6 +529,7 @@ class AgentProviders(QObject):
         chat = self.chats.get(task_id)
         if chat is None:
             return
+        self._report(task_id)
         try:
             for item in chat["items"].values():
                 item["final"] = True
@@ -517,6 +551,7 @@ class AgentProviders(QObject):
     def _failed(self, task_id, error):
         if task_id not in self.chats:
             return
+        self.stopped[task_id] = "failed"
         self.states[task_id] = error
         self._stop(task_id)
         if not self.service._closed and not self.service.failure:
@@ -546,6 +581,7 @@ class AgentProviders(QObject):
                     or self.service.failure
                     or self.service.store.get(task_id).status not in ACTIVE_STATUSES
                 ):
+                    self.stopped[task_id] = "ended"
                     self.states[task_id] = f"{self.chats[task_id]['agent']} chat ended"
                     self._stop(task_id)
                     self.changed.emit()
@@ -555,6 +591,7 @@ class AgentProviders(QObject):
     def close(self):
         require_owner_thread(self)
         for task_id in tuple(self.chats):
+            self.stopped[task_id] = "closed"
             self.states[task_id] = f"{self.chats[task_id]['agent']} disconnected"
             self._stop(task_id)
             if not self.service._closed and not self.service.failure:

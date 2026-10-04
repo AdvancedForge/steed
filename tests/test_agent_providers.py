@@ -359,6 +359,77 @@ class AgentProviderTests(unittest.TestCase):
                 )
                 self.assertEqual(self.service.store.grants(task), [])
 
+    def test_failed_chat_explains_the_reason_and_when_the_agent_last_reported(self):
+        task = self.chat("malformed")
+        self.send("Prompt")
+        self.service.send_message(task, "Queued but unread")
+        self.wait_for(lambda: task not in self.manager.chats)
+        connection = self.manager.connection(task)
+        self.assertFalse(connection["live"])
+        self.assertEqual(connection["reason"], "failed")
+        self.assertEqual(connection["queued"], 0)
+        self.assertIsInstance(connection["reported_at"], float)
+        self.sidebar.refresh()
+        activity = self.sidebar.state["activity"]
+        self.assertIn("stopped after an error", activity["title"])
+        self.assertIn("Last agent update", activity["hint"])
+        self.assertIn("this chat has stopped", self.sidebar.state["status"])
+        self.assertNotIn("waiting for the agent", self.sidebar.state["status"])
+
+    def test_ended_and_disconnected_chats_are_not_reported_as_failures(self):
+        ended = self.chat()
+        self.service.cancel_task(ended)
+        self.wait_for(lambda: ended not in self.manager.chats)
+        self.assertEqual(self.manager.connection(ended)["reason"], "ended")
+        self.sidebar.select_task(ended)
+        self.sidebar.refresh()
+        self.assertEqual(self.sidebar.state["activity"]["title"], "Codex chat ended")
+        self.assertIn("start a new chat", self.sidebar.state["activity"]["hint"])
+        closed = self.chat()
+        self.manager.close()
+        self.assertEqual(self.manager.connection(closed)["reason"], "closed")
+        self.sidebar.select_task(closed)
+        self.sidebar.refresh()
+        self.assertEqual(self.sidebar.state["activity"]["title"], "Codex disconnected")
+
+    def test_live_chat_reports_the_last_runtime_update_time(self):
+        task = self.chat()
+        connection = self.manager.connection(task)
+        self.assertTrue(connection["live"])
+        self.assertEqual(connection["reason"], "")
+        self.assertEqual(connection["detail"], "Codex ready")
+        self.assertIsInstance(connection["reported_at"], float)
+        self.sidebar.refresh()
+        self.assertIn("Last agent update", self.sidebar.state["activity"]["hint"])
+        self.send("Still connected")
+        self.complete(task)
+        self.assertIn(task, self.manager.chats)
+
+    def test_client_without_a_reported_update_shows_no_agent_time(self):
+        task = self.chat()
+        stub = SimpleNamespace(
+            chats={},
+            status=lambda _: "",
+            can_send=lambda _: True,
+            activity=lambda _: None,
+            model_info=lambda _: None,
+            connection=lambda _: {
+                "live": False,
+                "reason": "",
+                "detail": "",
+                "reported_at": None,
+                "queued": 0,
+                "requests": 0,
+            },
+        )
+        self.sidebar.providers = stub
+        try:
+            activity = self.sidebar._activity(True)
+            self.assertNotIn("Last agent update", activity["hint"])
+        finally:
+            self.sidebar.providers = self.manager
+            self.service.cancel_task(task)
+
     def test_two_tasks_are_isolated_and_limit_is_enforced(self):
         first, second = self.chat(), self.chat()
         with self.assertRaises(ValueError):

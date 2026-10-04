@@ -24,6 +24,35 @@ _AGENT_MODELS = {
 }
 
 
+def stopped_state(name, reason):
+    """Why a native chat is no longer live: (title, guidance). Only reasons
+    Steed itself decided (an error, a closed conversation, the browser
+    closing); nothing is inferred about the agent."""
+    keep = "Saved messages stay below; start a new chat to continue."
+    return {
+        "failed": (
+            f"{name} chat stopped after an error",
+            f"The agent connection failed. {keep}",
+        ),
+        "ended": (f"{name} chat ended", f"This conversation was closed. {keep}"),
+        "closed": (
+            f"{name} disconnected",
+            f"The browser closed the agent connection. {keep}",
+        ),
+    }.get(reason, (f"{name} chat stopped", "Saved messages stay below."))
+
+
+def reported_at_text(connection):
+    """When the agent last reported, without judging what it was doing."""
+    reported_at = (connection or {}).get("reported_at")
+    if isinstance(reported_at, bool) or not isinstance(reported_at, (int, float)):
+        return ""
+    try:
+        return time.strftime("%H:%M:%S", time.localtime(reported_at))
+    except (OverflowError, OSError, ValueError):
+        return ""
+
+
 class AgentSidebar(QDockWidget):
     """Share one HTML surface between the sidebar and the agent tab."""
 
@@ -378,8 +407,19 @@ class AgentSidebar(QDockWidget):
             m["role"] == "user" and m["state"] != "cleared" and m["sequence"] > read
             for m in self._messages.values()
         )
+        connection = (
+            self.providers.connection(task_id)
+            if self.providers is not None and hasattr(self.providers, "connection")
+            else None
+        )
+        stopped = bool(connection and not connection["live"] and connection["reason"])
         if waiting:
-            status += f"\n{waiting} message(s) waiting for the agent to read"
+            # Once the chat has stopped, nothing will read them: say so.
+            status += (
+                f"\n{waiting} unread message(s); this chat has stopped"
+                if stopped
+                else f"\n{waiting} message(s) waiting for the agent to read"
+            )
         elif any(
             m["role"] == "user" and m["state"] != "cleared"
             for m in self._messages.values()
@@ -532,14 +572,19 @@ class AgentSidebar(QDockWidget):
                     + time.strftime("%H:%M", time.localtime(resume_until))
                     + "; after that Steed cancels it. Your conversation is kept."
                 )
-        if (
-            not report
-            and self.providers
-            and self.providers.status(self._task_id)
-            and not active
-        ):
-            title = f"{name} chat stopped"
-            hint = self.providers.status(self._task_id)
+        connection = (
+            self.providers.connection(self._task_id)
+            if self.providers is not None and hasattr(self.providers, "connection")
+            else None
+        )
+        reason = (connection or {}).get("reason", "")
+        detail = (connection or {}).get("detail", "")
+        if not report and not active and (reason or detail):
+            title, guidance = stopped_state(name, reason)
+            hint = f"{detail} {guidance}" if detail else guidance
+        stamp = reported_at_text(connection)
+        if stamp:
+            hint = (hint + " " if hint else "") + f"Last agent update {stamp}."
         return {
             "title": title,
             "hint": hint,

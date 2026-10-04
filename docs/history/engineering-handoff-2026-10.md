@@ -548,6 +548,18 @@ changes were never implemented. No broader engineering was started.
 
 ### What is saved
 
+- **Agent connection clarity implemented on `engineering/agent-recovery`:** the
+  sidebar explains *why* a native chat stopped (error, ended, disconnected)
+  instead of one generic message, shows the exact last-update time reported by
+  the runtime, and no longer implies unread messages are still queued after a
+  chat stops. Values come from a new `AgentProviders.connection()` report;
+  nothing is inferred about model state, replayed or auto-resumed. 36
+  `test_agent_providers` checks pass in 13.540 seconds after installing `mcp`
+  into this session environment; browser-based sidebar/gateway/task-service
+  modules remain headless-GLX blocked here, so broad acceptance is still
+  outstanding. Next in the queue below: interrupted-chat recovery, then
+  session/profile/library friction.
+
 - **Downloads search and Copy Path complete:** `ui/download_dialog.py` filters
   filename/profile/destination using literal case-insensitive matching. Refresh
   restores selection by download ID; filtering a row out clears it rather than
