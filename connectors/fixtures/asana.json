@@ -1,0 +1,134 @@
+{
+  "provider": "asana",
+  "status": "packaged",
+  "references": [
+    "https://developers.asana.com/docs/personal-access-token",
+    "https://developers.asana.com/reference/getuser",
+    "https://developers.asana.com/reference/getproject",
+    "https://developers.asana.com/reference/gettask",
+    "https://developers.asana.com/docs/errors",
+    "https://developers.asana.com/docs/pagination",
+    "https://developers.asana.com/docs/rate-limits",
+    "https://developers.asana.com/docs/inputoutput-options"
+  ],
+  "notes": [
+    "A personal access token is documented as used like an OAuth access token, passed in the Authorization header, so the documented placement is Authorization: Bearer and no second token header exists.",
+    "Identity is GET /api/1.0/users/me, whose path parameter accepts the string me, and whose response wraps the user in a top-level data object. gid is the account identifier and name is the label; email is opt-in through field selection and is never used.",
+    "Single-resource reads are GET /api/1.0/projects/{project_gid} and GET /api/1.0/tasks/{task_gid}, both wrapped in a top-level data object. GIDs are documented as strings that identify the resource, with numeric examples.",
+    "due_on, start_on, owner on a project and due_on, start_on, assignee, completed_at and parent on a task are documented as possibly null, and are returned as explicit nulls.",
+    "Project field requiredness is not formally declared: the schemas carry no required array and use opt-in markers instead, so only fields present in the documented schema are projected, and the gid of an included object is documented as always returned.",
+    "There is no html_url on a project or task; permalink_url is the documented web link.",
+    "Errors are HTTP status codes plus a JSON errors array, so there is no application-level success flag to check.",
+    "Listing pages with limit and offset and returns next_page with an offset, which is an offset protocol, so collections are out of scope for this profile.",
+    "Creating a task is POST /api/1.0/tasks with a data block naming a workspace or project in the body, so no reviewed path can carry that destination. Task creation is therefore not offered, rather than guessed from a draft."
+  ],
+  "identity": {
+    "/api/1.0/users/me": {
+      "data": {
+        "gid": "12345",
+        "resource_type": "user",
+        "name": "Fixture User",
+        "email": "fixture@example.test"
+      }
+    }
+  },
+  "routes": {
+    "/api/1.0/projects/1331": {
+      "data": {
+        "gid": "1331",
+        "resource_type": "project",
+        "name": "Fixture project",
+        "notes": "Documented project notes",
+        "archived": false,
+        "due_on": "2019-09-15",
+        "start_on": null,
+        "current_status": null,
+        "owner": {
+          "gid": "12345",
+          "resource_type": "user",
+          "name": "Fixture User"
+        },
+        "workspace": {
+          "gid": "12345",
+          "resource_type": "workspace"
+        },
+        "permalink_url": "https://app.asana.com/0/12345/1331/list",
+        "created_at": "2012-02-22T02:06:58.147Z",
+        "modified_at": "2012-02-22T02:06:58.147Z"
+      }
+    },
+    "/api/1.0/projects/1332": {
+      "data": {
+        "gid": "1332",
+        "resource_type": "project",
+        "name": "Fixture project without dates or owner",
+        "notes": "",
+        "archived": true,
+        "due_on": null,
+        "start_on": null,
+        "current_status": null,
+        "owner": null,
+        "workspace": {
+          "gid": "12345",
+          "resource_type": "workspace"
+        },
+        "permalink_url": "https://app.asana.com/0/12345/1332/list",
+        "created_at": "2012-02-22T02:06:58.147Z",
+        "modified_at": "2012-02-22T02:06:58.147Z"
+      }
+    },
+    "/api/1.0/tasks/12345": {
+      "data": {
+        "gid": "12345",
+        "resource_type": "task",
+        "name": "Documented task",
+        "notes": "Documented task notes",
+        "completed": false,
+        "due_on": null,
+        "start_on": null,
+        "assignee": {
+          "gid": "12345",
+          "resource_type": "user",
+          "name": "Fixture User"
+        },
+        "completed_at": null,
+        "parent": null,
+        "permalink_url": "https://app.asana.com/0/12345/12345/f",
+        "created_at": "2012-02-22T02:06:58.147Z",
+        "modified_at": "2012-02-22T02:06:58.147Z"
+      }
+    },
+    "/api/1.0/users/me": {
+      "data": {
+        "gid": "12345",
+        "resource_type": "user",
+        "name": "Fixture User",
+        "email": "fixture@example.test"
+      }
+    }
+  },
+  "created": {},
+  "errors": {
+    "rate_limited": {
+      "status": 429,
+      "documented": "You have exceeded one of the enforced rate limits in the API. Limits are documented as 150 requests per minute on the Free plan and 1,500 per minute on paid plans, allocated per authorization token, with a Retry-After header."
+    },
+    "unauthorized": {
+      "status": 401,
+      "documented": "A valid authentication token was not provided with the request, so the API could not associate a user with the request."
+    },
+    "forbidden": {
+      "status": 403,
+      "documented": "The authentication and request syntax was valid but the server is refusing to complete the request, for example for an object the user does not have access to."
+    },
+    "not_found": {
+      "status": 404,
+      "documented": "The request method and path do not specify a known action, or the object specified by the request does not exist."
+    }
+  },
+  "pending_empirical": [
+    "Whether a personal access token is accepted in the Authorization header by the live API, since the placement is documented but only a real token settles it.",
+    "Whether the projected project and task fields are all present on a real object, because field requiredness is not formally declared.",
+    "Whether an account name is ever empty, which would leave the label contract with nothing to show."
+  ]
+}

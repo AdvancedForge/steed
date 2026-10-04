@@ -1,0 +1,141 @@
+{
+  "provider": "microsoft365",
+  "status": "packaged",
+  "references": [
+    "https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0",
+    "https://learn.microsoft.com/en-us/graph/api/driveitem-get?view=graph-rest-1.0",
+    "https://learn.microsoft.com/en-us/graph/api/user-list-events?view=graph-rest-1.0",
+    "https://learn.microsoft.com/en-us/graph/api/todo-list-lists?view=graph-rest-1.0",
+    "https://learn.microsoft.com/en-us/graph/errors",
+    "https://learn.microsoft.com/en-us/graph/throttling"
+  ],
+  "notes": [
+    "Every documented request in this profile needs only Authorization: Bearer; the API version is expressed in the path as /v1.0 and no version or consistency header is documented as required for these GETs.",
+    "GET /v1.0/me requires a delegated token, so the account must sign in elsewhere; Steed has no Microsoft sign-in and the user supplies a delegated access token.",
+    "id is documented as not nullable and userPrincipalName is documented as required when a user is created, so it is the label. mail is returned by default but its nullability is not formally documented, so it is never the label.",
+    "A drive item carries file metadata or folder metadata as mutually exclusive facets that are absent rather than null, so neither facet is projected and only fields present for either kind are selected.",
+    "parentReference is documented as present only if the item has a parent, so it is not projected either.",
+    "Collections return @odata.nextLink as an absolute URL, and this profile never follows it. Both collection reads therefore return the first page only, and say so in their descriptions.",
+    "Errors are HTTP status codes plus a single top-level error object with a machine-readable code, so there is no application-level flag that could mask a failure.",
+    "Throttling answers 429 with a Retry-After header. Specific numeric limits for these routes are not documented on the throttling page, so none is quoted here.",
+    "No write is offered: writing to Graph needs a delegated scope this profile does not request, and the first subset is deliberately read-only."
+  ],
+  "identity": {
+    "/v1.0/me": {
+      "id": "fixture-user-id",
+      "businessPhones": [],
+      "displayName": "Fixture User",
+      "givenName": "Fixture",
+      "jobTitle": null,
+      "mail": null,
+      "mobilePhone": null,
+      "officeLocation": null,
+      "preferredLanguage": "en-US",
+      "surname": "User",
+      "userPrincipalName": "fixture@example.test"
+    }
+  },
+  "routes": {
+    "/v1.0/me": {
+      "id": "fixture-user-id",
+      "businessPhones": [],
+      "displayName": "Fixture User",
+      "givenName": "Fixture",
+      "jobTitle": null,
+      "mail": null,
+      "mobilePhone": null,
+      "officeLocation": null,
+      "preferredLanguage": "en-US",
+      "surname": "User",
+      "userPrincipalName": "fixture@example.test"
+    },
+    "/v1.0/me/drive/items/fixture-item": {
+      "id": "fixture-item",
+      "deleted": null,
+      "file": {
+        "mimeType": "application/pdf",
+        "hashes": {
+          "quickXorHash": "fixture"
+        },
+        "versions": []
+      },
+      "size": 1024,
+      "webUrl": "https://fixture.example/document",
+      "lastModifiedDateTime": "2025-01-16T10:30:00Z",
+      "eTag": "e1",
+      "cTag": "c1",
+      "parentReference": {
+        "driveId": "fixture-drive",
+        "driveType": "personal",
+        "id": "fixture-root",
+        "path": "/root"
+      },
+      "name": "Fixture document"
+    },
+    "/v1.0/me/drive/items/fixture-folder": {
+      "id": "fixture-folder",
+      "folder": {
+        "childCount": 12
+      },
+      "size": 157286400,
+      "webUrl": "https://fixture.example/folder",
+      "lastModifiedDateTime": "2025-01-16T10:31:00Z",
+      "eTag": "e2",
+      "cTag": "c2",
+      "name": "Fixture document"
+    },
+    "/v1.0/me/events": {
+      "value": [
+        {
+          "id": "fixture-event",
+          "subject": "Fixture meeting",
+          "organizer": {
+            "emailAddress": {
+              "name": "Fixture User",
+              "address": "fixture@example.test"
+            }
+          },
+          "start": {
+            "dateTime": "2025-01-20T10:00:00.0000000",
+            "timeZone": "UTC"
+          },
+          "end": {
+            "dateTime": "2025-01-20T11:00:00.0000000",
+            "timeZone": "UTC"
+          }
+        }
+      ],
+      "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/events?$skiptoken=fixture"
+    },
+    "/v1.0/me/todo/lists": {
+      "value": [
+        {
+          "id": "fixture-list",
+          "displayName": "Fixture list",
+          "isOwner": true,
+          "isShared": false,
+          "wellknownListName": "defaultList"
+        }
+      ]
+    }
+  },
+  "created": {},
+  "errors": {
+    "throttled": {
+      "status": 429,
+      "documented": "Throttled requests fail with 429 Too Many Requests and the response carries a Retry-After header."
+    },
+    "unauthorized": {
+      "status": 401,
+      "documented": "Required authentication information is either missing or not valid for the resource."
+    },
+    "forbidden": {
+      "status": 403,
+      "documented": "Access is denied to the requested resource."
+    },
+    "not_found": {
+      "status": 404,
+      "documented": "The requested resource doesn't exist."
+    }
+  }
+}

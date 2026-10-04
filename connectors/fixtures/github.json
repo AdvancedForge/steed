@@ -1,0 +1,137 @@
+{
+  "provider": "github",
+  "references": [
+    "https://docs.github.com/en/rest/users/users#get-the-authenticated-user",
+    "https://docs.github.com/en/rest/repos/repos#get-a-repository",
+    "https://docs.github.com/en/rest/issues/issues#get-an-issue",
+    "https://docs.github.com/en/rest/issues/issues#create-an-issue",
+    "https://docs.github.com/en/rest/about-the-rest-api/api-versions",
+    "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api",
+    "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api"
+  ],
+  "notes": [
+    "GET /user returns a numeric id and a login. Its email field is null unless the token has user:email, so /login is the reviewed account label and /email is never used.",
+    "The owner and the repository are both written in the reviewed source, so only an issue number is selected per call. GitHub documents issue_number as a required integer path parameter.",
+    "On an issue, number, title, state and html_url are documented as required; body and state_reason are documented as string or null, and GitHub documents that blank fields are included as null instead of being omitted, so both are returned as explicit nulls.",
+    "The singular assignee field is not selected: it is being removed in the current documented API version, while the assignees array is only optionally present.",
+    "GET /repos/{owner}/{repo}/issues/{issue_number} documents 200, 301, 304, 404 and 410. A transferred issue answers 301, an issue the token cannot read answers 404, and a deleted issue answers 410; Steed follows no redirect and treats each of those as a failure.",
+    "The same route documents that a pull request can be returned at the selected issue number, using the optional pull_request discriminator. read_issue does not select it, so a pull request projects to the same six fields and the read does not establish the object type.",
+    "POST /repos/{owner}/{repo}/issues accepts title as required and body as an optional string; the reviewed profile sends only those two fields.",
+    "GitHub documents an unversioned default REST API version. Steed does not pin a version header, so behaviour follows GitHub's current documented default."
+  ],
+  "owner": "fixture-owner",
+  "repository": "fixture-repo",
+  "identity": {
+    "/user": {
+      "login": "fixture-user",
+      "id": 42,
+      "node_id": "MDQ6VXNlcjQy",
+      "avatar_url": "https://avatars.example.test/u/42",
+      "url": "https://api.github.com/users/fixture-user",
+      "type": "User",
+      "site_admin": false,
+      "email": null
+    }
+  },
+  "routes": {
+    "/user": {
+      "login": "fixture-user",
+      "id": 42,
+      "url": "https://api.github.com/users/fixture-user",
+      "type": "User",
+      "site_admin": false,
+      "email": null
+    },
+    "/repos/fixture-owner/fixture-repo": {
+      "id": 7,
+      "node_id": "MDEwOlJlcG9zaXRvcnk3",
+      "name": "fixture-repo",
+      "full_name": "fixture-owner/fixture-repo",
+      "private": false,
+      "html_url": "https://github.com/fixture-owner/fixture-repo",
+      "default_branch": "main"
+    },
+    "/repos/fixture-owner/fixture-repo/issues/1": {
+      "id": 9001,
+      "node_id": "I_kwDOExample",
+      "number": 1,
+      "title": "Documented issue with no body",
+      "state": "open",
+      "state_reason": null,
+      "body": null,
+      "locked": false,
+      "labels": [],
+      "comments": 0,
+      "created_at": "2025-01-15T10:30:00Z",
+      "updated_at": "2025-01-15T10:30:00Z",
+      "html_url": "https://github.com/fixture-owner/fixture-repo/issues/1",
+      "user": null
+    },
+    "/repos/fixture-owner/fixture-repo/issues/2": {
+      "id": 9002,
+      "node_id": "I_kwDOExample2",
+      "number": 2,
+      "title": "Documented issue with a body",
+      "state": "closed",
+      "state_reason": "completed",
+      "body": "Documented issue body with \"quotes\"",
+      "locked": false,
+      "labels": [],
+      "comments": 0,
+      "created_at": "2025-01-16T10:30:00Z",
+      "updated_at": "2025-01-17T10:30:00Z",
+      "html_url": "https://github.com/fixture-owner/fixture-repo/issues/2",
+      "user": null
+    },
+    "/repos/fixture-owner/fixture-repo/issues/3": {
+      "id": 9003,
+      "node_id": "PR_kwDOExample",
+      "number": 3,
+      "title": "Documented pull request returned by the issues route",
+      "state": "open",
+      "state_reason": null,
+      "body": null,
+      "locked": false,
+      "labels": [],
+      "comments": 0,
+      "draft": false,
+      "created_at": "2025-01-18T10:30:00Z",
+      "updated_at": "2025-01-19T10:30:00Z",
+      "html_url": "https://github.com/fixture-owner/fixture-repo/pull/3",
+      "user": null,
+      "pull_request": {
+        "url": "https://api.github.com/repos/fixture-owner/fixture-repo/pulls/3",
+        "html_url": "https://github.com/fixture-owner/fixture-repo/pull/3",
+        "diff_url": "https://github.com/fixture-owner/fixture-repo/pull/3.diff",
+        "patch_url": "https://github.com/fixture-owner/fixture-repo/pull/3.patch",
+        "merged_at": null
+      }
+    }
+  },
+  "created": {
+    "id": 9001,
+    "node_id": "I_kwDOExample",
+    "number": 1,
+    "title": "Fixture title",
+    "state": "open",
+    "html_url": "https://github.com/fixture-owner/fixture-repo/issues/1",
+    "user": {
+      "login": "fixture-user",
+      "id": 42
+    }
+  },
+  "errors": {
+    "secondary_rate_limit": {
+      "status": 403,
+      "documented": "GitHub returns 403 with a documented message when a secondary rate limit is hit, and 429 for a primary limit."
+    },
+    "revoked_token": {
+      "status": 401,
+      "documented": "An expired, revoked or malformed token returns 401 Bad credentials."
+    },
+    "wrong_owner": {
+      "status": 404,
+      "documented": "A repository that is missing, or not visible to the token's repository selection, returns 404 rather than 403."
+    }
+  }
+}

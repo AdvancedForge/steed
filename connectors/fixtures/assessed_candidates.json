@@ -1,0 +1,357 @@
+{
+  "version": 1,
+  "note": "API assessment of the wider connector queue. Assessment date: 2026-10-03. These rows are not verified connector implementations: each one records a documented auth, identity, protocol and runtime gate that must be cleared by unchanged-runtime wire-shape tests before a profile may be packaged. No row here is installed by default and no row grants account authority.",
+  "engine_constraints": [
+    "A profile origin is one exact public HTTPS domain with no port, no path and no credentials.",
+    "Request headers are limited to Authorization, Accept and Content-Type plus at most one reviewed operation-ID header, and POST bodies must be flat string bindings (v1/v2) or a reviewed JSON template (v3/v4).",
+    "Identity must be one GET that returns HTTP 200 JSON with a usable subject string and a non-empty label string; a URI subject or an empty 204 probe cannot identify an account.",
+    "Reads are GET only, with optional bounded cursor pagination through one reviewed query parameter; offset, page-number, keyset and Link-header paging are not followed.",
+    "A write is a single POST with no automatic retry. An uncertain result is reported as uncertain because nothing here can reconcile it afterwards."
+  ],
+  "services": [
+    {
+      "name": "Google",
+      "family": "productivity",
+      "reference": "https://developers.google.com/workspace",
+      "auth": "OAuth (maintained provider)",
+      "identity": "maintained provider identity",
+      "paging": "maintained provider",
+      "errors": "maintained provider",
+      "host": "googleapis.com",
+      "status": "maintained",
+      "gate": "Owned by the framework provider. Shared registration is deferred; do not add a parallel recipe.",
+      "capabilities": []
+    },
+    {
+      "name": "Todoist",
+      "family": "tasks",
+      "reference": "https://developer.todoist.com/api/v1/",
+      "auth": "Authorization: Bearer <personal API token>",
+      "identity": "GET /api/v1/user, subject /id, label /email",
+      "paging": "next_cursor query parameter",
+      "errors": "HTTP status codes",
+      "host": "api.todoist.com",
+      "status": "packaged",
+      "gate": "None outstanding for the shipped subset. Broader authority needs its own reviewed profile.",
+      "capabilities": [
+        "uncertain_write_reconciliation"
+      ]
+    },
+    {
+      "name": "GitHub",
+      "family": "developer",
+      "reference": "https://docs.github.com/en/rest",
+      "auth": "Authorization: Bearer <fine-grained personal access token>",
+      "identity": "GET /user, subject /id, label /login (email can be null)",
+      "paging": "Link header; not followed",
+      "errors": "HTTP status codes",
+      "host": "api.github.com",
+      "status": "template",
+      "gate": "The owner must be fixed in newly reviewed source, so the profile is an imported template rather than a packaged default.",
+      "capabilities": [
+        "pagination",
+        "uncertain_write_reconciliation"
+      ]
+    },
+    {
+      "name": "GitLab.com",
+      "family": "developer",
+      "reference": "https://docs.gitlab.com/api/rest/",
+      "auth": "Authorization: Bearer <personal access token>",
+      "identity": "GET /api/v4/user, subject /id, label /username",
+      "paging": "offset with Link header; not followed",
+      "errors": "HTTP status codes",
+      "host": "gitlab.com",
+      "status": "packaged",
+      "gate": "None outstanding for the shipped subset. Self-hosted domains are out of scope.",
+      "capabilities": [
+        "pagination",
+        "uncertain_write_reconciliation"
+      ]
+    },
+    {
+      "name": "Microsoft 365",
+      "family": "productivity",
+      "reference": "https://learn.microsoft.com/en-us/graph/api/overview?view=graph-rest-1.0",
+      "auth": "Authorization: Bearer <delegated access token obtained by the user>",
+      "identity": "GET /v1.0/me, subject /id, label /userPrincipalName (mail can be null)",
+      "paging": "@odata.nextLink absolute URLs; not followed",
+      "errors": "HTTP status codes with an OData error body",
+      "host": "graph.microsoft.com",
+      "status": "packaged",
+      "gate": "None outstanding for the shipped read-only subset, with one honest caveat: Graph requires a delegated token, and Steed has no Microsoft sign-in, so the user supplies a delegated access token obtained elsewhere. Writes remain gated, collections are first-page only because @odata.nextLink is never followed, and native OAuth registration, scope normalization and refresh remain shared framework work.",
+      "capabilities": [
+        "native_oauth",
+        "pagination",
+        "query_inputs"
+      ]
+    },
+    {
+      "name": "Notion",
+      "family": "knowledge",
+      "reference": "https://developers.notion.com/reference/versioning",
+      "auth": "Authorization: Bearer <internal integration token>",
+      "identity": "GET /v1/users/me returns the user associated with the token; subject /id and label /name, where the documented user object marks name as oneOf string or null",
+      "paging": "start_cursor query parameter with next_cursor and has_more; querying a data source is a POST read",
+      "errors": "HTTP status codes with a documented code and message body",
+      "host": "api.notion.com",
+      "status": "gated",
+      "gate": "A first read is now expressible: main carries reviewed non-secret static headers, so the required Notion-Version header can be sent, and reviewed identity label alternatives, so a documented null name falls back to a reviewed pointer. What remains is listing a data source, which is a POST read with a request object, and any write.",
+      "capabilities": [
+        "post_reads"
+      ]
+    },
+    {
+      "name": "Slack",
+      "family": "communication",
+      "reference": "https://docs.slack.dev/reference/methods/auth.test/",
+      "auth": "Authorization: Bearer <bot or user token>",
+      "identity": "auth.test returns ok and user_id/user; the ok flag is application level",
+      "paging": "cursor with a response_metadata next_cursor",
+      "errors": "HTTP 200 with ok:false for application errors",
+      "host": "slack.com",
+      "status": "gated",
+      "gate": "Channel destinations need reviewed conversation inputs, and an ok:false body must never be reported as a successful send. Application-level error checking and channel selection are missing shared capabilities.",
+      "capabilities": [
+        "application_error_flags"
+      ]
+    },
+    {
+      "name": "Asana",
+      "family": "tasks",
+      "reference": "https://developers.asana.com/reference/getuser",
+      "auth": "Authorization: Bearer <personal access token>",
+      "identity": "GET /users/me returns gid and a name/email label",
+      "paging": "limit and offset with a next_page offset token; not followed",
+      "errors": "HTTP status codes with a documented error body",
+      "host": "app.asana.com",
+      "status": "packaged",
+      "gate": "None outstanding for the shipped read-only subset: a personal access token is documented as carried in Authorization: Bearer, identity is the documented /users/me route with its data envelope, and project and task reads take one numeric GID. Collections are excluded because listing is offset paged, and task creation is excluded because Asana names the workspace or project in the request body, which no reviewed path can carry. Sign-in acceptance with a real token stays pending.",
+      "capabilities": [
+        "native_oauth",
+        "pagination",
+        "query_inputs"
+      ]
+    },
+    {
+      "name": "Dropbox",
+      "family": "files",
+      "reference": "https://www.dropbox.com/developers/documentation/http/documentation",
+      "auth": "Authorization: Bearer <access token>",
+      "identity": "POST /2/users/get_current_account is a JSON-RPC style POST",
+      "paging": "cursor inside a POST request object",
+      "errors": "HTTP status codes with an RPC error envelope",
+      "host": "api.dropboxapi.com",
+      "status": "gated",
+      "gate": "Reads are POST requests carrying request objects, which the read contract does not support. Wait for framework support; do not build credential-bearing arbitrary requests.",
+      "capabilities": [
+        "post_reads"
+      ]
+    },
+    {
+      "name": "Linear",
+      "family": "tasks",
+      "reference": "https://linear.app/developers/graphql",
+      "auth": "Authorization: Bearer <API key or OAuth token>",
+      "identity": "POST /graphql viewer query",
+      "paging": "cursor variables inside a POST body",
+      "errors": "HTTP status codes with an errors array",
+      "host": "api.linear.app",
+      "status": "gated",
+      "gate": "Reads are GraphQL POSTs with variables and an application-level errors array, which the current format cannot express. Do not disguise a read as a write tool.",
+      "capabilities": [
+        "post_reads"
+      ]
+    },
+    {
+      "name": "Raindrop.io",
+      "family": "bookmarks",
+      "reference": "https://developer.raindrop.io/v1/user/authenticated",
+      "auth": "Authorization: Bearer <token>",
+      "identity": "GET /rest/v1/user returns result:true plus user._id and user.fullName",
+      "paging": "page and perpage query parameters, not a cursor",
+      "errors": "HTTP status codes plus an application result boolean",
+      "host": "api.raindrop.io",
+      "status": "packaged",
+      "gate": "None outstanding for the shipped read-only subset: bearer auth is documented, the /rest/v1 prefix is carried in each reviewed path, identity and the collection reads are plain GETs, and a failure document with result false has no items, so a failed read fails closed. The result flag itself is still not checked, which remains an application-error-flag gap for writes; listing is offset paged and a bookmark create needs an explicit link input that no reviewed destination can carry.",
+      "capabilities": [
+        "application_error_flags",
+        "pagination",
+        "query_inputs"
+      ]
+    },
+    {
+      "name": "Airtable",
+      "family": "structured data",
+      "reference": "https://airtable.com/developers/web/api/introduction",
+      "auth": "Authorization: Bearer <personal access token>",
+      "identity": "GET /v0/meta/whoami returns id, with email only when user.email:read was granted",
+      "paging": "opaque offset returned in the body",
+      "errors": "HTTP status codes with an error object",
+      "host": "api.airtable.com",
+      "status": "gated",
+      "gate": "Bearer and identity work on paper, but a base and table must be pinned in reviewed source, the optional email label needs a fallback, offset paging is unsupported, and field mappings need wire-shape acceptance. Nested v3 payloads exist but do not solve those.",
+      "capabilities": [
+        "identity_shapes",
+        "pagination",
+        "query_inputs",
+        "uncertain_write_reconciliation"
+      ]
+    },
+    {
+      "name": "Calendly",
+      "family": "scheduling",
+      "reference": "https://developer.calendly.com/api-docs/calendly-api/users/get-current-user",
+      "auth": "Authorization: Bearer <personal access token or OAuth token>",
+      "identity": "GET /users/me returns a resource whose canonical identity is a URI, with a name label",
+      "paging": "pagination.next_page is a full URL",
+      "errors": "HTTP status codes with a title/message body",
+      "host": "api.calendly.com",
+      "status": "gated",
+      "gate": "The identity subject is a URI, which the current subject contract rejects, and the next page is a full URL that cannot be followed. Queries, scopes and plan access need verification before any profile.",
+      "capabilities": [
+        "identity_shapes",
+        "pagination",
+        "query_inputs"
+      ]
+    },
+    {
+      "name": "Readwise / Reader",
+      "family": "knowledge",
+      "reference": "https://readwise.io/reader_api",
+      "auth": "Authorization: Token <token>, not Bearer",
+      "identity": "No identity endpoint; the documented probe GET /api/v2/auth/ returns 204 with no body",
+      "paging": "pageCursor query parameter with nextPageCursor",
+      "errors": "HTTP status codes",
+      "host": "readwise.io",
+      "status": "gated",
+      "gate": "The token scheme is not Bearer and the only documented probe returns no identity at all, so an account cannot be bound to a reviewed profile. Needs trusted auth and identity support, plus explicit reviewed URL inputs for saves.",
+      "capabilities": [
+        "authentication_schemes",
+        "identity_shapes"
+      ]
+    },
+    {
+      "name": "ClickUp",
+      "family": "tasks",
+      "reference": "https://developer.clickup.com/docs/authentication",
+      "auth": "Personal tokens use a bare Authorization header with no Bearer prefix; OAuth access tokens are currently non-expiring",
+      "identity": "GET /api/v2/user returns user.id and user.username",
+      "paging": "Page based lists with documented per-endpoint limits",
+      "errors": "HTTP status codes with a documented code",
+      "host": "api.clickup.com",
+      "status": "gated",
+      "gate": "A bare personal token cannot be carried by the Bearer-only transport, and a non-expiring OAuth token does not fit bounded expiry and refresh. Do not prepend Bearer to a personal token.",
+      "capabilities": [
+        "authentication_schemes",
+        "pagination",
+        "query_inputs"
+      ]
+    },
+    {
+      "name": "Trello",
+      "family": "boards",
+      "reference": "https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/",
+      "auth": "Legacy key plus token, or Authorization: Bearer <OAuth 2.0 access token>",
+      "identity": "GET /1/members/me returns an id, username and a full name that can be absent",
+      "paging": "before and since creation-date parameters, no cursor",
+      "errors": "HTTP status codes",
+      "host": "api.trello.com",
+      "status": "gated",
+      "gate": "Legacy key and token credentials do not fit the Bearer transport, and the OAuth 2.0 route needs native PKCE registration and identity acceptance first. Verify registration, PKCE and identity before choosing a supported route.",
+      "capabilities": [
+        "authentication_schemes",
+        "native_oauth",
+        "pagination"
+      ]
+    },
+    {
+      "name": "Figma",
+      "family": "design",
+      "reference": "https://developers.figma.com/docs/rest-api/authentication/",
+      "auth": "X-Figma-Token header for personal access tokens; Authorization: Bearer for OAuth",
+      "identity": "GET /v1/me returns id, handle and an email only on that endpoint; a Tier 3 endpoint needing current_user:read, and whether a personal token may call it is unverified",
+      "paging": "File endpoints are not paged",
+      "errors": "HTTP status codes, with 403 for an invalid or expired token and no documented 401; no global JSON error body is documented",
+      "host": "api.figma.com",
+      "status": "gated",
+      "gate": "A personal access token travels in the X-Figma-Token header and no version header is documented at all, so the one prerequisite is a credential-derived token header. The smallest useful read is the documented GET /v1/files/:key/meta endpoint, because projecting metadata pointers does not shrink GET /v1/files/:key, whose document tree is documented as a non-optional response field and whose traversal can only be limited by a depth or ids query the transport cannot send today. Identity is a documented Tier 3 endpoint needing current_user:read, where tiers are rate-limit tiers rather than plan gates, and whether a personal token may call it is unverified.",
+      "capabilities": [
+        "credential_headers",
+        "query_inputs"
+      ]
+    },
+    {
+      "name": "Zotero",
+      "family": "research",
+      "reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
+      "auth": "Authorization: Bearer <API key>, Zotero-API-Key header, or ?key= (not recommended)",
+      "identity": "GET /keys/current returns userID and username, documented against the Zotero-API-Key header; no schema is published and no account-scoped alias exists",
+      "paging": "limit and start offsets plus a Link header; not followed",
+      "errors": "HTTP status codes: 403 for an invalid key or insufficient privileges, 404 for an unknown item, 429 plus Retry-After; no JSON error envelope is documented",
+      "host": "api.zotero.org",
+      "status": "gated",
+      "gate": "Authorization: Bearer with an API key is documented and API version 3 is the documented default, so neither a token header nor a version header blocks a read. Identity-derived binding of the account's own userID is the default goal but is an onboarding improvement, not a hard blocker: a user-pinned numeric library id in a reviewed template would allow a limited read-only subset today, with the pinned id disclosed as user-supplied and unchecked, and the key's library access flag disclosed. What is genuinely unresolved is empirical: whether the documented identity route accepts a bearer-carried key, and which item data fields exist for every item type, since no item schema is published.",
+      "capabilities": [
+        "identity_derived_paths",
+        "local_service_origins",
+        "pagination"
+      ]
+    },
+    {
+      "name": "Nextcloud",
+      "family": "private cloud",
+      "reference": "https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html",
+      "auth": "Basic auth or an OIDC bearer token, and every OCS request needs an OCS-APIRequest header",
+      "identity": "OCS user routes return id and displayname inside an XML envelope",
+      "paging": "Documented total-items metadata; mechanism not verified",
+      "errors": "HTTP 200 with an OCS meta status and statuscode 100 for success",
+      "host": "the user's own instance, with a port and self-hosted path",
+      "status": "gated",
+      "gate": "A self-hosted host with a port cannot be a profile origin, WebDAV needs methods and XML, OCS needs a mandatory extra header, and success is reported in the body rather than the status. Needs an explicitly scoped local-network adapter, not weaker global HTTPS rules.",
+      "capabilities": [
+        "application_error_flags",
+        "authentication_schemes",
+        "local_service_origins",
+        "static_headers"
+      ]
+    },
+    {
+      "name": "Joplin",
+      "family": "local notes",
+      "reference": "https://joplinapp.org/help/api/references/rest_api/",
+      "auth": "Token query parameter on every call",
+      "identity": "No identity endpoint; the documented probe GET /ping returns a plain string",
+      "paging": "page and limit query parameters",
+      "errors": "HTTP status codes with an error description",
+      "host": "http://localhost:41184 on the user's own machine",
+      "status": "gated",
+      "gate": "A local plaintext origin with a query-parameter token cannot be a profile origin, and no account identity exists to bind. Needs a distinct user-approved local-service adapter, and tokens must stay out of recipe paths, logs and results.",
+      "capabilities": [
+        "authentication_schemes",
+        "identity_shapes",
+        "local_service_origins",
+        "pagination",
+        "query_inputs"
+      ]
+    },
+    {
+      "name": "Spotify",
+      "family": "media",
+      "reference": "https://developer.spotify.com/documentation/web-api/reference/get-current-users-profile",
+      "auth": "Authorization: Bearer <OAuth access token>, no personal tokens",
+      "identity": "GET /v1/me returns account_id, while display_name can be null",
+      "paging": "offset and limit query parameters",
+      "errors": "HTTP status codes with an error status, message and reason",
+      "host": "api.spotify.com",
+      "status": "gated",
+      "gate": "OAuth-only access needs native sign-in, scope and refresh acceptance, the account label can be null, listing is offset paged, and playback or playlist writes are separate effects that read access does not imply.",
+      "capabilities": [
+        "identity_shapes",
+        "native_oauth",
+        "pagination",
+        "query_inputs"
+      ]
+    }
+  ]
+}

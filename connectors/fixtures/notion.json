@@ -1,0 +1,313 @@
+{
+  "provider": "notion",
+  "status": "gated",
+  "note": "Read candidate contract for Notion, the priority gated family. This is reference data for the runtime owner, not a profile: no credential appears here, nothing is installed, and no packaged recipe exists. Every value is synthetic.",
+  "origin": "https://api.notion.com",
+  "api_version": {
+    "header": "Notion-Version",
+    "pinned": "2026-03-11",
+    "documented_level": "required",
+    "documented": "Setting this header is required, and the Notion-Version header must be included in all REST API requests so the response is consistent with what the client expects.",
+    "documented_versions": [
+      "2026-03-11",
+      "2025-09-03",
+      "2022-06-28",
+      "2022-02-22",
+      "2021-08-16",
+      "2021-05-13"
+    ],
+    "blocks_a_read": true,
+    "version_changes": "At 2026-03-11 the after parameter on Append Block Children becomes a position object, archived becomes in_trash across request parameters and response bodies, and the transcription block type is renamed meeting_notes.",
+    "note": "Every fixture in this file is bound to one explicit version. Response shapes are version specific and must not be mixed; the deprecation notes below are what make an unversioned fixture dangerous."
+  },
+  "headers": {
+    "required_static": {
+      "Authorization": "Bearer <integration token supplied by the user>",
+      "Notion-Version": "2026-03-11",
+      "blocks_a_read": false,
+      "documented": "The integration sends Authorization: Bearer with its integration token, and Notion-Version is required on every request.",
+      "reference": "https://developers.notion.com/guides/get-started/authorization",
+      "supported_now": "Notion-Version is one of the four reviewed non-secret static header names main accepts, with a canonical YYYY-MM-DD value, so the required header can be sent on every request."
+    },
+    "never": {
+      "path": "No credential may appear in a path or query, and no version may be inferred per endpoint.",
+      "documented": "The version is a reviewed request header, not a query default, because the response shape depends on it."
+    }
+  },
+  "identity_contract": {
+    "method": "GET",
+    "path": "/v1/users/me",
+    "subject_pointer": "/id",
+    "label_pointer": "/name",
+    "documented": "The page is titled Retrieve your token's bot user and states that it retrieves the User associated with the token provided in the authorization header. For a personal access token it returns the user who created the token.",
+    "documented_response_fields": {
+      "object": "string, constant user, documented as always present",
+      "id": "string uuid, documented as always present",
+      "name": "oneOf string or null, documented as the name of the user",
+      "avatar_url": "oneOf string or null",
+      "type": "string, person or bot",
+      "person.email": "string, documented as present only when the connection has capabilities that allow access to email addresses",
+      "bot.owner": "object whose type is user or workspace, where a workspace owner means an internal integration",
+      "bot.workspace_id": "string",
+      "bot.workspace_name": "oneOf string or null, null when the owner is a user rather than a workspace"
+    },
+    "identity_documents": {
+      "bot_with_name": {
+        "object": "user",
+        "id": "e79a0b74-3aba-4149-9f74-0bb5791a6ee6",
+        "name": "Fixture Integration",
+        "avatar_url": null,
+        "type": "bot",
+        "bot": {
+          "owner": {
+            "type": "workspace",
+            "workspace": true
+          },
+          "workspace_id": "2a1b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+          "workspace_name": "Fixture Workspace"
+        }
+      },
+      "bot_without_name": {
+        "object": "user",
+        "id": "f0e1d2c3-b4a5-4968-8776-65544332211a",
+        "name": null,
+        "avatar_url": null,
+        "type": "bot",
+        "bot": {
+          "owner": {
+            "type": "workspace",
+            "workspace": true
+          },
+          "workspace_id": "2a1b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+          "workspace_name": null
+        }
+      }
+    },
+    "limitations": [
+      "object and id are documented as always present, so the subject is stable.",
+      "The documented user object marks name as oneOf string or null. Reviewed identity label alternatives now let a null name fall back to another reviewed pointer rather than refusing the account, and the fallback is shown in the source review.",
+      "The remaining properties may be absent depending on the connection's capabilities, so no field outside object, id and name may be relied on.",
+      "Whether an internal integration token is accepted here is not stated explicitly; the documented bot fields for GET /v1/users/me are the evidence, so a framework test should confirm it with an integration token."
+    ],
+    "binding_requirement": "None. A single-item read takes the object id from the caller, so no identity-derived value is needed in a later path."
+  },
+  "read_contract": {
+    "smallest_useful_read": {
+      "method": "GET",
+      "path": "/v1/databases/{database_id}",
+      "documented": "Retrieves a database object, which since 2025-09-03 is a container for one or more data sources.",
+      "projected_fields": [
+        {
+          "label": "id",
+          "pointer": "/id",
+          "documented": "Required in the documented database object response."
+        },
+        {
+          "label": "title",
+          "pointer": "/title",
+          "documented": "Required in the documented database object response."
+        },
+        {
+          "label": "url",
+          "pointer": "/url",
+          "documented": "Required in the documented database object response."
+        },
+        {
+          "label": "parent",
+          "pointer": "/parent",
+          "documented": "Required in the documented database object response; generally a page_id or workspace true."
+        }
+      ],
+      "deliberately_not_projected": {
+        "field": "/properties",
+        "reason": "Since 2025-09-03 a database response has no properties field at all. Projecting it would describe the deprecated contract, where GET /v1/databases/{id} returned the property schema for versions up to and including 2022-06-28."
+      },
+      "response": {
+        "object": "database",
+        "id": "fixture-database-id",
+        "title": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Fixture database",
+              "link": null
+            },
+            "plain_text": "Fixture database",
+            "href": null
+          }
+        ],
+        "description": [],
+        "parent": {
+          "type": "page_id",
+          "page_id": "fixture-page-id"
+        },
+        "is_inline": false,
+        "database_type": null,
+        "in_trash": false,
+        "is_locked": false,
+        "created_time": "2025-01-15T10:30:00.000Z",
+        "last_edited_time": "2025-01-16T10:30:00.000Z",
+        "data_sources": [
+          {
+            "id": "fixture-data-source-id",
+            "name": "Fixture rows"
+          }
+        ],
+        "icon": null,
+        "cover": null,
+        "url": "https://www.notion.so/fixture-database-id",
+        "public_url": null
+      }
+    },
+    "properties_schema_read": {
+      "method": "GET",
+      "path": "/v1/data_sources/{data_source_id}",
+      "documented": "Since 2025-09-03 the retrieve a data source endpoint is the home of the properties schema for a data source under a database.",
+      "id_note": "A database id cannot be used with the data source route and a data source id cannot be used with the database route; the two id types are not interchangeable.",
+      "response": {
+        "object": "data_source",
+        "id": "fixture-data-source-id",
+        "title": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Fixture rows",
+              "link": null
+            },
+            "plain_text": "Fixture rows",
+            "href": null
+          }
+        ],
+        "description": [],
+        "parent": {
+          "type": "database_id",
+          "database_id": "fixture-database-id"
+        },
+        "database_parent": {
+          "type": "database_id",
+          "database_id": "fixture-database-id"
+        },
+        "is_inline": false,
+        "database_type": null,
+        "in_trash": false,
+        "created_time": "2025-01-15T10:30:00.000Z",
+        "last_edited_time": "2025-01-16T10:30:00.000Z",
+        "properties": {
+          "Name": {
+            "id": "title",
+            "name": "Name",
+            "type": "title",
+            "title": {}
+          },
+          "Status": {
+            "id": "status",
+            "name": "Status",
+            "type": "status",
+            "status": {
+              "options": [
+                {
+                  "id": "option-todo",
+                  "name": "To do",
+                  "color": "default"
+                }
+              ]
+            }
+          }
+        },
+        "icon": null,
+        "cover": null,
+        "url": "https://www.notion.so/fixture-database-id",
+        "public_url": null
+      }
+    },
+    "listing": {
+      "method": "POST",
+      "path": "/v1/data_sources/{data_source_id}/query",
+      "documented": "Querying a data source is a POST with an optional body, and the response is a list object with results, next_cursor and has_more, supporting up to 10,000 results per query.",
+      "blocks": "lists",
+      "note": "This is a POST read, so listing needs more than the static header. Its paging is a documented cursor, which the current bounded cursor contract already follows."
+    }
+  },
+  "failure_contract": {
+    "documented_statuses": {
+      "400": "A missing Notion-Version header fails validation with the documented code missing_version.",
+      "401": "The bearer token is not valid, with the documented message API token is invalid.",
+      "403": "The token has no access to the resource, with the documented code restricted_resource.",
+      "404": "The object was not found or is not shared with the connection, with the documented code object_not_found.",
+      "429": "The connection is rate limited, with the documented code rate_limited; 529 is documented alongside it."
+    },
+    "failure_document": {
+      "status": 401,
+      "documented_body_fields": {
+        "code": "unauthorized",
+        "message": "API token is invalid."
+      },
+      "optional_fields": "Some error responses also include an additional_data object with extra context.",
+      "body_shape_documented": false,
+      "shape_note": "The errors documentation documents the code and message properties and does not document an object, status or request_id envelope, so a framework test must not depend on those fields."
+    },
+    "rate_limit_headers": {
+      "Retry-After": "Documented on 429 and 529 responses as an integer number of seconds, and repeated in the body as additional_data.retry_when present."
+    },
+    "code_stability": "Programmatic error code values such as validation_error and object_not_found are documented as stable and not changing without a version bump."
+  },
+  "framework_gap": {
+    "capabilities": [
+      "post_reads",
+      "query_inputs"
+    ],
+    "minimum_missing_behavior": "A first read is now expressible: main carries reviewed non-secret static headers, so the required Notion-Version header can be sent, and reviewed identity label alternatives, so a documented null name falls back to a reviewed pointer instead of refusing the account. What remains is listing a data source, which is a POST read with a request object.",
+    "not_required_for_a_first_read": [
+      "The Notion-Version header, which main now supports as a reviewed static header with a canonical date value.",
+      "A tolerant nullable label, because reviewed identity label alternatives now cover it.",
+      "Any identity-derived path binding, because a database or data source id comes from the caller.",
+      "A write: nested v3 templates exist, but no Notion write is proposed in this queue."
+    ],
+    "not_a_gap": "Nothing here requires weakening origin rules, adding a credential to a path, or bypassing the documented version requirement. The header must be sent, not worked around."
+  },
+  "references": [
+    "https://developers.notion.com/reference/get-self",
+    "https://developers.notion.com/reference/user",
+    "https://developers.notion.com/reference/versioning",
+    "https://developers.notion.com/reference/changes-by-version",
+    "https://developers.notion.com/reference/retrieve-database",
+    "https://developers.notion.com/reference/retrieve-a-database",
+    "https://developers.notion.com/reference/retrieve-a-data-source",
+    "https://developers.notion.com/reference/query-a-data-source",
+    "https://developers.notion.com/reference/errors",
+    "https://developers.notion.com/reference/status-codes",
+    "https://developers.notion.com/guides/get-started/upgrade-guide-2025-09-03"
+  ],
+  "empirical_status": {
+    "policy": "Documentation proves what an endpoint offers. A framework test can only prove Steed's own behaviour against a documented shape. Neither can show that a provider accepts a credential or sends a field, so those stay pending until a real account is used.",
+    "settled_by_documentation": [
+      "Notion-Version is required on all REST API requests, and a missing header fails with the documented code missing_version.",
+      "GET /v1/users/me is documented as returning the user associated with the token, and object and id are documented as always present.",
+      "The user object marks name as oneOf string or null.",
+      "Since 2025-09-03 a database response has no properties field and instead lists data_sources.",
+      "Error responses document the code and message properties, with additional_data documented as optional.",
+      "The required Notion-Version header is a reviewed non-secret static header in the current engine, so it is expressible today.",
+      "A documented null name is handled by reviewed identity label alternatives rather than by inventing a display string."
+    ],
+    "pending": [
+      {
+        "question": "Does an internal integration token authenticate GET /v1/users/me, and what does its bot document contain?",
+        "status": "pending",
+        "settled_by": "a real internal integration; the documented bot fields are the evidence, not a statement.",
+        "blocks": "trusting a bot workspace id or workspace name"
+      },
+      {
+        "question": "Does a real bot document ever omit name, and is workspace_name null when the owner is a user?",
+        "status": "pending",
+        "settled_by": "a real connection, since nullability is documented but occurrence is not.",
+        "blocks": "describing how often the label limitation is hit"
+      },
+      {
+        "question": "Do the projected database and data source fields appear for a real shared database?",
+        "status": "pending",
+        "settled_by": "a real connection with a shared database.",
+        "blocks": "any field projection"
+      }
+    ]
+  }
+}
