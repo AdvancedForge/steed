@@ -1,0 +1,93 @@
+{
+  "version": 2,
+  "name": "GitHub (one repository)",
+  "origin": "https://api.github.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/user",
+    "subject": "/id",
+    "label": "/login"
+  },
+  "tools": [
+    {
+      "name": "read_repository",
+      "description": "Read the repository fixed in this reviewed source",
+      "method": "GET",
+      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/REPLACE-WITH-YOUR-GITHUB-REPOSITORY",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "name",
+          "pointer": "/full_name"
+        },
+        {
+          "label": "url",
+          "pointer": "/html_url"
+        }
+      ]
+    },
+    {
+      "name": "read_issue",
+      "description": "Read one issue by its number in the repository fixed in this reviewed source. GitHub's Issues API can also return a pull request at this number and this read does not establish the object type. body and state_reason are documented as possibly null and are returned as null.",
+      "method": "GET",
+      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/REPLACE-WITH-YOUR-GITHUB-REPOSITORY/issues/{destination}",
+      "response": [
+        {
+          "label": "number",
+          "pointer": "/number"
+        },
+        {
+          "label": "title",
+          "pointer": "/title"
+        },
+        {
+          "label": "state",
+          "pointer": "/state"
+        },
+        {
+          "label": "state_reason",
+          "pointer": "/state_reason"
+        },
+        {
+          "label": "body",
+          "pointer": "/body"
+        },
+        {
+          "label": "url",
+          "pointer": "/html_url"
+        }
+      ]
+    },
+    {
+      "name": "create_issue",
+      "description": "Create an issue in the repository fixed in this reviewed source",
+      "method": "POST",
+      "effect": "write",
+      "path": "/repos/REPLACE-WITH-YOUR-GITHUB-OWNER/REPLACE-WITH-YOUR-GITHUB-REPOSITORY/issues",
+      "destination": "account",
+      "request": {
+        "title": "artifact.title",
+        "body": "artifact.content"
+      },
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "number",
+          "pointer": "/number"
+        },
+        {
+          "label": "url",
+          "pointer": "/html_url"
+        }
+      ]
+    }
+  ]
+}

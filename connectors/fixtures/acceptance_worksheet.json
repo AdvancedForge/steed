@@ -1,0 +1,232 @@
+{
+  "version": 1,
+  "note": "Provider acceptance worksheet for the shipped starter subsets. It separates what the automated synthetic checks already prove from what only a user-approved live run can prove. No account has been connected and no test object has been sent to create these rows: every live field is empty and must be filled by the account owner. Automated results never imply live acceptance.",
+  "how_to_use": [
+    "Run one case per account and per reviewed source, on a real account, only after the maintainer approves a live acceptance task.",
+    "Use a user-owned token with the least permission documented in connectors/SETUP.md, and record the token type and expiry, never the token itself.",
+    "Record the API version in use and the date, because both the wire shape and the reviewed source can change.",
+    "Leave case as synthetic unless a real account was really used. A synthetic fixture is never upgraded to live by editing this file.",
+    "For an uncertain write, record how it was checked in the service's own UI rather than resending."
+  ],
+  "fields": [
+    "setup_and_least_permission",
+    "identity_result",
+    "read_result",
+    "reviewed_create_preview",
+    "uncertain_write_handling",
+    "disconnect_and_revoke",
+    "date",
+    "api_version",
+    "case"
+  ],
+  "providers": [
+    {
+      "provider": "todoist",
+      "reviewed_source": "connectors/recipes/todoist.json",
+      "official_reference": "https://developer.todoist.com/api/v1/",
+      "tools": [
+        "read_task",
+        "read_task_detail",
+        "list_tasks",
+        "read_project",
+        "list_projects",
+        "create_task"
+      ],
+      "least_permission": "A Todoist personal API token from Settings, Integrations, Developer. It is account-wide and cannot be scoped per project, so the subset keeps its authority minimal by reading selected IDs, bounding listings to three cursor pages, and creating only reviewed Inbox tasks.",
+      "synthetic_expectations": {
+        "identity_result": "subject 1234567 from /id and label from /email, with the account's own echoed token field never leaving identity selection",
+        "read_result": "read_task returns id and content; read_task_detail also returns description; read_project returns id, name, is_shared and is_favorite; list_tasks and list_projects stop at three pages and report more_available",
+        "reviewed_create_preview": "POST /api/v1/tasks with exactly content and description, an omitted project_id so the task lands in the Inbox, and a payload_sha256 over the reviewed bytes",
+        "uncertain_write_handling": "A create that fails after dispatch is reported as uncertain and never replayed; the Inbox is checked by hand",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked in the same Todoist settings screen"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
+    },
+    {
+      "provider": "github",
+      "reviewed_source": "connectors/recipes/templates/github-owner-template.json, imported as a user-owned copy with the owner and repository fixed",
+      "official_reference": "https://docs.github.com/en/rest",
+      "tools": [
+        "read_repository",
+        "read_issue",
+        "create_issue"
+      ],
+      "least_permission": "A fine-grained personal access token with a short expiry, repository access limited to the one repository in the reviewed source, and Issues read and write only. No contents, pull request, actions or administration permission, and no account permissions.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the numeric /id and label from /login, never from a private email",
+        "read_result": "read_issue returns number, title, state, state_reason and body, with documented nullable fields passed through as explicit nulls, and the same projection for a pull request because the object type is not established",
+        "reviewed_create_preview": "POST /repos/{owner}/{repository}/issues with exactly title and body, and a payload_sha256 over the reviewed bytes",
+        "uncertain_write_handling": "A create that fails after dispatch is reported as uncertain and never replayed; the repository issue list is checked by hand",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked on the fine-grained tokens page"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
+    },
+    {
+      "provider": "gitlab",
+      "reviewed_source": "connectors/recipes/gitlab.json, plus connectors/recipes/templates/gitlab-project-template.json imported as a user-owned copy with the numeric project ID fixed",
+      "official_reference": "https://docs.gitlab.com/api/rest/",
+      "tools": [
+        "read_project",
+        "read_issue",
+        "create_issue"
+      ],
+      "least_permission": "A GitLab personal access token with a short expiry. read_api for reads only, or api when reviewed issue creation is wanted, because issue creation is not available to read_api.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the numeric /id and label from /username",
+        "read_result": "read_project returns id, path_with_namespace and web_url for one numeric project ID; the per-project template's read_issue returns iid, title, state, description and web_url for one issue IID, with a documented null description passed through as an explicit null and no tier-conditional field projected",
+        "reviewed_create_preview": "POST /api/v4/projects/{id}/issues with exactly title and description, a tool description warning that a command starting a line of the description is a quick action, and a payload_sha256 over the reviewed bytes",
+        "uncertain_write_handling": "Nothing in this subset can prove a create committed, so the issue list is checked by hand and nothing is resent",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked on the access tokens page"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
+    },
+    {
+      "provider": "asana",
+      "reviewed_source": "connectors/recipes/asana.json",
+      "official_reference": "https://developers.asana.com/reference/",
+      "tools": [
+        "read_project",
+        "read_task"
+      ],
+      "least_permission": "An Asana personal access token, which carries exactly the access of the user who created it, so the narrowest reduction is a dedicated account limited to the projects or tasks intended for reading.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the numeric /data/gid and label from /data/name, never from the opt-in /data/email",
+        "read_result": "read_project returns gid, name, notes, archived, due_on, owner and permalink_url; read_task returns gid, name, notes, completed, due_on, assignee and permalink_url; documented nullable fields are returned as explicit nulls",
+        "reviewed_create_preview": "none: the profile is read-only, because Asana names the workspace or project in a create body rather than in the path",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked from the same Asana account page"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
+    },
+    {
+      "provider": "raindrop",
+      "reviewed_source": "connectors/recipes/raindrop.json",
+      "official_reference": "https://developer.raindrop.io/v1/",
+      "tools": [
+        "read_collection",
+        "list_root_collections"
+      ],
+      "least_permission": "A Raindrop.io access token or test token. No scope is documented for reads, so the narrowest reduction is a token used only for collection reads and revoked when it is no longer needed.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the integer /user/_id and label from /user/fullName",
+        "read_result": "read_collection returns the documented _id, title, count and view through the item wrapper; list_root_collections returns the documented item objects under /items, with no paging followed",
+        "reviewed_create_preview": "none: a bookmark create needs an explicit link input that no reviewed destination can carry",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked in the Raindrop app console"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
+    },
+    {
+      "provider": "zotero",
+      "reviewed_source": "connectors/recipes/templates/zotero-library-template.json imported as a user-owned copy with the numeric library ID fixed",
+      "official_reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
+      "tools": [
+        "read_item"
+      ],
+      "least_permission": "A Zotero API key used with Authorization: Bearer. The identity document carries an access object whose user.library flag must be true; no write permission is needed for this read-only subset, and no key may be placed in a URL.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the numeric userID and label from username",
+        "read_result": "read_item returns key, version, itemType, dateAdded and dateModified for one item key, with no title projected because a note has none",
+        "reviewed_create_preview": "none: the profile is read-only",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the key is revoked on the Zotero API Keys page"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
+    },
+    {
+      "provider": "microsoft365",
+      "reviewed_source": "connectors/recipes/microsoft365-read.json",
+      "official_reference": "https://learn.microsoft.com/en-us/graph/api/overview",
+      "tools": [
+        "read_drive_item",
+        "list_events_first_page",
+        "list_todo_lists_first_page"
+      ],
+      "least_permission": "A delegated Microsoft Graph access token that the user obtains with their own tooling, requesting only User.Read, Files.Read, Calendars.Read and Tasks.Read. An application token must not be used, because /me requires a delegated token.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the not-nullable /id and label from /userPrincipalName, never from a mail field whose nullability is not formally documented",
+        "read_result": "read_drive_item returns id, name, webUrl, size and lastModifiedDateTime for both a file and a folder, since the file and folder facets are absent rather than null; the two collection reads return only /value from the first page and never follow @odata.nextLink",
+        "reviewed_create_preview": "none: the profile is read-only",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored token immediately; the delegated token itself is revoked or expires according to the user's own tooling"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
+    }
+  ],
+  "live_acceptance_preconditions": [
+    "A maintainer-approved live acceptance task, naming the account, the reviewed source and the permission scope.",
+    "A user-owned token supplied by the account owner; no credential is ever committed or pasted into a recipe.",
+    "Agreement on what may be created in the real account, and on cleaning it up afterwards.",
+    "Confirmation that no completion, delete, administrative or unrelated effect is in scope for any case."
+  ]
+}

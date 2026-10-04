@@ -1,0 +1,131 @@
+{
+  "version": 2,
+  "name": "Todoist",
+  "origin": "https://api.todoist.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/api/v1/user",
+    "subject": "/id",
+    "label": "/email"
+  },
+  "tools": [
+    {
+      "name": "read_task",
+      "description": "Read one Todoist task by its exact task ID",
+      "method": "GET",
+      "path": "/api/v1/tasks/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "content",
+          "pointer": "/content"
+        }
+      ]
+    },
+    {
+      "name": "read_task_detail",
+      "description": "Read one Todoist task including its description. Todoist documents description as optional, so this read fails closed instead of inventing one when a response omits it.",
+      "method": "GET",
+      "path": "/api/v1/tasks/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "content",
+          "pointer": "/content"
+        },
+        {
+          "label": "description",
+          "pointer": "/description"
+        }
+      ]
+    },
+    {
+      "name": "list_tasks",
+      "description": "Read up to three cursor pages of active tasks. Large accounts can exceed Steed request limits; only the first pages are read.",
+      "method": "GET",
+      "path": "/api/v1/tasks",
+      "response": [
+        {
+          "label": "tasks",
+          "pointer": "/results"
+        }
+      ],
+      "pagination": {
+        "cursor": "/next_cursor",
+        "parameter": "cursor",
+        "max_pages": 3
+      }
+    },
+    {
+      "name": "read_project",
+      "description": "Read one Todoist project by its exact project ID",
+      "method": "GET",
+      "path": "/api/v1/projects/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "name",
+          "pointer": "/name"
+        },
+        {
+          "label": "shared",
+          "pointer": "/is_shared"
+        },
+        {
+          "label": "favorite",
+          "pointer": "/is_favorite"
+        }
+      ]
+    },
+    {
+      "name": "list_projects",
+      "description": "Read up to three cursor pages of active projects. Large accounts can exceed Steed request limits; only the first pages are read.",
+      "method": "GET",
+      "path": "/api/v1/projects",
+      "response": [
+        {
+          "label": "projects",
+          "pointer": "/results"
+        }
+      ],
+      "pagination": {
+        "cursor": "/next_cursor",
+        "parameter": "cursor",
+        "max_pages": 3
+      }
+    },
+    {
+      "name": "create_task",
+      "description": "Create one inbox task from the reviewed draft. Omitting project_id targets the Inbox project, and no project, section or completion is changed.",
+      "method": "POST",
+      "effect": "write",
+      "path": "/api/v1/tasks",
+      "destination": "account",
+      "request": {
+        "content": "artifact.title",
+        "description": "artifact.content"
+      },
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "content",
+          "pointer": "/content"
+        }
+      ]
+    }
+  ]
+}

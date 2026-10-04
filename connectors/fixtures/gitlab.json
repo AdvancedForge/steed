@@ -1,0 +1,128 @@
+{
+  "provider": "gitlab",
+  "references": [
+    "https://docs.gitlab.com/api/rest/authentication/",
+    "https://docs.gitlab.com/api/users/#retrieve-the-current-user",
+    "https://docs.gitlab.com/api/projects/#get-single-project",
+    "https://docs.gitlab.com/api/issues/#create-an-issue",
+    "https://docs.gitlab.com/api/issues/#retrieve-a-project-issue",
+    "https://docs.gitlab.com/api/rest/troubleshooting/"
+  ],
+  "notes": [
+    "GitLab.com accepts a personal access token in the Authorization: Bearer header.",
+    "GET /api/v4/user returns a numeric id and a username; both are always present for an authenticated account.",
+    "Project routes take a numeric project ID as one URL segment. A namespace path such as group/project cannot be expressed, because a reviewed path segment never contains a slash.",
+    "POST /api/v4/projects/:id/issues requires title and accepts description. GitLab interprets leading slash commands in an issue title or description as quick actions, so Steed sends the reviewed draft unchanged and never strips or guesses them.",
+    "GitLab answers unknown or invisible projects with 404, and a token without the api scope with 403.",
+    "GET /api/v4/projects/:id/issues/:issue_iid reads one issue by its per-project internal IID, documented as an integer. The documented example uses GET /projects/42/issues/5 for a project id 42 and issue iid 5, and states that the global id is not valid there.",
+    "GitLab publishes no field schema for a single issue, so only fields present in the documented read and create examples are projected: iid, title, state, description and web_url.",
+    "GitLab documents that responses can include null values, and the documented create example shows description as null, so a nullable description is returned as an explicit null.",
+    "weight, epic and health_status are documented as present only for Premium or Ultimate issues, so they are deliberately not projected: a Free tier response omits them and the read would fail closed.",
+    "The deprecated assignee field is not projected because GitLab documents assignees as the replacement, and links and moves are not documented fields of this response.",
+    "The documented create response includes iid and web_url, so a created issue can be confirmed afterwards by reading the same IID. That confirm read exists, but no in-engine reconciliation step claims to run it automatically.",
+    "Documented statuses for this read come from the general troubleshooting table: 404 also covers a resource the token is not authorized to access, so an invisible issue and a missing one are not distinguishable."
+  ],
+  "identity": {
+    "/api/v4/user": {
+      "id": 42,
+      "username": "fixture-user",
+      "name": "Fixture User",
+      "state": "active",
+      "web_url": "https://gitlab.com/fixture-user"
+    }
+  },
+  "routes": {
+    "/api/v4/user": {
+      "id": 42,
+      "username": "fixture-user",
+      "name": "Fixture User",
+      "state": "active",
+      "web_url": "https://gitlab.com/fixture-user"
+    },
+    "/api/v4/projects/7": {
+      "id": 7,
+      "description": "Fixture project",
+      "name": "Fixture project",
+      "path_with_namespace": "fixture-owner/fixture-project",
+      "web_url": "https://gitlab.com/fixture-owner/fixture-project",
+      "visibility": "private"
+    },
+    "/api/v4/projects/7/issues/3": {
+      "id": 7003,
+      "iid": 3,
+      "project_id": 7,
+      "title": "Documented issue with a body",
+      "description": "Documented issue body",
+      "state": "opened",
+      "labels": [],
+      "assignees": [],
+      "confidential": false,
+      "created_at": "2025-01-18T10:30:00.000Z",
+      "updated_at": "2025-01-18T10:30:00.000Z",
+      "closed_at": null,
+      "due_date": null,
+      "milestone": null,
+      "web_url": "https://gitlab.com/fixture-owner/fixture-project/-/issues/3",
+      "author": {
+        "id": 42,
+        "username": "fixture-user"
+      },
+      "references": {
+        "short": "#3",
+        "relative": "#3",
+        "full": "fixture-owner/fixture-project#3"
+      },
+      "_links": {
+        "self": "https://gitlab.com/api/v4/projects/7/issues/3"
+      }
+    },
+    "/api/v4/projects/7/issues/4": {
+      "id": 7004,
+      "iid": 4,
+      "project_id": 7,
+      "title": "Documented issue with no description",
+      "description": null,
+      "state": "opened",
+      "labels": [],
+      "assignees": [],
+      "confidential": false,
+      "created_at": "2025-01-19T10:30:00.000Z",
+      "updated_at": "2025-01-19T10:30:00.000Z",
+      "closed_at": null,
+      "due_date": null,
+      "milestone": null,
+      "web_url": "https://gitlab.com/fixture-owner/fixture-project/-/issues/4",
+      "author": {
+        "id": 42,
+        "username": "fixture-user"
+      }
+    }
+  },
+  "created": {
+    "id": 7001,
+    "iid": 1,
+    "project_id": 7,
+    "title": "Fixture title",
+    "description": "Reviewed draft",
+    "state": "opened",
+    "web_url": "https://gitlab.com/fixture-owner/fixture-project/-/issues/1"
+  },
+  "errors": {
+    "rate_limited": {
+      "status": 429,
+      "documented": "GitLab returns 429 when the instance rate limit for the user is reached."
+    },
+    "missing_scope": {
+      "status": 403,
+      "documented": "A token without the api scope cannot create issues and receives 403 Forbidden."
+    },
+    "unknown_project": {
+      "status": 404,
+      "documented": "An unknown or non-visible project returns 404 Project Not Found."
+    },
+    "invisible_issue": {
+      "status": 404,
+      "documented": "The general troubleshooting table documents 404 as a resource that could not be accessed, or one the user is not authorized to access, so an invisible issue and a missing issue are not distinguishable."
+    }
+  }
+}

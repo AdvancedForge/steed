@@ -1,0 +1,104 @@
+{
+  "provider": "raindrop",
+  "status": "packaged",
+  "references": [
+    "https://developer.raindrop.io/v1/user/authenticated",
+    "https://developer.raindrop.io/v1/collections/methods",
+    "https://developer.raindrop.io/v1/authentication/calls",
+    "https://developer.raindrop.io/readme"
+  ],
+  "notes": [
+    "Every documented v1 route is served under https://api.raindrop.io/rest/v1, so the prefix is part of each reviewed path rather than of the origin.",
+    "An access token, including a test token, is documented as carried in Authorization: Bearer with no second token header.",
+    "GET /rest/v1/user returns a result flag plus a user object whose _id is an integer and whose fullName is a string of at most 1000 characters. Nullability is not documented for either.",
+    "GET /rest/v1/collections returns a result flag plus items, and each item is a collection object whose identifier is _id, with documented title, count and view fields. There is no hidden field on a collection; hidden exists only on a group inside the user document.",
+    "The documentation warns that responses can contain fields it does not describe and that using them is unsafe, so only documented fields are projected.",
+    "Success is signalled by the result flag as well as by the HTTP status. This profile does not read the flag, because a failure document carries result false with error and errorMessage and no items, so a failed collection read fails closed instead of returning an empty list. That residual assumption is recorded rather than hidden.",
+    "Rate limits are documented as 120 requests per minute per authenticated user for OAuth requests, with X-RateLimit-Limit, RateLimit-Remaining and X-RateLimit-Reset headers. Whether the same number applies to a test token is not documented.",
+    "Creating a bookmark needs an explicit link input from the user, and no reviewed destination can carry one, so this profile stays read-only."
+  ],
+  "identity": {
+    "/rest/v1/user": {
+      "result": true,
+      "user": {
+        "_id": 32,
+        "email": "fixture@example.test",
+        "email_MD5": "13a0a20681d8781912e5314150694bf7",
+        "fullName": "Fixture User",
+        "password": true,
+        "pro": true,
+        "registered": "2014-09-30T07:51:15.406Z",
+        "groups": [{"title": "My Collections", "hidden": false, "sort": 0, "collections": [8492393]}]
+      }
+    }
+  },
+  "routes": {
+    "/rest/v1/user": {
+      "result": true,
+      "user": {
+        "_id": 32,
+        "email": "fixture@example.test",
+        "email_MD5": "13a0a20681d8781912e5314150694bf7",
+        "fullName": "Fixture User",
+        "password": true,
+        "pro": true,
+        "registered": "2014-09-30T07:51:15.406Z",
+        "groups": [{"title": "My Collections", "hidden": false, "sort": 0, "collections": [8492393]}]
+      }
+    },
+    "/rest/v1/collections/8492393": {
+      "result": true,
+      "item": {
+        "_id": 8492393,
+        "title": "Development",
+        "count": 16,
+        "view": "list",
+        "expanded": false,
+        "public": false,
+        "sort": 8492393,
+        "created": "2019-10-09T11:49:53.518Z",
+        "lastUpdate": "2019-11-27T17:51:19.085Z",
+        "color": "#0c797d",
+        "user": {"$id": 32}
+      }
+    },
+    "/rest/v1/collections": {
+      "result": true,
+      "items": [
+        {
+          "_id": 8492393,
+          "title": "Development",
+          "count": 16,
+          "view": "list",
+          "expanded": false,
+          "public": false,
+          "user": {"$id": 32}
+        },
+        {
+          "_id": 8492400,
+          "title": "Reading",
+          "count": 4,
+          "view": "grid",
+          "expanded": true,
+          "public": true,
+          "user": {"$id": 32}
+        }
+      ]
+    }
+  },
+  "created": {},
+  "errors": {
+    "rate_limited": {
+      "status": 429,
+      "documented": "Requests are documented as limited to 120 per minute per authenticated user, with X-RateLimit-Remaining reaching 0."
+    },
+    "unauthorized": {
+      "status": 401,
+      "documented": "An invalid token answers 401 with an Unauthorized body."
+    },
+    "application_failure": {
+      "status": 200,
+      "documented": "A failure document is { result: false, error: ..., errorMessage: ... } with no items, so the collection read fails closed."
+    }
+  }
+}

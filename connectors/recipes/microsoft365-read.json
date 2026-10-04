@@ -1,0 +1,67 @@
+{
+  "version": 2,
+  "name": "Microsoft 365 (reads, token supplied by you)",
+  "origin": "https://graph.microsoft.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/v1.0/me",
+    "subject": "/id",
+    "label": "/userPrincipalName"
+  },
+  "tools": [
+    {
+      "name": "read_drive_item",
+      "description": "Read one item from the signed-in user's OneDrive by its item ID, which is the id in the item's sharing URL. This is a file or a folder; no file or folder is created, renamed or moved.",
+      "method": "GET",
+      "path": "/v1.0/me/drive/items/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/id"
+        },
+        {
+          "label": "name",
+          "pointer": "/name"
+        },
+        {
+          "label": "url",
+          "pointer": "/webUrl"
+        },
+        {
+          "label": "size",
+          "pointer": "/size"
+        },
+        {
+          "label": "last_modified",
+          "pointer": "/lastModifiedDateTime"
+        }
+      ]
+    },
+    {
+      "name": "list_events_first_page",
+      "description": "Read the first page of the signed-in user's calendar events. Graph returns @odata.nextLink for more, and this profile never follows it, so only the first page is visible.",
+      "method": "GET",
+      "path": "/v1.0/me/events",
+      "response": [
+        {
+          "label": "events",
+          "pointer": "/value"
+        }
+      ]
+    },
+    {
+      "name": "list_todo_lists_first_page",
+      "description": "Read the first page of the signed-in user's To Do lists. Graph returns @odata.nextLink for more, and this profile never follows it, so only the first page is visible.",
+      "method": "GET",
+      "path": "/v1.0/me/todo/lists",
+      "response": [
+        {
+          "label": "lists",
+          "pointer": "/value"
+        }
+      ]
+    }
+  ]
+}
