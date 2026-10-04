@@ -16,6 +16,10 @@ def functions(tools, namespace=None):
 def tool_results(output, name=None):
     """Decode native direct-tool or code-host output from this offline fixture."""
     if isinstance(output, str):
+        # Direct native calls add execution timing before the JSON tool body.
+        # This decoder is only for outputs from our loopback synthetic fixture.
+        if output.startswith("Wall time:") and "\nOutput:\n" in output:
+            output = output.partition("\nOutput:\n")[2]
         try:
             yield from tool_results(json.loads(output), name)
         except (ValueError, TypeError):
