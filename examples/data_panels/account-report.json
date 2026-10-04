@@ -1,0 +1,17 @@
+{
+  "version": 5,
+  "name": "Selected account report",
+  "widgets": [
+    {
+      "id": "report",
+      "kind": "text",
+      "title": "Account report",
+      "account": {
+        "connector": "configured_account",
+        "tool": "read_report",
+        "destination": "account",
+        "inputs": {}
+      }
+    }
+  ]
+}

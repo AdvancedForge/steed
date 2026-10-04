@@ -1,5 +1,6 @@
 """Profile-bound native draft cards and an inert user-review popup."""
 
+import json
 import sqlite3
 
 from PyQt6.QtCore import Qt, QTimer
@@ -23,6 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from services.app_accounts import AccountError
 from services.task_store import ACTIVE_STATUSES
 from ui.data_panel_form import PanelForm
 from ui.panel_image import PanelImage
@@ -43,6 +45,15 @@ def label(text, parent=None):
 
 
 def source_caption(widget):
+    if "account" in widget:
+        return (
+            "Linked account read • "
+            + display_text(widget["artifact_title"])
+            + " • fetched "
+            + widget["fetched_at"]
+            if widget["available"]
+            else widget["unavailable"]
+        )
     if "library" in widget:
         if not widget["available"]:
             return widget["unavailable"]
@@ -56,6 +67,27 @@ def source_caption(widget):
     return (
         "Saved task file • " if "file_id" in widget else "Saved agent draft • "
     ) + display_text(widget["artifact_title"])
+
+
+def linked_description(service, definition):
+    sources = []
+    for widget in definition.library_widgets.values():
+        sources.append(
+            service.library.folder(widget["library"]["folder_id"])["name"]
+            + "/"
+            + widget["library"]["path"]
+        )
+    for widget in definition.account_widgets.values():
+        source = widget["account"]
+        try:
+            binding = service.data_panels.account_reads.binding(widget)
+        except (ValueError, AccountError):
+            binding = {"label": "Unavailable account", "inputs": source["inputs"]}
+        sources.append(
+            f"Account: {binding['label']}\nRead: {source['connector']}.{source['tool']}\n"
+            f"Destination: {source['destination']}\nInputs: {json.dumps(binding['inputs'] or {}, ensure_ascii=False)}"
+        )
+    return "\n\n".join(sources)
 
 
 class PanelContent(QWidget):
@@ -111,7 +143,7 @@ class PanelContent(QWidget):
                     display.setMaximumHeight(240)
                     self._table(display, widget["content"])
             display.setAccessibleName(widget["title"])
-            if "library" in widget:
+            if "library" in widget or "account" in widget:
                 display.setEnabled(widget["available"])
             self.displays[widget["id"]] = display
             self._widgets[widget["id"]] = widget
@@ -138,7 +170,7 @@ class PanelContent(QWidget):
                 self.captions[key].setText("Task status: " + task.status)
             else:
                 self.captions[key].setText(source_caption(widget))
-                if "library" in widget:
+                if "library" in widget or "account" in widget:
                     display.setEnabled(widget["available"])
                 if kind == "image":
                     if previous["source_sha256"] != widget["source_sha256"]:
@@ -179,8 +211,8 @@ class DataPanelDock(QDockWidget):
         row.addWidget(self.remove_button)
         body.addLayout(row)
         controls = QHBoxLayout()
-        self.refresh_button = QPushButton("Refresh linked files")
-        self.refresh_button.clicked.connect(self.refresh_content)
+        self.refresh_button = QPushButton("Refresh linked sources")
+        self.refresh_button.clicked.connect(self.refresh_sources)
         controls.addWidget(self.refresh_button)
         self.access_button = QPushButton("Linked file access…")
         self.access_button.clicked.connect(self.change_source_access)
@@ -287,7 +319,7 @@ class DataPanelDock(QDockWidget):
             receipt = self.service.data_panels.get(*key)
             task = self.service.store.get(receipt.task_id)
             widgets = self.service.data_panels.view(*key)
-            linked = any("library" in w for w in widgets)
+            linked = any("library" in w or "account" in w for w in widgets)
             self.access_button.setVisible(linked)
             self.refresh_button.setVisible(linked)
             self.access_button.setEnabled(linked)
@@ -358,7 +390,7 @@ class DataPanelDock(QDockWidget):
 
             apply_chrome_font(self.widget(), self.browser.layout_preferences.text_size)
             self._signature = signature
-        except (ValueError, KeyError, sqlite3.Error, OSError):
+        except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
             self._clear()
             self.access_button.setEnabled(False)
             self.refresh_button.setEnabled(False)
@@ -377,24 +409,19 @@ class DataPanelDock(QDockWidget):
             profile = self.browser.profile_manager.current_profile_name
             profile_key = panels.profile_key(profile)
             definition = panels.definition(*key)
-            sources = "\n".join(
-                self.service.library.folder(w["library"]["folder_id"])["name"]
-                + "/"
-                + w["library"]["path"]
-                for w in definition.library_widgets.values()
-            )
+            sources = linked_description(self.service, definition)
             enabled = panels.source_access(*key)
             if enabled:
                 panels.set_source_access(*key, profile_key=profile_key, enabled=False)
             else:
                 prompt = QMessageBox(self)
-                prompt.setWindowTitle("Allow this panel to read linked files?")
+                prompt.setWindowTitle("Allow this panel to read linked sources?")
                 prompt.setTextFormat(Qt.TextFormat.PlainText)
                 prompt.setText(
-                    f"Panel: {definition.name}\nProfile: {profile}\nSelected files:\n{sources}\n\n"
-                    "Read these files whenever this panel is viewed or refreshed, including after its agent task ends. "
-                    "Folders must stay enabled. You can disable linked reads here at any time. "
-                    "This permission grants no file edits or agent-task access."
+                    f"Panel: {definition.name}\nProfile: {profile}\nSelected sources:\n{sources}\n\n"
+                    "Files can refresh when viewed; account reads run only when you click Refresh. "
+                    "Permission lasts after task end. Folder/account read access must stay enabled. "
+                    "Disable linked reads here at any time. This grants no edits, sends or agent-task access."
                 )
                 prompt.setStandardButtons(
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
@@ -419,17 +446,36 @@ class DataPanelDock(QDockWidget):
                         *key, profile_key=profile_key, enabled=True
                     )
             self.refresh_content()
-        except (ValueError, KeyError, sqlite3.Error, OSError):
+        except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
             self.status.setText(
                 "Linked access could not be changed; check the panel and profile."
             )
+
+    def refresh_sources(self):
+        if self.browser._closing or self.service._closed or self.service.failure:
+            return
+        key = self.selector.currentData()
+        if key:
+            try:
+                self.service.data_panels.account_reads.refresh(
+                    *key,
+                    profile_key=self.service.data_panels.profile_key(
+                        self.browser.profile_manager.current_profile_name
+                    ),
+                )
+                self.refresh_content()
+            except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
+                self.refresh_content()
+                self.status.setText(
+                    "Refresh unavailable; check linked permission and account read access."
+                )
 
     def remove_selected(self):
         key = self.selector.currentData()
         if key:
             try:
                 self.service.data_panels.remove(*key)
-            except (ValueError, KeyError, sqlite3.Error, OSError):
+            except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
                 self.status.setText("The panel could not be removed.")
             self.refresh()
 
@@ -470,25 +516,27 @@ class DataPanelReviewDialog(QDialog):
         body.addWidget(self.preview, 1)
         definition = service.data_panels.definition(receipt.task_id, receipt.request_id)
         self.linked_access = QCheckBox(
-            "Allow this panel to read the selected library files in this profile, including after task end"
+            "Allow this panel to read the selected linked sources in this profile, including after task end"
         )
-        self.linked_access.setVisible(bool(definition.library_widgets))
-        if definition.library_widgets:
-            sources = "\n".join(
-                service.library.folder(w["library"]["folder_id"])["name"]
-                + "/"
-                + w["library"]["path"]
-                for w in definition.library_widgets.values()
+        self.linked_access.setStyleSheet(
+            "QCheckBox { background-color: #fff6d8; color: #18202c; padding: 5px; }"
+        )
+        self.linked_access.setVisible(bool(definition.linked_widgets))
+        if definition.linked_widgets:
+            sources = linked_description(service, definition)
+            body.addWidget(
+                label(
+                    "Linked sources (read only; account calls require manual Refresh):"
+                )
             )
-            body.addWidget(label("Linked files (read only; revocable in Data Panels):"))
             self.linked_sources = QPlainTextEdit()
             self.linked_sources.setReadOnly(True)
             self.linked_sources.setPlainText(sources)
             self.linked_sources.setMaximumHeight(80)
-            self.linked_sources.setAccessibleName("Selected linked library files")
+            self.linked_sources.setAccessibleName("Selected linked sources")
             body.addWidget(self.linked_sources)
         body.addWidget(self.linked_access)
-        if definition.library_widgets:
+        if definition.linked_widgets:
             service.changed.connect(self.refresh_linked_preview)
         body.addWidget(
             label(
@@ -526,7 +574,7 @@ class DataPanelReviewDialog(QDialog):
             self.preview.widget().update_content(
                 self.service.store.get(self.receipt.task_id), widgets
             )
-        except (ValueError, KeyError, sqlite3.Error, OSError):
+        except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
             content = self.preview.takeWidget()
             if content is not None:
                 for child in content.findChildren(QPlainTextEdit):
@@ -569,7 +617,7 @@ class DataPanelReviewDialog(QDialog):
                 profile_key=self._profile_key,
                 library_access=self.linked_access.isChecked(),
             )
-        except (ValueError, KeyError, sqlite3.Error, OSError):
+        except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
             self.error.setText(
                 "The panel or profile changed, permission expired, or a draft is unavailable. Review the profile again; changed drafts need a new proposal."
             )
@@ -594,7 +642,7 @@ class DataPanelReviewDialog(QDialog):
             self.service.data_panels.resolve(
                 self.receipt.task_id, self.receipt.request_id
             )
-        except (ValueError, KeyError, sqlite3.Error, OSError):
+        except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
             self.error.setText("This request is no longer available.")
             return
         self.done(QDialog.DialogCode.Accepted)

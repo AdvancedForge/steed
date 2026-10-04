@@ -93,6 +93,14 @@ class PanelDefinition:
     def library_widgets(self):
         return {w["id"]: w for w in self.widgets if "library" in w}
 
+    @property
+    def account_widgets(self):
+        return {w["id"]: w for w in self.widgets if "account" in w}
+
+    @property
+    def linked_widgets(self):
+        return self.library_widgets | self.account_widgets
+
 
 def _form_fields(fields):
     if not isinstance(fields, list) or not 1 <= len(fields) <= MAX_FORM_FIELDS:
@@ -168,7 +176,13 @@ def parse_panel(source):
         "widgets",
     }:
         raise ValueError("Use the published panel fields")
-    if type(document["version"]) is not int or document["version"] not in (1, 2, 3, 4):
+    if type(document["version"]) is not int or document["version"] not in (
+        1,
+        2,
+        3,
+        4,
+        5,
+    ):
         raise ValueError("Unsupported data-panel version")
     name = clean_name(document["name"])
     widgets = document["widgets"]
@@ -187,6 +201,12 @@ def parse_panel(source):
             raise ValueError("Use the published native widget kinds")
         expected = {"id", "kind", "title"}
         if (
+            document["version"] >= 5
+            and widget["kind"] == "text"
+            and "account" in widget
+        ):
+            expected.add("account")
+        elif (
             document["version"] >= 4
             and widget["kind"] in ARTIFACT_KINDS
             and "library" in widget
@@ -226,6 +246,38 @@ def parse_panel(source):
                     "Bind one exact library folder ID and relative file path"
                 )
             relative_path(source["path"])
+        if "account" in widget:
+            from services.connector_policy import connector_name, destination_name
+
+            account = widget["account"]
+            if not isinstance(account, dict) or set(account) != {
+                "connector",
+                "tool",
+                "destination",
+                "inputs",
+            }:
+                raise ValueError(
+                    "Bind one configured account read tool, exact destination and inputs"
+                )
+            connector_name(account["connector"])
+            connector_name(account["tool"])
+            destination_name(account["destination"])
+            if (
+                not isinstance(account["inputs"], dict)
+                or len(account["inputs"]) > 8
+                or any(
+                    not stable_id(k, 32)
+                    or type(v) not in (str, int, bool)
+                    or isinstance(v, str)
+                    and (len(v) > 512 or any(not c.isprintable() for c in v))
+                    or type(v) is int
+                    and not -(2**53) < v < 2**53
+                    for k, v in account["inputs"].items()
+                )
+            ):
+                raise ValueError(
+                    "Use bounded typed read inputs; no query text or request callbacks"
+                )
         seen.add(widget["id"])
         widget["title"] = clean_name(widget["title"])
         if widget["kind"] == "form":
@@ -282,8 +334,8 @@ def widget_content(kind, content):
 
 def panel_capabilities():
     return {
-        "version": 4,
-        "supported_versions": [1, 2, 3, 4],
+        "version": 5,
+        "supported_versions": [1, 2, 3, 4, 5],
         "widget_kinds": list(WIDGET_KINDS) + ["form", "table", "image"],
         "max_widgets": MAX_WIDGETS,
         "max_source_bytes": MAX_PANEL_SOURCE_BYTES,
@@ -297,6 +349,7 @@ def panel_capabilities():
             "artifact_id": "text/list/table; artifact authority",
             "file_id": "version 3 text/list/table/image; sealed owned workspace file and workspace authority",
             "library": "version 4 text/list/table; exact enabled folder/file plus separate reusable panel/profile read permission",
+            "account": "version 5 text; exact configured account/read tool/destination/inputs plus account read switch and reusable panel/profile permission; manual Refresh only",
         },
         "max_workspace_text_bytes": 16384,
         "max_image_file_bytes": 8 * 1024 * 1024,
@@ -316,6 +369,25 @@ def panel_capabilities():
         "retention": "saved_drafts_survive_task_end_without_update_authority",
         "linked_retention": "hide_immediately_on_revocation_refresh_after_restoration",
         "linked_refresh": "user_refresh_and_local_library_changes_no_background_network",
+        "account_refresh": "explicit_user_refresh_only_no_fetch_on_view_or_approval",
+        "account_retention": "memory_only_results_cleared_on_revocation_restart_or_failure",
+        "account_example": {
+            "version": 5,
+            "name": "Selected account report",
+            "widgets": [
+                {
+                    "id": "report",
+                    "kind": "text",
+                    "title": "Account report",
+                    "account": {
+                        "connector": "configured_account",
+                        "tool": "read_report",
+                        "destination": "account",
+                        "inputs": {},
+                    },
+                }
+            ],
+        },
         "library_example": {
             "version": 4,
             "name": "Reusable notes",

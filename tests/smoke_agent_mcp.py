@@ -377,7 +377,49 @@ async def recipe_workflow(
         }
         assert await call("app.call_tool", **args) == result
         shared[label + "_fixed_graphql_read"] = True
+        panel_request = label + "-account-panel"
+        panel_source = json.dumps(
+            {
+                "version": 5,
+                "name": label.upper() + " account read",
+                "widgets": [
+                    {
+                        "id": "report",
+                        "kind": "text",
+                        "title": "Selected account report",
+                        "account": {
+                            "connector": arguments["connector"],
+                            "tool": "search_notes",
+                            "destination": "account",
+                            "inputs": arguments["inputs"],
+                        },
+                    }
+                ],
+            }
+        )
+        panel = await call(
+            "panel.propose", source=panel_source, request_id=panel_request
+        )
+        deadline = time.monotonic() + 15
+        while panel["state"] == "awaiting_approval":
+            assert time.monotonic() < deadline, "Account-panel review timed out"
+            await asyncio.sleep(0.02)
+            panel = await call("panel.status", request_id=panel_request)
+        assert panel["state"] == "applied"
+        shared[label + "_account_panel"] = {
+            "task_id": task["task_id"],
+            "request_id": panel_request,
+            "connector": arguments["connector"],
+        }
     await call("task.finish")
+    if query:
+        shared[label + "_account_panel_task_ended"] = True
+        deadline = time.monotonic() + 15
+        while not shared.get(label + "_account_panel_verified"):
+            assert time.monotonic() < deadline, (
+                "Manual account-panel workflow timed out"
+            )
+            await asyncio.sleep(0.02)
 
 
 async def workspace_workflow(call, destination, require_documents=False):
@@ -2015,6 +2057,43 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     form.preview_send.click()  # Separate explicit user send.
                     assert form.preview is None and "Queued" in form.notice.text()
                     shared[label + "_native_form_sent"] = True
+                selected = shared.get(label + "_account_panel")
+                if (
+                    selected
+                    and shared.get(label + "_account_panel_task_ended")
+                    and not shared.get(label + "_account_panel_verified")
+                ):
+                    key = selected["task_id"], selected["request_id"]
+                    assert case.service.store.get(key[0]).status == "completed"
+                    window._toggle_data_panels(True)
+                    dock = window.data_panels_dock
+                    dock.selector.setCurrentIndex(
+                        next(
+                            i
+                            for i in range(dock.selector.count())
+                            if dock.selector.itemData(i) == key
+                        )
+                    )
+                    view = case.service.data_panels.view(*key)[0]
+                    if not shared.get(label + "_account_panel_requested"):
+                        assert not view["available"]  # Review/view never fetched.
+                        dock.refresh_button.click()  # Explicit synthetic user's read.
+                        shared[label + "_account_panel_requested"] = True
+                    elif view["available"]:
+                        assert json.loads(view["content"])["notes"] == [{"id": "n1"}]
+                        display = dock.scroll.widget().displays["report"]
+                        case.service.set_connector_access(
+                            selected["connector"], "read", False
+                        )
+                        assert display.toPlainText() == ""
+                        case.service.set_connector_access(
+                            selected["connector"], "read", True
+                        )
+                        assert not case.service.data_panels.view(*key)[0]["available"]
+                        dock.refresh_button.click()  # Separate explicit refresh after restoration.
+                        shared[label + "_account_panel_verified"] = True
+                        shared[label + "_manual_account_panel_after_task_end"] = True
+                        shared["last_account_panel_refresh"] = label
             for label, source in (
                 ("sdk", shared.get("task_id")),
                 ("raw", shared.get("raw_approval_task")),
@@ -2331,7 +2410,47 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             shared["sdk_reviewed_native_panel"] and shared["raw_reviewed_native_panel"]
         )
         assert shared["sdk_native_form_received"] and shared["raw_native_form_received"]
-        panels = case.service.data_panels.for_profile("work")
+        all_panels = case.service.data_panels.for_profile("work")
+        if require_recipes:
+            case.wait_for(
+                lambda: (
+                    not case.service.data_panels.account_reads.inflight
+                    and not case.service.data_panels.account_reads.waiting
+                )
+            )
+            accounts = [
+                p
+                for p in all_panels
+                if case.service.data_panels.definition(
+                    p.task_id, p.request_id
+                ).account_widgets
+            ]
+            assert len(accounts) == 2
+            assert (
+                shared["sdk_manual_account_panel_after_task_end"]
+                and shared["raw_manual_account_panel_after_task_end"]
+            )
+            # HTTP clients run concurrently: either client can perform the last
+            # revocation. Only its explicitly refreshed panel may retain data.
+            last_label = shared["last_account_panel_refresh"]
+            last_account = next(
+                p for p in accounts if p.request_id.startswith(last_label + "-")
+            )
+            prior_account = next(p for p in accounts if p != last_account)
+            assert case.service.data_panels.view(
+                last_account.task_id, last_account.request_id
+            )[0]["available"]
+            assert not case.service.data_panels.view(
+                prior_account.task_id, prior_account.request_id
+            )[0]["available"]
+            shared["shared_account_revocation_erased_prior_panel"] = True
+        panels = [
+            p
+            for p in all_panels
+            if not case.service.data_panels.definition(
+                p.task_id, p.request_id
+            ).account_widgets
+        ]
         assert len(panels) == 2 and all(p.revision == 1 for p in panels)
         assert all(
             "updated panel draft"

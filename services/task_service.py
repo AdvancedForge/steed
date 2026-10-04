@@ -2563,6 +2563,8 @@ class TaskService(QObject):
         self.broker.close()
         self._timer.stop()
         self._closed = True
+        self.data_panels.account_reads.close()
+        self.changed.emit()  # Clear native linked copies even when every task ended.
         for _, grant in self._grants.values():
             grant.end("shutdown")
         try:

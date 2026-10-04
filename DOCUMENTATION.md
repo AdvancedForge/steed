@@ -4722,7 +4722,7 @@ forms. These are retained task snapshots: revocation stops agent updates, while
 the user can still view previously enabled saved files. Deleting or corrupting a
 source makes it unavailable even if a decoded preview was cached. This contract
 does not authorize live reads. Version 4 library bindings use the separate contract
-below; connected-account panel bindings remain pending.
+below. Version 5 account reads have their own manual-refresh contract.
 
 Editable local Welcome/New Tab HTML is implemented; broader hosted mini-apps remain
 a planned complementary option.
@@ -4749,13 +4749,13 @@ use `steed_panel_capabilities` and propose a version 4 source such as
 ```
 
 Review shows the exact selected files and display profile. Tick **Allow this
-panel to read the selected library files in this profile, including after task
+panel to read the selected linked sources in this profile, including after task
 end** to give reusable read permission separately from enabling the panel. Leaving
 it unchecked installs the panel with linked contents hidden. This gives neither
 file edits nor new agent-task access. Agents cannot enable this permission or
 change the selected paths through `panel.publish`.
 
-In **Agents → Data Panels**, **Refresh linked files** reads the latest file
+In **Agents → Data Panels**, **Refresh linked sources** reads the latest file
 revision; local library changes also refresh visible panels. **Disable linked
 reads** immediately hides linked contents. **Allow linked reads…** opens a readable
 confirmation with the exact files/profile. A disabled library folder, removed
@@ -4768,9 +4768,58 @@ stable profile identity, and cannot transfer to a recreated profile. Source data
 is read locally when viewed/refreshed; it is not saved as a panel snapshot, sent
 to a model automatically, or included in appearance exports/audit bodies. File
 revision labels distinguish linked data from saved reports. Only text/list/table
-files up to 16 KiB of valid UTF-8 are supported, with existing list/table bounds;
-linked images, live host-directory mounts and account-linked sources are separate
-future work. Library imports remain managed copies.
+files up to 16 KiB of valid UTF-8 are supported, with existing list/table bounds.
+Linked images and live host-directory mounts remain separate future work.
+Account sources use the version 5 contract below. Library imports remain managed copies.
+
+### Manual account-linked panels — implemented
+
+Version 5 adds a `text` widget bound to one configured account read tool, exact
+destination and fixed typed inputs. Agents discover installed tools through
+`steed_app_list_tools` and propose a source such as
+[account-report.json](examples/data_panels/account-report.json), replacing the
+placeholder connector/tool with the actual configured names:
+
+```json
+{
+  "version": 5,
+  "name": "Selected account report",
+  "widgets": [{
+    "id": "report", "kind": "text", "title": "Account report",
+    "account": {
+      "connector": "configured_account", "tool": "read_report",
+      "destination": "account", "inputs": {}
+    }
+  }]
+}
+```
+
+The native review lists the account, tool, destination and resolved inputs. The
+separate linked-read checkbox grants reusable permission to this panel/display
+profile. The account's **Read** switch in **App Connections** must also cover this
+exact read tool. Neither permission substitutes for the other. Writes, sends,
+artifact-consuming tools and arbitrary request callbacks are rejected.
+
+**Refresh linked sources** explicitly fetches the read result. Proposal, approval,
+view, task completion, reconnect and access restoration make no API calls. The
+panel shows waiting/refreshing/unavailable state and a fetched-at timestamp; its
+content is the trusted adapter's bounded/redacted text or JSON, displayed as plain
+text. Rich table/card mappings are separate work. Results stay in memory and are
+cleared on account/panel revocation, disconnect, source/tool mismatch, failure,
+shutdown or restart. Restoration requires another manual Refresh. Revoking a
+shared account clears every affected panel immediately, including open reviews.
+Independently saved reports keep their existing retention behavior.
+
+Panel permission survives task completion and restart, but grants no new agent
+read, refresh, write or approval endpoint. Account ID/subject and trusted tool
+metadata remain pinned; changed sources require a new panel review. Adapter
+identity, source, credentials and cancellation checks run on each refresh/page.
+Reads run outside the Qt thread, with at most two physical workers and 16 queued
+requests. Timeout cancels without automatic retry; a cancelled worker keeps its
+slot until it returns. Late results cannot replace a newer refresh or restore
+revoked data. Audit entries contain IDs rather than result/query bodies. No
+background polling or model calls are introduced. Provider setup/live-account
+acceptance remains separate from synthetic panel acceptance.
 
 ### Native panel inputs and comparison tables
 

@@ -16,7 +16,9 @@ backlog; it is not the active agenda.
 engineering branch `c93748e` and connector PR #3 head `0082a19` in isolated
 worktrees, then merged both. The PR review and detailed C6–C10 continuation are
 [posted on GitHub](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5983460074).
-119 packaged-profile/workflow checks, four compatibility checks and contributor
+The PR is confirmed merged at `cfc9425`; the published v8 contract and extended
+[contributor milestones](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5983954160)
+are posted. 119 packaged-profile/workflow checks, four compatibility checks and contributor
 lint/format pass. Real-account acceptance remains unperformed.
 
 **Typed connector reads v7 and continuation v8 (implemented).** Typed bounded
@@ -36,6 +38,42 @@ receipts. Logs: `/tmp/steed-continued-post-{recipes,stdio,http}.log`.
 Examples: [v7](examples/connector_recipes/notes-query.json),
 [v8](examples/connector_recipes/notes-continuation.json). Provider promotion and
 live acceptance remain the connector contributor's follow-up work.
+
+**Manual account-linked sources N3 (implemented and accepted).** Native
+panel version 5 binds a text widget to an exact configured account/read tool,
+destination and resolved bounded inputs. Proposal/review/view never fetch.
+Explicit Refresh uses trusted adapters and their identity, source, credential and
+cancellation checks. Account read access and reusable panel/profile permission
+are independently required. Task completion preserves panel authority; results
+stay in memory and need an explicit new fetch after restart/restoration. Revocation,
+disconnect, metadata mismatch, failed reads and shutdown hide contents. Late
+responses cannot restore revoked data. Two physical workers and a 16-request queue
+bound concurrency; timed-out workers retain their slot until they return.
+No new agent refresh/approval/data-reading endpoint, background poll or model call.
+
+**89 combined panel regressions pass in 23.132 seconds**, including 16 account
+cases covering disconnect, stale review and shutdown after task completion. Transport acceptance caught fixture assumptions that incorrectly retained a
+second panel across shared-account revocation and assumed concurrent HTTP clients
+finished in a fixed order. Assertions now follow the last explicit user refresh
+and require clearing of the other panel; runtime behavior was correct.
+The full suite passes **1,339 tests in 407.066 seconds**. SDK/raw stdio and
+authenticated HTTP journeys pass manual account refresh after task completion,
+immediate shared-account scrubbing and explicit restoration. Both installed Codex
+runtime paths and startup/render/shutdown pass using local fixtures. Light/dark
+native review/dock previews, Ruff (234 files), dependencies, whitespace, ten
+recipe/six panel-content examples and local documentation targets pass. Logs:
+`/tmp/steed-account-panels-{full,stdio-retry,http-retry,native,native-direct,startup}.log`.
+No live provider/model acceptance was performed; the earlier headless profile-create
+crash remains a separately recorded issue. Example:
+[account-report.json](examples/data_panels/account-report.json). Rich field mappings
+and reusable action controls remain separate work.
+
+**Next panel direction (owner approved):** reusable action buttons send reviewed
+instructions to an external agent first; direct connector writes remain separate. Existing
+native forms send to their owning connected task and stop when it ends. This next
+increment needs a deliberate task/authority lifecycle; it must not inherit read
+permission as write/send/model-disclosure authority. Broader HTML app hosting,
+credential-derived headers and live-account acceptance remain separate.
 
 **Reusable linked library sources N3 (implemented and accepted).**
 Native panel v4 binds text/list/table widgets to exact enabled library files.
@@ -67,7 +105,7 @@ in `/tmp/steed-linked-panels-stdio.log`. The retry and HTTP journey pass; this
 headless startup defect remains unresolved. Example:
 [library-notes.json](examples/data_panels/library-notes.json).
 
-**Account-panel direction (owner approved):** manual Refresh first. No recurring
+**Account-panel direction (owner approved and implemented above):** manual Refresh first. No recurring
 API requests on view or automatic refresh; future scheduling remains a separate
 choice.
 The owner has approved reusable panel/profile permission and immediate hiding on

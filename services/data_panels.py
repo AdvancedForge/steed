@@ -67,6 +67,9 @@ class DataPanels:
     def __init__(self, service):
         self.service = service
         self._images = OrderedDict()
+        from services.panel_accounts import PanelAccounts
+
+        self.account_reads = PanelAccounts(self)
         for row in self.db.execute(
             "SELECT task_id,request_id FROM data_panels WHERE state='awaiting_approval'"
         ).fetchall():
@@ -235,6 +238,8 @@ class DataPanels:
         )
         for widget in definition.library_widgets.values():
             self._library_content(widget)
+        for key, widget in definition.account_widgets.items():
+            bindings[key] = self.account_reads.binding(widget)
         self._authority(definition, task_id, consume=True)
         with self.db:
             self.db.execute(
@@ -324,6 +329,12 @@ class DataPanels:
             self.view(task_id, request_id)
             for widget in definition.library_widgets.values():
                 self._library_content(widget)
+            initial_bindings = json.loads(self._row(task_id, request_id)["bindings"])
+            for widget_id, widget in definition.account_widgets.items():
+                if initial_bindings[widget_id] != self.account_reads.binding(widget):
+                    raise ValueError(
+                        "Account/tool metadata changed; propose a new panel"
+                    )
             count = self.db.execute(
                 "SELECT COUNT(*) FROM data_panels WHERE profile_key=? AND state='applied'",
                 (key,),
@@ -337,7 +348,7 @@ class DataPanels:
                     (key, profile, task_id, request_id),
                 )
                 result = self._state(task_id, request_id, "applied")
-                if definition.library_widgets:
+                if definition.linked_widgets:
                     self.db.execute(
                         "INSERT INTO data_panel_source_access VALUES (?,?,?,?)",
                         (task_id, request_id, key, int(library_access)),
@@ -387,7 +398,7 @@ class DataPanels:
         if (
             type(enabled) is not bool
             or row["state"] != "applied"
-            or not self.definition(task_id, request_id).library_widgets
+            or not self.definition(task_id, request_id).linked_widgets
             or not profile_key
             or profile_key != row["profile_key"]
             or not any(self.profile_key(p) == profile_key for p in self.profile_names())
@@ -577,7 +588,9 @@ class DataPanels:
         result = []
         for widget in definition.widgets:
             value = dict(widget)
-            if widget["id"] in definition.library_widgets:
+            if widget["id"] in definition.account_widgets:
+                value = self.account_reads.view(task_id, request_id, widget)
+            elif widget["id"] in definition.library_widgets:
                 value.update(
                     source_kind="library",
                     available=False,

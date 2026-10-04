@@ -13,10 +13,19 @@ Owner-approved linked-panel behavior: hide linked contents immediately on source
 revocation; refresh after restoration. Panels may outlive their creating task
 with a separate visible permission for the panel/display profile.
 Selected library-file bindings are delivered below; independently saved reports
-are unchanged. The owner selected manual Refresh first for account-backed panels; no recurring
-API calls on view. Continue this next.
+are unchanged. The owner selected manual Refresh first for account-backed panels; this is now
+implemented as panel v5. Proposal/approval/view never fetch; account read access
+and panel/profile permission are separate. Results are memory-only and clear on
+revocation/restart. Acceptance: **1,339 full tests in 407.066 seconds** and 89 combined panel
+regressions in 23.132 seconds. SDK/raw stdio/HTTP, both installed Codex runtimes,
+startup/render/shutdown and light/dark native previews pass with synthetic fixtures.
+Logs: `/tmp/steed-account-panels-{full,stdio-retry,http-retry,native,native-direct,startup}.log`.
+The owner selected reusable action buttons that send reviewed instructions to
+an external agent first. Direct connector effects remain separate. Preserve
+explicit recipient/profile and payload review; do not infer writes or model
+disclosure from a panel read permission.
 
-Current acceptance: **1,320 full regressions in 399.325 seconds** plus 13 final
+Previous library checkpoint acceptance: **1,320 full regressions in 399.325 seconds** plus 13 final
 linked-panel checks in 4.018 seconds. SDK/raw stdio and authenticated HTTP journeys,
 both installed Codex runtime paths, startup/render/shutdown, light/dark native
 previews, Ruff, dependency, whitespace and example/document targets pass.
@@ -41,9 +50,9 @@ a built-in. Global now supports explicit reviewed task sharing and stable identi
 implement external-agent edits. Schema 19 added immutable proposals; schema 20
 adds panel-source permissions. New source sharing uses existing connected-task messages, with exact payload preview and an
 8 KB limit. Agent declarations have a 32 KB UTF-8 limit; local imports allow 256 KB.
-Native panels now support versions 1/2/3/4; selected library files are implemented
-with reusable panel/profile read permission. Continue account-backed sources
-without adding arbitrary
+Native panels now support versions 1/2/3/4/5; selected library files are implemented
+with reusable panel/profile read permission. Account-backed reads now support manual Refresh; continue richer field mappings
+and reviewed action controls without adding arbitrary
 code callbacks or conflating private data with global appearance exports.
 Website chatbots still use copy/export or enabled folders;
 external MCP/Codex clients discover the three start-page tools automatically.
@@ -68,14 +77,15 @@ was corrected; this changed the fixture, not the MCP implementation.
 
 1. Read `AGENTS.md`, this checkpoint, current `ROADMAP.md`, and the page/panel/MCP
    guides in `DOCUMENTATION.md`. Fetch main and create your own branch/worktree,
-   such as `engineering/account-panels`. Leave the user's running checkout and
+   such as `engineering/panel-instructions`. Leave the user's running checkout and
    real `~/.custom_browser/` state alone. Keep Qt tests/smokes serial.
 2. Verify baseline lint/format and the focused page/panel tests. Use the repository
    virtual environment and temporary fixtures. Keep `-X faulthandler` enabled for
    transport/native acceptance; logs under `/tmp` are session-local evidence.
-3. Connector PR #3 was re-reviewed at `0082a19` and integrated locally.
+3. Connector PR #3 was re-reviewed at `0082a19`, integrated and confirmed merged
+   after published main `3a4e1c5`.
    119 provider/profile workflow checks and four compatibility checks pass.
-   [Current findings and detailed continuation](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5983460074)
+   [Published v8 contract and detailed continuation](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5983954160)
    cover live acceptance, minor worksheet cleanup and v7/v8 provider adoption.
    Contributor-owned data is not automatically promoted by new runtime contracts.
 4. Own shared runtime/UI/MCP/root-doc changes; leave `connectors/recipes/`,
@@ -96,8 +106,8 @@ version grammars, identity rechecks and no automatic write replay.
 separate user-approved panel/profile read permission that survives task end.
 Permission must remain visible/revocable; disabling a folder or panel access hides
 linked data immediately. Refresh checks exact file identity and bounds. Saved
-task snapshots retain their established retention behavior. Account panels follow
-through reviewed read tools and identity checks; never infer account/task access
+task snapshots retain their established retention behavior. Account panels are
+delivered in v5 through reviewed read tools and identity checks; never infer account/task access
 from presentation approval. No private content in appearance exports or audit
 metadata, executable callbacks, or agent approval endpoints.
 
