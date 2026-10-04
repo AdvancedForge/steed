@@ -389,7 +389,7 @@ installed, and a row is never a default account or an approval.
 | Todoist | packaged | none outstanding for the shipped subset |
 | GitHub | template | owner must be fixed in newly reviewed source |
 | GitLab.com | packaged + template | none outstanding for the shipped subset |
-| Microsoft 365 | gated | native OAuth, `@odata.nextLink` paging and writes unverified |
+| Microsoft 365 | packaged (read-only, supplied delegated token) | native OAuth, `@odata.nextLink` paging and writes remain deferred |
 | Notion | gated (first read expressible) | data-source listing is a POST read; a real integration token is still unverified |
 | Slack | gated | channel destinations and `ok:false` error checking |
 | Asana | packaged (read-only) | none outstanding; collections and task creation are excluded by design |
@@ -411,12 +411,12 @@ installed, and a row is never a default account or an approval.
 
 - A profile origin is one exact public HTTPS domain: no port, no path, no
   credentials. That alone rules out self-hosted and local services.
-- Request headers are limited to `Authorization`, `Accept` and `Content-Type`
-  plus at most one reviewed operation-ID header, so services that require their
-  own header cannot be expressed.
-- Identity must be one GET returning HTTP 200 JSON with a usable subject string
-  and a non-empty label string. A URI subject or an empty `204` probe cannot
-  identify an account.
+- The transport supplies `Authorization`, `Accept` and `Content-Type`, plus a
+  reviewed operation-ID header when applicable. Recipe v5/v6 also supports four
+  reviewed non-secret static headers; credential-derived headers remain gated.
+- Identity is one GET returning HTTP 200 JSON with a validated subject and a
+  non-empty label. Recipe v6 supports ordered reviewed label alternatives. URI
+  subjects and an empty `204` probe remain unsupported.
 - Reads are GET only, with optional bounded cursor pagination through one
   reviewed query parameter. Offset, page-number, keyset and `Link`-header paging
   are not followed.
@@ -540,8 +540,9 @@ Reconciliation of uncertain writes also covers the three shipped starters. A
 create that fails after dispatch is reported as uncertain today; a confirmed
 outcome would need a reviewed probe step rather than a blind retry.
 
-Microsoft 365 and every other service needing new header, paging, authentication
-or OAuth support stays explicitly gated until those shared capabilities land.
+Microsoft 365 now offers a supplied-token, read-only subset. Native OAuth,
+nextLink paging, writes and other providers' unsupported capabilities remain
+gated until their shared contracts land.
 Google registration remains deferred. A connector is never packaged merely to
 make the catalog look larger.
 
@@ -752,6 +753,8 @@ Notes on the wire shape:
 - `id` is documented as not nullable and `userPrincipalName` as required when a user
   is created, so `userPrincipalName` is the label. `mail` is returned by default but
   its nullability is not formally documented, so it is never the label.
+- Use the Graph driveItem `id` from an item response; a sharing URL or its encoded
+  sharing token uses a different Graph route and is not accepted as an item ID.
 - A drive item carries **file** or **folder** metadata as mutually exclusive facets
   that are *absent* rather than null, so neither facet is projected; only fields
   present for either kind are selected, and a folder reads exactly like a file.
@@ -814,7 +817,8 @@ What the source review tells you, because it matters here:
   identity on every call, but it never compares a number written in a path with the
   account's own user ID. If the pinned ID belongs to another library, the request is
   simply sent and Zotero answers on its own terms — an unknown item is documented as
-  `404`, and a wrong library simply fails the same way.
+  `404`. The ID is not checked against the connected identity: another accessible
+  library may return data, so review the intended library ID before installation.
 - The item key is the eight-character key such as `ABCD2345`; the profile projects
   only `key`, `version`, `itemType`, `dateAdded` and `dateModified`.
 - **A title is deliberately not projected.** Zotero publishes no item schema, and a
@@ -875,9 +879,10 @@ on the strength of synthetic tests alone.
       account as needing reconnection.
 
 Until every live box is filled in for a service, describe it as a synthetic
-wire-shape subset. Microsoft 365 remains a priority follow-up and is gated on
-OAuth acceptance, `@odata.nextLink` paging and write verification; its read proof
-in `connectors/compatibility/microsoft-read.json` is left unchanged.
+wire-shape subset. Microsoft 365's supplied-token read profile is packaged;
+native OAuth, `@odata.nextLink` paging and write verification remain priority
+follow-ups. Its earlier read proof in
+`connectors/compatibility/microsoft-read.json` is left unchanged.
 
 ### Per-provider worksheet
 

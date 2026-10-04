@@ -13,7 +13,7 @@
   "tools": [
     {
       "name": "read_drive_item",
-      "description": "Read one item from the signed-in user's OneDrive by its item ID, which is the id in the item's sharing URL. This is a file or a folder; no file or folder is created, renamed or moved.",
+      "description": "Read file/folder metadata in your OneDrive by its Graph driveItem ID, returned as id in a Graph item response. A sharing URL or encoded sharing token is not an item ID. No file or folder is created, renamed or moved.",
       "method": "GET",
       "path": "/v1.0/me/drive/items/{destination}",
       "response": [
