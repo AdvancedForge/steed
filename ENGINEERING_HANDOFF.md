@@ -8,11 +8,18 @@ task and hand off. External-agent recovery needs a broader lifecycle change, so
 this checkpoint delivers direct bookmark opening B2 and saves the already-built
 account projections N5 with their exact validation status. Stop here rather than
 starting the HTML bridge or another feature. This section takes precedence over
-older milestones below. The owner subsequently requested one more small task;
-bookmark manager shortcut B3 is also delivered. No broader engineering was started.
+older milestones below. The owner subsequently requested additional small tasks;
+bookmark manager shortcut B3 and search keyboard opening B4 are also delivered.
+No broader engineering was started.
 
 ### What is saved
 
+- **B4 complete:** Enter in bookmark search opens the first matching link using
+  the existing profile guard and folder filter. An empty result keeps the dialog
+  open instead of invoking Close. The search tooltip documents the action.
+  Eighteen bookmark checks pass in 2.718 seconds, including actual Qt Return
+  events for successful and empty searches; Ruff/format/whitespace pass.
+  Log: `/tmp/steed-bookmark-search-enter.log`. Broader acceptance remains below.
 - **B3 complete:** Ctrl+Shift+O opens Manage Bookmarks for the current profile.
   The action is under Tabs beside Bookmark This Page. An actual synthetic Qt
   keyboard check from address-field focus and the menu route pass; 17 existing
@@ -38,7 +45,7 @@ bookmark manager shortcut B3 is also delivered. No broader engineering was start
   new late-response/timeout regression. SDK/raw stdio and authenticated HTTP
   account-table workflows already pass. Light/dark bookmark and panel previews,
   startup/render/shutdown, Ruff lint/format (240 files) and whitespace pass.
-  The most recent full suite is **1,363 tests before N5/B2/B3**; do not report a
+  The most recent full suite is **1,363 tests before N5/B2/B3/B4**; do not report a
   full-suite pass for this checkpoint. Both installed Codex smoke paths also
   remain to be rerun for v7. All test data is synthetic/temporary; real desktop
   and live-provider acceptance remain manual.

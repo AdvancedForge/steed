@@ -108,6 +108,9 @@ class BookmarksDialog(QDialog):
         self.search.setPlaceholderText("Search names, addresses and folders")
         self.search.setAccessibleName("Search bookmarks")
         self.search.setClearButtonEnabled(True)
+        self.search.setToolTip(
+            "Press Enter to open the first matching bookmark in a new tab."
+        )
         self.folder = QComboBox()
         self.folder.setAccessibleName("Bookmark folder")
         filters.addWidget(self.search, 1)
@@ -139,9 +142,11 @@ class BookmarksDialog(QDialog):
             row.addWidget(button)
         layout.addLayout(row)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.button(QDialogButtonBox.StandardButton.Close).setAutoDefault(False)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.search.textChanged.connect(self.filter_items)
+        self.search.returnPressed.connect(self.open_first_match)
         self.folder.currentIndexChanged.connect(self.filter_items)
         pages.changed.connect(self._changed)
         self.refresh()
@@ -217,6 +222,11 @@ class BookmarksDialog(QDialog):
                 folder=item.get("folder", ""),
             ).exec()
             self.refresh()
+
+    def open_first_match(self):
+        if self.items.count():
+            self.items.setCurrentRow(0)
+            self.open_selected()
 
     def open_selected(self):
         item = self.selected()

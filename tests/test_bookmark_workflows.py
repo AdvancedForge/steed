@@ -4,7 +4,9 @@ import unittest
 from unittest.mock import patch
 
 import test_start_pages as pages_fixture
-from PyQt6.QtWidgets import QPushButton
+from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
+from PyQt6.QtWidgets import QDialog, QPushButton
 
 from bookmark_format import (
     MAX_BOOKMARK_HTML_BYTES,
@@ -244,6 +246,42 @@ class BookmarkWorkflowTests(unittest.TestCase):
         ):
             self.window._manage_bookmarks()
         opened.assert_called_once_with(url="https://two.example/")
+
+    def test_enter_in_search_opens_first_match_without_selecting_a_row(self):
+        self.pages.add_bookmark("global", "https://one.example/", "One")
+        self.pages.add_bookmark("global", "https://two.example/", "Two")
+
+        def search_and_open(dialog):
+            dialog.show()
+            dialog.search.setFocus()
+            dialog.search.setText("two")
+            self.app.processEvents()
+            QTest.keyClick(dialog.search, Qt.Key.Key_Return)
+            self.assertEqual(dialog.result(), QDialog.DialogCode.Accepted)
+
+        with (
+            patch.object(BookmarksDialog, "exec", new=search_and_open),
+            patch.object(self.window, "_new_tab") as opened,
+        ):
+            self.window._manage_bookmarks()
+        opened.assert_called_once_with(url="https://two.example/")
+
+    def test_enter_with_no_search_matches_keeps_manager_open(self):
+        self.pages.add_bookmark("global", "https://one.example/", "One")
+        opened = []
+        dialog = BookmarksDialog(self.pages, "global", open_url=opened.append)
+        try:
+            dialog.show()
+            dialog.search.setFocus()
+            dialog.search.setText("no matching bookmark")
+            self.app.processEvents()
+            self.assertEqual(dialog.items.count(), 0)
+            QTest.keyClick(dialog.search, Qt.Key.Key_Return)
+            self.assertTrue(dialog.isVisible())
+            self.assertEqual(opened, [])
+        finally:
+            dialog.close()
+            dialog.deleteLater()
 
     def test_double_click_opens_the_selected_bookmark(self):
         self.pages.add_bookmark("global", "https://one.example/", "One")

@@ -147,6 +147,15 @@ and whitespace pass. Logs: `/tmp/steed-bookmark-shortcut-{check,focused}.log`.
 This is the owner's requested additional small task; the handoff priorities below
 are unchanged. No full-suite or new native-agent acceptance is claimed.
 
+**Bookmark search keyboard opening B4 (implemented and accepted).** Enter in
+the search field opens the first matching bookmark in a new tab, respecting the
+current folder filter and existing profile guards. No match leaves the manager
+open; Close is not an implicit Enter action. The search tooltip explains the
+shortcut. **18 bookmark regressions pass in 2.718 seconds**, including actual Qt
+Return events for matching and empty results. Ruff lint/format and whitespace
+pass. Log: `/tmp/steed-bookmark-search-enter.log`. Handoff priorities remain
+unchanged; no full-suite or native-agent acceptance is claimed for this increment.
+
 **Next daily-use chunks, in order:**
 
 1. Finish account list/table broad acceptance: full regressions and both installed
