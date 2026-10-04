@@ -192,6 +192,35 @@
         "api_version": "",
         "case": ""
       }
+    },
+    {
+      "provider": "microsoft365",
+      "reviewed_source": "connectors/recipes/microsoft365-read.json",
+      "official_reference": "https://learn.microsoft.com/en-us/graph/api/overview",
+      "tools": [
+        "read_drive_item",
+        "list_events_first_page",
+        "list_todo_lists_first_page"
+      ],
+      "least_permission": "A delegated Microsoft Graph access token that the user obtains with their own tooling, requesting only User.Read, Files.Read, Calendars.Read and Tasks.Read. An application token must not be used, because /me requires a delegated token.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the not-nullable /id and label from /userPrincipalName, never from a mail field whose nullability is not formally documented",
+        "read_result": "read_drive_item returns id, name, webUrl, size and lastModifiedDateTime for both a file and a folder, since the file and folder facets are absent rather than null; the two collection reads return only /value from the first page and never follow @odata.nextLink",
+        "reviewed_create_preview": "none: the profile is read-only",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored token immediately; the delegated token itself is revoked or expires according to the user's own tooling"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
     }
   ],
   "live_acceptance_preconditions": [

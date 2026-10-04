@@ -678,6 +678,69 @@ Official references:
 
 ---
 
+## Microsoft 365 (read-only, you supply the token)
+
+`connectors/recipes/microsoft365-read.json`, origin
+`https://graph.microsoft.com`, bearer authentication with a **delegated Microsoft
+Graph access token that you obtain yourself**. Read-only.
+
+| Action | Wire contract | Least delegated scope |
+| --- | --- | --- |
+| Identity | `GET /v1.0/me`, subject `/id`, label `/userPrincipalName` | `User.Read` |
+| Read one drive item | `GET /v1.0/me/drive/items/{destination}` | `Files.Read` |
+| Calendar, first page | `GET /v1.0/me/events`, projecting `/value` | `Calendars.Read` |
+| To Do lists, first page | `GET /v1.0/me/todo/lists`, projecting `/value` | `Tasks.Read` |
+
+**The one honest caveat:** `GET /v1.0/me` requires a delegated token, and Steed has
+no Microsoft sign-in. You obtain a delegated access token with your own tooling and
+paste it into the Connect step; it is stored in the desktop keyring and never appears
+in a recipe, result or log. Native OAuth sign-in, scope normalization and refresh
+remain shared framework work, so nothing here claims one-click sign-in.
+
+Notes on the wire shape:
+
+- Every documented request in this profile needs only `Authorization: Bearer`. The
+  API version lives in the path as `/v1.0`, and no version or consistency header is
+  documented as required for these reads.
+- `id` is documented as not nullable and `userPrincipalName` as required when a user
+  is created, so `userPrincipalName` is the label. `mail` is returned by default but
+  its nullability is not formally documented, so it is never the label.
+- A drive item carries **file** or **folder** metadata as mutually exclusive facets
+  that are *absent* rather than null, so neither facet is projected; only fields
+  present for either kind are selected, and a folder reads exactly like a file.
+  `parentReference` is documented as present only when the item has a parent, so it is
+  not projected either.
+- Collections return `@odata.nextLink` as an absolute URL. This profile **never
+  follows it**, so both collection reads return the first page only, and each tool
+  description says so where the read is offered.
+- Errors are HTTP status codes plus a single top-level `error` object with a
+  machine-readable `code`, so there is no application-level flag to mask a failure.
+  Throttling answers `429` with `Retry-After`; specific numeric limits for these
+  routes are not documented and none is claimed.
+- No write is offered: writing needs a delegated scope this profile does not
+  request.
+
+### Least-permission setup
+
+1. Obtain a delegated access token for **your own** Microsoft account with only the
+   scopes in the table above. Do not use an application/client-credentials token:
+   `/me` requires a delegated token.
+2. In Steed, install the profile, paste the token into the Connect step and select
+   only the reads you want.
+3. Revoke or let it expire according to your tooling; disconnecting in Steed removes
+   the stored credential immediately.
+
+Official references:
+
+- [Get user](/v1.0/me identity)](https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0)
+- [Get driveItem](https://learn.microsoft.com/en-us/graph/api/driveitem-get?view=graph-rest-1.0)
+- [List events](https://learn.microsoft.com/en-us/graph/api/user-list-events?view=graph-rest-1.0)
+- [List To Do lists](https://learn.microsoft.com/en-us/graph/api/todo-list-lists?view=graph-rest-1.0)
+- [Errors](https://learn.microsoft.com/en-us/graph/errors)
+- [Throttling](https://learn.microsoft.com/en-us/graph/throttling)
+
+---
+
 ## Zotero (one library, imported template)
 
 `connectors/recipes/templates/zotero-library-template.json`, origin

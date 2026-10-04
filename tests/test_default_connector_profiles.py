@@ -745,7 +745,13 @@ class GitLabProfileTests(ProfileCase):
         self.assertEqual(len(self.api.posts), 1)
 
 
-PACKAGED_SLUGS = {"asana.json", "gitlab.json", "raindrop.json", "todoist.json"}
+PACKAGED_SLUGS = {
+    "asana.json",
+    "gitlab.json",
+    "microsoft365-read.json",
+    "raindrop.json",
+    "todoist.json",
+}
 TEMPLATE_NAMES = {
     "github-owner-template.json",
     "gitlab-project-template.json",
@@ -812,6 +818,7 @@ class AssessedCandidateQueueTests(unittest.TestCase):
             ("gitlab", "GitLab.com", "gitlab.com"),
             ("asana", "Asana", "app.asana.com"),
             ("raindrop", "Raindrop.io", "api.raindrop.io"),
+            ("microsoft365-read", "Microsoft 365", "graph.microsoft.com"),
         ):
             with self.subTest(service=name):
                 entry = by_name[label]
@@ -1604,7 +1611,9 @@ class ZoteroLibraryTemplateTests(ProfileCase):
     PLACEHOLDER = "REPLACE-WITH-YOUR-ZOTERO-USER-ID"
 
     def setUp(self):
-        self.template = (PACKAGED / "templates" / "zotero-library-template.json").read_bytes()
+        self.template = (
+            PACKAGED / "templates" / "zotero-library-template.json"
+        ).read_bytes()
         self.assertIn(self.PLACEHOLDER.encode(), self.template)
         self.recipe = parse_recipe(
             self.template.replace(self.PLACEHOLDER.encode(), b"12345")
@@ -1645,7 +1654,12 @@ class ZoteroLibraryTemplateTests(ProfileCase):
     def test_only_one_documented_item_key_form_is_accepted(self):
         read = self.recipe.tools[0]
         self.assertEqual(read.destination("ABCD2345"), "ABCD2345")
-        for value in ("ABCD2345/children", "../ABCD2345", "ABCD2345?format=json", "a/b"):
+        for value in (
+            "ABCD2345/children",
+            "../ABCD2345",
+            "ABCD2345?format=json",
+            "a/b",
+        ):
             with self.subTest(value=value), self.assertRaises(RecipeError):
                 read.destination(value)
 
@@ -1659,3 +1673,79 @@ class ZoteroLibraryTemplateTests(ProfileCase):
             [urlsplit(c[1]).path for c in self.api.calls[-1:]],
             ["/users/12345/items/ABCD2345"],
         )
+
+
+class Microsoft365ReadProfileTests(ProfileCase):
+    """C4 audit: Graph reads with a token the user obtains outside Steed."""
+
+    def setUp(self):
+        self.recipe = packaged_recipe("microsoft365-read")
+        self.adapter = self.install(self.recipe, "microsoft365")
+
+    def test_identity_uses_user_principal_name_not_a_nullable_mail(self):
+        self.assertEqual(self.recipe.identity_path, "/v1.0/me")
+        self.assertEqual(self.recipe.subject_pointer, "/id")
+        self.assertEqual(self.recipe.label_pointer, "/userPrincipalName")
+        self.assertIsNone(self.api.data["identity"]["/v1.0/me"]["mail"])
+        self.assertEqual(self.adapter.account.subject, "fixture-user-id")
+        self.assertEqual(self.adapter.account.label, "fixture@example.test")
+
+    def test_drive_item_read_works_for_a_file_and_for_a_folder(self):
+        document = json.loads(
+            self.read(self.adapter, "read_drive_item", "fixture-item").text
+        )
+        self.assertEqual(document["id"], "fixture-item")
+        self.assertEqual(
+            document["url"], "https://fixture.example/document"
+        )
+        self.assertEqual(document["size"], 1024)
+        # A folder omits the file facet entirely, and both kinds still read.
+        folder = json.loads(
+            self.read(self.adapter, "read_drive_item", "fixture-folder").text
+        )
+        self.assertEqual(folder["id"], "fixture-folder")
+        self.assertNotIn("file", folder)
+        self.assertNotIn("folder", folder)
+        self.assertEqual(self.api.posts, [])
+
+    def test_collection_reads_stop_at_the_first_page_and_never_follow_next_link(self):
+        events = json.loads(
+            self.read(self.adapter, "list_events_first_page", "account").text
+        )
+        self.assertEqual([e["subject"] for e in events["events"]], ["Fixture meeting"])
+        self.assertNotIn("@odata.nextLink", events)
+        self.assertIn(
+            "@odata.nextLink",
+            json.dumps(self.api.data["routes"]["/v1.0/me/events"]),
+        )
+        lists = json.loads(
+            self.read(self.adapter, "list_todo_lists_first_page", "account").text
+        )
+        self.assertEqual(
+            [row["displayName"] for row in lists["lists"]], ["Fixture list"]
+        )
+        self.assertFalse(any("?" in call[1] for call in self.api.calls))
+        self.assertIn(
+            "never follows it",
+            self.definition(self.adapter, "list_events_first_page").description,
+        )
+        for tool in self.recipe.tools:
+            self.assertIsNone(tool.pagination)
+
+    def test_no_write_is_offered_for_this_first_subset(self):
+        self.assertEqual(
+            [t.effect for t in self.recipe.tools], ["read", "read", "read"]
+        )
+        self.assertEqual(
+            [t.name for t in self.recipe.tools if t.destination_type == "account"],
+            ["list_events_first_page", "list_todo_lists_first_page"],
+        )
+
+    def test_documented_failure_statuses_surface_and_change_nothing(self):
+        for status in (401, 403, 404, 429):
+            with self.subTest(status=status):
+                self.api.fail("GET", "/v1.0/me/drive/items/fixture-item", status)
+                with self.assertRaises(ApiError):
+                    self.read(self.adapter, "read_drive_item", "fixture-item")
+                self.api.failure = None
+        self.assertEqual(self.api.posts, [])
