@@ -722,7 +722,7 @@
         "403": "restricted_resource when the connection lacks the read capability",
         "404": "object_not_found or directory_not_found, including a database not shared with the connection",
         "429": "rate_limited",
-        "529": "service_overload"
+        "529": "service_overload is documented as a code; its operational meaning is not documented."
       },
       "documented_limits": [
         "Supports paginating through up to 10,000 results per query.",
@@ -740,7 +740,28 @@
         "reason": "Reads are GET-only today, and a write is a single POST that requires an artifact, so a POST read can be expressed neither way."
       },
       "currently_passes": "The origin, path, required static header and the cursor shape all fit existing capabilities; only the read method does not.",
-      "smallest_missing_behavior": "A typed read-only POST with bounded reviewed inputs, selected response fields and a bounded cursor, reviewed before dispatch like a write."
+      "smallest_missing_behavior": "A typed read-only POST with bounded reviewed inputs, selected response fields and a bounded cursor, reviewed before dispatch like a write.",
+      "origin": "https://api.notion.com",
+      "references": [
+        "https://developers.notion.com/reference/query-a-data-source",
+        "https://developers.notion.com/reference/retrieve-a-data-source",
+        "https://developers.notion.com/reference/versioning",
+        "https://developers.notion.com/guides/get-started/upgrade-guide-2025-09-03"
+      ],
+      "identity": {
+        "path": "/v1/users/me",
+        "method": "GET",
+        "subject_pointer": "/id",
+        "label_pointer": "/name",
+        "label_limitation": "The current user reference marks only object and id as always present, and name as optional rather than nullable, so a label pointer needs a reviewed alternative."
+      },
+      "documented_response_provenance": "The required list fields type, page_or_data_source, object, next_cursor, has_more and results come from the documented response schema; the empty results array is synthesized.",
+      "pagination": {
+        "protocol": "documented cursor via start_cursor in, next_cursor out",
+        "stop_signal": "has_more false, or the 10,000 result cap with request_status set",
+        "note": "Notion states cursors are opaque and must not be parsed, validated or stored."
+      },
+      "cancellation": "A cancelled query must stop before dispatch, because a query consumes part of the documented request limit and Steed must not resend it automatically."
     },
     {
       "id": "linear_graphql_viewer_gated",
@@ -757,7 +778,9 @@
       },
       "reviewed_inputs": {
         "query": "query Me { viewer { id name email } }",
-        "variables": {}
+        "variables": {},
+        "body_schema_documented": false,
+        "body_note": "Linear documents only the example payload. Field-level requiredness for query, variables and operationName is not published, so only a fixed reviewed query string and empty variables are recorded here."
       },
       "documented_body_fields": {
         "query": "documented by example only; no body schema is published",
@@ -779,8 +802,10 @@
         "partial": "GraphQL queries can partially succeed with HTTP 200, returning data while including errors for failed fields."
       },
       "documented_limits": [
-        "2,500 requests per hour per user for an API key, 5,000 for an OAuth app, 600 per hour per IP unauthenticated.",
-        "A single query is limited to 10,000 complexity points, and the hourly complexity budget is 3,000,000 points."
+        "Request rate per hour: 2,500 for an API key, 5,000 for an OAuth app, and 600 per IP unauthenticated.",
+        "Hourly complexity budget: 3,000,000 points for an API key, 2,000,000 for an OAuth app, and 100,000 unauthenticated.",
+        "A single query is limited to 10,000 complexity points at any time.",
+        "Default pagination returns up to 50 records."
       ],
       "documented_do_not": [
         "Always check for the errors array before assuming success.",
@@ -792,7 +817,32 @@
         "reason": "A POST read is inexpressible, and an application-level errors array would also need an error contract that reports partial success honestly."
       },
       "currently_passes": "Bearer auth and the origin fit existing capabilities; the read method, the body and the application-level error array do not.",
-      "smallest_missing_behavior": "A typed read-only POST with a reviewed query string, bounded inputs and a response projection that surfaces an errors array as a failure rather than as data."
+      "smallest_missing_behavior": "A typed read-only POST with a reviewed query string, bounded inputs and a response projection that surfaces an errors array as a failure rather than as data.",
+      "origin": "https://api.linear.app",
+      "references": [
+        "https://linear.app/developers/graphql",
+        "https://linear.app/developers/rate-limiting"
+      ],
+      "official_example_query": "query Me {\n  viewer {\n    id\n    name\n    email\n  }\n}",
+      "synthesized_response": {
+        "data": {
+          "viewer": {
+            "id": "fixture-user-id",
+            "name": "Fixture User",
+            "email": "fixture@example.test"
+          }
+        },
+        "errors": null
+      },
+      "response_provenance": "data.viewer is synthesized from the documented query's selection set; Linear publishes no example response for the viewer query, so the shape comes from the query text and the documented standard GraphQL envelope.",
+      "cancellation": "A cancelled read must stop before dispatch and must never be retried, because Linear may have counted the request against the rate or complexity budget.",
+      "identity": {
+        "note": "Linear has no separate identity endpoint. The viewer query is the documented way to get information about the authenticated user, and it is a POST like every other Linear read.",
+        "documented_example": "query Me { viewer { id name email } }",
+        "subject_pointer": "/data/viewer/id",
+        "label_pointer": "/data/viewer/name",
+        "label_limitation": "No field nullability is documented for the viewer object."
+      }
     },
     {
       "id": "dropbox_account_and_folder_reads_gated",
@@ -851,8 +901,54 @@
         "reason": "Identity is a POST as well, so neither identity nor the folder read is expressible with GET-only reads."
       },
       "currently_passes": "Bearer auth and the origin fit existing capabilities; the read method and the request-object body do not.",
-      "smallest_missing_behavior": "A typed read-only POST able to carry a bounded reviewed request object and a projected response, with typed error unions surfaced as failures."
+      "smallest_missing_behavior": "A typed read-only POST able to carry a bounded reviewed request object and a projected response, with typed error unions surfaced as failures.",
+      "origin": "https://api.dropboxapi.com",
+      "references": [
+        "https://github.com/dropbox/dropbox-api-spec/blob/main/users.stone",
+        "https://github.com/dropbox/dropbox-api-spec/blob/main/files.stone",
+        "https://www.dropbox.com/developers/documentation/http/documentation"
+      ],
+      "identity": {
+        "path": "/2/users/get_current_account",
+        "method": "POST",
+        "body": {},
+        "body_note": "The spec declares the argument type as Void, so the request body is empty; the official SDK still sends JSON with a JSON content type.",
+        "auth": "user",
+        "subject_pointer": "/account_id",
+        "label_pointer": "/name/display_name",
+        "documented_response_fields": [
+          "account_id, the user's unique and stable Dropbox ID",
+          "name.display_name, documented as usable directly to represent the account name",
+          "email, documented as unreliable without email_verified",
+          "email_verified",
+          "country, a nullable two-letter code present only on the full account"
+        ],
+        "label_limitation": "profile_photo_url is documented as nullable, and country is documented as optional and absent from the plain account variant, so only name.display_name is projected.",
+        "documented_prohibition": "The spec states apps should not use email as a key for account identification and should use account_id instead, and that the route is declared auth = user, so app credentials are not accepted."
+      },
+      "continuation": {
+        "path": "/2/files/list_folder/continue",
+        "method": "POST",
+        "body": {
+          "cursor": "<cursor from the previous list_folder response>"
+        },
+        "body_note": "The spec declares a single cursor field, required.",
+        "documented": "If the result's has_more field is true, call list_folder/continue with the returned cursor to retrieve more entries. A reset error means the cursor was invalidated and list_folder must be called again for a new cursor.",
+        "same_response_shape": "entries, cursor and has_more, all required and non-nullable"
+      },
+      "empty_and_continued_pages": {
+        "empty_page": {
+          "documented": "A folder with no entries returns an empty entries array with has_more false; the spec types all three result fields as required and non-nullable."
+        },
+        "continued_page": {
+          "documented": "A continued page returns the same three fields, with a new cursor and has_more reflecting whether more remains."
+        }
+      },
+      "cancellation": "A cancelled read must stop before dispatch, and a cancelled continuation must not be retried, because the spec documents that duplicate concurrent list calls can be rate limited.",
+      "verification_note": "The dropbox.com documentation page is rendered client side and its prose could not be read, so the route, body and field facts here come from the official API specification repository and the official SDKs it links. Treat the error body shape as unverified: error_summary appears in no readable official source."
     }
   ],
-  "gated_post_read_note": "These cases stay gated on purpose: a read is never disguised as a create, arbitrary queries are not permitted, and no origin or header rule is bypassed. Nothing here ships as a profile."
+  "gated_post_read_note": "These cases stay gated on purpose: a read is never disguised as a create, arbitrary queries are not permitted, and no origin or header rule is bypassed. Nothing here ships as a profile.",
+  "documentation_check_date": "2026-10-04",
+  "evidence_note": "Each case separates an official example body, quoted from the provider's own documentation, from a synthesized document written for Steed's synthetic transport. A synthesized document proves Steed's behaviour against a documented shape and is never evidence about the provider."
 }

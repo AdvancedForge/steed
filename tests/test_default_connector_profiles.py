@@ -1932,47 +1932,147 @@ class AcceptanceWorksheetTests(unittest.TestCase):
                     sorted(row["synthetic_expectations"]), sorted(expectations)
                 )
 
-    def test_every_service_has_reproducible_steps_in_the_workflow_order(self):
-        order = self.worksheet["step_order"]
+    def phase_contract(self):
+        return {
+            phase["id"]: phase for phase in self.worksheet["phase_contract"]["phases"]
+        }
+
+    def phase_sequence(self, row):
+        """The phase sequence actually required, with not-applicable phases dropped."""
+
+        required = [
+            phase
+            for phase in self.worksheet["phase_contract"]["phases"]
+            if phase.get("applies_to") != "services_offering_a_write"
+            or any(tool.startswith("create_") for tool in row["tools"])
+        ]
+        return [phase["id"] for phase in required]
+
+    def test_phase_order_is_structurally_enforced_for_every_service(self):
+        phases = self.phase_contract()
+        self.assertEqual(phases["disconnect"].get("last"), True)
         for provider, row in self.rows.items():
             with self.subTest(provider=provider):
-                steps = row["steps"]
-                # Steps may be finer-grained than the phases, but every phase is
-                # covered, the run starts by installing the reviewed source, and
-                # the last step disconnects and revokes.
-                self.assertGreaterEqual(len(steps), 6, provider)
-                # A phase may be split into more than one step, never fewer.
-                self.assertLessEqual(len(order), len(steps) + 1, provider)
-                joined = " ".join(steps).lower()
-                for phrase in ("install", "connect", "enable", "read", "disconnect"):
-                    self.assertIn(phrase, joined, provider + ": " + phrase)
-                self.assertIn("install", steps[0].lower(), provider)
-                last = steps[-1].lower()
-                self.assertIn("disconnect", last, provider)
-                self.assertTrue(
-                    "revoke" in last or "deauthorize" in last or "expire" in last,
-                    provider + ": the last step revokes",
-                )
-                writes = any(tool.startswith("create_") for tool in row["tools"])
-                if writes:
-                    self.assertIn("review the exact payload", joined, provider)
-                    self.assertIn("uncertain", joined, provider)
-                    self.assertIn("receipt", joined, provider)
+                recorded = [step["phase"] for step in row["steps"]]
+                required = self.phase_sequence(row)
+                # Every required phase appears, in order, with no phase after
+                # disconnect and no unknown phase.
+                position = 0
+                for phase in required:
+                    with self.subTest(provider=provider, phase=phase):
+                        self.assertIn(phase, recorded[position:], provider)
+                        index = recorded.index(phase, position)
+                        self.assertGreaterEqual(index, position, provider)
+                        position = index + 1
+                self.assertNotIn("disconnect", recorded[:-1], provider)
+                self.assertEqual(recorded[-1], "disconnect", provider)
+                for step in row["steps"]:
+                    self.assertIn(step["phase"], phases, provider)
+                    self.assertTrue(step["operation"].strip(), provider)
+                    self.assertLessEqual(len(step["operation"]), 400, provider)
+
+    def test_step_statuses_declare_themselves_rather_than_implying_success(self):
+        allowed = set(self.worksheet["step_statuses"])
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                for step in row["steps"]:
+                    self.assertIn(
+                        step.get("status", "executable"),
+                        allowed | {"executable"},
+                        provider,
+                    )
+
+    def test_write_and_receipt_phases_are_explicitly_unavailable_when_read_only(self):
+        writes = {
+            provider: any(tool.startswith("create_") for tool in row["tools"])
+            for provider, row in self.rows.items()
+        }
+        for provider, row in self.rows.items():
+            marked = [
+                step.get("status", "executable")
+                for step in row["steps"]
+                if step["phase"] in ("write", "receipt")
+            ]
+            with self.subTest(provider=provider):
+                if writes[provider]:
+                    self.assertNotIn("not_applicable", marked, provider)
+                    for step in row["steps"]:
+                        if step["phase"] in ("write", "receipt"):
+                            self.assertTrue(step["operation"].strip())
                 else:
-                    # A read-only service records the omitted phases instead.
-                    self.assertNotIn("review the exact payload", joined, provider)
-                # Provider-specific traps are recorded as steps, not as prose.
-                expectations = {
-                    "zotero": "unchecked",
-                    "github": "manual",
-                    "gitlab": "quick-action",
-                    "microsoft365": "first page",
-                    "raindrop": "result flag",
-                    "todoist": "inbox",
-                }
-                for name, phrase in expectations.items():
-                    if name == provider:
-                        self.assertIn(phrase, joined, provider)
+                    # A read-only service says so instead of leaving a gap.
+                    self.assertEqual(set(marked), {"not_applicable"}, provider)
+
+    def test_uncertain_writes_are_checked_in_the_service_and_never_resent(self):
+        for provider, row in self.rows.items():
+            if not any(tool.startswith("create_") for tool in row["tools"]):
+                continue
+            joined = " ".join(step["operation"] for step in row["steps"]).lower()
+            with self.subTest(provider=provider):
+                self.assertIn("uncertain", joined, provider)
+                self.assertIn("do not resend", joined, provider)
+                self.assertIn("service ui", joined, provider)
+
+    def test_the_github_confirming_read_is_recorded_once_and_called_manual(self):
+        row = self.rows["github"]
+        receipts = [s for s in row["steps"] if s["phase"] == "receipt"]
+        self.assertEqual(len(receipts), 2, "one receipt and one uncertain check")
+        manual = [s for s in receipts if "manual" in s["operation"].lower()]
+        self.assertEqual(len(manual), 1, "the confirming read appears exactly once")
+        self.assertIn("not automatic reconciliation", manual[0]["operation"].lower())
+        self.assertEqual(
+            sum(
+                1
+                for s in row["steps"]
+                if "not automatic reconciliation" in s["operation"].lower()
+            ),
+            1,
+        )
+
+    def test_the_zotero_mismatch_check_does_not_claim_opening_a_library_changes_a_read(
+        self,
+    ):
+        row = self.rows["zotero"]
+        joined = " ".join(step["operation"] for step in row["steps"]).lower()
+        self.assertIn("opening another library in the service does not change", joined)
+        self.assertIn("item key that belongs to a different library", joined)
+        self.assertIn("separately reviewed copy", joined)
+        # The optional alternative is labelled, and cleanup is covered.
+        optional = [
+            step
+            for step in row["steps"]
+            if step.get("status") == "optional_separately_instantiated"
+        ]
+        self.assertEqual(len(optional), 1)
+        self.assertIn("disable that second profile", optional[0]["operation"].lower())
+        self.assertIn(
+            "both accounts", joined, "cleanup mentions the optional second account"
+        )
+
+    def test_the_gitlab_quick_action_subcase_is_bounded_or_pending(self):
+        row = self.rows["gitlab"]
+        quick = [
+            step
+            for step in row["steps"]
+            if "quick-action" in step["operation"].lower()
+            or "quick action" in step["operation"].lower()
+        ]
+        self.assertEqual(len(quick), 1)
+        step = quick[0]
+        self.assertEqual(step["status"], "pending_owner_approval")
+        operation = step["operation"].lower()
+        self.assertIn("non-destructive", operation)
+        self.assertIn("cleanup", operation)
+        self.assertIn("leave pending", operation)
+        # The ordinary write step must not smuggle a quick action in.
+        plain = [
+            step
+            for step in row["steps"]
+            if step["phase"] == "write"
+            and step.get("status") != "pending_owner_approval"
+        ]
+        self.assertEqual(len(plain), 1)
+        self.assertIn("no slash command", plain[0]["operation"].lower())
 
     def test_live_fields_are_empty_and_cannot_be_filled_from_a_fixture(self):
         self.assertIn(
@@ -2064,6 +2164,88 @@ class GatedPostReadCaseTests(unittest.TestCase):
                     "not_executable_until_shared_contract",
                 )
                 self.assertTrue(case["expected"]["reason"].endswith("."))
+
+    def test_each_gated_case_is_self_contained_for_the_runtime_owner(self):
+        self.assertRegex(
+            self.registry["documentation_check_date"], r"^\d{4}-\d{2}-\d{2}$"
+        )
+        origins = {
+            "Notion": "https://api.notion.com",
+            "Linear": "https://api.linear.app",
+            "Dropbox": "https://api.dropboxapi.com",
+        }
+        for case in self.gated:
+            with self.subTest(case=case["id"]):
+                self.assertEqual(case["origin"], origins[case["provider"]])
+                self.assertTrue(case["references"])
+                for reference in case["references"]:
+                    self.assertTrue(reference.startswith("https://"), reference)
+                # A synthesized document is labelled as such, never as an example.
+                if (
+                    "response_provenance" in case
+                    or "documented_response_provenance" in case
+                ):
+                    provenance = case.get(
+                        "response_provenance",
+                        case.get("documented_response_provenance"),
+                    )
+                    self.assertTrue(provenance.strip())
+                self.assertIn("cancellation", case)
+                self.assertIn("before dispatch", case["cancellation"])
+
+    def test_linear_case_qualifies_every_rate_and_complexity_figure(self):
+        case = next(c for c in self.gated if c["provider"] == "Linear")
+        self.assertIn("https://linear.app/developers/rate-limiting", case["references"])
+        limits = " ".join(case["documented_limits"])
+        for phrase in (
+            "2,500 for an API key",
+            "5,000 for an OAuth app",
+            "600 per IP unauthenticated",
+            "3,000,000 points for an API key",
+            "2,000,000 for an OAuth app",
+            "100,000 unauthenticated",
+            "10,000 complexity points",
+        ):
+            self.assertIn(phrase, limits, phrase)
+        # No unqualified complexity budget may remain.
+        self.assertNotIn("the hourly complexity budget is", limits)
+        # Identity is a POST, and the body schema is undocumented.
+        self.assertIn("no separate identity endpoint", case["identity"]["note"])
+        self.assertFalse(case["reviewed_inputs"]["body_schema_documented"])
+        self.assertIn("not published", case["reviewed_inputs"]["body_note"])
+        self.assertIn("query Me", case["official_example_query"])
+
+    def test_notion_case_separates_documented_fields_from_synthesized_documents(self):
+        case = next(c for c in self.gated if c["provider"] == "Notion")
+        self.assertIn("synthesized", case["documented_response_provenance"])
+        self.assertIn("2025-09-03", case["request"]["headers"]["Notion-Version"])
+        identity = case["identity"]
+        self.assertEqual(identity["path"], "/v1/users/me")
+        self.assertEqual(identity["subject_pointer"], "/id")
+        self.assertIn("optional rather than nullable", identity["label_limitation"])
+        self.assertTrue(case["pagination"]["protocol"].startswith("documented cursor"))
+        self.assertIn("must not be parsed", case["pagination"]["note"])
+
+    def test_dropbox_case_documents_identity_body_and_continuation(self):
+        case = next(c for c in self.gated if c["provider"] == "Dropbox")
+        identity = case["identity"]
+        self.assertEqual(identity["method"], "POST")
+        self.assertEqual(identity["path"], "/2/users/get_current_account")
+        self.assertEqual(identity["body"], {})
+        self.assertEqual(identity["auth"], "user")
+        self.assertIn("Void", identity["body_note"])
+        self.assertIn("account_id", identity["documented_prohibition"])
+        continuation = case["continuation"]
+        self.assertEqual(continuation["path"], "/2/files/list_folder/continue")
+        self.assertEqual(continuation["method"], "POST")
+        self.assertEqual(list(continuation["body"]), ["cursor"])
+        self.assertIn("has_more", continuation["same_response_shape"])
+        pages = case["empty_and_continued_pages"]
+        self.assertIn("empty entries array", pages["empty_page"]["documented"])
+        self.assertIn("new cursor", pages["continued_page"]["documented"])
+        # The unverifiable error envelope is called out, not quietly dropped.
+        self.assertIn("error_summary", case["verification_note"])
+        self.assertIn("unverified", case["verification_note"].lower())
 
     def test_gated_cases_carry_no_credential_and_ship_no_profile(self):
         for case in self.gated:

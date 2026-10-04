@@ -54,15 +54,46 @@
         "case": ""
       },
       "steps": [
-        "Install connectors/recipes/todoist.json from App Connections, read the source review and install it.",
-        "Connect a synthetic account check: create a Todoist personal API token in Settings, Integrations, Developer and paste it into the Connect step.",
-        "Enable only the actions you want this account to offer to tasks.",
-        "Run read_task for a known task ID, then read_task_detail, then read_project and list_projects, and record the returned fields.",
-        "Run list_tasks and record how many pages were returned and whether more_available was true.",
-        "Create a draft, review the exact payload and payload hash, approve it, and record the created task id and whether it landed in the Inbox.",
-        "Record the receipt the tool returned, including the created task id, and read the task back to see the stored result.",
-        "If the create was uncertain, check the Inbox by hand and record how you checked.",
-        "Disconnect the account, confirm the stored credential is gone, then revoke the token in Todoist."
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/todoist.json from App Connections and read the source review before installing."
+        },
+        {
+          "phase": "connect",
+          "operation": "Create a Todoist personal API token in Settings, Integrations, Developer and paste it into the Connect step. Expect the identity request to return your account id and email."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable only the actions this account should offer to tasks. Expect no other action to appear for this account."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_task for a known task id and record the returned id and content."
+        },
+        {
+          "phase": "read",
+          "operation": "Run list_tasks and record how many pages came back and whether more_available was true."
+        },
+        {
+          "phase": "write",
+          "operation": "Create a draft with a unique title, review the exact payload and payload hash, then approve it once. Expect one POST to /api/v1/tasks with content and description only."
+        },
+        {
+          "phase": "receipt",
+          "operation": "Record the returned task id and the receipt, then read that task back. Expect the task to be in the Inbox because project_id was omitted."
+        },
+        {
+          "phase": "receipt",
+          "operation": "If the create was uncertain, open the Todoist Inbox in the service UI and record what you found. Do not resend from Steed."
+        },
+        {
+          "phase": "receipt",
+          "operation": "If the create was uncertain, open the Todoist Inbox in the service UI and record what you found. Do not resend from Steed."
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect the account, confirm the stored credential is gone from Steed, then revoke the token in Todoist and record the revocation date."
+        }
       ]
     },
     {
@@ -94,15 +125,38 @@
         "case": ""
       },
       "steps": [
-        "Install your own copy: copy connectors/recipes/templates/github-owner-template.json, replace the owner and repository placeholders, and import it with Add Connector Recipe.",
-        "Connect with a fine-grained token created for that one repository with a short expiry and Issues read and write only.",
-        "Enable the actions you want this account to offer to tasks.",
-        "Run read_repository, then read_issue for a known issue number, and record the returned fields including any documented nulls.",
-        "Create a draft, review the exact payload, approve it, and record the created issue number and URL.",
-        "Read the issue again by its number to see the created result; record that this confirming read was manual and is not automatic reconciliation.",
-        "Record the receipt the tool returned, including the created issue number and URL, and read that issue back to see the stored result; that confirming read is manual, not automatic reconciliation.",
-        "If the create was uncertain, check the repository issue list and record how you checked.",
-        "Disconnect the account, confirm the credential is gone, then revoke the token on the fine-grained tokens page."
+        {
+          "phase": "install",
+          "operation": "Copy connectors/recipes/templates/github-owner-template.json, replace the owner and repository placeholders, and import your copy with Add Connector Recipe."
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect a fine-grained token scoped to that one repository with a short expiry and Issues read and write only. Expect the identity request to return your login."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable only the actions this account should offer to tasks."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_issue for a known issue number and record the returned fields, including whether body and state_reason came back null."
+        },
+        {
+          "phase": "write",
+          "operation": "Create a draft, review the exact payload, then approve it once. Expect one POST to /repos/{owner}/{repository}/issues with title and body only."
+        },
+        {
+          "phase": "receipt",
+          "operation": "Record the created issue number and URL, then read that issue back to see the stored result. Record explicitly that this confirming read is manual and is not automatic reconciliation."
+        },
+        {
+          "phase": "receipt",
+          "operation": "If the create was uncertain, open the repository issue list in the service UI and record what you found. Do not resend from Steed."
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect the account, confirm the credential is gone, then revoke the token on the fine-grained tokens page and record the revocation date."
+        }
       ]
     },
     {
@@ -134,15 +188,43 @@
         "case": ""
       },
       "steps": [
-        "Install connectors/recipes/gitlab.json, or install a copy of the per-project template with your numeric project ID when you want issue reads.",
-        "Connect a token created with a short expiry and the narrowest scope you need: read_api for reads, api for reviewed issue creation.",
-        "Enable the actions you want this account to offer to tasks.",
-        "Run read_project for a numeric project ID, then read_issue for a known issue IID, and record the returned fields.",
-        "Create a draft whose description starts a line with a slash command, review the exact payload, approve it, and record the created issue IID and URL.",
-        "Confirm in GitLab what the quick-action line actually did; the profile sends it unchanged and does not strip or guess it.",
-        "Record the receipt the tool returned, including the created issue IID and URL, then read that issue back to see the stored result.",
-        "If the create was uncertain, check the issue list and record how you checked.",
-        "Disconnect the account, confirm the credential is gone, then revoke the token on the access tokens page."
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/gitlab.json, or install a copy of the per-project template with your numeric project ID when you want issue reads."
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect a token with a short expiry and the narrowest scope you need: read_api for reads, api for reviewed issue creation. Expect identity to return your numeric user id and username."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable only the actions this account should offer to tasks."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_issue for a known issue IID and record the returned fields, including whether description came back null."
+        },
+        {
+          "phase": "write",
+          "operation": "Create a plain draft with no slash command on any line, review the exact payload, then approve it once. Expect one POST to /api/v4/projects/{id}/issues with title and description only."
+        },
+        {
+          "phase": "receipt",
+          "operation": "Record the created issue IID and URL, then read that issue back to see the stored result."
+        },
+        {
+          "phase": "write",
+          "operation": "Quick-action subcase: pending unless the account owner has approved one exact non-destructive command in advance. Record the approved command, its expected effect and its cleanup here; otherwise leave pending.",
+          "status": "pending_owner_approval"
+        },
+        {
+          "phase": "receipt",
+          "operation": "If the create was uncertain, open the GitLab issue list in the service UI and record what you found. Do not resend from Steed."
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect the account, confirm the credential is gone, then revoke the token on the access tokens page and record the revocation date."
+        }
       ]
     },
     {
@@ -173,12 +255,40 @@
         "case": ""
       },
       "steps": [
-        "Install connectors/recipes/asana.json from App Connections, read the source review and install it.",
-        "Connect with a personal access token created in Asana and pasted into the Connect step.",
-        "Enable only the read actions you want this account to offer to tasks.",
-        "Run read_project and read_task for known GIDs taken from the Asana URLs, and record the returned fields.",
-        "Confirm the identity result shows your account name rather than an opt-in email field.",
-        "Disconnect the account, confirm the credential is gone, then deauthorize the token from My Apps."
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/asana.json from App Connections and read the source review before installing."
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect a personal access token created in Asana. Expect identity to return your account name, not an email field."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable only the read actions this account should offer to tasks."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_project for a project GID taken from an Asana URL and record the returned fields, including whether due_on or owner came back null."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_task for a task GID and record the returned fields."
+        },
+        {
+          "phase": "write",
+          "operation": "Not applicable: this profile is read-only.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "receipt",
+          "operation": "Not applicable: this profile is read-only.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect the account, confirm the credential is gone, then deauthorize the token from My Apps and record the revocation date."
+        }
       ]
     },
     {
@@ -209,12 +319,40 @@
         "case": ""
       },
       "steps": [
-        "Install connectors/recipes/raindrop.json from App Connections, read the source review and install it.",
-        "Connect an access token or test token copied from the App Management Console and pasted into the Connect step.",
-        "Enable only the read actions you want this account to offer to tasks.",
-        "Run read_collection for a collection ID from a collection URL, then list_root_collections, and record the returned fields.",
-        "Confirm what a failed read looks like in your account so the recorded behaviour matches the documented result flag.",
-        "Disconnect the account, confirm the credential is gone, then revoke the token in the app console."
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/raindrop.json from App Connections and read the source review before installing."
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect an access token or test token copied from the App Management Console. Expect identity to return your numeric user id and full name."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable only the read actions this account should offer to tasks."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_collection for a collection id from a collection URL and record the returned id, title, count and view."
+        },
+        {
+          "phase": "read",
+          "operation": "Run list_root_collections and record how many collections came back."
+        },
+        {
+          "phase": "write",
+          "operation": "Not applicable: this profile is read-only.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "receipt",
+          "operation": "Not applicable: this profile is read-only.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect the account, confirm the credential is gone, then revoke the token in the app console and record the revocation date."
+        }
       ]
     },
     {
@@ -244,13 +382,49 @@
         "case": ""
       },
       "steps": [
-        "Install your own copy: copy connectors/recipes/templates/zotero-library-template.json, replace the numeric library ID, and import it with Add Connector Recipe.",
-        "Confirm in the source review that the pinned library ID is disclosed as user-supplied and unchecked.",
-        "Connect a Zotero API key pasted into the Connect step.",
-        "Enable the read action you want this account to offer to tasks.",
-        "Run read_item for a known item key and record the returned fields, noting that no title is returned.",
-        "Open a second library you can access and record what read_item returns for it, so the unchecked mismatch risk is a recorded fact rather than a claim.",
-        "Disconnect the account, confirm the credential is gone, then revoke the key on the API Keys page."
+        {
+          "phase": "install",
+          "operation": "Copy connectors/recipes/templates/zotero-library-template.json, replace the numeric library id, and import your copy with Add Connector Recipe."
+        },
+        {
+          "phase": "install",
+          "operation": "Confirm in the source review that the pinned library id is disclosed as user-supplied and unchecked against the account."
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect a Zotero API key. Expect identity to return your numeric user id and username, and record the value of access.user.library from the response."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable the read action this account should offer to tasks."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_item for a known item key in the pinned library and record the returned fields, noting that no title is returned."
+        },
+        {
+          "phase": "write",
+          "operation": "Not applicable: this template is read-only and offers no write.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "receipt",
+          "operation": "Not applicable: this template is read-only, so there is no created object to confirm.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "read",
+          "operation": "Mismatch check: keep the pinned source unchanged, and run read_item with an item key that belongs to a different library you can access. Expect the service's own failure for an item that library does not contain, and record the exact status. Opening another library in the service does not change what this profile reads."
+        },
+        {
+          "phase": "read",
+          "operation": "Alternative mismatch check, only if you want to prove it deliberately: install a second, separately reviewed copy of the template pinned to the other library, connect it as a second account, and record what that copy returns. Disable that second profile afterwards.",
+          "status": "optional_separately_instantiated"
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect both accounts if you installed the optional second copy, confirm the credentials are gone, then revoke the key on the API Keys page and record the revocation date."
+        }
       ]
     },
     {
@@ -282,12 +456,40 @@
         "case": ""
       },
       "steps": [
-        "Install connectors/recipes/microsoft365-read.json from App Connections, read the source review and install it.",
-        "Connect a delegated access token you obtained yourself for your own account with only the documented read scopes; an application token will not work.",
-        "Enable the reads you want this account to offer to tasks.",
-        "Run read_drive_item with a driveItem ID taken from a Graph response, not from a sharing URL or encoded sharing token.",
-        "Run the calendar and To Do reads and record that only the first page was returned and that no next link was followed.",
-        "Disconnect the account, confirm the token is gone from Steed, then revoke it or let it expire according to your own tooling."
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/microsoft365-read.json from App Connections and read the source review before installing."
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect a delegated access token you obtained yourself for your own account with only the documented read scopes. An application token is expected to fail, because /me requires a delegated token."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable only the reads this account should offer to tasks."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_drive_item with a driveItem id taken from a Graph response, not from a sharing URL or an encoded sharing token, and record the returned fields."
+        },
+        {
+          "phase": "read",
+          "operation": "Run the calendar and To Do reads and record that only the first page came back and that no next link was followed."
+        },
+        {
+          "phase": "write",
+          "operation": "Not applicable: this profile is read-only.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "receipt",
+          "operation": "Not applicable: this profile is read-only.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect the account, confirm the token is gone from Steed, then revoke it or let it expire according to your own tooling, and record which."
+        }
       ]
     }
   ],
@@ -307,5 +509,81 @@
     "disconnect and revoke"
   ],
   "live_fields_may_not_be_filled_from_fixtures": "A synthetic result belongs in synthetic_expectations only. Live fields stay empty until an operator explicitly authorizes and completes the steps against a real account.",
-  "step_order_note": "A read-only service has fewer steps than phases: the write and receipt phases are recorded as not applicable rather than padded with filler."
+  "step_order_note": "A read-only service has fewer steps than phases: the write and receipt phases are recorded as not applicable rather than padded with filler.",
+  "phase_contract": {
+    "phases": [
+      {
+        "id": "install",
+        "requires": [],
+        "forbidden_after": [
+          "disconnect"
+        ]
+      },
+      {
+        "id": "connect",
+        "requires": [
+          "install"
+        ],
+        "forbidden_after": [
+          "disconnect"
+        ]
+      },
+      {
+        "id": "enable",
+        "requires": [
+          "connect"
+        ],
+        "forbidden_after": [
+          "disconnect"
+        ]
+      },
+      {
+        "id": "read",
+        "requires": [
+          "enable"
+        ],
+        "forbidden_after": [
+          "disconnect"
+        ]
+      },
+      {
+        "id": "write",
+        "requires": [
+          "read"
+        ],
+        "forbidden_after": [
+          "disconnect"
+        ],
+        "applies_to": "services_offering_a_write"
+      },
+      {
+        "id": "receipt",
+        "requires": [
+          "write"
+        ],
+        "forbidden_after": [
+          "disconnect"
+        ],
+        "applies_to": "services_offering_a_write"
+      },
+      {
+        "id": "disconnect",
+        "requires": [
+          "read"
+        ],
+        "last": true
+      }
+    ],
+    "rules": [
+      "A phase is recorded only after the phase it requires has been recorded, and no phase after disconnect is ever recorded.",
+      "The write and receipt phases apply only where a service offers a reviewed write; a read-only service records them as not_applicable.",
+      "A step is bounded: it names one command or one action, and it names the expected outcome rather than leaving it open.",
+      "An operation with an effect outside the approved scope stays pending; it is never recorded as performed."
+    ]
+  },
+  "step_statuses": [
+    "not_applicable",
+    "optional_separately_instantiated",
+    "pending_owner_approval"
+  ]
 }
