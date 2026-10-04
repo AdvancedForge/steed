@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "name": "Zotero (one library)",
+  "origin": "https://api.zotero.org",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/keys/current",
+    "subject": "/userID",
+    "label": "/username"
+  },
+  "tools": [
+    {
+      "name": "read_item",
+      "description": "Read one item in the library whose numeric ID is fixed in this reviewed source, by its item key such as ABCD2345. The library ID is user-supplied and unchecked: if it belongs to another library the request simply fails with the service's own error. No item is created or modified.",
+      "method": "GET",
+      "path": "/users/REPLACE-WITH-YOUR-ZOTERO-USER-ID/items/{destination}",
+      "response": [
+        {
+          "label": "key",
+          "pointer": "/key"
+        },
+        {
+          "label": "version",
+          "pointer": "/version"
+        },
+        {
+          "label": "item_type",
+          "pointer": "/data/itemType"
+        },
+        {
+          "label": "date_added",
+          "pointer": "/data/dateAdded"
+        },
+        {
+          "label": "date_modified",
+          "pointer": "/data/dateModified"
+        }
+      ]
+    }
+  ]
+}
