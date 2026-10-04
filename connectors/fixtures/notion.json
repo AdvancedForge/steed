@@ -24,9 +24,10 @@
     "required_static": {
       "Authorization": "Bearer <integration token supplied by the user>",
       "Notion-Version": "2026-03-11",
-      "blocks_a_read": true,
+      "blocks_a_read": false,
       "documented": "The integration sends Authorization: Bearer with its integration token, and Notion-Version is required on every request.",
-      "reference": "https://developers.notion.com/guides/get-started/authorization"
+      "reference": "https://developers.notion.com/guides/get-started/authorization",
+      "supported_now": "Notion-Version is one of the four reviewed non-secret static header names main accepts, with a canonical YYYY-MM-DD value, so the required header can be sent on every request."
     },
     "never": {
       "path": "No credential may appear in a path or query, and no version may be inferred per endpoint.",
@@ -84,7 +85,7 @@
     },
     "limitations": [
       "object and id are documented as always present, so the subject is stable.",
-      "The documented user object marks name as oneOf string or null, so a bot with no name has no non-empty label. This is the real blocker: the current label contract requires a non-empty label string.",
+      "The documented user object marks name as oneOf string or null. Reviewed identity label alternatives now let a null name fall back to another reviewed pointer rather than refusing the account, and the fallback is shown in the source review.",
       "The remaining properties may be absent depending on the connection's capabilities, so no field outside object, id and name may be relied on.",
       "Whether an internal integration token is accepted here is not stated explicitly; the documented bot fields for GET /v1/users/me are the evidence, so a framework test should confirm it with an integration token."
     ],
@@ -252,13 +253,13 @@
   },
   "framework_gap": {
     "capabilities": [
-      "static_headers",
-      "identity_shapes",
-      "post_reads"
+      "post_reads",
+      "query_inputs"
     ],
-    "minimum_missing_behavior": "Send one reviewed static header on every request, and accept an identity label that is documented as null. Those two together are what stand between this family and a single-item read.",
+    "minimum_missing_behavior": "A first read is now expressible: main carries reviewed non-secret static headers, so the required Notion-Version header can be sent, and reviewed identity label alternatives, so a documented null name falls back to a reviewed pointer instead of refusing the account. What remains is listing a data source, which is a POST read with a request object.",
     "not_required_for_a_first_read": [
-      "POST reads, which only block listing a data source.",
+      "The Notion-Version header, which main now supports as a reviewed static header with a canonical date value.",
+      "A tolerant nullable label, because reviewed identity label alternatives now cover it.",
       "Any identity-derived path binding, because a database or data source id comes from the caller.",
       "A write: nested v3 templates exist, but no Notion write is proposed in this queue."
     ],
@@ -284,7 +285,9 @@
       "GET /v1/users/me is documented as returning the user associated with the token, and object and id are documented as always present.",
       "The user object marks name as oneOf string or null.",
       "Since 2025-09-03 a database response has no properties field and instead lists data_sources.",
-      "Error responses document the code and message properties, with additional_data documented as optional."
+      "Error responses document the code and message properties, with additional_data documented as optional.",
+      "The required Notion-Version header is a reviewed non-secret static header in the current engine, so it is expressible today.",
+      "A documented null name is handled by reviewed identity label alternatives rather than by inventing a display string."
     ],
     "pending": [
       {

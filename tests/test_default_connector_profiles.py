@@ -901,6 +901,18 @@ class SharedCapabilityGroupTests(unittest.TestCase):
         )["services"]
         self.names = {row["name"] for row in self.rows}
 
+    def test_a_delivered_capability_drops_off_the_queue(self):
+        groups = {group["id"]: group for group in self.groups}
+        self.assertEqual(groups["static_headers"]["status"], "delivered_on_main")
+        self.assertIn("delivered", groups["static_headers"])
+        self.assertTrue(self.registry["capability_rule"])
+        by_name = {row["name"]: row for row in self.rows}
+        # Notion's required header and its nullable label are both expressible now.
+        self.assertNotIn("static_headers", by_name["Notion"]["capabilities"])
+        self.assertNotIn("identity_shapes", by_name["Notion"]["capabilities"])
+        # Nextcloud still needs the same header shape plus its own origin and flags.
+        self.assertIn("static_headers", by_name["Nextcloud"]["capabilities"])
+
     def test_each_group_states_the_limit_it_removes_and_who_needs_it(self):
         ids = [group["id"] for group in self.groups]
         self.assertEqual(len(ids), len(set(ids)))
@@ -931,10 +943,14 @@ class SharedCapabilityGroupTests(unittest.TestCase):
                     self.assertTrue(sample["proves"])
 
     def test_assessed_rows_and_groups_agree_on_the_needed_capabilities(self):
+        # A capability is listed only while a requirement still blocks something, so a
+        # delivered capability drops off the queue instead of lingering as a gate.
         grouped = {}
         for group in self.groups:
-            for name in group["services"]:
-                grouped.setdefault(name, set()).add(group["id"])
+            for requirement in group.get("requirements", []):
+                if not requirement.get("blocks"):
+                    continue
+                grouped.setdefault(requirement["service"], set()).add(group["id"])
         for row in self.rows:
             with self.subTest(service=row["name"]):
                 self.assertEqual(
@@ -971,7 +987,6 @@ class AssessedContractTests(unittest.TestCase):
         self.assertIn("/v1/users/me", row["identity"])
         self.assertIn("null", row["identity"])
         self.assertIn("Notion-Version", row["gate"])
-        self.assertIn("static_headers", row["capabilities"])
 
     def test_no_fixture_or_header_example_carries_a_credential(self):
         # Documentation may name a scheme and a fixture may echo the shape of a
@@ -1258,7 +1273,7 @@ def contract_case_recipe(case):
     request = case["request"]
     identity = case["identity"]
     data = {
-        "version": 2,
+        "version": case.get("recipe_version", 2),
         "name": "Contract case " + case["id"],
         "origin": CONTRACT_ORIGINS[case["provider"]],
         "authentication": {"type": "bearer"},
@@ -1277,6 +1292,10 @@ def contract_case_recipe(case):
             }
         ],
     }
+    if case.get("request_headers"):
+        data["request_headers"] = case["request_headers"]
+    if case.get("label_alternatives"):
+        data["identity"]["label_alternatives"] = case["label_alternatives"]
     return parse_recipe(json.dumps(data).encode("utf-8"))
 
 
@@ -1286,6 +1305,7 @@ class CaseTransport:
     def __init__(self, case):
         self.case = case
         self.requests = []
+        self.sent_headers = {}
         self.identity = case["identity"]["response"]
         self.read = case.get("documented_response")
         self.failure = case.get("failure")
@@ -1293,6 +1313,7 @@ class CaseTransport:
     def request(self, method, url, *, headers=None, body=None, cancelled=None):
         assert method == "GET" and body is None
         self.requests.append((method, url, dict(headers)))
+        self.sent_headers = dict(headers or {})
         path = urlsplit(url).path
         if path == self.case["identity"]["request_path"]:
             return copy.deepcopy(self.identity)
@@ -1350,6 +1371,22 @@ class ExecutableContractCaseTests(unittest.TestCase):
             with self.subTest(case=case["id"]):
                 recipe = contract_case_recipe(case)
                 transport = CaseTransport(case)
+                if expected["outcome"] == "succeeded_with_reviewed_alternative":
+                    adapter = self.connect(recipe, transport)
+                    definition = adapter.tools()[0]
+                    request = ConnectorRequest(
+                        "read",
+                        adapter.account.connector,
+                        "contract_read",
+                        "read",
+                        case["read"]["destination"],
+                        None,
+                    )
+                    definition.execute(request, self.cancelled)
+                    # A documented null label falls back to a reviewed pointer.
+                    self.assertEqual(adapter.account.label, expected["label"])
+                    self.assertEqual(adapter.account.subject, expected["subject"])
+                    continue
                 if expected["outcome"] == "refused_before_install":
                     with self.assertRaises(AccountError) as caught:
                         self.connect(recipe, transport)
@@ -1378,6 +1415,9 @@ class ExecutableContractCaseTests(unittest.TestCase):
                 result = definition.execute(request, self.cancelled)
                 self.assertEqual(result.state, expected["outcome"])
                 self.assertEqual(json.loads(result.text), expected["projected"])
+                if "header_check" in expected:
+                    for header, value in expected["header_check"].items():
+                        self.assertEqual(transport.sent_headers.get(header), value)
                 # The reviewed path is used verbatim and nothing else is called.
                 self.assertEqual(
                     transport.requests[-1][1],
@@ -1408,7 +1448,7 @@ class ExecutableContractCaseTests(unittest.TestCase):
         return RecipeConnector(recipe, catalog, account, accounts, http=transport)
 
     def test_transport_cases_prove_the_header_and_query_gates_refuse_early(self):
-        for name in ("figma_credential_token_header", "notion_static_version_header"):
+        for name in ("figma_credential_token_header",):
             case = self.case(name)
             with self.subTest(case=name):
                 http = RecipeHttp(CONTRACT_ORIGINS[case["provider"]])

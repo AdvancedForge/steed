@@ -5,7 +5,7 @@
     {
       "id": "static_headers",
       "title": "Reviewed static request headers",
-      "engine_limit": "Request headers are limited to Authorization, Accept and Content-Type plus at most one reviewed operation-ID header, so a service that requires its own header on every request cannot be reached at all.",
+      "engine_limit": "Delivered on main: request_headers is a reviewed non-secret header set, separate from Authorization and from any operation-ID header, with no secret permitted in it.",
       "services": [
         "Notion",
         "Figma",
@@ -23,13 +23,10 @@
             "Notion-Version": "2026-03-11"
           },
           "version_sensitive": "Response shapes are version specific. Since 2025-09-03 a database read returns a data_sources array and its documented response has no properties field; the older retrieve-a-database page is deprecated for versions up to and including 2022-06-28.",
-          "blocks": [
-            "identity",
-            "single_item_read",
-            "lists",
-            "writes"
-          ],
-          "documented_level": "required on every request"
+          "blocks": [],
+          "documented_level": "required on every request",
+          "blocks_a_read_now": false,
+          "note": "Delivered on main, so the required header no longer blocks a Notion read."
         },
         {
           "service": "Figma",
@@ -43,7 +40,8 @@
           "documented": "Recommended for production code and echoed back on responses; v3 is also the current default.",
           "reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
           "blocks": [],
-          "documented_level": "recommended, not required"
+          "documented_level": "recommended, not required",
+          "note": "Delivered on main, and the header is only recommended, so it blocks nothing."
         },
         {
           "service": "Nextcloud",
@@ -98,7 +96,9 @@
         "a Figma personal-token read subset",
         "a Zotero library read subset",
         "a Nextcloud OCS share subset on an approved host"
-      ]
+      ],
+      "status": "delivered_on_main",
+      "delivered": "Main now carries reviewed non-secret static headers: four supported names with bounded string values, shown in the source review. Notion-Version with a canonical date and Zotero-API-Version with an integer are expressible today."
     },
     {
       "id": "credential_headers",
@@ -554,21 +554,22 @@
           "reference": "https://airtable.com/developers/web/api/get-user-id-scopes",
           "blocks": [
             "identity"
-          ]
+          ],
+          "note": "Reviewed alternatives cover the optional email label, since the documented id is always present."
         },
         {
           "service": "Notion",
           "documented": "GET /v1/users/me is documented, and object and id are documented as always present, but the user object marks name as oneOf string or null, so a bot with no name has no non-empty label.",
           "reference": "https://developers.notion.com/reference/get-self",
-          "blocks": [
-            "identity"
-          ]
+          "blocks": [],
+          "note": "Delivered on main: a reviewed alternative pointer covers the documented null name."
         },
         {
           "service": "Microsoft 365",
           "documented": "GET /v1.0/me returns id and userPrincipalName, while mail can be null for some accounts.",
           "reference": "https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0",
-          "blocks": []
+          "blocks": [],
+          "note": "Not blocked: the profile uses userPrincipalName rather than the undocumented mail nullability."
         },
         {
           "service": "Joplin",
@@ -598,7 +599,9 @@
         "a Spotify read subset with a stable account identity",
         "a Calendly identity contract once a URI subject is deliberately supported",
         "explicitly documenting that Readwise and Joplin have no bindable identity, and that Notion's bindable subject exists but its label can be null"
-      ]
+      ],
+      "status": "partially_delivered_on_main",
+      "delivered": "Main now carries reviewed identity label alternatives, so a documented null or empty label falls back to another reviewed pointer instead of refusing the account. A URI subject, a 204 probe and an absent identity route are still unsupported."
     },
     {
       "id": "native_oauth",
@@ -1004,5 +1007,6 @@
       "An unverified live observation is behaviour, not documentation, and is recorded as unverified rather than as a contract."
     ],
     "how_pending_checks_are_kept": "Every candidate contract carries an empirical_status block: what documentation settles, what is still pending, and what a real account would settle. Pending items stay pending until a recorded live run exists, and a pending item is never recorded as acceptance. No test result and no unverified live observation promotes one."
-  }
+  },
+  "capability_rule": "A service lists a capability only while something is still blocked by it: a requirement with an empty blocks list blocks nothing, so a delivered capability drops off the queue rather than lingering as a gate nobody has to clear."
 }
