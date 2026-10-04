@@ -140,9 +140,10 @@ def image_data(path):
     if size.isEmpty() or size.width() * size.height() > 32_000_000:
         raise ValueError("Choose an image of at most 32 megapixels")
     reader.setAutoTransform(True)
-    reader.setScaledSize(
-        size.scaled(QSize(1600, 900), Qt.AspectRatioMode.KeepAspectRatio)
-    )
+    if size.width() > 1600 or size.height() > 900:
+        reader.setScaledSize(
+            size.scaled(QSize(1600, 900), Qt.AspectRatioMode.KeepAspectRatio)
+        )
     image = reader.read()
     if image.isNull():
         raise ValueError("This image could not be opened")

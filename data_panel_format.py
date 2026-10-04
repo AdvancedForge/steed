@@ -77,7 +77,17 @@ class PanelDefinition:
 
     @property
     def artifact_widgets(self):
-        return {w["id"]: w for w in self.widgets if w["kind"] in ARTIFACT_KINDS}
+        return {w["id"]: w for w in self.widgets if "artifact_id" in w}
+
+    @property
+    def workspace_widgets(self):
+        return {w["id"]: w for w in self.widgets if "file_id" in w}
+
+    @property
+    def source_widgets(self):
+        return {
+            w["id"]: w for w in self.widgets if "artifact_id" in w or "file_id" in w
+        }
 
 
 def _form_fields(fields):
@@ -154,7 +164,7 @@ def parse_panel(source):
         "widgets",
     }:
         raise ValueError("Use the published panel fields")
-    if type(document["version"]) is not int or document["version"] not in (1, 2):
+    if type(document["version"]) is not int or document["version"] not in (1, 2, 3):
         raise ValueError("Unsupported data-panel version")
     name = clean_name(document["name"])
     widgets = document["widgets"]
@@ -166,11 +176,19 @@ def parse_panel(source):
         raise ValueError("Use a printable name and between one and eight widgets")
     seen = set()
     for widget in widgets:
-        kinds = WIDGET_KINDS + (("form", "table") if document["version"] == 2 else ())
+        kinds = WIDGET_KINDS + (("form", "table") if document["version"] >= 2 else ())
+        if document["version"] == 3:
+            kinds += ("image",)
         if not isinstance(widget, dict) or widget.get("kind") not in kinds:
             raise ValueError("Use the published native widget kinds")
         expected = {"id", "kind", "title"}
-        if widget["kind"] in ARTIFACT_KINDS:
+        if widget["kind"] == "image" or (
+            document["version"] == 3
+            and widget["kind"] in ARTIFACT_KINDS
+            and "file_id" in widget
+        ):
+            expected.add("file_id")
+        elif widget["kind"] in ARTIFACT_KINDS:
             expected.add("artifact_id")
         elif widget["kind"] == "form":
             expected.add("fields")
@@ -183,6 +201,8 @@ def parse_panel(source):
             raise ValueError("Use distinct widget IDs and the exact published fields")
         if "artifact_id" in widget and not stable_id(widget["artifact_id"]):
             raise ValueError("Bind a widget to one owned artifact ID")
+        if "file_id" in widget and not stable_id(widget["file_id"]):
+            raise ValueError("Bind a widget to one sealed owned workspace file ID")
         seen.add(widget["id"])
         widget["title"] = clean_name(widget["title"])
         if widget["kind"] == "form":
@@ -239,17 +259,25 @@ def widget_content(kind, content):
 
 def panel_capabilities():
     return {
-        "version": 2,
-        "supported_versions": [1, 2],
-        "widget_kinds": list(WIDGET_KINDS) + ["form", "table"],
+        "version": 3,
+        "supported_versions": [1, 2, 3],
+        "widget_kinds": list(WIDGET_KINDS) + ["form", "table", "image"],
         "max_widgets": MAX_WIDGETS,
         "max_source_bytes": MAX_PANEL_SOURCE_BYTES,
         "max_list_items": MAX_LIST_ITEMS,
         "max_item_characters": MAX_ITEM_CHARS,
-        "source": "owned_immutable_artifact",
+        "source": "owned_immutable_artifact_or_sealed_workspace_file",
         "profile": "user_selected_normal_profile",
         "approval": "native_preview_and_profile_choice",
-        "updates": "same_task_artifact_bindings_with_exact_revision",
+        "updates": "same_task_owned_source_bindings_with_exact_revision",
+        "source_fields": {
+            "artifact_id": "text/list/table; artifact authority",
+            "file_id": "version 3 text/list/table/image; sealed owned workspace file and workspace authority",
+        },
+        "max_workspace_text_bytes": 16384,
+        "max_image_file_bytes": 8 * 1024 * 1024,
+        "max_image_pixels": 4 * 1024 * 1024,
+        "image_types": ["image/png", "image/jpeg"],
         "forms": "explicit_user_message_to_owning_connected_task_with_payload_preview",
         "max_form_fields": MAX_FORM_FIELDS,
         "max_field_characters": MAX_FIELD_CHARS,
@@ -264,4 +292,16 @@ def panel_capabilities():
         "retention": "saved_drafts_survive_task_end_without_update_authority",
         "example": deepcopy(PANEL_EXAMPLE),
         "form_example": deepcopy(FORM_EXAMPLE),
+        "image_example": {
+            "version": 3,
+            "name": "Generated chart",
+            "widgets": [
+                {
+                    "id": "chart",
+                    "kind": "image",
+                    "title": "Chart",
+                    "file_id": "SEALED_OWNED_WORKSPACE_FILE_ID",
+                }
+            ],
+        },
     }

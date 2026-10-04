@@ -4491,7 +4491,8 @@ summary, and a list of next steps; keep its drafts updated as you work.” The a
 uses the native panel tools below. Review the preview, choose the display profile,
 and click **Enable panel and draft updates**. Close defers the request; reopen it
 under **Agents → Task Permissions… → Data Panels**. Decline leaves the browser
-unchanged. Draft widgets need the task's existing `artifact` permission; panel
+unchanged. Artifact sources need the task's existing `artifact` permission;
+sealed workspace sources need `workspace` permission. Panel
 approval neither creates nor expands website, folder, file or account permission.
 
 The current catalogue provides these native components:
@@ -4499,15 +4500,16 @@ The current catalogue provides these native components:
 | Kind | Source | Display |
 | --- | --- | --- |
 | `task` | Owning task's metadata | Objective and current task status |
-| `text` | One owned immutable artifact | Selectable, read-only plain text |
-| `list` | One owned artifact containing a JSON array of strings | Up to 64 plain-text items, 512 characters each |
-| `table` (v2) | One owned JSON artifact with `columns` and `rows` | Read-only comparison table, up to eight columns and 64 rows |
+| `text` | Owned immutable artifact, or sealed UTF-8 workspace file (v3) | Selectable, read-only plain text |
+| `list` | Owned artifact, or sealed workspace JSON array (v3) | Up to 64 plain-text items, 512 characters each |
+| `table` (v2/v3) | Owned artifact, or sealed workspace JSON (v3), with `columns` and `rows` | Read-only comparison table, up to eight columns and 64 rows |
 | `form` (v2) | Reviewed text fields and choices | Explicit user message to the owning connected agent |
+| `image` (v3) | Sealed owned PNG/JPEG workspace file | Static native preview; no HTML/SVG or remote resource reads |
 
 Generated text is labelled as a saved agent draft. HTML, URLs and commands stay
 plain text; invisible controls are displayed as escapes. Task completion describes
 task state, not proof that draft claims or external effects succeeded. Missing,
-deleted or hash-mismatched artifacts make the panel unavailable; there is no
+deleted or hash-mismatched sources make the panel unavailable; there is no
 fallback to other files or profiles. Use the task's existing artifact tools to
 create or read drafts; data panels add no body-reading endpoint for agents.
 
@@ -4521,12 +4523,19 @@ Agent protocol:
    `OWNED_ARTIFACT_ID` with the returned ID. Submit `steed_panel_propose` with the
    exact UTF-8 `source` and a stable `request_id`; poll `steed_panel_status` until
    the user chooses a profile and enables the panel.
-3. To revise drafts, store new immutable artifacts and call `steed_panel_publish`
+3. Version 3 also accepts `file_id` for text/list/table and requires it for images.
+   Create/seal bytes through the workspace tools under existing workspace authority;
+   user-shared files already copied into that task's workspace are eligible too.
+   See [the image/file example](examples/data_panels/generated-chart.json). A file
+   must belong to the proposing task, be sealed, and match its stored digest.
+4. To revise drafts, store new immutable artifacts/files and call `steed_panel_publish`
    with that `request_id`, a stable `update_id`, the current `expected_revision`,
    and `bindings`, for example `[{"id":"summary","artifact_id":"NEW_ARTIFACT_ID"}]`.
-   Only reviewed artifact widgets can change their bindings. New widgets, different
+   A file update uses `[{"id":"chart","file_id":"NEW_SEALED_FILE_ID"}]`.
+   Only reviewed source widgets can change their bindings; an artifact widget
+   cannot become a file widget or vice versa. New widgets, different
    kinds or another display profile need a new proposal and review.
-4. Identical publication retries return their original revision receipt, even
+5. Identical publication retries return their original revision receipt, even
    after newer publications; changed reuse of an ID is refused. A stale revision
    requires reading status before another publication. Changes are committed with
    their receipt and value-free journal event in one SQLite transaction.
@@ -4534,7 +4543,14 @@ Agent protocol:
 Limits: 16 KiB source, eight widgets per panel, eight enabled panels per profile,
 20 proposals per task, three pending per task, 32 pending globally, and 256 draft
 publications per panel. Artifact limits also apply (16 KiB per artifact, 50 per
-task). Publication requires current artifact authority and the original active
+task). Workspace text/JSON is limited to 16 KiB and media types `text/plain`,
+`text/markdown` and `application/json`. Images require matching PNG/JPEG bytes,
+at most 8 MiB, four megapixels and 8192 pixels per dimension. Only those two
+decoders run; previews shrink to fit 1600×1000 without enlarging small sources.
+Eight decoded previews are cached, after integrity checks on every read. Normal
+workspace file/task limits also apply. Mixed sources require both authorities but
+one proposal/publication consumes one operation; metadata and retries do not.
+Publication requires the corresponding artifact/workspace authority and the original active
 task. Task end, revocation or expiry stops updates; pending requests are cancelled
 or interrupted. Saved drafts remain visible to the user after task end/restart
 until removed or their source is deleted. Recovered/new tasks get no automatic
@@ -4546,11 +4562,17 @@ approval, while the dock labels the current profile. Other profiles and private
 browsing do not display these panels. Profile switches erase the previous native
 content immediately. Multiple windows on the same profile receive committed
 updates without rebuilding unchanged text selections. Panel templates, bindings
-and receipts live in the task database (schema 18); personal draft bodies remain
-in owned artifacts, not global appearance preferences, named layouts or layout
+and receipts live in the task database (schema 19); personal draft bodies remain
+in owned artifacts/sealed workspace files, not global appearance preferences, named layouts or layout
 exports. Browser text sizing also applies to the dock.
+Profile changes clear image pixels and widget source records as well as text and
+forms. These are retained task snapshots: revocation stops agent updates, while
+the user can still view previously enabled saved files. Deleting or corrupting a
+source makes it unavailable even if a decoded preview was cached. This contract
+does not authorize live reads from the persistent library or connected accounts.
 
-Locally hosted HTML/JavaScript mini-apps remain a planned complementary option.
+Editable local Welcome/New Tab HTML is implemented; broader hosted mini-apps remain
+a planned complementary option.
 They will need their own host/lifecycle and a typed bridge to existing Steed
 capabilities. The current native format does not execute extension code, and
 external agents keep their independent tools.

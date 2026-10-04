@@ -21,9 +21,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from data_panel_format import ARTIFACT_KINDS
 from services.task_store import ACTIVE_STATUSES
 from ui.data_panel_form import PanelForm
+from ui.panel_image import PanelImage
 
 
 def display_text(value):
@@ -67,7 +67,12 @@ class PanelContent(QWidget):
                 display = PanelForm(widget, context=form_context)
             else:
                 caption = label(
-                    "Saved agent draft • " + display_text(widget["artifact_title"])
+                    (
+                        "Saved task file • "
+                        if "file_id" in widget
+                        else "Saved agent draft • "
+                    )
+                    + display_text(widget["artifact_title"])
                 )
                 self.captions[widget["id"]] = caption
                 body.addWidget(caption)
@@ -84,6 +89,8 @@ class PanelContent(QWidget):
                     display.addItems([display_text(item) for item in widget["content"]])
                     display.setMinimumHeight(90)
                     display.setMaximumHeight(190)
+                elif widget["kind"] == "image":
+                    display = PanelImage(widget["content"])
                 else:
                     display = QTableWidget()
                     display.setEditTriggers(
@@ -118,9 +125,17 @@ class PanelContent(QWidget):
                 self.captions[key].setText("Task status: " + task.status)
             else:
                 self.captions[key].setText(
-                    "Saved agent draft • " + display_text(widget["artifact_title"])
+                    (
+                        "Saved task file • "
+                        if "file_id" in widget
+                        else "Saved agent draft • "
+                    )
+                    + display_text(widget["artifact_title"])
                 )
-                if previous["content"] != widget["content"]:
+                if kind == "image":
+                    if previous["source_sha256"] != widget["source_sha256"]:
+                        display.set_image(widget["content"])
+                elif previous["content"] != widget["content"]:
                     if kind == "text":
                         display.setPlainText(display_text(widget["content"]))
                     elif kind == "list":
@@ -187,6 +202,8 @@ class DataPanelDock(QDockWidget):
                 child.setColumnCount(0)
             for child in widget.findChildren(QLabel):
                 child.clear()
+            if hasattr(widget, "_widgets"):
+                widget._widgets.clear()
             widget.hide()
             widget.deleteLater()
         self._signature = None
@@ -250,15 +267,18 @@ class DataPanelDock(QDockWidget):
             widgets = self.service.data_panels.view(*key)
             signature = (key, receipt.revision, task.status, widgets)
             live = self.service._grants.get(task.task_id)
+            actions = (
+                {"artifact"} if any("artifact_id" in w for w in widgets) else set()
+            ) | ({"workspace"} if any("file_id" in w for w in widgets) else set())
             updating = task.status in ACTIVE_STATUSES and (
-                not any(w["kind"] in ARTIFACT_KINDS for w in widgets)
+                not actions
                 or (
                     live is not None
                     and not live[1].reason()
-                    and "artifact" in live[1].scope.actions
+                    and actions <= set(live[1].scope.actions)
                 )
             )
-            has_drafts = any(w["kind"] in ARTIFACT_KINDS for w in widgets)
+            has_drafts = bool(actions)
             detail = (
                 (
                     "Draft updates enabled for this task"
@@ -331,7 +351,7 @@ class DataPanelReviewDialog(QDialog):
         body.addWidget(label("Panel: " + receipt.name))
         body.addWidget(
             label(
-                "Enable these native widgets in one normal profile. This task can update saved drafts while artifact permission is active. Drafts remain after task end or restart until removed. Forms send only after your payload preview and Send to agent, to the owning task. Website, file and account access remain separate permissions."
+                "Enable these native widgets in one normal profile. Updates need the corresponding artifact/workspace permission. Saved drafts remain after task end or restart until removed; deleting or changing a source makes it unavailable. Forms send only after your payload preview and Send to agent, to the owning task. Website, library and account access remain separate permissions."
             )
         )
         self.profiles = QComboBox()

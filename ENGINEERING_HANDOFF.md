@@ -2,7 +2,10 @@
 
 ## Start here
 
-Current checkpoint adds Global startup and editable `steed:newtab`/`steed:welcome`.
+Work is paused at an accepted engineering milestone at the user's request for a
+handoff. Branch from published `main`; do not restart earlier completed milestones.
+Current checkpoint adds Global startup, editable `steed:newtab`/`steed:welcome`,
+and native sealed-workspace text/JSON/image panels.
 Read [the page guide](DOCUMENTATION.md#welcome-new-tab-and-bookmarks) and the newest
 roadmap entry. `services/start_pages.py` owns profile-local settings/bookmarks/HTML;
 `services/news_feed.py` performs optional bounded cookie-free feed reads. URL-scheme
@@ -15,18 +18,85 @@ a built-in. Global now supports explicit reviewed task sharing and stable identi
 implement external-agent edits; schema 19 adds immutable proposals. New source
 sharing uses existing connected-task messages, with exact payload preview and an
 8 KB limit. Agent declarations have a 32 KB UTF-8 limit; local imports allow 256 KB.
-Native panels remain at versions 1/2; continue their image/workspace milestone
-without adding arbitrary code callbacks or conflating private data with global
-appearance exports. Website chatbots still use copy/export or enabled folders;
+Native panels now support versions 1/2/3; the image/workspace milestone is
+implemented. Continue selected library/connector sources without adding arbitrary
+code callbacks or conflating private data with global appearance exports.
+Website chatbots still use copy/export or enabled folders;
 external MCP/Codex clients discover the three start-page tools automatically.
 
-Validation checkpoint: 136 browser/profile checks and 22 focused page/proposal/
-feed checks pass, plus stdio/HTTP SDK/raw page reviews, both installed Codex
-runtime paths, startup and inspected light/dark/minimal previews. Full combined
-acceptance follows the next source-binding milestone. One early stdio invocation
+Validation checkpoint: **1,220 combined tests pass in 416.669 seconds**; 136
+browser/profile checks, 22 page/proposal/feed checks and 45 native source/form
+checks pass separately. SDK/raw MCP journeys pass over stdio and authenticated
+HTTP with recipes, reviewed pages, sealed file/image publication and explicit form
+delivery. Both installed Codex paths pass using local model fixtures; startup/
+render/shutdown and light/dark/minimal page plus native image/file previews pass.
+Ruff lint/format and whitespace pass. Logs:
+`/tmp/steed-internal-pages-panels-{full,stdio,http,native,native-direct,startup}.log`.
+All automated browser data was synthetic and temporary; desktop checks against
+the user's actual running session remain manual. One early stdio invocation
 exited with a Qt segmentation fault before useful output; subsequent faulthandler
 stdio/HTTP and both Codex runs passed. Keep faulthandler enabled for transport
-acceptance and capture a stack if this intermittent failure recurs.
+acceptance and capture a stack if this intermittent failure recurs. The final two
+transport runs did not reproduce it. A separate raw smoke-client naming collision
+was corrected; this changed the fixture, not the MCP implementation.
+
+### Incoming engineer: first steps and ownership
+
+1. Read `AGENTS.md`, this checkpoint, current `ROADMAP.md`, and the page/panel/MCP
+   guides in `DOCUMENTATION.md`. Fetch main and create your own branch/worktree,
+   such as `engineering/typed-post-reads`. Leave the user's running checkout and
+   real `~/.custom_browser/` state alone. Keep Qt tests/smokes serial.
+2. Verify baseline lint/format and the focused page/panel tests. Use the repository
+   virtual environment and temporary fixtures. Keep `-X faulthandler` enabled for
+   transport/native acceptance; logs under `/tmp` are session-local evidence.
+3. Coordinate **PR #3** with the connector contributor. Exact reviewed head is
+   `a7b7713ed3fe06b6c0587baeb6d01b7cd772c77c`, based on `629d8a4`. The independent
+   isolated review passed 96 packaged-profile checks, 4 compatibility checks and
+   repository lint/format. Read
+   [the posted findings and C6–C10 continuation](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5982781874).
+   Acceptance steps, bounded GitLab quick actions, Linear auth-specific limits and
+   self-contained POST source references need follow-up. It is not approved or
+   merged. Re-review the contributor's exact updated head before integration;
+   synthetic success must not become live-provider evidence.
+4. Own shared runtime/UI/MCP/root-doc changes; leave `connectors/recipes/`,
+   `connectors/fixtures/`, `connectors/SETUP.md` and the contributor's provider tests
+   to that contributor. Publish a typed contract before asking them to adopt it.
+   Do not change old source hashes, credentials or grants by rewriting recipes.
+
+### Next engineering milestones
+
+**Shared typed POST/query reads — next priority.** Design and implement a new
+recipe version with bounded declarative request inputs, exact reviewed endpoints,
+identity POST support, selected response fields and explicit application-error
+contracts. Support fixed reviewed GraphQL reads without arbitrary queries or
+mutations. Treat HTTP-200 GraphQL errors/partial data honestly; handle Dropbox
+identity/list continuation and Notion cursor bodies. Preserve v1–v6 grammar,
+credential/origin/header rules, source review, identity rechecks, cancellation and
+no automatic write replay. Add parser/review/adapter/exact-wire/recovery tests plus
+SDK/raw transport acceptance. Coordinate fixture promotion with PR #3's agent;
+do not implement gated providers by disguising reads as creates.
+
+**Selected data sources — remaining N3.** Existing v3 panels show immutable owned
+task files, not live folders or accounts. Propose explicit library/connector
+bindings and freshness/unavailable labels, with grant/identity rechecks on refresh.
+Distinguish live data from deliberately saved drafts. Keep revoked sources hidden
+unless an independently reviewed retention contract permits a snapshot; ask the
+owner before adding automatic permanent retention. Keep field content and image
+bytes out of appearance exports and audit metadata. Reuse existing services rather
+than executable callbacks or new agent-side approval endpoints.
+
+**External agents/chatbots — preserve on every milestone.** Generic MCP is the
+common capability surface; native Codex is one provider. User editing, native agent
+source-review proposals, explicit connected-task source sharing, and website-chat
+copy/export/import must remain usable. Reconnect native chats after tool-catalogue
+changes. Do not claim that a website chatbot has MCP merely because its chat is
+open in Steed. Test both independent protocol clients and both installed Codex
+runtime paths after shared-tool changes.
+
+**Hosted apps — parked, not abandoned.** Editable internal HTML is already a
+concrete isolated page use case. A broader mini-app host needs a concrete task,
+bundle/update lifecycle and typed data bridge; page installation itself never
+grants browser/library/account access. Preserve this option alongside native UI.
 
 Main includes the persistent file library and bounded discovery, open-shadow
 observation, reviewed static API headers, explicit identity-label alternatives,
@@ -85,7 +155,8 @@ follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for lo
 Manual layout L1 is accepted at `5ece7e8`; portable layout/proposal L2 is accepted.
 Native action panels/text sizing L3 and bounded accessible form hints are delivered.
 Native task/text/list data panels N1, explicit forms N2 and comparison tables are
-delivered; continue with the remaining N3 sources below.
+delivered; v3 workspace/image sources are also delivered. Continue only the
+remaining selected library/connector bindings and shared runtime work above.
 See the current ROADMAP acceptance record and the accepted native-first data-panel plan.
 
 ## Configurable layout review and continuation
@@ -311,8 +382,19 @@ branch point. Forms and comparison tables need no further owner decision.
 
 Read-only owned-artifact comparison tables are delivered: eight distinct columns,
 64 rows, text-only cells, version-2 declaration and pinned publication semantics.
-Other sources below remain work to do. Add maintained image widgets and exact owned workspace-file sources, then
-selected library/connector-result bindings through existing grant checks. Recheck
+Maintained static PNG/JPEG widgets and exact sealed owned workspace-file sources
+are delivered in version 3. `data_panel_format.py` discovers source fields;
+`services/data_panels.py` checks both authorities without double-consuming a mixed
+operation and preserves old artifact-only retry fingerprints. Workspace reads
+verify sealing/hash/MIME even with an image cache; `services/panel_images.py` uses
+only the declared PNG/JPEG decoder and bounded dimensions/pixels. `ui/panel_image.py`
+scrubs pixels on profile change. No database bump beyond 19 was needed. These are
+retained task snapshots, including explicitly copied user inputs; deleting a
+source hides it, while grant/task end freezes updates. New examples and stdio/HTTP
+SDK/raw workflows cover mixed source publication. The combined 1,220-test suite
+and both transports/runtimes pass; see the checkpoint at the top of this document.
+
+Next add selected library/connector-result bindings through existing grant checks. Recheck
 permissions and identity on refresh; do not infer read authority from panel review
 or source names. Show freshness, unavailable/revoked sources and source labels.
 Live private data and retained user drafts need distinct retention contracts.
@@ -513,9 +595,10 @@ plans and supports optional v5 headers. Capabilities expose `identity_example`;
 journeys now use this example; v4/v5 retain regression coverage. No service-data
 files were changed; live-provider acceptance is still separate.
 
-**Next daily-workflow increment: N3 sources.** Layout L1/L2/L3 and native
-task/text/list/form/table panels are delivered. Continue the richer-source plan
-above; do not repeat completed layout or form work. Keep generated code outside
+**Next daily-workflow increment: remaining N3 sources.** Layout L1/L2/L3 and native
+task/text/list/form/table/image plus sealed workspace bindings are delivered.
+Continue only selected library/connector bindings; do not repeat completed layout,
+form or workspace/image work. Keep generated code outside
 the browser; optional hosted apps have their separate H1 lifecycle scope.
 
 **Next shared connector increment:** typed read-only POST/query inputs, separate

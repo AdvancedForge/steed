@@ -989,6 +989,7 @@ async def native_panel_workflow(call, shared, label):
         "list",
         "form",
         "table",
+        "image",
     ]
     initial = await call(
         "artifact.store",
@@ -1010,9 +1011,15 @@ async def native_panel_workflow(call, shared, label):
             {"columns": ["Option", "Notes"], "rows": [["A", "<b>Literal</b>"]]}
         ),
     )
+    chart = await native_panel_file(
+        call, label + "-chart.png", synthetic_panel_png(80), "image/png"
+    )
+    notes = await native_panel_file(
+        call, label + "-notes.txt", b"SYNTHETIC_WORKSPACE_PANEL", "text/plain"
+    )
     source = json.dumps(
         {
-            "version": 2,
+            "version": 3,
             "name": label.upper() + " task dashboard",
             "widgets": [
                 {"id": "progress", "kind": "task", "title": "Progress"},
@@ -1050,6 +1057,24 @@ async def native_panel_workflow(call, shared, label):
             ],
         }
     )
+    document = json.loads(source)
+    document["widgets"].extend(
+        [
+            {
+                "id": "chart",
+                "kind": "image",
+                "title": "Generated chart",
+                "file_id": chart["file_id"],
+            },
+            {
+                "id": "notes",
+                "kind": "text",
+                "title": "Saved workspace notes",
+                "file_id": notes["file_id"],
+            },
+        ]
+    )
+    source = json.dumps(document)
     request_id = label + "-dashboard"
     receipt = await call("panel.propose", source=source, request_id=request_id)
     assert receipt["state"] == "awaiting_approval"
@@ -1090,17 +1115,63 @@ async def native_panel_workflow(call, shared, label):
         content=label + " updated panel draft",
         format="text",
     )
+    revised_chart = await native_panel_file(
+        call, label + "-chart-revised.png", synthetic_panel_png(160), "image/png"
+    )
     arguments = {
         "request_id": request_id,
         "update_id": label + "-publication",
         "expected_revision": 0,
-        "bindings": [{"id": "summary", "artifact_id": revised["artifact_id"]}],
+        "bindings": [
+            {"id": "summary", "artifact_id": revised["artifact_id"]},
+            {"id": "chart", "file_id": revised_chart["file_id"]},
+        ],
     }
     publication = await call("panel.publish", **arguments)
     assert publication["revision"] == 1
     assert await call("panel.publish", **arguments) == publication
     assert (await call("panel.status", request_id=request_id))["revision"] == 1
     shared[label + "_reviewed_native_panel"] = True
+    shared[label + "_sealed_workspace_panel"] = True
+
+
+def synthetic_panel_png(red):
+    """Small deterministic local fixture, with real PNG chunk checksums."""
+    import struct
+    import zlib
+
+    def chunk(kind, body):
+        return (
+            struct.pack(">I", len(body))
+            + kind
+            + body
+            + struct.pack(">I", zlib.crc32(kind + body))
+        )
+
+    rows = (b"\0" + bytes((red, 150, 110)) * 120) * 80
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", 120, 80, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
+
+
+async def native_panel_file(call, name, data, media_type):
+    item = await call(
+        "workspace.begin",
+        name=name,
+        media_type=media_type,
+        byte_count=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
+    )
+    await call(
+        "workspace.write",
+        file_id=item["file_id"],
+        offset=0,
+        data_base64=base64.b64encode(data).decode(),
+    )
+    return await call("workspace.seal", file_id=item["file_id"])
 
 
 async def start_page_workflow(call, shared, label):
@@ -1379,8 +1450,8 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         source_events=sources,
     )
 
-    async def panel_call(name, **arguments):
-        return call(name, **arguments)
+    async def panel_call(operation, **arguments):
+        return call(operation, **arguments)
 
     asyncio.run(native_panel_workflow(panel_call, shared, "raw"))
     asyncio.run(start_page_workflow(panel_call, shared, "raw"))

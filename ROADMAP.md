@@ -12,7 +12,38 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
-**Global and editable internal pages (implemented; acceptance in progress).**
+**Handoff checkpoint:** stop at this accepted milestone as requested. Resume from
+published `main` using [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md). PR #3 was
+reviewed at `a7b7713` in a separate checkout and received
+[feedback and continuation instructions](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5982781874);
+it remains open and unmerged. Connector-owned paths were not changed here.
+
+**Native workspace/image sources N3 (implemented and accepted).**
+Version 3 binds text/list/table widgets to exact sealed owned files and introduces
+static PNG/JPEG previews. Versions 1/2 retain their grammar. Proposals and updates
+check the source's task, status, size, MIME and digest, pin its reviewed source
+type, and require the corresponding artifact/workspace authority. Mixed source
+operations consume one budget unit; existing artifact receipt hashes stay stable.
+Images enforce 8 MiB/four-megapixel/dimension bounds and an eight-preview cache;
+only matching PNG/JPEG decoders run. Profile switches scrub pixels/source records.
+Saved task snapshots survive task end/revocation with no update authority; deleted
+or changed files fail closed even with a cached preview. No live library/account
+read or executable callback is introduced.
+
+Acceptance: **1,220 combined regressions pass in 416.669 seconds**, plus 45 focused
+image/file/artifact/form checks. Independent SDK/raw workflows pass sealed file
+creation, image review, mixed-source publication, form delivery, page edits and
+stable retries over stdio and authenticated HTTP. Both installed Codex runtime
+paths discover the updated catalogue against local model fixtures. Startup/render/
+shutdown and light/dark native file/image previews pass; Ruff lint/format and
+whitespace pass. A synthetic raw-client argument collision was corrected before
+the successful transport runs. No real accounts or external models were used.
+Logs: `/tmp/steed-internal-pages-panels-{full,stdio,http,native,native-direct,startup}.log`.
+Next: shared typed connector query/POST reads to unblock the connector contributor,
+then selected library/connector sources with explicit freshness/revocation. Broader
+local HTML hosting/bridges need a concrete app and lifecycle proposal.
+
+**Global and editable internal pages (implemented and accepted).**
 Fresh installs start in Global and no longer create a built-in Default profile;
 existing Default data remains an ordinary, mutable profile. Home and New Tab have
 separate address preferences, initially `steed:newtab`. `steed:welcome` provides
@@ -39,10 +70,10 @@ discover the page tools using local model fixtures. Light/dark Welcome, New Tab,
 customization and minimal-page previews were inspected. A feed refresh preserves
 the search draft; a startup autofocus scroll issue was found during visual review
 and corrected. The full suite's three old Default/Global assumptions were updated;
-final combined full-suite acceptance follows. Startup/render/shutdown passes.
+the final combined 1,220-test suite now passes. Startup/render/shutdown passes.
 Logs: `/tmp/steed-start-pages-*`.
-Next engineering scopes remain native image/workspace bindings, then selected
-library/connector sources and typed connector query/POST reads. The editable start
+Native image/workspace bindings are also accepted above. Next engineering scopes
+are typed connector query/POST reads and selected library/connector sources. The editable start
 page is a concrete local HTML use case; broader hosted apps/capability bridges
 remain separate work.
 

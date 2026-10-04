@@ -151,11 +151,11 @@ def tool(command, description, properties=None, required=()):
 TOOLS = (
     tool(
         "panel.capabilities",
-        "Discover native task/text/list/table/form data-panel widgets, supported versions, bounds and JSON examples. No content, profiles or grants are returned. Forms deliver explicit user-reviewed messages to the owning connected task; read them through conversation.read. Local HTML/JS apps remain future support.",
+        "Discover native task/text/list/table/form/image widgets, supported versions, source types, bounds and JSON examples. Version 3 accepts sealed owned workspace files. No content, profiles or grants are returned. Forms deliver explicit user-reviewed messages to the owning connected task; read them through conversation.read.",
     ),
     tool(
         "panel.propose",
-        "Propose native widgets using the discovered strict JSON format. Artifact widgets require artifact permission; forms/task metadata do not. Lists/tables use owned JSON artifacts. Version 2 forms send only explicit user-reviewed values through this task's conversation, never callbacks or automatic connector writes. User previews and chooses one profile. Pin a stable request ID to exact source bytes and poll panel.status.",
+        "Propose native widgets using the discovered strict JSON format. Artifact sources require artifact permission; version 3 file_id sources require workspace permission and sealed task-owned files. Images are bounded PNG/JPEG; text/list/table files are bounded UTF-8. Forms/task metadata need no data grant. User previews and chooses one profile. Pin a stable request ID to exact source bytes and poll panel.status.",
         {"source": string(16384), "request_id": string(64)},
         ("source", "request_id"),
     ),
@@ -167,7 +167,7 @@ TOOLS = (
     ),
     tool(
         "panel.publish",
-        "Update artifact bindings in an approved native panel using new immutable artifacts owned by this task. Keep the reviewed widgets/profile; changes to structure need a new proposal. Requires current artifact permission. Use the current exact revision and a stable update ID; identical retries return the original publication receipt without replay. Task end/revocation freezes displayed drafts. No external effects occur.",
+        "Update approved native panel bindings with immutable owned artifacts or sealed workspace files. Use artifact_id or file_id exactly as reviewed for each widget; the source type cannot change. Requires the corresponding current artifact/workspace authority. Keep the reviewed structure/profile. Use an exact revision and stable update ID; identical retries return the original receipt. Task end/revocation freezes saved drafts. No external effects occur.",
         {
             "request_id": string(64),
             "update_id": string(64),
@@ -177,7 +177,12 @@ TOOLS = (
                 "minItems": 1,
                 "maxItems": 8,
                 "items": schema(
-                    {"id": string(32), "artifact_id": string(64)}, ("id", "artifact_id")
+                    {
+                        "id": string(32),
+                        "artifact_id": string(64),
+                        "file_id": string(64),
+                    },
+                    ("id",),
                 ),
             },
         },

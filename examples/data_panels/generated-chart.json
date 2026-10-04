@@ -1,0 +1,18 @@
+{
+  "version": 3,
+  "name": "Generated chart",
+  "widgets": [
+    {
+      "id": "chart",
+      "kind": "image",
+      "title": "Chart",
+      "file_id": "SEALED_OWNED_WORKSPACE_FILE_ID"
+    },
+    {
+      "id": "summary",
+      "kind": "text",
+      "title": "Notes",
+      "file_id": "SEALED_OWNED_TEXT_FILE_ID"
+    }
+  ]
+}

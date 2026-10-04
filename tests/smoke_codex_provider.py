@@ -173,6 +173,7 @@ def run(model="gpt-6.1-sol"):
                 "list",
                 "form",
                 "table",
+                "image",
             ]
             assert discovery["steed_start_page_capabilities"]["result"]["pages"] == [
                 "newtab",

@@ -3,6 +3,7 @@
 import hashlib
 import json
 import sqlite3
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -11,6 +12,7 @@ from services.command_broker import require_owner_thread
 from services.task_artifacts import artifact_input
 from services.task_messages import MESSAGE_BYTES
 from services.task_policy import TaskPermissionError
+from services.task_workspace import TaskWorkspace
 
 PANEL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS data_panels (
@@ -58,6 +60,7 @@ class PanelUpdate:
 class DataPanels:
     def __init__(self, service):
         self.service = service
+        self._images = OrderedDict()
         for row in self.db.execute(
             "SELECT task_id,request_id FROM data_panels WHERE state='awaiting_approval'"
         ).fetchall():
@@ -111,14 +114,17 @@ class DataPanels:
     def _authority(self, definition, task_id, *, consume=False):
         self.service._usable()
         self.service._active(task_id)
-        if definition.artifact_widgets:
+        actions = (["artifact"] if definition.artifact_widgets else []) + (
+            ["workspace"] if definition.workspace_widgets else []
+        )
+        if actions:
+            live = self.service._grants.get(task_id)
+            if live is None:
+                raise TaskPermissionError("approval_required")
+            for action in actions:
+                live[1].check(action)
             if consume:
-                self.service._authorize(task_id, "artifact")
-            else:
-                live = self.service._grants.get(task_id)
-                if live is None:
-                    raise TaskPermissionError("approval_required")
-                live[1].check("artifact")
+                self.service._authorize(task_id, actions[0])
 
     def _artifact(self, task_id, artifact_id, kind, digest=None):
         artifact = self.service.store.artifact(task_id, artifact_id)
@@ -136,15 +142,58 @@ class DataPanels:
 
     def _bindings(self, definition, task_id, ids):
         result = {}
-        for key, artifact_id in ids.items():
-            artifact = self._artifact(
-                task_id, artifact_id, definition.artifact_widgets[key]["kind"]
-            )
-            result[key] = {
-                "artifact_id": artifact.artifact_id,
-                "sha256": artifact.sha256,
-            }
+        for key, identity in ids.items():
+            widget = definition.source_widgets[key]
+            if "file_id" in widget:
+                item, _ = self._workspace(task_id, identity, widget["kind"])
+                result[key] = {
+                    "file_id": item.file_id,
+                    "sha256": item.sha256,
+                    "media_type": item.media_type,
+                }
+            else:
+                artifact = self._artifact(task_id, identity, widget["kind"])
+                result[key] = {
+                    "artifact_id": artifact.artifact_id,
+                    "sha256": artifact.sha256,
+                }
         return result
+
+    def _workspace(self, task_id, file_id, kind, digest=None, media_type=None):
+        workspace = TaskWorkspace(self.service.store)
+        item = workspace.get(task_id, file_id)
+        limit = 8 * 1024 * 1024 if kind == "image" else 16384
+        if (
+            item.status != "sealed"
+            or item.byte_count > limit
+            or (digest is not None and item.sha256 != digest)
+            or (media_type is not None and item.media_type != media_type)
+        ):
+            raise ValueError("Panel workspace file is unavailable or changed")
+        data = workspace.bytes(task_id, file_id)
+        if kind == "image":
+            from services.panel_images import decode_image
+
+            key = (item.sha256, item.media_type)
+            if key not in self._images:
+                self._images[key] = decode_image(data, item.media_type)
+                if len(self._images) > 8:
+                    self._images.popitem(last=False)
+            else:
+                self._images.move_to_end(key)
+            content = self._images[key]
+        else:
+            if item.media_type not in (
+                "text/plain",
+                "text/markdown",
+                "application/json",
+            ):
+                raise ValueError("Use a text or JSON workspace file")
+            try:
+                content = widget_content(kind, data.decode("utf-8"))
+            except UnicodeError:
+                raise ValueError("Use a valid UTF-8 workspace file") from None
+        return item, content
 
     def propose(self, task_id, source, request_id):
         definition = parse_panel(source)
@@ -173,7 +222,10 @@ class DataPanels:
         bindings = self._bindings(
             definition,
             task_id,
-            {key: w["artifact_id"] for key, w in definition.artifact_widgets.items()},
+            {
+                key: w.get("artifact_id", w.get("file_id"))
+                for key, w in definition.source_widgets.items()
+            },
         )
         self._authority(definition, task_id, consume=True)
         with self.db:
@@ -284,16 +336,25 @@ class DataPanels:
             raise ValueError("Publish between one and eight owned artifact bindings")
         ids = {}
         for binding in bindings:
+            key = binding.get("id") if isinstance(binding, dict) else None
+            widget = definition.source_widgets.get(key) if stable_id(key, 32) else None
+            field = (
+                "file_id"
+                if widget is not None and "file_id" in widget
+                else "artifact_id"
+            )
             if (
                 not isinstance(binding, dict)
-                or set(binding) != {"id", "artifact_id"}
+                or set(binding) != {"id", field}
                 or not stable_id(binding["id"], 32)
-                or not stable_id(binding["artifact_id"])
+                or not stable_id(binding[field])
                 or binding["id"] in ids
-                or binding["id"] not in definition.artifact_widgets
+                or widget is None
             ):
-                raise ValueError("Update distinct approved artifact widgets only")
-            ids[binding["id"]] = binding["artifact_id"]
+                raise ValueError(
+                    "Update distinct approved widgets with their reviewed source type"
+                )
+            ids[binding["id"]] = binding[field]
         digest = hashlib.sha256(
             json.dumps(
                 {"revision": expected_revision, "bindings": ids}, sort_keys=True
@@ -399,7 +460,23 @@ class DataPanels:
         result = []
         for widget in definition.widgets:
             value = dict(widget)
-            if widget["id"] in definition.artifact_widgets:
+            if widget["id"] in definition.workspace_widgets:
+                binding = bindings[widget["id"]]
+                item, content = self._workspace(
+                    task_id,
+                    binding["file_id"],
+                    widget["kind"],
+                    binding["sha256"],
+                    binding["media_type"],
+                )
+                value.update(
+                    file_id=item.file_id,
+                    artifact_title=item.name,
+                    content=content,
+                    source_sha256=item.sha256,
+                    source_kind="workspace",
+                )
+            elif widget["id"] in definition.artifact_widgets:
                 binding = bindings[widget["id"]]
                 artifact = self._artifact(
                     task_id, binding["artifact_id"], widget["kind"], binding["sha256"]
