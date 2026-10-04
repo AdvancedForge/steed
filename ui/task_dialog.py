@@ -160,6 +160,43 @@ class TaskDialog(QDialog):
         layout_body.addWidget(self.review_layout_button)
         self._layout_rows = []
         self.panels.addTab(layouts, "Layouts")
+        data_panels = QWidget()
+        data_body = QVBoxLayout(data_panels)
+        data_body.addWidget(
+            QLabel(
+                "Native data panels show saved agent drafts in a profile you choose. Review enables same-task draft updates; it grants no data access."
+            )
+        )
+        self.data_panel_requests = QTableWidget(0, 4)
+        self.data_panel_requests.setHorizontalHeaderLabels(
+            ["Panel", "State", "Profile", "Revision"]
+        )
+        self.data_panel_requests.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.data_panel_requests.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
+        )
+        self.data_panel_requests.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.data_panel_requests.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        data_body.addWidget(self.data_panel_requests)
+        data_buttons = QHBoxLayout()
+        self.review_data_panel_button = QPushButton("Review Panel…")
+        self.review_data_panel_button.clicked.connect(self.review_data_panel)
+        self.remove_data_panel_button = QPushButton("Remove Panel")
+        self.remove_data_panel_button.clicked.connect(self.remove_data_panel)
+        data_buttons.addWidget(self.review_data_panel_button)
+        data_buttons.addWidget(self.remove_data_panel_button)
+        data_body.addLayout(data_buttons)
+        self._data_panel_rows = []
+        self.data_panel_requests.itemSelectionChanged.connect(
+            self.update_data_panel_actions
+        )
+        self.panels.addTab(data_panels, "Data Panels")
         workers = QWidget()
         worker_layout = QVBoxLayout(workers)
         worker_notice = QLabel(
@@ -907,6 +944,7 @@ class TaskDialog(QDialog):
 
     def refresh_recipes(self):
         self.refresh_layouts()
+        self.refresh_data_panels()
         selected = self.selection()
         self._recipe_rows = (
             self.service.recipes.list(selected[0].task_id)
@@ -926,6 +964,67 @@ class TaskDialog(QDialog):
                 item.setToolTip(proposal.sha256)
                 self.recipe_requests.setItem(row, col, item)
         self.update_recipe_actions()
+
+    def refresh_data_panels(self):
+        selected = self.selection()
+        self._data_panel_rows = (
+            self.service.data_panels.list(selected[0].task_id)
+            if selected and not self.service.failure and not self.service._closed
+            else []
+        )
+        self.data_panel_requests.setRowCount(len(self._data_panel_rows))
+        for row, receipt in enumerate(self._data_panel_rows):
+            for col, value in enumerate(
+                (
+                    receipt.name,
+                    receipt.state.replace("_", " "),
+                    receipt.profile_name or "Choose on review",
+                    str(receipt.revision),
+                )
+            ):
+                self.data_panel_requests.setItem(row, col, QTableWidgetItem(value))
+        self.update_data_panel_actions()
+
+    def update_data_panel_actions(self):
+        row = self.data_panel_requests.currentRow()
+        receipt = (
+            self._data_panel_rows[row]
+            if 0 <= row < len(self._data_panel_rows)
+            else None
+        )
+        available = not self.service.failure and not self.service._closed
+        self.review_data_panel_button.setEnabled(
+            bool(available and receipt and receipt.state == "awaiting_approval")
+        )
+        self.remove_data_panel_button.setEnabled(
+            bool(available and receipt and receipt.state == "applied")
+        )
+
+    def review_data_panel(self):
+        from ui.data_panels import DataPanelReviewDialog
+
+        row = self.data_panel_requests.currentRow()
+        if not 0 <= row < len(self._data_panel_rows):
+            return
+        try:
+            dialog = DataPanelReviewDialog(
+                self.service, self._data_panel_rows[row], self
+            )
+            dialog.show()
+        except (ValueError, KeyError, sqlite3.Error, OSError):
+            QMessageBox.warning(
+                self, "Data panel", "This panel or its drafts are unavailable."
+            )
+
+    def remove_data_panel(self):
+        row = self.data_panel_requests.currentRow()
+        if 0 <= row < len(self._data_panel_rows):
+            receipt = self._data_panel_rows[row]
+            try:
+                self.service.data_panels.remove(receipt.task_id, receipt.request_id)
+            except (ValueError, KeyError, sqlite3.Error, OSError):
+                QMessageBox.warning(self, "Data panel", "This panel is unavailable.")
+            self.refresh_data_panels()
 
     def refresh_layouts(self):
         selected = self.selection()

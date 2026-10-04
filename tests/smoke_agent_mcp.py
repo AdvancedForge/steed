@@ -47,6 +47,7 @@ from services.connector_recipes import (
     parse_recipe,
 )
 from ui.app_review import AppReviewDialog
+from ui.data_panels import DataPanelReviewDialog
 from ui.recipe_review import RecipeReviewDialog
 from ui.task_dialog import TaskDialog
 from ui.task_recovery import TaskRecoveryDialog
@@ -791,6 +792,7 @@ async def sdk_client(
                 await call("task.events", limit=1000)
             )
             shared["artifact_completed"] = True
+            await native_panel_workflow(call, shared, "sdk")
 
             async def app_result(request_id):
                 deadline = time.monotonic() + 20
@@ -975,6 +977,74 @@ async def sdk_client(
                 await recipe_workflow(call, shared, "sdk", writing=True)
                 await recipe_workflow(call, shared, "sdk", writing=True, nested=True)
                 await recipe_workflow(call, shared, "sdk", writing=True, plan=True)
+
+
+async def native_panel_workflow(call, shared, label):
+    capabilities = await call("panel.capabilities")
+    assert capabilities["available"] and capabilities["widget_kinds"] == [
+        "task",
+        "text",
+        "list",
+    ]
+    initial = await call(
+        "artifact.store",
+        title="Native panel summary",
+        content=label + " panel draft",
+        format="text",
+    )
+    items = await call(
+        "artifact.store",
+        title="Native panel items",
+        content=json.dumps(["First synthetic item", "Second synthetic item"]),
+        format="text",
+    )
+    source = json.dumps(
+        {
+            "version": 1,
+            "name": label.upper() + " task dashboard",
+            "widgets": [
+                {"id": "progress", "kind": "task", "title": "Progress"},
+                {
+                    "id": "summary",
+                    "kind": "text",
+                    "title": "Summary",
+                    "artifact_id": initial["artifact_id"],
+                },
+                {
+                    "id": "items",
+                    "kind": "list",
+                    "title": "Next steps",
+                    "artifact_id": items["artifact_id"],
+                },
+            ],
+        }
+    )
+    request_id = label + "-dashboard"
+    receipt = await call("panel.propose", source=source, request_id=request_id)
+    assert receipt["state"] == "awaiting_approval"
+    deadline = time.monotonic() + 15
+    while receipt["state"] == "awaiting_approval":
+        assert time.monotonic() < deadline, "Native panel user review timed out"
+        await asyncio.sleep(0.02)
+        receipt = await call("panel.status", request_id=request_id)
+    assert receipt["state"] == "applied" and receipt["profile_name"] == "work"
+    revised = await call(
+        "artifact.store",
+        title="Native panel revised summary",
+        content=label + " updated panel draft",
+        format="text",
+    )
+    arguments = {
+        "request_id": request_id,
+        "update_id": label + "-publication",
+        "expected_revision": 0,
+        "bindings": [{"id": "summary", "artifact_id": revised["artifact_id"]}],
+    }
+    publication = await call("panel.publish", **arguments)
+    assert publication["revision"] == 1
+    assert await call("panel.publish", **arguments) == publication
+    assert (await call("panel.status", request_id=request_id))["revision"] == 1
+    shared[label + "_reviewed_native_panel"] = True
 
 
 async def conversation_workflow(call, shared, label, task_id):
@@ -1224,6 +1294,11 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         content="RAW_SYNTHETIC_DRAFT",
         source_events=sources,
     )
+
+    async def panel_call(name, **arguments):
+        return call(name, **arguments)
+
+    asyncio.run(native_panel_workflow(panel_call, shared, "raw"))
 
     def app_result(request_id):
         deadline = time.monotonic() + 20
@@ -1698,7 +1773,13 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     shared.get("sdk_recipe_task"),
                     shared.get("raw_recipe_task"),
                 )
-                if isinstance(dialog, RecipeReviewDialog):
+                if isinstance(dialog, DataPanelReviewDialog):
+                    assert dialog.deny_button.isDefault()
+                    dialog.profiles.setCurrentText("work")
+                    dialog.grab().save(f"/tmp/steed-data-panel-{transport}-preview.png")
+                    dialog.approve_button.click()  # Trusted synthetic user only.
+                    shared["native_panel_review_popup"] = True
+                elif isinstance(dialog, RecipeReviewDialog):
                     assert dialog.recipe in (
                         recipe(),
                         oauth_source,
@@ -1792,8 +1873,14 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     )
                     dialog.source.setCurrentIndex(dialog.source.findData(original))
                     for index in range(dialog.artifacts.count()):
-                        dialog.artifacts.item(index).setCheckState(
-                            Qt.CheckState.Checked
+                        item = dialog.artifacts.item(index)
+                        artifact = case.service.store.artifact(
+                            original, item.data(Qt.ItemDataRole.UserRole)
+                        )
+                        item.setCheckState(
+                            Qt.CheckState.Unchecked
+                            if artifact.title.startswith("Native panel ")
+                            else Qt.CheckState.Checked
                         )
                     for index in range(dialog.files.count()):
                         item = dialog.files.item(index)
@@ -1964,6 +2051,17 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             )
             shared["http_delete_cancelled_owned_task"] = True
         assert not case.service._sessions
+        assert (
+            shared["sdk_reviewed_native_panel"] and shared["raw_reviewed_native_panel"]
+        )
+        panels = case.service.data_panels.for_profile("work")
+        assert len(panels) == 2 and all(p.revision == 1 for p in panels)
+        assert all(
+            "updated panel draft"
+            in case.service.data_panels.view(p.task_id, p.request_id)[1]["content"]
+            for p in panels
+        )
+        shared["profile_native_panels_retained"] = True
         shared["shared_cookie"] = True
         shared["ordinary_user_post"] = True
         shared["task_pages_disposed"] = True

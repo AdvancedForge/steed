@@ -377,7 +377,7 @@ class LayoutProposalTests(unittest.TestCase):
         restarted = TaskService(path, profiles=self.registry)
         try:
             self.assertEqual(
-                restarted.store._db.execute("PRAGMA user_version").fetchone()[0], 17
+                restarted.store._db.execute("PRAGMA user_version").fetchone()[0], 18
             )
             self.assertTrue(
                 all(

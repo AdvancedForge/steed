@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Task dashboard",
+  "widgets": [
+    {
+      "id": "progress",
+      "kind": "task",
+      "title": "Progress"
+    },
+    {
+      "id": "summary",
+      "kind": "text",
+      "title": "Summary",
+      "artifact_id": "OWNED_ARTIFACT_ID"
+    }
+  ]
+}

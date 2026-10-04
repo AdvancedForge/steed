@@ -363,6 +363,10 @@ class TaskApprovalQueue(QObject):
                         (task, proposal)
                         for proposal in self.service.layouts.pending(task.task_id)
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.data_panels.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -389,17 +393,32 @@ class TaskApprovalQueue(QObject):
             if key in self.deferred:
                 continue
             from services.connector_reviews import AppReview
+            from services.data_panels import PanelReceipt
             from services.layout_proposals import LayoutProposal
             from services.recipe_proposals import RecipeProposal
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
+            from ui.data_panels import DataPanelReviewDialog
             from ui.layout_review import LayoutReviewDialog
             from ui.recipe_review import RecipeReviewDialog
             from ui.worker_approval import WorkerApprovalDialog
 
+            if (
+                isinstance(grant, PanelReceipt)
+                and parent.profile_manager.is_search_profile()
+            ):
+                normal = [
+                    w for w in windows if not w.profile_manager.is_search_profile()
+                ]
+                if not normal:
+                    self.deferred.add(key)
+                    continue
+                parent = normal[0]
             try:
                 dialog = (
-                    LayoutReviewDialog(
+                    DataPanelReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, PanelReceipt)
+                    else LayoutReviewDialog(
                         self.registry,
                         self.service.layouts.definition(grant),
                         parent,
@@ -439,6 +458,7 @@ class TaskApprovalQueue(QObject):
 
     def request_key(self, task, item):
         from services.connector_reviews import AppReview
+        from services.data_panels import PanelReceipt
         from services.layout_proposals import LayoutProposal
         from services.recipe_proposals import RecipeProposal
         from services.worker_store import WorkerReceipt
@@ -446,7 +466,14 @@ class TaskApprovalQueue(QObject):
         return (
             item.request_key
             if isinstance(
-                item, (AppReview, WorkerReceipt, RecipeProposal, LayoutProposal)
+                item,
+                (
+                    AppReview,
+                    WorkerReceipt,
+                    RecipeProposal,
+                    LayoutProposal,
+                    PanelReceipt,
+                ),
             )
             else item.grant_id
             if item
