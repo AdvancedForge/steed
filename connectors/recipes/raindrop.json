@@ -1,0 +1,51 @@
+{
+  "version": 2,
+  "name": "Raindrop.io",
+  "origin": "https://api.raindrop.io",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/rest/v1/user",
+    "subject": "/user/_id",
+    "label": "/user/fullName"
+  },
+  "tools": [
+    {
+      "name": "read_collection",
+      "description": "Read one Raindrop.io collection by its numeric collection ID, which is the number in the collection URL after /collection/. The documented response wraps it in an item object. No bookmark is created or changed by this profile.",
+      "method": "GET",
+      "path": "/rest/v1/collections/{destination}",
+      "response": [
+        {
+          "label": "id",
+          "pointer": "/item/_id"
+        },
+        {
+          "label": "title",
+          "pointer": "/item/title"
+        },
+        {
+          "label": "count",
+          "pointer": "/item/count"
+        },
+        {
+          "label": "view",
+          "pointer": "/item/view"
+        }
+      ]
+    },
+    {
+      "name": "list_root_collections",
+      "description": "Read the account's root collections. Raindrop returns whole collection objects in one response and this profile does not follow paging; a result document with result false is not a collection list and the read fails.",
+      "method": "GET",
+      "path": "/rest/v1/collections",
+      "response": [
+        {
+          "label": "collections",
+          "pointer": "/items"
+        }
+      ]
+    }
+  ]
+}

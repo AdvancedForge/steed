@@ -395,7 +395,7 @@ installed, and a row is never a default account or an approval.
 | Asana | packaged (read-only) | none outstanding; collections and task creation are excluded by design |
 | Dropbox | gated | reads are RPC-style POST request objects |
 | Linear | gated | reads are GraphQL POSTs with variables |
-| Raindrop.io | gated | `/rest/v1` prefix, `result` flag, offset paging |
+| Raindrop.io | packaged (read-only) | none outstanding; the `result` flag stays unchecked, which matters for writes |
 | Airtable | gated | base/table pinning, optional identity label, offset paging |
 | Calendly | gated | identity is a URI; next page is a full URL |
 | Readwise / Reader | gated | `Authorization: Token`; auth probe returns 204 with no identity |
@@ -622,6 +622,59 @@ Every candidate contract therefore carries an `empirical_status` block: what the
 documentation settles, what is still **pending**, and what a real account would
 settle. Pending items stay pending. No test result, and no unverified live
 observation, promotes one.
+
+---
+
+## Raindrop.io
+
+`connectors/recipes/raindrop.json`, origin `https://api.raindrop.io`, bearer
+authentication with an access token or test token. Read-only.
+
+| Action | Wire contract |
+| --- | --- |
+| Identity | `GET /rest/v1/user`, subject `/user/_id`, label `/user/fullName` |
+| Read one collection | `GET /rest/v1/collections/{destination}` by numeric collection ID |
+| List root collections | `GET /rest/v1/collections`, projecting `/items` |
+
+Notes on the wire shape:
+
+- Every documented v1 route lives under `https://api.raindrop.io/rest/v1`, so the
+  prefix is part of each reviewed path rather than part of the origin, which keeps
+  the origin rule intact.
+- An access token, including a test token, is documented in `Authorization: Bearer`
+  with no second token header.
+- A collection's identifier is `_id`, not `id`, and a single collection is wrapped in
+  an `item` object. The root list is under `items`. There is no `hidden` field on a
+  collection; `hidden` exists only on a group inside the user document.
+- The documentation warns that responses can carry fields it does not describe and
+  that using them is unsafe, so only documented fields are projected.
+- **Success is signalled twice.** A failure document is
+  `{"result": false, "error": ..., "errorMessage": ...}` and carries no `items`, so a
+  failed collection read fails closed rather than looking like an empty account. The
+  `result` flag itself is still not checked, which is a shared application-error-flag
+  gap and the reason no Raindrop write is offered.
+- Listing is documented as `page` and `perpage`, so no cursor is declared and only
+  the documented single response is read.
+- Rate limits are documented as 120 requests per minute per authenticated user for
+  OAuth requests. Whether that number also applies to a test token is not documented.
+- Creating a bookmark needs an explicit link input from the user, which no reviewed
+  destination can carry, so this profile stays read-only.
+
+### Least-permission setup
+
+1. In Raindrop open the App Management Console for your application, or use the test
+   token shown in your application settings, and copy the token.
+2. Paste it into Steed's Connect step and select only the read actions you want to
+   expose. The token is stored in the desktop keyring.
+3. Revoke it from the Raindrop app console at any time; disconnecting in Steed
+   removes the stored credential.
+
+Official references:
+
+- [Authenticated user](https://developer.raindrop.io/v1/user/authenticated)
+- [Collections methods](https://developer.raindrop.io/v1/collections/methods)
+- [Making authorized calls](https://developer.raindrop.io/v1/authentication/calls)
+- [API overview and status codes](https://developer.raindrop.io/readme)
 
 ---
 
