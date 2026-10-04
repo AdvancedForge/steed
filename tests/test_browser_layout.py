@@ -35,7 +35,9 @@ class BrowserLayoutTests(unittest.TestCase):
 
     def test_a_new_window_starts_on_todays_defaults(self):
         window = self.window()
-        self.assertEqual(self._menu_titles(window), list(MENU_ITEMS))
+        self.assertEqual(
+            self._menu_titles(window), [name.title() for name in MENU_ITEMS]
+        )
         self.assertEqual(window.layout_preferences.visible_toolbar, list(TOOLBAR_ITEMS))
         self.assertEqual(window.address_bar.hidden_toolbar, [])
 
@@ -51,7 +53,7 @@ class BrowserLayoutTests(unittest.TestCase):
         window = self.window()
         self.assertEqual(
             self._menu_titles(window),
-            ["agents", "tabs", "general", "profile", "view", "cookies"],
+            ["Agents", "Tabs", "General", "Profile", "View", "Cookies"],
         )
         self.assertEqual(window.address_bar.hidden_toolbar, ["passwords", "zoom"])
         self.assertEqual(window.address_bar.density, "compact")
@@ -106,7 +108,7 @@ class BrowserLayoutTests(unittest.TestCase):
         preferences = window.layout_preferences
         preferences.set_density("compact")
         preferences.save_named("Compact")
-        window.apply_layout(preferences)
+        self.registry.commit_layout(preferences)
         window.reset_layout()
         self.assertEqual(window.layout_preferences.named_layouts, ["Compact"])
         self.assertTrue(window.layout_preferences.apply_named("Compact"))
@@ -179,7 +181,8 @@ class BrowserLayoutTests(unittest.TestCase):
         window.apply_layout(preferences)
 
         self.assertEqual(registry.agent_context(), before)
-        self.assertEqual(registry.tasks.store.grants("missing"), [])
+        task = registry.tasks.store.create("Synthetic layout authority check")
+        self.assertEqual(registry.tasks.store.grants(task.task_id), [])
         self.assertTrue(window.file_library_action.isEnabled())
         # Private browsing still hides the library entry point.
         window._switch_to_profile("search")
@@ -188,9 +191,114 @@ class BrowserLayoutTests(unittest.TestCase):
     def test_a_malformed_layout_never_blocks_startup(self):
         self.config.set("layout", {"version": "one", "named": ["not", "a", "dict"]})
         window = self.window()
-        self.assertEqual(self._menu_titles(window), list(MENU_ITEMS))
+        self.assertEqual(
+            self._menu_titles(window), [name.title() for name in MENU_ITEMS]
+        )
         self.assertEqual(window.layout_preferences.density, "comfortable")
         self.assertEqual(window.layout_preferences.named_layouts, [])
+
+    def test_save_from_second_window_preserves_first_windows_named_layout(self):
+        first, second = self.window(), self.window()
+
+        def save_first(dialog):
+            dialog.sidebar_side.setCurrentIndex(0)
+            dialog.preferences.save_named("Shared layout")
+            return 1
+
+        with patch.object(LayoutDialog, "exec", save_first):
+            first._open_layout_settings()
+        self.assertEqual(second.layout_preferences.sidebar_side, "left")
+
+        def save_second(dialog):
+            self.assertEqual(dialog.preferences.named_layouts, ["Shared layout"])
+            dialog.density.setCurrentIndex(0)
+            return 1
+
+        with patch.object(LayoutDialog, "exec", save_second):
+            second._open_layout_settings()
+        stored = LayoutPreferences(self.config.get("layout"))
+        self.assertEqual(stored.sidebar_side, "left")
+        self.assertEqual(stored.named_layouts, ["Shared layout"])
+        self.assertEqual(first.layout_preferences.density, "compact")
+
+    def test_cancel_preview_keeps_other_windows_committed_changes(self):
+        first, second = self.window(), self.window()
+
+        def cancel_after_external_commit(dialog):
+            dialog.density.setCurrentIndex(0)
+            self.assertEqual(first.layout_preferences.density, "compact")
+            self.assertEqual(second.layout_preferences.density, "comfortable")
+            external = LayoutPreferences(self.config.get("layout"))
+            external.set_sidebar("left", 400)
+            self.registry.commit_layout(external)
+            return 0
+
+        with patch.object(LayoutDialog, "exec", cancel_after_external_commit):
+            first._open_layout_settings()
+        self.assertEqual(first.layout_preferences.density, "comfortable")
+        self.assertEqual(first.layout_preferences.sidebar_side, "left")
+        self.assertEqual(second.layout_preferences.sidebar_side, "left")
+
+    def test_concurrent_unrelated_commit_merges_and_conflict_does_not_overwrite(self):
+        window = self.window()
+
+        def accept_with_concurrent_change(dialog):
+            dialog.sidebar_width.setValue(400)
+            external = LayoutPreferences(self.config.get("layout"))
+            external.save_named("Other window")
+            self.registry.commit_layout(external)
+            return 1
+
+        with patch.object(LayoutDialog, "exec", accept_with_concurrent_change):
+            window._open_layout_settings()
+        self.assertEqual(window.layout_preferences.named_layouts, ["Other window"])
+        self.assertEqual(window.layout_preferences.sidebar_width, 400)
+
+        def accept_conflicting_change(dialog):
+            dialog.sidebar_width.setValue(500)
+            external = LayoutPreferences(self.config.get("layout"))
+            external.set_sidebar("right", 600)
+            self.registry.commit_layout(external)
+            return 1
+
+        with (
+            patch.object(LayoutDialog, "exec", accept_conflicting_change),
+            patch("browser_window.QMessageBox.warning") as warning,
+        ):
+            window._open_layout_settings()
+        warning.assert_called_once()
+        self.assertEqual(window.layout_preferences.sidebar_width, 600)
+        self.assertEqual(window.layout_preferences.named_layouts, ["Other window"])
+
+    def test_reset_propagates_to_all_windows_and_retains_presets(self):
+        first, second = self.window(), self.window()
+        preferences = LayoutPreferences()
+        preferences.set_density("compact")
+        preferences.save_named("Compact")
+        self.registry.commit_layout(preferences)
+        second.reset_layout()
+        self.assertEqual(first.layout_preferences.density, "comfortable")
+        self.assertEqual(first.layout_preferences.named_layouts, ["Compact"])
+
+    def test_populated_sidebar_honors_bounds_and_survives_tab_presentation(self):
+        window = self.window()
+        window.show()
+        preferences = LayoutPreferences()
+        preferences.set_sidebar("left", 260)
+        self.registry.commit_layout(preferences)
+        window._toggle_agent_sidebar(True)
+        self.app.processEvents()
+        self.assertEqual(window.agent_sidebar.width(), 300)
+        window._open_agent_tab()
+        preferences.set_sidebar("right", 400)
+        self.registry.commit_layout(preferences)
+        window._toggle_agent_sidebar(True)
+        self.app.processEvents()
+        self.assertEqual(window.agent_sidebar.width(), 400)
+        self.assertEqual(
+            window.dockWidgetArea(window.agent_sidebar),
+            Qt.DockWidgetArea.RightDockWidgetArea,
+        )
 
 
 if __name__ == "__main__":

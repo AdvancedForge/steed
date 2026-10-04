@@ -4267,7 +4267,8 @@ return to today's defaults. The first milestone covers manual editing:
 
 - Show, hide and reorder the address bar buttons (Back, Forward, Reload, Home,
   Reset zoom, Passwords). Each button has a stable identifier, so a saved layout
-  does not depend on widget names.
+  does not depend on widget names. The address/search field can move within the
+  order and is always visible. Defaults keep it between Home and Reset zoom.
 - Reorder the menu bar between General, Profile, Tabs, View, Cookies and Agents.
   Today's order is the default.
 - Place the agent sidebar on the left or right and remember its width.
@@ -4276,8 +4277,12 @@ return to today's defaults. The first milestone covers manual editing:
   delete one. **Reset Layout** restores today's appearance and keeps the saved
   layouts available.
 
-Edits appear immediately; **Save** keeps them and **Cancel** restores the layout
-that was saved when the dialog opened.
+Edits preview in the current window; **Save** commits them to every window.
+**Cancel** restores the latest committed layout. Unrelated edits from another
+window are preserved; competing changes to the same setting are refused with a
+message so you can reopen the editor. Reset keeps committed named layouts.
+Sidebar width is saved through Layout Settings; dragging the dock only resizes
+it for that window and session.
 
 Settings stay reachable when controls are hidden. Menus cannot be hidden at all,
 `Layout Settings…` sits beside `Settings…` in General, `Reset Layout` stays in
@@ -4291,7 +4296,7 @@ the same way as other browser preferences. Stored values are treated as
 untrusted input: unknown button or menu identifiers are dropped, identifiers
 missing from a stored order return in their default position, and a document
 written by another schema version is ignored in favour of today's defaults.
-Sidebar width is bounded to 200–800 px, at most 32 named layouts are kept, and a
+Sidebar width is bounded to 300–800 px, at most 32 named layouts are kept, and a
 name may not be empty, longer than 48 characters or contain control characters.
 
 Applying a layout never changes browser, website, profile, folder, file or

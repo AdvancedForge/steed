@@ -5,7 +5,7 @@ from PyQt6.QtGui import QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import QCompleter, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
 from browsing_history import HistoryEntry
-from layout_preferences import TOOLBAR_ITEMS
+from layout_preferences import TOOLBAR_ORDER, clean_toolbar_order
 
 # Spacing per density; the address input always keeps its width.
 DENSITY_METRICS = {
@@ -93,20 +93,26 @@ class AddressBar(QWidget):
             "zoom": self.zoom_btn,
             "passwords": self.passwords_btn,
         }
-        self.toolbar_order = list(TOOLBAR_ITEMS)
+        self.toolbar_order = list(TOOLBAR_ORDER)
         self.hidden_toolbar: list[str] = []
         self.density = "comfortable"
         self._apply_toolbar()
 
     def _apply_toolbar(self) -> None:
-        """Lay out the buttons in the saved order, then the address input."""
+        """Place controls around the mandatory address field and hide omissions."""
         layout = self.layout()
         for widget in list(self.buttons.values()) + [self.address_input]:
             layout.removeWidget(widget)
+        for name, button in self.buttons.items():
+            if button.parent() is not self:
+                button.setParent(self)
+            button.setVisible(name not in self.hidden_toolbar)
         for name in self.toolbar_order:
-            if name not in self.hidden_toolbar:
+            if name == "address":
+                self.address_input.show()
+                layout.addWidget(self.address_input, 1)
+            elif name not in self.hidden_toolbar:
                 layout.addWidget(self.buttons[name])
-        layout.addWidget(self.address_input, 1)
 
     def apply_toolbar(self, order, hidden) -> None:
         """Show and hide address bar buttons according to a layout.
@@ -115,9 +121,7 @@ class AddressBar(QWidget):
         position, so a layout written against an older build cannot make a
         control unreachable.
         """
-        known = [name for name in order if name in self.buttons]
-        known.extend(name for name in TOOLBAR_ITEMS if name not in known)
-        self.toolbar_order = known
+        self.toolbar_order = clean_toolbar_order(order)
         self.hidden_toolbar = [name for name in hidden if name in self.buttons]
         self._apply_toolbar()
 

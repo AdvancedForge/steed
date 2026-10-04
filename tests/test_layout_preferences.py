@@ -23,6 +23,7 @@ from layout_preferences import (
     MENU_ITEMS,
     SIDEBAR_WIDTH_RANGE,
     TOOLBAR_ITEMS,
+    TOOLBAR_ORDER,
     LayoutPreferences,
     preferences_from_config,
     save_preferences,
@@ -49,7 +50,7 @@ class LayoutPreferenceStorageTests(unittest.TestCase):
             preferences.menu_order,
             ["general", "profile", "tabs", "view", "cookies", "agents"],
         )
-        self.assertEqual(preferences.toolbar_order, list(TOOLBAR_ITEMS))
+        self.assertEqual(preferences.toolbar_order, list(TOOLBAR_ORDER))
         self.assertEqual(preferences.hidden_toolbar, [])
         self.assertEqual(preferences.visible_toolbar, list(TOOLBAR_ITEMS))
         self.assertEqual(preferences.sidebar_side, "right")
@@ -87,7 +88,7 @@ class LayoutPreferenceStorageTests(unittest.TestCase):
         )
         self.assertEqual(
             preferences.toolbar_order,
-            ["zoom", "home", "back", "forward", "reload", "passwords"],
+            ["address", "zoom", "home", "back", "forward", "reload", "passwords"],
         )
         self.assertEqual(preferences.hidden_toolbar, ["back"])
         self.assertNotIn("nonsense", preferences.visible_toolbar)
@@ -132,12 +133,12 @@ class LayoutPreferenceStorageTests(unittest.TestCase):
         original.set_menu_order(
             ["agents", "tabs", "general", "profile", "view", "cookies"]
         )
-        original.set_sidebar("left", 260)
+        original.set_sidebar("left", 300)
         original.set_density("compact")
         restored = LayoutPreferences(original.to_dict())
         self.assertEqual(restored.to_dict(), original.to_dict())
         self.assertEqual(restored.visible_toolbar, original.visible_toolbar)
-        self.assertEqual(restored.sidebar_width, 260)
+        self.assertEqual(restored.sidebar_width, 300)
         self.assertEqual(restored.sidebar_side, "left")
 
     def test_round_trip_through_the_shared_configuration_file(self):
@@ -332,15 +333,24 @@ class AddressBarLayoutTests(unittest.TestCase):
         ]
 
     def test_default_order_shows_every_button(self):
-        self.assertEqual(self.bar.toolbar_order, list(TOOLBAR_ITEMS))
+        self.assertEqual(self.bar.toolbar_order, list(TOOLBAR_ORDER))
         self.assertEqual(self.bar.hidden_toolbar, [])
         self.assertEqual(
             self._shown(),
-            [self.bar.buttons[name] for name in TOOLBAR_ITEMS]
-            + [self.bar.address_input],
+            [
+                self.bar.back_btn,
+                self.bar.forward_btn,
+                self.bar.reload_btn,
+                self.bar.home_btn,
+                self.bar.address_input,
+                self.bar.zoom_btn,
+                self.bar.passwords_btn,
+            ],
         )
 
     def test_hiding_a_button_removes_it_from_the_bar(self):
+        self.bar.show()
+        qt_test_support.application().processEvents()
         self.bar.apply_toolbar(TOOLBAR_ITEMS, ["home", "zoom"])
         layout = self.bar.layout()
         visible = {
@@ -353,6 +363,18 @@ class AddressBarLayoutTests(unittest.TestCase):
         self.assertIn(self.bar.back_btn, visible)
         self.assertIn(self.bar.address_input, visible)
         self.assertEqual(self.bar.hidden_toolbar, ["home", "zoom"])
+        self.assertTrue(self.bar.home_btn.isHidden())
+        self.assertTrue(self.bar.zoom_btn.isHidden())
+        self.bar.address_input.setFocus()
+        for _ in range(12):
+            self.bar.focusNextChild()
+            self.assertNotIn(
+                qt_test_support.application().focusWidget(),
+                [self.bar.home_btn, self.bar.zoom_btn],
+            )
+        self.bar.apply_toolbar(TOOLBAR_ORDER, [])
+        self.assertFalse(self.bar.home_btn.isHidden())
+        self.assertFalse(self.bar.zoom_btn.isHidden())
 
     def test_reordering_keeps_every_button_and_the_address_input(self):
         self.bar.apply_toolbar(
@@ -361,7 +383,7 @@ class AddressBarLayoutTests(unittest.TestCase):
         layout = self.bar.layout()
         ordered = [
             layout.itemAt(index).widget()
-            for index in range(layout.count() - 1)
+            for index in range(layout.count())
             if layout.itemAt(index).widget() is not None
         ]
         self.assertEqual(
@@ -372,6 +394,7 @@ class AddressBarLayoutTests(unittest.TestCase):
                 self.bar.home_btn,
                 self.bar.forward_btn,
                 self.bar.reload_btn,
+                self.bar.address_input,
                 self.bar.zoom_btn,
             ],
         )
@@ -379,7 +402,7 @@ class AddressBarLayoutTests(unittest.TestCase):
     def test_a_stale_layout_still_shows_every_button(self):
         self.bar.apply_toolbar(["home", "button_from_the_future"], [])
         self.assertEqual(self.bar.toolbar_order[0], "home")
-        self.assertEqual(set(self.bar.toolbar_order), set(self.bar.buttons))
+        self.assertEqual(set(self.bar.toolbar_order), set(TOOLBAR_ORDER))
         self.assertEqual(len(self._shown()), len(TOOLBAR_ITEMS) + 1)
 
     def test_density_changes_spacing(self):
@@ -437,7 +460,7 @@ class LayoutDialogTests(unittest.TestCase):
         return self.published[-1]
 
     def test_dialog_opens_on_the_saved_layout(self):
-        self.assertEqual(_item_ids(self.dialog.toolbar_list), list(TOOLBAR_ITEMS))
+        self.assertEqual(_item_ids(self.dialog.toolbar_list), list(TOOLBAR_ORDER))
         self.assertEqual(_item_ids(self.dialog.menu_list), list(MENU_ITEMS))
         self.assertEqual(self.dialog.sidebar_side.currentData(), "right")
         self.assertEqual(self.dialog.density.currentData(), "comfortable")
@@ -454,23 +477,23 @@ class LayoutDialogTests(unittest.TestCase):
         self.dialog._move_row(self.dialog.toolbar_list, 1)
         self.assertEqual(_item_ids(self.dialog.toolbar_list)[:2], ["forward", "back"])
         self.assertEqual(self._last().toolbar_order[:2], ["forward", "back"])
-        # The address input is not part of the reorderable list.
+        # The address field can move, but cannot be hidden.
         self.dialog._move_row(self.dialog.toolbar_list, -1)
         self.assertEqual(_item_ids(self.dialog.toolbar_list)[:2], ["back", "forward"])
 
     def test_a_row_cannot_move_past_the_ends(self):
         self.dialog.toolbar_list.setCurrentRow(0)
         self.dialog._move_row(self.dialog.toolbar_list, -1)
-        self.assertEqual(_item_ids(self.dialog.toolbar_list), list(TOOLBAR_ITEMS))
-        self.dialog.toolbar_list.setCurrentRow(len(TOOLBAR_ITEMS) - 1)
+        self.assertEqual(_item_ids(self.dialog.toolbar_list), list(TOOLBAR_ORDER))
+        self.dialog.toolbar_list.setCurrentRow(len(TOOLBAR_ORDER) - 1)
         self.dialog._move_row(self.dialog.toolbar_list, 1)
-        self.assertEqual(_item_ids(self.dialog.toolbar_list), list(TOOLBAR_ITEMS))
+        self.assertEqual(_item_ids(self.dialog.toolbar_list), list(TOOLBAR_ORDER))
 
     def test_sidebar_and_density_edits_preview(self):
         self.dialog.sidebar_side.setCurrentIndex(0)
         self.assertEqual(self._last().sidebar_side, "left")
-        self.dialog.sidebar_width.setValue(260)
-        self.assertEqual(self._last().sidebar_width, 260)
+        self.dialog.sidebar_width.setValue(300)
+        self.assertEqual(self._last().sidebar_width, 300)
         self.dialog.density.setCurrentIndex(0)
         self.assertEqual(self._last().density, "compact")
 
@@ -481,7 +504,7 @@ class LayoutDialogTests(unittest.TestCase):
         self.assertEqual(self._last().menu_order, list(MENU_ITEMS))
         self.assertEqual(self._last().visible_toolbar, list(TOOLBAR_ITEMS))
         self.assertEqual(self._last().density, "comfortable")
-        self.assertEqual(_item_ids(self.dialog.toolbar_list), list(TOOLBAR_ITEMS))
+        self.assertEqual(_item_ids(self.dialog.toolbar_list), list(TOOLBAR_ORDER))
 
     def test_apply_saved_layout_loads_it_into_the_controls(self):
         source = LayoutPreferences()
@@ -497,7 +520,7 @@ class LayoutDialogTests(unittest.TestCase):
         self.assertEqual(published[-1].hidden_toolbar, ["passwords"])
         self.assertEqual(dialog.density.currentData(), "compact")
         self.assertEqual(
-            dialog.toolbar_list.item(TOOLBAR_ITEMS.index("passwords")).checkState(),
+            dialog.toolbar_list.item(TOOLBAR_ORDER.index("passwords")).checkState(),
             Qt.CheckState.Unchecked,
         )
         dialog.deleteLater()
@@ -511,6 +534,16 @@ class LayoutDialogTests(unittest.TestCase):
         self.assertIn("Reading", self.dialog.preferences.named_layouts)
         self.assertEqual(self.dialog.preferences.active_layout, "Reading")
         self.assertEqual(self.dialog.named_layouts.currentText(), "Reading")
+
+    def test_normalized_name_is_selected_after_save(self):
+        with patch(
+            "ui.layout_dialog.QInputDialog.getText",
+            return_value=("  New  Layout  ", True),
+        ):
+            self.dialog.save_named_layout()
+        self.assertEqual(self.dialog.named_layouts.currentText(), "New Layout")
+        self.dialog.apply_named_layout()
+        self.assertEqual(self.dialog.preferences.active_layout, "New Layout")
 
     def test_a_refused_name_is_reported_and_changes_nothing(self):
         with (
@@ -595,14 +628,14 @@ class WindowLayoutTests(unittest.TestCase):
     def test_the_docked_sidebar_follows_the_layout(self):
         qt_test_support.application()
         preferences = LayoutPreferences()
-        preferences.set_sidebar("left", 260)
+        preferences.set_sidebar("left", 300)
         self.window.apply_layout(preferences)
         qt_test_support.application().processEvents()
         self.assertEqual(
             self.window.dockWidgetArea(self.sidebar),
             Qt.DockWidgetArea.LeftDockWidgetArea,
         )
-        self.assertEqual(self.sidebar.width(), 260)
+        self.assertEqual(self.sidebar.width(), 300)
 
         preferences.set_sidebar("right", 400)
         self.window.apply_layout(preferences)
@@ -617,13 +650,13 @@ class WindowLayoutTests(unittest.TestCase):
         self.window.agent_tab = QWidget(self.window)
         self.sidebar.setParent(self.window.agent_tab)
         preferences = LayoutPreferences()
-        preferences.set_sidebar("left", 260)
+        preferences.set_sidebar("left", 300)
         self.window.apply_layout(preferences)
         self.assertIs(self.sidebar.parent(), self.window.agent_tab)
 
     def test_reset_restores_every_applied_part(self):
         preferences = LayoutPreferences()
-        preferences.set_sidebar("left", 260)
+        preferences.set_sidebar("left", 300)
         preferences.set_density("compact")
         preferences.set_toolbar(TOOLBAR_ITEMS, ["passwords"])
         self.window.apply_layout(preferences)
