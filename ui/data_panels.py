@@ -47,14 +47,21 @@ def label(text, parent=None):
 
 def source_caption(widget):
     if "account" in widget:
-        return (
+        if not widget["available"]:
+            return widget["unavailable"]
+        caption = (
             "Linked account read • "
             + display_text(widget["artifact_title"])
             + " • fetched "
             + widget["fetched_at"]
-            if widget["available"]
-            else widget["unavailable"]
         )
+        if "source_count" in widget:
+            caption += (
+                f" • showing {widget['shown_count']} of {widget['source_count']} rows"
+            )
+            if widget["clipped_cells"]:
+                caption += f" • {widget['clipped_cells']} shortened cells"
+        return caption
     if "library" in widget:
         if not widget["available"]:
             return widget["unavailable"]
@@ -87,6 +94,12 @@ def linked_description(service, definition):
         sources.append(
             f"Account: {binding['label']}\nRead: {source['connector']}.{source['tool']}\n"
             f"Destination: {source['destination']}\nInputs: {json.dumps(binding['inputs'] or {}, ensure_ascii=False)}"
+            + (
+                "\nDisplay projection: "
+                + json.dumps(widget["mapping"], ensure_ascii=False)
+                if "mapping" in widget
+                else ""
+            )
         )
     return "\n\n".join(sources)
 

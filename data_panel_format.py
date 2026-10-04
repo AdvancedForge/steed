@@ -184,6 +184,7 @@ def parse_panel(source):
         4,
         5,
         6,
+        7,
     ):
         raise ValueError("Unsupported data-panel version")
     name = clean_name(document["name"])
@@ -206,10 +207,16 @@ def parse_panel(source):
         expected = {"id", "kind", "title"}
         if (
             document["version"] >= 5
-            and widget["kind"] == "text"
+            and (
+                widget["kind"] == "text"
+                or document["version"] >= 7
+                and widget["kind"] in ("list", "table")
+            )
             and "account" in widget
         ):
             expected.add("account")
+            if widget["kind"] != "text":
+                expected.add("mapping")
         elif (
             document["version"] >= 4
             and widget["kind"] in ARTIFACT_KINDS
@@ -284,6 +291,10 @@ def parse_panel(source):
                 raise ValueError(
                     "Use bounded typed read inputs; no query text or request callbacks"
                 )
+        if "mapping" in widget:
+            from services.panel_mapping import validate_mapping
+
+            validate_mapping(widget["kind"], widget["mapping"])
         seen.add(widget["id"])
         widget["title"] = clean_name(widget["title"])
         if widget["kind"] == "form":
@@ -349,8 +360,8 @@ def widget_content(kind, content):
 
 def panel_capabilities():
     return {
-        "version": 6,
-        "supported_versions": [1, 2, 3, 4, 5, 6],
+        "version": 7,
+        "supported_versions": [1, 2, 3, 4, 5, 6, 7],
         "widget_kinds": list(WIDGET_KINDS) + ["form", "table", "image", "instruction"],
         "max_widgets": MAX_WIDGETS,
         "max_source_bytes": MAX_PANEL_SOURCE_BYTES,
@@ -364,7 +375,22 @@ def panel_capabilities():
             "artifact_id": "text/list/table; artifact authority",
             "file_id": "version 3 text/list/table/image; sealed owned workspace file and workspace authority",
             "library": "version 4 text/list/table; exact enabled folder/file plus separate reusable panel/profile read permission",
-            "account": "version 5 text; exact configured account/read tool/destination/inputs plus account read switch and reusable panel/profile permission; manual Refresh only",
+            "account": "version 5 text; version 7 list/table with explicit JSON projection; exact configured account/read tool/destination/inputs plus account read switch and reusable panel/profile permission; manual Refresh only",
+        },
+        "account_mapping": {
+            "version": 7,
+            "kinds": ["list", "table"],
+            "items": "bounded exact JSON pointer; empty selects root array",
+            "list": {"items": "/notes", "label": "/title"},
+            "table": {
+                "items": "/notes",
+                "columns": [{"title": "Title", "value": "/title"}],
+            },
+            "max_rows": 64,
+            "max_columns": 8,
+            "max_cell_characters": 512,
+            "omissions": "show original row count and clipped-cell count",
+            "missing_or_nonscalar_fields": "hide widget until successful explicit refresh",
         },
         "max_workspace_text_bytes": 16384,
         "max_image_file_bytes": 8 * 1024 * 1024,

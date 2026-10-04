@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from services.app_accounts import AccountError
 from services.connectors import ConnectorJob, ConnectorRequest
+from services.panel_mapping import empty_content, project_result
 from services.task_policy import TaskPermissionError
 
 
@@ -142,7 +143,7 @@ class PanelAccounts:
             widget,
             source_kind="account",
             available=False,
-            content="",
+            content=empty_content(widget),
             artifact_title=widget["account"]["tool"],
             fetched_at="",
         )
@@ -237,7 +238,6 @@ class PanelAccounts:
         job.timer.stop()
         self.results[key] = {
             "available": False,
-            "content": "",
             "fetched_at": "",
             "unavailable": "Account refresh timed out; no automatic retry",
         }
@@ -261,14 +261,14 @@ class PanelAccounts:
         job.cancelled.set()
         result, _ = reply
         try:
-            self.allowed(key)
+            widget, _, _ = self.allowed(key)
             if result is None or result.state != "succeeded":
                 raise ValueError("Account read failed")
             # Results are already bounded/redacted by the trusted adapter.
             result.validate()
             self.results[key] = {
                 "available": True,
-                "content": result.text,
+                **project_result(widget, result.text),
                 "unavailable": "",
                 "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
@@ -278,7 +278,6 @@ class PanelAccounts:
         except (ValueError, KeyError, AccountError, OSError):
             self.results[key] = {
                 "available": False,
-                "content": "",
                 "fetched_at": "",
                 "unavailable": "Refresh failed; check account connection, permissions and service availability",
             }

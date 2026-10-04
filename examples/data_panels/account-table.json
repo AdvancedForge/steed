@@ -1,0 +1,24 @@
+{
+  "version": 7,
+  "name": "Selected account records",
+  "widgets": [
+    {
+      "id": "records",
+      "kind": "table",
+      "title": "Account records",
+      "account": {
+        "connector": "configured_account",
+        "tool": "read_records",
+        "destination": "account",
+        "inputs": {}
+      },
+      "mapping": {
+        "items": "/items",
+        "columns": [
+          {"title": "Title", "value": "/title"},
+          {"title": "State", "value": "/state"}
+        ]
+      }
+    }
+  ]
+}

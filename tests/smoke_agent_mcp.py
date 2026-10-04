@@ -380,7 +380,7 @@ async def recipe_workflow(
         panel_request = label + "-account-panel"
         panel_source = json.dumps(
             {
-                "version": 6,
+                "version": 7,
                 "name": label.upper() + " account read",
                 "widgets": [
                     {
@@ -392,6 +392,21 @@ async def recipe_workflow(
                             "tool": "search_notes",
                             "destination": "account",
                             "inputs": arguments["inputs"],
+                        },
+                    },
+                    {
+                        "id": "mapped",
+                        "kind": "table",
+                        "title": "Selected note IDs",
+                        "account": {
+                            "connector": arguments["connector"],
+                            "tool": "search_notes",
+                            "destination": "account",
+                            "inputs": arguments["inputs"],
+                        },
+                        "mapping": {
+                            "items": "/notes",
+                            "columns": [{"title": "ID", "value": "/id"}],
                         },
                     },
                     {
@@ -2094,7 +2109,9 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     selected
                     and shared.get(label + "_account_panel_task_ended")
                     and not shared.get(label + "_account_panel_verified")
+                    and shared.get("account_panel_ui_owner", label) == label
                 ):
+                    shared["account_panel_ui_owner"] = label
                     key = selected["task_id"], selected["request_id"]
                     assert case.service.store.get(key[0]).status == "completed"
                     window._toggle_data_panels(True)
@@ -2106,12 +2123,27 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                             if dock.selector.itemData(i) == key
                         )
                     )
-                    view = case.service.data_panels.view(*key)[0]
+                    views = case.service.data_panels.view(*key)
+                    view, mapped = views[0], views[1]
                     if not shared.get(label + "_account_panel_requested"):
                         assert not view["available"]  # Review/view never fetched.
                         dock.refresh_button.click()  # Explicit synthetic user's read.
                         shared[label + "_account_panel_requested"] = True
-                    elif view["available"]:
+                    elif view["available"] and mapped["available"]:
+                        assert mapped["content"] == {
+                            "columns": ("ID",),
+                            "rows": (("n1",),),
+                        }
+                        assert mapped["source_count"] == 1
+                        if shared.get(label + "_account_panel_restored"):
+                            shared[label + "_account_panel_verified"] = True
+                            shared[label + "_manual_account_panel_after_task_end"] = (
+                                True
+                            )
+                            shared[label + "_mapped_account_panel_verified"] = True
+                            shared["last_account_panel_refresh"] = label
+                            shared.pop("account_panel_ui_owner", None)
+                            continue
                         assert json.loads(view["content"])["notes"] == [{"id": "n1"}]
                         display = dock.scroll.widget().displays["report"]
                         case.service.set_connector_access(
@@ -2123,9 +2155,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         )
                         assert not case.service.data_panels.view(*key)[0]["available"]
                         dock.refresh_button.click()  # Separate explicit refresh after restoration.
-                        shared[label + "_account_panel_verified"] = True
-                        shared[label + "_manual_account_panel_after_task_end"] = True
-                        shared["last_account_panel_refresh"] = label
+                        shared[label + "_account_panel_restored"] = True
                 recipient = shared.get(label + "_instruction_recipient")
                 if recipient and not shared.get(label + "_instruction_sent"):
                     window._toggle_data_panels(True)
@@ -2478,6 +2508,8 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     and not case.service.data_panels.account_reads.waiting
                 )
             )
+            assert shared["sdk_mapped_account_panel_verified"]
+            assert shared["raw_mapped_account_panel_verified"]
             assert shared["sdk_reusable_instruction_received"]
             assert shared["raw_reusable_instruction_received"]
             accounts = [
@@ -2499,12 +2531,20 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                 p for p in accounts if p.request_id.startswith(last_label + "-")
             )
             prior_account = next(p for p in accounts if p != last_account)
-            assert case.service.data_panels.view(
-                last_account.task_id, last_account.request_id
-            )[0]["available"]
-            assert not case.service.data_panels.view(
-                prior_account.task_id, prior_account.request_id
-            )[0]["available"]
+            assert all(
+                w["available"]
+                for w in case.service.data_panels.view(
+                    last_account.task_id, last_account.request_id
+                )
+                if "account" in w
+            )
+            assert not any(
+                w["available"]
+                for w in case.service.data_panels.view(
+                    prior_account.task_id, prior_account.request_id
+                )
+                if "account" in w
+            )
             shared["shared_account_revocation_erased_prior_panel"] = True
         panels = [
             p
