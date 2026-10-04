@@ -1,4 +1,6 @@
 const $ = id => document.getElementById(id);
+// How a reply's state reads (a cut-off turn keeps its partial reply).
+const MESSAGE_STATES = {streaming: "reply arriving", interrupted: "interrupted before finishing"};
 let bridge = null, state = null, context = null, draftVersion = 0, messagesKey = null, pendingSend = null;
 const composer = $("composer");
 const AGENTS = {
@@ -45,7 +47,7 @@ function renderMessages(messages, reset) {
     previous.delete(message.id);
     node.className = "message " + (message.role === "user" ? "user" : "agent");
     node.firstChild.firstChild.textContent = message.role === "user" ? "YOU" : "AGENT";
-    node.firstChild.lastChild.textContent = message.role === "user" ? message.delivery || "" : message.state === "complete" ? "" : message.state;
+    node.firstChild.lastChild.textContent = message.role === "user" ? message.delivery || "" : message.state === "complete" ? "" : (MESSAGE_STATES[message.state] || message.state);
     // Agent messages and service diagnostics are data, never HTML or commands.
     if (node.lastChild.textContent !== message.text) node.lastChild.textContent = message.text;
     log.append(node);

@@ -352,12 +352,81 @@ class AgentProviderTests(unittest.TestCase):
                 self.send("Prompt")
                 self.service.send_message(task, "Queued")
                 self.wait_for(lambda task=task: task not in self.manager.chats)
-                self.assertEqual(self.service.store.get(task).status, "cancelled")
+                # Every way a turn is cut off (a lost connection included) is
+                # recorded as interrupted, never as a cancel you did not ask for.
+                self.assertEqual(self.service.store.get(task).status, "interrupted")
                 self.assertEqual(self.messages(task)[1]["text"], "Queued")
                 self.assertNotIn(
                     "synthetic-private-command", self.sidebar.state["status"]
                 )
                 self.assertEqual(self.service.store.grants(task), [])
+
+    def test_shutdown_mid_turn_is_recorded_as_interrupted_not_cancelled(self):
+        task = self.chat("hang")
+        self.send("Cut off by shutdown")
+        self.manager.close()
+        self.assertEqual(self.service.store.get(task).status, "interrupted")
+        self.assertEqual(self.manager.connection(task)["reason"], "closed")
+        self.assertEqual(self.manager.connection(task)["live"], False)
+        self.sidebar.refresh()
+        activity = self.sidebar.state["activity"]
+        self.assertEqual(activity["title"], "Codex disconnected")
+        self.assertIn("Nothing was resent", activity["hint"])
+        self.assertIn(
+            "Cut off by shutdown", [m["text"] for m in self.sidebar.state["messages"]]
+        )
+        self.assertFalse(self.sidebar.state["active"])
+        self.assertEqual(len(self.messages(task)), 1)
+
+    def test_a_cut_off_turn_is_never_resent_or_duplicated(self):
+        task = self.chat("hang")
+        self.send("Delivered once")
+        self.service.send_message(task, "Queued for a later turn")
+        before = len(self.messages(task))
+        self.manager.close()
+        with self.assertRaises(ValueError):
+            self.service.send_message(task, "Resent after the interruption")
+        self.assertEqual(len(self.messages(task)), before)
+        self.assertEqual(
+            [m["text"] for m in self.messages(task)],
+            ["Delivered once", "Queued for a later turn"],
+        )
+        self.assertEqual(self.service.messages.read_sequence(task), 0)
+
+    def test_a_partial_reply_is_kept_and_labelled_interrupted(self):
+        task = self.chat("slow")
+        self.send("Streamed then cut")
+        self.wait_for(
+            lambda: any(m["state"] == "streaming" for m in self.messages(task))
+        )
+        partial = self.messages(task)[-1]["text"]
+        self.manager.close()
+        self.wait_for(lambda: self.messages(task)[-1]["state"] == "interrupted")
+        self.sidebar.refresh()
+        shown = self.sidebar.state["messages"][-1]
+        self.assertEqual(
+            shown["state"], "interrupted"
+        )  # "interrupted before finishing"
+        self.assertIn(partial, shown["text"])
+        self.assertEqual(self.service.store.get(task).status, "interrupted")
+
+    def test_an_interrupted_task_without_a_recorded_reason_says_so(self):
+        task = self.chat()
+        self.send("Never finished")
+        # A crash or restart ends the turn with no provider record at all.
+        self.service.store.transition(task, "interrupted")
+        self.manager._stop(task)
+        self.sidebar.refresh()
+        activity = self.sidebar.state["activity"]
+        self.assertEqual(activity["title"], "Turn interrupted")
+        self.assertIn("choose another conversation", activity["hint"])
+        self.assertFalse(self.sidebar.state["active"])
+
+    def test_a_failed_start_without_a_turn_is_not_called_interrupted(self):
+        task = self.chat("signin")
+        self.assertNotIn(task, self.manager.chats)
+        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        self.assertEqual(self.messages(task), [])
 
     def test_failed_chat_explains_the_reason_and_when_the_agent_last_reported(self):
         task = self.chat("malformed")
@@ -372,6 +441,8 @@ class AgentProviderTests(unittest.TestCase):
         self.sidebar.refresh()
         activity = self.sidebar.state["activity"]
         self.assertIn("stopped after an error", activity["title"])
+        self.assertIn("Nothing was resent", activity["hint"])
+        self.assertEqual(self.service.store.get(task).status, "interrupted")
         self.assertIn("Last agent update", activity["hint"])
         self.assertIn("this chat has stopped", self.sidebar.state["status"])
         self.assertNotIn("waiting for the agent", self.sidebar.state["status"])
@@ -450,7 +521,7 @@ class AgentProviderTests(unittest.TestCase):
         driver._timeouts()
         self.wait_for(lambda: task not in self.manager.chats)
         self.assertEqual(self.service.messages.read_sequence(task), 0)
-        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        self.assertEqual(self.service.store.get(task).status, "interrupted")
         self.assertEqual(len(self.drivers), 1)
 
     def test_acknowledgement_storage_failure_does_not_escape_signal(self):

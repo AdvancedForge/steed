@@ -548,6 +548,13 @@ changes were never implemented. No broader engineering was started.
 
 ### What is saved
 
+- **Interrupted-chat recovery implemented on `engineering/agent-recovery`:**
+  shutdowns and runtime failures during a turn now record `interrupted` rather
+  than a user cancellation, partial replies are kept and labelled, and the
+  sidebar states that nothing was resent, replayed or restored. The existing
+  recovery picker and fresh grants are reused unchanged. 41 provider checks plus
+  task-message and recovery checks pass; browser-based modules still need a
+  display-capable run.
 - **Agent connection clarity implemented on `engineering/agent-recovery`:** the
   sidebar explains *why* a native chat stopped (error, ended, disconnected)
   instead of one generic message, shows the exact last-update time reported by

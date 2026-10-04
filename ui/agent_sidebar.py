@@ -24,6 +24,19 @@ _AGENT_MODELS = {
 }
 
 
+# A turn cut off by shutdown or a lost connection: recorded as interrupted,
+# never as a cancel the person did not ask for, and never resumed.
+INTERRUPTED_TURN = "Turn interrupted"
+INTERRUPTED_HINT = (
+    "This turn was cut off before the agent finished. Nothing was resent or "
+    "replayed and no permission was restored."
+)
+CONTINUE_HINT = (
+    "Saved messages are below; start a new chat or choose another conversation "
+    "to continue."
+)
+
+
 def stopped_state(name, reason):
     """Why a native chat is no longer live: (title, guidance). Only reasons
     Steed itself decided (an error, a closed conversation, the browser
@@ -579,9 +592,15 @@ class AgentSidebar(QDockWidget):
         )
         reason = (connection or {}).get("reason", "")
         detail = (connection or {}).get("detail", "")
-        if not report and not active and (reason or detail):
-            title, guidance = stopped_state(name, reason)
-            hint = f"{detail} {guidance}" if detail else guidance
+        interrupted = task_status == "interrupted"
+        if not report and not active and (reason or detail or interrupted):
+            if interrupted and not reason:
+                title, hint = INTERRUPTED_TURN, f"{INTERRUPTED_HINT} {CONTINUE_HINT}"
+            else:
+                title, guidance = stopped_state(name, reason)
+                hint = f"{detail} {guidance}" if detail else guidance
+                if interrupted:
+                    hint += f" {INTERRUPTED_HINT}"
         stamp = reported_at_text(connection)
         if stamp:
             hint = (hint + " " if hint else "") + f"Last agent update {stamp}."

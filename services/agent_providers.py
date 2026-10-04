@@ -549,18 +549,28 @@ class AgentProviders(QObject):
             )
 
     def _failed(self, task_id, error):
-        if task_id not in self.chats:
+        chat = self.chats.get(task_id)
+        if chat is None:
             return
         self.stopped[task_id] = "failed"
         self.states[task_id] = error
         self._stop(task_id)
-        if not self.service._closed and not self.service.failure:
-            try:
-                if self.service.store.get(task_id).status in ACTIVE_STATUSES:
-                    self.service.cancel_task(task_id)
-            except sqlite3.Error:
-                self.service._fatal()
+        self._end_chat(task_id, chat["current"] is not None)
         self.changed.emit()
+
+    def _end_chat(self, task_id, interrupted):
+        """A turn cut off mid-flight is an interruption, not a user cancellation."""
+        if self.service._closed or self.service.failure:
+            return
+        try:
+            if self.service.store.get(task_id).status not in ACTIVE_STATUSES:
+                return
+            if interrupted:
+                self.service.interrupt_task(task_id)
+            else:
+                self.service.cancel_task(task_id)
+        except sqlite3.Error:
+            self.service._fatal()
 
     def _stop(self, task_id):
         chat = self.chats.pop(task_id, None)
@@ -593,8 +603,7 @@ class AgentProviders(QObject):
         for task_id in tuple(self.chats):
             self.stopped[task_id] = "closed"
             self.states[task_id] = f"{self.chats[task_id]['agent']} disconnected"
+            chat = self.chats.get(task_id)
             self._stop(task_id)
-            if not self.service._closed and not self.service.failure:
-                if self.service.store.get(task_id).status in ACTIVE_STATUSES:
-                    self.service.cancel_task(task_id)
+            self._end_chat(task_id, chat is not None and chat["current"] is not None)
         self.changed.emit()
