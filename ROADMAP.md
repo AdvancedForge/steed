@@ -12,6 +12,42 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Configurable browser UI, first milestone (implemented).** Manual layout
+settings let the user show, hide and reorder the address bar buttons, reorder
+the menu bar, move the agent sidebar between the left and right edges, remember
+its width, choose compact or comfortable control spacing, and save, apply or
+delete named layouts. Today’s menu order and spacing are the defaults.
+`General → Layout Settings…` edits the layout, `View → Reset Layout` restores
+today’s appearance, and `Tabs → Home` was added so hiding the Home button keeps
+it reachable. Edits preview immediately and only Save persists them; Cancel
+restores the previous layout. Layouts are stored under the `layout` key in the
+shared browser configuration and apply to every window and profile.
+
+Stored layouts are treated as untrusted: unknown button or menu identifiers are
+dropped, missing ones return in their default position, an unknown schema
+version falls back to today’s defaults, sidebar width is bounded to 200–800 px,
+at most 32 named layouts are kept, and unusable names are refused. Applying a
+layout changes presentation only; browser, profile, folder, file and account
+permissions are untouched.
+
+Validation: **44 new checks pass** in the headless layout suite, covering stored
+defaults, malformed documents, restart round-trips through the configuration
+file, named layout limits, menu reordering, toolbar hide/reorder, density, the
+dialog’s save/cancel/reset flow, and the real dock move and resize calls. A
+module-by-module run on this branch passes **546 checks across 40 modules**.
+Ruff lint and format pass. The five worker-bundle modules
+(`test_agent_providers`, `test_local_worker`, `test_worker_bundle`,
+`test_worker_diagnostics`, `test_worker_manager`) fail identically on pristine
+`main` in this environment because the local worker bundle is not installed
+(`local_worker_unavailable`); they are unrelated to this change. The 20
+WebEngine-backed modules, including `test_browser_layout.py`, cannot run here
+(`Could not initialize GLX`) and still need the maintainer’s display-capable
+runner. Log: `/tmp/steed-layout-modules.log`.
+
+Remaining for this scope: reviewed agent layout proposals with stable component
+IDs, a versioned JSON schema, preview/apply/export/import and last-working-layout
+recovery, then native component panels and validated appearance settings.
+
 **Codex access discovery and reported model (implemented; final validation in progress).**
 The user reports an agent saying access-discovery requests were rejected. Two
 reproducible faults were found: the native Steed MCP entry used `auto` admission,
@@ -1376,13 +1412,16 @@ the required cases.
 Prioritize daily workflow and reuse the existing Qt architecture. The latest
 request distinguishes configurable browser UI from saved agent workflows.
 
-1. **Configurable UI, first milestone:** persisted manual toolbar visibility/order,
-   sidebar position/width, density and named layouts; defaults match today's menu
-   order. Keep Settings/Reset reachable and cover restart and malformed settings.
-   Then add stable component IDs, versioned JSON, preview/apply/export/import and
-   last-working-layout recovery so agents can design layouts. Native component
-   panels and validated appearance settings follow; do not execute generated code
-   in the browser. Details: [customization direction](DOCUMENTATION.md#customization-direction-planned).
+1. **Configurable UI:** the manual milestone is implemented — persisted
+   toolbar visibility/order, sidebar position/width, density and named
+   layouts, with defaults matching today's menu order, Settings and Reset
+   always reachable, and restart plus malformed-settings coverage. Next:
+   stable component IDs, versioned JSON, preview/apply/export/import and
+   last-working-layout recovery so agents can design layouts. Native
+   component panels and validated appearance settings follow; do not
+   execute generated code in the browser. Details:
+   [configurable browser layout](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
+   and [customization direction](DOCUMENTATION.md#customization-direction-planned).
 2. **Connector interoperability:** typed read-only POST/query requests and bounded
    query inputs, then explicit pagination/response contracts. Credential-derived
    headers, revision guards and transforms need separate reviewed types. The
