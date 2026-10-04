@@ -8,10 +8,18 @@ task and hand off. External-agent recovery needs a broader lifecycle change, so
 this checkpoint delivers direct bookmark opening B2 and saves the already-built
 account projections N5 with their exact validation status. Stop here rather than
 starting the HTML bridge or another feature. This section takes precedence over
-older milestones below.
+older milestones below. The owner subsequently requested one more small task;
+bookmark manager shortcut B3 is also delivered. No broader engineering was started.
 
 ### What is saved
 
+- **B3 complete:** Ctrl+Shift+O opens Manage Bookmarks for the current profile.
+  The action is under Tabs beside Bookmark This Page. An actual synthetic Qt
+  keyboard check from address-field focus and the menu route pass; 17 existing
+  bookmark/menu checks pass in 2.732 seconds. Logs:
+  `/tmp/steed-bookmark-shortcut-{check,focused}.log`. Ruff/format/whitespace pass.
+  No agent/runtime authority or new shared tool changes; the pending N5 broad
+  acceptance and next-agent recovery milestones below remain the next work.
 - **B2 complete:** `ui/bookmarks_dialog.py` adds Open and double-click opening;
   `browser_window.py::_manage_bookmarks` supplies a new-tab callback with a
   current-profile/closing check. Existing stable profile identity guards prevent
@@ -30,7 +38,7 @@ older milestones below.
   new late-response/timeout regression. SDK/raw stdio and authenticated HTTP
   account-table workflows already pass. Light/dark bookmark and panel previews,
   startup/render/shutdown, Ruff lint/format (240 files) and whitespace pass.
-  The most recent full suite is **1,363 tests before N5/B2**; do not report a
+  The most recent full suite is **1,363 tests before N5/B2/B3**; do not report a
   full-suite pass for this checkpoint. Both installed Codex smoke paths also
   remain to be rerun for v7. All test data is synthetic/temporary; real desktop
   and live-provider acceptance remain manual.

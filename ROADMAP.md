@@ -138,6 +138,15 @@ Ruff lint/format (240 files) and whitespace pass. Logs:
 External-agent connection/recovery polish was assessed as a broader milestone
 and is deliberately handed off rather than partially changed.
 
+**Bookmark manager shortcut B3 (implemented and accepted).** Ctrl+Shift+O opens
+the current profile's bookmark manager. Manage Bookmarks now lives in Tabs beside
+Bookmark This Page, matching the documented category. A synthetic Qt keyboard
+check verifies shortcut delivery from the address field and the menu route;
+**17 existing bookmark/menu regressions pass in 2.732 seconds**. Ruff lint/format
+and whitespace pass. Logs: `/tmp/steed-bookmark-shortcut-{check,focused}.log`.
+This is the owner's requested additional small task; the handoff priorities below
+are unchanged. No full-suite or new native-agent acceptance is claimed.
+
 **Next daily-use chunks, in order:**
 
 1. Finish account list/table broad acceptance: full regressions and both installed

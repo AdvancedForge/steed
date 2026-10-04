@@ -148,6 +148,7 @@ Bookmarks** searches names/addresses/folders, filters by folder, and edits names
 addresses and folder labels while preserving bookmark IDs. Type a new folder name
 when saving/editing; an empty folder means Unfiled. Changes from another window
 refresh the manager. New Tab shows the first 24 bookmarks with **Manage all**.
+Press **Ctrl+Shift+O** to open the manager directly.
 Select a bookmark and click **Open**, or double-click it, to open a new tab in
 the current profile. Use **Edit…** to change its details. If the profile has
 changed while the manager was open, reopen the manager before opening a link.
@@ -204,6 +205,8 @@ There is no general-purpose HTML app capability bridge in this milestone.
 - `Ctrl+Shift+0`: Switch the current window to search profile
 - `Ctrl+Shift+1` … `Ctrl+Shift+9`: Switch to the Nth profile
 - `Ctrl+J`: Downloads
+- `Ctrl+D`: Bookmark the current page
+- `Ctrl+Shift+O`: Manage bookmarks
 - `Ctrl+R` or `F5`: Reload the current tab
 - `Ctrl+L`: Focus and select the address bar
 - `Ctrl+F`: Open find in page and select the current query
@@ -225,7 +228,8 @@ The menu bar has six categories, in this order:
   Settings and Exit.
 - **Profile:** Create, switch, pop out, rename or delete profiles, open private
   browsing and use Quick Switch shortcuts.
-- **Tabs:** New Tab, Restore Closed Tab, Close Tab and Reload.
+- **Tabs:** New Tab, Restore Closed Tab, Close Tab, Reload, Bookmark This Page
+  and Manage Bookmarks.
   **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
   that group, and opens Manage Tab Groups. Individual tabs also expose existing
   group selection and grouping actions from their context menu.

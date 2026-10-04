@@ -366,9 +366,10 @@ class BrowserWindow(QMainWindow):
         bookmark_action.setShortcut(QKeySequence("Ctrl+D"))
         bookmark_action.triggered.connect(self._bookmark_current)
         tabs_menu.addAction(bookmark_action)
-        general_menu.addAction("Manage Bookmarks…").triggered.connect(
-            self._manage_bookmarks
-        )
+        manage_bookmarks_action = QAction("Manage Bookmarks…", self)
+        manage_bookmarks_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
+        manage_bookmarks_action.triggered.connect(self._manage_bookmarks)
+        tabs_menu.addAction(manage_bookmarks_action)
         layout_action = QAction("Layout Settings...", self)
         layout_action.setToolTip(
             "Reorder or hide address bar buttons, reorder menus, and choose "
