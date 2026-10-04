@@ -27,8 +27,9 @@ class Config:
     def _load_config(self) -> dict[str, Any]:
         """Load configuration from file."""
         default_config = {
-            "default_profile": "default",
-            "home_page": "https://www.duckduckgo.com",
+            "default_profile": "global",
+            "home_page": "steed:newtab",
+            "new_tab_page": "steed:newtab",
             "search_engine": "https://www.duckduckgo.com/?q=",
             "dark_mode": False,
             "restore_tabs_on_startup": True,
@@ -42,6 +43,15 @@ class Config:
         user_config = load_json(self.config_file, default={})
         if isinstance(user_config, dict):
             default_config.update(user_config)
+        # The old built-in Default selection becomes Global. Its directory is
+        # deliberately retained: an existing profile remains ordinary user data.
+        if default_config.get("default_profile") == "default":
+            default_config["default_profile"] = "global"
+        if default_config.get("home_page") in (
+            "https://www.duckduckgo.com",
+            "https://www.google.com",
+        ):
+            default_config["home_page"] = "steed:newtab"
 
         return default_config
 
@@ -71,7 +81,7 @@ class Config:
     @property
     def default_profile(self) -> str:
         """Get the default profile name."""
-        return self.get("default_profile", "default")
+        return self.get("default_profile", "global")
 
     @property
     def dark_mode(self) -> bool:

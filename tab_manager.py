@@ -52,6 +52,16 @@ class ClosedTabHistory:
     def available(self, profile: str) -> bool:
         return bool(self._profiles.get(profile))
 
+    def entries(self, profile: str) -> list[ClosedTab]:
+        return list(reversed(self._profiles.get(profile, [])))
+
+    def pop_id(self, profile: str, tab_id: str) -> ClosedTab | None:
+        history = self._profiles.get(profile, [])
+        for index in range(len(history) - 1, -1, -1):
+            if history[index].state.tab_id == tab_id:
+                return history.pop(index)
+        return None
+
 
 class TabManager(QObject):
     """Saves/restores tabs to <profile_dir>/tabs.json"""

@@ -93,8 +93,9 @@ class TaskMessages:
             "(SELECT COUNT(*) FROM worker_runs WHERE task_id=? AND state='awaiting_approval') + "
             "(SELECT COUNT(*) FROM recipe_proposals WHERE task_id=? AND state='awaiting_approval') + "
             "(SELECT COUNT(*) FROM layout_proposals WHERE task_id=? AND state='awaiting_approval') + "
-            "(SELECT COUNT(*) FROM data_panels WHERE task_id=? AND state='awaiting_approval')",
-            (task_id,) * 6,
+            "(SELECT COUNT(*) FROM data_panels WHERE task_id=? AND state='awaiting_approval') + "
+            "(SELECT COUNT(*) FROM start_page_proposals WHERE task_id=? AND state='awaiting_approval')",
+            (task_id,) * 7,
         ).fetchone()[0]
         files, artifacts, receipts = db.execute(
             "SELECT "

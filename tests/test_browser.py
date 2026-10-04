@@ -60,7 +60,7 @@ class PersistenceTests(unittest.TestCase):
                 self.assertTrue(restored.dark_mode)
                 self.assertEqual(restored.get("custom_preference"), 42)
                 save_json(config.config_file, [])
-                self.assertEqual(Config().default_profile, "default")
+                self.assertEqual(Config().default_profile, "global")
 
     def test_tabs_round_trip_and_malformed_data(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -257,8 +257,8 @@ class BrowserTests(unittest.TestCase):
         self.local_page = (
             Path(__file__).resolve().parents[1] / "codec_test.html"
         ).as_uri()
-        config.update({"home_page": self.local_page})
-        self.window = BrowserWindow()
+        config.update({"home_page": self.local_page, "new_tab_page": self.local_page})
+        self.window = BrowserWindow("default")
 
     def tearDown(self):
         if not self.window._closing:
@@ -337,7 +337,7 @@ class BrowserTests(unittest.TestCase):
         self.assertTrue(all(window.tab_bar.tab_bar.isTabVisible(i) for i in range(3)))
 
     def test_windows_share_profiles_until_last_owner_closes(self):
-        second = BrowserWindow()
+        second = BrowserWindow("default")
         profile = self.window.profile_manager.current_profile
         self.assertIs(second.profile_manager.current_profile, profile)
         second.close()
@@ -1237,7 +1237,7 @@ class BrowserTests(unittest.TestCase):
         history = self.window.history
         target = "https://history-fixture.example/work"
         history.record(target, "Work")
-        second = BrowserWindow()
+        second = BrowserWindow("default")
         try:
             self.assertIs(second.history, history)
             self.assertEqual(second.address_bar.history_model.rowCount(), 1)

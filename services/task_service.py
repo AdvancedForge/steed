@@ -35,6 +35,7 @@ from services.layout_proposals import LayoutProposals
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
 from services.recipe_proposals import RecipeProposals
+from services.start_page_proposals import StartPageProposals
 from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
 from services.task_downloads import DownloadDestination
@@ -111,6 +112,7 @@ class TaskService(QObject):
         self.recipes = RecipeProposals(self, connections)
         self.layouts = LayoutProposals(self)
         self.data_panels = DataPanels(self)
+        self.start_pages = StartPageProposals(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -123,6 +125,15 @@ class TaskService(QObject):
                 "task.status": self.store.get,
                 "task.capabilities": self._capabilities,
                 "browser.context": self._browser_context,
+                "start_page.capabilities": self._start_page_capabilities,
+                "start_page.propose": lambda task_id, source, request_id: (
+                    self._layout_action(
+                        self.start_pages.propose, task_id, source, request_id
+                    )
+                ),
+                "start_page.status": lambda task_id, request_id: self._layout_action(
+                    self.start_pages.get, task_id, request_id
+                ),
                 "panel.capabilities": self._panel_capabilities,
                 "panel.propose": lambda task_id, source, request_id: (
                     self._layout_action(
@@ -687,6 +698,13 @@ class TaskService(QObject):
         self._usable()
         self._active(task_id)
         return {"available": self.data_panels.available, **panel_capabilities()}
+
+    def _start_page_capabilities(self, task_id):
+        from start_page_format import capabilities
+
+        self._usable()
+        self._active(task_id)
+        return {"available": self.start_pages.available, **capabilities()}
 
     def _layout_capabilities(self, task_id):
         from layout_format import layout_capabilities
@@ -2420,6 +2438,7 @@ class TaskService(QObject):
         self.recipes.cancel_task(task_id)
         self.layouts.cancel_task(task_id)
         self.data_panels.cancel_task(task_id, interrupted=status == "interrupted")
+        self.start_pages.cancel_task(task_id, interrupted=status == "interrupted")
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):

@@ -1,8 +1,10 @@
 """Main browser window."""
 
+import json
 import logging
 import sqlite3
 from pathlib import Path
+from urllib.parse import parse_qsl
 from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
@@ -40,7 +42,8 @@ from layout_preferences import (
 from profile_manager import ProfileManager
 from services.permission_service import PermissionService
 from services.site_permissions import FEATURES
-from tab_manager import ClosedTabHistory, TabManager, TabState
+from services.start_pages import NEW_TAB, WELCOME, display_url, page_name
+from tab_manager import TabManager, TabState
 from ui.adblock_dialog import AdBlockDialog
 from ui.address_bar import AddressBar
 from ui.app_connections import AppConnectionsDialog
@@ -101,6 +104,24 @@ class BrowserPage(QWebEnginePage):
         self.setUrlRequestInterceptor(self.site_compatibility)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        if url.scheme() == "steed" and url.host() == "action":
+            tab = self.parent()
+            window = getattr(tab, "browser_window", None)
+            if (
+                window is not None
+                and is_main_frame
+                and page_name(self.url()) is not None
+                and navigation_type
+                in (
+                    QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
+                    QWebEnginePage.NavigationType.NavigationTypeFormSubmitted,
+                )
+                and not window.profile_manager.registry.start_pages.state(
+                    window.profile_manager.current_profile_name
+                )["html" if page_name(self.url()) == "newtab" else "welcome_html"]
+            ):
+                QTimer.singleShot(0, lambda: window._start_page_action(tab, url))
+            return False
         compatibility = self.site_compatibility
         if (
             compatibility.enabled
@@ -188,7 +209,7 @@ class BrowserWindow(QMainWindow):
         self.file_library_dialog = None
         self.current_tab_index = 0
         self._restoring_tabs = False
-        self.closed_tabs = ClosedTabHistory()
+        self.closed_tabs = self.profile_manager.registry.closed_tabs
         self._child_windows: list[BrowserWindow] = []
         self._password_dialog = None
         self.agent_sidebar = None
@@ -215,6 +236,12 @@ class BrowserWindow(QMainWindow):
         # Connect profile signals
         self.profile_manager.profile_changed.connect(self._on_profile_changed)
         self.profile_manager.profiles_updated.connect(self._update_profile_shortcuts)
+        self.profile_manager.registry.start_pages.changed.connect(
+            self._start_page_changed
+        )
+        self.profile_manager.registry.start_pages.news_changed.connect(
+            self._start_news_changed
+        )
         # The initial profile was selected before the menu/signals existed.
         self._update_profile_shortcuts()
         # Initialize profile and managers
@@ -223,7 +250,7 @@ class BrowserWindow(QMainWindow):
         if self.config.get("restore_tabs_on_startup", True):
             self._restore_tabs()
         else:
-            self._new_tab()
+            self._new_tab(url=self._startup_page())
 
     def _initialize_profile(self, profile_name: str):
         if self.history is not None:
@@ -329,6 +356,19 @@ class BrowserWindow(QMainWindow):
         settings_action.setShortcut(QKeySequence("Ctrl+,"))
         settings_action.triggered.connect(self._open_settings)
         general_menu.addAction(settings_action)
+        general_menu.addAction("Customize New Tab…").triggered.connect(
+            self._customize_new_tab
+        )
+        general_menu.addAction("Welcome to Steed").triggered.connect(
+            lambda: self._new_tab(url=WELCOME)
+        )
+        bookmark_action = QAction("Bookmark This Page…", self)
+        bookmark_action.setShortcut(QKeySequence("Ctrl+D"))
+        bookmark_action.triggered.connect(self._bookmark_current)
+        tabs_menu.addAction(bookmark_action)
+        general_menu.addAction("Manage Bookmarks…").triggered.connect(
+            self._manage_bookmarks
+        )
         layout_action = QAction("Layout Settings...", self)
         layout_action.setToolTip(
             "Reorder or hide address bar buttons, reorder menus, and choose "
@@ -1177,12 +1217,8 @@ class BrowserWindow(QMainWindow):
         return_tab: bool = False,
         index: int | None = None,
     ):
-        home = self.config.get("home_page", "https://www.google.com")
-        if not home:
-            home = "https://www.duckduckgo.com"
-
         if not url:
-            url = home
+            url = self.config.get("new_tab_page", NEW_TAB) or NEW_TAB
 
         agent_panel = url == "steed:agents"
         source_tab = self.tabs[self.current_tab_index] if self.tabs else None
@@ -1241,6 +1277,7 @@ class BrowserWindow(QMainWindow):
         )
         profile_name = self.profile_manager.current_profile_name
         self.closed_tabs.push(profile_name, state, index)
+        self._start_page_changed(profile_name)
         self.tab_bar.remove_tab(index)
         self._dispose_tab(tab)
         self.current_tab_index = (
@@ -1254,9 +1291,13 @@ class BrowserWindow(QMainWindow):
     def _close_current_tab(self):
         self._close_tab(self.current_tab_index)
 
-    def _restore_closed_tab(self):
+    def _restore_closed_tab(self, tab_id=None):
         profile = self.profile_manager.current_profile_name
-        closed = self.closed_tabs.pop(profile)
+        closed = (
+            self.closed_tabs.pop_id(profile, tab_id)
+            if isinstance(tab_id, str)
+            else self.closed_tabs.pop(profile)
+        )
         if closed is not None:
             state = closed.state
             tab = self._new_tab(
@@ -1274,6 +1315,7 @@ class BrowserWindow(QMainWindow):
             self._sync_tab_group_labels()
             self._save_current_tabs()
         self.restore_tab_action.setEnabled(self.closed_tabs.available(profile))
+        self._start_page_changed(profile)
 
     def _on_tab_moved(self, from_idx: int, to_idx: int):
         tab = self.tabs.pop(from_idx)
@@ -1313,7 +1355,7 @@ class BrowserWindow(QMainWindow):
         self.address_bar.set_url(
             "steed:agents"
             if getattr(cur, "agent_panel", False)
-            else cur.url().toString()
+            else display_url(cur.url())
         )
         self.address_bar.set_back_enabled(cur.history().canGoBack())
         self.address_bar.set_forward_enabled(cur.history().canGoForward())
@@ -1530,7 +1572,7 @@ class BrowserWindow(QMainWindow):
             self._password_dialog = None
 
     def _go_home(self):
-        home = self.config.get("home_page", "https://www.google.com")
+        home = self.config.get("home_page", NEW_TAB) or NEW_TAB
         self._navigate_to_url(home)
 
     def _on_tab_url_changed(self, tab: BrowserTab, url: QUrl):
@@ -1542,7 +1584,7 @@ class BrowserWindow(QMainWindow):
         if tab == self.tabs[self.current_tab_index] and not getattr(
             tab, "agent_panel", False
         ):
-            self.address_bar.set_url(url.toString())
+            self.address_bar.set_url(display_url(url))
             self._update_window_title(url)
 
     def _on_tab_title_changed(self, tab: BrowserTab, title: str):
@@ -1567,6 +1609,13 @@ class BrowserWindow(QMainWindow):
         if ok:
             self.history.record(tab.url().toString(), tab.title())
             self.adblock.apply_cosmetic(tab)
+            if (
+                page_name(tab.url()) == "newtab"
+                and not self.profile_manager.registry.start_pages.state(
+                    self.profile_manager.current_profile_name
+                )["html"]
+            ):
+                tab.page().runJavaScript("window.scrollTo(0, 0)")
         self._schedule_tab_save()
 
     def _schedule_tab_save(self):
@@ -1596,7 +1645,7 @@ class BrowserWindow(QMainWindow):
             if getattr(tab, "agent_panel", False):
                 url = "steed:agents"
             if not url:
-                url = self.config.get("home_page", "https://www.google.com")
+                url = self.config.get("new_tab_page", NEW_TAB) or NEW_TAB
             title = tab.title() or "New Tab"
             if getattr(tab, "agent_panel", False):
                 title = "External Agents"
@@ -1631,7 +1680,7 @@ class BrowserWindow(QMainWindow):
                     self.tabs[-1].tab_id = state.tab_id
                     self.tabs[-1].group_id = state.group_id
             else:
-                self._new_tab(index=len(self.tabs))
+                self._new_tab(url=self._startup_page(), index=len(self.tabs))
         finally:
             self._restoring_tabs = False
         self._switch_tab(0)
@@ -2036,6 +2085,113 @@ class BrowserWindow(QMainWindow):
             self.apply_dark_mode()
 
             self.profile_manager.refresh_settings()
+            self._start_page_changed(self.profile_manager.current_profile_name)
+
+    def _startup_page(self):
+        home = self.config.get("home_page", NEW_TAB) or NEW_TAB
+        if (
+            not self.profile_manager.is_search_profile()
+            and home in (NEW_TAB, "steed::newtab", "steed://newtab/")
+            and not self.config.get("welcome_completed", False)
+        ):
+            return WELCOME
+        return home
+
+    def _start_page_changed(self, profile):
+        if self._closing or profile != self.profile_manager.current_profile_name:
+            return
+        for tab in self.tabs:
+            if page_name(tab.url()) is not None:
+                tab.reload()
+
+    def _customize_new_tab(self):
+        from ui.start_page_dialog import StartPageDialog
+
+        StartPageDialog(
+            self.profile_manager.registry.start_pages,
+            self.profile_manager.current_profile_name,
+            self,
+        ).exec()
+
+    def _start_news_changed(self, profile):
+        if self._closing or profile != self.profile_manager.current_profile_name:
+            return
+        pages = self.profile_manager.registry.start_pages
+        if pages.state(profile)["html"]:
+            return
+        body = json.dumps(pages.news_section(profile))
+        for tab in self.tabs:
+            if page_name(tab.url()) == "newtab":
+                tab.page().runJavaScript(
+                    "{const card = document.getElementById('news'); if (card) card.outerHTML = "
+                    + body
+                    + ";}"
+                )
+
+    def _bookmark_current(self):
+        if not self.tabs:
+            return
+        tab = self.tabs[self.current_tab_index]
+        self._edit_bookmark(tab.url().toString(), tab.title())
+
+    def _edit_bookmark(self, url="", title=""):
+        from ui.bookmarks_dialog import BookmarkDialog
+
+        BookmarkDialog(
+            self.profile_manager.registry.start_pages,
+            self.profile_manager.current_profile_name,
+            self,
+            url,
+            title,
+        ).exec()
+
+    def _manage_bookmarks(self):
+        from ui.bookmarks_dialog import BookmarksDialog
+
+        BookmarksDialog(
+            self.profile_manager.registry.start_pages,
+            self.profile_manager.current_profile_name,
+            self,
+        ).exec()
+
+    def _start_page_action(self, tab, url):
+        if self._closing or tab not in self.tabs or page_name(tab.url()) is None:
+            return
+        pages = self.profile_manager.registry.start_pages
+        profile = self.profile_manager.current_profile_name
+        if pages.state(profile)[
+            "html" if page_name(tab.url()) == "newtab" else "welcome_html"
+        ]:
+            return
+        if url.userInfo() or url.port() != -1 or url.hasFragment():
+            return
+        action = url.path().removeprefix("/")
+        params = parse_qsl(
+            url.query(QUrl.ComponentFormattingOption.FullyEncoded),
+            keep_blank_values=True,
+        )
+        if action == "search" and len(params) == 1 and params[0][0] == "q":
+            text = params[0][1].strip()
+            if text and len(text) <= 4096:
+                self._navigate_tab_to_url(tab, text)
+        elif action == "reopen" and len(params) == 1 and params[0][0] == "id":
+            self._restore_closed_tab(params[0][1])
+        elif not params:
+            if action == "customize":
+                self._customize_new_tab()
+            elif action == "bookmark":
+                self._edit_bookmark()
+            elif action == "agents":
+                self._toggle_agent_sidebar(True)
+            elif action == "library":
+                self._open_file_library()
+            elif action == "start":
+                if not self.profile_manager.is_search_profile():
+                    self.config.set("welcome_completed", True)
+                self._navigate_tab_to_url(tab, NEW_TAB)
+            elif action == "refresh-news":
+                pages.news.forget(profile)
+                self._start_news_changed(profile)
 
     def _use_global_cookies(self):
         if not self.tabs or self.profile_manager.current_profile_name in (

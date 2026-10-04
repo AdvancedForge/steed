@@ -464,7 +464,7 @@ class WorkspaceTests(unittest.TestCase):
         sip.delete(self.service)
         self.service = TaskService(self.root / "tasks.sqlite")
         self.assertEqual(
-            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 18
+            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 19
         )
         self.assertEqual(
             self.service.store.artifact(self.client.task_id, draft.artifact_id).content,

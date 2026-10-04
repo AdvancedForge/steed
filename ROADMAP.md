@@ -12,6 +12,40 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Global and editable internal pages (implemented; acceptance in progress).**
+Fresh installs start in Global and no longer create a built-in Default profile;
+existing Default data remains an ordinary, mutable profile. Home and New Tab have
+separate address preferences, initially `steed:newtab`. `steed:welcome` provides
+onboarding and links to agents/folders. Both pages use maintained local HTML with
+reload/session restore and one-colon address display. Per-profile bookmarks,
+section ordering, copied local images, recent tabs/visits and opt-in RSS/Atom news
+are available. Custom HTML/CSS/inline JavaScript can replace either page through
+the native editor or import; restoring built-in sections is explicit.
+
+External agents have three page tools for format discovery, immutable proposals
+and receipts. A native source review chooses the display profile and checks its
+identity/current-state digest before Apply. No automatic data grant or page-source
+disclosure occurs. Users explicitly share source through existing connected-task
+conversations, copy it for website chats or export it to enabled folders. Pending
+reviews appear in Task Permissions and the sidebar count. Schema 19 retains old
+tasks/drafts and interrupts unfinished reviews on restart. Global now supports
+reviewed `existing:global` task access, so the default profile remains useful for
+external agents; incognito remains excluded from shared tasks.
+
+Acceptance: 136 browser/profile/integration checks and 22 final page/edit/feed
+checks pass. Independent SDK/raw workflows pass proposal, native review and stable
+retries over stdio and authenticated HTTP. Both installed Codex runtime paths
+discover the page tools using local model fixtures. Light/dark Welcome, New Tab,
+customization and minimal-page previews were inspected. A feed refresh preserves
+the search draft; a startup autofocus scroll issue was found during visual review
+and corrected. The full suite's three old Default/Global assumptions were updated;
+final combined full-suite acceptance follows. Startup/render/shutdown passes.
+Logs: `/tmp/steed-start-pages-*`.
+Next engineering scopes remain native image/workspace bindings, then selected
+library/connector sources and typed connector query/POST reads. The editable start
+page is a concrete local HTML use case; broader hosted apps/capability bridges
+remain separate work.
+
 **Native inputs N2 and comparison tables (implemented and accepted).**
 Version 2 adds bounded text/choice forms and read-only tables to reviewed panels;
 version 1 retains its original grammar. Forms preview exact values and the owning

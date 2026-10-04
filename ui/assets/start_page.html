@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" data-theme="${theme}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action steed:; base-uri 'none'; object-src 'none'">
+  <title>${title}</title>
+  <style>${css}</style>
+</head>
+<body class="${body_class}">
+  <header>
+    <a class="brand" href="steed://newtab/">Steed<span class="dot">.</span></a>
+    <span class="profile">${profile}</span>
+    <nav aria-label="Start page">
+      <a href="steed://welcome/">Welcome</a>
+      <a class="button secondary small" href="steed://action/customize">Customize</a>
+    </nav>
+  </header>
+  <main>${body}</main>
+  <footer>General · Settings for browser preferences &nbsp; Profile · Switch your space</footer>
+</body>
+</html>

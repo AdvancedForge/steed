@@ -34,10 +34,10 @@ class SettingsDialog(QDialog):
         form = QFormLayout()
         layout.addLayout(form)
 
-        self.home_page = QLineEdit(
-            self.config.get("home_page", "https://www.google.com")
-        )
+        self.home_page = QLineEdit(self.config.get("home_page", "steed:newtab"))
         form.addRow("Home page:", self.home_page)
+        self.new_tab_page = QLineEdit(self.config.get("new_tab_page", "steed:newtab"))
+        form.addRow("New tab page:", self.new_tab_page)
 
         self.search_engine = QLineEdit(
             self.config.get("search_engine", "https://www.google.com/search?q=")
@@ -100,7 +100,8 @@ class SettingsDialog(QDialog):
         """Write changes to config."""
         self.config.update(
             {
-                "home_page": self.home_page.text().strip() or "https://www.google.com",
+                "home_page": self.home_page.text().strip() or "steed:newtab",
+                "new_tab_page": self.new_tab_page.text().strip() or "steed:newtab",
                 "search_engine": self.search_engine.text().strip()
                 or "https://www.google.com/search?q=",
                 "restore_tabs_on_startup": self.restore_tabs.isChecked(),

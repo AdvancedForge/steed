@@ -174,6 +174,10 @@ def run(model="gpt-6.1-sol"):
                 "form",
                 "table",
             ]
+            assert discovery["steed_start_page_capabilities"]["result"]["pages"] == [
+                "newtab",
+                "welcome",
+            ]
             tab_error = responses.results(1)["steed_browser_tabs"]["error"]
             assert tab_error["code"] == "approval_required"
             assert "Share browser tabs" in tab_error["message"]

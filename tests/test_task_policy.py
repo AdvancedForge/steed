@@ -94,7 +94,6 @@ class TaskPolicyTests(unittest.TestCase):
     def test_invalid_scope_fields_profiles_actions_and_budgets_are_rejected(self):
         for changes in (
             {"profile": "global"},
-            {"profile": "existing:global"},
             {"profile": "existing:search"},
             {"profile": "existing:../work"},
             {"profile": "existing: work"},

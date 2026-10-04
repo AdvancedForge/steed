@@ -7,6 +7,8 @@ browsing profiles and direct KeePassXC password management.
 ## Highlights
 
 - Separate profiles and an incognito search profile.
+- Global starts fresh installs; Welcome and editable HTML New Tab pages are built in.
+- Profile-local bookmarks, start-page sections, local images and optional news feeds.
 - Saved tab sessions, tab groups, and recently closed tab restoration.
 - Address suggestions from per-profile browsing history.
 - Find in page with match counts and per-tab page zoom.
@@ -66,7 +68,8 @@ format, per-action payload reviews and limits. See
 Install the optional bundle with `.venv/bin/python install_worker_bundle.py`.
 Website and agent prompts offer one-time or saved approvals, with explicit
 site/action/profile scope and separate screens to remove saved choices.
-Bookmarks and generic extension support are planned.
+Users and external agents can customize `steed:newtab` and `steed:welcome`;
+agent changes use native review. Generic extension support remains planned.
 
 - [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,
   troubleshooting, development checks, and technical design.

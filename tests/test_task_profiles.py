@@ -413,7 +413,7 @@ class TaskProfileTests(unittest.TestCase):
 
     def test_unknown_profiles_paths_and_other_profile_sessions_are_denied(self):
         task = self.command("task.create", objective="Invalid profile")
-        for selector in ("existing:missing", "existing:global", "existing:../work"):
+        for selector in ("existing:missing", "existing:search", "existing:../work"):
             with self.subTest(selector=selector), self.assertRaises(ValueError):
                 self.request(task.task_id, profile=selector)
         outside = Path(self.directory.name) / "outside"

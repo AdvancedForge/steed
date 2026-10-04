@@ -89,7 +89,7 @@ class AgentAccessUITests(unittest.TestCase):
         self.assertEqual(context["window_id"], first.browser_window_id)
         self.assertEqual(context["source"], "only_window")
 
-    def test_context_does_not_offer_incognito_or_global_as_shared_profiles(self):
+    def test_context_offers_global_but_keeps_incognito_private(self):
         window = BrowserWindow()
         self.windows.append(window)
         with patch("profile_manager.QApplication.activeWindow", return_value=window):
@@ -98,8 +98,12 @@ class AgentAccessUITests(unittest.TestCase):
                     window._switch_to_profile(name)
                     context = self.registry.agent_context()
                     self.assertEqual(context["profile"], name)
-                    self.assertIsNone(context["profile_selector"])
-                    self.assertFalse(context["shared_profile_available"])
+                    if name == "global":
+                        self.assertEqual(context["profile_selector"], "existing:global")
+                        self.assertTrue(context["shared_profile_available"])
+                    else:
+                        self.assertIsNone(context["profile_selector"])
+                        self.assertFalse(context["shared_profile_available"])
 
     def test_access_is_opt_in_and_menu_state_is_shared(self):
         first, second = BrowserWindow(), BrowserWindow()

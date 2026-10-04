@@ -26,8 +26,10 @@ from services.app_connections import AppConnections
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
 from services.site_permissions import SitePermissions, configure_permission_policy
+from services.start_pages import StartPageHandler, StartPages
 from services.task_policy import task_profile_name
 from services.task_service import TaskService
+from tab_manager import ClosedTabHistory
 from ui.download_dialog import choose_download_destination
 from ui.task_approval import TaskApprovalQueue
 from utils import get_profile_path, sanitize_profile_name
@@ -58,6 +60,8 @@ class ProfileRegistry(QObject):
         self.snapshots = {}
         self.defaults = {}
         self.histories = {}
+        self.closed_tabs = ClosedTabHistory()
+        self.start_pages = StartPages(self)
         self.snapshot_disagreements = 0
         self.global_fingerprints = None
         self.owners = set()
@@ -81,6 +85,9 @@ class ProfileRegistry(QObject):
             "global", config.config_dir / "global_profile"
         )
         self.search_profile = QWebEngineProfile(self)
+        self.search_profile.installUrlSchemeHandler(
+            b"steed", StartPageHandler(self.start_pages, "search", self.search_profile)
+        )
         configure_permission_policy(self.search_profile)
         self.defaults["search"] = self.search_profile.httpUserAgent()
         self.search_profile.setHttpCacheType(
@@ -181,7 +188,7 @@ class ProfileRegistry(QObject):
                 "source": "no_active_window",
             }
         name = owner.current_profile_name
-        shared = name not in (None, "global", "search")
+        shared = name not in (None, "search")
         return {
             "window_id": owner.parent().browser_window_id,
             "profile": name,
@@ -207,11 +214,16 @@ class ProfileRegistry(QObject):
 
     def validate_task_profile(self, selector):
         name = task_profile_name(selector)
-        directory = self.config.profiles_dir / name
+        directory = (
+            self.config.config_dir / "global_profile"
+            if name == "global"
+            else self.config.profiles_dir / name
+        )
+        root = self.config.config_dir if name == "global" else self.config.profiles_dir
         if (
             not directory.is_dir()
             or directory.is_symlink()
-            or directory.resolve().parent != self.config.profiles_dir.resolve()
+            or directory.resolve().parent != root.resolve()
         ):
             raise ValueError("The requested existing profile is unavailable")
         return name
@@ -220,7 +232,12 @@ class ProfileRegistry(QObject):
         """Identity survives renames, but a newly created profile gets fresh authority."""
         require_owner_thread(self)
         name = self.validate_task_profile(selector)
-        return self._permission_identity(self.config.profiles_dir / name, create=create)
+        directory = (
+            self.config.config_dir / "global_profile"
+            if name == "global"
+            else self.config.profiles_dir / name
+        )
+        return self._permission_identity(directory, create=create)
 
     @staticmethod
     def _permission_identity(directory, *, create=False):
@@ -313,6 +330,9 @@ class ProfileRegistry(QObject):
             QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies
         )
         configure_web_settings(profile.settings())
+        profile.installUrlSchemeHandler(
+            b"steed", StartPageHandler(self.start_pages, name, profile)
+        )
         self.defaults[name] = profile.httpUserAgent()
         override = self.config.get("user_agent_override", "").strip()
         if override:
@@ -538,7 +558,7 @@ class ProfileManager(QObject):
         self.profile_changed.emit(name)
 
     def list_profiles(self):
-        names = {"default", "global"}
+        names = {"global"}
         names.update(
             p.name
             for p in self.config.profiles_dir.iterdir()
@@ -549,7 +569,7 @@ class ProfileManager(QObject):
     def _available_for_mutation(self, name):
         if name in self.registry.task_profiles:
             return False
-        if name in ("global", "search", "default"):
+        if name in ("global", "search"):
             return False
         if any(o.current_profile_name == name for o in self.registry.owners):
             return False
@@ -575,6 +595,7 @@ class ProfileManager(QObject):
             self.registry.sharing.enabled.discard(name)
             self.registry.sharing.suspended.discard(name)
         history = self.registry.histories.pop(name, None)
+        self.registry.start_pages.forget(name)
         if history is not None:
             history.close()
             history.deleteLater()
@@ -601,7 +622,7 @@ class ProfileManager(QObject):
         old, new = sanitize_profile_name(old_name), sanitize_profile_name(new_name)
         if (
             not new
-            or new in ("global", "search", "default")
+            or new in ("global", "search")
             or self.get_profile_path(new).exists()
         ):
             return False

@@ -33,6 +33,11 @@ class NavigationService(QObject):
     @staticmethod
     def address_url(text: str, search_engine: str) -> QUrl:
         text = (text or "").strip()
+        from services.start_pages import internal_url
+
+        internal = internal_url(text)
+        if internal is not None:
+            return internal
         if text.startswith(("http://", "https://", "file://", "about:")):
             return QUrl(text)
         if " " not in text and ("." in text or text.startswith(("localhost", "["))):

@@ -2,6 +2,32 @@
 
 ## Start here
 
+Current checkpoint adds Global startup and editable `steed:newtab`/`steed:welcome`.
+Read [the page guide](DOCUMENTATION.md#welcome-new-tab-and-bookmarks) and the newest
+roadmap entry. `services/start_pages.py` owns profile-local settings/bookmarks/HTML;
+`services/news_feed.py` performs optional bounded cookie-free feed reads. URL-scheme
+registration occurs before QApplication. BrowserPage intercepts only maintained
+page actions; custom HTML has no native action bridge. Both Home and New Tab are
+independent settings. Legacy Default storage is retained, no longer protected as
+a built-in. Global now supports explicit reviewed task sharing and stable identity.
+
+`start_page_format.py`, `services/start_page_proposals.py` and the native review
+implement external-agent edits; schema 19 adds immutable proposals. New source
+sharing uses existing connected-task messages, with exact payload preview and an
+8 KB limit. Agent declarations have a 32 KB UTF-8 limit; local imports allow 256 KB.
+Native panels remain at versions 1/2; continue their image/workspace milestone
+without adding arbitrary code callbacks or conflating private data with global
+appearance exports. Website chatbots still use copy/export or enabled folders;
+external MCP/Codex clients discover the three start-page tools automatically.
+
+Validation checkpoint: 136 browser/profile checks and 22 focused page/proposal/
+feed checks pass, plus stdio/HTTP SDK/raw page reviews, both installed Codex
+runtime paths, startup and inspected light/dark/minimal previews. Full combined
+acceptance follows the next source-binding milestone. One early stdio invocation
+exited with a Qt segmentation fault before useful output; subsequent faulthandler
+stdio/HTTP and both Codex runs passed. Keep faulthandler enabled for transport
+acceptance and capture a stack if this intermittent failure recurs.
+
 Main includes the persistent file library and bounded discovery, open-shadow
 observation, reviewed static API headers, explicit identity-label alternatives,
 and the simplified agent sidebar. Branch from the current tip of `main`, not an

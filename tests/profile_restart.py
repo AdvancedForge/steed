@@ -26,7 +26,7 @@ def check(data, phase):
         )
         app = QApplication(["profile-restart"])
         app.setQuitOnLastWindowClosed(False)
-        window = BrowserWindow()
+        window = BrowserWindow("default")
         sharing = window.profile_manager.registry.sharing
         result = {"passed": False}
         properties = (

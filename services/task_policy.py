@@ -60,9 +60,9 @@ def task_profile_name(selector):
         or len(name) > 128
         or name != sanitize_profile_name(name)
         or not name.isprintable()
-        or name in ("global", "search")
+        or name == "search"
     ):
-        raise ValueError("Choose an existing named profile other than global/search")
+        raise ValueError("Choose an existing normal profile other than search")
     return name
 
 

@@ -49,6 +49,7 @@ from services.connector_recipes import (
 from ui.app_review import AppReviewDialog
 from ui.data_panels import DataPanelReviewDialog
 from ui.recipe_review import RecipeReviewDialog
+from ui.start_page_review import StartPageReviewDialog
 from ui.task_dialog import TaskDialog
 from ui.task_recovery import TaskRecoveryDialog
 from ui.worker_approval import WorkerApprovalDialog
@@ -793,6 +794,7 @@ async def sdk_client(
             )
             shared["artifact_completed"] = True
             await native_panel_workflow(call, shared, "sdk")
+            await start_page_workflow(call, shared, "sdk")
 
             async def app_result(request_id):
                 deadline = time.monotonic() + 20
@@ -1101,6 +1103,34 @@ async def native_panel_workflow(call, shared, label):
     shared[label + "_reviewed_native_panel"] = True
 
 
+async def start_page_workflow(call, shared, label):
+    capabilities = await call("start_page.capabilities")
+    assert capabilities["available"] and capabilities["pages"] == ["newtab", "welcome"]
+    source = json.dumps(
+        {
+            "version": 1,
+            "name": label.upper() + " welcome",
+            "page": "welcome",
+            "mode": "custom",
+            "html": "<title>Welcome</title><h1>" + label + " reviewed welcome</h1>",
+        }
+    )
+    request_id = label + "-welcome"
+    receipt = await call("start_page.propose", source=source, request_id=request_id)
+    assert receipt["state"] == "awaiting_approval"
+    deadline = time.monotonic() + 15
+    while receipt["state"] == "awaiting_approval":
+        assert time.monotonic() < deadline, "Native page review did not complete"
+        await asyncio.sleep(0.02)
+        receipt = await call("start_page.status", request_id=request_id)
+    assert receipt["state"] == "applied"
+    assert (
+        await call("start_page.propose", source=source, request_id=request_id)
+        == receipt
+    )
+    shared[label + "_reviewed_start_page"] = True
+
+
 async def conversation_workflow(call, shared, label, task_id):
     """The desktop fixture sends text; an independent external client replies."""
     shared[label + "_conversation_task"] = task_id
@@ -1353,6 +1383,7 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         return call(name, **arguments)
 
     asyncio.run(native_panel_workflow(panel_call, shared, "raw"))
+    asyncio.run(start_page_workflow(panel_call, shared, "raw"))
 
     def app_result(request_id):
         deadline = time.monotonic() + 20
@@ -1848,7 +1879,11 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     shared.get("sdk_recipe_task"),
                     shared.get("raw_recipe_task"),
                 )
-                if isinstance(dialog, DataPanelReviewDialog):
+                if isinstance(dialog, StartPageReviewDialog):
+                    dialog.profile.setCurrentText("work")
+                    dialog.apply_button.click()  # Trusted synthetic user review only.
+                    shared["start_page_review_popup"] = True
+                elif isinstance(dialog, DataPanelReviewDialog):
                     assert dialog.deny_button.isDefault(), [
                         (b.text(), b.isDefault(), b.autoDefault(), b.isEnabled())
                         for b in dialog.findChildren(type(dialog.deny_button))

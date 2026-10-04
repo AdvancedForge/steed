@@ -8,6 +8,7 @@ from uuid import uuid4
 from PyQt6 import sip
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -197,6 +198,32 @@ class TaskDialog(QDialog):
             self.update_data_panel_actions
         )
         self.panels.addTab(data_panels, "Data Panels")
+        pages = QWidget()
+        pages_body = QVBoxLayout(pages)
+        pages_body.addWidget(
+            QLabel(
+                "Review agent changes to Welcome and New Tab. No browsing data is shared."
+            )
+        )
+        self.page_requests = QTableWidget(0, 3)
+        self.page_requests.setHorizontalHeaderLabels(["Name", "State", "Request"])
+        self.page_requests.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.page_requests.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.page_requests.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.page_requests.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        pages_body.addWidget(self.page_requests)
+        self.review_page_button = QPushButton("Review Page…")
+        self.review_page_button.clicked.connect(self.review_page)
+        pages_body.addWidget(self.review_page_button)
+        self._page_rows = []
+        self.page_requests.itemSelectionChanged.connect(self.update_page_actions)
+        self.panels.addTab(pages, "Start Pages")
         workers = QWidget()
         worker_layout = QVBoxLayout(workers)
         worker_notice = QLabel(
@@ -945,6 +972,7 @@ class TaskDialog(QDialog):
     def refresh_recipes(self):
         self.refresh_layouts()
         self.refresh_data_panels()
+        self.refresh_pages()
         selected = self.selection()
         self._recipe_rows = (
             self.service.recipes.list(selected[0].task_id)
@@ -984,6 +1012,42 @@ class TaskDialog(QDialog):
             ):
                 self.data_panel_requests.setItem(row, col, QTableWidgetItem(value))
         self.update_data_panel_actions()
+
+    def refresh_pages(self):
+        selected = self.selection()
+        self._page_rows = (
+            self.service.start_pages.list(selected[0].task_id)
+            if selected and not self.service.failure and not self.service._closed
+            else []
+        )
+        self.page_requests.setRowCount(len(self._page_rows))
+        for row, proposal in enumerate(self._page_rows):
+            for col, value in enumerate(
+                (proposal.name, proposal.state.replace("_", " "), proposal.request_id)
+            ):
+                self.page_requests.setItem(row, col, QTableWidgetItem(value))
+        self.update_page_actions()
+
+    def update_page_actions(self):
+        row = self.page_requests.currentRow()
+        self.review_page_button.setEnabled(
+            0 <= row < len(self._page_rows)
+            and self._page_rows[row].state == "awaiting_approval"
+        )
+
+    def review_page(self):
+        from ui.start_page_review import StartPageReviewDialog
+
+        row = self.page_requests.currentRow()
+        if not 0 <= row < len(self._page_rows):
+            return
+        try:
+            dialog = StartPageReviewDialog(self.service, self._page_rows[row], self)
+            dialog.show()
+        except (ValueError, KeyError):
+            QMessageBox.warning(
+                self, "Page review", "This page request is unavailable."
+            )
 
     def update_data_panel_actions(self):
         row = self.data_panel_requests.currentRow()

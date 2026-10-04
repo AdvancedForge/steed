@@ -367,6 +367,10 @@ class TaskApprovalQueue(QObject):
                         (task, proposal)
                         for proposal in self.service.data_panels.pending(task.task_id)
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.start_pages.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -396,15 +400,17 @@ class TaskApprovalQueue(QObject):
             from services.data_panels import PanelReceipt
             from services.layout_proposals import LayoutProposal
             from services.recipe_proposals import RecipeProposal
+            from services.start_page_proposals import PageProposal
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
             from ui.data_panels import DataPanelReviewDialog
             from ui.layout_review import LayoutReviewDialog
             from ui.recipe_review import RecipeReviewDialog
+            from ui.start_page_review import StartPageReviewDialog
             from ui.worker_approval import WorkerApprovalDialog
 
             if (
-                isinstance(grant, PanelReceipt)
+                isinstance(grant, (PanelReceipt, PageProposal))
                 and parent.profile_manager.is_search_profile()
             ):
                 normal = [
@@ -416,7 +422,9 @@ class TaskApprovalQueue(QObject):
                 parent = normal[0]
             try:
                 dialog = (
-                    DataPanelReviewDialog(self.service, grant, parent)
+                    StartPageReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, PageProposal)
+                    else DataPanelReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PanelReceipt)
                     else LayoutReviewDialog(
                         self.registry,
@@ -461,6 +469,7 @@ class TaskApprovalQueue(QObject):
         from services.data_panels import PanelReceipt
         from services.layout_proposals import LayoutProposal
         from services.recipe_proposals import RecipeProposal
+        from services.start_page_proposals import PageProposal
         from services.worker_store import WorkerReceipt
 
         return (
@@ -473,6 +482,7 @@ class TaskApprovalQueue(QObject):
                     RecipeProposal,
                     LayoutProposal,
                     PanelReceipt,
+                    PageProposal,
                 ),
             )
             else item.grant_id

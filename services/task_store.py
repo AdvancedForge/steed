@@ -16,6 +16,7 @@ from services.connector_store import CONNECTOR_SCHEMA
 from services.data_panels import PANEL_SCHEMA
 from services.layout_proposals import LAYOUT_SCHEMA
 from services.recipe_proposals import RECIPE_SCHEMA
+from services.start_page_proposals import PAGE_SCHEMA
 from services.task_artifacts import (
     MAX_TASK_ARTIFACT_BYTES,
     MAX_TASK_ARTIFACTS,
@@ -84,7 +85,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in range(19):
+        if version not in range(20):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -152,7 +153,7 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 18;
+                PRAGMA user_version = 19;
             """
                 + CONNECTOR_SCHEMA
                 + PLAN_SCHEMA
@@ -166,6 +167,7 @@ class TaskStore:
                 + MESSAGE_SCHEMA
                 + LAYOUT_SCHEMA
                 + PANEL_SCHEMA
+                + PAGE_SCHEMA
             )
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():

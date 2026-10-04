@@ -188,6 +188,22 @@ TOOLS = (
         "Discover the portable browser layout format, stable component IDs, limits and a copyable example. No page, profile, folder or account access is returned or granted.",
     ),
     tool(
+        "start_page.capabilities",
+        "Discover how to propose built-in sections or self-contained HTML/CSS/JavaScript for steed:newtab or steed:welcome. No current page source, bookmarks, history, folders or account data are returned. User review chooses a normal profile; every edit requires explicit Apply.",
+    ),
+    tool(
+        "start_page.propose",
+        "Propose a page using the exact JSON from start_page.capabilities and a stable request ID. User reviews the source and chooses the target profile. Does not apply a change, disclose existing content, or grant native/network access. Inline scripts run only after review. Identical retries return the original receipt; changed reuse is refused. Maximum 32 KiB UTF-8 including JSON.",
+        {"source": string(32768), "request_id": string(64)},
+        ("source", "request_id"),
+    ),
+    tool(
+        "start_page.status",
+        "Poll this task's page proposal receipt. An applied state means the user enabled it; no agent approval command exists. Use a fresh request ID for the next reviewed edit.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "layout.propose",
         "Submit a strict JSON browser layout for a native user preview and explicit Apply. Changes presentation in all windows only after review; no access grant is needed or created. Use the layout.capabilities format and a stable request ID pinned to these exact UTF-8 bytes. Poll layout.status; identical retries never apply again.",
         {"source": string(16384), "request_id": string(64)},

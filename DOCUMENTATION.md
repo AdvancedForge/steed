@@ -11,6 +11,7 @@ for current progress and remaining work.
 - [Graphics troubleshooting](#graphics-troubleshooting)
 - [Google sign-in](#google-sign-in)
 - [Usage](#usage)
+- [Welcome, New Tab and bookmarks](#welcome-new-tab-and-bookmarks)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Find in page and zoom](#find-in-page-and-zoom)
 - [Website permissions](#website-permissions)
@@ -105,6 +106,72 @@ Restart with `.venv/bin/python main.py`, then open `https://accounts.google.com/
 Local HTTPS tests verify redirects, form bodies, and the opt-out on the pinned Qt 6.11 runtime. The user reported account sign-in working on October 1, 2026; persistence after restart and third-party sign-in remain unconfirmed. [Google can restrict embedded-browser sign-ins](https://support.google.com/accounts/answer/7675428), and this workaround cannot guarantee acceptance for every account. External-browser OAuth does not create a signed-in web session in this browser.
 
 The same HTTPS fixture stalled on the older system Qt 6.4.2 installation. Use the project's virtual environment for Google sign-in; older-Qt startup compatibility does not establish login compatibility.
+
+## Welcome, New Tab and bookmarks
+
+Fresh installations start in **Global**, with no automatically created Default
+profile. Existing Default data remains an ordinary profile you can rename or
+archive through Profile; it is not deleted. Older Default startup selections
+become Global, while other explicitly selected profiles are preserved.
+
+`steed:welcome` introduces browsing, agent setup and enabled folders. Choose
+**Start browsing** to complete onboarding. General → Welcome to Steed reopens it.
+`steed:newtab` is both the initial Home and New Tab address. Change them separately
+in **General → Settings**; Home uses the first setting, while Ctrl+T uses the
+second. Saved sessions continue to restore normally. The earlier double-colon
+spellings are accepted as aliases; the address bar shows one colon.
+
+Open **General → Customize New Tab**, or click Customize on a built-in page:
+
+- Check and drag sections to choose their presence and order: search, local
+  image, bookmarks, recently closed tabs, recent visits and news.
+  Minimal page hides the heading/header/footer, allowing just a search bar.
+- Choose a local image; Steed resizes and copies it, so moving the original file
+  does not break the page. Input is bounded to 8 MB/32 megapixels and the saved
+  PNG to 2 MB.
+- News is optional. Enable News and save an RSS/Atom address to fetch it when
+  the page opens. Feeds receive no browser cookies or stored authentication;
+  redirects are not followed. Requests time out after ten seconds, responses
+  are limited to 2 MB/20 entries, and the in-memory cache lasts ten minutes.
+  Refresh retries explicitly. Removing News or its address stops future reads.
+  Feed updates change only the news card, preserving search drafts and scroll.
+- The **Custom HTML** tab edits either New Tab or Welcome. Check Replace to
+  use your source, or import a UTF-8 HTML file; uncheck to restore the built-in
+  page. Both pages save together. The copied source is limited to 256 KB.
+  Inline CSS/JavaScript and embedded data images work. External resources,
+  network reads and native Steed actions are unavailable; ordinary links and
+  HTTP(S) search-form navigation still work. General → Customize New Tab remains
+  available even when your replacement has no Customize link.
+
+Ctrl+D saves an HTTP(S) page with an editable name. Manage Bookmarks adds, renames
+and removes entries. Bookmarks, sections, images and HTML belong to each profile
+in `start_page.json`; incognito keeps them only in memory. Recently closed tabs
+are bounded to 50 and shared by windows on that profile for the current browser
+run. Reopening a listed tab preserves its group and saved identity. Internal
+pages do not enter browsing history.
+
+**External agents and website chats:** Share source with an agent previews a
+`steed_page_source` message and lets you choose one connected task before Send.
+It grants no file, profile or account access. Source exceeding the conversation's
+8 KB limit can be exported to an enabled shared folder. Copy HTML supports
+website chats such as ChatGPT, Claude and Gemini.
+
+MCP exposes `steed_start_page_capabilities`, `steed_start_page_propose` and
+`steed_start_page_status`. Agents can propose built-in section settings or a
+self-contained HTML replacement for either page, without existing-data access.
+The strict version-1 declaration is limited to 32 KB UTF-8. A native review shows
+the exact source and lets the user choose a normal display profile. Decline is
+the default. Every edit requires Apply; request IDs pin exact bytes and identical
+retries return the original receipt. Changed pages/profile identities invalidate
+a preview. Applied pages survive task completion; pending proposals are cancelled
+or interrupted rather than replayed. Deferred reviews remain in **Task Permissions
+→ Start Pages**. Database schema 19 migrates existing journals in place.
+
+Steed registers a host-based local URL scheme before application startup, following
+the [Qt URL-scheme documentation](https://doc.qt.io/qt-6/qwebengineurlscheme.html).
+Canonical engine URLs use `steed://newtab/` and `steed://welcome/` for reload and
+session restore; the user-facing spelling remains `steed:newtab`/`steed:welcome`.
+There is no general-purpose HTML app capability bridge in this milestone.
 
 ## Usage
 
@@ -3263,8 +3330,9 @@ mode and viewport image tool.
 `source`, without open URLs, tab contents, history or credentials. A focused
 browser dialog resolves to its parent window. With no recorded focus, a sole
 window is selected; multiple windows yield an unavailable context rather than a
-guess. Closed windows are excluded. Incognito (`search`) and `global` cannot be
-selected for shared task sessions, so their selector is null. Discovery grants
+guess. Closed windows are excluded. Incognito (`search`) cannot be selected for
+shared task sessions, so its selector is null. Global now supports the explicit
+`existing:global` selector with ordinary task review and stable identity. Discovery grants
 no access, and switching profiles never retargets existing grants or sessions.
 Restart Steed after updating the browser source to expose the new context tool.
 
