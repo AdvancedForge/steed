@@ -1695,9 +1695,7 @@ class Microsoft365ReadProfileTests(ProfileCase):
             self.read(self.adapter, "read_drive_item", "fixture-item").text
         )
         self.assertEqual(document["id"], "fixture-item")
-        self.assertEqual(
-            document["url"], "https://fixture.example/document"
-        )
+        self.assertEqual(document["url"], "https://fixture.example/document")
         self.assertEqual(document["size"], 1024)
         # A folder omits the file facet entirely, and both kinds still read.
         folder = json.loads(
