@@ -12,6 +12,28 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Accessible form hints (implemented and accepted).**
+Rendered-DOM targets now expose bounded descriptions, author-declared required/
+invalid state and visible error messages. Referenced content remains scoped to its
+document/open shadow root; hidden/editable ancestors and current values are omitted.
+The reader reports that it is not a complete accessibility tree. Live fingerprints
+include referenced help/error content and visibility ancestors, retain unrelated
+page-update tolerance, and expose oversized context as unavailable. No action,
+profile, file or website permission expands.
+
+Acceptance: **1,073 regressions pass in 410.071 seconds**; 79 final observation/
+live-target/gateway checks pass. A large Unicode fixture confirms that aggregate
+label/help/error text stays within 16,000 characters and the serialized snapshot
+fits the MCP response limit with explicit truncation flags. SDK and independent
+raw clients receive metadata over stdio and authenticated HTTP. Synthetic startup/
+render/shutdown, Ruff lint/format, dependency and whitespace checks pass. No real
+profiles, accounts or external models were used. Logs:
+`/tmp/steed-form-observation-full-final.log`,
+`/tmp/steed-form-observation-budget.log`,
+`/tmp/steed-form-observation-{stdio,http,startup}.log`.
+Next major decision: native data-bearing panels versus locally hosted custom apps;
+see [the engineering handoff](ENGINEERING_HANDOFF.md#next-major-decision--agent-authored-data-panels).
+
 **Native quick-action panels and text sizing L3 (implemented and accepted).**
 Portable layout version 2 adds up to two native action panels, eight maintained
 buttons per panel, top/bottom placement, neutral/accent emphasis and normal/large
@@ -31,8 +53,7 @@ profiles. No real accounts or external models were used. Logs:
 `/tmp/steed-native-panels-full.log`, `/tmp/steed-native-panels-font-final.log`,
 `/tmp/steed-native-panels-startup.log`,
 `/tmp/steed-native-panels-native{,-direct}.log`.
-Next: bounded accessible form descriptions, required/invalid markers and error
-hints in rendered-DOM observations, with fresh-target checks for changing hints.
+Bounded form hints and changing-reference checks are delivered above.
 
 **Portable layouts and reviewed agent proposals L2 (implemented and accepted).**
 Strict portable JSON has stable mandatory controls, bounded dimensions and no
@@ -336,7 +357,7 @@ Logs: `/tmp/steed-chat-final-full.log`,
 complete; engineering branch `f6c28b4` is integrated by merge `e20cfea`.
 The first open-shadow observation increment and external component acceptance
 are complete. Reviewed non-secret API-version headers and explicit identity-label
-alternatives are implemented. Manual/portable layouts and native panels are complete; next daily-workflow scope is accessible form metadata;
+alternatives are implemented. Manual/portable layouts and native panels are complete; next daily-workflow scope needs the custom data-panel decision;
 next shared connector scope is typed query/POST reads. Deeper accessible semantics
 and supported shadow-control input remain separate follow-ups. Further agents work on their own
 branches and submit milestones for maintainer review.
@@ -1467,8 +1488,9 @@ request distinguishes configurable browser UI from saved agent workflows.
    headers, revision guards and transforms need separate reviewed types. The
    connector contributor owns service data/fixtures and C1–C5 acceptance; review
    their updated PR before integration. Production Google registration stays deferred.
-3. **Better website understanding:** accessibility labels/descriptions and dynamic
-   content/frame coverage; native actions for supported open-shadow controls.
+3. **Better website understanding:** bounded accessible form hints are delivered.
+   Remaining scope includes complete accessibility semantics, dynamic content/frame
+   coverage and native actions for supported open-shadow controls.
    Retain explicit omissions for closed roots/canvas/unsupported frames. Any
    model-based extraction sending page content or adding cost needs user direction.
 4. **Agent and file workflow polish:** generic external-client reconnect/wake-up,

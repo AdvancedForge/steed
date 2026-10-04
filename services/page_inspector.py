@@ -35,6 +35,10 @@ class TargetDescriptor:
     constraints: tuple[str, ...]
     form_action: str | None = None
     form_method: str | None = None
+    description: str = ""
+    required: bool = False
+    invalid: bool = False
+    error_message: str = ""
 
 
 @dataclass(frozen=True)
@@ -170,6 +174,10 @@ class PageInspector(QObject):
                         tuple(target["constraints"]),
                         target.get("form_action"),
                         target.get("form_method"),
+                        target.get("description", ""),
+                        target.get("required", False),
+                        target.get("invalid", False),
+                        target.get("error_message", ""),
                     )
                     targets[target_id] = (target["node_id"], descriptor)
                     descriptors.append(descriptor)

@@ -669,6 +669,36 @@ they do not authorize or execute actions. Supported native submit buttons report
 unsupported forms, specialized input types, and multiple selection report constraints.
 Option labels and values remain omitted; current selection uses an index.
 
+Targets also expose `description`, `required`, `invalid`, and `error_message`.
+Descriptions prefer visible `aria-describedby` references, then `aria-description`,
+then a title differing from the label. Native form controls' `required` attribute
+and `aria-required` contribute required markers. `invalid` reports author-declared
+`aria-invalid`; it does not run browser validation or inspect current field values.
+When invalid is declared, visible `aria-errormessage` references supply the error
+hint. See [W3C guidance on invalid fields and associated messages](https://www.w3.org/WAI/WCAG22/Techniques/aria/ARIA21).
+An error also associated through `aria-describedby` stays in the description;
+agents should read both fields rather than treating absence of one as success.
+
+Labels, descriptions and errors are bounded to 256 characters each and 16,000
+characters combined across all targets. `target_text_truncated` signals omitted
+target text; controls retain opaque IDs and constraints. This also keeps large
+Unicode observations within the MCP response budget. References use at most eight
+IDs per attribute and resolve within the same document or open shadow root. Hidden/editable ancestors and current field values remain
+excluded, including when referenced by a visible field. This intentionally omits
+hidden accessible descriptions and is not the browser's complete accessibility
+name/description algorithm. `accessibility_tree_not_inspected` and
+`hidden_accessible_references_omitted` make these coverage limits explicit.
+
+Live references include associated label/help/error content and ancestor attributes
+in their freshness fingerprint. A changed hint, error or visibility container
+requires a new inspection; unrelated page updates remain permitted. Fingerprints
+are bounded to 65,536 characters and 128 ancestor levels. A live target whose
+context exceeds the bound has no candidate operations and reports
+`live_target_context_limit`; it cannot be acted on through that stale reference.
+Reference reading shares the overall node budget, with exceptionally deep ancestry
+reported as `accessible_reference_depth_limit`. These fields add observation only;
+they grant no new action, file, history or profile permission.
+
 Pass a snapshot ID and its target ID to `page.target` to validate that reference.
 Only the most recent inspection for a session is retained. Navigation, frame URL
 or document changes, observed DOM mutations, removed/replaced nodes, and a newer inspection
@@ -2993,8 +3023,9 @@ These flags describe coverage gaps, not a guarantee of completeness.
 text, labels, links, headings and frames deterministically; then use accessibility
 semantics and viewport images where DOM coverage is insufficient. A lightweight
 model can route the next observation and rank relevant evidence within a budget.
-It cannot recover unloaded content or guarantee that nothing was missed. The current milestone adds coverage signals and approved viewport images.
-Accessibility and broader frame/widget inspection are tracked next. Native frame inspection is available in Qt's
+It cannot recover unloaded content or guarantee that nothing was missed. The implemented layers include coverage signals, approved viewport images and
+bounded form descriptions/required/invalid/error hints. Complete accessibility
+trees and broader frame/widget inspection remain future work. Native frame inspection is available in Qt's
 [QWebEngineFrame API](https://doc.qt.io/qt-6.11/qwebengineframe.html), but frame
 lifetime and each frame's authority must be checked before exposing its content.
 

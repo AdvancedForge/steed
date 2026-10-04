@@ -1,5 +1,6 @@
 """Read-only inspection, authorization, and stale references in real Chromium."""
 
+import json
 import sqlite3
 import tempfile
 import threading
@@ -15,6 +16,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 from qt_test_support import keep_directory
 
+from services.agent_tools import RESPONSE_LIMIT
 from services.page_inspector import INSPECTION_WORLD, PageInspectionError, PageSnapshot
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
@@ -100,6 +102,173 @@ class PageInspectionTests(unittest.TestCase):
             snapshot_id=snapshot.snapshot_id,
             target_id=target.target_id,
         )
+
+    def test_form_help_errors_and_required_markers_preserve_values_and_authority(self):
+        task, _, session, page = self.session()
+        self.load(
+            session,
+            page,
+            """<label for="email">Email</label>
+            <input id="email" type="email" required value="VALUE_SECRET"
+                aria-describedby="hint" aria-description="Fallback hint"
+                aria-invalid="true" aria-errormessage="error">
+            <p id="hint">Use your school email.</p><p id="error">Check the domain.</p>
+            <textarea aria-label="Essay" aria-required="true">ESSAY_SECRET</textarea>
+            <select aria-label="Program" required><option>OPTION_SECRET</option></select>
+            <input type="checkbox" aria-label="Confirm" required>
+            <button aria-label="Continue" required title="Review your details">Go</button>""",
+        )
+        snapshot = self.inspect(task, session)
+        targets = {target.label: target for target in snapshot.frames[0].targets}
+        email = targets["Email"]
+        self.assertEqual(email.description, "Use your school email.")
+        self.assertEqual(email.error_message, "Check the domain.")
+        self.assertTrue(email.required)
+        self.assertTrue(email.invalid)
+        self.assertEqual(email.operations, ("enter",))
+        for name in ("Essay", "Program", "Confirm"):
+            self.assertTrue(targets[name].required)
+            self.assertFalse(targets[name].invalid)
+        self.assertFalse(targets["Continue"].required)
+        self.assertEqual(targets["Continue"].description, "Review your details")
+        self.assertNotIn("SECRET", str(asdict(snapshot)))
+        self.assertIn("accessibility_tree_not_inspected", snapshot.limitations)
+        self.assertIn("hidden_accessible_references_omitted", snapshot.limitations)
+
+    def test_description_fallbacks_and_invalid_tokens_do_not_run_validation(self):
+        task, _, session, page = self.session()
+        self.load(
+            session,
+            page,
+            """<input aria-label="Missing" aria-describedby="absent" aria-description="Direct help">
+            <input aria-label="Title" title="Title help">
+            <input title="Same name">
+            <input aria-label="Unvalidated" required aria-invalid="false" aria-errormessage="error">
+            <input aria-label="Grammar" aria-invalid="grammar" aria-errormessage="error">
+            <input aria-label="Unknown token" aria-invalid="unexpected" aria-errormessage="error">
+            <p id="error">Author error</p>""",
+        )
+        snapshot = self.inspect(task, session)
+        targets = {target.label: target for target in snapshot.frames[0].targets}
+        self.assertEqual(targets["Missing"].description, "Direct help")
+        self.assertEqual(targets["Title"].description, "Title help")
+        self.assertEqual(targets["Same name"].description, "")
+        self.assertFalse(targets["Unvalidated"].invalid)
+        self.assertEqual(targets["Unvalidated"].error_message, "")
+        for name in ("Grammar", "Unknown token"):
+            self.assertTrue(targets[name].invalid)
+            self.assertEqual(targets[name].error_message, "Author error")
+
+    def test_referenced_help_and_labels_exclude_hidden_and_editable_ancestors(self):
+        task, _, session, page = self.session()
+        self.load(
+            session,
+            page,
+            """<input aria-label="Safe field" aria-labelledby="hidden_label"
+                aria-describedby="hidden css aria editable value area select safe"
+                aria-invalid="true" aria-errormessage="hidden">
+            <div hidden><span id="hidden">HIDDEN_SECRET</span>
+                <span id="hidden_label">LABEL_SECRET</span></div>
+            <div style="display:none"><span id="css">CSS_SECRET</span></div>
+            <div aria-hidden="true"><span id="aria">ARIA_SECRET</span></div>
+            <div contenteditable><span id="editable">EDITABLE_SECRET</span></div>
+            <input id="value" value="VALUE_SECRET">
+            <textarea id="area">AREA_SECRET</textarea>
+            <select id="select"><option>SELECT_SECRET</option></select>
+            <p id="safe">Visible help <span hidden>INLINE_SECRET</span></p>""",
+        )
+        snapshot = self.inspect(task, session)
+        field = next(t for t in snapshot.frames[0].targets if t.label == "Safe field")
+        self.assertEqual(field.description, "Visible help")
+        self.assertEqual(field.error_message, "")
+        self.assertNotIn("SECRET", str(asdict(snapshot)))
+
+    def test_shadow_help_uses_own_root_and_remains_observation_only(self):
+        task, _, session, page = self.session()
+        self.load(session, page, '<p id="hint">Outer hint</p><div id="host"></div>')
+        self.script(
+            page,
+            """const root = document.querySelector('#host').attachShadow({mode:'open'});
+            root.innerHTML='<p id="hint">Component hint</p><p id="error">Component error</p>' +
+                '<input aria-label="Component field" aria-describedby="hint" required ' +
+                'aria-invalid="true" aria-errormessage="error" value="SHADOW_SECRET">'; true;""",
+        )
+        snapshot = self.inspect(task, session)
+        field = next(
+            t for t in snapshot.frames[0].targets if t.label == "Component field"
+        )
+        self.assertEqual(field.description, "Component hint")
+        self.assertEqual(field.error_message, "Component error")
+        self.assertTrue(field.required)
+        self.assertEqual(field.operations, ())
+        self.assertNotIn("SECRET", str(asdict(snapshot)))
+
+    def test_form_metadata_is_bounded_without_removing_snapshot_limit_signals(self):
+        task, _, session, page = self.session()
+        self.load(
+            session,
+            page,
+            '<input aria-label="Bounded" aria-describedby="one" aria-invalid="true" '
+            'aria-errormessage="one"><p id="one">'
+            + "a" * 5000
+            + "</p>"
+            + '<input aria-label="References" aria-describedby="'
+            + " ".join(f"r{i}" for i in range(9))
+            + '">'
+            + "".join(f'<p id="r{i}">Hint{i}</p>' for i in range(9)),
+        )
+        snapshot = self.inspect(task, session)
+        targets = {target.label: target for target in snapshot.frames[0].targets}
+        self.assertEqual(targets["Bounded"].description, "a" * 256)
+        self.assertEqual(targets["Bounded"].error_message, "a" * 256)
+        self.assertIn("Hint7", targets["References"].description)
+        self.assertNotIn("Hint8", targets["References"].description)
+        self.assertIn("text_truncated", snapshot.limitations)
+
+    def test_large_unicode_targets_fit_the_mcp_response_with_explicit_truncation(self):
+        task, _, session, page = self.session()
+        destination = self.origin + "/" + "a" * (2048 - len(self.origin) - 1)
+        hint = "語" * 256
+        self.load(
+            session,
+            page,
+            "<p>"
+            + "語" * 32000
+            + '</p><p id="error">'
+            + hint
+            + "</p>"
+            + 200
+            * (
+                f'<a href="{destination}" role="{hint[:64]}" '
+                f'aria-label="{hint}" aria-description="{hint}" '
+                'aria-invalid="true" aria-errormessage="error">Link</a>'
+            ),
+        )
+        snapshot = self.inspect(task, session)
+        targets = snapshot.frames[0].targets
+        self.assertEqual(len(targets), 200)
+        observed = sum(
+            len(t.label) + len(t.description) + len(t.error_message) for t in targets
+        )
+        self.assertLessEqual(observed, 16000)
+        self.assertIn("target_text_truncated", snapshot.limitations)
+        packet = (
+            json.dumps({"id": 1, "result": asdict(snapshot)}, allow_nan=False).encode()
+            + b"\n"
+        )
+        self.assertLess(len(packet), RESPONSE_LIMIT - 4096)
+        self.assertTrue(targets[0].description)
+        self.assertTrue(targets[0].error_message)
+
+    def test_form_metadata_still_requires_read_permission(self):
+        task, _, session, page = self.session(read=False)
+        self.load(
+            session,
+            page,
+            '<input aria-label="Protected" aria-description="Help" required>',
+        )
+        with self.assertRaises(TaskPermissionError):
+            self.inspect(task, session)
 
     def test_open_shadow_reads_nested_content_names_and_omits_private_values(self):
         task, _, session, page = self.session()
