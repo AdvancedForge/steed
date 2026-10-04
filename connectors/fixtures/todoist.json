@@ -8,7 +8,7 @@
     "https://developer.todoist.com/api/v1/#tag/Projects/operation/get_projects",
     "https://developer.todoist.com/api/v1/#tag/Projects/operation/get_project"
   ],
-"notes": [
+  "notes": [
     "GET /api/v1/user returns the account id, email and the account's own personal token in a top-level token field. Only /id and /email are selected, so that token never reaches a task, review or result.",
     "GET /api/v1/tasks returns results plus an optional next_cursor; the profile reads at most three cursor pages.",
     "POST /api/v1/tasks requires content. description, project_id, section_id, labels, due dates and priority are optional, so the reviewed profile sends content and description only and an omitted project_id targets the Inbox.",
@@ -122,5 +122,8 @@
       "status": 401,
       "documented": "An invalid or expired token returns HTTP 401 with an UNAUTHORIZED error body."
     }
+  },
+  "token_lifetime": {
+    "documented": "No expiry is documented for a Todoist personal API token, while OAuth access tokens are documented to expire one hour after issue and an invalid or expired token answers 401 with the UNAUTHORIZED error code 477."
   }
 }

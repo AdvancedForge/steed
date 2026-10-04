@@ -1607,7 +1607,7 @@ class RaindropProfileTests(ProfileCase):
         )
         self.assertEqual(
             self.api.calls[-1][1],
-            "https://api.raindrop.io/rest/v1/collections/8492393",
+            "https://api.raindrop.io/rest/v1/collection/8492393",
         )
         self.assertEqual(self.api.posts, [])
         collection = self.recipe.tools[0]
@@ -1790,3 +1790,103 @@ class Microsoft365ReadProfileTests(ProfileCase):
                     self.read(self.adapter, "read_drive_item", "fixture-item")
                 self.api.failure = None
         self.assertEqual(self.api.posts, [])
+
+
+class ProjectedFieldSetTests(ProfileCase):
+    """C8: only fields a provider returns by default may be projected."""
+
+    def setUp(self):
+        self.asana = json.loads((FIXTURES / "asana.json").read_text("utf-8"))
+        self.raindrop = json.loads((FIXTURES / "raindrop.json").read_text("utf-8"))
+
+    def test_no_asana_opt_in_field_is_projected(self):
+        opt_in = {
+            "created_by",
+            "dependencies",
+            "dependents",
+            "external",
+            "html_notes",
+            "has_subtasks_date_mismatch",
+            "is_rendered_as_separator",
+            "num_subtasks",
+            "current_status",
+            "project_brief",
+            "created_from_template",
+        }
+        projected = set()
+        for tool in packaged_recipe("asana").tools:
+            for _, pointer in tool.response:
+                for field in pointer.strip("/").split("/"):
+                    projected.add(field)
+        self.assertFalse(projected & opt_in, projected & opt_in)
+        # notes is returned by default and is projected; html_notes is not.
+        self.assertIn("notes", projected)
+        self.assertNotIn("html_notes", projected)
+        self.assertTrue(any("Opt In" in note for note in self.asana["notes"]))
+
+    def test_asana_projection_stays_inside_the_documented_schema(self):
+        declared = {
+            "gid",
+            "resource_type",
+            "name",
+            "notes",
+            "archived",
+            "completed",
+            "due_on",
+            "start_on",
+            "owner",
+            "assignee",
+            "completed_at",
+            "permalink_url",
+        }
+        for tool in packaged_recipe("asana").tools:
+            with self.subTest(tool=tool.name):
+                for label, pointer in tool.response:
+                    self.assertIn(pointer.strip("/").split("/")[-1], declared, label)
+        # A project has no assignee and a task has no projects field.
+        project = {p for _, p in packaged_recipe("asana").tools[0].response}
+        task = {p for _, p in packaged_recipe("asana").tools[1].response}
+        self.assertNotIn("/data/assignee", project)
+        self.assertNotIn("/data/projects", task)
+
+    def test_raindrop_uses_the_documented_singular_item_route(self):
+        read = packaged_recipe("raindrop").tools[0]
+        self.assertEqual(read.path, "/rest/v1/collection/{destination}")
+        self.assertEqual(
+            [p for _, p in read.response],
+            ["/item/_id", "/item/title", "/item/count", "/item/view"],
+        )
+        listing = packaged_recipe("raindrop").tools[1]
+        self.assertEqual(listing.path, "/rest/v1/collections")
+        self.assertIn(
+            "no failure body is documented", " ".join(self.raindrop["notes"]).lower()
+        )
+        self.assertEqual(
+            self.raindrop["errors"]["application_failure"]["status"], "undocumented"
+        )
+
+    def test_token_lifetime_facts_are_recorded_per_provider(self):
+        # C8 asks for expiry to be tracked per provider rather than assumed.
+        expected = {
+            "asana": ("persistent by default", "no documented expiry duration"),
+            "gitlab": ("midnight UTC", "cannot be reactivated"),
+            "github": ("1 and 366", "30 days"),
+            "todoist": ("no expiry is documented", "401"),
+        }
+        for provider, phrases in expected.items():
+            lifetime = json.loads((FIXTURES / (provider + ".json")).read_text("utf-8"))[
+                "token_lifetime"
+            ]["documented"]
+            with self.subTest(provider=provider):
+                for phrase in phrases:
+                    self.assertIn(phrase.lower(), lifetime.lower(), provider)
+
+    def test_the_setup_guide_states_each_token_lifetime(self):
+        guide = (ROOT / "connectors" / "SETUP.md").read_text("utf-8").lower()
+        for phrase in (
+            "persistent by default",
+            "midnight utc",
+            "between 1 and 366 days",
+            "no expiry is documented for a todoist personal token",
+        ):
+            self.assertIn(phrase, guide)

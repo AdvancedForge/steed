@@ -133,5 +133,8 @@
       "status": 404,
       "documented": "A repository that is missing, or not visible to the token's repository selection, returns 404 rather than 403."
     }
+  },
+  "token_lifetime": {
+    "documented": "A fine-grained token's expiry is configurable: the documented expires_in value is an integer between 1 and 366 days, or none for a non-expiring token, defaulting to 30 days or less under an organization lifetime policy."
   }
 }

@@ -9,7 +9,10 @@
     "https://developers.asana.com/docs/errors",
     "https://developers.asana.com/docs/pagination",
     "https://developers.asana.com/docs/rate-limits",
-    "https://developers.asana.com/docs/inputoutput-options"
+    "https://developers.asana.com/docs/inputoutput-options",
+    "https://developers.asana.com/reference/tasks",
+    "https://developers.asana.com/reference/projects",
+    "https://developers.asana.com/docs/personal-access-token"
   ],
   "notes": [
     "A personal access token is documented as used like an OAuth access token, passed in the Authorization header, so the documented placement is Authorization: Bearer and no second token header exists.",
@@ -20,7 +23,13 @@
     "There is no html_url on a project or task; permalink_url is the documented web link.",
     "Errors are HTTP status codes plus a JSON errors array, so there is no application-level success flag to check.",
     "Listing pages with limit and offset and returns next_page with an offset, which is an offset protocol, so collections are out of scope for this profile.",
-    "Creating a task is POST /api/1.0/tasks with a data block naming a workspace or project in the body, so no reviewed path can carry that destination. Task creation is therefore not offered, rather than guessed from a draft."
+    "Creating a task is POST /api/1.0/tasks with a data block naming a workspace or project in the body, so no reviewed path can carry that destination. Task creation is therefore not offered, rather than guessed from a draft.",
+    "Asana publishes no default field list. The documented signal is the per-field [Opt In] marker, and a field without it is returned by default, so every projected field here is unmarked: gid, resource_type, name, notes, archived, completed, due_on, start_on, owner, assignee, completed_at and permalink_url.",
+    "The fields that are explicitly opt-in and therefore deliberately not projected are created_by, dependencies, dependents, external, html_notes, has_subtasks_date_mismatch, is_rendered_as_separator, num_subtasks, current_status.html_text, project_brief and created_from_template.",
+    "notes is not opt-in, so it is projected; html_notes is opt-in, so it is not.",
+    "The only always-returned guarantee Asana documents is for the gid of an included object. permalink_url carries no opt-in marker, so it is expected by default but is not documented as guaranteed.",
+    "A project has no assignee or parent field at all, and a task has no projects field: a task's projects are reached through memberships, so nothing projects a field the schema does not declare.",
+    "A personal access token is documented as persistent by default, with no documented expiry duration, and Asana documents that token formats may change without notice. Revoking means deauthorizing it from the My Apps page."
   ],
   "identity": {
     "/api/1.0/users/me": {
@@ -111,7 +120,7 @@
   "errors": {
     "rate_limited": {
       "status": 429,
-      "documented": "You have exceeded one of the enforced rate limits in the API. Limits are documented as 150 requests per minute on the Free plan and 1,500 per minute on paid plans, allocated per authorization token, with a Retry-After header."
+      "documented": "You have exceeded one of the enforced rate limits in the API. Limits are documented as 150 requests per minute on the Free plan and 1,500 per minute on paid plans, allocated per authorization token, with a Retry-After header. A 429 carries Retry-After."
     },
     "unauthorized": {
       "status": 401,
@@ -129,6 +138,10 @@
   "pending_empirical": [
     "Whether a personal access token is accepted in the Authorization header by the live API, since the placement is documented but only a real token settles it.",
     "Whether the projected project and task fields are all present on a real object, because field requiredness is not formally declared.",
-    "Whether an account name is ever empty, which would leave the label contract with nothing to show."
-  ]
+    "Whether an account name is ever empty, which would leave the label contract with nothing to show.",
+    "Whether permalink_url is present on every project and task, since only the gid is documented as always returned."
+  ],
+  "token_lifetime": {
+    "documented": "Asana documents personal access tokens as persistent by default, with no documented expiry duration, and documents that token formats may change without notice. Revocation means deauthorizing the token from the My Apps page."
+  }
 }
