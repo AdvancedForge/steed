@@ -165,6 +165,33 @@
         "api_version": "",
         "case": ""
       }
+    },
+    {
+      "provider": "zotero",
+      "reviewed_source": "connectors/recipes/templates/zotero-library-template.json imported as a user-owned copy with the numeric library ID fixed",
+      "official_reference": "https://www.zotero.org/support/dev/web_api/v3/basics",
+      "tools": [
+        "read_item"
+      ],
+      "least_permission": "A Zotero API key used with Authorization: Bearer. The identity document carries an access object whose user.library flag must be true; no write permission is needed for this read-only subset, and no key may be placed in a URL.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the numeric userID and label from username",
+        "read_result": "read_item returns key, version, itemType, dateAdded and dateModified for one item key, with no title projected because a note has none",
+        "reviewed_create_preview": "none: the profile is read-only",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the key is revoked on the Zotero API Keys page"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
     }
   ],
   "live_acceptance_preconditions": [
