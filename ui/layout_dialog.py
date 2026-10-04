@@ -23,8 +23,10 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from layout_preferences import (
@@ -41,6 +43,7 @@ TOOLBAR_LABELS = {
     "home": "Home",
     "zoom": "Reset zoom",
     "passwords": "Passwords",
+    "address": "Address and search (always visible)",
 }
 
 MENU_LABELS = {
@@ -93,23 +96,30 @@ class LayoutDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Layout Settings")
         self.setMinimumWidth(520)
+        self.resize(640, 640)
         self._saved = preferences.copy()
         self._working = preferences.copy()
         self._updating = False
 
         layout = QVBoxLayout(self)
-        layout.addWidget(
-            QLabel(
-                "Changes appear immediately and are kept when you click Save. "
-                "Cancel restores the saved layout. These settings change the "
-                "appearance of the browser only."
-            )
+        notice = QLabel(
+            "Changes appear immediately and are kept when you click Save. "
+            "Cancel restores the saved layout. These settings change the "
+            "appearance of the browser only."
         )
+        notice.setWordWrap(True)
+        layout.addWidget(notice)
 
-        layout.addWidget(self._build_toolbar_group())
-        layout.addWidget(self._build_menu_group())
-        layout.addWidget(self._build_sidebar_group())
-        layout.addWidget(self._build_named_group())
+        controls = QWidget()
+        body = QVBoxLayout(controls)
+        body.addWidget(self._build_toolbar_group())
+        body.addWidget(self._build_menu_group())
+        body.addWidget(self._build_sidebar_group())
+        body.addWidget(self._build_named_group())
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(controls)
+        layout.addWidget(scroll)
         self._reload_controls()
 
         buttons = QDialogButtonBox(
@@ -249,6 +259,7 @@ class LayoutDialog(QDialog):
             self.toolbar_list.item(row).data(Qt.ItemDataRole.UserRole)
             for row in range(self.toolbar_list.count())
             if self.toolbar_list.item(row).checkState() == Qt.CheckState.Unchecked
+            and self.toolbar_list.item(row).data(Qt.ItemDataRole.UserRole) != "address"
         ]
         self._working.set_toolbar(_reorder_rows(self.toolbar_list), hidden)
         self._working.set_menu_order(_reorder_rows(self.menu_list))
@@ -291,6 +302,8 @@ class LayoutDialog(QDialog):
         _fill_ordered(self.toolbar_list, self._working.toolbar_order, TOOLBAR_LABELS)
         for row in range(self.toolbar_list.count()):
             item = self.toolbar_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == "address":
+                continue
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(
                 Qt.CheckState.Unchecked
@@ -330,7 +343,7 @@ class LayoutDialog(QDialog):
             )
             return
         self._working.save_named(name)
-        self._refresh_named_layouts(name)
+        self._refresh_named_layouts(self._working.active_layout)
         self._reload_controls()
         self._publish()
 

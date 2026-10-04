@@ -48,6 +48,7 @@ class ProfileRegistry(QObject):
 
     profiles_updated = pyqtSignal()
     agent_access_changed = pyqtSignal(bool)
+    layout_changed = pyqtSignal(object)
 
     def __init__(self, config, parent):
         super().__init__(parent)
@@ -104,6 +105,23 @@ class ProfileRegistry(QObject):
                 self.config.config_dir / "app_accounts.json", self
             )
         return self._app_connections
+
+    def commit_layout(self, preferences, *, base=None):
+        """Commit presentation choices and notify every window sharing storage."""
+        from layout_preferences import (
+            merge_preferences,
+            preferences_from_config,
+            save_preferences,
+        )
+
+        require_owner_thread(self)
+        if base is not None:
+            preferences = merge_preferences(
+                base, preferences, preferences_from_config(self.config)
+            )
+        save_preferences(self.config, preferences)
+        self.layout_changed.emit(preferences.copy())
+        return preferences.copy()
 
     @property
     def tasks(self):

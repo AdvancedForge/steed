@@ -7,23 +7,29 @@ execution, and evidence; external agents provide planning and generation.
 See [DOCUMENTATION.md](DOCUMENTATION.md) for setup and implementation details,
 including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
-## Current work — October 3, 2026
+## Current work — October 4, 2026
 
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
-**Configurable layout contributor review (changes requested; unmerged).**
-Reviewed `engineering/configurable-layout` at `988b68b`, based on main's agent/tool
-checkpoint `67c4ba2`, in an isolated checkout. It adds validated manual toolbar/menu
-settings, sidebar placement/width, density, named layouts and live preview/reset.
-The direction is useful, but shown-widget probes confirm that hidden controls
-remain keyboard-accessible, a second window can erase shared named layouts, the
-default address-bar order changes, and accepted sidebar widths below 300 px cannot
-be honored. The real-browser acceptance tests also need correction: 55 focused
-checks yielded 51 passes, three failures and one error. Ruff lint/format pass.
-Contributor source is unchanged; no merge or approval was made. The next increment
-is fixing those findings and proving real-window acceptance before agent-generated
-layout proposals. See [detailed review and continuation](ENGINEERING_HANDOFF.md#configurable-layout-review-and-continuation).
+**Configurable browser layout L1 (fixed, accepted and merged).** The contributor's
+manual layout milestone now preserves the original address-field position and
+explicitly hides disabled controls. The address field is a mandatory reorderable
+anchor. Save/Reset broadcasts through the shared registry; editors open from
+canonical settings, preserve unrelated concurrent edits and refuse same-setting
+conflicts. Cancel restores the latest committed choices. Named-layout selection
+uses the normalized name. Widths match the native 300–800 px bounds, and the
+scrollable dialog keeps Save/Cancel reachable in small windows.
+
+Acceptance: **1,030 regressions pass in 394.677 seconds**; the final widget/parent
+and small-window follow-up passes **61 checks**. Startup/local render/shutdown,
+Ruff lint/format and whitespace pass. Light/dark 640×520 previews were inspected.
+No real accounts or profiles were used. Logs: `/tmp/steed-layout-fixes-full.log`,
+`/tmp/steed-layout-fixes-focused-final.log`, `/tmp/steed-layout-fixes-startup.log`.
+Original findings and subsequent scopes are retained in
+[the engineering handoff](ENGINEERING_HANDOFF.md#configurable-layout-review-and-continuation).
+Next: strict portable layouts and task-bound agent proposals with user review,
+export/import and previous-layout recovery; maintained native panels follow.
 
 **Codex access discovery and reported model (implemented and validated).**
 The user reports an agent saying access-discovery requests were rejected. Two

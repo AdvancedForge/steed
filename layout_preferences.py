@@ -11,6 +11,7 @@ and a document written by another schema version falls back to today's
 defaults rather than guessing at a partial layout.
 """
 
+from copy import deepcopy
 from typing import Any
 
 LAYOUT_VERSION = 1
@@ -18,6 +19,7 @@ LAYOUT_VERSION = 1
 # The address bar buttons a layout may reorder or hide. Every one of these also
 # stays reachable from the menu bar.
 TOOLBAR_ITEMS = ("back", "forward", "reload", "home", "zoom", "passwords")
+TOOLBAR_ORDER = ("back", "forward", "reload", "home", "address", "zoom", "passwords")
 
 # Menus may be reordered but never hidden, so Settings and Reset Layout are
 # always available.
@@ -29,7 +31,7 @@ DEFAULT_DENSITY = "comfortable"
 SIDEBAR_SIDES = ("left", "right")
 DEFAULT_SIDEBAR_SIDE = "right"
 DEFAULT_SIDEBAR_WIDTH = 320
-SIDEBAR_WIDTH_RANGE = (200, 800)
+SIDEBAR_WIDTH_RANGE = (300, 800)
 
 MAX_NAMED_LAYOUTS = 32
 MAX_LAYOUT_NAME = 48
@@ -41,7 +43,7 @@ CONFIG_KEY = "layout"
 def default_appearance() -> dict[str, Any]:
     """Return today's appearance, which is also the reset value."""
     return {
-        "toolbar": {"order": list(TOOLBAR_ITEMS), "hidden": []},
+        "toolbar": {"order": list(TOOLBAR_ORDER), "hidden": []},
         "menus": {"order": list(MENU_ITEMS)},
         "sidebar": {"side": DEFAULT_SIDEBAR_SIDE, "width": DEFAULT_SIDEBAR_WIDTH},
         "density": DEFAULT_DENSITY,
@@ -87,6 +89,15 @@ def clean_identifiers(value: Any, known: tuple[str, ...]) -> list[str]:
     return kept
 
 
+def clean_toolbar_order(value: Any) -> list[str]:
+    """Keep the address field mandatory and migrate old button-only layouts."""
+    order = clean_order(value, TOOLBAR_ORDER)
+    if not isinstance(value, (list, tuple)) or "address" not in value:
+        order.remove("address")
+        order.insert(order.index("zoom"), "address")
+    return order
+
+
 def clean_choice(value: Any, choices: tuple[str, ...], default: str) -> str:
     """Return value when it is an accepted choice, otherwise the default."""
     if isinstance(value, str) and value in choices:
@@ -113,7 +124,7 @@ def clean_appearance(raw: Any) -> dict[str, Any]:
     sidebar = sidebar if isinstance(sidebar, dict) else {}
     return {
         "toolbar": {
-            "order": clean_order(toolbar.get("order"), TOOLBAR_ITEMS),
+            "order": clean_toolbar_order(toolbar.get("order")),
             "hidden": clean_identifiers(toolbar.get("hidden"), TOOLBAR_ITEMS),
         },
         "menus": {"order": clean_order(menus.get("order"), MENU_ITEMS)},
@@ -168,7 +179,11 @@ class LayoutPreferences:
     def visible_toolbar(self) -> list[str]:
         """Toolbar buttons the layout shows, in display order."""
         hidden = self.hidden_toolbar
-        return [name for name in self.toolbar_order if name not in hidden]
+        return [
+            name
+            for name in self.toolbar_order
+            if name in TOOLBAR_ITEMS and name not in hidden
+        ]
 
     @property
     def menu_order(self) -> list[str]:
@@ -247,10 +262,7 @@ class LayoutPreferences:
     def set_toolbar(self, order: Any, hidden: Any = ()) -> None:
         """Record toolbar display order and hidden buttons."""
         self._layout["toolbar"] = {
-            "order": clean_order(
-                list(order) if isinstance(order, (list, tuple)) else order,
-                TOOLBAR_ITEMS,
-            ),
+            "order": clean_toolbar_order(order),
             "hidden": clean_identifiers(
                 list(hidden) if isinstance(hidden, (list, tuple)) else hidden,
                 TOOLBAR_ITEMS,
@@ -312,3 +324,36 @@ def preferences_from_config(config) -> LayoutPreferences:
 def save_preferences(config, preferences: LayoutPreferences) -> None:
     """Persist layout preferences through the shared configuration."""
     config.set(CONFIG_KEY, preferences.to_dict())
+
+
+class LayoutConflict(ValueError):
+    """Another window changed the same setting while an editor was open."""
+
+
+def merge_preferences(base, edited, current) -> LayoutPreferences:
+    """Preserve concurrent, unrelated edits; refuse competing changes."""
+    missing = object()
+
+    def merge(before, after, latest):
+        if after == before:
+            return deepcopy(latest) if latest is not missing else missing
+        if latest == before or latest == after:
+            return deepcopy(after) if after is not missing else missing
+        if all(isinstance(value, dict) for value in (before, after, latest)):
+            result = {}
+            for key in dict.fromkeys([*latest, *after, *before]):
+                value = merge(
+                    before.get(key, missing),
+                    after.get(key, missing),
+                    latest.get(key, missing),
+                )
+                if value is not missing:
+                    result[key] = value
+            return result
+        raise LayoutConflict("Another window changed the same layout setting.")
+
+    merged = LayoutPreferences(
+        merge(base.to_dict(), edited.to_dict(), current.to_dict())
+    )
+    merged._sync_active()
+    return merged

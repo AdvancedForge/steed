@@ -31,9 +31,9 @@ from PyQt6.QtWidgets import (
 from config import Config
 from cookie_manager import CookieManager
 from layout_preferences import (
+    LayoutConflict,
     LayoutPreferences,
     preferences_from_config,
-    save_preferences,
 )
 from profile_manager import ProfileManager
 from services.permission_service import PermissionService
@@ -197,7 +197,9 @@ class BrowserWindow(QMainWindow):
         self.apply_dark_mode()
         # Manual layout is presentation only and is shared by every window.
         self.layout_preferences = preferences_from_config(self.config)
+        self._layout_editing = False
         self.apply_layout(self.layout_preferences)
+        self.profile_manager.registry.layout_changed.connect(self._layout_committed)
 
         self._was_fullscreen = False
         self._pending_desktop_request = None
@@ -614,22 +616,39 @@ class BrowserWindow(QMainWindow):
 
     def _open_layout_settings(self) -> None:
         """Edit the manual layout, previewing edits and saving on Save."""
-        dialog = LayoutDialog(self.layout_preferences, self)
-        saved = self.layout_preferences
+        if self._layout_editing:
+            return
+        saved = preferences_from_config(self.config)
+        dialog = LayoutDialog(saved, self)
         dialog.layout_changed.connect(self.apply_layout)
-        if dialog.exec():
-            self.layout_preferences = dialog.preferences
-            self.apply_layout(self.layout_preferences)
-            save_preferences(self.config, self.layout_preferences)
-        else:
-            # Cancel restores the layout that was saved before the dialog.
-            self.apply_layout(saved)
+        self._layout_editing = True
+        try:
+            if dialog.exec():
+                try:
+                    self.profile_manager.registry.commit_layout(
+                        dialog.preferences, base=saved
+                    )
+                except LayoutConflict:
+                    QMessageBox.warning(
+                        self,
+                        "Layout changed in another window",
+                        "Your settings were not saved because another window changed "
+                        "the same setting. Reopen Layout Settings to try again.",
+                    )
+        finally:
+            self._layout_editing = False
+            self.apply_layout(preferences_from_config(self.config))
+            dialog.deleteLater()
+
+    def _layout_committed(self, preferences) -> None:
+        if not self._layout_editing:
+            self.apply_layout(preferences.copy())
 
     def reset_layout(self) -> None:
         """Restore today's appearance and keep the saved layout files."""
-        self.layout_preferences.reset()
-        self.apply_layout(self.layout_preferences)
-        save_preferences(self.config, self.layout_preferences)
+        preferences = preferences_from_config(self.config)
+        preferences.reset()
+        self.profile_manager.registry.commit_layout(preferences)
 
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):

@@ -1,4 +1,4 @@
-# Engineering handoff — October 3, 2026
+# Engineering handoff — October 4, 2026
 
 ## Start here
 
@@ -57,9 +57,16 @@ unknown. Light/dark sections and speaker headers keep plain-text rendering;
 advanced details remain collapsed. Installed Codex 0.159.2 passes offline native
 follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for logs.
 Manual configurable UI remains the next substantive layout scope; its first
-contributor implementation has been reviewed and needs corrections before merge.
+contributor implementation has been corrected and accepted as L1.
 
 ## Configurable layout review and continuation
+
+**L1 accepted on October 4.** All findings below were corrected. Main now has
+mandatory address anchoring, explicit widget visibility, shared commit broadcasts,
+three-way concurrent-edit conflict handling, native width bounds, normalized preset
+selection and a scrollable dialog. The complete suite passes 1,030 checks; final
+focused UI checks and startup pass. The findings below are historical review
+evidence, not outstanding work. Continue with L2/L3 rather than redoing L1.
 
 Reviewed `engineering/configurable-layout` at
 `988b68be70f2570764d9f79d01d632eebbcbdb54`, based on main `67c4ba2`, in
