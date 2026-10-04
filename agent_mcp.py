@@ -21,6 +21,8 @@ READ_ONLY_COMMANDS = frozenset(
         "task.capabilities",
         "layout.capabilities",
         "layout.status",
+        "panel.capabilities",
+        "panel.status",
         "grant.list",
         "browser.context",
         "browser.tabs",
@@ -245,6 +247,10 @@ def create_server(discovery, *, expected_epoch=None, binding_file=None):
         "steed_browser_tabs is different: it lists only user-shared live tabs and "
         "requires live/read approval. Ask the user to use Share browser tabs if "
         "needed; a denied tab listing does not disable other discovery tools. "
+        "For custom data panels, discover steed_panel_capabilities. Store owned "
+        "drafts with artifact permission, propose native widgets for user preview "
+        "and profile choice, then publish new artifact bindings with the current "
+        "revision and stable update IDs. Panel review grants no additional access. "
         "Use steed_grant_request with the exact scope for browser/connector access "
         "and poll steed_grant_list. Parallel calls are queued. Report an actual "
         "tool name and error code if a call fails; do not invent a discovery toggle."

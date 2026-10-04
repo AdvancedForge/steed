@@ -150,6 +150,40 @@ def tool(command, description, properties=None, required=()):
 
 TOOLS = (
     tool(
+        "panel.capabilities",
+        "Discover native task/text/list data-panel widgets and a JSON example. No content, profiles or grants are returned. Local HTML/JS apps are future support.",
+    ),
+    tool(
+        "panel.propose",
+        "Propose a native data panel from this task's immutable artifacts. Artifact widgets require artifact permission; list artifacts are JSON arrays of strings. The user previews it, chooses a normal profile, and enables same-task draft updates. No access grant or global layout changes occur. Pin a stable request ID to exact source bytes and poll panel.status.",
+        {"source": string(16384), "request_id": string(64)},
+        ("source", "request_id"),
+    ),
+    tool(
+        "panel.status",
+        "Read this task's content-free data-panel receipt and current revision. No approval or body-reading authority is returned.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
+        "panel.publish",
+        "Update artifact bindings in an approved native panel using new immutable artifacts owned by this task. Keep the reviewed widgets/profile; changes to structure need a new proposal. Requires current artifact permission. Use the current exact revision and a stable update ID; identical retries return the original publication receipt without replay. Task end/revocation freezes displayed drafts. No external effects occur.",
+        {
+            "request_id": string(64),
+            "update_id": string(64),
+            "expected_revision": integer(0, 255),
+            "bindings": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "items": schema(
+                    {"id": string(32), "artifact_id": string(64)}, ("id", "artifact_id")
+                ),
+            },
+        },
+        ("request_id", "update_id", "expected_revision", "bindings"),
+    ),
+    tool(
         "layout.capabilities",
         "Discover the portable browser layout format, stable component IDs, limits and a copyable example. No page, profile, folder or account access is returned or granted.",
     ),

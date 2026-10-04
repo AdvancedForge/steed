@@ -192,6 +192,7 @@ class BrowserWindow(QMainWindow):
         self._child_windows: list[BrowserWindow] = []
         self._password_dialog = None
         self.agent_sidebar = None
+        self.data_panels_dock = None
         self.agent_setup_dialog = None
         self.setup_window()
         self.setup_menus()
@@ -398,6 +399,11 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         agents_menu.addAction(self.agent_sidebar_action)
+        self.data_panels_action = QAction("Data Panels", self)
+        self.data_panels_action.setCheckable(True)
+        self.data_panels_action.setEnabled(not self.profile_manager.is_search_profile())
+        self.data_panels_action.triggered.connect(self._toggle_data_panels)
+        agents_menu.addAction(self.data_panels_action)
         agents_tab_action = QAction("Agent Chat Tab", self)
         agents_tab_action.triggered.connect(lambda: self._open_agent_tab())
         agents_menu.addAction(agents_tab_action)
@@ -652,6 +658,7 @@ class BrowserWindow(QMainWindow):
         roots = [self.menuBar(), self.address_bar, self.tab_bar]
         roots.extend(getattr(self, name, None) for name in ("find_bar", "status_bar"))
         roots.extend(getattr(self, "_layout_panels", []))
+        roots.append(getattr(self, "data_panels_dock", None))
         for root in roots:
             if root is not None:
                 apply_chrome_font(root, self.layout_preferences.text_size)
@@ -783,8 +790,42 @@ class BrowserWindow(QMainWindow):
         self._update_window_title()
         self._update_profile_shortcuts()
         self.file_library_action.setEnabled(profile_name != "search")
+        self.data_panels_action.setEnabled(profile_name != "search")
+        if self.data_panels_dock is not None:
+            self.data_panels_dock.refresh()
+            if profile_name == "search":
+                self.data_panels_dock.hide()
+
         if self.agent_sidebar is not None:
             self.agent_sidebar.set_private(profile_name == "search")
+
+    def _toggle_data_panels(self, visible):
+        if self._closing or self.profile_manager.is_search_profile():
+            self.data_panels_action.setChecked(False)
+            return
+        if self.data_panels_dock is None and visible:
+            from ui.data_panels import DataPanelDock
+
+            self.data_panels_dock = DataPanelDock(
+                self.profile_manager.registry.tasks, self
+            )
+            self.addDockWidget(self._sidebar_dock_area(), self.data_panels_dock)
+            self.data_panels_dock.visibilityChanged.connect(
+                self.data_panels_action.setChecked
+            )
+            if (
+                self.agent_sidebar is not None
+                and self.agent_tab is None
+                and not self.agent_sidebar.isFloating()
+                and self.dockWidgetArea(self.agent_sidebar)
+                == self.dockWidgetArea(self.data_panels_dock)
+            ):
+                self.tabifyDockWidget(self.agent_sidebar, self.data_panels_dock)
+        if self.data_panels_dock is not None:
+            self.data_panels_dock.refresh()
+            self.data_panels_dock.setVisible(visible)
+            if visible:
+                self.data_panels_dock.raise_()
 
     def _toggle_agent_sidebar(self, visible):
         if self.agent_tab is not None and visible:
@@ -808,6 +849,13 @@ class BrowserWindow(QMainWindow):
                 )
                 return
             self.addDockWidget(self._sidebar_dock_area(), self.agent_sidebar)
+            if (
+                self.data_panels_dock is not None
+                and not self.data_panels_dock.isFloating()
+                and self.dockWidgetArea(self.agent_sidebar)
+                == self.dockWidgetArea(self.data_panels_dock)
+            ):
+                self.tabifyDockWidget(self.data_panels_dock, self.agent_sidebar)
             preferences = getattr(self, "layout_preferences", None)
             if preferences is not None:
                 self.resizeDocks(
@@ -824,6 +872,8 @@ class BrowserWindow(QMainWindow):
         if self.agent_sidebar is not None:
             self.agent_sidebar.set_private(self.profile_manager.is_search_profile())
             self.agent_sidebar.setVisible(visible)
+            if visible:
+                self.agent_sidebar.raise_()
 
     def _open_agent_tab(self):
         if self.agent_tab in self.tabs:

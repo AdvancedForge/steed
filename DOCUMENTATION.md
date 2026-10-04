@@ -4402,6 +4402,82 @@ Reload, Find and Zoom disable on native agent-chat tabs and restore on webpages.
 Narrow panels scroll horizontally and reveal keyboard-focused controls. Panels
 remain native UI in private windows; they create no agent access or data grant.
 
+### Native data panels — implemented (first milestone)
+
+Open **Agents → Data Panels** to view agent-designed dashboards in the current
+normal profile. The dock starts empty and stays closed until requested or an
+approved panel is enabled in that window. When the agent sidebar already uses the
+same dock area, the two share tabs to keep the page usable. Panel selection and
+removal are local UI controls; removing a panel stops publication in every window
+of that profile and leaves its underlying drafts intact.
+
+To start, ask a connected agent: “Create a dashboard with your task progress, a
+summary, and a list of next steps; keep its drafts updated as you work.” The agent
+uses the native panel tools below. Review the preview, choose the display profile,
+and click **Enable panel and draft updates**. Close defers the request; reopen it
+under **Agents → Task Permissions… → Data Panels**. Decline leaves the browser
+unchanged. Draft widgets need the task's existing `artifact` permission; panel
+approval neither creates nor expands website, folder, file or account permission.
+
+The first catalogue provides these native, inert components:
+
+| Kind | Source | Display |
+| --- | --- | --- |
+| `task` | Owning task's metadata | Objective and current task status |
+| `text` | One owned immutable artifact | Selectable, read-only plain text |
+| `list` | One owned artifact containing a JSON array of strings | Up to 64 plain-text items, 512 characters each |
+
+Generated text is labelled as a saved agent draft. HTML, URLs and commands stay
+plain text; invisible controls are displayed as escapes. Task completion describes
+task state, not proof that draft claims or external effects succeeded. Missing,
+deleted or hash-mismatched artifacts make the panel unavailable; there is no
+fallback to other files or profiles. Use the task's existing artifact tools to
+create or read drafts; data panels add no body-reading endpoint for agents.
+
+Agent protocol:
+
+1. Call `steed_panel_capabilities({})` to discover the grammar and limits. It is
+   grant-free discovery and returns no user content or profile identities.
+2. Store text/list artifacts with `steed_artifact_store` under existing artifact
+   permission. Build a source document like
+   [the dashboard example](examples/data_panels/task-dashboard.json), replacing
+   `OWNED_ARTIFACT_ID` with the returned ID. Submit `steed_panel_propose` with the
+   exact UTF-8 `source` and a stable `request_id`; poll `steed_panel_status` until
+   the user chooses a profile and enables the panel.
+3. To revise drafts, store new immutable artifacts and call `steed_panel_publish`
+   with that `request_id`, a stable `update_id`, the current `expected_revision`,
+   and `bindings`, for example `[{"id":"summary","artifact_id":"NEW_ARTIFACT_ID"}]`.
+   Only reviewed artifact widgets can change their bindings. New widgets, different
+   kinds or another display profile need a new proposal and review.
+4. Identical publication retries return their original revision receipt, even
+   after newer publications; changed reuse of an ID is refused. A stale revision
+   requires reading status before another publication. Changes are committed with
+   their receipt and value-free journal event in one SQLite transaction.
+
+Limits: 16 KiB source, eight widgets per panel, eight enabled panels per profile,
+20 proposals per task, three pending per task, 32 pending globally, and 256 draft
+publications per panel. Artifact limits also apply (16 KiB per artifact, 50 per
+task). Publication requires current artifact authority and the original active
+task. Task end, revocation or expiry stops updates; pending requests are cancelled
+or interrupted. Saved drafts remain visible to the user after task end/restart
+until removed or their source is deleted. Recovered/new tasks get no automatic
+publication authority over historical panels.
+
+A stable profile identity binds the display. Renaming preserves it; deleting and
+recreating the name does not transfer it. Receipt `profile_name` is the label at
+approval, while the dock labels the current profile. Other profiles and private
+browsing do not display these panels. Profile switches erase the previous native
+content immediately. Multiple windows on the same profile receive committed
+updates without rebuilding unchanged text selections. Panel templates, bindings
+and receipts live in the task database (schema 18); personal draft bodies remain
+in owned artifacts, not global appearance preferences, named layouts or layout
+exports. Browser text sizing also applies to the dock.
+
+Locally hosted HTML/JavaScript mini-apps remain a planned complementary option.
+They will need their own host/lifecycle and a typed bridge to existing Steed
+capabilities. The current native format does not execute extension code, and
+external agents keep their independent tools.
+
 ### Customization direction (planned)
 
 The user means configurable **browser UI**: the placement and appearance of
@@ -4416,10 +4492,11 @@ rebuild is unnecessary for this scope.
    export/import, migration, Reset and recovery to the last working layout. An
    agent can propose a layout through a typed interface without installing code.
    Changing layout never enables an account, folder, profile or task permission.
-3. **Agent-designed native panels — quick actions implemented:** richer text, lists,
-   tables, forms and buttons for reading queues, research panels and project
-   dashboards. Actions use existing Steed capabilities, with visible data sources
-   and access choices. Panel updates support review, disable and rollback.
+3. **Agent-designed native panels — task/text/list widgets implemented:** reviewed
+   profile-bound panels and artifact draft updates are available above. Next:
+   explicit user inputs, richer tables/images and reviewed service effects, using
+   existing capabilities and visible data sources. Per-update rollback remains
+   future work; removing a panel stops publication and preserves its source drafts.
 4. **Appearance and optional actions — bounded text/emphasis implemented:** more colors, fonts and spacing, plus
    shortcuts or named workflows attached to supported controls. Arbitrary styles
    must not hide approvals or make recovery controls unreadable.

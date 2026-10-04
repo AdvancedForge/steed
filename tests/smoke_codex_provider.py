@@ -167,6 +167,11 @@ def run(model="gpt-6.1-sol"):
                 "address"
                 in discovery["steed_layout_capabilities"]["result"]["toolbar_ids"]
             )
+            assert discovery["steed_panel_capabilities"]["result"]["widget_kinds"] == [
+                "task",
+                "text",
+                "list",
+            ]
             tab_error = responses.results(1)["steed_browser_tabs"]["error"]
             assert tab_error["code"] == "approval_required"
             assert "Share browser tabs" in tab_error["message"]

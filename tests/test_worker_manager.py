@@ -513,7 +513,7 @@ for command, args in [
             db.execute("PRAGMA user_version=11")
         self.service = TaskService(self.path)
         self.assertEqual(
-            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 17
+            self.service.store._db.execute("PRAGMA user_version").fetchone()[0], 18
         )
         self.assertEqual(len(self.service.workspace.list(self.client.task_id)), 2)
         self.assertEqual(self.service.workers.store.list(self.client.task_id), [])

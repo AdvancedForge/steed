@@ -57,6 +57,7 @@ class ResponsesFixture:
                 ("steed_library_folders", {}),
                 ("steed_app_list_tools", {}),
                 ("steed_layout_capabilities", {}),
+                ("steed_panel_capabilities", {}),
             ],
             [("steed_browser_tabs", {})],
             [("steed_grant_request", {"scope": {"actions": ["workspace"]}})],

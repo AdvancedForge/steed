@@ -29,6 +29,7 @@ from services.connectors import (
     ConnectorRequest,
     ConnectorReview,
 )
+from services.data_panels import DataPanels
 from services.form_submission import journal_origin
 from services.layout_proposals import LayoutProposals
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
@@ -109,6 +110,7 @@ class TaskService(QObject):
         self.workers = WorkerManager(self)
         self.recipes = RecipeProposals(self, connections)
         self.layouts = LayoutProposals(self)
+        self.data_panels = DataPanels(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -121,6 +123,25 @@ class TaskService(QObject):
                 "task.status": self.store.get,
                 "task.capabilities": self._capabilities,
                 "browser.context": self._browser_context,
+                "panel.capabilities": self._panel_capabilities,
+                "panel.propose": lambda task_id, source, request_id: (
+                    self._layout_action(
+                        self.data_panels.propose, task_id, source, request_id
+                    )
+                ),
+                "panel.status": lambda task_id, request_id: self._layout_action(
+                    self.data_panels.get, task_id, request_id
+                ),
+                "panel.publish": lambda task_id, request_id, update_id, expected_revision, bindings: (
+                    self._layout_action(
+                        self.data_panels.publish,
+                        task_id,
+                        request_id,
+                        update_id,
+                        expected_revision,
+                        bindings,
+                    )
+                ),
                 "layout.capabilities": self._layout_capabilities,
                 "layout.propose": lambda task_id, source, request_id: (
                     self._layout_action(
@@ -659,6 +680,13 @@ class TaskService(QObject):
         except (OSError, sqlite3.Error):
             self._fatal(defer_broker_close=True)
             raise
+
+    def _panel_capabilities(self, task_id):
+        from data_panel_format import panel_capabilities
+
+        self._usable()
+        self._active(task_id)
+        return {"available": self.data_panels.available, **panel_capabilities()}
 
     def _layout_capabilities(self, task_id):
         from layout_format import layout_capabilities
@@ -2391,6 +2419,7 @@ class TaskService(QObject):
         self.workers.cancel_task(task_id)
         self.recipes.cancel_task(task_id)
         self.layouts.cancel_task(task_id)
+        self.data_panels.cancel_task(task_id, interrupted=status == "interrupted")
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):

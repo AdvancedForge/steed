@@ -58,7 +58,8 @@ advanced details remain collapsed. Installed Codex 0.159.2 passes offline native
 follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for logs.
 Manual layout L1 is accepted at `5ece7e8`; portable layout/proposal L2 is accepted.
 Native action panels/text sizing L3 and bounded accessible form hints are delivered.
-See the current ROADMAP acceptance record and the next custom data-panel decision.
+Native task/text/list data panels N1 are also accepted; continue with N2 below.
+See the current ROADMAP acceptance record and the accepted native-first data-panel plan.
 
 ## Configurable layout review and continuation
 
@@ -199,11 +200,11 @@ updates. Test on local synthetic pages, including hidden/value traps and live
 stale-target failures. This is rendered-DOM metadata, not a complete accessibility
 tree. Richer agent-authored UI/data bindings remain a separate future scope.
 
-## Next major decision — Agent-authored data panels
+## Native data panels — Decision and continuation
 
-Manual/shared layouts, reviewed agent proposals, quick-action panels and font sizing
-are delivered. The next substantial customization increment would display task or
-file/connector content. Choose its UI architecture before implementing a runtime:
+**User decision accepted:** build native data panels first; keep locally hosted
+HTML/JavaScript mini-apps on the table. No new confirmation is needed to continue
+native component work. The original alternatives below remain design context:
 
 1. **Maintained native components (recommended).** Agents compose a documented
    catalogue of text/list/form widgets. Steed renders them and binds approved task,
@@ -223,9 +224,66 @@ Steed widgets, and how that UI is distributed and kept working. External agents
 retain independent tools in either option. Do not put personal notes, file bodies,
 connector data or agent messages in the global appearance configuration or its
 appearance export as a shortcut. Preserve task/profile grants and explicit user
-handoff; UI review alone is not a data grant. Ask for this architectural choice
-before beginning the next data-bearing panel runtime. Other parked engineering
-areas remain listed in ROADMAP; connector-owned paths stay with their contributor.
+handoff; UI review alone is not a data grant. Native-first scope is authorized.
+Other parked engineering areas remain listed in ROADMAP; connector-owned paths
+stay with their contributor.
+
+### N1 — Native task/text/list panels (delivered)
+
+`data_panel_format.py` publishes strict version-1 native declarations and bounds.
+`services/data_panels.py` owns schema-18 proposals, profile identities, pinned
+artifact bindings and atomic publication receipts. Agents have capabilities/
+propose/status/publish only; approve/remove/view are trusted UI. `ui/data_panels.py`
+provides read-only native widgets, the profile choice/preview popup and Data Panels
+dock. Task Permissions includes deferred review/removal; the shared approval queue
+opens requests outside private windows. The task/text/list transport workflows
+run through independent SDK/raw clients on stdio and HTTP; native Codex discovers
+the catalogue with both runtime paths. See ROADMAP for final counts/logs.
+
+The complete suite passed 1,096 checks; the final UI selection follow-up passed
+120 focused checks, including 24 panel regressions. Qt `QComboBox.findData` does
+not reliably compare Python tuple payloads; preserve the chosen panel by comparing
+`itemData` in Python. Keep the shown-widget selection/highlight regression. Review
+and browser screenshots were inspected in both themes with synthetic data.
+
+Saved drafts are explicitly retained after task end/restart. They are user UI
+content, not renewed agent authority. Initial artifact digests are rechecked at
+approval, each replacement is owned and pinned, and stale/current-profile content
+cannot spill into private or recreated profiles. Never store bodies in appearance
+preferences/exports or journal events. Publication is same-task, consecutive,
+bounded and idempotent; no external effect is performed. Missing/tampered drafts
+have no fallback. Task summary is metadata, not proof of real-world completion.
+
+### N2 — Explicit native inputs
+
+Add bounded native input forms with a clear Send to agent action and a readable
+payload preview. Start with explicit communication through existing task messages,
+not arbitrary callbacks or automatic connector writes. Pin recipient task/profile
+and make disconnected/ended tasks visibly unavailable. Preserve typed values across
+unrelated refreshes, provide field validation/error affordances and keyboard use,
+and never deliver twice on ambiguous retries. Persist personal values separately
+from global layout settings. New forms need review; after enablement each explicit
+user submission should be straightforward. Keep independent agent tools available.
+
+### N3 — Richer sources and components
+
+Add maintained table/image widgets and exact owned workspace-file sources, then
+selected library/connector-result bindings through existing grant checks. Recheck
+permissions and identity on refresh; do not infer read authority from panel review
+or source names. Show freshness, unavailable/revoked sources and source labels.
+Live private data and retained user drafts need distinct retention contracts.
+Add reviewed service effects only by reusing Steed's existing permissions/payload
+reviews/receipts; executable source never becomes a native widget callback.
+
+### H1 — Optional locally hosted apps (retained backlog)
+
+When native components prove insufficient for real user tasks, design a dedicated
+local mini-app host, bundle/version/update lifecycle and typed capability bridge.
+Reuse profile/task data ownership and receipts. Hosting approval must not grant
+website/account/file access, and arbitrary UI code must not run inside Steed's Qt
+controller. This is a complementary option, not a browser rebuild or restriction
+on external agents' own runtime tools. Do not begin a broad host before a concrete
+mini-app use case and reviewable lifecycle proposal exist.
 
 ## Branches, ownership and review
 

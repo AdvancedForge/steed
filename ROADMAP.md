@@ -12,6 +12,45 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Native data panels N1 (implemented and accepted).**
+The user chose native components first, retaining locally hosted HTML/JavaScript
+apps as a later option. The first catalogue offers task status, read-only text and
+lists bound to owned immutable artifacts. A native preview lets the user choose
+one normal display profile and enable same-task draft updates. Templates/bindings
+live in the task journal database (schema 18), never global appearance settings
+or exports. Stable profile identities preserve renames and block name recreation;
+private/other profiles show no panel content. Shared windows receive updates,
+unchanged selections survive refresh, and changed-profile content is erased.
+
+Four MCP tools discover, propose, poll and publish pinned artifact bindings with
+exact revisions and stable update receipts. Review grants no data access; draft
+publication needs active artifact authority. Pending requests cancel/interrupt,
+while enabled saved drafts survive task end/restart with no update authority.
+Deleted or tampered sources produce an unavailable panel. Atomic journal failures
+roll back receipts/bindings and stop commands. Explicit widget/proposal/publication
+bounds apply. The Data Panels dock shares space with the agent sidebar through
+native dock tabs and preserves chat-tab ownership.
+
+Acceptance: **1,096 regressions pass in 428.872 seconds**. The final selection
+follow-up passes **120 browser/layout/permission/chat checks**, including all
+24 native-panel regressions and a shown-widget check that preserves the selected
+panel and highlighted text across refresh. A Qt tuple-lookup issue found during
+visual acceptance was fixed. Independent SDK/raw workflows pass over stdio and
+authenticated HTTP, including user review, draft updates, duplicate retries and
+retained drafts. Installed Codex direct-tool/code-runtime discovery and local
+startup pass. Ruff lint/format, dependency, documentation-target and whitespace
+checks pass. Light/dark browser and 640×520 review previews were inspected with
+synthetic profiles; no real accounts or external model calls were used. Logs:
+`/tmp/steed-data-panels-full.log`,
+`/tmp/steed-data-panels-focused-final3.log`,
+`/tmp/steed-data-panels-{stdio,http}-final.log`,
+`/tmp/steed-data-panels-native{,-direct}.log`,
+`/tmp/steed-data-panels-startup.log`.
+Next: explicit native inputs and richer data sources/components, with existing
+message/permission/receipt controls. HTML/JavaScript hosting stays deferred rather
+than excluded. See [usage](DOCUMENTATION.md#native-data-panels--implemented-first-milestone)
+and [the continuation plan](ENGINEERING_HANDOFF.md#native-data-panels--decision-and-continuation).
+
 **Accessible form hints (implemented and accepted).**
 Rendered-DOM targets now expose bounded descriptions, author-declared required/
 invalid state and visible error messages. Referenced content remains scoped to its
@@ -31,8 +70,8 @@ profiles, accounts or external models were used. Logs:
 `/tmp/steed-form-observation-full-final.log`,
 `/tmp/steed-form-observation-budget.log`,
 `/tmp/steed-form-observation-{stdio,http,startup}.log`.
-Next major decision: native data-bearing panels versus locally hosted custom apps;
-see [the engineering handoff](ENGINEERING_HANDOFF.md#next-major-decision--agent-authored-data-panels).
+The native-first architecture is now accepted and implemented above; local
+HTML/JavaScript hosting remains on the roadmap.
 
 **Native quick-action panels and text sizing L3 (implemented and accepted).**
 Portable layout version 2 adds up to two native action panels, eight maintained
@@ -357,10 +396,12 @@ Logs: `/tmp/steed-chat-final-full.log`,
 complete; engineering branch `f6c28b4` is integrated by merge `e20cfea`.
 The first open-shadow observation increment and external component acceptance
 are complete. Reviewed non-secret API-version headers and explicit identity-label
-alternatives are implemented. Manual/portable layouts and native panels are complete; next daily-workflow scope needs the custom data-panel decision;
-next shared connector scope is typed query/POST reads. Deeper accessible semantics
-and supported shadow-control input remain separate follow-ups. Further agents work on their own
-branches and submit milestones for maintainer review.
+alternatives are implemented. Manual/portable layouts, native action panels and
+task/text/list data panels are complete. The next daily-workflow scope adds explicit
+native inputs and richer data sources/components; the next shared connector scope
+is typed query/POST reads. Deeper accessible semantics and supported shadow-control
+input remain separate follow-ups. Further agents work on their own branches and
+submit milestones for maintainer review.
 See [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md) for ownership, ordered scopes,
 acceptance checks and the review procedure. Release gates remain reference work
 in RELEASE_PLAN.md. Continue connector work under the posted PR instructions.
@@ -1479,8 +1520,10 @@ request distinguishes configurable browser UI from saved agent workflows.
 1. **Configurable UI:** manual settings, mandatory navigation, shared-window
    commits and reviewed portable agent layouts are implemented. Export/import
    and previous-layout recovery work. Maintained native action panels and bounded
-   text/appearance are delivered. Richer data-driven components remain future work.
-   Keep generated code outside the browser.
+   text/appearance are delivered, alongside reviewed native task/text/list data
+   panels with profile-bound artifact updates. Next: explicit native inputs and
+   richer bindings/components; local HTML/JavaScript apps remain a later option.
+   Keep personal panel data out of global appearance exports.
    Details: [layout usage](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
    and [agent proposals](DOCUMENTATION.md#portable-layouts-and-agent-proposals--implemented).
 2. **Connector interoperability:** typed read-only POST/query requests and bounded
