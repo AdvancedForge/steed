@@ -148,6 +148,9 @@ Bookmarks** searches names/addresses/folders, filters by folder, and edits names
 addresses and folder labels while preserving bookmark IDs. Type a new folder name
 when saving/editing; an empty folder means Unfiled. Changes from another window
 refresh the manager. New Tab shows the first 24 bookmarks with **Manage all**.
+Select a bookmark and click **Open**, or double-click it, to open a new tab in
+the current profile. Use **Edit…** to change its details. If the profile has
+changed while the manager was open, reopen the manager before opening a link.
 
 **Import HTML…** merges a UTF-8 browser bookmark export (up to 8 MiB and 2,000
 entries per profile). Existing links keep their names/folders; duplicate and invalid
@@ -4821,7 +4824,8 @@ artifact-consuming tools and arbitrary request callbacks are rejected.
 view, task completion, reconnect and access restoration make no API calls. The
 panel shows waiting/refreshing/unavailable state and a fetched-at timestamp; its
 content is the trusted adapter's bounded/redacted text or JSON, displayed as plain
-text. Rich table/card mappings are separate work. Results stay in memory and are
+text. Version 7 adds explicit list/table projections below; richer cards remain
+separate work. Results stay in memory and are
 cleared on account/panel revocation, disconnect, source/tool mismatch, failure,
 shutdown or restart. Restoration requires another manual Refresh. Revoking a
 shared account clears every affected panel immediately, including open reviews.
@@ -4837,6 +4841,47 @@ slot until it returns. Late results cannot replace a newer refresh or restore
 revoked data. Audit entries contain IDs rather than result/query bodies. No
 background polling or model calls are introduced. Provider setup/live-account
 acceptance remains separate from synthetic panel acceptance.
+
+### Account-backed lists and tables — implemented
+
+Panel version 7 adds `list` and `table` widgets using the same exact `account`
+source, reusable profile permission and manual Refresh behavior. Add a `mapping`
+that selects a JSON array and scalar fields from the trusted read result. See
+[account-table.json](examples/data_panels/account-table.json). A list uses:
+
+```json
+"mapping": {"items": "/items", "label": "/title"}
+```
+
+A table uses up to eight uniquely named columns:
+
+```json
+"mapping": {
+  "items": "/items",
+  "columns": [
+    {"title": "Title", "value": "/title"},
+    {"title": "State", "value": "/state"}
+  ]
+}
+```
+
+Pointers are exact bounded JSON pointers; an empty pointer selects the root
+array or the whole scalar row. Use `~1` for a slash in a key and `~0` for a tilde.
+Wildcards, callbacks, transforms, inferred fields and network destinations are
+unavailable. The native review shows the projection alongside account/tool/inputs.
+Choose actual fields from the configured tool's result; this feature needs a JSON
+read result, and does not infer a structure from prose. Versions 1–6 retain their
+exact grammars; version 5/6 account text widgets keep their raw text behavior.
+
+Visible results contain at most 64 rows and 512 characters per cell. Captions show
+**showing 64 of 70 rows** and the number of shortened cells; ellipses mark shortened
+text. Strings are literal, numbers/booleans/null use JSON spelling, and nested
+objects/arrays are refused as cells. Missing fields, non-array collections,
+ambiguous/malformed JSON or non-finite values hide the widget until a successful
+explicit Refresh. Empty arrays are valid. Failed projections never fall back to
+raw JSON. Only projected fields are retained in the panel's memory cache; revocation
+scrubs both native cells and that cache immediately. There is no extra API request,
+model call or authority beyond each explicitly refreshed reviewed read widget.
 
 ### Reusable agent instruction buttons — implemented
 
@@ -5105,7 +5150,8 @@ Per-profile filesystem import/install, enable/disable/remove, errors, and action
 
 #### Bookmarks — implemented daily-use milestone
 
-Per-profile search, folder labels, name/address/folder editing, atomic HTML import/export
+Per-profile search, folder labels, direct opening in a new tab, name/address/folder
+editing, atomic HTML import/export
 and bounded New Tab previews are implemented. Imports preserve existing entries;
 private bookmarks remain memory-only. See [usage](#welcome-new-tab-and-bookmarks).
 Hierarchical empty-folder management, sync and agent bookmark APIs remain separate.

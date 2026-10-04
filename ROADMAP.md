@@ -108,10 +108,61 @@ agent/provider contracts are unchanged. Logs: `/tmp/steed-bookmarks-full.log`,
 `/tmp/steed-bookmark-workflows-final-focused.log`, `/tmp/steed-bookmarks-{visual,startup}.log`.
 No new agent reading/mutation authority is added.
 
-**Next daily-use chunks:** finish bookmark acceptance, then richer explicit account-result field mappings and generic external-agent
-connection/recovery polish. Broader executable HTML app hosting, cloud pairing,
-credential-derived headers and live-account acceptance remain separate. Existing
-native forms stay bound to their owning task; instructions are reusable actions.
+**Explicit account list/table mappings N5 (implemented; handoff checkpoint).**
+Panel v7 projects exact JSON-array/scalar fields from manual account reads into
+native lists and up to eight table columns. Proposal/review never fetch. Review
+shows the exact mapping; only projected fields remain cached. A 64-row/512-character
+cell bound has visible total-row and shortened-cell counts. Empty arrays work;
+missing/non-scalar/ambiguous/malformed results clear the widget without raw-JSON
+fallback. Immediate revocation scrubs native cells and results. Versions 1–6 keep
+their grammars, and v5/6 text remains unchanged. Final targeted acceptance passes
+**109 panel regressions in 30.360 seconds**, including timeout/late-response
+scrubbing and native empty-table shape. SDK/raw stdio and authenticated HTTP
+journeys pass with synthetic fixtures; light/dark native previews and startup
+pass. Logs: `/tmp/steed-handoff-all-panels.log`,
+`/tmp/steed-panel-mappings-{stdio,http-retry,visual}.log`,
+`/tmp/steed-handoff-startup.log`. The full suite and both installed Codex smoke
+paths have not been rerun for v7; the incoming engineer should finish those
+acceptance checks before broadening shared-agent work. Example:
+[account-table.json](examples/data_panels/account-table.json).
+
+**Direct bookmark opening B2 (implemented and accepted).** Manage Bookmarks
+opens the filtered selected bookmark in a new tab through **Open** or a
+double-click. Editing remains a separate button. Stable profile identity and
+current browser profile are checked before opening; a stale manager cannot
+navigate after a switch/recreation. No profile is implicitly switched. All
+**16 bookmark regressions pass in 3.178 seconds**, including button/double-click
+integration and stale-profile refusal. Light/dark previews, startup/render/shutdown,
+Ruff lint/format (240 files) and whitespace pass. Logs:
+`/tmp/steed-bookmark-open-{final,visual}.log`, `/tmp/steed-handoff-startup.log`.
+External-agent connection/recovery polish was assessed as a broader milestone
+and is deliberately handed off rather than partially changed.
+
+**Next daily-use chunks, in order:**
+
+1. Finish account list/table broad acceptance: full regressions and both installed
+   Codex runtime paths. Targeted panel/transport/native-preview checks already pass.
+2. Improve external-agent connection health, queued/read/working indicators and
+   interrupted-task recovery. Keep generic MCP and website-chat workflows clear;
+   automatic delivery must reflect what the connected client actually supports.
+3. Address browser reliability and file-library friction found during those
+   workflows: session restoration, profile switching, imports and startup/shutdown.
+   Investigate the recorded offscreen Qt startup crash separately; distinguish
+   automated checks from real desktop acceptance.
+
+**Reviewed HTML data bridge — owner approved, deferred priority.** The owner chose
+a reviewed, read-only bridge for future agent-built HTML/JavaScript dashboards,
+then explicitly kept it below daily-use engineering. This is a backlog direction,
+not the next implementation milestone. Before building it, define app-specific
+source permissions, installation/update/removal lifecycle, revocation and private
+data/navigation boundaries. Editable-page installation and existing native-panel
+grants must not implicitly authorize an HTML app. Writes, sends and broader
+capabilities need separate decisions. Existing custom pages remain isolated.
+
+Cloud pairing, credential-derived headers and live-account acceptance remain
+separate. Existing native forms stay bound to their owning task; instructions
+are reusable actions. Password-manager improvements and shared Google
+registration remain deferred as previously requested.
 
 **Reusable linked library sources N3 (implemented and accepted).**
 Native panel v4 binds text/list/table widgets to exact enabled library files.
@@ -1769,7 +1820,8 @@ request distinguishes configurable browser UI from saved agent workflows.
    panels with profile-bound artifact updates, explicit native forms and tables.
    Sealed files/images and reusable library bindings are delivered. Next:
    manual account-backed reads and reusable agent instructions are delivered. Next:
-   richer components and explicit field mappings; local HTML/JavaScript apps remain a later option.
+   richer cards and interactive components; explicit list/table mappings are
+   delivered above. Local HTML/JavaScript apps need the pending bridge decision.
    Keep personal panel data out of global appearance exports.
    Details: [layout usage](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
    and [agent proposals](DOCUMENTATION.md#portable-layouts-and-agent-proposals--implemented).

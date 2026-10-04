@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 import test_start_pages as pages_fixture
+from PyQt6.QtWidgets import QPushButton
 
 from bookmark_format import (
     MAX_BOOKMARK_HTML_BYTES,
@@ -224,6 +225,63 @@ class BookmarkWorkflowTests(unittest.TestCase):
         finally:
             dialog.close()
             dialog.deleteLater()
+
+    def test_native_manager_opens_filtered_bookmark_in_a_new_tab(self):
+        self.pages.add_bookmark("global", "https://one.example/", "One")
+        self.pages.add_bookmark("global", "https://two.example/", "Two")
+
+        def open_filtered(dialog):
+            dialog.search.setText("Two")
+            dialog.items.setCurrentRow(0)
+            button = next(
+                b for b in dialog.findChildren(QPushButton) if b.text() == "Open"
+            )
+            button.click()
+
+        with (
+            patch.object(BookmarksDialog, "exec", new=open_filtered),
+            patch.object(self.window, "_new_tab") as opened,
+        ):
+            self.window._manage_bookmarks()
+        opened.assert_called_once_with(url="https://two.example/")
+
+    def test_double_click_opens_the_selected_bookmark(self):
+        self.pages.add_bookmark("global", "https://one.example/", "One")
+
+        def double_click(dialog):
+            dialog.items.setCurrentRow(0)
+            dialog.items.itemDoubleClicked.emit(dialog.items.currentItem())
+
+        with (
+            patch.object(BookmarksDialog, "exec", new=double_click),
+            patch.object(self.window, "_new_tab") as opened,
+        ):
+            self.window._manage_bookmarks()
+        opened.assert_called_once_with(url="https://one.example/")
+
+    def test_manager_does_not_open_after_the_browser_changes_profile(self):
+        self.pages.add_bookmark("global", "https://one.example/", "One")
+        self.window.profile_manager.create_profile("work")
+
+        def change_profile(dialog):
+            dialog.items.setCurrentRow(0)
+            self.window._switch_to_profile("work")
+            dialog.open_selected()
+            self.assertIn("current profile", dialog.status.text())
+
+        with (
+            patch.object(BookmarksDialog, "exec", new=change_profile),
+            patch.object(self.window, "_new_tab") as opened,
+        ):
+            self.window._manage_bookmarks()
+        # Profile switching may itself create its initial tab. The stale bookmark
+        # must never cause an HTTP navigation/new tab in that different profile.
+        self.assertFalse(
+            any(
+                call.kwargs.get("url") == "https://one.example/"
+                for call in opened.call_args_list
+            )
+        )
 
     def test_private_bookmarks_import_is_memory_only(self):
         self.pages.import_bookmarks("search", SAMPLE)

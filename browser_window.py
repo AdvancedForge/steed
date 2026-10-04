@@ -2148,10 +2148,15 @@ class BrowserWindow(QMainWindow):
     def _manage_bookmarks(self):
         from ui.bookmarks_dialog import BookmarksDialog
 
+        profile = self.profile_manager.current_profile_name
+
+        def open_url(url):
+            if self._closing or self.profile_manager.current_profile_name != profile:
+                raise ValueError("Bookmark display profile changed")
+            self._new_tab(url=url)
+
         BookmarksDialog(
-            self.profile_manager.registry.start_pages,
-            self.profile_manager.current_profile_name,
-            self,
+            self.profile_manager.registry.start_pages, profile, self, open_url=open_url
         ).exec()
 
     def _start_page_action(self, tab, url):

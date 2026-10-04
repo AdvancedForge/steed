@@ -2,6 +2,82 @@
 
 ## Start here
 
+**Owner-requested handoff checkpoint.** The owner asked for quick external-agent
+work only if it fit a small milestone; otherwise finish the smallest daily-use
+task and hand off. External-agent recovery needs a broader lifecycle change, so
+this checkpoint delivers direct bookmark opening B2 and saves the already-built
+account projections N5 with their exact validation status. Stop here rather than
+starting the HTML bridge or another feature. This section takes precedence over
+older milestones below.
+
+### What is saved
+
+- **B2 complete:** `ui/bookmarks_dialog.py` adds Open and double-click opening;
+  `browser_window.py::_manage_bookmarks` supplies a new-tab callback with a
+  current-profile/closing check. Existing stable profile identity guards prevent
+  opening into a recreated profile. Edit remains separate. Search/folder filters
+  identify the selected bookmark by its stable ID. Sixteen bookmark checks pass
+  in 3.178 seconds, including real button and double-click signal routing and
+  stale profile-switch refusal.
+- **N5 implemented, broad acceptance pending (`1466ea0`):** panel v7 adds explicit bounded
+  list/table mappings; `services/panel_mapping.py` owns validation/projection,
+  `services/panel_accounts.py` retains only selected values and preserves typed
+  empty shapes on failure/timeout. `ui/data_panels.py` reviews the exact mapping
+  and shows omission counts. Keep manual Refresh, separate source permissions,
+  immediate scrubbing and versions 1–6 unchanged. Example:
+  `examples/data_panels/account-table.json`.
+- **Final checks:** 109 panel regressions pass in 30.360 seconds, including the
+  new late-response/timeout regression. SDK/raw stdio and authenticated HTTP
+  account-table workflows already pass. Light/dark bookmark and panel previews,
+  startup/render/shutdown, Ruff lint/format (240 files) and whitespace pass.
+  The most recent full suite is **1,363 tests before N5/B2**; do not report a
+  full-suite pass for this checkpoint. Both installed Codex smoke paths also
+  remain to be rerun for v7. All test data is synthetic/temporary; real desktop
+  and live-provider acceptance remain manual.
+- Logs: `/tmp/steed-handoff-all-panels.log`,
+  `/tmp/steed-bookmark-open-{final,visual}.log`,
+  `/tmp/steed-panel-mappings-{stdio,http-retry,visual}.log`,
+  `/tmp/steed-handoff-startup.log`. `/tmp` is session-local evidence, not required
+  source; committed tests are the reproducible checks.
+
+### Incoming engineer: next bounded milestones
+
+1. Branch from published main in your own worktree, e.g.
+   `engineering/daily-agent-recovery`. Leave the user's live browser, real
+   `~/.custom_browser/`, and connector contributor paths alone. Run Qt checks
+   serially with `QT_QPA_PLATFORM=offscreen` and
+   `QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu`. First finish broad acceptance:
+
+   ```bash
+   .venv/bin/python -X faulthandler -m unittest discover -s tests -v
+   .venv/bin/python -X faulthandler tests/smoke_codex_provider.py
+   PYTHONPATH=tests .venv/bin/python -X faulthandler -c 'from smoke_codex_provider import run; run("gpt-5.4")'
+   ```
+
+   Record actual counts/results; update N5 acceptance before new runtime work.
+   Preserve a faulthandler stack if the known offscreen profile-create crash
+   recurs; do not hide it with retries or call it a production fix.
+2. **Agent connection clarity:** inspect `ui/agent_sidebar.py::_update_activity`,
+   `services/agent_providers.py` and `services/task_messages.py`. Thinking,
+   working, replying, native queue counts and fetched-message indicators already
+   exist. Improve missing connection/stopped/stale distinctions rather than
+   reimplementing them. Generic MCP reads prove delivery, not that a model is
+   thinking. Website chatbots remain copy/export unless they actually connect.
+   Add focused `test_agent_sidebar.py`/provider regressions for the resulting
+   behavior, with native light/dark review and exact user-facing recovery steps.
+3. **Interrupted-chat recovery:** reuse the existing explicit task recovery
+   picker and fresh grants. Keep prior messages/reports available, clearly show
+   an interrupted turn, and let the user choose the next conversation/task.
+   Never automatically resend a dispatched message, replay a tool/write, infer
+   model identity, or restore old grants. Test queued messages, partial replies,
+   lost transport and duplicate prevention. Run both independent MCP transports
+   and both installed native runtime fixtures after shared-agent changes.
+4. Then address concrete session/profile/file-library friction found in those
+   workflows, one tested commit at a time. Update ROADMAP and this handoff at
+   each accepted milestone. The reviewed read-only HTML bridge is approved but
+   explicitly deferred; password improvements and shared Google registration
+   are also deferred. Ask the owner only for a genuine new engineering decision.
+
 Work has resumed on main. Reviewed and locally integrated engineering branch
 `c93748e` and connector PR #3 head `0082a19`; shared typed reads were corrected in
 `ee17331`. Recipe v8 adds distinct continuation bodies, boolean stop/success flags
@@ -37,9 +113,17 @@ into recreated profiles. **1,363 full regressions in 419.348 seconds** and 13 fo
 pass. Startup, light/dark native previews, Ruff (238 files) and whitespace pass.
 Logs: `/tmp/steed-bookmarks-full.log`, `/tmp/steed-bookmark-workflows-final-focused.log`,
 `/tmp/steed-bookmarks-{visual,startup}.log`.
-Next native work is explicit bounded account-result list/table field mapping.
-A question about a later reviewed read-only HTML data bridge is pending; do not
-infer app authority from editable page installation or native panel grants.
+Panel v7 now implements explicit bounded account-result list/table projections:
+review exact JSON pointers, retain projected fields only, disclose row/cell limits
+and clear failed or revoked results. Final targeted acceptance passes 109 panel
+checks; full-suite/native-runtime acceptance is handed off above. Preserve v1–6
+grammars and manual-only account reads. Direct bookmark opening is delivered.
+The owner approved a later reviewed read-only HTML data bridge and explicitly
+deferred its priority. Finish native account projection broad acceptance and
+external-agent connection/recovery polish first. The bridge is backlog
+work: define app-specific source permissions, update/removal lifecycle, revocation
+and private-data/navigation boundaries before implementation. Do not infer HTML-app
+authority from editable page installation or native panel grants.
 
 Previous library checkpoint acceptance: **1,320 full regressions in 399.325 seconds** plus 13 final
 linked-panel checks in 4.018 seconds. SDK/raw stdio and authenticated HTTP journeys,
@@ -66,9 +150,9 @@ a built-in. Global now supports explicit reviewed task sharing and stable identi
 implement external-agent edits. Schema 19 added immutable proposals; schema 20
 adds panel-source permissions. New source sharing uses existing connected-task messages, with exact payload preview and an
 8 KB limit. Agent declarations have a 32 KB UTF-8 limit; local imports allow 256 KB.
-Native panels now support versions 1/2/3/4/5/6; selected library files are implemented
-with reusable panel/profile read permission. Account-backed reads now support manual Refresh; continue richer field mappings
-and reviewed action controls without adding arbitrary
+Native panels now support versions 1/2/3/4/5/6/7; selected library files are implemented
+with reusable panel/profile read permission. Account-backed reads now support manual Refresh and explicit list/table mappings;
+continue richer cards and reviewed action controls without adding arbitrary
 code callbacks or conflating private data with global appearance exports.
 Website chatbots still use copy/export or enabled folders;
 external MCP/Codex clients discover the three start-page tools automatically.
@@ -93,7 +177,7 @@ was corrected; this changed the fixture, not the MCP implementation.
 
 1. Read `AGENTS.md`, this checkpoint, current `ROADMAP.md`, and the page/panel/MCP
    guides in `DOCUMENTATION.md`. Fetch main and create your own branch/worktree,
-   such as `engineering/panel-instructions`. Leave the user's running checkout and
+   such as `engineering/daily-agent-recovery`. Leave the user's running checkout and
    real `~/.custom_browser/` state alone. Keep Qt tests/smokes serial.
 2. Verify baseline lint/format and the focused page/panel tests. Use the repository
    virtual environment and temporary fixtures. Keep `-X faulthandler` enabled for

@@ -95,9 +95,10 @@ class BookmarkDialog(QDialog):
 
 
 class BookmarksDialog(QDialog):
-    def __init__(self, pages, profile, parent=None):
+    def __init__(self, pages, profile, parent=None, *, open_url=None):
         super().__init__(parent)
         self.pages, self.profile = pages, profile
+        self.open_url = open_url
         self.profile_identity = profile_identity(pages, profile)
         self.setWindowTitle("Manage Bookmarks • " + profile)
         self.resize(680, 480)
@@ -113,7 +114,9 @@ class BookmarksDialog(QDialog):
         filters.addWidget(self.folder)
         layout.addLayout(filters)
         self.items = QListWidget()
-        self.items.itemDoubleClicked.connect(lambda _: self.edit())
+        self.items.itemDoubleClicked.connect(
+            lambda _: self.open_selected() if self.open_url else self.edit()
+        )
         layout.addWidget(self.items)
         self.status = QLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
@@ -121,6 +124,7 @@ class BookmarksDialog(QDialog):
         layout.addWidget(self.status)
         row = QHBoxLayout()
         for label, callback in (
+            ("Open", self.open_selected),
             ("Add…", self.add),
             ("Edit…", self.edit),
             ("Remove", self.remove),
@@ -128,7 +132,10 @@ class BookmarksDialog(QDialog):
             ("Export HTML…", self.export_html),
         ):
             button = QPushButton(label)
+            button.setAutoDefault(False)
             button.clicked.connect(callback)
+            if label == "Open":
+                button.setEnabled(self.open_url is not None)
             row.addWidget(button)
         layout.addLayout(row)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -210,6 +217,20 @@ class BookmarksDialog(QDialog):
                 folder=item.get("folder", ""),
             ).exec()
             self.refresh()
+
+    def open_selected(self):
+        item = self.selected()
+        if item is None or self.open_url is None:
+            return
+        try:
+            check_profile(self.pages, self.profile, self.profile_identity)
+            self.open_url(item["url"])
+        except (OSError, ValueError):
+            self.status.setText(
+                "Could not open this bookmark; reopen Bookmarks in the current profile."
+            )
+            return
+        self.accept()
 
     def remove(self):
         item = self.selected()

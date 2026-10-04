@@ -8,7 +8,8 @@ browsing profiles and direct KeePassXC password management.
 
 - Separate profiles and an incognito search profile.
 - Global starts fresh installs; Welcome and editable HTML New Tab pages are built in.
-- Profile-local bookmarks, start-page sections, local images and optional news feeds.
+- Searchable profile bookmarks with folders and HTML import/export.
+- Start-page sections, local images and optional news feeds.
 - Saved tab sessions, tab groups, and recently closed tab restoration.
 - Address suggestions from per-profile browsing history.
 - Find in page with match counts and per-tab page zoom.
@@ -17,7 +18,8 @@ browsing profiles and direct KeePassXC password management.
 - A desktop launcher, dark mode, and familiar navigation shortcuts.
 - Agent chats in a sidebar or tab, website chats, live-tab delegation and Take Back.
 - A persistent agent file library: add files once and enable full folder access.
-- Reviewed agent dashboards with forms, saved reports, images and reusable linked files/account reads.
+- Reviewed agent dashboards with forms, reports, images and linked files/account tables.
+- Reusable instruction buttons with a selected agent and message preview.
 
 ## Quick start
 
