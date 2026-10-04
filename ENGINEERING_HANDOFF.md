@@ -57,7 +57,8 @@ unknown. Light/dark sections and speaker headers keep plain-text rendering;
 advanced details remain collapsed. Installed Codex 0.159.2 passes offline native
 follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for logs.
 Manual layout L1 is accepted at `5ece7e8`; portable layout/proposal L2 is accepted.
-Continue with maintained native components and appearance (L3).
+Native action panels and text sizing L3 are now accepted. Continue with bounded
+accessible form metadata; see the current ROADMAP acceptance record.
 
 ## Configurable layout review and continuation
 
@@ -140,14 +141,14 @@ merge or push to main from the contributor branch.
 
 ### L2 — Reviewed agent layout proposals (delivered)
 
-`layout_format.py` strictly validates portable version 1; `services/layout_proposals.py`
+`layout_format.py` strictly validates portable versions 1/2; `services/layout_proposals.py`
 pins immutable source and task receipts in schema 17. `steed_layout_capabilities`,
 `steed_layout_propose`, `steed_layout_status` are published; no agent approval
 endpoint exists. `ui/layout_review.py` and the shared approval queue provide the
 native diff/preview/Apply popup, with deferred requests in Task Permissions → Layouts.
 General imports/exports appearance; View recovers the prior appearance while keeping
-presets. Config writes roll memory back on failure. See ROADMAP for split integrated
-and migration acceptance. Do not redo this milestone. Original scope:
+presets. Config writes roll memory back on failure. The complete L3 acceptance
+verifies the earlier split integrated/migration checks together. Do not redo this milestone. Original scope:
 
 After L1 acceptance, add versioned JSON proposals with stable component IDs,
 mandatory address/reset affordances, valid placements and bounded dimensions.
@@ -157,7 +158,16 @@ layout. Keep drafts task-bound and treat generated content as untrusted data.
 UI approval must not grant browser/profile/file/connector authority. Generated
 Python, callbacks, JavaScript and shell commands cannot execute through this format.
 
-### L3 — Native panels and appearance
+### L3 — Native panels and appearance (delivered)
+
+`layout_components.py` owns the 12-action catalogue and bounds. `ui/layout_panel.py`
+binds native buttons to existing QActions; `ui/layout_panel_editor.py` edits up to
+two panels/eight actions each. Portable/stored version 2 adds panels and text size;
+version 1 migrates inertly. Only browser controls receive larger fonts, including
+explicit descendant sizes after dark styles; website zoom and engine fonts stay
+unchanged. Page actions disable when the native chat tab is active. The full suite
+passes 1,063 checks, with synthetic light/dark previews inspected. Do not introduce
+callbacks, HTML or arbitrary commands into this format. Original scope:
 
 Extend the accepted schema with maintained native components/actions and bounded
 appearance settings. Preserve keyboard accessibility, small-window scrolling,
@@ -165,6 +175,16 @@ incognito isolation, shared windows and sidebar/tab ownership. Unknown actions
 cannot invoke arbitrary code or acquire capabilities. Deliver useful increments
 with real-widget acceptance. Keep Qt; an executable extension runtime is a
 separate architectural decision.
+
+### Next — Accessible form metadata
+
+Add bounded descriptions, author-declared required/invalid state and visible error
+hints to target observations. Preserve current-value omission, hidden-content
+exclusion, origin/read grants and shadow-root scoping. Live target fingerprints
+must detect changed referenced help/error text while permitting unrelated DOM
+updates. Test on local synthetic pages, including hidden/value traps and live
+stale-target failures. This is rendered-DOM metadata, not a complete accessibility
+tree. Richer agent-authored UI/data bindings remain a separate future scope.
 
 ## Branches, ownership and review
 

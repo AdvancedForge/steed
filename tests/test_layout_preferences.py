@@ -578,6 +578,8 @@ class LayoutWindowHarness(QMainWindow):
     _apply_menu_order = BrowserWindow._apply_menu_order
     _apply_sidebar_layout = BrowserWindow._apply_sidebar_layout
     _sidebar_dock_area = BrowserWindow._sidebar_dock_area
+    _apply_layout_panels = BrowserWindow._apply_layout_panels
+    _apply_layout_text = BrowserWindow._apply_layout_text
 
 
 class WindowLayoutTests(unittest.TestCase):

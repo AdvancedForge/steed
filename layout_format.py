@@ -5,6 +5,15 @@ import json
 from copy import deepcopy
 from dataclasses import dataclass
 
+from layout_components import (
+    MAX_PANEL_ACTIONS,
+    MAX_PANELS,
+    PANEL_ACTIONS,
+    PANEL_EMPHASES,
+    PANEL_PLACEMENTS,
+    TEXT_SIZES,
+    panel_id,
+)
 from layout_preferences import (
     DENSITIES,
     MENU_ITEMS,
@@ -13,12 +22,21 @@ from layout_preferences import (
     TOOLBAR_ITEMS,
     TOOLBAR_ORDER,
     LayoutPreferences,
+    clean_appearance,
     clean_name,
     default_appearance,
 )
 
 MAX_LAYOUT_BYTES = 16384
-LAYOUT_EXAMPLE = {"version": 1, "name": "Focus", "layout": default_appearance()}
+LAYOUT_EXAMPLE = {"version": 2, "name": "Focus", "layout": default_appearance()}
+PANEL_EXAMPLE = {
+    "kind": "quick_actions",
+    "id": "daily-tools",
+    "title": "Daily tools",
+    "placement": "top",
+    "emphasis": "accent",
+    "actions": ["new_tab", "reload", "find", "agents"],
+}
 LABELS = {
     "back": "Back",
     "forward": "Forward",
@@ -84,13 +102,16 @@ def parse_layout(source):
     except (UnicodeError, RecursionError, json.JSONDecodeError):
         raise ValueError("Provide valid bounded UTF-8 JSON") from None
     _fields(document, ("version", "name", "layout"))
-    if type(document["version"]) is not int or document["version"] != 1:
+    if type(document["version"]) is not int or document["version"] not in (1, 2):
         raise ValueError("Unsupported portable layout version")
     name = clean_name(document["name"])
     if not name:
         raise ValueError("Use a printable layout name of at most 48 characters")
     appearance = document["layout"]
-    _fields(appearance, ("toolbar", "menus", "sidebar", "density"))
+    fields = ["toolbar", "menus", "sidebar", "density"]
+    if document["version"] == 2:
+        fields.extend(["text_size", "panels"])
+    _fields(appearance, fields)
     _fields(appearance["toolbar"], ("order", "hidden"))
     _ids(appearance["toolbar"]["order"], TOOLBAR_ORDER, complete=True)
     _ids(appearance["toolbar"]["hidden"], TOOLBAR_ITEMS)
@@ -107,14 +128,38 @@ def parse_layout(source):
         raise ValueError("Use a left/right sidebar and a width from 300 to 800 px")
     if appearance["density"] not in DENSITIES:
         raise ValueError("Choose compact or comfortable spacing")
+    if document["version"] == 2:
+        if appearance["text_size"] not in TEXT_SIZES:
+            raise ValueError("Choose normal or large browser text")
+        panels = appearance["panels"]
+        if not isinstance(panels, list) or len(panels) > MAX_PANELS:
+            raise ValueError("Use at most two native action panels")
+        seen = set()
+        for panel in panels:
+            _fields(panel, ("kind", "id", "title", "placement", "emphasis", "actions"))
+            if (
+                panel["kind"] != "quick_actions"
+                or not panel_id(panel["id"])
+                or panel["id"] in seen
+                or not clean_name(panel["title"])
+                or panel["placement"] not in PANEL_PLACEMENTS
+                or panel["emphasis"] not in PANEL_EMPHASES
+            ):
+                raise ValueError(
+                    "Use the published native quick-action component format"
+                )
+            _ids(panel["actions"], tuple(PANEL_ACTIONS))
+            if not 1 <= len(panel["actions"]) <= MAX_PANEL_ACTIONS:
+                raise ValueError("Use between one and eight actions per panel")
+            seen.add(panel["id"])
     return LayoutDefinition(
-        source, hashlib.sha256(encoded).hexdigest(), name, appearance
+        source, hashlib.sha256(encoded).hexdigest(), name, clean_appearance(appearance)
     )
 
 
 def export_layout(preferences, name="Current layout"):
     source = json.dumps(
-        {"version": 1, "name": name, "layout": preferences.to_dict()["layout"]},
+        {"version": 2, "name": name, "layout": preferences.to_dict()["layout"]},
         indent=2,
     )
     parse_layout(source)
@@ -139,12 +184,33 @@ def layout_changes(before, after):
         changes.append(f"Agent sidebar: {after.sidebar_side}, {after.sidebar_width} px")
     if old["density"] != new["density"]:
         changes.append("Control spacing: " + after.density)
+    if old["text_size"] != new["text_size"]:
+        changes.append("Browser text: " + after.text_size)
+    if old["panels"] != new["panels"]:
+        for panel in new["panels"]:
+            changes.append(
+                f"Panel {panel['title']} ({panel['placement']}, {panel['emphasis']}): "
+                + ", ".join(PANEL_ACTIONS[n] for n in panel["actions"])
+            )
+        removed = [
+            p["title"]
+            for p in old["panels"]
+            if p["id"] not in {n["id"] for n in new["panels"]}
+        ]
+        if removed:
+            changes.append("Remove panels: " + ", ".join(removed))
     return changes or ["No presentation changes."]
 
 
 def layout_capabilities():
     return {
-        "version": 1,
+        "version": 2,
+        "supported_versions": [1, 2],
+        "text_sizes": list(TEXT_SIZES),
+        "panel_actions": dict(PANEL_ACTIONS),
+        "panel_example": deepcopy(PANEL_EXAMPLE),
+        "panel_limit": MAX_PANELS,
+        "panel_action_limit": MAX_PANEL_ACTIONS,
         "max_source_bytes": MAX_LAYOUT_BYTES,
         "toolbar_ids": list(TOOLBAR_ORDER),
         "hideable_ids": list(TOOLBAR_ITEMS),
