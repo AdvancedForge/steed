@@ -55,15 +55,18 @@ class Config:
 
     def set(self, key: str, value: Any) -> None:
         """Set a configuration value."""
-        self._config[key] = value
-        self.revision += 1
-        self.save_config()
+        self.update({key: value})
 
     def update(self, values: dict[str, Any]) -> None:
         """Save a set of preference changes with one disk write."""
-        self._config.update(values)
+        previous = self._config
+        self._config = {**previous, **values}
+        try:
+            self.save_config()
+        except Exception:
+            self._config = previous
+            raise
         self.revision += 1
-        self.save_config()
 
     @property
     def default_profile(self) -> str:

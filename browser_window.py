@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from pathlib import Path
 from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
@@ -15,6 +16,7 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -333,6 +335,15 @@ class BrowserWindow(QMainWindow):
         )
         layout_action.triggered.connect(self._open_layout_settings)
         general_menu.addAction(layout_action)
+        import_layout = QAction("Import Layout...", self)
+        import_layout.triggered.connect(self._import_layout)
+        general_menu.addAction(import_layout)
+        export_layout = QAction("Export Layout...", self)
+        export_layout.triggered.connect(self._export_layout)
+        general_menu.addAction(export_layout)
+        recover_layout = QAction("Recover Previous Layout", self)
+        recover_layout.triggered.connect(self._recover_layout)
+        view_menu.addAction(recover_layout)
         general_menu.addSeparator()
         exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
@@ -649,6 +660,67 @@ class BrowserWindow(QMainWindow):
         preferences = preferences_from_config(self.config)
         preferences.reset()
         self.profile_manager.registry.commit_layout(preferences)
+
+    def _import_layout(self):
+        from layout_format import MAX_LAYOUT_BYTES, parse_layout
+        from ui.layout_review import LayoutReviewDialog
+
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Import browser layout", "", "Layout JSON (*.json)"
+        )
+        if not filename:
+            return
+        try:
+            with Path(filename).open("rb") as handle:
+                source = handle.read(MAX_LAYOUT_BYTES + 1).decode("utf-8")
+            definition = parse_layout(source)
+            dialog = LayoutReviewDialog(self.profile_manager.registry, definition, self)
+            dialog.exec()
+            dialog.deleteLater()
+        except (OSError, ValueError):
+            QMessageBox.warning(
+                self,
+                "Import layout",
+                "Choose a valid Steed layout JSON file of at most 16 KiB.",
+            )
+
+    def _export_layout(self):
+        from layout_format import export_layout
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export browser layout", "steed-layout.json", "Layout JSON (*.json)"
+        )
+        if not filename:
+            return
+        try:
+            source = export_layout(preferences_from_config(self.config))
+            with Path(filename).open("x", encoding="utf-8") as handle:
+                handle.write(source)
+        except (OSError, ValueError):
+            QMessageBox.warning(
+                self,
+                "Export layout",
+                "The layout could not be exported. Choose a new filename; existing files are preserved.",
+            )
+
+    def _recover_layout(self):
+        from layout_preferences import LAYOUT_VERSION
+
+        previous = self.config.get("layout_previous")
+        if (
+            not isinstance(previous, dict)
+            or type(previous.get("version")) is not int
+            or previous["version"] != LAYOUT_VERSION
+        ):
+            QMessageBox.information(
+                self, "Previous layout", "There is no previous saved layout to recover."
+            )
+            return
+        current = preferences_from_config(self.config)
+        recovered = current.to_dict()
+        recovered["layout"] = LayoutPreferences(previous).to_dict()["layout"]
+        recovered["active"] = None
+        self.profile_manager.registry.commit_layout(LayoutPreferences(recovered))
 
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):

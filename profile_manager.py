@@ -111,7 +111,6 @@ class ProfileRegistry(QObject):
         from layout_preferences import (
             merge_preferences,
             preferences_from_config,
-            save_preferences,
         )
 
         require_owner_thread(self)
@@ -119,7 +118,13 @@ class ProfileRegistry(QObject):
             preferences = merge_preferences(
                 base, preferences, preferences_from_config(self.config)
             )
-        save_preferences(self.config, preferences)
+        from layout_preferences import CONFIG_KEY
+
+        previous = preferences_from_config(self.config)
+        values = {CONFIG_KEY: preferences.to_dict()}
+        if previous.to_dict()["layout"] != preferences.to_dict()["layout"]:
+            values["layout_previous"] = previous.to_dict()
+        self.config.update(values)
         self.layout_changed.emit(preferences.copy())
         return preferences.copy()
 

@@ -134,6 +134,32 @@ class TaskDialog(QDialog):
         self._recipe_rows = []
         self.recipe_requests.itemSelectionChanged.connect(self.update_recipe_actions)
         self.panels.addTab(recipes, "Connector Recipes")
+        layouts = QWidget()
+        layout_body = QVBoxLayout(layouts)
+        layout_notice = QLabel(
+            "Review agent-designed browser controls. Applying a layout changes appearance only."
+        )
+        layout_notice.setWordWrap(True)
+        layout_body.addWidget(layout_notice)
+        self.layout_requests = QTableWidget(0, 3)
+        self.layout_requests.setHorizontalHeaderLabels(["Request", "Layout", "State"])
+        self.layout_requests.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.layout_requests.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
+        )
+        self.layout_requests.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.layout_requests.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        layout_body.addWidget(self.layout_requests)
+        self.review_layout_button = QPushButton("Review Layout…")
+        self.review_layout_button.clicked.connect(self.review_layout)
+        self.layout_requests.itemSelectionChanged.connect(self.update_layout_actions)
+        layout_body.addWidget(self.review_layout_button)
+        self._layout_rows = []
+        self.panels.addTab(layouts, "Layouts")
         workers = QWidget()
         worker_layout = QVBoxLayout(workers)
         worker_notice = QLabel(
@@ -880,6 +906,7 @@ class TaskDialog(QDialog):
         return self._worker_rows[row] if 0 <= row < len(self._worker_rows) else None
 
     def refresh_recipes(self):
+        self.refresh_layouts()
         selected = self.selection()
         self._recipe_rows = (
             self.service.recipes.list(selected[0].task_id)
@@ -899,6 +926,53 @@ class TaskDialog(QDialog):
                 item.setToolTip(proposal.sha256)
                 self.recipe_requests.setItem(row, col, item)
         self.update_recipe_actions()
+
+    def refresh_layouts(self):
+        selected = self.selection()
+        self._layout_rows = (
+            self.service.layouts.list(selected[0].task_id)
+            if selected and not self.service.failure and not self.service._closed
+            else []
+        )
+        self.layout_requests.setRowCount(len(self._layout_rows))
+        for row, proposal in enumerate(self._layout_rows):
+            for col, value in enumerate(
+                (proposal.request_id, proposal.name, proposal.state.replace("_", " "))
+            ):
+                item = QTableWidgetItem(value)
+                item.setToolTip(proposal.sha256)
+                self.layout_requests.setItem(row, col, item)
+        self.update_layout_actions()
+
+    def update_layout_actions(self):
+        row = self.layout_requests.currentRow()
+        self.review_layout_button.setEnabled(
+            not self.service.failure
+            and not self.service._closed
+            and 0 <= row < len(self._layout_rows)
+            and self._layout_rows[row].state == "awaiting_approval"
+        )
+
+    def review_layout(self):
+        from ui.layout_review import LayoutReviewDialog
+
+        row = self.layout_requests.currentRow()
+        if not 0 <= row < len(self._layout_rows):
+            return
+        proposal = self._layout_rows[row]
+        try:
+            dialog = LayoutReviewDialog(
+                self.service.profiles,
+                self.service.layouts.definition(proposal),
+                self,
+                service=self.service,
+                proposal=proposal,
+            )
+            dialog.show()
+        except (OSError, ValueError, KeyError, RuntimeError):
+            QMessageBox.warning(
+                self, "Layout review", "This layout request is unavailable."
+            )
 
     def update_recipe_actions(self):
         row = self.recipe_requests.currentRow()
