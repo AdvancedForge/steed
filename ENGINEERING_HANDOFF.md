@@ -28,6 +28,19 @@ runtimes, startup and light/dark previews pass. Logs:
 explicit recipient/profile and payload review; do not infer writes or model
 disclosure from a panel read permission.
 
+Bookmark organization B1 is delivered: search/folder filters, stable-ID
+address/name/folder editing, shared-window refresh and atomic UTF-8 Netscape HTML
+merge/export (8 MiB, 2,000 bookmarks). Nested folders use readable labels; imports
+keep existing entries and reject overflow atomically. New Tab shows 24 links with
+Manage all. Private imports stay in memory and stale profile dialogs cannot save
+into recreated profiles. **1,363 full regressions in 419.348 seconds** and 13 focused checks in 2.047 seconds
+pass. Startup, light/dark native previews, Ruff (238 files) and whitespace pass.
+Logs: `/tmp/steed-bookmarks-full.log`, `/tmp/steed-bookmark-workflows-final-focused.log`,
+`/tmp/steed-bookmarks-{visual,startup}.log`.
+Next native work is explicit bounded account-result list/table field mapping.
+A question about a later reviewed read-only HTML data bridge is pending; do not
+infer app authority from editable page installation or native panel grants.
+
 Previous library checkpoint acceptance: **1,320 full regressions in 399.325 seconds** plus 13 final
 linked-panel checks in 4.018 seconds. SDK/raw stdio and authenticated HTTP journeys,
 both installed Codex runtime paths, startup/render/shutdown, light/dark native

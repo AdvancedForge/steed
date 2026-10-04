@@ -92,8 +92,23 @@ explicit item comparison corrected the fixture. Logs:
 All account/model/browser fixtures are synthetic; real desktop/provider acceptance
 and the previously captured offscreen profile-create crash remain separate.
 
-**Next daily-use chunks:** improve bookmark organization/import ergonomics, then
-richer explicit account-result field mappings and generic external-agent
+**Bookmark organization B1 (implemented and accepted).** Search and folder
+filters, stable-ID name/address/folder editing, shared-window refresh and bounded
+New Tab previews with Manage all improve ordinary browsing. UTF-8 Netscape HTML
+imports/exports are bounded to 8 MiB and 2,000 bookmarks. Imports merge atomically,
+keep existing names/folders, report duplicates/invalid links and reject overflow
+without partial writes. Nested imported folders become readable path labels;
+empty folder trees are not retained. Exports escape text and replace atomically.
+Private bookmarks stay memory-only; stale profile dialogs cannot write into a
+recreated profile. Built-in Manage all opens native UI; custom HTML has no new
+bridge. Acceptance: **1,363 full regressions in 419.348 seconds** and 13 focused bookmark
+checks in 2.047 seconds pass. Startup/render/shutdown and light/dark manager/editor
+previews pass. Ruff (238 files), formatting and whitespace pass. Existing external
+agent/provider contracts are unchanged. Logs: `/tmp/steed-bookmarks-full.log`,
+`/tmp/steed-bookmark-workflows-final-focused.log`, `/tmp/steed-bookmarks-{visual,startup}.log`.
+No new agent reading/mutation authority is added.
+
+**Next daily-use chunks:** finish bookmark acceptance, then richer explicit account-result field mappings and generic external-agent
 connection/recovery polish. Broader executable HTML app hosting, cloud pairing,
 credential-derived headers and live-account acceptance remain separate. Existing
 native forms stay bound to their owning task; instructions are reusable actions.
@@ -1426,7 +1441,9 @@ daily-use workflow; they do not automatically block the agent milestones.
   and action popups. Investigate the official Bitwarden package crash on the
   tested Qt 6.11 runtime before presenting it as supported. Start with Manifest
   V3 and verify Qt's limits.
-- **Bookmarks:** per-profile folders, search, editing, and HTML import/export.
+- **Bookmarks B1 — implemented above:** per-profile search/folder labels, stable-ID
+  editing and atomic HTML import/export. Hierarchical empty-folder management and
+  sync remain optional follow-ups.
 
 ## Agent collaboration milestones
 

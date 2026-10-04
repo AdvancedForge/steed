@@ -2181,6 +2181,8 @@ class BrowserWindow(QMainWindow):
                 self._customize_new_tab()
             elif action == "bookmark":
                 self._edit_bookmark()
+            elif action == "bookmarks":
+                self._manage_bookmarks()
             elif action == "agents":
                 self._toggle_agent_sidebar(True)
             elif action == "library":

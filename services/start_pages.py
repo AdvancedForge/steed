@@ -16,6 +16,12 @@ from PyQt6.QtWebEngineCore import (
     QWebEngineUrlSchemeHandler,
 )
 
+from bookmark_format import (
+    MAX_BOOKMARKS,
+    bookmark_name,
+    export_bookmarks,
+    parse_bookmarks,
+)
 from services.command_broker import require_owner_thread
 from utils import load_json, save_json
 
@@ -28,7 +34,6 @@ DEFAULT_SETTINGS = {
     "feed": "",
     "minimal": False,
 }
-MAX_BOOKMARKS = 200
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
 MAX_HTML_BYTES = 256 * 1024
 CUSTOM_EXAMPLE = """<!doctype html>
@@ -203,7 +208,7 @@ class StartPages(QObject):
             for item in items[:MAX_BOOKMARKS] if isinstance(items, list) else []:
                 try:
                     url = web_url(item["url"])
-                    title = " ".join(item["title"].split())[:200]
+                    title = bookmark_name(" ".join(item["title"].split())[:200])
                     identity = item["id"]
                     if (
                         not title
@@ -214,7 +219,13 @@ class StartPages(QObject):
                         continue
                 except (ValueError, KeyError, TypeError, AttributeError):
                     continue
-                bookmarks.append({"id": identity, "url": url, "title": title})
+                try:
+                    folder = bookmark_name(item.get("folder", ""), optional=True)
+                except ValueError:
+                    folder = ""
+                bookmarks.append(
+                    {"id": identity, "url": url, "title": title, "folder": folder}
+                )
                 seen.add(identity)
             html = raw.get("html", "")
             try:
@@ -256,20 +267,57 @@ class StartPages(QObject):
         self.news.forget(profile)
         self._commit(profile, state)
 
-    def add_bookmark(self, profile, url, title):
+    def add_bookmark(self, profile, url, title, *, folder=None):
         state = self.state(profile)
-        url = web_url(url)
-        title = " ".join(title.split())[:200] if isinstance(title, str) else ""
-        if not title:
-            raise ValueError("Give the bookmark a name")
+        url, title = web_url(url), bookmark_name(title)
+        folder = bookmark_name(folder, optional=True) if folder is not None else None
         existing = next((b for b in state["bookmarks"] if b["url"] == url), None)
         if existing:
             existing["title"] = title
+            if folder is not None:
+                existing["folder"] = folder
         else:
             if len(state["bookmarks"]) >= MAX_BOOKMARKS:
-                raise ValueError("Remove a bookmark before adding more (limit 200)")
-            state["bookmarks"].append({"id": uuid4().hex, "url": url, "title": title})
+                raise ValueError("Remove a bookmark before adding more (limit 2,000)")
+            state["bookmarks"].append(
+                {"id": uuid4().hex, "url": url, "title": title, "folder": folder or ""}
+            )
         self._commit(profile, state)
+
+    def update_bookmark(self, profile, identity, url, title, folder):
+        state = self.state(profile)
+        url, title = web_url(url), bookmark_name(title)
+        folder = bookmark_name(folder, optional=True)
+        existing = next((b for b in state["bookmarks"] if b["id"] == identity), None)
+        if existing is None:
+            raise ValueError("This bookmark no longer exists")
+        if any(b["url"] == url and b["id"] != identity for b in state["bookmarks"]):
+            raise ValueError(
+                "That address is already bookmarked; edit its existing entry"
+            )
+        existing.update(url=url, title=title, folder=folder)
+        self._commit(profile, state)
+
+    def import_bookmarks(self, profile, content):
+        entries, skipped = parse_bookmarks(content, web_url)
+        state = self.state(profile)
+        seen = {b["url"] for b in state["bookmarks"]}
+        added, duplicates = 0, 0
+        for entry in entries:
+            if entry["url"] in seen:
+                duplicates += 1
+                continue
+            if len(state["bookmarks"]) >= MAX_BOOKMARKS:
+                raise ValueError("Import would exceed the 2,000-bookmark profile limit")
+            state["bookmarks"].append(dict(entry, id=uuid4().hex))
+            seen.add(entry["url"])
+            added += 1
+        if added:
+            self._commit(profile, state)
+        return {"added": added, "duplicates": duplicates, "skipped": skipped}
+
+    def export_bookmarks(self, profile):
+        return export_bookmarks(self.state(profile)["bookmarks"])
 
     def remove_bookmark(self, profile, identity):
         state = self.state(profile)
@@ -330,9 +378,9 @@ class StartPages(QObject):
                 elif module == "bookmarks":
                     body += section(
                         "Bookmarks",
-                        [(b["title"], b["url"]) for b in state["bookmarks"]],
+                        [(b["title"], b["url"]) for b in state["bookmarks"][:24]],
                         "Save a page with Ctrl+D.",
-                        ' <a href="steed://action/bookmark">Add bookmark</a>',
+                        ' <a href="steed://action/bookmark">Add</a> · <a href="steed://action/bookmarks">Manage all</a>',
                     )
                 elif module == "recent":
                     entries = self.registry.closed_tabs.entries(profile)[:10]

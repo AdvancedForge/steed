@@ -143,8 +143,25 @@ Open **General → Customize New Tab**, or click Customize on a built-in page:
   HTTP(S) search-form navigation still work. General → Customize New Tab remains
   available even when your replacement has no Customize link.
 
-Ctrl+D saves an HTTP(S) page with an editable name. Manage Bookmarks adds, renames
-and removes entries. Bookmarks, sections, images and HTML belong to each profile
+Ctrl+D saves an HTTP(S) page with an editable name and folder. **Tabs → Manage
+Bookmarks** searches names/addresses/folders, filters by folder, and edits names,
+addresses and folder labels while preserving bookmark IDs. Type a new folder name
+when saving/editing; an empty folder means Unfiled. Changes from another window
+refresh the manager. New Tab shows the first 24 bookmarks with **Manage all**.
+
+**Import HTML…** merges a UTF-8 browser bookmark export (up to 8 MiB and 2,000
+entries per profile). Existing links keep their names/folders; duplicate and invalid
+links are counted. Only HTTP(S) addresses without embedded credentials are accepted.
+HTML is parsed as inert data; scripts and external entities are never executed or
+fetched. Nested imported folders become readable labels such as `Work / Research`.
+Folders contain assigned bookmarks; empty-folder trees are not retained. Malformed,
+oversized, over-capacity or failed writes preserve the existing collection.
+**Export HTML…** writes all bookmarks in the current profile to a portable Netscape
+HTML file, including escaped names and folder labels; search filters do not limit
+that export. Saving uses atomic replacement. Stale dialogs cannot write into a
+renamed/deleted/recreated profile; reopen the manager after a profile change.
+
+Bookmarks, sections, images and HTML belong to each profile
 in `start_page.json`; incognito keeps them only in memory. Recently closed tabs
 are bounded to 50 and shared by windows on that profile for the current browser
 run. Reopening a listed tab preserves its group and saved identity. Internal
@@ -5086,9 +5103,12 @@ Definition of done: independently implemented clients complete the workflow, eve
 
 Per-profile filesystem import/install, enable/disable/remove, errors, and action popups. Persist enabled choices and restore after startup. Start with Manifest V3 only. Do not promise arbitrary Chrome compatibility or store installation; Qt excludes Manifest V2 and custom extensions in off-the-record profiles.
 
-#### Bookmarks — pending, non-blocking
+#### Bookmarks — implemented daily-use milestone
 
-Per-profile folders/search/editing and HTML import/export. Keep bookmarks separate from task artifacts.
+Per-profile search, folder labels, name/address/folder editing, atomic HTML import/export
+and bounded New Tab previews are implemented. Imports preserve existing entries;
+private bookmarks remain memory-only. See [usage](#welcome-new-tab-and-bookmarks).
+Hierarchical empty-folder management, sync and agent bookmark APIs remain separate.
 
 #### Built-in agent hosting — separate future proposal
 
