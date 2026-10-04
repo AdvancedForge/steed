@@ -225,7 +225,12 @@
           "phase": "disconnect",
           "operation": "Disconnect the account, confirm the credential is gone, then revoke the token on the access tokens page and record the revocation date."
         }
-      ]
+      ],
+      "confirmation": {
+        "generic_profile": "connectors/recipes/gitlab.json stops at the receipt; a person confirms the iid in the GitLab UI.",
+        "project_template": "connectors/recipes/templates/gitlab-project-template.json adds read_issue, so the iid from the receipt is confirmed by a reviewed read.",
+        "reconciliation": "No create tool ships a reconcile step, so nothing polls for the result."
+      }
     },
     {
       "provider": "asana",

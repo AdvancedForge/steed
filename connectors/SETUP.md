@@ -964,3 +964,57 @@ live acceptance task, a user-owned token, and agreement on what may be created i
 real account. A synthetic fixture is never promoted to a live result by editing the
 file, and no account has been connected and no test object has been sent to create
 these rows.
+
+### Step contract
+
+Every worksheet row is a list of steps in the same order, and each step names its
+`phase`, its `operation` and its `status`. The phases are `install`, `connect`,
+`enable`, `read`, `write`, `receipt` and `disconnect`, in that order. A status is
+one of:
+
+- `executable`: the step runs against a synthetic response now.
+- `pending_owner_approval`: written, but a person must approve it first, for
+  example a non-destructive GitLab quick action.
+- `optional_separately_instantiated`: a real check that only applies to a second
+  account or source, such as Zotero's alternative library.
+- `not_applicable`: the phase cannot exist for this provider, and the operation
+  says why, so a missing phase is a statement rather than an omission.
+
+`phase_contract` in the worksheet records that order and the closed status list, so
+a reordering or an unknown status fails the connector tests instead of quietly
+reading as coverage.
+
+### Readiness matrix
+
+`connectors/fixtures/acceptance_matrix.json` answers, per provider: which tasks are
+possible, in which phases, with how many attempts, and which outcomes are possible.
+It has three tasks per provider, `read_context`, `write_draft` and
+`confirm_result`, and a closed vocabulary:
+
+- readiness is `ready`, `manual`, `not_applicable` or `pending_owner_approval`;
+- outcomes are `succeeded`, `not_applied`, `uncertain`, `blocked` or
+  `not_applicable`.
+
+The rules the tests enforce, so the matrix cannot drift from the code:
+
+- `write_draft` is `ready` only where a recipe ships a write tool. Otherwise the
+  row is `not_applicable`, records zero attempts, and names the smallest missing
+  behavior that would enable it.
+- Every task is attempted once. A write is never resent, because a resend can
+  duplicate an object; `uncertain` therefore appears only on write rows.
+- `confirm_result` is `manual` where no read covers the written object, and the row
+  records who confirms and where. Steed ships no create tool with a reconcile step,
+  so the confirming read is always a caller-performed read.
+- Deferred providers are listed with a reason and, where one exists, the gated case
+  that holds them. They never also appear as starter task rows.
+
+### End-to-end starter workflows
+
+`tests/test_default_connector_profiles.py::StarterWorkflowTests` walks the whole
+shape a real task takes, in synthetic transport only: connect, read context, build a
+draft, review the exact payload, dispatch once, read the receipt, then confirm by a
+follow-up read. It also covers the three ways a run can end badly: an altered draft
+is refused before dispatch, an uncertain create is reported once and never resent,
+and a read-only provider produces a report with no write at all. The generic GitLab
+profile is the documented exception: it stops at the receipt, because confirming
+needs the project template's `read_issue`.

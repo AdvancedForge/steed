@@ -1,0 +1,425 @@
+{
+  "version": 1,
+  "purpose": "What each provider can be asked to do, in which phase, with how many attempts, and which outcomes are possible. The matrix is documentation, so a row may only claim readiness that connectors/recipes and connectors/fixtures/acceptance_worksheet.json already support.",
+  "vocabulary": {
+    "readiness": [
+      "ready",
+      "manual",
+      "not_applicable",
+      "pending_owner_approval"
+    ],
+    "readiness_meaning": {
+      "ready": "Steed can run this end to end against a reviewed template.",
+      "manual": "Steed can produce the evidence, but a person performs the confirming step outside Steed because no read tool covers the created object.",
+      "not_applicable": "The task cannot exist for this provider, and the reason is recorded.",
+      "pending_owner_approval": "The step is written but may not run without an owner decision."
+    },
+    "outcomes": [
+      "succeeded",
+      "not_applied",
+      "uncertain",
+      "blocked",
+      "not_applicable"
+    ],
+    "outcome_meaning": {
+      "succeeded": "The provider answered and Steed returned reviewed fields.",
+      "not_applied": "Steed refused or the provider rejected the request before an object changed.",
+      "uncertain": "The request left Steed and the answer is unknown, so the object may or may not exist.",
+      "blocked": "Steed stopped before dispatch, for example an unreviewed payload or a missing destination.",
+      "not_applicable": "The phase does not exist for this provider."
+    },
+    "attempt_rules": [
+      "A read is attempted once. A transport failure is surfaced, never retried automatically.",
+      "A write is attempted once. An uncertain write is reported as uncertain and never resent, because a resend can duplicate an object.",
+      "A confirming read is attempted once and is performed by the caller, not by the write."
+    ]
+  },
+  "tasks": [
+    {
+      "provider": "todoist",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: read_task selects only id and content."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "ready",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "uncertain",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: create_task is reviewed before dispatch and an uncertain create is never resent."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "ready",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: the returned task id is read back with read_task."
+        }
+      ]
+    },
+    {
+      "provider": "github",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: read_repository selects documented repository fields."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "ready",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "uncertain",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: create_issue is reviewed, and an altered draft is refused before dispatch."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "ready",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: read_issue confirms the created issue, and no reconciliation is claimed."
+        }
+      ]
+    },
+    {
+      "provider": "gitlab",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: read_project selects documented project fields."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "ready",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "uncertain",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: create_issue sends only title and description and never a slash command."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "ready",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: the project template's read_issue confirms the created issue by the iid in the receipt, and no reconciliation is claimed.",
+          "note": "The generic GitLab profile ships read_project and create_issue only, so it stops at the receipt; confirming needs connectors/recipes/templates/gitlab-project-template.json, which adds read_issue."
+        }
+      ]
+    },
+    {
+      "provider": "asana",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: read_project and read_task project only reviewed fields."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "not_applicable",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "connectors/recipes/asana.json ships reads only, and its token review omits the opt-in write fields.",
+          "smallest_missing_behavior": "A reviewed create-task write with the documented opt-in fields and a token that carries write scope."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "not_applicable",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "There is nothing to confirm while the template writes nothing.",
+          "smallest_missing_behavior": "Depends on write_draft."
+        }
+      ]
+    },
+    {
+      "provider": "raindrop",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: read_collection uses the singular item route and list_root_collections uses the root route."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "not_applicable",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "connectors/recipes/raindrop.json ships reads only.",
+          "smallest_missing_behavior": "A reviewed create-item write with Raindrop's documented request and response fields."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "not_applicable",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "There is nothing to confirm while the template writes nothing.",
+          "smallest_missing_behavior": "Depends on write_draft."
+        }
+      ]
+    },
+    {
+      "provider": "zotero",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: read_item selects documented item fields and never sends the API key in a URL.",
+          "note": "The worksheet keeps a separate account or source as an optional, separately instantiated step."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "not_applicable",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "connectors/recipes/zotero.json ships read_item only.",
+          "smallest_missing_behavior": "A reviewed create-item write, which Zotero's public API does not document, so a local bridge is required first."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "not_applicable",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "There is nothing to confirm while the template writes nothing.",
+          "smallest_missing_behavior": "Depends on write_draft."
+        }
+      ]
+    },
+    {
+      "provider": "microsoft365",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "connectors/recipes/microsoft365-read.json ships first-page reads only, and the worksheet marks pagination as pending.",
+          "note": "Only the first page is reviewed, so more_available true is a real stopping point, not a complete list."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "not_applicable",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "The Microsoft 365 starter is read-only.",
+          "smallest_missing_behavior": "A reviewed write with the delegated scopes Microsoft Graph requires for the target operation."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "not_applicable",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "There is nothing to confirm while the template writes nothing.",
+          "smallest_missing_behavior": "Depends on write_draft."
+        }
+      ]
+    }
+  ],
+  "deferred": [
+    {
+      "provider": "notion",
+      "reason": "A data-source query is a POST that needs an integration token and a real database, so it is a gated case, not a starter task.",
+      "gated_case": "notion_data_source_query_gated"
+    },
+    {
+      "provider": "linear",
+      "reason": "Every Linear read is a POST GraphQL query, so identity and context are gated cases rather than reviewed recipes.",
+      "gated_case": "linear_graphql_viewer_gated"
+    },
+    {
+      "provider": "dropbox",
+      "reason": "Identity and folder reads are POST routes with a documented continuation, so they are gated cases.",
+      "gated_case": "dropbox_account_and_folder_reads_gated"
+    },
+    {
+      "provider": "figma",
+      "reason": "Figma file reads need a personal access token header and an empirical body bound, so the documented cases stay ungated-free of a shared POST-read contract and no starter task is claimed.",
+      "gated_case": null
+    },
+    {
+      "provider": "1password",
+      "reason": "Item reads need a service account and session authorization that cannot be reviewed without a live vault, so no case is published.",
+      "gated_case": null
+    }
+  ]
+}
