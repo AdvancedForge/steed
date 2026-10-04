@@ -402,7 +402,7 @@ installed, and a row is never a default account or an approval.
 | ClickUp | gated | bare personal token header; non-expiring OAuth tokens |
 | Trello | gated | key+token credentials, or OAuth 2.0 PKCE acceptance |
 | Figma | gated | personal tokens need `X-Figma-Token`; no version header is documented |
-| Zotero | gated | account `userID` must be bound into library paths; listing needs Link-header paging |
+| Zotero | template (read-only) | one sign-in without a pinned library ID needs identity-derived path binding; listing needs Link-header paging |
 | Nextcloud | gated | self-hosted host with port, WebDAV/XML, mandatory OCS header |
 | Joplin | gated | local plaintext origin, query-parameter token, no identity |
 | Spotify | gated | OAuth-only access, nullable label, offset paging |
@@ -675,6 +675,52 @@ Official references:
 - [Collections methods](https://developer.raindrop.io/v1/collections/methods)
 - [Making authorized calls](https://developer.raindrop.io/v1/authentication/calls)
 - [API overview and status codes](https://developer.raindrop.io/readme)
+
+---
+
+## Zotero (one library, imported template)
+
+`connectors/recipes/templates/zotero-library-template.json`, origin
+`https://api.zotero.org`, bearer authentication with a Zotero API key. Read-only,
+and a **template rather than a packaged profile** for the same reason as GitHub's:
+a library read needs the account's numeric library ID in the path, and that number
+must come from the user.
+
+| Action | Wire contract |
+| --- | --- |
+| Identity | `GET /keys/current`, subject `/userID`, label `/username` |
+| Read one item | `GET /users/{pinned library id}/items/{destination}` by item key |
+
+1. Copy the template to your own location, for example `~/steed-zotero-library.json`.
+2. Replace every `REPLACE-WITH-YOUR-ZOTERO-USER-ID` with the numeric user ID for
+   your library. It is shown on the Zotero API Keys page and returned by
+   `GET /keys/current` as `userID`.
+3. Import the copy with **App Connections → Add Connector Recipe…**, read the source
+   review and install it.
+
+What the source review tells you, because it matters here:
+
+- **The library ID is user-supplied and unchecked.** Steed re-checks account
+  identity on every call, but it never compares a number written in a path with the
+  account's own user ID. If the pinned ID belongs to another library, the request is
+  simply sent and Zotero answers on its own terms — an unknown item is documented as
+  `404`, and a wrong library simply fails the same way.
+- The item key is the eight-character key such as `ABCD2345`; the profile projects
+  only `key`, `version`, `itemType`, `dateAdded` and `dateModified`.
+- **A title is deliberately not projected.** Zotero publishes no item schema, and a
+  note has no title at all, so projecting one would break reads for notes and
+  attachments instead of describing them.
+- The key's `access.user.library` flag decides whether items can be read at all; no
+  write permission is needed for this read-only subset.
+- `Zotero-API-Version: 3` is documented as *recommended*, and version 3 is the
+  documented default, so this subset does not require the header.
+- Nothing is created or modified. Collections are excluded because listing uses
+  `limit`, `start` and a `Link` header rather than the reviewed cursor.
+
+Official references:
+
+- [Web API v3 basics](https://www.zotero.org/support/dev/web_api/v3/basics)
+- [Syncing and key verification](https://www.zotero.org/support/dev/web_api/v3/syncing)
 
 ---
 

@@ -746,7 +746,11 @@ class GitLabProfileTests(ProfileCase):
 
 
 PACKAGED_SLUGS = {"asana.json", "gitlab.json", "raindrop.json", "todoist.json"}
-TEMPLATE_NAMES = {"github-owner-template.json", "gitlab-project-template.json"}
+TEMPLATE_NAMES = {
+    "github-owner-template.json",
+    "gitlab-project-template.json",
+    "zotero-library-template.json",
+}
 
 
 class PackagedCatalogTests(unittest.TestCase):
@@ -1079,7 +1083,7 @@ class EmpiricalEvidenceTests(unittest.TestCase):
     def test_zotero_records_a_pinned_library_alternative_with_disclosure(self):
         zotero = self.contracts["zotero"]
         alternative = zotero["pinned_library_id_alternative"]
-        self.assertEqual(alternative["status"], "assessed_alternative")
+        self.assertEqual(alternative["status"], "shipped_as_template")
         self.assertTrue(alternative["what_it_still_needs"])
         # The pinned id is user-supplied and the interpreter cannot check it.
         disclosure = alternative["mismatch_disclosure"]
@@ -1088,9 +1092,13 @@ class EmpiricalEvidenceTests(unittest.TestCase):
         self.assertIn("404", disclosure["documented_statuses"])
         # The key's library access flag has to be disclosed too.
         self.assertIn("access", alternative["scope_disclosure"]["documented"])
-        # One sign-in stays the default goal, and nothing is shipped.
-        self.assertIn("not as a shipped template", alternative["note"])
-        self.assertFalse(
+        # One sign-in stays the default goal; the template is the interim route.
+        self.assertIn("interim route rather than the destination", alternative["note"])
+        self.assertIn(
+            "mismatch disclosure is in the tool description",
+            alternative["artifact"],
+        )
+        self.assertTrue(
             (PACKAGED / "templates" / "zotero-library-template.json").exists()
         )
 
@@ -1588,3 +1596,66 @@ class RaindropProfileTests(ProfileCase):
         for tool in self.recipe.tools:
             self.assertFalse(tool.request)
             self.assertFalse(tool.pagination)
+
+
+class ZoteroLibraryTemplateTests(ProfileCase):
+    """C2 audit: a user-pinned library id, with the mismatch disclosed in source."""
+
+    PLACEHOLDER = "REPLACE-WITH-YOUR-ZOTERO-USER-ID"
+
+    def setUp(self):
+        self.template = (PACKAGED / "templates" / "zotero-library-template.json").read_bytes()
+        self.assertIn(self.PLACEHOLDER.encode(), self.template)
+        self.recipe = parse_recipe(
+            self.template.replace(self.PLACEHOLDER.encode(), b"12345")
+        )
+        self.adapter = self.install(self.recipe, "zotero")
+
+    def test_template_is_offered_only_after_a_user_fixes_a_library_id(self):
+        self.assertNotIn("zotero-library-template.json", packaged_slugs())
+        unedited = parse_recipe(self.template)
+        for tool in unedited.tools:
+            with self.subTest(tool=tool.name):
+                self.assertEqual(tool.path.count(self.PLACEHOLDER), 1)
+                self.assertIn("user-supplied and unchecked", tool.description)
+
+    def test_identity_and_read_use_the_documented_routes(self):
+        self.assertEqual(self.recipe.identity_path, "/keys/current")
+        self.assertEqual(self.recipe.subject_pointer, "/userID")
+        self.assertEqual(self.recipe.label_pointer, "/username")
+        self.assertEqual(self.adapter.account.subject, "12345")
+        self.assertEqual(self.adapter.account.label, "Fixture User")
+        result = self.read(self.adapter, "read_item", "ABCD2345")
+        self.assertEqual(
+            json.loads(result.text),
+            {
+                "key": "ABCD2345",
+                "version": 301,
+                "item_type": "journalArticle",
+                "date_added": "2025-01-15T10:30:00Z",
+                "date_modified": "2025-01-16T10:30:00Z",
+            },
+        )
+        self.assertEqual(
+            self.api.calls[-1][1],
+            "https://api.zotero.org/users/12345/items/ABCD2345",
+        )
+        self.assertEqual(self.api.posts, [])
+
+    def test_only_one_documented_item_key_form_is_accepted(self):
+        read = self.recipe.tools[0]
+        self.assertEqual(read.destination("ABCD2345"), "ABCD2345")
+        for value in ("ABCD2345/children", "../ABCD2345", "ABCD2345?format=json", "a/b"):
+            with self.subTest(value=value), self.assertRaises(RecipeError):
+                read.destination(value)
+
+    def test_a_wrong_library_or_item_fails_with_the_service_own_answer(self):
+        self.api.fail("GET", "/users/12345/items/ABCD2345", 404)
+        with self.assertRaises(ApiError):
+            self.read(self.adapter, "read_item", "ABCD2345")
+        self.assertEqual(self.api.posts, [])
+        # The pinned id is never re-derived from identity or retried another way.
+        self.assertEqual(
+            [urlsplit(c[1]).path for c in self.api.calls[-1:]],
+            ["/users/12345/items/ABCD2345"],
+        )
