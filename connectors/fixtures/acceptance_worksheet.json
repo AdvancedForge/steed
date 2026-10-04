@@ -109,6 +109,34 @@
         "api_version": "",
         "case": ""
       }
+    },
+    {
+      "provider": "asana",
+      "reviewed_source": "connectors/recipes/asana.json",
+      "official_reference": "https://developers.asana.com/reference/",
+      "tools": [
+        "read_project",
+        "read_task"
+      ],
+      "least_permission": "An Asana personal access token, which carries exactly the access of the user who created it, so the narrowest reduction is a dedicated account limited to the projects or tasks intended for reading.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the numeric /data/gid and label from /data/name, never from the opt-in /data/email",
+        "read_result": "read_project returns gid, name, notes, archived, due_on, owner and permalink_url; read_task returns gid, name, notes, completed, due_on, assignee and permalink_url; documented nullable fields are returned as explicit nulls",
+        "reviewed_create_preview": "none: the profile is read-only, because Asana names the workspace or project in a create body rather than in the path",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked from the same Asana account page"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
     }
   ],
   "live_acceptance_preconditions": [

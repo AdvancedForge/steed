@@ -199,6 +199,68 @@ Official references:
 
 ---
 
+## Asana
+
+`connectors/recipes/asana.json`, origin `https://app.asana.com`, bearer
+authentication with a personal access token. Read-only.
+
+| Action | Wire contract |
+| --- | --- |
+| Identity | `GET /api/1.0/users/me`, subject `/data/gid`, label `/data/name` |
+| Read one project | `GET /api/1.0/projects/{destination}` by numeric project GID |
+| Read one task | `GET /api/1.0/tasks/{destination}` by numeric task GID |
+
+Notes on the wire shape:
+
+- A personal access token is **documented as used like an OAuth access token**,
+  passed in the `Authorization` header, so there is no second token header. The
+  token then carries whatever access its creator has, which is why the profile only
+  reads.
+- Responses wrap the object in a top-level `data` object, so identity and every read
+  project through `/data/...`. The label is `name`, never `email`, because `email`
+  is opt-in through field selection and is often absent.
+- GIDs are the numbers in Asana URLs, for example `1331` in
+  `https://app.asana.com/0/12345/1331/list`. Each tool description says where to
+  find the number it needs.
+- `due_on`, `start_on` and `owner` on a project, and `due_on`, `start_on`,
+  `assignee`, `completed_at` and `parent` on a task, are documented as possibly
+  null and are returned as explicit nulls. The profile projects only fields present
+  in the documented schema, because the schemas declare no required list.
+- Errors are HTTP status codes plus a JSON `errors` array, so there is no
+  application-level flag that could mask a failure.
+- Collections are **not** included: listing pages with `limit` and `offset` and
+  returns a `next_page` offset, which is an offset protocol rather than the reviewed
+  cursor.
+- Task creation is **not** included: Asana documents creating a task by naming a
+  workspace or project in the request body, and no reviewed path can carry that
+  destination. Guessing one from a draft would be wrong, so nothing claims it.
+- Rate limits are documented as 150 requests per minute on the Free plan and 1,500
+  per minute on paid plans, allocated per token, with `Retry-After` on a 429.
+
+### Least-permission setup
+
+1. In Asana open your account settings and create a **personal access token**.
+2. Paste it into Steed's Connect step for that account and select only the read
+   actions you want to expose. The token is stored in the desktop keyring.
+3. Revoke it from the same Asana page at any time; disconnecting in Steed removes
+   the stored credential.
+
+Because a personal access token has exactly the access of the user who created it,
+the narrowest reduction available to a user is a dedicated Asana account with access
+to only the projects or tasks you intend to read.
+
+Official references:
+
+- [Personal access tokens](https://developers.asana.com/docs/personal-access-token)
+- [Get user](https://developers.asana.com/reference/getuser)
+- [Get project](https://developers.asana.com/reference/getproject)
+- [Get task](https://developers.asana.com/reference/gettask)
+- [Errors](https://developers.asana.com/docs/errors)
+- [Pagination](https://developers.asana.com/docs/pagination)
+- [Rate limits](https://developers.asana.com/docs/rate-limits)
+
+---
+
 ## GitLab.com
 
 `connectors/recipes/gitlab.json`, origin `https://gitlab.com`, bearer
@@ -330,7 +392,7 @@ installed, and a row is never a default account or an approval.
 | Microsoft 365 | gated | native OAuth, `@odata.nextLink` paging and writes unverified |
 | Notion | gated | required `Notion-Version` header, nullable identity label, POST-read data-source query |
 | Slack | gated | channel destinations and `ok:false` error checking |
-| Asana | gated | token syntax/sign-in acceptance and workspace inputs |
+| Asana | packaged (read-only) | none outstanding; collections and task creation are excluded by design |
 | Dropbox | gated | reads are RPC-style POST request objects |
 | Linear | gated | reads are GraphQL POSTs with variables |
 | Raindrop.io | gated | `/rest/v1` prefix, `result` flag, offset paging |
