@@ -13,7 +13,7 @@
   "tools": [
     {
       "name": "read_item",
-      "description": "Read one item in the library whose numeric ID is fixed in this reviewed source, by its item key such as ABCD2345. The library ID is user-supplied and unchecked: if it belongs to another library the request simply fails with the service's own error. No item is created or modified.",
+      "description": "Read one item by key (e.g. ABCD2345) in the library pinned in this source. Its ID is user-supplied and unchecked against identity: another accessible library may return data; otherwise the service's own error applies. Review the intended library before installation. Read-only.",
       "method": "GET",
       "path": "/users/REPLACE-WITH-YOUR-ZOTERO-USER-ID/items/{destination}",
       "response": [

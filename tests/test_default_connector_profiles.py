@@ -881,7 +881,10 @@ class PackagedSelectorTests(unittest.TestCase):
     def test_picker_offers_only_installable_profiles_through_bundled_recipes(self):
         catalog = BundledRecipes()
         entries = catalog.list()
-        self.assertEqual([entry.slug for entry in entries], ["gitlab", "todoist"])
+        self.assertEqual(
+            [entry.slug for entry in entries],
+            ["asana", "gitlab", "microsoft365-read", "raindrop", "todoist"],
+        )
         for entry in entries:
             with self.subTest(slug=entry.slug):
                 self.assertEqual(catalog.select(entry).sha256, entry.recipe.sha256)
