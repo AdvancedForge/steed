@@ -4259,19 +4259,56 @@ The following is the target design. The [internal task foundation](#internal-tas
 is implemented; full agent features, generic extension support, and bookmarks remain
 future work. Implementation order and status live in [ROADMAP.md](ROADMAP.md).
 
+### Configurable browser layout — implemented (first milestone)
+
+Layout settings change the presentation of the browser chrome and nothing else.
+Open **General → Layout Settings…** to edit them, or **View → Reset Layout** to
+return to today's defaults. The first milestone covers manual editing:
+
+- Show, hide and reorder the address bar buttons (Back, Forward, Reload, Home,
+  Reset zoom, Passwords). Each button has a stable identifier, so a saved layout
+  does not depend on widget names.
+- Reorder the menu bar between General, Profile, Tabs, View, Cookies and Agents.
+  Today's order is the default.
+- Place the agent sidebar on the left or right and remember its width.
+- Choose compact or comfortable control spacing.
+- Save the current appearance under a name, apply a saved layout later, or
+  delete one. **Reset Layout** restores today's appearance and keeps the saved
+  layouts available.
+
+Edits appear immediately; **Save** keeps them and **Cancel** restores the layout
+that was saved when the dialog opened.
+
+Settings stay reachable when controls are hidden. Menus cannot be hidden at all,
+`Layout Settings…` sits beside `Settings…` in General, `Reset Layout` stays in
+View, and `Home` was added to the Tabs menu so hiding the Home button does not
+remove the only route to it. Reload, Reset zoom, Passwords and the address bar
+keep their existing menu entries and keyboard shortcuts.
+
+Layouts are stored under the `layout` key in the shared browser configuration
+(`~/.custom_browser/config.json`), so they apply to every window and profile,
+the same way as other browser preferences. Stored values are treated as
+untrusted input: unknown button or menu identifiers are dropped, identifiers
+missing from a stored order return in their default position, and a document
+written by another schema version is ignored in favour of today's defaults.
+Sidebar width is bounded to 200–800 px, at most 32 named layouts are kept, and a
+name may not be empty, longer than 48 characters or contain control characters.
+
+Applying a layout never changes browser, website, profile, folder, file or
+account permissions, and never grants an agent access to anything.
+
+Limits of this milestone: one global layout with no per-window or per-profile
+override, two densities, and no colors, fonts or agent-proposed layouts yet.
+
 ### Customization direction (planned)
 
 The user means configurable **browser UI**: the placement and appearance of
-controls, rather than only saved agent workflows. Layout preferences and an
-agent-editable layout format are not implemented yet. Extend the current Qt
-interface incrementally; a browser rebuild is unnecessary for this scope.
+controls, rather than only saved agent workflows. The manual settings above are
+implemented; the remaining increments extend the same Qt interface. A browser
+rebuild is unnecessary for this scope.
 
-1. **Manual layout settings:** show/hide and reorder supported toolbar buttons,
-   move the sidebar left/right, remember its width, choose compact/comfortable
-   spacing and save named layouts. Preserve today's menu order as the default;
-   optional menu order belongs in these settings. Keep Settings and Reset Layout
-   reachable even when controls are hidden. Store global defaults first;
-   per-window/profile overrides can follow if needed.
+1. **Manual layout settings — implemented** (see above). Per-window/profile
+   overrides can follow if they are needed.
 2. **Reviewed agent layout proposals:** stable component IDs and a versioned JSON
    layout schema, bounded sizes and valid placements, preview before Apply,
    export/import, migration, Reset and recovery to the last working layout. An

@@ -18,6 +18,7 @@ class TabBar(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.density = "comfortable"
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -47,6 +48,17 @@ class TabBar(QWidget):
 
         layout.addWidget(self.tab_bar)
         layout.addWidget(self.new_tab_btn)
+
+    def apply_density(self, density: str) -> None:
+        """Use compact or comfortable spacing for the tab strip."""
+        compact = density == "compact"
+        self.density = density
+        self.new_tab_btn.setMaximumWidth(26 if compact else 30)
+        self.new_tab_btn.setMaximumHeight(26 if compact else 30)
+        layout = self.layout()
+        margin = 2 if compact else 4
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(0)
 
     def insert_tab(self, index: int, title: str = "New Tab") -> int:
         index = max(0, min(index, self.tab_bar.count()))

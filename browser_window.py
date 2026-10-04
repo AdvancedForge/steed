@@ -30,6 +30,11 @@ from PyQt6.QtWidgets import (
 
 from config import Config
 from cookie_manager import CookieManager
+from layout_preferences import (
+    LayoutPreferences,
+    preferences_from_config,
+    save_preferences,
+)
 from profile_manager import ProfileManager
 from services.permission_service import PermissionService
 from services.site_permissions import FEATURES
@@ -41,6 +46,7 @@ from ui.cookie_dialog import CookieDialog
 from ui.download_dialog import DownloadDialog
 from ui.find_bar import FindBar
 from ui.group_dialog import GroupDialog
+from ui.layout_dialog import LayoutDialog
 from ui.media_dialog import DesktopMediaDialog
 from ui.password_dialog import PasswordDialog
 from ui.settings_dialog import SettingsDialog
@@ -60,6 +66,23 @@ QWebEnginePermission = getattr(QtWebEngineCore, "QWebEnginePermission", None)
 
 # Enough to merge a redirect chain or a SPA's boot sequence into one write.
 TAB_SAVE_DEBOUNCE_MS = 750
+
+
+def reorder_menus(menubar, menus: dict, order) -> None:
+    """Reorder a menu bar, keeping every menu present and visible.
+
+    A layout may move menus around but never hides one, so Settings and Reset
+    Layout stay reachable. Unknown identifiers are ignored and menus missing
+    from the order keep their relative position at the end.
+    """
+    wanted = [menus[name] for name in order if name in menus]
+    wanted.extend(menu for name, menu in menus.items() if menu not in wanted)
+    actions = {menu.menuAction() for menu in wanted}
+    for action in list(menubar.actions()):
+        if action in actions:
+            menubar.removeAction(action)
+    for menu in wanted:
+        menubar.addMenu(menu)
 
 
 class BrowserPage(QWebEnginePage):
@@ -172,6 +195,9 @@ class BrowserWindow(QMainWindow):
         self.setup_menus()
         self.setup_ui()
         self.apply_dark_mode()
+        # Manual layout is presentation only and is shared by every window.
+        self.layout_preferences = preferences_from_config(self.config)
+        self.apply_layout(self.layout_preferences)
 
         self._was_fullscreen = False
         self._pending_desktop_request = None
@@ -227,12 +253,21 @@ class BrowserWindow(QMainWindow):
 
     def setup_menus(self):
         menubar = self.menuBar()
-        general_menu = menubar.addMenu("General")
-        profile_menu = menubar.addMenu("Profile")
-        tabs_menu = menubar.addMenu("Tabs")
-        view_menu = menubar.addMenu("View")
-        cookies_menu = menubar.addMenu("Cookies")
-        agents_menu = menubar.addMenu("Agents")
+        # Stable identifiers let a saved layout reorder the menu bar.
+        self._layout_menus = {
+            "general": menubar.addMenu("General"),
+            "profile": menubar.addMenu("Profile"),
+            "tabs": menubar.addMenu("Tabs"),
+            "view": menubar.addMenu("View"),
+            "cookies": menubar.addMenu("Cookies"),
+            "agents": menubar.addMenu("Agents"),
+        }
+        general_menu = self._layout_menus["general"]
+        profile_menu = self._layout_menus["profile"]
+        tabs_menu = self._layout_menus["tabs"]
+        view_menu = self._layout_menus["view"]
+        cookies_menu = self._layout_menus["cookies"]
+        agents_menu = self._layout_menus["agents"]
         new_tab_action = QAction("New Tab", self)
         new_tab_action.setShortcut(QKeySequence("Ctrl+T"))
         new_tab_action.triggered.connect(lambda: self._new_tab())
@@ -251,6 +286,11 @@ class BrowserWindow(QMainWindow):
         self.reload_action.setShortcuts([QKeySequence("Ctrl+R"), QKeySequence("F5")])
         self.reload_action.triggered.connect(self._reload)
         tabs_menu.addAction(self.reload_action)
+        # Home stays reachable here even if the address bar button is hidden.
+        home_action = QAction("Home", self)
+        home_action.setShortcut(QKeySequence("Ctrl+Shift+H"))
+        home_action.triggered.connect(self._go_home)
+        tabs_menu.addAction(home_action)
         focus_address_action = QAction("Go to Address Bar", self)
         focus_address_action.setShortcut(QKeySequence("Ctrl+L"))
         focus_address_action.triggered.connect(lambda: self.address_bar.focus_address())
@@ -284,6 +324,13 @@ class BrowserWindow(QMainWindow):
         settings_action.setShortcut(QKeySequence("Ctrl+,"))
         settings_action.triggered.connect(self._open_settings)
         general_menu.addAction(settings_action)
+        layout_action = QAction("Layout Settings...", self)
+        layout_action.setToolTip(
+            "Reorder or hide address bar buttons, reorder menus, and choose "
+            "the agent sidebar side, width and control spacing"
+        )
+        layout_action.triggered.connect(self._open_layout_settings)
+        general_menu.addAction(layout_action)
         general_menu.addSeparator()
         exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
@@ -371,6 +418,11 @@ class BrowserWindow(QMainWindow):
         self.zoom_reset_action.setShortcut(QKeySequence("Ctrl+0"))
         self.zoom_reset_action.triggered.connect(lambda: self._zoom())
         view_menu.addAction(self.zoom_reset_action)
+        # Reset Layout stays in View whatever the toolbar shows, so a layout
+        # can always be recovered without a visible control.
+        reset_layout_action = QAction("Reset Layout", self)
+        reset_layout_action.triggered.connect(self.reset_layout)
+        view_menu.addAction(reset_layout_action)
         new_profile_action = QAction("New Profile...", self)
         new_profile_action.triggered.connect(self._create_profile)
         profile_menu.addAction(new_profile_action)
@@ -515,6 +567,70 @@ class BrowserWindow(QMainWindow):
         if sidebar is not None:
             sidebar._apply_style()
 
+    # ---------- Manual layout ----------
+
+    def _sidebar_dock_area(self):
+        """Return the dock area the saved layout asks for."""
+        preferences = getattr(self, "layout_preferences", None)
+        side = preferences.sidebar_side if preferences else "right"
+        return (
+            Qt.DockWidgetArea.LeftDockWidgetArea
+            if side == "left"
+            else Qt.DockWidgetArea.RightDockWidgetArea
+        )
+
+    def _apply_menu_order(self, order) -> None:
+        """Reorder the menu bar, keeping every menu visible."""
+        reorder_menus(self.menuBar(), getattr(self, "_layout_menus", {}), order)
+
+    def _apply_sidebar_layout(self) -> None:
+        """Move and resize the docked agent sidebar to match the layout.
+
+        The sidebar may not exist yet, and while it is embedded in an agent
+        tab it belongs to that tab rather than the window; in both cases the
+        saved layout is applied when the sidebar returns to the dock.
+        """
+        sidebar = getattr(self, "agent_sidebar", None)
+        preferences = getattr(self, "layout_preferences", None)
+        if sidebar is None or preferences is None or self.agent_tab is not None:
+            return
+        if sidebar.parent() is not self:
+            return
+        self.addDockWidget(self._sidebar_dock_area(), sidebar)
+        self.resizeDocks(
+            [sidebar], [preferences.sidebar_width], Qt.Orientation.Horizontal
+        )
+
+    def apply_layout(self, preferences: LayoutPreferences) -> None:
+        """Show a layout in this window without saving it."""
+        self.layout_preferences = preferences
+        self._apply_menu_order(preferences.menu_order)
+        self.address_bar.apply_toolbar(
+            preferences.toolbar_order, preferences.hidden_toolbar
+        )
+        self.address_bar.apply_density(preferences.density)
+        self.tab_bar.apply_density(preferences.density)
+        self._apply_sidebar_layout()
+
+    def _open_layout_settings(self) -> None:
+        """Edit the manual layout, previewing edits and saving on Save."""
+        dialog = LayoutDialog(self.layout_preferences, self)
+        saved = self.layout_preferences
+        dialog.layout_changed.connect(self.apply_layout)
+        if dialog.exec():
+            self.layout_preferences = dialog.preferences
+            self.apply_layout(self.layout_preferences)
+            save_preferences(self.config, self.layout_preferences)
+        else:
+            # Cancel restores the layout that was saved before the dialog.
+            self.apply_layout(saved)
+
+    def reset_layout(self) -> None:
+        """Restore today's appearance and keep the saved layout files."""
+        self.layout_preferences.reset()
+        self.apply_layout(self.layout_preferences)
+        save_preferences(self.config, self.layout_preferences)
+
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):
         self._update_window_title()
@@ -544,9 +660,14 @@ class BrowserWindow(QMainWindow):
                     self, "External Agents", "The agent sidebar could not be opened."
                 )
                 return
-            self.addDockWidget(
-                Qt.DockWidgetArea.RightDockWidgetArea, self.agent_sidebar
-            )
+            self.addDockWidget(self._sidebar_dock_area(), self.agent_sidebar)
+            preferences = getattr(self, "layout_preferences", None)
+            if preferences is not None:
+                self.resizeDocks(
+                    [self.agent_sidebar],
+                    [preferences.sidebar_width],
+                    Qt.Orientation.Horizontal,
+                )
             self.agent_sidebar.setup_requested.connect(self._open_agent_setup)
             self.agent_sidebar.visibilityChanged.connect(
                 lambda shown: self.agent_sidebar_action.setChecked(
@@ -592,7 +713,14 @@ class BrowserWindow(QMainWindow):
         tab.native_panel = None
         self.agent_sidebar.setParent(self)
         self.agent_sidebar.setTitleBarWidget(None)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.agent_sidebar)
+        self.addDockWidget(self._sidebar_dock_area(), self.agent_sidebar)
+        preferences = getattr(self, "layout_preferences", None)
+        if preferences is not None:
+            self.resizeDocks(
+                [self.agent_sidebar],
+                [preferences.sidebar_width],
+                Qt.Orientation.Horizontal,
+            )
         self.agent_sidebar.hide()
 
     def _dock_web_chat(self):

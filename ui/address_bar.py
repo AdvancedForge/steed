@@ -5,6 +5,13 @@ from PyQt6.QtGui import QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import QCompleter, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
 from browsing_history import HistoryEntry
+from layout_preferences import TOOLBAR_ITEMS
+
+# Spacing per density; the address input always keeps its width.
+DENSITY_METRICS = {
+    "compact": {"margin": 2, "spacing": 2},
+    "comfortable": {"margin": 4, "spacing": 4},
+}
 
 
 class HistoryCompleter(QCompleter):
@@ -76,13 +83,52 @@ class AddressBar(QWidget):
         self.zoom_btn.setMaximumWidth(70)
         self.zoom_btn.clicked.connect(self.reset_zoom_requested.emit)
 
-        layout.addWidget(self.back_btn)
-        layout.addWidget(self.forward_btn)
-        layout.addWidget(self.reload_btn)
-        layout.addWidget(self.home_btn)
-        layout.addWidget(self.address_input)
-        layout.addWidget(self.zoom_btn)
-        layout.addWidget(self.passwords_btn)
+        # Stable identifiers let a saved layout reorder or hide individual
+        # buttons without depending on widget names.
+        self.buttons = {
+            "back": self.back_btn,
+            "forward": self.forward_btn,
+            "reload": self.reload_btn,
+            "home": self.home_btn,
+            "zoom": self.zoom_btn,
+            "passwords": self.passwords_btn,
+        }
+        self.toolbar_order = list(TOOLBAR_ITEMS)
+        self.hidden_toolbar: list[str] = []
+        self.density = "comfortable"
+        self._apply_toolbar()
+
+    def _apply_toolbar(self) -> None:
+        """Lay out the buttons in the saved order, then the address input."""
+        layout = self.layout()
+        for widget in list(self.buttons.values()) + [self.address_input]:
+            layout.removeWidget(widget)
+        for name in self.toolbar_order:
+            if name not in self.hidden_toolbar:
+                layout.addWidget(self.buttons[name])
+        layout.addWidget(self.address_input, 1)
+
+    def apply_toolbar(self, order, hidden) -> None:
+        """Show and hide address bar buttons according to a layout.
+
+        An order that omits a button still shows it, in today's default
+        position, so a layout written against an older build cannot make a
+        control unreachable.
+        """
+        known = [name for name in order if name in self.buttons]
+        known.extend(name for name in TOOLBAR_ITEMS if name not in known)
+        self.toolbar_order = known
+        self.hidden_toolbar = [name for name in hidden if name in self.buttons]
+        self._apply_toolbar()
+
+    def apply_density(self, density: str) -> None:
+        """Use compact or comfortable spacing for the address bar."""
+        metrics = DENSITY_METRICS.get(density, DENSITY_METRICS["comfortable"])
+        self.density = density if density in DENSITY_METRICS else "comfortable"
+        layout = self.layout()
+        margin = metrics["margin"]
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(metrics["spacing"])
 
     def _on_return_pressed(self) -> None:
         """Handle return key press."""
