@@ -156,6 +156,16 @@ Return events for matching and empty results. Ruff lint/format and whitespace
 pass. Log: `/tmp/steed-bookmark-search-enter.log`. Handoff priorities remain
 unchanged; no full-suite or native-agent acceptance is claimed for this increment.
 
+**Bookmark result keyboard selection B5 (implemented and accepted).** Focus
+the results list, select a match with the arrow keys, then press Return or keypad
+Enter to open that selected link. Shortcuts are scoped to the list, preserving
+the search field's first-match behavior and existing double-click handling.
+**19 bookmark regressions pass in 3.016 seconds**, including both Enter keys,
+selection of the second matching result and exactly one new-tab request per key.
+Ruff lint/format and whitespace pass. Log: `/tmp/steed-bookmark-results-enter.log`.
+The incoming engineer's broader acceptance and agent-recovery priorities remain
+unchanged.
+
 **Next daily-use chunks, in order:**
 
 1. Finish account list/table broad acceptance: full regressions and both installed

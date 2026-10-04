@@ -151,6 +151,8 @@ refresh the manager. New Tab shows the first 24 bookmarks with **Manage all**.
 Press **Ctrl+Shift+O** to open the manager directly.
 Type in its search field and press **Enter** to open the first matching bookmark;
 the current folder filter applies. If nothing matches, the manager stays open.
+To choose a different match, focus the results list, select it with the arrow
+keys, and press **Enter** (keypad Enter also works) to open the selected bookmark.
 Select a bookmark and click **Open**, or double-click it, to open a new tab in
 the current profile. Use **Edit…** to change its details. If the profile has
 changed while the manager was open, reopen the manager before opening a link.

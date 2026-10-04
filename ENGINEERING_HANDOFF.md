@@ -9,11 +9,18 @@ this checkpoint delivers direct bookmark opening B2 and saves the already-built
 account projections N5 with their exact validation status. Stop here rather than
 starting the HTML bridge or another feature. This section takes precedence over
 older milestones below. The owner subsequently requested additional small tasks;
-bookmark manager shortcut B3 and search keyboard opening B4 are also delivered.
+bookmark manager shortcut B3, search keyboard opening B4 and selected-result
+keyboard opening B5 are also delivered.
 No broader engineering was started.
 
 ### What is saved
 
+- **B5 complete:** the focused bookmark results list accepts arrow-key selection
+  and Return/keypad Enter to open the chosen link once. Widget-scoped shortcuts
+  preserve search Enter and double-click behavior. Nineteen bookmark checks pass
+  in 3.016 seconds, including second-result selection and both Enter keys;
+  Ruff/format/whitespace pass. Log: `/tmp/steed-bookmark-results-enter.log`.
+  Agent contracts and next engineering milestones remain unchanged.
 - **B4 complete:** Enter in bookmark search opens the first matching link using
   the existing profile guard and folder filter. An empty result keeps the dialog
   open instead of invoking Close. The search tooltip documents the action.
@@ -45,7 +52,7 @@ No broader engineering was started.
   new late-response/timeout regression. SDK/raw stdio and authenticated HTTP
   account-table workflows already pass. Light/dark bookmark and panel previews,
   startup/render/shutdown, Ruff lint/format (240 files) and whitespace pass.
-  The most recent full suite is **1,363 tests before N5/B2/B3/B4**; do not report a
+  The most recent full suite is **1,363 tests before N5 and the bookmark follow-ups**; do not report a
   full-suite pass for this checkpoint. Both installed Codex smoke paths also
   remain to be rerun for v7. All test data is synthetic/temporary; real desktop
   and live-provider acceptance remain manual.

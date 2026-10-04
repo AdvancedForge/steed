@@ -266,6 +266,30 @@ class BookmarkWorkflowTests(unittest.TestCase):
             self.window._manage_bookmarks()
         opened.assert_called_once_with(url="https://two.example/")
 
+    def test_arrow_keys_and_enter_open_selected_result_once(self):
+        self.pages.add_bookmark("global", "https://one.example/", "One")
+        self.pages.add_bookmark("global", "https://two.example/", "Two")
+        for key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            with self.subTest(key=key):
+
+                def choose_and_open(dialog, key=key):
+                    dialog.show()
+                    dialog.search.setText(".example")
+                    dialog.items.setCurrentRow(0)
+                    dialog.items.setFocus()
+                    self.app.processEvents()
+                    QTest.keyClick(dialog.items, Qt.Key.Key_Down)
+                    self.assertEqual(dialog.selected()["title"], "Two")
+                    QTest.keyClick(dialog.items, key)
+                    self.assertEqual(dialog.result(), QDialog.DialogCode.Accepted)
+
+                with (
+                    patch.object(BookmarksDialog, "exec", new=choose_and_open),
+                    patch.object(self.window, "_new_tab") as opened,
+                ):
+                    self.window._manage_bookmarks()
+                opened.assert_called_once_with(url="https://two.example/")
+
     def test_enter_with_no_search_matches_keeps_manager_open(self):
         self.pages.add_bookmark("global", "https://one.example/", "One")
         opened = []

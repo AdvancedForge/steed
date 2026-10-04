@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from PyQt6.QtCore import QIODevice, QSaveFile, Qt
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -120,6 +121,14 @@ class BookmarksDialog(QDialog):
         self.items.itemDoubleClicked.connect(
             lambda _: self.open_selected() if self.open_url else self.edit()
         )
+        self.items.setToolTip(
+            "Use the arrow keys to select a bookmark, then Enter to open."
+        )
+        for key in ("Return", "Enter"):
+            shortcut = QShortcut(QKeySequence(key), self.items)
+            shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
+            shortcut.setEnabled(self.open_url is not None)
+            shortcut.activated.connect(self.open_selected)
         layout.addWidget(self.items)
         self.status = QLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
