@@ -137,6 +137,34 @@
         "api_version": "",
         "case": ""
       }
+    },
+    {
+      "provider": "raindrop",
+      "reviewed_source": "connectors/recipes/raindrop.json",
+      "official_reference": "https://developer.raindrop.io/v1/",
+      "tools": [
+        "read_collection",
+        "list_root_collections"
+      ],
+      "least_permission": "A Raindrop.io access token or test token. No scope is documented for reads, so the narrowest reduction is a token used only for collection reads and revoked when it is no longer needed.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the integer /user/_id and label from /user/fullName",
+        "read_result": "read_collection returns the documented _id, title, count and view through the item wrapper; list_root_collections returns the documented item objects under /items, with no paging followed",
+        "reviewed_create_preview": "none: a bookmark create needs an explicit link input that no reviewed destination can carry",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked in the Raindrop app console"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      }
     }
   ],
   "live_acceptance_preconditions": [

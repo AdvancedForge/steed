@@ -745,7 +745,7 @@ class GitLabProfileTests(ProfileCase):
         self.assertEqual(len(self.api.posts), 1)
 
 
-PACKAGED_SLUGS = {"asana.json", "gitlab.json", "todoist.json"}
+PACKAGED_SLUGS = {"asana.json", "gitlab.json", "raindrop.json", "todoist.json"}
 TEMPLATE_NAMES = {"github-owner-template.json", "gitlab-project-template.json"}
 
 
@@ -807,6 +807,7 @@ class AssessedCandidateQueueTests(unittest.TestCase):
             ("todoist", "Todoist", "api.todoist.com"),
             ("gitlab", "GitLab.com", "gitlab.com"),
             ("asana", "Asana", "app.asana.com"),
+            ("raindrop", "Raindrop.io", "api.raindrop.io"),
         ):
             with self.subTest(service=name):
                 entry = by_name[label]
@@ -826,6 +827,7 @@ class AssessedCandidateQueueTests(unittest.TestCase):
             "gitlab.com",
             "api.github.com",
             "app.asana.com",
+            "api.raindrop.io",
         }
         for entry in self.services:
             if entry["status"] in ("packaged", "template", "maintained"):
@@ -1521,3 +1523,68 @@ class AsanaProfileTests(ProfileCase):
         # Asana documents creating a task with a workspace or project named in
         # the body, which no reviewed path can carry, so nothing claims to do it.
         self.assertEqual(len(self.recipe.tools), 2)
+
+
+class RaindropProfileTests(ProfileCase):
+    """C2 audit: a bookmark service whose collection reads need no new capability."""
+
+    def setUp(self):
+        self.recipe = packaged_recipe("raindrop")
+        self.adapter = self.install(self.recipe, "raindrop")
+
+    def test_identity_uses_the_documented_user_document(self):
+        self.assertEqual(self.recipe.origin, "https://api.raindrop.io")
+        self.assertEqual(self.recipe.identity_path, "/rest/v1/user")
+        self.assertEqual(self.recipe.subject_pointer, "/user/_id")
+        self.assertEqual(self.recipe.label_pointer, "/user/fullName")
+        self.assertEqual(self.adapter.account.subject, "32")
+        self.assertEqual(self.adapter.account.label, "Fixture User")
+        self.assertEqual(self.recipe.version, 2)
+
+    def test_collection_read_projects_only_documented_fields(self):
+        result = self.read(self.adapter, "read_collection", "8492393")
+        self.assertEqual(
+            json.loads(result.text),
+            {"id": 8492393, "title": "Development", "count": 16, "view": "list"},
+        )
+        self.assertEqual(
+            self.api.calls[-1][1],
+            "https://api.raindrop.io/rest/v1/collections/8492393",
+        )
+        self.assertEqual(self.api.posts, [])
+        collection = self.recipe.tools[0]
+        for value in ("8492393/children", "../8492393", "8492393?page=1"):
+            with self.subTest(value=value), self.assertRaises(RecipeError):
+                collection.destination(value)
+
+    def test_root_collection_listing_is_one_documented_response(self):
+        selected = json.loads(
+            self.read(self.adapter, "list_root_collections", "account").text
+        )
+        self.assertEqual(
+            [c["title"] for c in selected["collections"]], ["Development", "Reading"]
+        )
+        self.assertEqual(self.api.posts, [])
+        # Paging is documented as page and perpage, so no cursor is declared.
+        self.assertIsNone(self.recipe.tools[1].pagination)
+
+    def test_an_application_level_failure_fails_closed_instead_of_looking_empty(self):
+        self.api.data["routes"]["/rest/v1/collections"] = {
+            "result": False,
+            "error": "view",
+            "errorMessage": "Collection validation failed: view: `bla` is not a valid enum value.",
+        }
+        with self.assertRaises((RecipeError, KeyError, ApiError)):
+            self.read(self.adapter, "list_root_collections", "account")
+        self.assertEqual(self.api.posts, [])
+        self.assertEqual(
+            self.api.data["routes"]["/rest/v1/collections"]["result"], False
+        )
+
+    def test_no_write_is_offered_because_a_bookmark_needs_a_link_input(self):
+        self.assertEqual([t.effect for t in self.recipe.tools], ["read", "read"])
+        self.assertEqual(self.recipe.tools[0].destination_type, "resource_id")
+        self.assertEqual(self.recipe.tools[1].destination_type, "account")
+        for tool in self.recipe.tools:
+            self.assertFalse(tool.request)
+            self.assertFalse(tool.pagination)

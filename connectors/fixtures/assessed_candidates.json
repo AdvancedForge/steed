@@ -175,8 +175,8 @@
       "paging": "page and perpage query parameters, not a cursor",
       "errors": "HTTP status codes plus an application result boolean",
       "host": "api.raindrop.io",
-      "status": "gated",
-      "gate": "Bearer looks right, but the origin needs the /rest/v1 path prefix, the result flag needs verifying so a false result is never read as success, listing is offset paged, and bookmark creates need an explicit reviewed URL input.",
+      "status": "packaged",
+      "gate": "None outstanding for the shipped read-only subset: bearer auth is documented, the /rest/v1 prefix is carried in each reviewed path, identity and the collection reads are plain GETs, and a failure document with result false has no items, so a failed read fails closed. The result flag itself is still not checked, which remains an application-error-flag gap for writes; listing is offset paged and a bookmark create needs an explicit link input that no reviewed destination can carry.",
       "capabilities": [
         "application_error_flags",
         "pagination",
