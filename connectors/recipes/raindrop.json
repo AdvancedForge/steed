@@ -13,9 +13,9 @@
   "tools": [
     {
       "name": "read_collection",
-      "description": "Read one Raindrop.io collection by its numeric collection ID, which is the number in the collection URL after /collection/. The documented response wraps it in an item object. No bookmark is created or changed by this profile.",
+      "description": "Read one collection by its numeric ID, the number in the collection URL after /collection/. Raindrop documents this route in the singular and wraps it in an item object. No bookmark is created or changed.",
       "method": "GET",
-      "path": "/rest/v1/collections/{destination}",
+      "path": "/rest/v1/collection/{destination}",
       "response": [
         {
           "label": "id",

@@ -5,7 +5,8 @@
     "parse": "Build a recipe from the case and assert the interpreter accepts or refuses it.",
     "dispatch": "Install the generated recipe, connect one synthetic account and execute the case read through RecipeConnector with a synthetic transport serving the documented response.",
     "transport": "Drive the real RecipeHttp request gate directly, which refuses an unreviewed header or query before any socket work.",
-    "documented_bound": "Record a documented engine or provider bound that cannot be executed locally, with the arithmetic that makes it a bound and the reason it is not executable."
+    "documented_bound": "Record a documented engine or provider bound that cannot be executed locally, with the arithmetic that makes it a bound and the reason it is not executable.",
+    "gated_post_read": "A documented read-only POST that no current contract expresses. The case records the official request and response shapes so a shared typed read-only POST contract can be promoted through real parser, review, adapter and transport tests once it is published."
   },
   "cases": [
     {
@@ -680,6 +681,274 @@
       },
       "currently_passes": "The transport already refuses an oversized body, and this case exists so nobody relaxes that while adding a design subset.",
       "smallest_missing_behavior": "None. This is a behaviour to preserve."
+    },
+    {
+      "id": "notion_data_source_query_gated",
+      "provider": "Notion",
+      "kind": "gated_post_read",
+      "purpose": "Querying a data source is a POST read with an optional body, which no current read contract expresses.",
+      "request": {
+        "method": "POST",
+        "path": "/v1/data_sources/{destination}/query",
+        "headers": {
+          "Authorization": "Bearer <integration token>",
+          "Notion-Version": "2025-09-03"
+        }
+      },
+      "reviewed_inputs": {
+        "start_cursor": "reviewed pagination cursor",
+        "page_size": 25,
+        "is_archived": false
+      },
+      "documented_body_fields": {
+        "sorts": "optional array of property or timestamp sorts",
+        "filter": "optional compound and/or group or property filter, maxItems 100",
+        "start_cursor": "optional string",
+        "page_size": "optional number",
+        "is_archived": "optional boolean; archived pages are returned only when true",
+        "result_type": "optional enum page|data_source"
+      },
+      "documented_response": {
+        "type": "page_or_data_source",
+        "page_or_data_source": {},
+        "object": "list",
+        "next_cursor": null,
+        "has_more": false,
+        "results": []
+      },
+      "documented_failures": {
+        "400": "validation_error, invalid_request, missing_version or invalid_json",
+        "401": "unauthorized",
+        "403": "restricted_resource when the connection lacks the read capability",
+        "404": "object_not_found or directory_not_found, including a database not shared with the connection",
+        "429": "rate_limited",
+        "529": "service_overload is documented as a code; its operational meaning is not documented."
+      },
+      "documented_limits": [
+        "Supports paginating through up to 10,000 results per query.",
+        "A response may contain fewer results than page_size.",
+        "has_more becomes false and every page served from the capped result carries request_status."
+      ],
+      "documented_do_not": [
+        "Do not parse, validate or store cursors beyond passing them back as start_cursor.",
+        "Do not send in_trash; it is not a supported query body parameter.",
+        "Do not assume any sort order when no sort parameters are given.",
+        "Do not poll this endpoint on a recurring schedule."
+      ],
+      "expected": {
+        "outcome": "not_executable_until_shared_contract",
+        "reason": "Reads are GET-only today, and a write is a single POST that requires an artifact, so a POST read can be expressed neither way."
+      },
+      "currently_passes": "The origin, path, required static header and the cursor shape all fit existing capabilities; only the read method does not.",
+      "smallest_missing_behavior": "A typed read-only POST with bounded reviewed inputs, selected response fields and a bounded cursor, reviewed before dispatch like a write.",
+      "origin": "https://api.notion.com",
+      "references": [
+        "https://developers.notion.com/reference/query-a-data-source",
+        "https://developers.notion.com/reference/retrieve-a-data-source",
+        "https://developers.notion.com/reference/versioning",
+        "https://developers.notion.com/guides/get-started/upgrade-guide-2025-09-03"
+      ],
+      "identity": {
+        "path": "/v1/users/me",
+        "method": "GET",
+        "subject_pointer": "/id",
+        "label_pointer": "/name",
+        "label_limitation": "The current user reference marks only object and id as always present, and name as optional rather than nullable, so a label pointer needs a reviewed alternative."
+      },
+      "documented_response_provenance": "The required list fields type, page_or_data_source, object, next_cursor, has_more and results come from the documented response schema; the empty results array is synthesized.",
+      "pagination": {
+        "protocol": "documented cursor via start_cursor in, next_cursor out",
+        "stop_signal": "has_more false, or the 10,000 result cap with request_status set",
+        "note": "Notion states cursors are opaque and must not be parsed, validated or stored."
+      },
+      "cancellation": "A cancelled query must stop before dispatch, because a query consumes part of the documented request limit and Steed must not resend it automatically."
+    },
+    {
+      "id": "linear_graphql_viewer_gated",
+      "provider": "Linear",
+      "kind": "gated_post_read",
+      "purpose": "Linear reads are GraphQL POSTs whose errors array can accompany HTTP 200.",
+      "request": {
+        "method": "POST",
+        "path": "/graphql",
+        "headers": {
+          "Authorization": "Bearer <API key or OAuth token>",
+          "Content-Type": "application/json"
+        }
+      },
+      "reviewed_inputs": {
+        "query": "query Me { viewer { id name email } }",
+        "variables": {},
+        "body_schema_documented": false,
+        "body_note": "Linear documents only the example payload. Field-level requiredness for query, variables and operationName is not published, so only a fixed reviewed query string and empty variables are recorded here."
+      },
+      "documented_body_fields": {
+        "query": "documented by example only; no body schema is published",
+        "variables": "unverified in the documentation",
+        "operationName": "unverified in the documentation"
+      },
+      "documented_response": {
+        "data": {
+          "viewer": {
+            "id": "fixture-user-id",
+            "name": "Fixture User",
+            "email": "fixture@example.test"
+          }
+        },
+        "errors": null
+      },
+      "documented_failures": {
+        "400": "Rate limiting is reported as HTTP 400 with the RATELIMITED code inside the errors array, so the status alone is not sufficient.",
+        "partial": "GraphQL queries can partially succeed with HTTP 200, returning data while including errors for failed fields."
+      },
+      "documented_limits": [
+        "Request rate per hour: 2,500 for an API key, 5,000 for an OAuth app, and 600 per IP unauthenticated.",
+        "Hourly complexity budget: 3,000,000 points for an API key, 2,000,000 for an OAuth app, and 100,000 unauthenticated.",
+        "A single query is limited to 10,000 complexity points at any time.",
+        "Default pagination returns up to 50 records."
+      ],
+      "documented_do_not": [
+        "Always check for the errors array before assuming success.",
+        "Avoid polling for each issue.",
+        "Avoid fetching unneeded data."
+      ],
+      "expected": {
+        "outcome": "not_executable_until_shared_contract",
+        "reason": "A POST read is inexpressible, and an application-level errors array would also need an error contract that reports partial success honestly."
+      },
+      "currently_passes": "Bearer auth and the origin fit existing capabilities; the read method, the body and the application-level error array do not.",
+      "smallest_missing_behavior": "A typed read-only POST with a reviewed query string, bounded inputs and a response projection that surfaces an errors array as a failure rather than as data.",
+      "origin": "https://api.linear.app",
+      "references": [
+        "https://linear.app/developers/graphql",
+        "https://linear.app/developers/rate-limiting"
+      ],
+      "official_example_query": "query Me {\n  viewer {\n    id\n    name\n    email\n  }\n}",
+      "synthesized_response": {
+        "data": {
+          "viewer": {
+            "id": "fixture-user-id",
+            "name": "Fixture User",
+            "email": "fixture@example.test"
+          }
+        },
+        "errors": null
+      },
+      "response_provenance": "data.viewer is synthesized from the documented query's selection set; Linear publishes no example response for the viewer query, so the shape comes from the query text and the documented standard GraphQL envelope.",
+      "cancellation": "A cancelled read must stop before dispatch and must never be retried, because Linear may have counted the request against the rate or complexity budget.",
+      "identity": {
+        "note": "Linear has no separate identity endpoint. The viewer query is the documented way to get information about the authenticated user, and it is a POST like every other Linear read.",
+        "documented_example": "query Me { viewer { id name email } }",
+        "subject_pointer": "/data/viewer/id",
+        "label_pointer": "/data/viewer/name",
+        "label_limitation": "No field nullability is documented for the viewer object."
+      }
+    },
+    {
+      "id": "dropbox_account_and_folder_reads_gated",
+      "provider": "Dropbox",
+      "kind": "gated_post_read",
+      "purpose": "Dropbox reads are RPC POSTs whose argument and result live in the HTTP body.",
+      "request": {
+        "method": "POST",
+        "path": "/2/files/list_folder",
+        "headers": {
+          "Authorization": "Bearer <access token>",
+          "Content-Type": "application/json"
+        }
+      },
+      "reviewed_inputs": {
+        "path": "required folder path or id",
+        "recursive": false,
+        "include_deleted": false,
+        "limit": 2000
+      },
+      "documented_response": {
+        "entries": [],
+        "cursor": "fixture-cursor",
+        "has_more": false
+      },
+      "documented_identity": {
+        "path": "/2/users/get_current_account",
+        "response_fields": [
+          "account_id",
+          "name.display_name",
+          "email",
+          "email_verified",
+          "country"
+        ],
+        "label_pointer": "/name/display_name",
+        "subject_pointer": "/account_id"
+      },
+      "documented_failures": {
+        "400": "BadInputError",
+        "401": "AuthError with the error field in the body",
+        "429": "RateLimitError with a retry-after header or retry_after field",
+        "5xx": "InternalServerError"
+      },
+      "documented_limits": [
+        "limit is capped at 2000 entries and is approximate.",
+        "A list_folder or list_folder/continue call may return a RateLimitError when duplicate calls run simultaneously for the same user and app."
+      ],
+      "documented_do_not": [
+        "Do not use email as an account key; use account_id.",
+        "Do not rely on email without checking email_verified.",
+        "Do not send app credentials to a route declared auth = user.",
+        "Do not use recursive listing on a huge tree."
+      ],
+      "expected": {
+        "outcome": "not_executable_until_shared_contract",
+        "reason": "Identity is a POST as well, so neither identity nor the folder read is expressible with GET-only reads."
+      },
+      "currently_passes": "Bearer auth and the origin fit existing capabilities; the read method and the request-object body do not.",
+      "smallest_missing_behavior": "A typed read-only POST able to carry a bounded reviewed request object and a projected response, with typed error unions surfaced as failures.",
+      "origin": "https://api.dropboxapi.com",
+      "references": [
+        "https://github.com/dropbox/dropbox-api-spec/blob/main/users.stone",
+        "https://github.com/dropbox/dropbox-api-spec/blob/main/files.stone",
+        "https://www.dropbox.com/developers/documentation/http/documentation"
+      ],
+      "identity": {
+        "path": "/2/users/get_current_account",
+        "method": "POST",
+        "body": {},
+        "body_note": "The spec declares the argument type as Void, so the request body is empty; the official SDK still sends JSON with a JSON content type.",
+        "auth": "user",
+        "subject_pointer": "/account_id",
+        "label_pointer": "/name/display_name",
+        "documented_response_fields": [
+          "account_id, the user's unique and stable Dropbox ID",
+          "name.display_name, documented as usable directly to represent the account name",
+          "email, documented as unreliable without email_verified",
+          "email_verified",
+          "country, a nullable two-letter code present only on the full account"
+        ],
+        "label_limitation": "profile_photo_url is documented as nullable, and country is documented as optional and absent from the plain account variant, so only name.display_name is projected.",
+        "documented_prohibition": "The spec states apps should not use email as a key for account identification and should use account_id instead, and that the route is declared auth = user, so app credentials are not accepted."
+      },
+      "continuation": {
+        "path": "/2/files/list_folder/continue",
+        "method": "POST",
+        "body": {
+          "cursor": "<cursor from the previous list_folder response>"
+        },
+        "body_note": "The spec declares a single cursor field, required.",
+        "documented": "If the result's has_more field is true, call list_folder/continue with the returned cursor to retrieve more entries. A reset error means the cursor was invalidated and list_folder must be called again for a new cursor.",
+        "same_response_shape": "entries, cursor and has_more, all required and non-nullable"
+      },
+      "empty_and_continued_pages": {
+        "empty_page": {
+          "documented": "A folder with no entries returns an empty entries array with has_more false; the spec types all three result fields as required and non-nullable."
+        },
+        "continued_page": {
+          "documented": "A continued page returns the same three fields, with a new cursor and has_more reflecting whether more remains."
+        }
+      },
+      "cancellation": "A cancelled read must stop before dispatch, and a cancelled continuation must not be retried, because the spec documents that duplicate concurrent list calls can be rate limited.",
+      "verification_note": "The dropbox.com documentation page is rendered client side and its prose could not be read, so the route, body and field facts here come from the official API specification repository and the official SDKs it links. Treat the error body shape as unverified: error_summary appears in no readable official source."
     }
-  ]
+  ],
+  "gated_post_read_note": "These cases stay gated on purpose: a read is never disguised as a create, arbitrary queries are not permitted, and no origin or header rule is bypassed. Nothing here ships as a profile.",
+  "documentation_check_date": "2026-10-04",
+  "evidence_note": "Each case separates an official example body, quoted from the provider's own documentation, from a synthesized document written for Steed's synthetic transport. A synthesized document proves Steed's behaviour against a documented shape and is never evidence about the provider."
 }

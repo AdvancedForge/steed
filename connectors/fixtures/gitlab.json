@@ -124,5 +124,8 @@
       "status": 404,
       "documented": "The general troubleshooting table documents 404 as a resource that could not be accessed, or one the user is not authorized to access, so an invisible issue and a missing issue are not distinguishable."
     }
+  },
+  "token_lifetime": {
+    "documented": "Personal access tokens take an expiry date and expire at midnight UTC on that date. With no date the expiry is 365 days out and cannot be more than 365 days by default. An expired token can no longer authenticate and cannot be reactivated, so a new one is required."
   }
 }

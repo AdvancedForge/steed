@@ -1342,9 +1342,11 @@ class ExecutableContractCaseTests(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         for case in self.cases:
             with self.subTest(case=case["id"]):
-                self.assertIn(case["provider"], CONTRACT_ORIGINS)
                 self.assertIn(case["kind"], self.registry["kinds"])
-                self.assertEqual(case["request"]["method"], "GET")
+                if case["kind"] != "gated_post_read":
+                    # A case that runs needs an origin the engine can accept.
+                    self.assertIn(case["provider"], CONTRACT_ORIGINS)
+                    self.assertEqual(case["request"]["method"], "GET")
                 self.assertTrue(case["request"]["path"].startswith("/"))
                 self.assertTrue(case["currently_passes"].endswith("."))
                 self.assertTrue(case["smallest_missing_behavior"].endswith("."))
@@ -1607,7 +1609,7 @@ class RaindropProfileTests(ProfileCase):
         )
         self.assertEqual(
             self.api.calls[-1][1],
-            "https://api.raindrop.io/rest/v1/collections/8492393",
+            "https://api.raindrop.io/rest/v1/collection/8492393",
         )
         self.assertEqual(self.api.posts, [])
         collection = self.recipe.tools[0]
@@ -1790,3 +1792,897 @@ class Microsoft365ReadProfileTests(ProfileCase):
                     self.read(self.adapter, "read_drive_item", "fixture-item")
                 self.api.failure = None
         self.assertEqual(self.api.posts, [])
+
+
+class ProjectedFieldSetTests(ProfileCase):
+    """C8: only fields a provider returns by default may be projected."""
+
+    def setUp(self):
+        self.asana = json.loads((FIXTURES / "asana.json").read_text("utf-8"))
+        self.raindrop = json.loads((FIXTURES / "raindrop.json").read_text("utf-8"))
+
+    def test_no_asana_opt_in_field_is_projected(self):
+        opt_in = {
+            "created_by",
+            "dependencies",
+            "dependents",
+            "external",
+            "html_notes",
+            "has_subtasks_date_mismatch",
+            "is_rendered_as_separator",
+            "num_subtasks",
+            "current_status",
+            "project_brief",
+            "created_from_template",
+        }
+        projected = set()
+        for tool in packaged_recipe("asana").tools:
+            for _, pointer in tool.response:
+                for field in pointer.strip("/").split("/"):
+                    projected.add(field)
+        self.assertFalse(projected & opt_in, projected & opt_in)
+        # notes is returned by default and is projected; html_notes is not.
+        self.assertIn("notes", projected)
+        self.assertNotIn("html_notes", projected)
+        self.assertTrue(any("Opt In" in note for note in self.asana["notes"]))
+
+    def test_asana_projection_stays_inside_the_documented_schema(self):
+        declared = {
+            "gid",
+            "resource_type",
+            "name",
+            "notes",
+            "archived",
+            "completed",
+            "due_on",
+            "start_on",
+            "owner",
+            "assignee",
+            "completed_at",
+            "permalink_url",
+        }
+        for tool in packaged_recipe("asana").tools:
+            with self.subTest(tool=tool.name):
+                for label, pointer in tool.response:
+                    self.assertIn(pointer.strip("/").split("/")[-1], declared, label)
+        # A project has no assignee and a task has no projects field.
+        project = {p for _, p in packaged_recipe("asana").tools[0].response}
+        task = {p for _, p in packaged_recipe("asana").tools[1].response}
+        self.assertNotIn("/data/assignee", project)
+        self.assertNotIn("/data/projects", task)
+
+    def test_raindrop_uses_the_documented_singular_item_route(self):
+        read = packaged_recipe("raindrop").tools[0]
+        self.assertEqual(read.path, "/rest/v1/collection/{destination}")
+        self.assertEqual(
+            [p for _, p in read.response],
+            ["/item/_id", "/item/title", "/item/count", "/item/view"],
+        )
+        listing = packaged_recipe("raindrop").tools[1]
+        self.assertEqual(listing.path, "/rest/v1/collections")
+        self.assertIn(
+            "no failure body is documented", " ".join(self.raindrop["notes"]).lower()
+        )
+        self.assertEqual(
+            self.raindrop["errors"]["application_failure"]["status"], "undocumented"
+        )
+
+    def test_token_lifetime_facts_are_recorded_per_provider(self):
+        # C8 asks for expiry to be tracked per provider rather than assumed.
+        expected = {
+            "asana": ("persistent by default", "no documented expiry duration"),
+            "gitlab": ("midnight UTC", "cannot be reactivated"),
+            "github": ("1 and 366", "30 days"),
+            "todoist": ("no expiry is documented", "401"),
+        }
+        for provider, phrases in expected.items():
+            lifetime = json.loads((FIXTURES / (provider + ".json")).read_text("utf-8"))[
+                "token_lifetime"
+            ]["documented"]
+            with self.subTest(provider=provider):
+                for phrase in phrases:
+                    self.assertIn(phrase.lower(), lifetime.lower(), provider)
+
+    def test_the_setup_guide_states_each_token_lifetime(self):
+        guide = (ROOT / "connectors" / "SETUP.md").read_text("utf-8").lower()
+        for phrase in (
+            "persistent by default",
+            "midnight utc",
+            "between 1 and 366 days",
+            "no expiry is documented for a todoist personal token",
+        ):
+            self.assertIn(phrase, guide)
+
+
+class AcceptanceWorksheetTests(unittest.TestCase):
+    """C6: a complete, reproducible worksheet with live fields left empty."""
+
+    def setUp(self):
+        self.worksheet = json.loads(
+            (FIXTURES / "acceptance_worksheet.json").read_text("utf-8")
+        )
+        self.rows = {row["provider"]: row for row in self.worksheet["providers"]}
+
+    def test_a_worksheet_row_exists_for_every_shipped_provider(self):
+        self.assertEqual(
+            set(self.rows),
+            {
+                "asana",
+                "gitlab",
+                "github",
+                "microsoft365",
+                "raindrop",
+                "todoist",
+                "zotero",
+            },
+        )
+        expectations = set(self.worksheet["fields"]) - {
+            "date",
+            "api_version",
+            "case",
+            "setup_and_least_permission",
+        }
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                self.assertTrue(row["reviewed_source"])
+                self.assertTrue(row["official_reference"].startswith("https://"))
+                self.assertTrue(row["tools"])
+                self.assertTrue(row["least_permission"].endswith("."))
+                self.assertEqual(
+                    sorted(row["synthetic_expectations"]), sorted(expectations)
+                )
+
+    def phase_contract(self):
+        return {
+            phase["id"]: phase for phase in self.worksheet["phase_contract"]["phases"]
+        }
+
+    def phase_sequence(self, row):
+        """The phase sequence actually required, with not-applicable phases dropped."""
+
+        required = [
+            phase
+            for phase in self.worksheet["phase_contract"]["phases"]
+            if phase.get("applies_to") != "services_offering_a_write"
+            or any(tool.startswith("create_") for tool in row["tools"])
+        ]
+        return [phase["id"] for phase in required]
+
+    def test_phase_order_is_structurally_enforced_for_every_service(self):
+        phases = self.phase_contract()
+        self.assertEqual(phases["disconnect"].get("last"), True)
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                recorded = [step["phase"] for step in row["steps"]]
+                required = self.phase_sequence(row)
+                # Every required phase appears, in order, with no phase after
+                # disconnect and no unknown phase.
+                position = 0
+                for phase in required:
+                    with self.subTest(provider=provider, phase=phase):
+                        self.assertIn(phase, recorded[position:], provider)
+                        index = recorded.index(phase, position)
+                        self.assertGreaterEqual(index, position, provider)
+                        position = index + 1
+                self.assertNotIn("disconnect", recorded[:-1], provider)
+                self.assertEqual(recorded[-1], "disconnect", provider)
+                for step in row["steps"]:
+                    self.assertIn(step["phase"], phases, provider)
+                    self.assertTrue(step["operation"].strip(), provider)
+                    self.assertLessEqual(len(step["operation"]), 400, provider)
+
+    def test_step_statuses_declare_themselves_rather_than_implying_success(self):
+        allowed = set(self.worksheet["step_statuses"])
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                for step in row["steps"]:
+                    self.assertIn(
+                        step.get("status", "executable"),
+                        allowed | {"executable"},
+                        provider,
+                    )
+
+    def test_write_and_receipt_phases_are_explicitly_unavailable_when_read_only(self):
+        writes = {
+            provider: any(tool.startswith("create_") for tool in row["tools"])
+            for provider, row in self.rows.items()
+        }
+        for provider, row in self.rows.items():
+            marked = [
+                step.get("status", "executable")
+                for step in row["steps"]
+                if step["phase"] in ("write", "receipt")
+            ]
+            with self.subTest(provider=provider):
+                if writes[provider]:
+                    self.assertNotIn("not_applicable", marked, provider)
+                    for step in row["steps"]:
+                        if step["phase"] in ("write", "receipt"):
+                            self.assertTrue(step["operation"].strip())
+                else:
+                    # A read-only service says so instead of leaving a gap.
+                    self.assertEqual(set(marked), {"not_applicable"}, provider)
+
+    def test_uncertain_writes_are_checked_in_the_service_and_never_resent(self):
+        for provider, row in self.rows.items():
+            if not any(tool.startswith("create_") for tool in row["tools"]):
+                continue
+            joined = " ".join(step["operation"] for step in row["steps"]).lower()
+            with self.subTest(provider=provider):
+                self.assertIn("uncertain", joined, provider)
+                self.assertIn("do not resend", joined, provider)
+                self.assertIn("service ui", joined, provider)
+
+    def test_the_github_confirming_read_is_recorded_once_and_called_manual(self):
+        row = self.rows["github"]
+        receipts = [s for s in row["steps"] if s["phase"] == "receipt"]
+        self.assertEqual(len(receipts), 2, "one receipt and one uncertain check")
+        manual = [s for s in receipts if "manual" in s["operation"].lower()]
+        self.assertEqual(len(manual), 1, "the confirming read appears exactly once")
+        self.assertIn("not automatic reconciliation", manual[0]["operation"].lower())
+        self.assertEqual(
+            sum(
+                1
+                for s in row["steps"]
+                if "not automatic reconciliation" in s["operation"].lower()
+            ),
+            1,
+        )
+
+    def test_the_zotero_mismatch_check_does_not_claim_opening_a_library_changes_a_read(
+        self,
+    ):
+        row = self.rows["zotero"]
+        joined = " ".join(step["operation"] for step in row["steps"]).lower()
+        self.assertIn("opening another library in the service does not change", joined)
+        self.assertIn("item key that belongs to a different library", joined)
+        self.assertIn("separately reviewed copy", joined)
+        # The optional alternative is labelled, and cleanup is covered.
+        optional = [
+            step
+            for step in row["steps"]
+            if step.get("status") == "optional_separately_instantiated"
+        ]
+        self.assertEqual(len(optional), 1)
+        self.assertIn("disable that second profile", optional[0]["operation"].lower())
+        self.assertIn(
+            "both accounts", joined, "cleanup mentions the optional second account"
+        )
+
+    def test_the_gitlab_quick_action_subcase_is_bounded_or_pending(self):
+        row = self.rows["gitlab"]
+        quick = [
+            step
+            for step in row["steps"]
+            if "quick-action" in step["operation"].lower()
+            or "quick action" in step["operation"].lower()
+        ]
+        self.assertEqual(len(quick), 1)
+        step = quick[0]
+        self.assertEqual(step["status"], "pending_owner_approval")
+        operation = step["operation"].lower()
+        self.assertIn("non-destructive", operation)
+        self.assertIn("cleanup", operation)
+        self.assertIn("leave pending", operation)
+        # The ordinary write step must not smuggle a quick action in.
+        plain = [
+            step
+            for step in row["steps"]
+            if step["phase"] == "write"
+            and step.get("status") != "pending_owner_approval"
+        ]
+        self.assertEqual(len(plain), 1)
+        self.assertIn("no slash command", plain[0]["operation"].lower())
+
+    def test_live_fields_are_empty_and_cannot_be_filled_from_a_fixture(self):
+        self.assertIn(
+            "Live fields stay empty",
+            self.worksheet["live_fields_may_not_be_filled_from_fixtures"],
+        )
+        self.assertIn(
+            "synthetic_expectations",
+            self.worksheet["live_fields_may_not_be_filled_from_fixtures"],
+        )
+        self.assertIn("a fixture cannot fill a live field", self.worksheet["note"])
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                self.assertEqual(sorted(row["live"]), sorted(self.worksheet["fields"]))
+                for field, value in row["live"].items():
+                    self.assertEqual(value, "", provider + "." + field)
+                self.assertEqual(row["live"]["case"], "")
+                self.assertTrue(row["synthetic_expectations"])
+
+    def test_live_acceptance_needs_an_approved_task_and_specific_preconditions(self):
+        note = (
+            self.worksheet["note"] + " " + " ".join(self.worksheet["how_to_use"])
+        ).lower()
+        self.assertIn("no account has been connected", note)
+        self.assertIn("never upgraded to live by editing this file", note)
+        self.assertIn(
+            "a fixture cannot fill a live field", self.worksheet["note"].lower()
+        )
+        self.assertTrue(self.worksheet["live_acceptance_preconditions"])
+        self.assertTrue(
+            any(
+                "maintainer-approved live acceptance task" in item
+                for item in self.worksheet["live_acceptance_preconditions"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "delete" in item
+                for item in self.worksheet["live_acceptance_preconditions"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "credential" in item
+                for item in self.worksheet["live_acceptance_preconditions"]
+            )
+        )
+
+
+class GatedPostReadCaseTests(unittest.TestCase):
+    """C7: official POST-read contracts, gated until a shared contract exists."""
+
+    def setUp(self):
+        self.registry = json.loads(
+            (FIXTURES / "executable_cases.json").read_text("utf-8")
+        )
+        self.gated = [
+            case for case in self.registry["cases"] if case["kind"] == "gated_post_read"
+        ]
+
+    def test_every_priority_family_has_an_official_post_read_case(self):
+        self.assertEqual(
+            sorted(case["provider"] for case in self.gated),
+            ["Dropbox", "Linear", "Notion"],
+            "one gated POST-read case per priority family",
+        )
+        self.assertEqual(len(self.gated), 3)
+        self.assertIn("gated_post_read", self.registry["kinds"])
+        self.assertIn(
+            "never disguised as a create", self.registry["gated_post_read_note"]
+        )
+
+    def test_each_gated_case_records_the_official_wire_contract(self):
+        for case in self.gated:
+            with self.subTest(case=case["id"]):
+                request = case["request"]
+                self.assertEqual(request["method"], "POST")
+                self.assertTrue(request["path"].startswith("/"))
+                self.assertIn("Authorization", request["headers"])
+                self.assertTrue(case["reviewed_inputs"])
+                self.assertTrue(case["documented_response"])
+                self.assertTrue(case["documented_failures"])
+                self.assertTrue(case["documented_limits"])
+                self.assertTrue(case["documented_do_not"])
+                self.assertTrue(case["currently_passes"].endswith("."))
+                self.assertTrue(case["smallest_missing_behavior"].endswith("."))
+                self.assertEqual(
+                    case["expected"]["outcome"],
+                    "not_executable_until_shared_contract",
+                )
+                self.assertTrue(case["expected"]["reason"].endswith("."))
+
+    def test_each_gated_case_is_self_contained_for_the_runtime_owner(self):
+        self.assertRegex(
+            self.registry["documentation_check_date"], r"^\d{4}-\d{2}-\d{2}$"
+        )
+        origins = {
+            "Notion": "https://api.notion.com",
+            "Linear": "https://api.linear.app",
+            "Dropbox": "https://api.dropboxapi.com",
+        }
+        for case in self.gated:
+            with self.subTest(case=case["id"]):
+                self.assertEqual(case["origin"], origins[case["provider"]])
+                self.assertTrue(case["references"])
+                for reference in case["references"]:
+                    self.assertTrue(reference.startswith("https://"), reference)
+                # A synthesized document is labelled as such, never as an example.
+                if (
+                    "response_provenance" in case
+                    or "documented_response_provenance" in case
+                ):
+                    provenance = case.get(
+                        "response_provenance",
+                        case.get("documented_response_provenance"),
+                    )
+                    self.assertTrue(provenance.strip())
+                self.assertIn("cancellation", case)
+                self.assertIn("before dispatch", case["cancellation"])
+
+    def test_linear_case_qualifies_every_rate_and_complexity_figure(self):
+        case = next(c for c in self.gated if c["provider"] == "Linear")
+        self.assertIn("https://linear.app/developers/rate-limiting", case["references"])
+        limits = " ".join(case["documented_limits"])
+        for phrase in (
+            "2,500 for an API key",
+            "5,000 for an OAuth app",
+            "600 per IP unauthenticated",
+            "3,000,000 points for an API key",
+            "2,000,000 for an OAuth app",
+            "100,000 unauthenticated",
+            "10,000 complexity points",
+        ):
+            self.assertIn(phrase, limits, phrase)
+        # No unqualified complexity budget may remain.
+        self.assertNotIn("the hourly complexity budget is", limits)
+        # Identity is a POST, and the body schema is undocumented.
+        self.assertIn("no separate identity endpoint", case["identity"]["note"])
+        self.assertFalse(case["reviewed_inputs"]["body_schema_documented"])
+        self.assertIn("not published", case["reviewed_inputs"]["body_note"])
+        self.assertIn("query Me", case["official_example_query"])
+
+    def test_notion_case_separates_documented_fields_from_synthesized_documents(self):
+        case = next(c for c in self.gated if c["provider"] == "Notion")
+        self.assertIn("synthesized", case["documented_response_provenance"])
+        self.assertIn("2025-09-03", case["request"]["headers"]["Notion-Version"])
+        identity = case["identity"]
+        self.assertEqual(identity["path"], "/v1/users/me")
+        self.assertEqual(identity["subject_pointer"], "/id")
+        self.assertIn("optional rather than nullable", identity["label_limitation"])
+        self.assertTrue(case["pagination"]["protocol"].startswith("documented cursor"))
+        self.assertIn("must not be parsed", case["pagination"]["note"])
+
+    def test_dropbox_case_documents_identity_body_and_continuation(self):
+        case = next(c for c in self.gated if c["provider"] == "Dropbox")
+        identity = case["identity"]
+        self.assertEqual(identity["method"], "POST")
+        self.assertEqual(identity["path"], "/2/users/get_current_account")
+        self.assertEqual(identity["body"], {})
+        self.assertEqual(identity["auth"], "user")
+        self.assertIn("Void", identity["body_note"])
+        self.assertIn("account_id", identity["documented_prohibition"])
+        continuation = case["continuation"]
+        self.assertEqual(continuation["path"], "/2/files/list_folder/continue")
+        self.assertEqual(continuation["method"], "POST")
+        self.assertEqual(list(continuation["body"]), ["cursor"])
+        self.assertIn("has_more", continuation["same_response_shape"])
+        pages = case["empty_and_continued_pages"]
+        self.assertIn("empty entries array", pages["empty_page"]["documented"])
+        self.assertIn("new cursor", pages["continued_page"]["documented"])
+        # The unverifiable error envelope is called out, not quietly dropped.
+        self.assertIn("error_summary", case["verification_note"])
+        self.assertIn("unverified", case["verification_note"].lower())
+
+    def test_gated_cases_carry_no_credential_and_ship_no_profile(self):
+        for case in self.gated:
+            body = json.dumps(case).lower()
+            with self.subTest(case=case["id"]):
+                for marker in ("secret_", "ntn_", "ghp_", "glpat-"):
+                    self.assertNotIn(marker, body)
+                # A gated read is never packaged as a profile or a template.
+                for directory in (PACKAGED, PACKAGED / "templates"):
+                    self.assertFalse(
+                        (directory / (case["provider"] + ".json")).exists()
+                    )
+                    self.assertFalse(
+                        (directory / (case["provider"].lower() + ".json")).exists()
+                    )
+
+    def test_notion_case_records_the_documented_prohibitions_and_limits(self):
+        case = next(c for c in self.gated if c["provider"] == "Notion")
+        joined = " ".join(case["documented_do_not"])
+        self.assertIn("Do not parse, validate or store cursors", joined)
+        self.assertIn("in_trash", joined)
+        self.assertIn("sort order", joined)
+        self.assertIn("10,000 results", " ".join(case["documented_limits"]))
+        self.assertIn("is_archived", case["documented_body_fields"])
+        self.assertIn("2025-09-03", json.dumps(case["request"]["headers"]))
+
+    def test_linear_case_records_partial_success_as_a_failure_not_data(self):
+        case = next(c for c in self.gated if c["provider"] == "Linear")
+        self.assertIn("partial", case["documented_failures"])
+        self.assertIn("200", case["documented_failures"]["partial"])
+        self.assertIn(
+            "errors array before assuming success",
+            " ".join(case["documented_do_not"]),
+        )
+        self.assertIn("10,000 complexity points", " ".join(case["documented_limits"]))
+        self.assertEqual(
+            case["reviewed_inputs"]["query"], "query Me { viewer { id name email } }"
+        )
+
+    def test_dropbox_case_separates_identity_from_listing_and_names_the_limits(self):
+        case = next(c for c in self.gated if c["provider"] == "Dropbox")
+        identity = case["documented_identity"]
+        self.assertEqual(identity["subject_pointer"], "/account_id")
+        self.assertEqual(identity["label_pointer"], "/name/display_name")
+        joined = " ".join(case["documented_do_not"])
+        self.assertIn("email as an account key", joined)
+        self.assertIn("email_verified", joined)
+        self.assertIn("2000", " ".join(case["documented_limits"]))
+        # Identity is a POST too, so nothing about this family is expressible yet.
+        self.assertIn("Identity is a POST", case["expected"]["reason"])
+
+    def test_shared_capability_queue_tracks_post_reads_as_still_open(self):
+        shared = json.loads((FIXTURES / "shared_capabilities.json").read_text("utf-8"))
+        group = next(g for g in shared["groups"] if g["id"] == "post_reads")
+        self.assertNotIn("status", group)
+        self.assertEqual(sorted(group["services"]), ["Dropbox", "Linear", "Notion"])
+        for requirement in group["requirements"]:
+            self.assertTrue(requirement["blocks"])
+
+
+def _project(adapter, tool_name, document):
+    """The labels a tool selects, from a documented response document."""
+
+    tool = next(t for t in adapter.recipe.tools if t.name == tool_name)
+    from services.connector_recipes import select
+
+    return {label: select(document, pointer) for label, pointer in tool.response}
+
+
+class StarterWorkflowTests(ProfileCase):
+    """C9: a whole task-to-result run for the starters that can express one.
+
+    Each test walks the shape a real task would: connect an account, read context,
+    build a draft, review the exact payload, dispatch it once, read the receipt, then
+    confirm the result by a follow-up read the caller performs. The confirming read is
+    never claimed as automatic reconciliation, an altered draft is refused before any
+    dispatch, and an uncertain write is never resent.
+    """
+
+    def workflow(
+        self,
+        adapter,
+        read_tool,
+        read_destination,
+        write_tool,
+        write_destination,
+        confirm_tool,
+        confirm_path,
+        confirm_document,
+        artifact,
+    ):
+        api, cancelled = self.api, self.cancelled
+
+        context = self.read(adapter, read_tool, read_destination)
+        self.assertEqual(context.state, "succeeded")
+        self.assertEqual(api.posts, [], "reading context must not write")
+
+        request, definition, review = self.reviewed_create(
+            adapter, write_tool, write_destination, artifact
+        )
+        # An unreviewed payload is refused before dispatch.
+        self.assertEqual(definition.execute(request, cancelled).state, "not_applied")
+        self.assertEqual(api.posts, [])
+        receipt = definition.execute(replace(request, review=review), cancelled)
+        self.assertEqual(receipt.state, "succeeded")
+        self.assertEqual(len(api.posts), 1, "exactly one dispatch")
+
+        # The service stores what was reviewed, and the caller reads it back.
+        api.data["routes"][confirm_path] = confirm_document
+        confirmed = self.read(
+            adapter, confirm_tool, urlsplit(confirm_path).path.strip("/").split("/")[-1]
+        )
+        self.assertEqual(confirmed.state, "succeeded")
+        self.assertEqual(
+            json.loads(confirmed.text),
+            _project(adapter, confirm_tool, confirm_document),
+        )
+        self.assertEqual(len(api.posts), 1, "the confirming read must not write")
+        return receipt, confirmed
+
+    def test_todoist_read_draft_review_receipt_and_confirming_read(self):
+        adapter = self.install(packaged_recipe("todoist"), "todoist")
+        receipt, confirmed = self.workflow(
+            adapter,
+            "read_task",
+            "6XGgmFVcrG5RRjVr",
+            "create_task",
+            "account",
+            "read_task",
+            "/api/v1/tasks/6XGgmFVcrG5RRjVrC",
+            {"id": "6XGgmFVcrG5RRjVrC", "content": "Workflow title"},
+            draft_artifact("Workflow draft", "Workflow title"),
+        )
+        self.assertEqual(
+            self.api.posts,
+            [
+                (
+                    "/api/v1/tasks",
+                    {"content": "Workflow title", "description": "Workflow draft"},
+                )
+            ],
+        )
+        self.assertEqual(json.loads(receipt.text)["id"], "6XGgmFVcrG5RRjVrC")
+        self.assertEqual(json.loads(confirmed.text)["content"], "Workflow title")
+        self.assertNotIn(TOKEN, confirmed.text)
+
+    def test_todoist_uncertain_create_is_reported_once_and_never_resent(self):
+        adapter = self.install(packaged_recipe("todoist"), "todoist")
+        api, cancelled = self.api, self.cancelled
+        self.read(adapter, "read_task", "6XGgmFVcrG5RRjVr")
+        request, definition, review = self.reviewed_create(
+            adapter, "create_task", "account", draft_artifact("Draft", "Body")
+        )
+        api.fail("POST", "/api/v1/tasks", 429)
+        outcome = definition.execute(replace(request, review=review), cancelled)
+        self.assertEqual(outcome.state, "uncertain")
+        self.assertIn("do not resend automatically", outcome.text)
+        self.assertEqual(len(api.posts), 1)
+        # Clearing the failure changes nothing: Steed does not retry on its own.
+        api.failure = None
+        self.read(adapter, "read_task", "6XGgmFVcrG5RRjVr")
+        self.assertEqual(len(api.posts), 1)
+
+    def github_recipe(self):
+        template = (PACKAGED / "templates" / "github-owner-template.json").read_bytes()
+        return parse_recipe(
+            template.replace(
+                b"REPLACE-WITH-YOUR-GITHUB-OWNER", b"fixture-owner"
+            ).replace(b"REPLACE-WITH-YOUR-GITHUB-REPOSITORY", b"fixture-repo")
+        )
+
+    def test_github_workflow_confirms_the_created_issue_by_a_manual_read(self):
+        adapter = self.install(self.github_recipe(), "github")
+        receipt, confirmed = self.workflow(
+            adapter,
+            "read_repository",
+            "account",
+            "create_issue",
+            "account",
+            "read_issue",
+            "/repos/fixture-owner/fixture-repo/issues/1",
+            {
+                "number": 1,
+                "title": "Workflow issue",
+                "state": "open",
+                "state_reason": None,
+                "body": "Workflow draft body",
+                "html_url": "https://github.com/fixture-owner/fixture-repo/issues/1",
+            },
+            draft_artifact("Workflow draft body", "Workflow issue"),
+        )
+        self.assertEqual(
+            self.api.posts,
+            [
+                (
+                    "/repos/fixture-owner/fixture-repo/issues",
+                    {"title": "Workflow issue", "body": "Workflow draft body"},
+                )
+            ],
+        )
+        self.assertEqual(json.loads(receipt.text)["number"], 1)
+        self.assertEqual(json.loads(confirmed.text)["body"], "Workflow draft body")
+        # The confirming read is a caller-driven read, not a reconciliation step.
+        self.assertIsNone(self.definition(adapter, "create_issue").reconcile)
+
+    def test_github_workflow_refuses_an_altered_draft_before_any_dispatch(self):
+        adapter = self.install(self.github_recipe(), "github")
+        api, cancelled = self.api, self.cancelled
+        self.read(adapter, "read_repository", "account")
+        request, definition, review = self.reviewed_create(
+            adapter, "create_issue", "account", draft_artifact("Body", "Original")
+        )
+        for altered in ('{"title": "Rewritten", "body": "Body"}', "{}"):
+            with self.subTest(altered=altered):
+                outcome = definition.execute(
+                    replace(request, review=replace(review, before=altered)), cancelled
+                )
+                self.assertEqual(outcome.state, "not_applied")
+                self.assertEqual(api.posts, [])
+
+    def test_gitlab_workflow_ends_at_the_receipt_and_says_how_to_confirm_it(self):
+        """The generic GitLab profile stops at the receipt.
+
+        It ships read_project and create_issue, so the iid in the receipt is the
+        thing a person confirms in the GitLab UI. The project template adds
+        read_issue, which the readiness matrix records as the confirming read.
+        """
+
+        adapter = self.install(packaged_recipe("gitlab"), "gitlab")
+        api, cancelled = self.api, self.cancelled
+        self.assertEqual(self.read(adapter, "read_project", "7").state, "succeeded")
+        request, definition, review = self.reviewed_create(
+            adapter,
+            "create_issue",
+            "7",
+            draft_artifact("Workflow draft description", "Workflow issue"),
+        )
+        receipt = definition.execute(replace(request, review=review), cancelled)
+        self.assertEqual(receipt.state, "succeeded")
+        self.assertEqual(
+            api.posts,
+            [
+                (
+                    "/api/v4/projects/7/issues",
+                    {
+                        "title": "Workflow issue",
+                        "description": "Workflow draft description",
+                    },
+                )
+            ],
+        )
+        iid = json.loads(receipt.text)["iid"]
+        self.assertEqual(iid, 1)
+        # Nothing claims to confirm it, and this profile has no read that could.
+        self.assertIsNone(definition.reconcile)
+        self.assertNotIn("read_issue", [tool.tool for tool in adapter.tools()])
+        # A repeated read must not create a second issue.
+        self.read(adapter, "read_project", "7")
+        self.assertEqual(len(api.posts), 1)
+
+    def test_a_read_only_starter_produces_a_report_without_a_write(self):
+        adapter = self.install(packaged_recipe("asana"), "asana")
+        result = self.read(adapter, "read_project", "1331")
+        self.assertEqual(result.state, "succeeded")
+        report = {
+            "project": json.loads(result.text),
+            "writes_available": [
+                tool.tool for tool in adapter.tools() if tool.requires_artifact
+            ],
+        }
+        self.assertEqual(report["writes_available"], [])
+        self.assertEqual(self.api.posts, [])
+        self.assertNotIn(TOKEN, json.dumps(report))
+
+
+class AcceptanceReadinessMatrixTests(unittest.TestCase):
+    """C10: provider, task, attempt, phase and outcome, in one reviewable place."""
+
+    def setUp(self):
+        self.matrix = json.loads(
+            (FIXTURES / "acceptance_matrix.json").read_text("utf-8")
+        )
+        self.rows = {row["provider"]: row for row in self.matrix["tasks"]}
+        self.worksheet = json.loads(
+            (FIXTURES / "acceptance_worksheet.json").read_text("utf-8")
+        )
+        self.cases = json.loads((FIXTURES / "executable_cases.json").read_text("utf-8"))
+
+    # Three of the seven providers ship as templates a person fills in.
+    RECIPE_FILES = {
+        "github": "templates/github-owner-template.json",
+        "gitlab": "templates/gitlab-project-template.json",
+        "zotero": "templates/zotero-library-template.json",
+        "microsoft365": "microsoft365-read.json",
+    }
+    # A packaged file whose name is not the provider name.
+    ALIASED_FILES = {"microsoft365-read"}
+
+    def recipe(self, name):
+        relative = self.RECIPE_FILES.get(name, f"{name}.json")
+        return json.loads((PACKAGED / relative).read_text("utf-8"))
+
+    def test_the_matrix_covers_exactly_the_packaged_templates(self):
+        self.assertEqual(
+            sorted(self.rows),
+            sorted(
+                (
+                    set(self.RECIPE_FILES)
+                    | {path.stem for path in PACKAGED.glob("*.json")}
+                )
+                - self.ALIASED_FILES
+            ),
+        )
+        self.assertEqual(
+            sorted(self.rows),
+            sorted(row["provider"] for row in self.worksheet["providers"]),
+        )
+
+    def test_every_row_states_readiness_attempts_phases_and_outcomes(self):
+        vocabulary = self.matrix["vocabulary"]
+        self.assertEqual(self.matrix["version"], 1)
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                self.assertEqual(
+                    [task["task"] for task in row["tasks"]],
+                    ["read_context", "write_draft", "confirm_result"],
+                )
+                for task in row["tasks"]:
+                    self.assertIn(task["readiness"], vocabulary["readiness"])
+                    self.assertIn(task["readiness"], vocabulary["readiness_meaning"])
+                    self.assertIsInstance(task["phases"], list)
+                    self.assertTrue(task["phases"])
+                    self.assertTrue(task["evidence"].strip())
+                    for outcome in task["outcomes"]:
+                        self.assertIn(outcome, vocabulary["outcomes"])
+                    if task["readiness"] == "not_applicable":
+                        self.assertEqual(task["outcomes"], ["not_applicable"])
+                        self.assertEqual(task["attempts"], 0)
+                        self.assertTrue(
+                            task["smallest_missing_behavior"].strip(),
+                            "an unavailable task must name what would enable it",
+                        )
+                    else:
+                        self.assertGreaterEqual(task["attempts"], 1)
+                        self.assertNotIn("not_applicable", task["outcomes"])
+
+    def test_a_write_task_is_claimed_only_where_a_write_tool_exists(self):
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                recipe = self.recipe(provider)
+                writes = [t for t in recipe["tools"] if t.get("effect") == "write"]
+                task = next(t for t in row["tasks"] if t["task"] == "write_draft")
+                self.assertEqual(task["readiness"] == "ready", bool(writes))
+                if not writes:
+                    continue
+                self.assertEqual(task["phases"], ["write", "receipt"])
+                self.assertEqual(task["attempts"], 1, "a write is never resent")
+                self.assertIn("uncertain", task["outcomes"])
+                self.assertIn("blocked", task["outcomes"])
+                self.assertIn("create_", " ".join(t["name"] for t in writes))
+
+    def test_a_read_task_never_claims_a_write_or_an_automatic_retry(self):
+        for provider, row in self.rows.items():
+            task = next(t for t in row["tasks"] if t["task"] == "read_context")
+            with self.subTest(provider=provider):
+                self.assertEqual(task["attempts"], 1)
+                self.assertEqual(task["phases"][-1], "disconnect")
+                self.assertNotIn("uncertain", task["outcomes"])
+                self.assertIn(
+                    "never retried",
+                    " ".join(self.matrix["vocabulary"]["attempt_rules"]),
+                )
+
+    def test_confirmation_is_manual_exactly_where_no_read_covers_the_written_object(
+        self,
+    ):
+        for provider, row in self.rows.items():
+            recipe = self.recipe(provider)
+            task = next(t for t in row["tasks"] if t["task"] == "confirm_result")
+            with self.subTest(provider=provider):
+                if task["readiness"] == "not_applicable":
+                    continue
+                self.assertEqual(task["phases"], ["receipt"])
+                self.assertEqual(task["attempts"], 1)
+                reads = {
+                    t["name"] for t in recipe["tools"] if t.get("effect") != "write"
+                }
+                creates = {
+                    t["name"] for t in recipe["tools"] if t.get("effect") == "write"
+                }
+                if not creates:
+                    continue
+                # A read that can confirm must exist, or the row says it is manual.
+                confirming = [name for name in reads if name.startswith("read_")]
+                self.assertEqual(
+                    task["readiness"] == "manual",
+                    not any("issue" in name or "task" in name for name in confirming),
+                )
+                if task["readiness"] == "manual":
+                    self.assertIn("iid", task["evidence"])
+
+    def test_deferred_providers_are_gated_or_absent_and_never_half_claimed(self):
+        deferred = {row["provider"]: row for row in self.matrix["deferred"]}
+        gated = {
+            case["provider"].lower(): case["id"]
+            for case in self.cases["cases"]
+            if case["kind"] == "gated_post_read"
+        }
+        for provider, row in deferred.items():
+            with self.subTest(provider=provider):
+                self.assertIn("reason", row)
+                if row["gated_case"] is None:
+                    self.assertNotIn(provider, gated)
+                else:
+                    self.assertEqual(gated.get(provider), row["gated_case"])
+                # A deferred provider must not also appear as a starter task row.
+                self.assertNotIn(provider, self.rows)
+
+    def test_the_vocabulary_is_closed_and_defines_every_term_it_uses(self):
+        vocabulary = self.matrix["vocabulary"]
+        for key, meanings in (
+            ("readiness", "readiness_meaning"),
+            ("outcomes", "outcome_meaning"),
+        ):
+            with self.subTest(key=key):
+                self.assertEqual(sorted(vocabulary[key]), sorted(vocabulary[meanings]))
+        used_readiness = {
+            task["readiness"] for row in self.rows.values() for task in row["tasks"]
+        }
+        used_outcomes = {
+            outcome
+            for row in self.rows.values()
+            for task in row["tasks"]
+            for outcome in task["outcomes"]
+        }
+        self.assertTrue(used_readiness <= set(vocabulary["readiness"]))
+        self.assertTrue(used_outcomes <= set(vocabulary["outcomes"]))
+        # Every attempt rule is a plain sentence a reviewer can act on.
+        for rule in vocabulary["attempt_rules"]:
+            self.assertTrue(rule.endswith("."))

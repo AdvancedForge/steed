@@ -11,9 +11,11 @@
     "Every documented v1 route is served under https://api.raindrop.io/rest/v1, so the prefix is part of each reviewed path rather than of the origin.",
     "An access token, including a test token, is documented as carried in Authorization: Bearer with no second token header.",
     "GET /rest/v1/user returns a result flag plus a user object whose _id is an integer and whose fullName is a string of at most 1000 characters. Nullability is not documented for either.",
-    "GET /rest/v1/collections returns a result flag plus items, and each item is a collection object whose identifier is _id, with documented title, count and view fields. There is no hidden field on a collection; hidden exists only on a group inside the user document.",
+    "Root collections are read with GET /rest/v1/collections, documented as returning items, while a single collection is read with the singular GET /rest/v1/collection/{id}, documented as returning item. There is no documented plural per-collection route, so the reviewed path uses the documented singular form.",
+    "A collection's identifier is _id, not id, and each item is a collection object whose title, count and view are documented fields. There is no hidden field on a collection; hidden exists only on a group inside the user document.",
     "The documentation warns that responses can contain fields it does not describe and that using them is unsafe, so only documented fields are projected.",
-    "Success is signalled by the result flag as well as by the HTTP status. This profile does not read the flag, because a failure document carries result false with error and errorMessage and no items, so a failed collection read fails closed instead of returning an empty list. That residual assumption is recorded rather than hidden.",
+    "No failure body is documented for these two GET routes, so this profile does not claim a failure shape. What is documented is that every failure example elsewhere uses result false with error and errorMessage and never includes item or items, and that result is not universally present. That is why a failed read is expected to fail closed rather than look like an empty collection, and it stays a recorded expectation rather than a proven fact.",
+    "Whether a result false document can arrive with HTTP 200 is not documented, so this profile does not rely on the status alone and does not check the flag.",
     "Rate limits are documented as 120 requests per minute per authenticated user for OAuth requests, with X-RateLimit-Limit, RateLimit-Remaining and X-RateLimit-Reset headers. Whether the same number applies to a test token is not documented.",
     "Creating a bookmark needs an explicit link input from the user, and no reviewed destination can carry one, so this profile stays read-only."
   ],
@@ -28,7 +30,16 @@
         "password": true,
         "pro": true,
         "registered": "2014-09-30T07:51:15.406Z",
-        "groups": [{"title": "My Collections", "hidden": false, "sort": 0, "collections": [8492393]}]
+        "groups": [
+          {
+            "title": "My Collections",
+            "hidden": false,
+            "sort": 0,
+            "collections": [
+              8492393
+            ]
+          }
+        ]
       }
     }
   },
@@ -43,23 +54,16 @@
         "password": true,
         "pro": true,
         "registered": "2014-09-30T07:51:15.406Z",
-        "groups": [{"title": "My Collections", "hidden": false, "sort": 0, "collections": [8492393]}]
-      }
-    },
-    "/rest/v1/collections/8492393": {
-      "result": true,
-      "item": {
-        "_id": 8492393,
-        "title": "Development",
-        "count": 16,
-        "view": "list",
-        "expanded": false,
-        "public": false,
-        "sort": 8492393,
-        "created": "2019-10-09T11:49:53.518Z",
-        "lastUpdate": "2019-11-27T17:51:19.085Z",
-        "color": "#0c797d",
-        "user": {"$id": 32}
+        "groups": [
+          {
+            "title": "My Collections",
+            "hidden": false,
+            "sort": 0,
+            "collections": [
+              8492393
+            ]
+          }
+        ]
       }
     },
     "/rest/v1/collections": {
@@ -72,7 +76,9 @@
           "view": "list",
           "expanded": false,
           "public": false,
-          "user": {"$id": 32}
+          "user": {
+            "$id": 32
+          }
         },
         {
           "_id": 8492400,
@@ -81,9 +87,29 @@
           "view": "grid",
           "expanded": true,
           "public": true,
-          "user": {"$id": 32}
+          "user": {
+            "$id": 32
+          }
         }
       ]
+    },
+    "/rest/v1/collection/8492393": {
+      "result": true,
+      "item": {
+        "_id": 8492393,
+        "title": "Development",
+        "count": 16,
+        "view": "list",
+        "expanded": false,
+        "public": false,
+        "sort": 8492393,
+        "created": "2019-10-09T11:49:53.518Z",
+        "lastUpdate": "2019-11-27T17:51:19.085Z",
+        "color": "#0c797d",
+        "user": {
+          "$id": 32
+        }
+      }
     }
   },
   "created": {},
@@ -97,8 +123,8 @@
       "documented": "An invalid token answers 401 with an Unauthorized body."
     },
     "application_failure": {
-      "status": 200,
-      "documented": "A failure document is { result: false, error: ..., errorMessage: ... } with no items, so the collection read fails closed."
+      "status": "undocumented",
+      "documented": "No failure body is documented for these GET routes. Documented failure examples elsewhere use result false with error and errorMessage and no item or items key, so a failed read is expected to fail closed; whether result false can accompany HTTP 200 is unverified."
     }
   }
 }
