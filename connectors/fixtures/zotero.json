@@ -133,7 +133,8 @@
   "framework_gap": {
     "capabilities": [
       "identity_derived_paths",
-      "pagination"
+      "pagination",
+      "query_inputs"
     ],
     "minimum_missing_behavior": "Carry a value returned by the identity request, such as the numeric userID, into a later reviewed read path, so a single-item read does not have to pin the account's own id in source. Without that, no useful read exists, because every library route starts with /users/<userID> and no account-scoped alias is documented.",
     "not_required_for_a_first_read": [
@@ -177,8 +178,9 @@
       "documented": "The identity response carries an access object with user flags for library, files, notes and write, and group flags for library and write.",
       "required_disclosure": "A key without library read access cannot read items at all, so a live acceptance record should note the library flag that was granted, and no write permission is needed for a read-only subset."
     },
-    "status": "assessed_alternative",
-    "note": "This is recorded as an assessment, not as a shipped template. One sign-in with no user-supplied account numbers stays the default goal, and the pinned id is the interim route rather than the destination."
+    "status": "shipped_as_template",
+    "note": "This is recorded as an assessment, not as a shipped template. One sign-in with no user-supplied account numbers stays the default goal, and the pinned id is the interim route rather than the destination. The template ships as a user-owned copy precisely because one sign-in is not expressible yet.",
+    "artifact": "connectors/recipes/templates/zotero-library-template.json, imported as a user-owned copy with the numeric library ID fixed; the mismatch disclosure is in the tool description so it is read at source review and again in the action review"
   },
   "empirical_status": {
     "policy": "Documentation proves what an endpoint offers. A framework test can only prove Steed's own behaviour against a documented shape. Neither can show that a provider accepts a credential or sends a field, so those stay pending until a real account is used.",
@@ -215,5 +217,69 @@
         "blocks": "asserting anything about an error body"
       }
     ]
-  }
+  },
+  "routes": {
+    "/keys/current": {
+      "userID": 12345,
+      "username": "Fixture User",
+      "access": {
+        "user": {
+          "library": true,
+          "files": true,
+          "notes": true,
+          "write": true
+        },
+        "groups": {
+          "all": {
+            "library": true,
+            "write": true
+          }
+        }
+      }
+    },
+    "/users/12345/items/ABCD2345": {
+      "key": "ABCD2345",
+      "version": 301,
+      "library": {
+        "type": "users",
+        "id": 12345,
+        "name": "Fixture User",
+        "links": {
+          "alternate": {
+            "href": "https://www.zotero.org/fixture",
+            "type": "text/html"
+          }
+        }
+      },
+      "links": {
+        "self": {
+          "href": "https://api.zotero.org/users/12345/items/ABCD2345",
+          "type": "application/json"
+        }
+      },
+      "meta": {
+        "creatorSummary": "Fixture Author",
+        "parsedDate": "2025-01-15T10:30:00Z"
+      },
+      "data": {
+        "key": "ABCD2345",
+        "version": 301,
+        "itemType": "journalArticle",
+        "dateAdded": "2025-01-15T10:30:00Z",
+        "dateModified": "2025-01-16T10:30:00Z",
+        "title": "A documented article",
+        "creators": [
+          {
+            "creatorType": "author",
+            "firstName": "Fixture",
+            "lastName": "Author"
+          }
+        ],
+        "tags": [],
+        "collections": [],
+        "relations": {}
+      }
+    }
+  },
+  "created": {}
 }
