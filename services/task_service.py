@@ -717,6 +717,7 @@ class TaskService(QObject):
         import copy
 
         from services.connector_recipes import (
+            RECIPE_CONTINUATION_EXAMPLE,
             RECIPE_EXAMPLE,
             RECIPE_HEADERS_EXAMPLE,
             RECIPE_IDENTITY_EXAMPLE,
@@ -734,8 +735,10 @@ class TaskService(QObject):
         return {
             "available": self.recipes.connections is not None
             and self.recipes.connections.recipes is not None,
-            "version": 7,
-            "supported_versions": [1, 2, 3, 4, 5, 6, 7],
+            "version": 8,
+            "supported_versions": [1, 2, 3, 4, 5, 6, 7, 8],
+            "continuation_reads": "version 8 may pin a separate POST continuation path/body with cursor-only bindings and a boolean has_more stop signal",
+            "success_flags": "version 8 can review an exact boolean success flag for read responses and identity, including whether missing flags are accepted",
             "typed_reads": "version 7 read tools post a bounded body of typed string/integer/boolean inputs to one exact reviewed path; effect stays read, so no payload approval or operation header exists",
             "graphql_reads": "one fixed reviewed query document per tool; agents supply no query text and mutations, subscriptions and fragments are rejected",
             "application_errors": "declare an errors pointer/code/message so an HTTP-200 service failure is reported instead of empty fields; GraphQL errors are reported, never silently returned as partial data",
@@ -784,6 +787,7 @@ class TaskService(QObject):
             "headers_example": copy.deepcopy(RECIPE_HEADERS_EXAMPLE),
             "identity_example": copy.deepcopy(RECIPE_IDENTITY_EXAMPLE),
             "query_example": copy.deepcopy(RECIPE_QUERY_EXAMPLE),
+            "continuation_example": copy.deepcopy(RECIPE_CONTINUATION_EXAMPLE),
         }
 
     def _recipe_list(self, task_id):

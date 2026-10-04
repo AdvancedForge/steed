@@ -627,7 +627,7 @@ its transport identity is also bound to the credential that initialized it.
 | `worker.status`, `worker.list` | `task_id`, plus `request_id` for status; current worker permission, returns owned execution receipts |
 | `worker.cancel` | `task_id`, `request_id`; stops an owned worker without spending a cleanup operation |
 | `app.list_tools` | `task_id`; configured tool descriptions/effects, no grant or credentials |
-| `app.call_tool` | `task_id`, `connector`, `tool`, `request_id`, `destination`, optional `artifact_id`; exact app permission, starts a call and returns its durable receipt |
+| `app.call_tool` | `task_id`, `connector`, `tool`, `request_id`, `destination`, optional `artifact_id` and typed `inputs`; exact app permission, starts a call and returns its durable receipt |
 | `app.status`, `app.cancel`, `app.reconcile` | `task_id`, `request_id`; owned receipt lookup, cooperative cancellation or read-only reconciliation |
 | `grant.request` | `task_id`, `scope`; records a pending request, without authority |
 | `grant.list` | `task_id`; task grant records, including decisions |
@@ -1868,13 +1868,56 @@ typed values retain their earlier fingerprint so old receipts stay retryable.
 Source review shows the identity method and body, each typed input with its type,
 bounds and default, the exact request bindings, the full GraphQL document and
 variables, the application-error pointers and the cursor location.
-`steed_recipe_capabilities` reports version 7, the typed-read and GraphQL
+`steed_recipe_capabilities` reports version 8, the typed-read and GraphQL
 policies, the new limits and `query_example`;
 [notes-query.json](examples/connector_recipes/notes-query.json) is the same
 synthetic source, not a live provider integration. Credential, origin, header,
 cancellation, identity-recheck and no-write-replay rules are unchanged. Live
 provider acceptance, credential-derived headers, revision guards, transforms and
 gated providers remain separate.
+
+**Version 8 continuation and success contracts.** Versions 1–7 retain their
+source grammar. A read or identity can declare an exact boolean success rule:
+
+```json
+"success": {"pointer": "/ok", "value": true, "required": true}
+```
+
+A missing required flag, non-boolean flag or wrong value fails before selected
+fields are returned. Optional flags may be absent but must match when present.
+Read pagination can declare `"has_more": "/has_more"`. This must be a boolean:
+false ends pagination even when the service retains a final cursor; true requires
+a nonempty next cursor. Existing page/cursor bounds still apply and truncation
+reports `more_available: true`.
+
+A typed POST read can use a distinct reviewed continuation endpoint:
+
+```json
+"pagination": {
+  "cursor": "/cursor", "parameter": "cursor", "max_pages": 3,
+  "location": "body", "has_more": "/has_more",
+  "continuation": {
+    "path": "/notes/search/continue",
+    "request": {"cursor": {"$bind": "cursor"}}
+  }
+}
+```
+
+Only the returned cursor can bind into this continuation body; the path is fixed
+on the reviewed origin. The first request retains its own reviewed body, which
+need not contain a cursor field when a continuation is declared. Version 8 also
+supports body pagination on an exact resource POST path. GraphQL pagination
+remains unsupported. Identity, account access, source identity and cancellation
+are rechecked before every page. Read POST and write POST routes, including
+resource-template overlaps, cannot share a transport path.
+
+The native review displays success/stop rules and the continuation path/body.
+`steed_recipe_capabilities` publishes `continuation_example`;
+[notes-continuation.json](examples/connector_recipes/notes-continuation.json) is a
+synthetic executable example. String inputs may be empty for service root paths;
+reviewed maximum lengths and control-character rejection still apply. These
+contracts enable provider implementation; they do not establish live-provider
+acceptance or turn external write endpoints into reads.
 
 **Version 3 nested JSON templates:** GET tools retain the existing format. POST
 `request` can contain nested objects, arrays and JSON literals. Bind draft data

@@ -1,0 +1,113 @@
+{
+  "version": 8,
+  "name": "Example Continued Notes",
+  "origin": "https://api.fixture.example",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/me",
+    "subject": "/id",
+    "label": "/name",
+    "label_alternatives": [
+      "/email",
+      "/id"
+    ]
+  },
+  "tools": [
+    {
+      "name": "search_notes",
+      "description": "Search this account's notes with reviewed inputs",
+      "method": "POST",
+      "effect": "read",
+      "path": "/notes/search",
+      "inputs": {
+        "query": {
+          "type": "string",
+          "max_length": 200
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 10
+        },
+        "archived": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "request": {
+        "text": {
+          "$bind": "input.query"
+        },
+        "limit": {
+          "$bind": "input.limit"
+        },
+        "include_archived": {
+          "$bind": "input.archived"
+        },
+        "cursor": null
+      },
+      "response": [
+        {
+          "label": "notes",
+          "pointer": "/items"
+        }
+      ],
+      "pagination": {
+        "cursor": "/cursor",
+        "parameter": "cursor",
+        "max_pages": 3,
+        "location": "body",
+        "has_more": "/has_more",
+        "continuation": {
+          "path": "/notes/search/continue",
+          "request": {
+            "cursor": {
+              "$bind": "cursor"
+            }
+          }
+        }
+      },
+      "errors": {
+        "pointer": "/error",
+        "code": "/reason",
+        "message": "/summary"
+      },
+      "success": {
+        "pointer": "/ok",
+        "value": true,
+        "required": true
+      }
+    },
+    {
+      "name": "read_note_graphql",
+      "description": "Read one reviewed GraphQL note document",
+      "method": "POST",
+      "effect": "read",
+      "path": "/graphql",
+      "destination": "resource_id",
+      "query": {
+        "operation": "NoteById",
+        "document": "query NoteById($id: ID!) {\n  note(id: $id) {\n    id\n    title\n    body\n  }\n}",
+        "variables": {
+          "id": {
+            "$bind": "destination"
+          }
+        },
+        "data_pointer": "/data",
+        "errors_pointer": "/errors"
+      },
+      "response": [
+        {
+          "label": "note",
+          "pointer": "/note"
+        }
+      ]
+    }
+  ],
+  "request_headers": {
+    "Notion-Version": "2025-09-03"
+  }
+}

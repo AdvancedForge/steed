@@ -2,8 +2,18 @@
 
 ## Start here
 
-Work is paused at an accepted engineering milestone at the user's request for a
-handoff. Branch from published `main`; do not restart earlier completed milestones.
+Work has resumed on main. Reviewed and locally integrated engineering branch
+`c93748e` and connector PR #3 head `0082a19`; shared typed reads were corrected in
+`ee17331`. Recipe v8 adds distinct continuation bodies, boolean stop/success flags
+and resource POST pagination. 155 recipe checks and SDK/raw stdio/HTTP journeys
+pass using synthetic fixtures. See the newest roadmap entry for final validation
+and publication status. Do not restart earlier completed milestones.
+
+Owner-approved linked-panel behavior: hide linked contents immediately on source
+revocation; refresh after restoration. Panels may outlive their creating task
+with a separate visible permission for the panel/display profile. Implement
+selected library-file bindings first; independently saved reports are unchanged.
+
 Current checkpoint adds Global startup, editable `steed:newtab`/`steed:welcome`,
 and native sealed-workspace text/JSON/image panels.
 Read [the page guide](DOCUMENTATION.md#welcome-new-tab-and-bookmarks) and the newest
@@ -49,15 +59,11 @@ was corrected; this changed the fixture, not the MCP implementation.
 2. Verify baseline lint/format and the focused page/panel tests. Use the repository
    virtual environment and temporary fixtures. Keep `-X faulthandler` enabled for
    transport/native acceptance; logs under `/tmp` are session-local evidence.
-3. Coordinate **PR #3** with the connector contributor. Exact reviewed head is
-   `a7b7713ed3fe06b6c0587baeb6d01b7cd772c77c`, based on `629d8a4`. The independent
-   isolated review passed 96 packaged-profile checks, 4 compatibility checks and
-   repository lint/format. Read
-   [the posted findings and C6–C10 continuation](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5982781874).
-   Acceptance steps, bounded GitLab quick actions, Linear auth-specific limits and
-   self-contained POST source references need follow-up. It is not approved or
-   merged. Re-review the contributor's exact updated head before integration;
-   synthetic success must not become live-provider evidence.
+3. Connector PR #3 was re-reviewed at `0082a19` and integrated locally.
+   119 provider/profile workflow checks and four compatibility checks pass.
+   [Current findings and detailed continuation](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5983460074)
+   cover live acceptance, minor worksheet cleanup and v7/v8 provider adoption.
+   Contributor-owned data is not automatically promoted by new runtime contracts.
 4. Own shared runtime/UI/MCP/root-doc changes; leave `connectors/recipes/`,
    `connectors/fixtures/`, `connectors/SETUP.md` and the contributor's provider tests
    to that contributor. Publish a typed contract before asking them to adopt it.
@@ -65,25 +71,21 @@ was corrected; this changed the fixture, not the MCP implementation.
 
 ### Next engineering milestones
 
-**Shared typed POST/query reads — next priority.** Design and implement a new
-recipe version with bounded declarative request inputs, exact reviewed endpoints,
-identity POST support, selected response fields and explicit application-error
-contracts. Support fixed reviewed GraphQL reads without arbitrary queries or
-mutations. Treat HTTP-200 GraphQL errors/partial data honestly; handle Dropbox
-identity/list continuation and Notion cursor bodies. Preserve v1–v6 grammar,
-credential/origin/header rules, source review, identity rechecks, cancellation and
-no automatic write replay. Add parser/review/adapter/exact-wire/recovery tests plus
-SDK/raw transport acceptance. Coordinate fixture promotion with PR #3's agent;
-do not implement gated providers by disguising reads as creates.
+**Shared typed POST/query reads — delivered.** Recipe versions 7/8 support
+bounded inputs, POST identity (including JSON null), fixed parsed GraphQL queries,
+explicit errors/success flags and distinct continuation paths. Examples and
+capabilities describe the exact contract. Follow-ups belong to provider adoption,
+not a duplicate shared-runtime implementation. Preserve old fingerprints and
+version grammars, identity rechecks and no automatic write replay.
 
-**Selected data sources — remaining N3.** Existing v3 panels show immutable owned
-task files, not live folders or accounts. Propose explicit library/connector
-bindings and freshness/unavailable labels, with grant/identity rechecks on refresh.
-Distinguish live data from deliberately saved drafts. Keep revoked sources hidden
-unless an independently reviewed retention contract permits a snapshot; ask the
-owner before adding automatic permanent retention. Keep field content and image
-bytes out of appearance exports and audit metadata. Reuse existing services rather
-than executable callbacks or new agent-side approval endpoints.
+**Selected data sources — remaining N3.** Add selected library files with a
+separate user-approved panel/profile read permission that survives task end.
+Permission must remain visible/revocable; disabling a folder or panel access hides
+linked data immediately. Refresh checks exact file identity and bounds. Saved
+task snapshots retain their established retention behavior. Account panels follow
+through reviewed read tools and identity checks; never infer account/task access
+from presentation approval. No private content in appearance exports or audit
+metadata, executable callbacks, or agent approval endpoints.
 
 **External agents/chatbots — preserve on every milestone.** Generic MCP is the
 common capability surface; native Codex is one provider. User editing, native agent

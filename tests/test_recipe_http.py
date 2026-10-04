@@ -1,5 +1,6 @@
 """Real HTTPS framing/TLS plus DNS, redirect, size and credential containment."""
 
+import json
 import socket
 import ssl
 import subprocess
@@ -53,6 +54,7 @@ class RecipeHttpTests(unittest.TestCase):
         self.calls = []
         self.status = 200
         self.body = b'{"text":"SYNTHETIC_DATA"}'
+        self.responses = {}
         self.encoding = None
         owner = self
 
@@ -62,17 +64,18 @@ class RecipeHttpTests(unittest.TestCase):
                 self.do_GET()
 
             def do_GET(self):
+                response = owner.responses.get(self.path, owner.body)
                 owner.calls.append((self.path, dict(self.headers)))
                 self.send_response(owner.status)
                 if owner.status == 302:
                     self.send_header("Location", "https://foreign.example/steal")
                 if owner.encoding:
                     self.send_header("Content-Encoding", owner.encoding)
-                self.send_header("Content-Length", str(len(owner.body)))
+                self.send_header("Content-Length", str(len(response)))
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 try:
-                    self.wfile.write(owner.body)
+                    self.wfile.write(response)
                 except (OSError, ssl.SSLError):
                     pass
 
@@ -148,6 +151,87 @@ class RecipeHttpTests(unittest.TestCase):
         self.assertEqual(self.calls[0][0], "/note")
         self.assertEqual(self.calls[0][1]["Host"], "api.fixture.example")
         self.assertEqual(self.calls[0][1]["Authorization"], "Bearer SYNTHETIC_TOKEN")
+
+    def test_adapter_continuation_reaches_reviewed_https_path_with_cursor_only_body(
+        self,
+    ):
+        from app_connector_support import MemorySecrets
+
+        from services.app_accounts import AccountStore
+        from services.connector_recipes import (
+            RECIPE_CONTINUATION_EXAMPLE,
+            RecipeStore,
+            parse_recipe,
+        )
+        from services.connectors import ConnectorRequest
+        from services.recipe_connector import RecipeConnector, connect_recipe
+        from services.recipe_oauth import token_http
+
+        recipe = parse_recipe(json.dumps(RECIPE_CONTINUATION_EXAMPLE).encode())
+        self.http = token_http(recipe)
+        self.responses = {
+            "/me": b'{"id":"u-1","name":"Fixture"}',
+            "/notes/search": b'{"ok":true,"items":[{"id":"n1"}],"cursor":"PAGE2","has_more":true}',
+            "/notes/search/continue": b'{"ok":true,"items":[],"cursor":"LAST","has_more":false}',
+        }
+        owner = self
+
+        class Transport:
+            def request(self, method, url, *, headers=None, body=None, cancelled=None):
+                return owner.request(method=method, url=url, headers=headers, body=body)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog = RecipeStore(root / "recipes.json")
+            catalog.install(recipe)
+            accounts = AccountStore(root / "accounts.json", MemorySecrets())
+            transport, cancelled = Transport(), threading.Event()
+            account = connect_recipe(
+                recipe,
+                catalog,
+                accounts,
+                "SYNTHETIC_TOKEN",
+                ["search_notes"],
+                cancelled,
+                http=transport,
+            )
+            adapter = RecipeConnector(
+                recipe, catalog, account, accounts, http=transport
+            )
+            request = ConnectorRequest(
+                "read-1",
+                account.connector,
+                "search_notes",
+                "read",
+                "account",
+                None,
+                inputs={"query": "budget"},
+            )
+            result = json.loads(
+                adapter.execute(recipe.tools[0], request, cancelled).text
+            )
+        self.assertEqual(result["notes"], [{"id": "n1"}])
+        self.assertEqual(result["_pagination"], {"pages": 2, "more_available": False})
+        self.assertEqual(
+            [json.loads(b) for b in self.forms],
+            [
+                {
+                    "text": "budget",
+                    "limit": 10,
+                    "include_archived": False,
+                    "cursor": None,
+                },
+                {"cursor": "PAGE2"},
+            ],
+        )
+        self.assertEqual(
+            [path for path, _ in self.calls if path != "/me"],
+            ["/notes/search", "/notes/search/continue"],
+        )
+        for _, headers in self.calls:
+            self.assertEqual(headers["Notion-Version"], "2025-09-03")
+            self.assertNotIn("Cookie", headers)
+            self.assertNotIn("Idempotency-Key", headers)
 
     def test_untrusted_certificate_cannot_receive_authorization(self):
         with self.assertRaises(ApiError):

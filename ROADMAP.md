@@ -12,52 +12,38 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
-**Handoff checkpoint:** stop at this accepted milestone as requested. Resume from
-published `main` using [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md). PR #3 was
-reviewed at `a7b7713` in a separate checkout and received
-[feedback and continuation instructions](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5982781874);
-it remains open and unmerged. Connector-owned paths were not changed here.
+**Review and connector runtime checkpoint (integrated locally).** Reviewed
+engineering branch `c93748e` and connector PR #3 head `0082a19` in isolated
+worktrees, then merged both. The PR review and detailed C6–C10 continuation are
+[posted on GitHub](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5983460074).
+119 packaged-profile/workflow checks, four compatibility checks and contributor
+lint/format pass. Real-account acceptance remains unperformed.
 
-**Shared typed connector query/POST reads (implemented on branch, pending
-review).** Recipe version 7 keeps every v1–6 grammar and adds bounded declarative
-read inputs. A v7 read tool may use `method: "POST"` and binds only reviewed
-`input.<name>` values plus an optional resource destination into a literal JSON
-body; the effect stays `read`, so typed reads have no payload preview, operation
-header, reconciliation or automatic retry. Up to 8 inputs per tool are typed
-`string`/`integer`/`boolean` with reviewed bounds and optional defaults, and
-`app.list_tools` publishes that schema so agents can send only those names.
-Pagination cursors may travel in the request body as well as the query string,
-and identity is rechecked before every page.
+**Typed connector reads v7 and continuation v8 (implemented).** Typed bounded
+POST inputs, literal/null identity bodies and fixed GraphQL reads now use the
+shared runtime and MCP receipt pipeline. Review fixes preserve legacy receipt
+fingerprints, enforce POST/body-cursor grammar and use the pinned GraphQL AST
+parser for syntax, operation/variable matching and bounds. Commit `ee17331` records
+those fixes. Version 8 adds reviewed distinct continuation endpoints, boolean
+stop flags, boolean success contracts and resource POST pagination. Ambiguous
+read/write POST routes are rejected. Credentials, source/origin/header bounds,
+identity rechecks and write approvals remain intact; no automatic write replay.
 
-Fixed reviewed GraphQL reads are supported without arbitrary queries: each tool
-carries one balanced `query` document of at most 4 KiB, with mutations,
-subscriptions, fragments, schema definitions, directives and multiple operations
-rejected and no agent argument that carries query text. HTTP-200 GraphQL errors
-and partial data are reported honestly — the read fails with bounded code/message
-pairs instead of returning empty reviewed fields. Services that report failures
-inside a successful HTTP 200 can declare an `errors` pointer/code/message
-contract for the same purpose. `identity` may also use one reviewed POST with a
-completely literal body for services that require one.
+Acceptance: **155 recipe regressions pass in 24.036 seconds**, including actual
+loopback TLS framing and native review. Both SDK/raw stdio and authenticated HTTP
+MCP journeys pass typed continuation reads and fixed GraphQL calls with stable
+receipts. Logs: `/tmp/steed-continued-post-{recipes,stdio,http}.log`.
+Examples: [v7](examples/connector_recipes/notes-query.json),
+[v8](examples/connector_recipes/notes-continuation.json). Provider promotion and
+live acceptance remain the connector contributor's follow-up work.
 
-`app.call_tool` accepts an optional `inputs` object validated by the trusted tool
-definition before any receipt exists. Inputs are values, not authority: they
-cannot change the reviewed endpoint, effect or destination and are not part of
-any permission, but the stable `request_id` is fingerprinted over the resolved
-inputs so a reused request ID with different inputs is rejected. Source review
-shows the identity method/body, every typed input with its bounds, the exact
-request bindings, the whole GraphQL document and variables, the error pointers
-and the cursor location. Credential, origin, static-header, cancellation,
-identity-recheck and no-write-replay rules are unchanged.
-
-Acceptance: 26 focused typed-read checks pass, plus the full recipe/connector
-suite (parser, adapter, exact-wire transport, review dialog and the real
-`app.call_tool` receipt pipeline). `steed_recipe_capabilities` reports version 7
-with `query_example`; [notes-query.json](examples/connector_recipes/notes-query.json)
-is the same synthetic source. No real accounts, network providers or user data
-were used. Provider adoption, live-account acceptance and the remaining
-selected-library/connector N3 sources remain separate; connector-owned recipe,
-fixture and setup paths were not changed.
-
+**Selected panel-source decisions (owner approved).** Hide linked contents
+immediately when source access is disabled/revoked; refresh after restoration.
+Keep a linked panel reusable after its creating task ends with a separate, visible
+permission for that panel and display profile. Independently saved reports retain
+their existing behavior. Implement selected library-file bindings first, then
+account-backed read results through the same lifecycle. Public-release work and
+broader HTML mini-app hosting remain separate.
 
 **Native workspace/image sources N3 (implemented and accepted).**
 Version 3 binds text/list/table widgets to exact sealed owned files and introduces
@@ -80,8 +66,8 @@ shutdown and light/dark native file/image previews pass; Ruff lint/format and
 whitespace pass. A synthetic raw-client argument collision was corrected before
 the successful transport runs. No real accounts or external models were used.
 Logs: `/tmp/steed-internal-pages-panels-{full,stdio,http,native,native-direct,startup}.log`.
-Next: shared typed connector query/POST reads to unblock the connector contributor,
-then selected library/connector sources with explicit freshness/revocation. Broader
+Typed connector query/POST reads are delivered above. Next: selected
+library/connector sources with explicit freshness/revocation. Broader
 local HTML hosting/bridges need a concrete app and lifecycle proposal.
 
 **Global and editable internal pages (implemented and accepted).**
@@ -114,7 +100,8 @@ and corrected. The full suite's three old Default/Global assumptions were update
 the final combined 1,220-test suite now passes. Startup/render/shutdown passes.
 Logs: `/tmp/steed-start-pages-*`.
 Native image/workspace bindings are also accepted above. Next engineering scopes
-are typed connector query/POST reads and selected library/connector sources. The editable start
+are selected library/connector sources and provider adoption of the delivered
+typed connector reads. The editable start
 page is a concrete local HTML use case; broader hosted apps/capability bridges
 remain separate work.
 

@@ -46,8 +46,9 @@ class RecipeHttp:
             static_request_headers(request_headers)
             if request_headers is not None
             else ()
-        )  # Typed reads post literal bounded bodies to exact reviewed paths with no
-        # operation header: they cannot create or replay an external effect.
+        )
+        # Reviewed read POSTs have bounded bodies and no operation header.
+        # The source reviewer must verify the service's actual endpoint semantics.
         self.read_posts = tuple(
             re.compile(
                 re.escape(request_path(path, destination=True)).replace(

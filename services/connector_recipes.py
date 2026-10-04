@@ -253,6 +253,28 @@ RECIPE_QUERY_EXAMPLE = {
 }
 
 
+RECIPE_CONTINUATION_EXAMPLE = {
+    **RECIPE_QUERY_EXAMPLE,
+    "version": 8,
+    "name": "Example Continued Notes",
+    "tools": [
+        {
+            **RECIPE_QUERY_EXAMPLE["tools"][0],
+            "pagination": {
+                **RECIPE_QUERY_EXAMPLE["tools"][0]["pagination"],
+                "has_more": "/has_more",
+                "continuation": {
+                    "path": "/notes/search/continue",
+                    "request": {"cursor": {"$bind": "cursor"}},
+                },
+            },
+            "success": {"pointer": "/ok", "value": True, "required": True},
+        },
+        RECIPE_QUERY_EXAMPLE["tools"][1],
+    ],
+}
+
+
 class RecipeError(ValueError):
     pass
 
@@ -430,11 +452,35 @@ def page_cursor(value):
 
 
 @dataclass(frozen=True)
+class RecipeContinuation:
+    path: str
+    request: JsonTemplate
+
+
+@dataclass(frozen=True)
+class RecipeSuccess:
+    pointer: str
+    value: bool
+    required: bool
+
+
+def success_rule(value):
+    fields(value, ("pointer", "value", "required"))
+    if type(value["value"]) is not bool or type(value["required"]) is not bool:
+        raise RecipeError(
+            "Success rules require explicit boolean value and requiredness"
+        )
+    return RecipeSuccess(pointer(value["pointer"]), value["value"], value["required"])
+
+
+@dataclass(frozen=True)
 class RecipePagination:
     cursor: str
     parameter: str
     max_pages: int
     location: str = "query"
+    has_more: str = ""
+    continuation: RecipeContinuation | None = None
 
 
 @dataclass(frozen=True)
@@ -455,7 +501,8 @@ class RecipeInput:
             if (
                 not isinstance(value, str)
                 or len(value) > self.maximum_length
-                or not value.isprintable()
+                or value
+                and not value.isprintable()
             ):
                 raise RecipeError(f"{self.name} must be printable text")
             return value
@@ -706,6 +753,7 @@ class RecipeTool:
     errors: RecipeErrors | None = None
     query: RecipeQuery | None = None
     http_method: str = ""
+    success: RecipeSuccess | None = None
 
     @property
     def method(self):
@@ -746,6 +794,7 @@ class ConnectorRecipe:
     label_alternatives: tuple = ()
     identity_method: str = "GET"
     identity_request: JsonTemplate | None = None
+    identity_success: RecipeSuccess | None = None
 
     @property
     def provider(self):
@@ -771,6 +820,9 @@ class ConnectorRecipe:
                     if self.identity_request is not None
                     else None
                 ),
+                "success": vars(self.identity_success)
+                if self.identity_success
+                else None,
             },
             "oauth": (
                 {
@@ -813,6 +865,15 @@ class ConnectorRecipe:
                             "parameter": t.pagination.parameter,
                             "max_pages": t.pagination.max_pages,
                             "location": t.pagination.location,
+                            "has_more": t.pagination.has_more,
+                            "continuation": (
+                                {
+                                    "path": t.pagination.continuation.path,
+                                    "request": t.pagination.continuation.request.source(),
+                                }
+                                if t.pagination.continuation
+                                else None
+                            ),
                         }
                         if t.pagination
                         else None
@@ -838,6 +899,7 @@ class ConnectorRecipe:
                         }
                         for i in t.inputs
                     ],
+                    "success": vars(t.success) if t.success else None,
                     "errors": (
                         {
                             "pointer": t.errors.pointer,
@@ -904,7 +966,7 @@ def parse_recipe(raw):
                 *(
                     ["request_headers"]
                     if data.get("version") == 5
-                    or data.get("version") in (6, 7)
+                    or data.get("version") in (6, 7, 8)
                     and "request_headers" in data
                     else []
                 ),
@@ -918,6 +980,7 @@ def parse_recipe(raw):
             5,
             6,
             7,
+            8,
         ):
             raise RecipeError("Unsupported connector recipe version")
         headers = (
@@ -942,12 +1005,17 @@ def parse_recipe(raw):
                 ),
                 *(
                     ["method", "request"]
-                    if data["version"] == 7 and identity.get("method") == "POST"
+                    if data["version"] >= 7 and identity.get("method") == "POST"
+                    else []
+                ),
+                *(
+                    ["success"]
+                    if data["version"] >= 8 and "success" in identity
                     else []
                 ),
             ),
         )
-        if data["version"] == 7 and identity.get("method") not in (None, "POST"):
+        if data["version"] >= 7 and identity.get("method") not in (None, "POST"):
             raise RecipeError("Identity reads use GET or one reviewed POST")
         identity_method = identity.get("method", "GET")
         identity_request = None
@@ -972,7 +1040,7 @@ def parse_recipe(raw):
         for item in data["tools"]:
             if not isinstance(item, dict):
                 raise RecipeError("Provide tool objects")
-            typed = data["version"] == 7 and item.get("effect") == "read"
+            typed = data["version"] >= 7 and item.get("effect") == "read"
             writing = (
                 data["version"] >= 2 and item.get("method") == "POST" and not typed
             )
@@ -985,6 +1053,11 @@ def parse_recipe(raw):
                     "path",
                     "response",
                     *(["pagination"] if "pagination" in item else []),
+                    *(
+                        ["success"]
+                        if data["version"] >= 8 and not writing and "success" in item
+                        else []
+                    ),
                     *(["effect"] if typed else []),
                     *(["request"] if typed and "query" not in item else []),
                     *(["inputs"] if typed and "inputs" in item else []),
@@ -1168,11 +1241,27 @@ def parse_recipe(raw):
                     value,
                     ("cursor", "parameter", "max_pages")
                     if data["version"] < 7
-                    else ("cursor", "parameter", "max_pages", "location"),
+                    else (
+                        "cursor",
+                        "parameter",
+                        "max_pages",
+                        "location",
+                        *(
+                            ["has_more"]
+                            if data["version"] >= 8 and "has_more" in value
+                            else []
+                        ),
+                        *(
+                            ["continuation"]
+                            if data["version"] >= 8 and "continuation" in value
+                            else []
+                        ),
+                    ),
                 )
                 location = value.get("location", "query")
                 if (
                     "{destination}" in path
+                    and (data["version"] < 8 or not typed)
                     or type(value["max_pages"]) is not int
                     or not 1 <= value["max_pages"] <= 5
                     or location not in ("body", "query")
@@ -1184,8 +1273,28 @@ def parse_recipe(raw):
                     raise RecipeError(
                         "Pagination needs a fixed collection path and 1–5 pages"
                     )
-                if location == "body" and query_parameter(value["parameter"]) not in (
-                    template.source() or {}
+                continuation = None
+                if "continuation" in value:
+                    if not typed or query is not None or location != "body":
+                        raise RecipeError(
+                            "Continuation bodies belong only to typed POST reads"
+                        )
+                    spec = value["continuation"]
+                    fields(spec, ("path", "request"))
+                    continuation_path = request_path(spec["path"])
+                    compiled = read_request(
+                        spec["request"], binding_sources=frozenset({"cursor"})
+                    )
+                    if "cursor" not in compiled.bindings():
+                        raise RecipeError(
+                            "Continuation requests must bind the returned cursor"
+                        )
+                    continuation = RecipeContinuation(continuation_path, compiled)
+                if (
+                    location == "body"
+                    and continuation is None
+                    and query_parameter(value["parameter"])
+                    not in (template.source() or {})
                 ):
                     raise RecipeError(
                         "Body cursors need a reviewed request field of that name"
@@ -1195,6 +1304,8 @@ def parse_recipe(raw):
                     query_parameter(value["parameter"]),
                     value["max_pages"],
                     location,
+                    pointer(value["has_more"]) if "has_more" in value else "",
+                    continuation,
                 )
             if (
                 not isinstance(item["response"], list)
@@ -1227,6 +1338,9 @@ def parse_recipe(raw):
                     errors=errors,
                     query=query,
                     http_method=item["method"] if typed else "",
+                    success=success_rule(item["success"])
+                    if "success" in item
+                    else None,
                 )
             )
             if "plan" in item:
@@ -1237,6 +1351,36 @@ def parse_recipe(raw):
                 tools[-1] = replace(
                     tools[-1], steps=compile_plan(tools[-1], item["plan"], data)
                 )
+        from services.recipe_plans import transport_path
+
+        read_paths = [
+            tool.path
+            for tool in tools
+            if tool.effect == "read" and tool.method == "POST"
+        ]
+        read_paths += [
+            tool.pagination.continuation.path
+            for tool in tools
+            if tool.pagination and tool.pagination.continuation
+        ]
+        if identity_request is not None:
+            read_paths.append(identity["path"])
+        write_paths = [
+            transport_path(step.path)
+            for tool in tools
+            if tool.effect != "read"
+            for step in (tool.steps or (tool,))
+        ]
+        for read_path in read_paths:
+            for write_path in write_paths:
+                left, right = read_path.split("/"), write_path.split("/")
+                if len(left) == len(right) and all(
+                    a == b or "{destination}" in (a, b)
+                    for a, b in zip(left, right, strict=True)
+                ):
+                    raise RecipeError(
+                        "Read and write POST paths must be distinguishable"
+                    )
         return ConnectorRecipe(
             hashlib.sha256(raw).hexdigest(),
             raw,
@@ -1252,6 +1396,7 @@ def parse_recipe(raw):
             alternatives,
             identity_method,
             identity_request,
+            success_rule(identity["success"]) if "success" in identity else None,
         )
     except (KeyError, TypeError, UnicodeError, RecursionError, ValueError) as error:
         if isinstance(error, RecipeError):

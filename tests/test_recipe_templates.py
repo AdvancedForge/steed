@@ -196,7 +196,7 @@ class RecipeTemplateWriteTests(unittest.TestCase):
         )
         self.assertEqual(len(self.http.payloads), 1)
         capabilities = self.call("recipe.capabilities", client=client)
-        self.assertEqual(capabilities["supported_versions"], [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(capabilities["supported_versions"], [1, 2, 3, 4, 5, 6, 7, 8])
         self.assertEqual(
             parse_recipe(json.dumps(capabilities["nested_example"]).encode()),
             self.recipe,

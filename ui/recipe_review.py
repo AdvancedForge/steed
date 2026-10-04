@@ -73,6 +73,11 @@ class RecipeReviewDialog(QDialog):
             )
             + f"Account ID: {recipe.subject_pointer}\nAccount label: {recipe.label_pointer}\n\n"
             + (
+                f"Identity success rule: {json.dumps(vars(recipe.identity_success))}\n"
+                if recipe.identity_success
+                else ""
+            )
+            + (
                 "Label alternatives in order: "
                 + ", ".join(recipe.label_alternatives)
                 + "\nOnly missing, null or empty labels fall back; account ID stays exact.\n\n"
@@ -150,8 +155,28 @@ class RecipeReviewDialog(QDialog):
                     else ""
                 )
                 + (
+                    f"\nSuccess rule: {json.dumps(vars(t.success))}"
+                    if t.success
+                    else ""
+                )
+                + (
                     f"\nPagination: up to {t.pagination.max_pages} pages; {t.pagination.location} parameter {t.pagination.parameter}; next cursor {t.pagination.cursor}; selected fields must be arrays"
                     if t.pagination
+                    else ""
+                )
+                + (
+                    f"\nStop signal: {t.pagination.has_more} (exact boolean)"
+                    if t.pagination and t.pagination.has_more
+                    else ""
+                )
+                + (
+                    f"\nContinuation: POST {t.pagination.continuation.path}\n"
+                    + json.dumps(
+                        t.pagination.continuation.request.source(),
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    if t.pagination and t.pagination.continuation
                     else ""
                 )
                 + (

@@ -40,11 +40,12 @@ from test_task_profiles import TaskProfileTests
 
 from browser_window import BrowserWindow
 from services.connector_recipes import (
+    RECIPE_CONTINUATION_EXAMPLE,
     RECIPE_IDENTITY_EXAMPLE,
     RECIPE_NESTED_EXAMPLE,
-    RECIPE_QUERY_EXAMPLE,
     RECIPE_OAUTH_EXAMPLE,
     RECIPE_PAGINATED_EXAMPLE,
+    RECIPE_QUERY_EXAMPLE,
     parse_recipe,
 )
 from ui.app_review import AppReviewDialog
@@ -107,7 +108,7 @@ async def recipe_workflow(
         and capabilities["installation_approval"] == "exact_recipe"
     )
     source = json.dumps(
-        capabilities["query_example"]
+        capabilities["continuation_example"]
         if query
         else capabilities["identity_example"]
         if plan
@@ -1879,8 +1880,19 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             write_http = WriteRecipeHttp()
             from test_recipe_queries import QueryRecipeHttp
 
+            class MCPQueryHttp(QueryRecipeHttp):
+                def request(self, *args, **kwargs):
+                    result = super().request(*args, **kwargs)
+                    if "items" in result:
+                        result = {
+                            **result,
+                            "ok": True,
+                            "has_more": bool(result["cursor"]),
+                        }
+                    return result
+
             manager.recipe_http_factory = lambda selected: (
-                QueryRecipeHttp()
+                MCPQueryHttp()
                 if selected.version >= 7
                 else write_http
                 if selected.version >= 2
@@ -2033,6 +2045,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
                         parse_recipe(json.dumps(RECIPE_IDENTITY_EXAMPLE).encode()),
                         parse_recipe(json.dumps(RECIPE_QUERY_EXAMPLE).encode()),
+                        parse_recipe(json.dumps(RECIPE_CONTINUATION_EXAMPLE).encode()),
                     )
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
@@ -2149,6 +2162,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
                     parse_recipe(json.dumps(RECIPE_IDENTITY_EXAMPLE).encode()),
                     parse_recipe(json.dumps(RECIPE_QUERY_EXAMPLE).encode()),
+                    parse_recipe(json.dumps(RECIPE_CONTINUATION_EXAMPLE).encode()),
                 ):
                     if selected.provider not in manager.providers or manager.busy:
                         continue

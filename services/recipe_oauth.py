@@ -115,6 +115,11 @@ def token_http(recipe, http=None):
             for tool in recipe.tools
             if tool.method == "POST" and tool.effect == "read"
         ]
+        + [
+            tool.pagination.continuation.path
+            for tool in recipe.tools
+            if tool.pagination and tool.pagination.continuation
+        ]
         + ([recipe.identity_path] if recipe.identity_request is not None else []),
     )
 

@@ -139,6 +139,32 @@ def application_error(response, errors, credentials):
     )
 
 
+def check_success(response, rule):
+    if rule is None:
+        return
+    try:
+        value = select(response, rule.pointer)
+    except (KeyError, IndexError, RecipeError):
+        if not rule.required:
+            return
+        raise RecipeError("The required service success flag is unavailable") from None
+    if type(value) is not bool or value is not rule.value:
+        raise RecipeError("The service did not report the reviewed success flag")
+
+
+def next_cursor(response, pagination):
+    if pagination.has_more:
+        flag = select(response, pagination.has_more)
+        if type(flag) is not bool:
+            raise RecipeError("The service returned an invalid pagination stop signal")
+        if not flag:
+            return None
+    cursor = select(response, pagination.cursor)
+    if pagination.has_more and cursor in (None, ""):
+        raise RecipeError("The service reports more pages without a cursor")
+    return cursor
+
+
 def graphql_result(response, rule, credentials):
     """A fixed reviewed read never returns partial data as if it had succeeded."""
     try:
@@ -200,6 +226,7 @@ def identity(recipe, http, token, cancelled, *, credentials=()):
         body=body,
         cancelled=cancelled,
     )
+    check_success(result, recipe.identity_success)
     subject = select(result, recipe.subject_pointer)
     secrets = tuple(
         value for value in (token, *credentials) if isinstance(value, str) and value
@@ -403,6 +430,7 @@ class RecipeConnector:
             check_cancelled(cancelled)
             self.catalog.active(self.recipe)
             self.store.active(self.account)
+            check_success(response, tool.success)
             selected = {label: select(response, path) for label, path in tool.response}
             if not tool.pagination:
                 return selected
@@ -410,7 +438,7 @@ class RecipeConnector:
                 if not isinstance(values, list):
                     raise RecipeError("Paginated response fields must be arrays")
                 merged[label].extend(values)
-            cursor = select(response, tool.pagination.cursor)
+            cursor = next_cursor(response, tool.pagination)
             if cursor not in (None, ""):
                 cursor = page_cursor(cursor)
                 if cursor in seen or any(value in cursor for value in credentials):
@@ -470,10 +498,18 @@ class RecipeConnector:
                 self.account.label,
             ):
                 raise AccountError("Account identity changed during pagination")
-            body = json.dumps(
-                self.typed_body(
+            continuation = tool.pagination.continuation if tool.pagination else None
+            payload = (
+                continuation.request.materialize({"cursor": cursors[-1]})
+                if index and continuation
+                else self.typed_body(
                     tool, destination, inputs, cursor=cursors[-1] if cursors else ""
-                ),
+                )
+            )
+            if index and continuation:
+                url = self.recipe.origin + continuation.path
+            body = json.dumps(
+                payload,
                 ensure_ascii=False,
                 allow_nan=False,
             ).encode("utf-8")
@@ -483,6 +519,7 @@ class RecipeConnector:
             check_cancelled(cancelled)
             self.catalog.active(self.recipe)
             self.store.active(self.account)
+            check_success(response, tool.success)
             if tool.query is not None:
                 response = graphql_result(response, tool.query, credentials)
             else:
@@ -494,7 +531,7 @@ class RecipeConnector:
                 if not isinstance(values, list):
                     raise RecipeError("Paginated response fields must be arrays")
                 merged[label].extend(values)
-            cursor = select(response, tool.pagination.cursor)
+            cursor = next_cursor(response, tool.pagination)
             if cursor not in (None, ""):
                 cursor = page_cursor(cursor)
                 if cursor in cursors or any(value in cursor for value in credentials):
