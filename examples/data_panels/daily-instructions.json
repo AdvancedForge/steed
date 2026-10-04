@@ -1,0 +1,12 @@
+{
+  "version": 6,
+  "name": "Daily research",
+  "widgets": [
+    {
+      "id": "research",
+      "kind": "instruction",
+      "title": "Research suitable roles",
+      "instruction": "Find suitable roles. Ask for access to my enabled files as needed, explain your shortlist, and draft materials for my review."
+    }
+  ]
+}

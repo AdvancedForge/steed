@@ -750,6 +750,118 @@ class DataPanels:
         self.service.user_message_sent.emit(task_id, result)
         return receipt
 
+    def instruction_payload(self, task_id, request_id, widget_id):
+        """Only the reviewed literal instruction is sent, never linked contents."""
+        definition = self.definition(task_id, request_id)
+        widget = next(
+            (
+                w
+                for w in definition.widgets
+                if w["id"] == widget_id and w["kind"] == "instruction"
+            ),
+            None,
+        )
+        if widget is None:
+            raise ValueError("Choose a reviewed instruction from this panel")
+        payload = json.dumps(
+            {
+                "type": "steed_panel_instruction",
+                "panel": definition.name,
+                "widget_id": widget_id,
+                "instruction": widget["instruction"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        if len(payload.encode("utf-8")) > MESSAGE_BYTES:
+            raise ValueError("The complete instruction message must fit within 8 KiB")
+        return payload
+
+    def instruction_available(self, task_id, request_id, profile_key):
+        """Reusable presentation survives its owner; recipients stay task-scoped."""
+        self.service._usable()
+        row = self._row(task_id, request_id)
+        if (
+            row["state"] != "applied"
+            or not profile_key
+            or row["profile_key"] != profile_key
+        ):
+            raise ValueError("Instruction is not enabled in this profile")
+        if not any(
+            self.for_profile(p, match=(task_id, request_id))
+            for p in self.profile_names()
+        ):
+            raise ValueError("The approved profile no longer exists")
+
+    def instruction_recipients(self):
+        from services.task_store import ACTIVE_STATUSES
+
+        self.service._usable()
+        return [
+            t
+            for t in self.service.store.list_tasks()
+            if t.task_id in self.service.external_tasks and t.status in ACTIVE_STATUSES
+        ]
+
+    def submit_instruction(
+        self,
+        task_id,
+        request_id,
+        widget_id,
+        submission_id,
+        recipient_id,
+        *,
+        profile_key,
+    ):
+        """User-only delivery with a recipient-pinned atomic, value-free receipt."""
+        self.service._usable()
+        if not stable_id(submission_id):
+            raise ValueError("Use a stable submission ID")
+        if not stable_id(recipient_id):
+            raise ValueError("Choose a connected conversation")
+        row = self._row(task_id, request_id)
+        if not profile_key or row["profile_key"] != profile_key:
+            raise ValueError("Instruction receipt belongs to another display profile")
+        payload = self.instruction_payload(task_id, request_id, widget_id)
+        digest = hashlib.sha256(
+            json.dumps([recipient_id, payload]).encode()
+        ).hexdigest()
+        message_id = (
+            "panel_"
+            + hashlib.sha256(
+                json.dumps([task_id, request_id, widget_id, submission_id]).encode()
+            ).hexdigest()[:58]
+        )
+        receipt = {"message_id": message_id, "sha256": digest, "state": "queued"}
+        for event in self.db.execute(
+            "SELECT payload FROM events WHERE task_id=? AND kind='panel.instruction_queued'",
+            (task_id,),
+        ):
+            previous = json.loads(event[0])
+            if previous["message_id"] == message_id:
+                if previous["sha256"] != digest:
+                    raise ValueError(
+                        "Submission ID is already bound to another recipient or instruction"
+                    )
+                return receipt
+        self.instruction_available(task_id, request_id, profile_key)
+        if recipient_id not in {t.task_id for t in self.instruction_recipients()}:
+            raise ValueError("Choose an active connected conversation")
+
+        def audit():
+            self.service.store._append(task_id, "panel.instruction_queued", receipt)
+
+        try:
+            result = self.service.messages._post(
+                recipient_id, "user", message_id, payload, 0, "complete", audit=audit
+            )
+        except sqlite3.Error:
+            self.service._fatal()
+            raise
+        self.service.changed.emit()
+        self.service.user_message_sent.emit(recipient_id, result)
+        return receipt
+
     def remove(self, task_id, request_id):
         self.service._usable()
         try:

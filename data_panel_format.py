@@ -15,6 +15,7 @@ MAX_ITEM_CHARS = 512
 WIDGET_KINDS = ("task", "text", "list")
 MAX_FORM_FIELDS = 8
 MAX_FIELD_CHARS = 512
+MAX_INSTRUCTION_BYTES = 4096
 ARTIFACT_KINDS = ("text", "list", "table")
 FORM_EXAMPLE = {
     "version": 2,
@@ -182,6 +183,7 @@ def parse_panel(source):
         3,
         4,
         5,
+        6,
     ):
         raise ValueError("Unsupported data-panel version")
     name = clean_name(document["name"])
@@ -197,6 +199,8 @@ def parse_panel(source):
         kinds = WIDGET_KINDS + (("form", "table") if document["version"] >= 2 else ())
         if document["version"] >= 3:
             kinds += ("image",)
+        if document["version"] >= 6:
+            kinds += ("instruction",)
         if not isinstance(widget, dict) or widget.get("kind") not in kinds:
             raise ValueError("Use the published native widget kinds")
         expected = {"id", "kind", "title"}
@@ -222,6 +226,8 @@ def parse_panel(source):
             expected.add("artifact_id")
         elif widget["kind"] == "form":
             expected.add("fields")
+        elif widget["kind"] == "instruction":
+            expected.add("instruction")
         if (
             set(widget) != expected
             or not stable_id(widget["id"], 32)
@@ -236,16 +242,16 @@ def parse_panel(source):
         if "library" in widget:
             from services.file_library import relative_path
 
-            source = widget["library"]
+            library = widget["library"]
             if (
-                not isinstance(source, dict)
-                or set(source) != {"folder_id", "path"}
-                or not stable_id(source["folder_id"])
+                not isinstance(library, dict)
+                or set(library) != {"folder_id", "path"}
+                or not stable_id(library["folder_id"])
             ):
                 raise ValueError(
                     "Bind one exact library folder ID and relative file path"
                 )
-            relative_path(source["path"])
+            relative_path(library["path"])
         if "account" in widget:
             from services.connector_policy import connector_name, destination_name
 
@@ -282,6 +288,15 @@ def parse_panel(source):
         widget["title"] = clean_name(widget["title"])
         if widget["kind"] == "form":
             _form_fields(widget["fields"])
+        if widget["kind"] == "instruction":
+            instruction = widget["instruction"]
+            if (
+                not isinstance(instruction, str)
+                or not instruction.strip()
+                or len(instruction.encode("utf-8")) > MAX_INSTRUCTION_BYTES
+                or any(not c.isprintable() and c not in "\n\t" for c in instruction)
+            ):
+                raise ValueError("Use a plain instruction of at most 4 KiB UTF-8")
     return PanelDefinition(
         source, hashlib.sha256(encoded).hexdigest(), name, tuple(deepcopy(widgets))
     )
@@ -334,14 +349,14 @@ def widget_content(kind, content):
 
 def panel_capabilities():
     return {
-        "version": 5,
-        "supported_versions": [1, 2, 3, 4, 5],
-        "widget_kinds": list(WIDGET_KINDS) + ["form", "table", "image"],
+        "version": 6,
+        "supported_versions": [1, 2, 3, 4, 5, 6],
+        "widget_kinds": list(WIDGET_KINDS) + ["form", "table", "image", "instruction"],
         "max_widgets": MAX_WIDGETS,
         "max_source_bytes": MAX_PANEL_SOURCE_BYTES,
         "max_list_items": MAX_LIST_ITEMS,
         "max_item_characters": MAX_ITEM_CHARS,
-        "source": "owned_immutable_artifact_sealed_workspace_or_selected_library_file",
+        "source": "owned_immutable_artifact_sealed_workspace_or_selected_library_file_or_account_read",
         "profile": "user_selected_normal_profile",
         "approval": "native_preview_and_profile_choice",
         "updates": "same_task_owned_source_bindings_with_exact_revision",
@@ -356,6 +371,20 @@ def panel_capabilities():
         "max_image_pixels": 4 * 1024 * 1024,
         "image_types": ["image/png", "image/jpeg"],
         "forms": "explicit_user_message_to_owning_connected_task_with_payload_preview",
+        "instructions": "reusable_literal_instruction_to_user_selected_connected_task_with_payload_preview",
+        "max_instruction_bytes": MAX_INSTRUCTION_BYTES,
+        "instruction_example": {
+            "version": 6,
+            "name": "Daily research",
+            "widgets": [
+                {
+                    "id": "research",
+                    "kind": "instruction",
+                    "title": "Research suitable roles",
+                    "instruction": "Find suitable roles. Ask for access to my enabled files as needed.",
+                }
+            ],
+        },
         "max_form_fields": MAX_FORM_FIELDS,
         "max_field_characters": MAX_FIELD_CHARS,
         "max_choice_options": 16,

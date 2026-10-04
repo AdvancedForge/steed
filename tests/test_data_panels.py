@@ -32,7 +32,7 @@ class PanelFormatTests(unittest.TestCase):
         self.assertEqual(parse_panel(self.source()).name, "Task dashboard")
         for change in (
             lambda d: d.update(version=True),
-            lambda d: d.update(version=6),
+            lambda d: d.update(version=7),
             lambda d: d.update(callback="exec"),
             lambda d: d.update(profile="existing:work"),
             lambda d: d.update(widgets=[]),

@@ -21,7 +21,10 @@ regressions in 23.132 seconds. SDK/raw stdio/HTTP, both installed Codex runtimes
 startup/render/shutdown and light/dark native previews pass with synthetic fixtures.
 Logs: `/tmp/steed-account-panels-{full,stdio-retry,http-retry,native,native-direct,startup}.log`.
 The owner selected reusable action buttons that send reviewed instructions to
-an external agent first. Direct connector effects remain separate. Preserve
+an external agent first; panel v6 implements that choice. **1,350 full regressions in 441.204 seconds**
+and 11 final instruction checks pass. SDK/raw stdio/HTTP, both installed Codex
+runtimes, startup and light/dark previews pass. Logs:
+`/tmp/steed-panel-instructions-{full,panels,final-focused,stdio-retry,http,native,native-direct,startup}.log`. Direct connector effects remain separate. Preserve
 explicit recipient/profile and payload review; do not infer writes or model
 disclosure from a panel read permission.
 
@@ -50,7 +53,7 @@ a built-in. Global now supports explicit reviewed task sharing and stable identi
 implement external-agent edits. Schema 19 added immutable proposals; schema 20
 adds panel-source permissions. New source sharing uses existing connected-task messages, with exact payload preview and an
 8 KB limit. Agent declarations have a 32 KB UTF-8 limit; local imports allow 256 KB.
-Native panels now support versions 1/2/3/4/5; selected library files are implemented
+Native panels now support versions 1/2/3/4/5/6; selected library files are implemented
 with reusable panel/profile read permission. Account-backed reads now support manual Refresh; continue richer field mappings
 and reviewed action controls without adding arbitrary
 code callbacks or conflating private data with global appearance exports.
@@ -102,7 +105,7 @@ capabilities describe the exact contract. Follow-ups belong to provider adoption
 not a duplicate shared-runtime implementation. Preserve old fingerprints and
 version grammars, identity rechecks and no automatic write replay.
 
-**Selected data sources — remaining N3.** Selected library files are delivered with a
+**Selected data sources — N3 delivered; richer mappings remain.** Selected library files are delivered with a
 separate user-approved panel/profile read permission that survives task end.
 Permission must remain visible/revocable; disabling a folder or panel access hides
 linked data immediately. Refresh checks exact file identity and bounds. Saved

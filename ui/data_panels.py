@@ -28,6 +28,7 @@ from services.app_accounts import AccountError
 from services.task_store import ACTIVE_STATUSES
 from ui.data_panel_form import PanelForm
 from ui.panel_image import PanelImage
+from ui.panel_instruction import PanelInstruction
 
 
 def display_text(value):
@@ -115,6 +116,8 @@ class PanelContent(QWidget):
                 display.setMaximumHeight(120)
             elif widget["kind"] == "form":
                 display = PanelForm(widget, context=form_context)
+            elif widget["kind"] == "instruction":
+                display = PanelInstruction(widget, context=form_context)
             else:
                 caption = label(source_caption(widget))
                 self.captions[widget["id"]] = caption
@@ -164,7 +167,7 @@ class PanelContent(QWidget):
         for widget in widgets:
             key, kind = widget["id"], widget["kind"]
             display, previous = self.displays[key], self._widgets[key]
-            if kind == "form":
+            if kind in ("form", "instruction"):
                 display.refresh_available()
             elif kind == "task":
                 self.captions[key].setText("Task status: " + task.status)
@@ -242,6 +245,8 @@ class DataPanelDock(QDockWidget):
             # Erase old profile content immediately, including deferred Qt children.
             for form in widget.findChildren(PanelForm):
                 form.clear_private()
+            for instruction in widget.findChildren(PanelInstruction):
+                instruction.clear_private()
             for child in widget.findChildren(QPlainTextEdit):
                 child.clear()
             for child in widget.findChildren(QListWidget):
@@ -493,7 +498,7 @@ class DataPanelReviewDialog(QDialog):
         body.addWidget(label("Panel: " + receipt.name))
         body.addWidget(
             label(
-                "Enable these native widgets in one normal profile. Saved reports remain after task end; updates need artifact/workspace permission. Linked files need the separate read permission below and stay hidden when source access is disabled. Forms send to the owning task after your preview and Send to agent. Website and account access remain separate."
+                "Enable these native widgets in one normal profile. Saved reports remain after task end; updates need artifact/workspace permission. Linked sources need separate read permission and hide when access is disabled. Forms send to the owning task; reusable instruction buttons let you choose a connected conversation. Both require a message preview and Send to agent. Website and account access remain separate."
             )
         )
         self.profiles = QComboBox()

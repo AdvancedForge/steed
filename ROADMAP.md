@@ -68,12 +68,35 @@ crash remains a separately recorded issue. Example:
 [account-report.json](examples/data_panels/account-report.json). Rich field mappings
 and reusable action controls remain separate work.
 
-**Next panel direction (owner approved):** reusable action buttons send reviewed
-instructions to an external agent first; direct connector writes remain separate. Existing
-native forms send to their owning connected task and stop when it ends. This next
-increment needs a deliberate task/authority lifecycle; it must not inherit read
-permission as write/send/model-disclosure authority. Broader HTML app hosting,
-credential-derived headers and live-account acceptance remain separate.
+**Reusable agent instruction buttons N4 (implemented and accepted).**
+Panel v6 adds fixed, bounded native instruction buttons. The creating task may end;
+the user selects a currently connected active recipient, reviews the literal
+message and explicitly sends. Display-profile identity and panel approval are
+rechecked. No automatic linked-content attachment, provider launch, connector
+effect or new agent approval/send endpoint. Atomic value-free receipts pin the
+recipient and payload, prevent retry/double-click duplicates, and survive message
+clearing. Native Codex uses existing delivery; generic MCP clients read their
+mailbox; website chatbots retain copy/export/import. Version 1–5 grammars remain
+intact. A library parser variable shadowing correction preserves the original
+source string without changing stored sources or hashes. Example:
+[daily-instructions.json](examples/data_panels/daily-instructions.json).
+Acceptance: **1,350 full regressions in 441.204 seconds**, 100 combined panel
+checks in 28.192 seconds and 11 final instruction checks in 2.536 seconds. Both
+SDK/raw MCP stdio and authenticated HTTP clients receive reviewed instructions in
+new conversations after panel creators end, without linked-content disclosure.
+Both installed Codex runtimes, startup/render/shutdown, light/dark native message
+previews, Ruff (236 files), whitespace and ten recipe/seven panel-content examples
+pass. An early smoke fixture used Qt `findData` for tuple IDs and selected no panel;
+explicit item comparison corrected the fixture. Logs:
+`/tmp/steed-panel-instructions-{full,panels,final-focused,stdio-retry,http,native,native-direct,startup}.log`.
+All account/model/browser fixtures are synthetic; real desktop/provider acceptance
+and the previously captured offscreen profile-create crash remain separate.
+
+**Next daily-use chunks:** improve bookmark organization/import ergonomics, then
+richer explicit account-result field mappings and generic external-agent
+connection/recovery polish. Broader executable HTML app hosting, cloud pairing,
+credential-derived headers and live-account acceptance remain separate. Existing
+native forms stay bound to their owning task; instructions are reusable actions.
 
 **Reusable linked library sources N3 (implemented and accepted).**
 Native panel v4 binds text/list/table widgets to exact enabled library files.
@@ -1728,7 +1751,8 @@ request distinguishes configurable browser UI from saved agent workflows.
    text/appearance are delivered, alongside reviewed native task/text/list data
    panels with profile-bound artifact updates, explicit native forms and tables.
    Sealed files/images and reusable library bindings are delivered. Next:
-   account-backed sources and richer components; local HTML/JavaScript apps remain a later option.
+   manual account-backed reads and reusable agent instructions are delivered. Next:
+   richer components and explicit field mappings; local HTML/JavaScript apps remain a later option.
    Keep personal panel data out of global appearance exports.
    Details: [layout usage](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
    and [agent proposals](DOCUMENTATION.md#portable-layouts-and-agent-proposals--implemented).

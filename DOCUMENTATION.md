@@ -4821,6 +4821,48 @@ revoked data. Audit entries contain IDs rather than result/query bodies. No
 background polling or model calls are introduced. Provider setup/live-account
 acceptance remains separate from synthetic panel acceptance.
 
+### Reusable agent instruction buttons — implemented
+
+Panel version 6 adds a native `instruction` widget. See
+[daily-instructions.json](examples/data_panels/daily-instructions.json):
+
+```json
+{
+  "version": 6, "name": "Daily research",
+  "widgets": [{
+    "id": "research", "kind": "instruction", "title": "Research suitable roles",
+    "instruction": "Find suitable roles. Ask for access to my enabled files as needed."
+  }]
+}
+```
+
+An agent proposes the declaration through the existing `steed_panel_propose`
+review. Enabling the panel sends nothing. In **Agents → Data Panels**, click
+**Choose agent and review…**, select a connected conversation, inspect the exact
+instruction and click **Send to agent**. The preview names the display profile
+and recipient task; **Show message details** exposes the full queued message.
+Cancel is the default. Start/connect a conversation in the agent sidebar first
+if none is available. The button remains reusable after its creating task ends,
+but each recipient must be active and connected when a new message is queued.
+
+Only the fixed reviewed instruction (at most 4 KiB UTF-8) and its panel/widget
+labels are sent. Linked files, account results, drafts, cookies and tabs are not
+automatically attached. This message permits the selected agent to follow the
+instruction with its own tools; Steed capabilities still use their existing
+permissions and effect reviews. A source-read permission grants no agent access
+or send authority. There is no automatic connector execution, provider launch,
+background model call, declaration-selected recipient or executable callback.
+
+Queued is not confirmation that an agent read or acted on the message. Native
+Codex uses its existing delivery controller; generic MCP clients must read the
+task conversation and reply. Website chatbots retain explicit copy/export/import
+rather than being presented as MCP clients. Receipts pin the reviewed recipient
+and payload atomically with delivery; retrying the same attempt cannot notify
+twice or change its recipient, even after message bodies are cleared. A deliberate
+later preview can send the reusable instruction again. Profile changes/removal
+close or disable stale previews; renamed profiles retain their stable identity,
+while recreated profiles cannot inherit the panel.
+
 ### Native panel inputs and comparison tables
 
 Ask an agent to “add a preferences form and a comparison table to my dashboard.”

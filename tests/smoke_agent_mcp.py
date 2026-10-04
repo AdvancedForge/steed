@@ -380,7 +380,7 @@ async def recipe_workflow(
         panel_request = label + "-account-panel"
         panel_source = json.dumps(
             {
-                "version": 5,
+                "version": 6,
                 "name": label.upper() + " account read",
                 "widgets": [
                     {
@@ -393,7 +393,13 @@ async def recipe_workflow(
                             "destination": "account",
                             "inputs": arguments["inputs"],
                         },
-                    }
+                    },
+                    {
+                        "id": "research",
+                        "kind": "instruction",
+                        "title": "Research again",
+                        "instruction": label + " explicit reusable instruction",
+                    },
                 ],
             }
         )
@@ -420,6 +426,31 @@ async def recipe_workflow(
                 "Manual account-panel workflow timed out"
             )
             await asyncio.sleep(0.02)
+
+        recipient = await call("task.start", objective=label + " instruction recipient")
+        shared[label + "_instruction_recipient"] = recipient["task_id"]
+        deadline = time.monotonic() + 15
+        received = False
+        cursor = 0
+        while not received:
+            assert time.monotonic() < deadline, "Reusable instruction did not arrive"
+            page = await call("conversation.read", after=cursor)
+            cursor = page["cursor"]
+            for message in page["messages"]:
+                if message["role"] != "user":
+                    continue
+                value = json.loads(message["text"])
+                assert value == {
+                    "type": "steed_panel_instruction",
+                    "panel": label.upper() + " account read",
+                    "widget_id": "research",
+                    "instruction": label + " explicit reusable instruction",
+                }
+                received = True
+            if not received:
+                await asyncio.sleep(0.02)
+        shared[label + "_reusable_instruction_received"] = True
+        await call("task.finish")
 
 
 async def workspace_workflow(call, destination, require_documents=False):
@@ -1089,6 +1120,7 @@ async def native_panel_workflow(call, shared, label):
         "form",
         "table",
         "image",
+        "instruction",
     ]
     initial = await call(
         "artifact.store",
@@ -2094,6 +2126,34 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         shared[label + "_account_panel_verified"] = True
                         shared[label + "_manual_account_panel_after_task_end"] = True
                         shared["last_account_panel_refresh"] = label
+                recipient = shared.get(label + "_instruction_recipient")
+                if recipient and not shared.get(label + "_instruction_sent"):
+                    window._toggle_data_panels(True)
+                    dock = window.data_panels_dock
+                    key = selected["task_id"], selected["request_id"]
+                    dock.selector.setCurrentIndex(
+                        next(
+                            i
+                            for i in range(dock.selector.count())
+                            if dock.selector.itemData(i) == key
+                        )
+                    )
+                    control = dock.scroll.widget().displays["research"]
+                    control.send.click()
+                    assert (
+                        control.preview is not None
+                        and not control.preview_send.isEnabled()
+                    )
+                    control.recipient.setCurrentIndex(
+                        control.recipient.findData(recipient)
+                    )
+                    assert control.preview_send.isEnabled()
+                    control.preview.grab().save(
+                        f"/tmp/steed-panel-instruction-{transport}-{label}.png"
+                    )
+                    control.preview_send.click()  # Trusted user chooses the new recipient.
+                    assert control.preview is None
+                    shared[label + "_instruction_sent"] = True
             for label, source in (
                 ("sdk", shared.get("task_id")),
                 ("raw", shared.get("raw_approval_task")),
@@ -2418,6 +2478,8 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     and not case.service.data_panels.account_reads.waiting
                 )
             )
+            assert shared["sdk_reusable_instruction_received"]
+            assert shared["raw_reusable_instruction_received"]
             accounts = [
                 p
                 for p in all_panels
