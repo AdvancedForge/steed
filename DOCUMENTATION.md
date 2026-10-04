@@ -1597,8 +1597,15 @@ require reopening the picker. Discovery reads at most 50 matching regular files,
 rejects symlinks and special files, and performs no network requests.
 
 The [starter connector handoff](connectors/HANDOFF.md) assigns service data and
-fixtures to another contributor. The compatibility proofs are not installed
-defaults; the picker is empty until reviewed starter profiles are packaged.
+fixtures to another contributor. The reviewed starter branch is now integrated:
+the picker offers **Todoist, GitLab.com, Asana, Raindrop.io and Microsoft 365**.
+Microsoft 365 uses a supplied delegated token; native OAuth remains deferred.
+GitHub (one repository), GitLab (one project) and Zotero (one library) are imported
+templates whose placeholders must be replaced before source review. See
+[connector setup](connectors/SETUP.md) for exact subsets and installation steps.
+Every service still needs account connection and enabled actions; no account is
+connected automatically. Synthetic acceptance is complete; live-account acceptance
+is pending for all these services. Compatibility proofs remain reference data.
 Six catalog/picker regressions passed, including changed-source rejection, safe
 file discovery, and installation granting neither account nor task access.
 
@@ -4419,13 +4426,15 @@ under **Agents → Task Permissions… → Data Panels**. Decline leaves the bro
 unchanged. Draft widgets need the task's existing `artifact` permission; panel
 approval neither creates nor expands website, folder, file or account permission.
 
-The first catalogue provides these native, inert components:
+The current catalogue provides these native components:
 
 | Kind | Source | Display |
 | --- | --- | --- |
 | `task` | Owning task's metadata | Objective and current task status |
 | `text` | One owned immutable artifact | Selectable, read-only plain text |
 | `list` | One owned artifact containing a JSON array of strings | Up to 64 plain-text items, 512 characters each |
+| `table` (v2) | One owned JSON artifact with `columns` and `rows` | Read-only comparison table, up to eight columns and 64 rows |
+| `form` (v2) | Reviewed text fields and choices | Explicit user message to the owning connected agent |
 
 Generated text is labelled as a saved agent draft. HTML, URLs and commands stay
 plain text; invisible controls are displayed as escapes. Task completion describes
@@ -4478,6 +4487,51 @@ They will need their own host/lifecycle and a typed bridge to existing Steed
 capabilities. The current native format does not execute extension code, and
 external agents keep their independent tools.
 
+### Native panel inputs and comparison tables
+
+Ask an agent to “add a preferences form and a comparison table to my dashboard.”
+New controls require the same native panel preview and profile choice. Format
+version 2 adds `form` and `table`; version 1 remains unchanged. Capabilities include
+both supported versions, bounds and a
+[form example](examples/data_panels/research-form.json).
+
+Forms contain one to eight fields with exact `id`, `kind`, `title` and `required`
+fields. `text` is a bounded single-line input; `choice` adds one to sixteen distinct
+`options`. Each value is at most 512 characters, and the entire message must fit
+within 8 KiB. Defaults, arbitrary callbacks and service destinations are not
+supported. The installation preview's inputs and send button are inert.
+
+To use an enabled form, enter values and click **Review and send to agent…**.
+The popup shows the recipient task, profile and labeled values; **Show message
+details** reveals the complete structured message. **Send to agent**
+queues that message only for the panel's owning task; Cancel keeps unsent values.
+The agent receives `type: steed_panel_form` JSON through `steed_conversation_read`
+or its existing native chat delivery. Values appear in the owning task's chat.
+The agent can act on instructions through its independent tools; Steed browser,
+file and connector actions retain their existing permissions and effect reviews.
+“Queued” describes delivery to the conversation, not proof of agent action.
+
+Disconnected/ended tasks and unavailable/recreated profiles cannot receive new
+submissions. Unrelated refreshes and artifact updates preserve form values and an
+open preview. Switching panels/profiles, entering private browsing, removing the
+panel or closing the window clears unsent native input and closes its preview;
+unsent values are not saved to disk. Sent values use the existing task-message
+storage and **Clear messages** control. A value-free digest receipt commits with
+the message; identical retries never notify the agent twice, even after clearing
+the conversation or ending the task. Changed reuse of a submission ID is refused.
+Submitting again with unchanged fields is also blocked by the current form UI;
+editing a field permits a new explicit submission. No agent-callable submit or
+form-value enumeration tool is added.
+
+Tables bind an owned artifact whose JSON is exactly
+`{"columns":["Option","Notes"],"rows":[["A","Plain text"]]}`; see
+[comparison data](examples/data_panels/comparison-table.json).
+Column labels are distinct printable names, rows have exactly one text cell per
+column, and each cell is at most 512 characters. Table cells cannot be edited and
+HTML/links remain literal. Tables reuse artifact authority, pinned digests,
+publication revisions and saved-draft retention. Other widgets update in place,
+so replacing a summary or table does not discard a form being filled out.
+
 ### Customization direction (planned)
 
 The user means configurable **browser UI**: the placement and appearance of
@@ -4492,9 +4546,9 @@ rebuild is unnecessary for this scope.
    export/import, migration, Reset and recovery to the last working layout. An
    agent can propose a layout through a typed interface without installing code.
    Changing layout never enables an account, folder, profile or task permission.
-3. **Agent-designed native panels — task/text/list widgets implemented:** reviewed
-   profile-bound panels and artifact draft updates are available above. Next:
-   explicit user inputs, richer tables/images and reviewed service effects, using
+3. **Agent-designed native panels — task/text/list/form/table widgets implemented:**
+   reviewed profile-bound panels, explicit inputs and artifact draft updates are
+   available above. Next: images, richer sources and reviewed service effects, using
    existing capabilities and visible data sources. Per-update rollback remains
    future work; removing a panel stops publication and preserves its source drafts.
 4. **Appearance and optional actions — bounded text/emphasis implemented:** more colors, fonts and spacing, plus

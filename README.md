@@ -15,6 +15,7 @@ browsing profiles and direct KeePassXC password management.
 - A desktop launcher, dark mode, and familiar navigation shortcuts.
 - Agent chats in a sidebar or tab, website chats, live-tab delegation and Take Back.
 - A persistent agent file library: add files once and enable full folder access.
+- Reviewed agent dashboards with native text, lists, comparison tables and forms.
 
 ## Quick start
 

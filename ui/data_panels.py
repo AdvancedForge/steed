@@ -4,6 +4,7 @@ import sqlite3
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -14,11 +15,15 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from data_panel_format import ARTIFACT_KINDS
 from services.task_store import ACTIVE_STATUSES
+from ui.data_panel_form import PanelForm
 
 
 def display_text(value):
@@ -36,11 +41,13 @@ def label(text, parent=None):
 
 
 class PanelContent(QWidget):
-    def __init__(self, task, widgets, parent=None):
+    def __init__(self, task, widgets, parent=None, *, form_context=None):
         super().__init__(parent)
         body = QVBoxLayout(self)
         body.setContentsMargins(8, 8, 8, 8)
         self.displays = {}
+        self.captions = {}
+        self._widgets = {}
         for widget in widgets:
             heading = label(widget["title"])
             font = heading.font()
@@ -48,19 +55,22 @@ class PanelContent(QWidget):
             heading.setFont(font)
             body.addWidget(heading)
             if widget["kind"] == "task":
-                body.addWidget(label("Task status: " + task.status))
+                self.captions[widget["id"]] = label("Task status: " + task.status)
+                body.addWidget(self.captions[widget["id"]])
                 display = QPlainTextEdit()
                 display.setReadOnly(True)
                 display.setTabChangesFocus(True)
                 display.setPlainText(display_text(task.objective))
                 display.setMinimumHeight(70)
                 display.setMaximumHeight(120)
+            elif widget["kind"] == "form":
+                display = PanelForm(widget, context=form_context)
             else:
-                body.addWidget(
-                    label(
-                        "Saved agent draft • " + display_text(widget["artifact_title"])
-                    )
+                caption = label(
+                    "Saved agent draft • " + display_text(widget["artifact_title"])
                 )
+                self.captions[widget["id"]] = caption
+                body.addWidget(caption)
                 if widget["kind"] == "text":
                     display = QPlainTextEdit()
                     display.setReadOnly(True)
@@ -68,16 +78,59 @@ class PanelContent(QWidget):
                     display.setPlainText(display_text(widget["content"]))
                     display.setMinimumHeight(90)
                     display.setMaximumHeight(190)
-                else:
+                elif widget["kind"] == "list":
                     display = QListWidget()
                     display.setWordWrap(True)
                     display.addItems([display_text(item) for item in widget["content"]])
                     display.setMinimumHeight(90)
                     display.setMaximumHeight(190)
+                else:
+                    display = QTableWidget()
+                    display.setEditTriggers(
+                        QAbstractItemView.EditTrigger.NoEditTriggers
+                    )
+                    display.setMinimumHeight(90)
+                    display.setMaximumHeight(240)
+                    self._table(display, widget["content"])
             display.setAccessibleName(widget["title"])
             self.displays[widget["id"]] = display
+            self._widgets[widget["id"]] = widget
             body.addWidget(display)
         body.addStretch(1)
+
+    @staticmethod
+    def _table(display, content):
+        display.setColumnCount(len(content["columns"]))
+        display.setHorizontalHeaderLabels(content["columns"])
+        display.setRowCount(len(content["rows"]))
+        for i, row in enumerate(content["rows"]):
+            for j, value in enumerate(row):
+                display.setItem(i, j, QTableWidgetItem(display_text(value)))
+
+    def update_content(self, task, widgets):
+        """Update saved outputs in place, preserving unrelated form values/focus."""
+        for widget in widgets:
+            key, kind = widget["id"], widget["kind"]
+            display, previous = self.displays[key], self._widgets[key]
+            if kind == "form":
+                display.refresh_available()
+            elif kind == "task":
+                self.captions[key].setText("Task status: " + task.status)
+            else:
+                self.captions[key].setText(
+                    "Saved agent draft • " + display_text(widget["artifact_title"])
+                )
+                if previous["content"] != widget["content"]:
+                    if kind == "text":
+                        display.setPlainText(display_text(widget["content"]))
+                    elif kind == "list":
+                        display.clear()
+                        display.addItems(
+                            [display_text(item) for item in widget["content"]]
+                        )
+                    else:
+                        self._table(display, widget["content"])
+            self._widgets[key] = widget
 
 
 class DataPanelDock(QDockWidget):
@@ -122,10 +175,16 @@ class DataPanelDock(QDockWidget):
         widget = self.scroll.takeWidget()
         if widget is not None:
             # Erase old profile content immediately, including deferred Qt children.
+            for form in widget.findChildren(PanelForm):
+                form.clear_private()
             for child in widget.findChildren(QPlainTextEdit):
                 child.clear()
             for child in widget.findChildren(QListWidget):
                 child.clear()
+            for child in widget.findChildren(QTableWidget):
+                child.clear()
+                child.setRowCount(0)
+                child.setColumnCount(0)
             for child in widget.findChildren(QLabel):
                 child.clear()
             widget.hide()
@@ -192,14 +251,14 @@ class DataPanelDock(QDockWidget):
             signature = (key, receipt.revision, task.status, widgets)
             live = self.service._grants.get(task.task_id)
             updating = task.status in ACTIVE_STATUSES and (
-                not any(w["kind"] != "task" for w in widgets)
+                not any(w["kind"] in ARTIFACT_KINDS for w in widgets)
                 or (
                     live is not None
                     and not live[1].reason()
                     and "artifact" in live[1].scope.actions
                 )
             )
-            has_drafts = any(w["kind"] != "task" for w in widgets)
+            has_drafts = any(w["kind"] in ARTIFACT_KINDS for w in widgets)
             detail = (
                 (
                     "Draft updates enabled for this task"
@@ -214,10 +273,31 @@ class DataPanelDock(QDockWidget):
                 )
             )
             self.status.setText(f"Revision {receipt.revision} • " + detail)
-            if signature == self._signature:
+            content = self.scroll.widget()
+            if (
+                self._signature is not None
+                and self._signature[0] == key
+                and content is not None
+            ):
+                content.update_content(task, widgets)
+                self._signature = signature
                 return
             self._clear()
-            self.scroll.setWidget(PanelContent(task, widgets))
+            profile_key = self.service.data_panels.profile_key(
+                self.browser.profile_manager.current_profile_name
+            )
+
+            def form_context():
+                profile = self.browser.profile_manager.current_profile_name
+                if self.service.data_panels.profile_key(profile) != profile_key:
+                    raise ValueError("The display profile changed")
+                if self.browser._closing:
+                    raise ValueError("The browser is closing")
+                return self.service, key[0], key[1], profile_key, profile
+
+            self.scroll.setWidget(
+                PanelContent(task, widgets, form_context=form_context)
+            )
             from ui.layout_panel import apply_chrome_font
 
             apply_chrome_font(self.widget(), self.browser.layout_preferences.text_size)
@@ -251,7 +331,7 @@ class DataPanelReviewDialog(QDialog):
         body.addWidget(label("Panel: " + receipt.name))
         body.addWidget(
             label(
-                "Enable these native widgets in one normal profile. This task can update their saved draft bindings while artifact permission is active. Saved drafts remain after task end or restart until removed. Website, file and account access are separate permissions."
+                "Enable these native widgets in one normal profile. This task can update saved drafts while artifact permission is active. Drafts remain after task end or restart until removed. Forms send only after your payload preview and Send to agent, to the owning task. Website, file and account access remain separate permissions."
             )
         )
         self.profiles = QComboBox()

@@ -171,6 +171,8 @@ def run(model="gpt-6.1-sol"):
                 "task",
                 "text",
                 "list",
+                "form",
+                "table",
             ]
             tab_error = responses.results(1)["steed_browser_tabs"]["error"]
             assert tab_error["code"] == "approval_required"

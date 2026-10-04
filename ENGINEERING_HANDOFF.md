@@ -58,7 +58,8 @@ advanced details remain collapsed. Installed Codex 0.159.2 passes offline native
 follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for logs.
 Manual layout L1 is accepted at `5ece7e8`; portable layout/proposal L2 is accepted.
 Native action panels/text sizing L3 and bounded accessible form hints are delivered.
-Native task/text/list data panels N1 are also accepted; continue with N2 below.
+Native task/text/list data panels N1, explicit forms N2 and comparison tables are
+delivered; continue with the remaining N3 sources below.
 See the current ROADMAP acceptance record and the accepted native-first data-panel plan.
 
 ## Configurable layout review and continuation
@@ -254,20 +255,37 @@ preferences/exports or journal events. Publication is same-task, consecutive,
 bounded and idempotent; no external effect is performed. Missing/tampered drafts
 have no fallback. Task summary is metadata, not proof of real-world completion.
 
-### N2 — Explicit native inputs
+### N2 — Explicit native inputs (delivered)
 
-Add bounded native input forms with a clear Send to agent action and a readable
-payload preview. Start with explicit communication through existing task messages,
-not arbitrary callbacks or automatic connector writes. Pin recipient task/profile
-and make disconnected/ended tasks visibly unavailable. Preserve typed values across
-unrelated refreshes, provide field validation/error affordances and keyboard use,
-and never deliver twice on ambiguous retries. Persist personal values separately
-from global layout settings. New forms need review; after enablement each explicit
-user submission should be straightforward. Keep independent agent tools available.
+Version 2 adds bounded text/choice fields and inert installation previews.
+`ui/data_panel_form.py` provides field feedback and an exact payload/recipient
+preview with explicit Send to agent. The owning task receives structured JSON
+through the existing conversation/native chat route. Agent callbacks and direct
+connector effects are absent; independent agent tools remain available.
+`DataPanels.submit_form` is trusted UI-only and atomically stores the message plus
+a value-free receipt through `TaskMessages._post(audit=...)`. Digests remain in
+the append-only journal after Clear messages, so identical retries cannot notify
+twice; changed ID reuse fails. No schema bump or input-value MCP reader is added.
+
+`PanelContent.update_content` updates outputs in place to retain unsent fields,
+previews and unaffected selection. Profile/panel switches, source removal/failure
+and browser close scrub native input and close previews. Unsent values are
+transient; sent values use existing conversation retention. Disconnected/ended
+tasks and recreated profiles cannot receive submissions. Nested preview buttons
+must set `autoDefault=False`: Qt otherwise made a disabled form button steal the
+installation popup's Decline default. Keep the shown-dialog regression and both
+independent protocol form journeys. See ROADMAP for final checks/logs.
+
+Acceptance: 1,190 full regressions, 187 focused integration checks and 68 final UI
+checks pass. Both actual MCP transports and both installed Codex runtime paths
+pass; startup and synthetic light/dark visual acceptance pass. Main is the next
+branch point. Forms and comparison tables need no further owner decision.
 
 ### N3 — Richer sources and components
 
-Add maintained table/image widgets and exact owned workspace-file sources, then
+Read-only owned-artifact comparison tables are delivered: eight distinct columns,
+64 rows, text-only cells, version-2 declaration and pinned publication semantics.
+Other sources below remain work to do. Add maintained image widgets and exact owned workspace-file sources, then
 selected library/connector-result bindings through existing grant checks. Recheck
 permissions and identity on refresh; do not infer read authority from panel review
 or source names. Show freshness, unavailable/revoked sources and source labels.
@@ -329,7 +347,8 @@ unavailable: record the engineering assessment as a COMMENT instead.
   export, Trash, Versions and user-only confirmed recovery cleanup.
 - `services/task_service.py`, `task_client.py`, `agent_tools.py`: twelve library
   commands exposed through both MCP transports and native agent chat. Total
-  published tools: 73. Stable request IDs and expected revisions govern edits.
+  published tools at that library checkpoint: 73; current catalogue: 77 after
+  layout/panel discovery and publication. Stable request IDs and expected revisions govern edits.
   The workspace bridge reuses library inputs and retains sealed outputs.
 - `browser_window.py`, `ui/agent_sidebar.py`: shared-window ownership, private
   profile UI guards and scrollable controls in short native chat tabs.
@@ -416,13 +435,22 @@ with a useful browser task combining a local page and a reusable library file.
 
 ## Shared connector engineering after corrected contracts
 
-Connector PR [#2](https://github.com/AdvancedForge/steed/pull/2) is unmerged at
-reviewed head `d94f093`. All 75 Linux profile/catalog/interpreter/HTTP checks pass;
-Ruff/format pass. The prior corrections are delivered and the starter subsets
-receive a positive [assessment](https://github.com/AdvancedForge/steed/pull/2#pullrequestreview-5402708365).
-The contributor has [five substantial milestones](https://github.com/AdvancedForge/steed/pull/2#issuecomment-5973415389).
-The connector PR was not merged during the engineering integration. Re-review any
-new head before merge; fixtures are not live account proof.
+Connector PR [#2](https://github.com/AdvancedForge/steed/pull/2) head `ccf2c4a`
+is integrated by `1383368`, with reviewed corrections at `65ced87`. All 80 Linux
+profile checks and 127 shared runtime checks passed in an isolated combined
+checkout. The new POSIX picker expectation now includes all five shipped services;
+Graph descriptions distinguish driveItem IDs from sharing URLs, and Zotero source
+review no longer claims a mismatched library must fail if it is accessible. The
+setup matrix now reflects delivered static headers, identity alternatives and the
+supplied-token Microsoft subset. Fixtures remain separate from live-account proof.
+The contributor's C1–C5 pack is delivered; remaining work is live acceptance and
+adopting new shared capabilities after their maintainer checkpoints. Re-review any
+new source SHA; never silently migrate existing reviewed accounts to changed data.
+The [latest exact-head review](https://github.com/AdvancedForge/steed/pull/2#pullrequestreview-5407033827)
+records the corrections and detailed C6–C10 continuation: install/live-acceptance
+preparation, adoption of typed POST/query reads after runtime delivery, separate
+success/auth/paging contracts, complete agent workflows and reviewable readiness
+evidence. These replace the completed C1–C5 assignment for new contributor work.
 
 The published [v6 runtime coordination and next steps](https://github.com/AdvancedForge/steed/pull/2#issuecomment-5974337618)
 records provider migration/fixture work after `11a28e9`. This runtime update does
@@ -459,12 +487,10 @@ plans and supports optional v5 headers. Capabilities expose `identity_example`;
 journeys now use this example; v4/v5 retain regression coverage. No service-data
 files were changed; live-provider acceptance is still separate.
 
-**Next daily-workflow increment: native components/appearance (L3).** L1 and L2
-are delivered. Extend the strict portable grammar with maintained native actions,
-bounded panels and normal/large browser text. Preserve existing control state,
-keyboard access, private browsing, shared windows and narrow-window scrolling.
-Keep defaults unchanged and generated code outside the browser. Use reviewed
-layout proposals for installation; no rebuild is needed.
+**Next daily-workflow increment: N3 sources.** Layout L1/L2/L3 and native
+task/text/list/form/table panels are delivered. Continue the richer-source plan
+above; do not repeat completed layout or form work. Keep generated code outside
+the browser; optional hosted apps have their separate H1 lifecycle scope.
 
 **Next shared connector increment:** typed read-only POST/query inputs, separate
 from create/send and static headers. Define bounded source/request/response types,

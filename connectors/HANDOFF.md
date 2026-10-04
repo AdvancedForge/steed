@@ -1,5 +1,13 @@
 # Default connector implementation handoff
 
+**Status — October 4, 2026:** the connector starter branch at `ccf2c4a` is
+integrated into main, with catalogue/setup corrections. This document preserves
+the initial assignment; [SETUP.md](SETUP.md) is the current shipped-service guide.
+Five packaged profiles and three imported templates are available. C1–C5 source/
+fixture work is complete; live-account acceptance and adoption of future shared
+runtime capabilities remain separate. See the current [engineering handoff](../ENGINEERING_HANDOFF.md#shared-connector-engineering-after-corrected-contracts)
+before starting another contributor milestone.
+
 Assessment: October 3, 2026. Framework baseline: `e5cacab` (reviewed recipe v2).
 The user approved declarative request plans next and asked for an independently
 implementable, conflict-free connector backlog. Start with the compatible subsets

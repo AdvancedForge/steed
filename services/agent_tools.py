@@ -151,11 +151,11 @@ def tool(command, description, properties=None, required=()):
 TOOLS = (
     tool(
         "panel.capabilities",
-        "Discover native task/text/list data-panel widgets and a JSON example. No content, profiles or grants are returned. Local HTML/JS apps are future support.",
+        "Discover native task/text/list/table/form data-panel widgets, supported versions, bounds and JSON examples. No content, profiles or grants are returned. Forms deliver explicit user-reviewed messages to the owning connected task; read them through conversation.read. Local HTML/JS apps remain future support.",
     ),
     tool(
         "panel.propose",
-        "Propose a native data panel from this task's immutable artifacts. Artifact widgets require artifact permission; list artifacts are JSON arrays of strings. The user previews it, chooses a normal profile, and enables same-task draft updates. No access grant or global layout changes occur. Pin a stable request ID to exact source bytes and poll panel.status.",
+        "Propose native widgets using the discovered strict JSON format. Artifact widgets require artifact permission; forms/task metadata do not. Lists/tables use owned JSON artifacts. Version 2 forms send only explicit user-reviewed values through this task's conversation, never callbacks or automatic connector writes. User previews and chooses one profile. Pin a stable request ID to exact source bytes and poll panel.status.",
         {"source": string(16384), "request_id": string(64)},
         ("source", "request_id"),
     ),

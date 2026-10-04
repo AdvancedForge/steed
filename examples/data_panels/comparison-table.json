@@ -1,0 +1,19 @@
+{
+  "columns": [
+    "Option",
+    "Strengths",
+    "Next step"
+  ],
+  "rows": [
+    [
+      "A",
+      "Simple setup",
+      "Review requirements"
+    ],
+    [
+      "B",
+      "More flexibility",
+      "Compare maintenance cost"
+    ]
+  ]
+}

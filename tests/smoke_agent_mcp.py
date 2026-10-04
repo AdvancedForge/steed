@@ -985,6 +985,8 @@ async def native_panel_workflow(call, shared, label):
         "task",
         "text",
         "list",
+        "form",
+        "table",
     ]
     initial = await call(
         "artifact.store",
@@ -998,9 +1000,17 @@ async def native_panel_workflow(call, shared, label):
         content=json.dumps(["First synthetic item", "Second synthetic item"]),
         format="text",
     )
+    table = await call(
+        "artifact.store",
+        title="Native panel comparison",
+        format="text",
+        content=json.dumps(
+            {"columns": ["Option", "Notes"], "rows": [["A", "<b>Literal</b>"]]}
+        ),
+    )
     source = json.dumps(
         {
-            "version": 1,
+            "version": 2,
             "name": label.upper() + " task dashboard",
             "widgets": [
                 {"id": "progress", "kind": "task", "title": "Progress"},
@@ -1016,6 +1026,25 @@ async def native_panel_workflow(call, shared, label):
                     "title": "Next steps",
                     "artifact_id": items["artifact_id"],
                 },
+                {
+                    "id": "comparison",
+                    "kind": "table",
+                    "title": "Comparison",
+                    "artifact_id": table["artifact_id"],
+                },
+                {
+                    "id": "preferences",
+                    "kind": "form",
+                    "title": "Preferences",
+                    "fields": [
+                        {
+                            "id": "focus",
+                            "kind": "text",
+                            "title": "Focus",
+                            "required": True,
+                        },
+                    ],
+                },
             ],
         }
     )
@@ -1028,6 +1057,31 @@ async def native_panel_workflow(call, shared, label):
         await asyncio.sleep(0.02)
         receipt = await call("panel.status", request_id=request_id)
     assert receipt["state"] == "applied" and receipt["profile_name"] == "work"
+    shared[label + "_form_request"] = request_id
+    deadline = time.monotonic() + 15
+    cursor = 0
+    received = False
+    while not received:
+        assert time.monotonic() < deadline, "Native form user message did not arrive"
+        page = await call("conversation.read", after=cursor)
+        cursor = page["cursor"]
+        for message in page["messages"]:
+            if message["role"] != "user" or not message["text"].startswith("{"):
+                continue
+            value = json.loads(message["text"])
+            if value.get("type") == "steed_panel_form":
+                assert value["request_id"] == request_id
+                assert value["fields"] == [
+                    {
+                        "id": "focus",
+                        "label": "Focus",
+                        "value": label + " explicit native form input",
+                    }
+                ]
+                received = True
+        if not received:
+            await asyncio.sleep(0.02)
+    shared[label + "_native_form_received"] = True
     revised = await call(
         "artifact.store",
         title="Native panel revised summary",
@@ -1753,6 +1807,27 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     sidebar.send.click()
                     assert sidebar.composer.toPlainText() == ""
                     shared[label + "_conversation_sent"] = True
+                request_id = shared.get(label + "_form_request")
+                if request_id and not shared.get(label + "_native_form_sent"):
+                    window._toggle_data_panels(True)
+                    dock = window.data_panels_dock
+                    index = next(
+                        i
+                        for i in range(dock.selector.count())
+                        if dock.selector.itemData(i)[1] == request_id
+                    )
+                    dock.selector.setCurrentIndex(index)
+                    form = dock.scroll.widget().displays["preferences"]
+                    form.inputs["focus"].setText(label + " explicit native form input")
+                    assert form.send.isEnabled()
+                    form.send.click()  # Trusted synthetic user's payload preview.
+                    assert form.preview is not None
+                    form.preview.grab().save(
+                        f"/tmp/steed-native-form-{transport}-{label}.png"
+                    )
+                    form.preview_send.click()  # Separate explicit user send.
+                    assert form.preview is None and "Queued" in form.notice.text()
+                    shared[label + "_native_form_sent"] = True
             for label, source in (
                 ("sdk", shared.get("task_id")),
                 ("raw", shared.get("raw_approval_task")),
@@ -1774,7 +1849,10 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     shared.get("raw_recipe_task"),
                 )
                 if isinstance(dialog, DataPanelReviewDialog):
-                    assert dialog.deny_button.isDefault()
+                    assert dialog.deny_button.isDefault(), [
+                        (b.text(), b.isDefault(), b.autoDefault(), b.isEnabled())
+                        for b in dialog.findChildren(type(dialog.deny_button))
+                    ]
                     dialog.profiles.setCurrentText("work")
                     dialog.grab().save(f"/tmp/steed-data-panel-{transport}-preview.png")
                     dialog.approve_button.click()  # Trusted synthetic user only.
@@ -2054,6 +2132,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
         assert (
             shared["sdk_reviewed_native_panel"] and shared["raw_reviewed_native_panel"]
         )
+        assert shared["sdk_native_form_received"] and shared["raw_native_form_received"]
         panels = case.service.data_panels.for_profile("work")
         assert len(panels) == 2 and all(p.revision == 1 for p in panels)
         assert all(
