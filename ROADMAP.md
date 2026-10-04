@@ -18,6 +18,47 @@ reviewed at `a7b7713` in a separate checkout and received
 [feedback and continuation instructions](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5982781874);
 it remains open and unmerged. Connector-owned paths were not changed here.
 
+**Shared typed connector query/POST reads (implemented on branch, pending
+review).** Recipe version 7 keeps every v1–6 grammar and adds bounded declarative
+read inputs. A v7 read tool may use `method: "POST"` and binds only reviewed
+`input.<name>` values plus an optional resource destination into a literal JSON
+body; the effect stays `read`, so typed reads have no payload preview, operation
+header, reconciliation or automatic retry. Up to 8 inputs per tool are typed
+`string`/`integer`/`boolean` with reviewed bounds and optional defaults, and
+`app.list_tools` publishes that schema so agents can send only those names.
+Pagination cursors may travel in the request body as well as the query string,
+and identity is rechecked before every page.
+
+Fixed reviewed GraphQL reads are supported without arbitrary queries: each tool
+carries one balanced `query` document of at most 4 KiB, with mutations,
+subscriptions, fragments, schema definitions, directives and multiple operations
+rejected and no agent argument that carries query text. HTTP-200 GraphQL errors
+and partial data are reported honestly — the read fails with bounded code/message
+pairs instead of returning empty reviewed fields. Services that report failures
+inside a successful HTTP 200 can declare an `errors` pointer/code/message
+contract for the same purpose. `identity` may also use one reviewed POST with a
+completely literal body for services that require one.
+
+`app.call_tool` accepts an optional `inputs` object validated by the trusted tool
+definition before any receipt exists. Inputs are values, not authority: they
+cannot change the reviewed endpoint, effect or destination and are not part of
+any permission, but the stable `request_id` is fingerprinted over the resolved
+inputs so a reused request ID with different inputs is rejected. Source review
+shows the identity method/body, every typed input with its bounds, the exact
+request bindings, the whole GraphQL document and variables, the error pointers
+and the cursor location. Credential, origin, static-header, cancellation,
+identity-recheck and no-write-replay rules are unchanged.
+
+Acceptance: 26 focused typed-read checks pass, plus the full recipe/connector
+suite (parser, adapter, exact-wire transport, review dialog and the real
+`app.call_tool` receipt pipeline). `steed_recipe_capabilities` reports version 7
+with `query_example`; [notes-query.json](examples/connector_recipes/notes-query.json)
+is the same synthetic source. No real accounts, network providers or user data
+were used. Provider adoption, live-account acceptance and the remaining
+selected-library/connector N3 sources remain separate; connector-owned recipe,
+fixture and setup paths were not changed.
+
+
 **Native workspace/image sources N3 (implemented and accepted).**
 Version 3 binds text/list/table widgets to exact sealed owned files and introduces
 static PNG/JPEG previews. Versions 1/2 retain their grammar. Proposals and updates
@@ -1636,9 +1677,11 @@ request distinguishes configurable browser UI from saved agent workflows.
    Keep personal panel data out of global appearance exports.
    Details: [layout usage](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
    and [agent proposals](DOCUMENTATION.md#portable-layouts-and-agent-proposals--implemented).
-2. **Connector interoperability:** typed read-only POST/query requests and bounded
-   query inputs, then explicit pagination/response contracts. Credential-derived
-   headers, revision guards and transforms need separate reviewed types. The
+2. **Connector interoperability:** typed read-only POST/query requests, bounded
+   query inputs, fixed reviewed GraphQL documents, explicit application-error
+   contracts and body or query cursors are implemented as recipe v7 on
+   `engineering/typed-post-reads`. Credential-derived headers, revision guards
+   and transforms need separate reviewed types. The
    connector contributor's C1–C5 data/fixture pack is integrated. Future provider
    adoption follows reviewed shared-runtime checkpoints and separate live-account
    acceptance. Production Google registration stays deferred.

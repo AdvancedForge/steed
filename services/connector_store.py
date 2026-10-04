@@ -64,7 +64,7 @@ class ConnectorReceipt:
     result_cleared_at: str = ""
 
 
-def request_fingerprint(connector, tool, effect, destination, artifact):
+def request_fingerprint(connector, tool, effect, destination, artifact, inputs=None):
     data = [
         connector,
         tool,
@@ -72,6 +72,7 @@ def request_fingerprint(connector, tool, effect, destination, artifact):
         destination,
         artifact.artifact_id if artifact else "",
         artifact.sha256 if artifact else "",
+        sorted((inputs or {}).items()),
     ]
     return hashlib.sha256(json.dumps(data, ensure_ascii=True).encode()).hexdigest()
 

@@ -42,6 +42,7 @@ class ConnectorRequest:
     artifact: TaskArtifact | None
     operation_id: str = ""
     review: ConnectorReview | None = None
+    inputs: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,8 @@ class ConnectorTool:
     access_group: str = ""
     review_kind: str = "document"
     plan: object = None
+    validate_inputs: object = None
+    input_schema: tuple = ()
 
 
 class ConnectorRegistry:
@@ -117,6 +120,15 @@ class ConnectorRegistry:
             )
             or not callable(definition.execute)
             or (definition.reconcile is not None and not callable(definition.reconcile))
+            or (
+                definition.validate_inputs is not None
+                and not callable(definition.validate_inputs)
+            )
+            or (definition.validate_inputs is None and definition.input_schema)
+            or (
+                definition.input_schema
+                and (definition.effect != "read" or definition.requires_artifact)
+            )
             or (
                 definition.validate_destination is not None
                 and not callable(definition.validate_destination)
@@ -166,6 +178,7 @@ class ConnectorRegistry:
                 "reconcile_effect": "read" if t.reconcile is not None else None,
                 "requires_review": t.prepare_review is not None,
                 "plan_steps": len(t.plan.steps) if t.plan else 0,
+                "inputs": [dict(item) for item in t.input_schema],
             }
             for _, t in sorted(self._tools.items())
         ]

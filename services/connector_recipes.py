@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from urllib.parse import urlsplit
 
@@ -14,6 +14,10 @@ from services.task_workspace import unique_object
 from utils import save_json
 
 MAX_RECIPE_BYTES = 16384
+MAX_QUERY_INPUTS = 8
+MAX_INPUT_STRING = 512
+MAX_GRAPHQL_DOCUMENT = 4096
+MAX_GRAPHQL_VARIABLES = 8
 STATIC_HEADER_FORMATS = {
     "Notion-Version": "YYYY-MM-DD",
     "X-GitHub-Api-Version": "YYYY-MM-DD",
@@ -183,6 +187,69 @@ RECIPE_IDENTITY_EXAMPLE = {
         "label": "/name",
         "label_alternatives": ["/email", "/id"],
     },
+}
+
+RECIPE_QUERY_EXAMPLE = {
+    **RECIPE_IDENTITY_EXAMPLE,
+    "version": 7,
+    "name": "Example Search Notes",
+    "tools": [
+        {
+            "name": "search_notes",
+            "description": "Search this account's notes with reviewed inputs",
+            "method": "POST",
+            "effect": "read",
+            "path": "/notes/search",
+            "inputs": {
+                "query": {"type": "string", "max_length": 200},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 10,
+                },
+                "archived": {"type": "boolean", "default": False},
+            },
+            "request": {
+                "text": {"$bind": "input.query"},
+                "limit": {"$bind": "input.limit"},
+                "include_archived": {"$bind": "input.archived"},
+                "cursor": None,
+            },
+            "response": [{"label": "notes", "pointer": "/items"}],
+            "pagination": {
+                "cursor": "/cursor",
+                "parameter": "cursor",
+                "max_pages": 3,
+                "location": "body",
+            },
+            "errors": {"pointer": "/error", "code": "/reason", "message": "/summary"},
+        },
+        {
+            "name": "read_note_graphql",
+            "description": "Read one reviewed GraphQL note document",
+            "method": "POST",
+            "effect": "read",
+            "path": "/graphql",
+            "destination": "resource_id",
+            "query": {
+                "operation": "NoteById",
+                "document": (
+                    "query NoteById($id: ID!) {\n"
+                    "  note(id: $id) {\n"
+                    "    id\n"
+                    "    title\n"
+                    "    body\n"
+                    "  }\n"
+                    "}"
+                ),
+                "variables": {"id": {"$bind": "destination"}},
+                "data_pointer": "/data",
+                "errors_pointer": "/errors",
+            },
+            "response": [{"label": "note", "pointer": "/note"}],
+        },
+    ],
 }
 
 
@@ -367,6 +434,58 @@ class RecipePagination:
     cursor: str
     parameter: str
     max_pages: int
+    location: str = "query"
+
+
+@dataclass(frozen=True)
+class RecipeInput:
+    """One reviewed declarative read input; values arrive per call, never code."""
+
+    name: str
+    kind: str
+    maximum_length: int = 0
+    minimum: int = 0
+    maximum: int = 0
+    default: object = None
+    has_default: bool = False
+
+    def coerce(self, value):
+        """Accept only this input's declared type and bounds."""
+        if self.kind == "string":
+            if (
+                not isinstance(value, str)
+                or len(value) > self.maximum_length
+                or not value.isprintable()
+            ):
+                raise RecipeError(f"{self.name} must be printable text")
+            return value
+        if self.kind == "integer":
+            if type(value) is not int or not self.minimum <= value <= self.maximum:
+                raise RecipeError(f"{self.name} must be within its reviewed range")
+            return value
+        if type(value) is not bool:
+            raise RecipeError(f"{self.name} must be true or false")
+        return value
+
+
+@dataclass(frozen=True)
+class RecipeErrors:
+    """Application-level error contract; an HTTP 200 failure is reported, not hidden."""
+
+    pointer: str
+    code: str
+    message: str
+
+
+@dataclass(frozen=True)
+class RecipeQuery:
+    """One fixed reviewed GraphQL read; no variables document is agent-authored."""
+
+    operation: str
+    document: str
+    variables: JsonTemplate
+    data_pointer: str
+    errors_pointer: str
 
 
 @dataclass(frozen=True)
@@ -375,6 +494,155 @@ class RecipeReconciliation:
     operation_id: str
     status: str
     success: str
+
+
+INPUT_TYPES = ("boolean", "integer", "string")
+
+
+def input_name(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", value):
+        raise RecipeError("Use a lowercase bounded input name")
+    return value
+
+
+def recipe_inputs(value):
+    """Compile 0-8 bounded typed inputs; every declared input has exact semantics."""
+    if value is None:
+        return ()
+    if not isinstance(value, dict) or len(value) > MAX_QUERY_INPUTS:
+        raise RecipeError(f"Declare 1-{MAX_QUERY_INPUTS} typed read inputs")
+    compiled = []
+    for name, rule in value.items():
+        input_name(name)
+        if not isinstance(rule, dict) or rule.get("type") not in INPUT_TYPES:
+            raise RecipeError("Each read input needs a string, integer or boolean type")
+        kind = rule["type"]
+        optional = rule.get("default", ...) is not ...
+        fields(
+            rule,
+            (
+                "type",
+                "default",
+                *(("max_length",) if kind == "string" else ()),
+                *(("minimum", "maximum") if kind == "integer" else ()),
+            )
+            if optional
+            else (
+                "type",
+                *(("max_length",) if kind == "string" else ()),
+                *(("minimum", "maximum") if kind == "integer" else ()),
+            ),
+        )
+        compiled_input = RecipeInput(name, kind)
+        if kind == "string":
+            length = rule["max_length"]
+            if type(length) is not int or not 1 <= length <= MAX_INPUT_STRING:
+                raise RecipeError("Use a reviewed string length from 1 to 512")
+            compiled_input = RecipeInput(name, kind, maximum_length=length)
+        elif kind == "integer":
+            low, high = rule["minimum"], rule["maximum"]
+            if (
+                type(low) is not int
+                or type(high) is not int
+                or abs(low) > 2**53 - 1
+                or abs(high) > 2**53 - 1
+                or low > high
+            ):
+                raise RecipeError("Use ordered reviewed integer bounds")
+            compiled_input = RecipeInput(name, kind, minimum=low, maximum=high)
+        if optional:
+            compiled_input = replace(
+                compiled_input,
+                default=compiled_input.coerce(rule["default"]),
+                has_default=True,
+            )
+        compiled.append(compiled_input)
+    return tuple(compiled)
+
+
+def read_inputs(value, declared):
+    """Resolve one call's inputs: unknown names fail, absent optional ones default."""
+    if value is None:
+        value = {}
+    if not isinstance(value, dict) or any(
+        not isinstance(k, str)
+        or not isinstance(v, (str, int, bool))
+        or type(v) is int
+        and abs(v) > 2**53 - 1
+        for k, v in value.items()
+    ):
+        raise RecipeError("Read inputs must be a bounded object of typed values")
+    names = {item.name for item in declared}
+    if set(value) - names:
+        raise RecipeError("Use only this tool's reviewed read inputs")
+    resolved = {}
+    for item in declared:
+        if item.name in value:
+            resolved[item.name] = item.coerce(value[item.name])
+        elif item.has_default:
+            resolved[item.name] = item.default
+        else:
+            raise RecipeError(f"{item.name} is required")
+    return resolved
+
+
+def application_errors(value):
+    """Bounded contract for HTTP-200 application failures, reported honestly."""
+    if value is None:
+        return None
+    fields(value, ("pointer", "code", "message"))
+    return RecipeErrors(
+        pointer(value["pointer"]), pointer(value["code"]), pointer(value["message"])
+    )
+
+
+GRAPHQL_KEYWORDS = re.compile(
+    r"\b(mutation|subscription|fragment|schema|directive)\b", re.IGNORECASE
+)
+GRAPHQL_OPERATIONS = re.compile(r"\b(query|mutation|subscription)\b", re.IGNORECASE)
+
+
+def graphql_query(value):
+    """Compile one fixed read-only document; the agent supplies values, not queries."""
+    fields(
+        value, ("operation", "document", "variables", "data_pointer", "errors_pointer")
+    )
+    operation = value["operation"]
+    if not isinstance(operation, str) or not re.fullmatch(
+        r"[A-Za-z_][A-Za-z0-9_]{0,63}", operation
+    ):
+        raise RecipeError("Use one reviewed GraphQL operation name")
+    document = value["document"]
+    if (
+        not isinstance(document, str)
+        or not 1 <= len(document) <= MAX_GRAPHQL_DOCUMENT
+        or any(not c.isprintable() and c not in " \t\n" for c in document)
+    ):
+        raise RecipeError("Provide a bounded reviewed GraphQL document")
+    if (
+        not document.lstrip().startswith("query ")
+        or not re.fullmatch(
+            r"[\s\S]*\bquery\s+[A-Za-z][A-Za-z0-9_]{0,63}\b[\s\S]*", document
+        )
+        or len(GRAPHQL_OPERATIONS.findall(document)) != 1
+        or GRAPHQL_KEYWORDS.search(document)
+        or document.count("{") != document.count("}")
+        or document.count('"') % 2
+    ):
+        raise RecipeError(
+            "Reviewed GraphQL reads need exactly one balanced query document with no "
+            "mutations, subscriptions or fragments"
+        )
+    variables = json_template(
+        value["variables"], binding_sources=frozenset({"destination"})
+    )
+    return RecipeQuery(
+        operation,
+        document,
+        variables,
+        pointer(value["data_pointer"]),
+        pointer(value["errors_pointer"]),
+    )
 
 
 def idempotency_header(value):
@@ -398,10 +666,14 @@ class RecipeTool:
     request_template: JsonTemplate | None = None
     steps: tuple = ()
     plan_context: tuple = ()
+    inputs: tuple = ()
+    errors: RecipeErrors | None = None
+    query: RecipeQuery | None = None
+    http_method: str = ""
 
     @property
     def method(self):
-        return "GET" if self.effect == "read" else "POST"
+        return self.http_method or ("GET" if self.effect == "read" else "POST")
 
     @property
     def destination_type(self):
@@ -436,6 +708,8 @@ class ConnectorRecipe:
     version: int = 1
     request_headers: tuple = ()
     label_alternatives: tuple = ()
+    identity_method: str = "GET"
+    identity_request: JsonTemplate | None = None
 
     @property
     def provider(self):
@@ -455,6 +729,12 @@ class ConnectorRecipe:
                 "subject": self.subject_pointer,
                 "label": self.label_pointer,
                 "label_alternatives": list(self.label_alternatives),
+                "method": self.identity_method,
+                "request": (
+                    self.identity_request.source()
+                    if self.identity_request is not None
+                    else None
+                ),
             },
             "oauth": (
                 {
@@ -496,6 +776,7 @@ class ConnectorRecipe:
                             "cursor": t.pagination.cursor,
                             "parameter": t.pagination.parameter,
                             "max_pages": t.pagination.max_pages,
+                            "location": t.pagination.location,
                         }
                         if t.pagination
                         else None
@@ -503,6 +784,44 @@ class ConnectorRecipe:
                     "response_fields": [
                         {"label": k, "pointer": v} for k, v in t.response
                     ],
+                    "inputs": [
+                        {
+                            "name": i.name,
+                            "type": i.kind,
+                            **(
+                                {"max_length": i.maximum_length}
+                                if i.kind == "string"
+                                else {}
+                            ),
+                            **(
+                                {"minimum": i.minimum, "maximum": i.maximum}
+                                if i.kind == "integer"
+                                else {}
+                            ),
+                            **({"default": i.default} if i.has_default else {}),
+                        }
+                        for i in t.inputs
+                    ],
+                    "errors": (
+                        {
+                            "pointer": t.errors.pointer,
+                            "code": t.errors.code,
+                            "message": t.errors.message,
+                        }
+                        if t.errors
+                        else None
+                    ),
+                    "query": (
+                        {
+                            "operation": t.query.operation,
+                            "document": t.query.document,
+                            "variables": t.query.variables.source(),
+                            "data_pointer": t.query.data_pointer,
+                            "errors_pointer": t.query.errors_pointer,
+                        }
+                        if t.query
+                        else None
+                    ),
                     "plan": [
                         {
                             "name": step.name,
@@ -549,7 +868,7 @@ def parse_recipe(raw):
                 *(
                     ["request_headers"]
                     if data.get("version") == 5
-                    or data.get("version") == 6
+                    or data.get("version") in (6, 7)
                     and "request_headers" in data
                     else []
                 ),
@@ -562,6 +881,7 @@ def parse_recipe(raw):
             4,
             5,
             6,
+            7,
         ):
             raise RecipeError("Unsupported connector recipe version")
         headers = (
@@ -577,11 +897,30 @@ def parse_recipe(raw):
                 "path",
                 "subject",
                 "label",
-                *(["label_alternatives"] if data["version"] == 6 else []),
+                *(
+                    ["label_alternatives"]
+                    if data["version"] == 6
+                    or data["version"] > 6
+                    and "label_alternatives" in identity
+                    else []
+                ),
+                *(
+                    ["method", "request"]
+                    if data["version"] == 7 and identity.get("method") == "POST"
+                    else []
+                ),
             ),
         )
+        if data["version"] == 7 and identity.get("method") not in (None, "POST"):
+            raise RecipeError("Identity reads use GET or one reviewed POST")
+        identity_method = identity.get("method", "GET")
+        identity_request = None
+        if identity_method == "POST":
+            identity_request = json_template(
+                identity["request"], binding_sources=frozenset()
+            )
         alternatives = ()
-        if data["version"] == 6:
+        if "label_alternatives" in identity:
             values = identity["label_alternatives"]
             if not isinstance(values, list) or not 1 <= len(values) <= 3:
                 raise RecipeError("Provide 1–3 reviewed identity label alternatives")
@@ -597,7 +936,10 @@ def parse_recipe(raw):
         for item in data["tools"]:
             if not isinstance(item, dict):
                 raise RecipeError("Provide tool objects")
-            writing = data["version"] >= 2 and item.get("method") == "POST"
+            typed = data["version"] == 7 and item.get("effect") == "read"
+            writing = (
+                data["version"] >= 2 and item.get("method") == "POST" and not typed
+            )
             fields(
                 item,
                 (
@@ -607,6 +949,12 @@ def parse_recipe(raw):
                     "path",
                     "response",
                     *(["pagination"] if "pagination" in item else []),
+                    *(["effect"] if typed else []),
+                    *(["request"] if typed and "query" not in item else []),
+                    *(["inputs"] if typed and "inputs" in item else []),
+                    *(["errors"] if typed and "errors" in item else []),
+                    *(["query"] if typed and "query" in item else []),
+                    *(["destination"] if typed and "destination" in item else []),
                     *(["effect", "destination", "request"] if writing else []),
                     *(
                         ["idempotency_header"]
@@ -627,7 +975,7 @@ def parse_recipe(raw):
             )
             name = connector_name(item["name"])
             if name in names or item["method"] not in (
-                ("GET", "POST") if writing else ("GET",)
+                ("GET", "POST") if writing or typed else ("GET",)
             ):
                 raise RecipeError(
                     "Recipe tools need unique names and supported requests"
@@ -642,6 +990,67 @@ def parse_recipe(raw):
                 None,
             )
             template = None
+            inputs, errors, query = (), None, None
+            if typed:
+                if item["effect"] != "read":
+                    raise RecipeError("Typed request tools are read-only")
+                effect, destination_kind = "read", item.get("destination", "account")
+                declared = recipe_inputs(item.get("inputs"))
+                if destination_kind not in ("account", "resource_id"):
+                    raise RecipeError(
+                        "Typed reads take an account or one exact resource ID"
+                    )
+                if "query" in item:
+                    if declared or "request" in item:
+                        raise RecipeError(
+                            "Fixed GraphQL reads take only their reviewed variables"
+                        )
+                    if destination_kind not in ("account", "resource_id"):
+                        raise RecipeError(
+                            "GraphQL reads take an account or one resource ID variable"
+                        )
+                    query = graphql_query(item["query"])
+                    bound = query.variables.bindings()
+                    if (destination_kind == "resource_id") != ("destination" in bound):
+                        raise RecipeError(
+                            "GraphQL variables and the reviewed destination must agree"
+                        )
+                    if "{destination}" in path:
+                        raise RecipeError(
+                            "GraphQL reads bind their variables, not a path segment"
+                        )
+                else:
+                    template = json_template(
+                        item["request"],
+                        binding_sources=frozenset({f"input.{i.name}" for i in declared})
+                        | (
+                            {"destination"}
+                            if destination_kind == "resource_id"
+                            else set()
+                        ),
+                    )
+                    used = template.bindings()
+                    if (
+                        used
+                        - {f"input.{i.name}" for i in declared}
+                        - (
+                            {"destination"}
+                            if destination_kind == "resource_id"
+                            else set()
+                        )
+                        or not used
+                        or (
+                            destination_kind == "resource_id"
+                            and "destination" not in used
+                            and "{destination}" not in path
+                        )
+                        or (destination_kind == "account" and "{destination}" in path)
+                    ):
+                        raise RecipeError(
+                            "Typed read requests bind only reviewed inputs"
+                        )
+                errors = application_errors(item.get("errors"))
+                inputs = declared
             if writing:
                 effect, destination_kind = item["effect"], item["destination"]
                 if (
@@ -720,19 +1129,35 @@ def parse_recipe(raw):
             pagination = None
             if "pagination" in item:
                 value = item["pagination"]
-                fields(value, ("cursor", "parameter", "max_pages"))
+                fields(
+                    value,
+                    ("cursor", "parameter", "max_pages")
+                    if data["version"] < 7
+                    else ("cursor", "parameter", "max_pages", "location"),
+                )
+                location = value.get("location", "query")
                 if (
                     "{destination}" in path
                     or type(value["max_pages"]) is not int
                     or not 1 <= value["max_pages"] <= 5
+                    or location not in ("body", "query")
+                    or location == "body"
+                    and not (typed and template is not None)
                 ):
                     raise RecipeError(
                         "Pagination needs a fixed collection path and 1–5 pages"
+                    )
+                if location == "body" and query_parameter(value["parameter"]) not in (
+                    template.source() or {}
+                ):
+                    raise RecipeError(
+                        "Body cursors need a reviewed request field of that name"
                     )
                 pagination = RecipePagination(
                     pointer(value["cursor"]),
                     query_parameter(value["parameter"]),
                     value["max_pages"],
+                    location,
                 )
             if (
                 not isinstance(item["response"], list)
@@ -761,6 +1186,10 @@ def parse_recipe(raw):
                     header,
                     reconciliation,
                     template,
+                    inputs=inputs,
+                    errors=errors,
+                    query=query,
+                    http_method="POST" if typed else "",
                 )
             )
             if "plan" in item:
@@ -784,6 +1213,8 @@ def parse_recipe(raw):
             data["version"],
             headers,
             alternatives,
+            identity_method,
+            identity_request,
         )
     except (KeyError, TypeError, UnicodeError, RecursionError, ValueError) as error:
         if isinstance(error, RecipeError):

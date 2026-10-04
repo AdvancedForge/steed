@@ -268,13 +268,17 @@ TOOLS = (
     ),
     tool(
         "app.call_tool",
-        "Start an approved app call to an exact destination using an owned immutable artifact when required. Tools marked requires_review prepare a before/after proposal and wait for the user's desktop review; agents cannot approve it. Bind a stable request_id to inputs; repeats never dispatch again. Poll app.status (requested/awaiting_review means wait). No arbitrary endpoints or recipient lists.",
+        "Start an approved app call to an exact destination using an owned immutable artifact when required. Tools marked requires_review prepare a before/after proposal and wait for the user's desktop review; agents cannot approve it. app.list_tools reports each read tool's typed 'inputs' (name, type, bounds, optional default); send only those exact keys as inputs. Inputs never widen the reviewed endpoint or effect. Bind a stable request_id to inputs; repeats never dispatch again. Poll app.status (requested/awaiting_review means wait). No arbitrary endpoints, query text or recipient lists.",
         {
             "connector": string(64),
             "tool": string(64),
             "request_id": string(64),
             "destination": string(320),
             "artifact_id": string(),
+            "inputs": {
+                "type": "object",
+                "description": "Only the typed read inputs published for this tool.",
+            },
         },
         ("connector", "tool", "request_id", "destination"),
     ),

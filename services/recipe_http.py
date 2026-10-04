@@ -37,6 +37,7 @@ class RecipeHttp:
         token_endpoint="",
         query_parameters=None,
         post_rules=(),
+        read_posts=None,
         request_headers=None,
     ):
         self.origin = recipe_origin(origin)
@@ -45,6 +46,16 @@ class RecipeHttp:
             static_request_headers(request_headers)
             if request_headers is not None
             else ()
+        )  # Typed reads post literal bounded bodies to exact reviewed paths with no
+        # operation header: they cannot create or replay an external effect.
+        self.read_posts = tuple(
+            re.compile(
+                re.escape(request_path(path, destination=True)).replace(
+                    re.escape("{destination}"),
+                    r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}",
+                )
+            )
+            for path in read_posts or ()
         )
         self.query_parameters = {
             request_path(path): frozenset(query_parameter(p) for p in parameters)
@@ -63,6 +74,12 @@ class RecipeHttp:
                 )
             )
         self.post_rules = tuple(rules)
+
+    def read_rule(self, path):
+        """True when this exact reviewed path may receive a typed read body."""
+        return any(
+            pattern.fullmatch(path) and ".." not in path for pattern in self.read_posts
+        )
 
     def post_rule(self, path, headers, payload):
         for template, header, nested in self.post_rules:
@@ -98,6 +115,7 @@ class RecipeHttp:
             self.token_endpoint and method == "POST" and url == self.token_endpoint
         )
         api_post = method == "POST" and not token_request
+        read_post = self.read_rule(parts.path)
         target = parts.path
         if parts.query and not token_request:
             if api_post:
@@ -148,7 +166,10 @@ class RecipeHttp:
             if not isinstance(body, bytes) or not 1 <= len(body) <= 16384:
                 raise ValueError("Use a bounded JSON POST")
             payload = json.loads(body, object_pairs_hook=unique_object)
-            header = self.post_rule(parts.path, headers, payload)
+            header = "" if read_post else self.post_rule(parts.path, headers, payload)
+            if read_post:
+                # A typed read body is a literal JSON template built by trusted code.
+                json_template(payload, bindings=False)
             required = (
                 {"Authorization", "Content-Type"}
                 | ({header} if header else set())
@@ -226,7 +247,8 @@ class RecipeHttp:
             response = http.client.HTTPResponse(channel, method=method)
             response.begin()
             if (
-                response.status not in ((200, 201) if api_post else (200,))
+                response.status
+                not in ((200,) if read_post else (200, 201) if api_post else (200,))
                 or response.getheader("Content-Encoding", "identity") != "identity"
             ):
                 raise ApiError(response.status)
