@@ -1342,9 +1342,11 @@ class ExecutableContractCaseTests(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
         for case in self.cases:
             with self.subTest(case=case["id"]):
-                self.assertIn(case["provider"], CONTRACT_ORIGINS)
                 self.assertIn(case["kind"], self.registry["kinds"])
-                self.assertEqual(case["request"]["method"], "GET")
+                if case["kind"] != "gated_post_read":
+                    # A case that runs needs an origin the engine can accept.
+                    self.assertIn(case["provider"], CONTRACT_ORIGINS)
+                    self.assertEqual(case["request"]["method"], "GET")
                 self.assertTrue(case["request"]["path"].startswith("/"))
                 self.assertTrue(case["currently_passes"].endswith("."))
                 self.assertTrue(case["smallest_missing_behavior"].endswith("."))
@@ -2018,3 +2020,105 @@ class AcceptanceWorksheetTests(unittest.TestCase):
                 for item in self.worksheet["live_acceptance_preconditions"]
             )
         )
+
+
+class GatedPostReadCaseTests(unittest.TestCase):
+    """C7: official POST-read contracts, gated until a shared contract exists."""
+
+    def setUp(self):
+        self.registry = json.loads(
+            (FIXTURES / "executable_cases.json").read_text("utf-8")
+        )
+        self.gated = [
+            case for case in self.registry["cases"] if case["kind"] == "gated_post_read"
+        ]
+
+    def test_every_priority_family_has_an_official_post_read_case(self):
+        self.assertEqual(
+            sorted(case["provider"] for case in self.gated),
+            ["Dropbox", "Linear", "Notion"],
+            "one gated POST-read case per priority family",
+        )
+        self.assertEqual(len(self.gated), 3)
+        self.assertIn("gated_post_read", self.registry["kinds"])
+        self.assertIn(
+            "never disguised as a create", self.registry["gated_post_read_note"]
+        )
+
+    def test_each_gated_case_records_the_official_wire_contract(self):
+        for case in self.gated:
+            with self.subTest(case=case["id"]):
+                request = case["request"]
+                self.assertEqual(request["method"], "POST")
+                self.assertTrue(request["path"].startswith("/"))
+                self.assertIn("Authorization", request["headers"])
+                self.assertTrue(case["reviewed_inputs"])
+                self.assertTrue(case["documented_response"])
+                self.assertTrue(case["documented_failures"])
+                self.assertTrue(case["documented_limits"])
+                self.assertTrue(case["documented_do_not"])
+                self.assertTrue(case["currently_passes"].endswith("."))
+                self.assertTrue(case["smallest_missing_behavior"].endswith("."))
+                self.assertEqual(
+                    case["expected"]["outcome"],
+                    "not_executable_until_shared_contract",
+                )
+                self.assertTrue(case["expected"]["reason"].endswith("."))
+
+    def test_gated_cases_carry_no_credential_and_ship_no_profile(self):
+        for case in self.gated:
+            body = json.dumps(case).lower()
+            with self.subTest(case=case["id"]):
+                for marker in ("secret_", "ntn_", "ghp_", "glpat-"):
+                    self.assertNotIn(marker, body)
+                # A gated read is never packaged as a profile or a template.
+                for directory in (PACKAGED, PACKAGED / "templates"):
+                    self.assertFalse(
+                        (directory / (case["provider"] + ".json")).exists()
+                    )
+                    self.assertFalse(
+                        (directory / (case["provider"].lower() + ".json")).exists()
+                    )
+
+    def test_notion_case_records_the_documented_prohibitions_and_limits(self):
+        case = next(c for c in self.gated if c["provider"] == "Notion")
+        joined = " ".join(case["documented_do_not"])
+        self.assertIn("Do not parse, validate or store cursors", joined)
+        self.assertIn("in_trash", joined)
+        self.assertIn("sort order", joined)
+        self.assertIn("10,000 results", " ".join(case["documented_limits"]))
+        self.assertIn("is_archived", case["documented_body_fields"])
+        self.assertIn("2025-09-03", json.dumps(case["request"]["headers"]))
+
+    def test_linear_case_records_partial_success_as_a_failure_not_data(self):
+        case = next(c for c in self.gated if c["provider"] == "Linear")
+        self.assertIn("partial", case["documented_failures"])
+        self.assertIn("200", case["documented_failures"]["partial"])
+        self.assertIn(
+            "errors array before assuming success",
+            " ".join(case["documented_do_not"]),
+        )
+        self.assertIn("10,000 complexity points", " ".join(case["documented_limits"]))
+        self.assertEqual(
+            case["reviewed_inputs"]["query"], "query Me { viewer { id name email } }"
+        )
+
+    def test_dropbox_case_separates_identity_from_listing_and_names_the_limits(self):
+        case = next(c for c in self.gated if c["provider"] == "Dropbox")
+        identity = case["documented_identity"]
+        self.assertEqual(identity["subject_pointer"], "/account_id")
+        self.assertEqual(identity["label_pointer"], "/name/display_name")
+        joined = " ".join(case["documented_do_not"])
+        self.assertIn("email as an account key", joined)
+        self.assertIn("email_verified", joined)
+        self.assertIn("2000", " ".join(case["documented_limits"]))
+        # Identity is a POST too, so nothing about this family is expressible yet.
+        self.assertIn("Identity is a POST", case["expected"]["reason"])
+
+    def test_shared_capability_queue_tracks_post_reads_as_still_open(self):
+        shared = json.loads((FIXTURES / "shared_capabilities.json").read_text("utf-8"))
+        group = next(g for g in shared["groups"] if g["id"] == "post_reads")
+        self.assertNotIn("status", group)
+        self.assertEqual(sorted(group["services"]), ["Dropbox", "Linear", "Notion"])
+        for requirement in group["requirements"]:
+            self.assertTrue(requirement["blocks"])
