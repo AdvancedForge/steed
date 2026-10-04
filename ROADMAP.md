@@ -12,6 +12,50 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Native inputs N2 and comparison tables (implemented and accepted).**
+Version 2 adds bounded text/choice forms and read-only tables to reviewed panels;
+version 1 retains its original grammar. Forms preview exact values and the owning
+task/profile before an explicit Send to agent. They use existing conversations,
+not executable callbacks or automatic connector writes. Queued messages and
+value-free retry receipts commit together; retries never re-notify, even after
+message clearing or task end. Disconnected/ended tasks disable forms. Artifact
+updates preserve form values, previews and unaffected selections in place; profile/
+panel switches and window close scrub input. Inputs are transient until sent and
+never enter appearance exports. The sidebar now counts panel/layout reviews in
+its pending approvals. Tables share owned-artifact digests, authority, publication
+revisions and retained-draft semantics.
+
+Acceptance: **1,190 regressions pass in 453.283 seconds**; 187 focused integration
+checks pass. The final readable-popup follow-up passes **68 UI checks** in 22.718
+seconds. Independent SDK/raw MCP workflows pass preview/send, correct-task delivery
+and table publication over stdio and authenticated HTTP. Both installed Codex
+runtime paths and startup/render/shutdown pass; Ruff lint/format, dependencies,
+examples, local documentation targets and whitespace pass. Light/dark browser,
+inert-installation and readable-send previews were inspected with synthetic data.
+No real accounts or external models were used. Logs:
+`/tmp/steed-native-inputs-{full,focused,final-ui}.log`,
+`/tmp/steed-native-inputs-{stdio,http}.log`,
+`/tmp/steed-native-inputs-native{,-direct}.log`,
+`/tmp/steed-native-inputs-startup.log`.
+Next: image/workspace sources,
+then selected library/connector-result bindings with explicit freshness and
+revocation behavior. Local HTML/JavaScript hosting remains a complementary backlog.
+
+**Connector starter branch integrated.** PR #2 head `ccf2c4a` is merged locally by
+`1383368`; correction `65ced87` updates the POSIX picker expectation and obsolete
+setup gates, distinguishes Graph item IDs from sharing URLs and discloses that a
+Zotero library ID is not checked against the connected identity. Five packaged
+subsets now appear in Add a Service: Todoist, GitLab.com, Asana, Raindrop.io and
+supplied-token Microsoft 365. GitHub repository, GitLab project and Zotero library
+templates remain explicit imports. **80 Linux profile checks and 127 shared
+runtime checks pass** against the combined branch. All live-account acceptance
+remains pending; installation connects no account and grants no task access.
+The [exact-head review and C6–C10 continuation instructions](https://github.com/AdvancedForge/steed/pull/2#pullrequestreview-5407033827)
+are posted. Branch from published main for the next contributor milestone.
+Logs: `/tmp/steed-connectors-ccf2-profiles-final.log`,
+`/tmp/steed-connectors-ccf2-runtime.log`. Shared typed query/POST reads remain the
+next runtime connector scope; gated provider contracts remain reference data.
+
 **Native data panels N1 (implemented and accepted).**
 The user chose native components first, retaining locally hosted HTML/JavaScript
 apps as a later option. The first catalogue offers task status, read-only text and
@@ -46,8 +90,8 @@ synthetic profiles; no real accounts or external model calls were used. Logs:
 `/tmp/steed-data-panels-{stdio,http}-final.log`,
 `/tmp/steed-data-panels-native{,-direct}.log`,
 `/tmp/steed-data-panels-startup.log`.
-Next: explicit native inputs and richer data sources/components, with existing
-message/permission/receipt controls. HTML/JavaScript hosting stays deferred rather
+Native inputs and comparison tables are delivered above; richer sources/components
+follow with existing message/permission/receipt controls. HTML/JavaScript hosting stays deferred rather
 than excluded. See [usage](DOCUMENTATION.md#native-data-panels--implemented-first-milestone)
 and [the continuation plan](ENGINEERING_HANDOFF.md#native-data-panels--decision-and-continuation).
 
@@ -376,7 +420,7 @@ engineering assessment. [Review](https://github.com/AdvancedForge/steed/pull/2#p
 and [five continuation milestones](https://github.com/AdvancedForge/steed/pull/2#issuecomment-5973415389)
 cover workflow completeness, additional supported templates, executable provider
 contracts, broader families and lifecycle testing. Candidate contracts need
-careful transport-size/onboarding distinctions; the PR remains unmerged, and no
+careful transport-size/onboarding distinctions; that review head was unmerged, and no
 live account acceptance is claimed.
 
 Chat presentation milestone: native agent conversation can move between sidebar
@@ -397,8 +441,8 @@ complete; engineering branch `f6c28b4` is integrated by merge `e20cfea`.
 The first open-shadow observation increment and external component acceptance
 are complete. Reviewed non-secret API-version headers and explicit identity-label
 alternatives are implemented. Manual/portable layouts, native action panels and
-task/text/list data panels are complete. The next daily-workflow scope adds explicit
-native inputs and richer data sources/components; the next shared connector scope
+task/text/list/form/table data panels are complete. The next daily-workflow scope
+adds image/workspace sources and richer data bindings; the next shared connector scope
 is typed query/POST reads. Deeper accessible semantics and supported shadow-control
 input remain separate follow-ups. Further agents work on their own branches and
 submit milestones for maintainer review.
@@ -1521,7 +1565,8 @@ request distinguishes configurable browser UI from saved agent workflows.
    commits and reviewed portable agent layouts are implemented. Export/import
    and previous-layout recovery work. Maintained native action panels and bounded
    text/appearance are delivered, alongside reviewed native task/text/list data
-   panels with profile-bound artifact updates. Next: explicit native inputs and
+   panels with profile-bound artifact updates, explicit native forms and tables.
+   Next: images, workspace sources and
    richer bindings/components; local HTML/JavaScript apps remain a later option.
    Keep personal panel data out of global appearance exports.
    Details: [layout usage](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
@@ -1529,8 +1574,9 @@ request distinguishes configurable browser UI from saved agent workflows.
 2. **Connector interoperability:** typed read-only POST/query requests and bounded
    query inputs, then explicit pagination/response contracts. Credential-derived
    headers, revision guards and transforms need separate reviewed types. The
-   connector contributor owns service data/fixtures and C1–C5 acceptance; review
-   their updated PR before integration. Production Google registration stays deferred.
+   connector contributor's C1–C5 data/fixture pack is integrated. Future provider
+   adoption follows reviewed shared-runtime checkpoints and separate live-account
+   acceptance. Production Google registration stays deferred.
 3. **Better website understanding:** bounded accessible form hints are delivered.
    Remaining scope includes complete accessibility semantics, dynamic content/frame
    coverage and native actions for supported open-shadow controls.

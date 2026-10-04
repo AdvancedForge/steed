@@ -91,8 +91,10 @@ class TaskMessages:
             "SELECT (SELECT COUNT(*) FROM grants WHERE task_id=? AND status='requested') + "
             "(SELECT COUNT(*) FROM connector_calls WHERE task_id=? AND state='awaiting_review') + "
             "(SELECT COUNT(*) FROM worker_runs WHERE task_id=? AND state='awaiting_approval') + "
-            "(SELECT COUNT(*) FROM recipe_proposals WHERE task_id=? AND state='awaiting_approval')",
-            (task_id,) * 4,
+            "(SELECT COUNT(*) FROM recipe_proposals WHERE task_id=? AND state='awaiting_approval') + "
+            "(SELECT COUNT(*) FROM layout_proposals WHERE task_id=? AND state='awaiting_approval') + "
+            "(SELECT COUNT(*) FROM data_panels WHERE task_id=? AND state='awaiting_approval')",
+            (task_id,) * 6,
         ).fetchone()[0]
         files, artifacts, receipts = db.execute(
             "SELECT "
@@ -115,7 +117,7 @@ class TaskMessages:
             raise ValueError("Provide a stable message ID")
         return self._post(task_id, "agent", message_id, text, revision, state)
 
-    def _post(self, task_id, role, message_id, text, revision, state):
+    def _post(self, task_id, role, message_id, text, revision, state, *, audit=None):
         task = self.store.get(task_id)
         if task.status not in ("created", "running"):
             raise ValueError("Task is no longer active")
@@ -194,6 +196,9 @@ class TaskMessages:
                     sequence,
                 ),
             )
+            if audit is not None:
+                # Trusted UI receipts commit with the message, never before delivery.
+                audit()
         return dict(
             db.execute(
                 "SELECT * FROM task_messages WHERE task_id=? AND message_id=?",

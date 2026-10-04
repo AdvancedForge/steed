@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "name": "Research preferences",
+  "widgets": [
+    {
+      "id": "preferences",
+      "kind": "form",
+      "title": "What should I prioritize?",
+      "fields": [
+        {
+          "id": "focus",
+          "kind": "text",
+          "title": "Focus",
+          "required": true
+        },
+        {
+          "id": "depth",
+          "kind": "choice",
+          "title": "Detail level",
+          "required": false,
+          "options": [
+            "Brief",
+            "Detailed"
+          ]
+        }
+      ]
+    }
+  ]
+}

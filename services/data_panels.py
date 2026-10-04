@@ -6,9 +6,10 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from data_panel_format import parse_panel, stable_id, widget_content
+from data_panel_format import form_values, parse_panel, stable_id, widget_content
 from services.command_broker import require_owner_thread
 from services.task_artifacts import artifact_input
+from services.task_messages import MESSAGE_BYTES
 from services.task_policy import TaskPermissionError
 
 PANEL_SCHEMA = """
@@ -398,7 +399,7 @@ class DataPanels:
         result = []
         for widget in definition.widgets:
             value = dict(widget)
-            if widget["kind"] != "task":
+            if widget["id"] in definition.artifact_widgets:
                 binding = bindings[widget["id"]]
                 artifact = self._artifact(
                     task_id, binding["artifact_id"], widget["kind"], binding["sha256"]
@@ -410,6 +411,106 @@ class DataPanels:
                 )
             result.append(value)
         return tuple(result)
+
+    def form_payload(self, task_id, request_id, widget_id, values):
+        """Build the exact user-reviewed message; no data authority is added."""
+        definition = self.definition(task_id, request_id)
+        widget = next(
+            (
+                w
+                for w in definition.widgets
+                if w["id"] == widget_id and w["kind"] == "form"
+            ),
+            None,
+        )
+        if widget is None:
+            raise ValueError("Choose a reviewed form from this panel")
+        values = form_values(widget, values)
+        payload = json.dumps(
+            {
+                "type": "steed_panel_form",
+                "panel": definition.name,
+                "request_id": request_id,
+                "widget_id": widget_id,
+                "fields": [
+                    {"id": f["id"], "label": f["title"], "value": values[f["id"]]}
+                    for f in widget["fields"]
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        if len(payload.encode("utf-8")) > MESSAGE_BYTES:
+            raise ValueError("The complete form message must fit within 8 KiB")
+        return payload
+
+    def form_available(self, task_id, request_id, profile_key):
+        self.service._usable()
+        self.service._active(task_id)
+        row = self._row(task_id, request_id)
+        if (
+            row["state"] != "applied"
+            or not profile_key
+            or row["profile_key"] != profile_key
+        ):
+            raise ValueError("Form is not enabled in this profile")
+        if task_id not in self.service.external_tasks:
+            raise ValueError("The owning agent is disconnected")
+        if not any(
+            self.for_profile(p, match=(task_id, request_id))
+            for p in self.profile_names()
+        ):
+            raise ValueError("The approved profile no longer exists")
+
+    def submit_form(
+        self, task_id, request_id, widget_id, submission_id, values, *, profile_key
+    ):
+        """Trusted user-only submission with an atomic, value-free retry receipt."""
+        self.service._usable()
+        if not stable_id(submission_id):
+            raise ValueError("Use a stable submission ID")
+        if (
+            not profile_key
+            or self._row(task_id, request_id)["profile_key"] != profile_key
+        ):
+            raise ValueError("Form receipt belongs to another display profile")
+        payload = self.form_payload(task_id, request_id, widget_id, values)
+        digest = hashlib.sha256(payload.encode()).hexdigest()
+        message_id = (
+            "panel_"
+            + hashlib.sha256(
+                json.dumps([task_id, request_id, widget_id, submission_id]).encode()
+            ).hexdigest()[:58]
+        )
+        receipt = {"message_id": message_id, "sha256": digest, "state": "queued"}
+        # Retain the digest in the journal when the user clears message bodies.
+        # A retry reports the original queue result and never re-notifies an agent.
+        for row in self.db.execute(
+            "SELECT payload FROM events WHERE task_id=? AND kind='panel.form_queued'",
+            (task_id,),
+        ):
+            previous = json.loads(row[0])
+            if previous["message_id"] == message_id:
+                if previous["sha256"] != digest:
+                    raise ValueError(
+                        "Submission ID is already bound to different values"
+                    )
+                return receipt
+        self.form_available(task_id, request_id, profile_key)
+
+        def audit():
+            self.service.store._append(task_id, "panel.form_queued", receipt)
+
+        try:
+            result = self.service.messages._post(
+                task_id, "user", message_id, payload, 0, "complete", audit=audit
+            )
+        except sqlite3.Error:
+            self.service._fatal()
+            raise
+        self.service.changed.emit()
+        self.service.user_message_sent.emit(task_id, result)
+        return receipt
 
     def remove(self, task_id, request_id):
         self.service._usable()

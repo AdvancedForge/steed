@@ -1919,6 +1919,8 @@ class BrowserWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        if self.data_panels_dock is not None:
+            self.data_panels_dock.refresh()
         if self.file_library_dialog is not None:
             self.file_library_dialog.reject()
         if self.agent_sidebar is not None:
