@@ -81,7 +81,6 @@
       "status": "packaged",
       "gate": "None outstanding for the shipped read-only subset, with one honest caveat: Graph requires a delegated token, and Steed has no Microsoft sign-in, so the user supplies a delegated access token obtained elsewhere. Writes remain gated, collections are first-page only because @odata.nextLink is never followed, and native OAuth registration, scope normalization and refresh remain shared framework work.",
       "capabilities": [
-        "identity_shapes",
         "native_oauth",
         "pagination",
         "query_inputs"
@@ -97,11 +96,9 @@
       "errors": "HTTP status codes with a documented code and message body",
       "host": "api.notion.com",
       "status": "gated",
-      "gate": "Identity is documented at GET /v1/users/me, but Notion-Version is required on every request and the documented user object marks name as oneOf string or null, so a bot with no name has no non-empty label. Since 2025-09-03 a database read returns data_sources rather than properties, and querying a data source is a POST read. The header and the label are what stand between this family and a single-item read.",
+      "gate": "A first read is now expressible: main carries reviewed non-secret static headers, so the required Notion-Version header can be sent, and reviewed identity label alternatives, so a documented null name falls back to a reviewed pointer. What remains is listing a data source, which is a POST read with a request object, and any write.",
       "capabilities": [
-        "identity_shapes",
-        "post_reads",
-        "static_headers"
+        "post_reads"
       ]
     },
     {
@@ -281,8 +278,7 @@
       "gate": "A personal access token travels in the X-Figma-Token header and no version header is documented at all, so the one prerequisite is a credential-derived token header. The smallest useful read is the documented GET /v1/files/:key/meta endpoint, because projecting metadata pointers does not shrink GET /v1/files/:key, whose document tree is documented as a non-optional response field and whose traversal can only be limited by a depth or ids query the transport cannot send today. Identity is a documented Tier 3 endpoint needing current_user:read, where tiers are rate-limit tiers rather than plan gates, and whether a personal token may call it is unverified.",
       "capabilities": [
         "credential_headers",
-        "query_inputs",
-        "static_headers"
+        "query_inputs"
       ]
     },
     {
@@ -297,11 +293,9 @@
       "status": "gated",
       "gate": "Authorization: Bearer with an API key is documented and API version 3 is the documented default, so neither a token header nor a version header blocks a read. Identity-derived binding of the account's own userID is the default goal but is an onboarding improvement, not a hard blocker: a user-pinned numeric library id in a reviewed template would allow a limited read-only subset today, with the pinned id disclosed as user-supplied and unchecked, and the key's library access flag disclosed. What is genuinely unresolved is empirical: whether the documented identity route accepts a bearer-carried key, and which item data fields exist for every item type, since no item schema is published.",
       "capabilities": [
-        "credential_headers",
         "identity_derived_paths",
         "local_service_origins",
-        "pagination",
-        "static_headers"
+        "pagination"
       ]
     },
     {
@@ -353,7 +347,6 @@
       "status": "gated",
       "gate": "OAuth-only access needs native sign-in, scope and refresh acceptance, the account label can be null, listing is offset paged, and playback or playlist writes are separate effects that read access does not imply.",
       "capabilities": [
-        "authentication_schemes",
         "identity_shapes",
         "native_oauth",
         "pagination",

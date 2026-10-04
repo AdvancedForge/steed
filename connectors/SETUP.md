@@ -390,7 +390,7 @@ installed, and a row is never a default account or an approval.
 | GitHub | template | owner must be fixed in newly reviewed source |
 | GitLab.com | packaged + template | none outstanding for the shipped subset |
 | Microsoft 365 | gated | native OAuth, `@odata.nextLink` paging and writes unverified |
-| Notion | gated | required `Notion-Version` header, nullable identity label, POST-read data-source query |
+| Notion | gated (first read expressible) | data-source listing is a POST read; a real integration token is still unverified |
 | Slack | gated | channel destinations and `ok:false` error checking |
 | Asana | packaged (read-only) | none outstanding; collections and task creation are excluded by design |
 | Dropbox | gated | reads are RPC-style POST request objects |
@@ -489,6 +489,16 @@ a family from looking blocked when only its listing is:
   (`start_cursor`/`next_cursor`). Readwise stays gated on its authentication
   scheme and its identity-less probe, not on paging.
 
+### Notion is now a first-read candidate
+
+Main's reviewed static headers and reviewed identity label alternatives clear the two
+things that previously gated Notion, so its queue entry keeps only `post_reads`: a
+data-source listing is `POST /v1/data_sources/{id}/query` with a request object. The
+required `Notion-Version` header and the documented null `name` are both handled by
+capabilities that exist today, which is why neither appears as a gate any more. A
+Notion profile is still not shipped here: it belongs with the runtime owner's
+acceptance of a real integration token.
+
 ### Notion assessment notes
 
 Notion stays gated, but for narrower and better-documented reasons than a missing
@@ -504,7 +514,8 @@ identity route. The synthetic contract is `connectors/fixtures/notion.json`.
 - `Notion-Version` is documented as required on all REST API requests. Documented
   versions are `2026-03-11`, `2025-09-03`, `2022-06-28`, `2022-02-22`,
   `2021-08-16` and `2021-05-13`. The fixture is bound to `2026-03-11`, and every
-  expected response below is version-specific.
+  expected response below is version-specific. Main now accepts this header as a
+  reviewed static header, so the requirement is expressible.
 - Since `2025-09-03`, databases and data sources are split: `GET /v1/databases/{id}`
   returns a `data_sources` array and its documented response has **no**
   `properties`, while `GET /v1/data_sources/{id}` is the home of the properties
@@ -540,7 +551,43 @@ make the catalog look larger.
 
 `connectors/fixtures/notion.json`, `connectors/fixtures/zotero.json` and
 `connectors/fixtures/figma.json` are implementation-ready reference contracts for
-the priority gated families. They are **not** profiles: nothing is installed, no
+the priority gated families, and `connectors/fixtures/executable_cases.json` turns
+them into comparable cases that run through the real parser and adapter.
+
+### What the executable cases prove, and what they cannot
+
+Each case states its exact method, origin and path, API version, headers split into
+static and credential-derived values, identity and read projections, a byte bound
+where the response matters, and its expected outcome — plus **which current behaviour
+already passes** and the **smallest missing behaviour**. A case may therefore fail
+because a shared capability is absent rather than because a recipe is wrong, and
+`services/` is never changed to make one pass.
+
+Two cases are decided by what main now carries:
+
+- `notion_static_version_header` **passes**. Main supports reviewed non-secret
+  static headers, and `Notion-Version` with a canonical date is one of the four
+  accepted names, so the header Notion documents as required can be sent. The case
+  asserts the header value that actually went out.
+- `notion_null_name_identity` **passes**. Main supports reviewed identity label
+  alternatives, so the documented `oneOf string or null` name falls back to another
+  reviewed pointer instead of refusing the account, and the fallback is visible in
+  the source review.
+
+Two are decided by gates that are still open:
+
+- `figma_credential_token_header` shows the real `RecipeHttp` refusing a
+  credential-derived `X-Figma-Token` header before any socket work. A token in a
+  service-specific header is a different requirement from a static version header,
+  and this is the former.
+- `figma_document_read_body_bound` records the arithmetic that makes the read bound:
+  the document route documents the `document` tree as a non-optional response field,
+  the transport refuses a body over 128 KiB, and no file endpoint documents a size
+  limit. It is marked `not_executable_locally` because a profile origin is one exact
+  public HTTPS domain, so the real transport can never be pointed at a loopback
+  fixture. `figma_oversized_success_is_a_failure` exists so nobody relaxes that bound
+  while adding a design subset: a successful HTTP 200 that exceeds it must stay a
+  failure, never a partial read. They are **not** profiles: nothing is installed, no
 packaged recipe exists for any of them, and no placeholder profile is shipped. Each
 contract carries, in the same shape:
 
