@@ -313,6 +313,22 @@ class RecipeHttpTests(unittest.TestCase):
             )
         self.assertEqual(len(self.calls), 3)
 
+    def test_empty_read_objects_and_null_identity_are_framed_as_exact_json(self):
+        self.http = RecipeHttp("https://api.fixture.example", read_posts=["/users/me"])
+        headers = {
+            "Authorization": "Bearer SYNTHETIC_TOKEN",
+            "Content-Type": "application/json",
+        }
+        for body in (b"null", b"{}"):
+            self.request(
+                method="POST",
+                url="https://api.fixture.example/users/me",
+                headers=headers,
+                body=body,
+            )
+        self.assertEqual(self.forms, [b"null", b"{}"])
+        self.assertTrue(all("Idempotency-Key" not in item[1] for item in self.calls))
+
     def test_reviewed_typed_read_posts_are_pinned_without_an_operation_header(self):
         self.http = RecipeHttp(
             "https://api.fixture.example",

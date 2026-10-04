@@ -36,7 +36,7 @@ class RecipeReviewDialog(QDialog):
             "Installs these exact API requests. Connecting an account and allowing task access are separate steps. "
             "Credentials stay in Steed's desktop keyring. "
             "Check each request's actual API behavior. Creates and sends require a separate payload preview and approval every time. "
-            "Typed reads and fixed GraphQL documents only read; they never create, change or replay anything."
+            "Typed requests are treated as reads. Verify the service's actual endpoint behavior before installing."
         )
         summary.setTextFormat(Qt.TextFormat.PlainText)
         summary.setWordWrap(True)

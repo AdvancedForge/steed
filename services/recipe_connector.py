@@ -444,8 +444,8 @@ class RecipeConnector:
                 "variables": tool.query.variables.materialize(sources),
             }
         body = tool.request_template.materialize(sources)
-        if tool.pagination and tool.pagination.location == "body":
-            body[tool.pagination.parameter] = cursor or None
+        if tool.pagination and tool.pagination.location == "body" and cursor:
+            body[tool.pagination.parameter] = cursor
         return body
 
     def typed_read(self, tool, destination, inputs, token, credentials, cancelled):

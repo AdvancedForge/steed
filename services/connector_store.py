@@ -72,8 +72,10 @@ def request_fingerprint(connector, tool, effect, destination, artifact, inputs=N
         destination,
         artifact.artifact_id if artifact else "",
         artifact.sha256 if artifact else "",
-        sorted((inputs or {}).items()),
     ]
+    # Keep pre-v7 receipts retryable: only typed values extend the old hash.
+    if inputs:
+        data.append(sorted(inputs.items()))
     return hashlib.sha256(json.dumps(data, ensure_ascii=True).encode()).hexdigest()
 
 

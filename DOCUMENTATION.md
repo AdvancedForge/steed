@@ -1771,7 +1771,8 @@ Live-provider/native desktop acceptance remains separate. Logs:
 
 **Version 7 typed reads, query inputs and fixed GraphQL documents.** Version 7
 keeps every v1-v6 grammar and adds bounded declarative read inputs. A v7 read tool
-declares `"effect": "read"` explicitly and may use `method: "POST"`:
+declares `"effect": "read"` explicitly with `method: "POST"`. Ordinary GET reads
+keep the existing grammar:
 
 ```json
 {
@@ -1811,9 +1812,12 @@ declares `"effect": "read"` explicitly and may use `method: "POST"`:
   bindings are accepted in a typed read `request`; draft, credential and
   operation-ID bindings are rejected. The effect stays `read`, so there is no
   payload preview, no operation header, no reconciliation and no automatic retry.
-- **Cursors may travel in the body.** `pagination.location` is `query` (the
-  existing behavior) or `body`, where the named field must already exist in the
-  reviewed request and is filled with the next cursor. Identity is rechecked
+  Literal bodies, empty objects and JSON null are supported. Review the actual
+  service endpoint semantics; declaring a read cannot change an external API.
+- **POST cursors travel in the body.** `pagination.location` is `body` for typed
+  POST reads; ordinary GET reads retain query-string pagination. The named field
+  must already exist in the reviewed request. The first body retains its reviewed
+  value, and later bodies use the returned cursor. Identity is rechecked
   before every page and a repeated or credential-reflecting cursor fails closed.
 - **Application errors are declared, not hidden.** `errors` names the pointer
   that reports a failure plus its code and message. An HTTP 200 body that
@@ -1834,16 +1838,21 @@ declares `"effect": "read"` explicitly and may use `method: "POST"`:
 ```
 
 The document is a reviewed literal in the recipe, at most 4 KiB, and must be a
-single balanced `query` document. Mutations, subscriptions, fragments, schema
+single named `query` matching `operation`. The pinned
+[GraphQL-core parser](https://pypi.org/project/graphql-core/3.2.8/) validates syntax;
+the AST is limited to 1,024 tokens, depth 32 and eight declared variables.
+Mutations, subscriptions, fragments, schema
 definitions, directives and multiple operations are rejected, and agents have no
-argument that carries query text. Variables bind only the reviewed destination.
+argument that carries query text. Variables must match the declared names and bind
+only the reviewed destination; an empty object works for a fixed viewer query.
 A non-empty errors array fails the read and reports up to five bounded
 code/message pairs; partial data is never returned as if it had succeeded, and a
 missing or null `data` fails rather than yielding empty fields.
 
 **Reviewed POST identity.** `identity` may declare `"method": "POST"` with a
 literal bounded `request` body for services that require one (for example a
-fixed GraphQL `me` document). The body accepts no bindings at all. The same exact
+fixed GraphQL `me` document or a JSON-null identity request). The body accepts no
+bindings at all. The same exact
 body is used for connect, every authorization recheck, every pagination recheck
 and OAuth refresh, and it is pinned to the same reviewed origin and headers.
 
@@ -1853,7 +1862,8 @@ those names. Inputs are values, not authority: they cannot change the reviewed
 endpoint, effect or destination, they are not part of any permission, and the
 existing app permission still governs the call. The stable `request_id` is
 fingerprinted over the resolved inputs, so a repeated request ID with different
-inputs is rejected instead of silently reusing an earlier receipt.
+inputs is rejected instead of silently reusing an earlier receipt. Calls without
+typed values retain their earlier fingerprint so old receipts stay retryable.
 
 Source review shows the identity method and body, each typed input with its type,
 bounds and default, the exact request bindings, the full GraphQL document and

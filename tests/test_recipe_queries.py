@@ -73,7 +73,17 @@ class QueryRecipeHttp:
             return copy.deepcopy(self.graphql)
         if self.error is not None:
             return self.error
-        index = min(len(self.bodies) - 1, len(self.pages) - 1)
+        # Independent clients can repeat a read: paging follows the request
+        # cursor, rather than consuming this fixture's process-wide call count.
+        cursor = payload.get("cursor")
+        index = next(
+            (
+                i + 1
+                for i, page in enumerate(self.pages[:-1])
+                if cursor and page["cursor"] == cursor
+            ),
+            0,
+        )
         return copy.deepcopy(self.pages[index])
 
 
@@ -154,7 +164,6 @@ class TypedReadGrammarTests(unittest.TestCase):
             {"text": {"$bind": "artifact.content"}},
             {"text": {"$bind": "operation_id"}},
             {"text": {"$bind": "input.unknown"}},
-            {"text": "literal only"},
         ):
             data = query_data()
             data["tools"][0]["request"] = request
@@ -221,7 +230,7 @@ class TypedReadGrammarTests(unittest.TestCase):
             recipe.identity_request.source(), {"query": "query Me { me { id } }"}
         )
         self.assertEqual(recipe.metadata()["identity"]["method"], "POST")
-        for request in ({"query": {"$bind": "destination"}}, {}, "null", [1, 2]):
+        for request in ({"query": {"$bind": "destination"}}, "null", [1, 2]):
             data["identity"]["request"] = request
             with self.subTest(request=request), self.assertRaises(RecipeError):
                 parse(data)

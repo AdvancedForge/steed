@@ -42,6 +42,7 @@ from browser_window import BrowserWindow
 from services.connector_recipes import (
     RECIPE_IDENTITY_EXAMPLE,
     RECIPE_NESTED_EXAMPLE,
+    RECIPE_QUERY_EXAMPLE,
     RECIPE_OAUTH_EXAMPLE,
     RECIPE_PAGINATED_EXAMPLE,
     parse_recipe,
@@ -95,6 +96,7 @@ async def recipe_workflow(
     writing=False,
     nested=False,
     plan=False,
+    query=False,
 ):
     """External clients propose source; only the fixture installs/connects it."""
     task = await call("task.start", objective="Design a synthetic connection recipe")
@@ -105,7 +107,9 @@ async def recipe_workflow(
         and capabilities["installation_approval"] == "exact_recipe"
     )
     source = json.dumps(
-        capabilities["identity_example"]
+        capabilities["query_example"]
+        if query
+        else capabilities["identity_example"]
         if plan
         else capabilities["nested_example"]
         if nested
@@ -171,7 +175,15 @@ async def recipe_workflow(
             t
             for t in await call("app.list_tools")
             if t["tool"]
-            == ("create_note" if writing else "list_notes" if oauth else "read_note")
+            == (
+                "search_notes"
+                if query
+                else "create_note"
+                if writing
+                else "list_notes"
+                if oauth
+                else "read_note"
+            )
             and t["connector"].startswith(provider + "_")
         ]
         await asyncio.sleep(0.02)
@@ -277,18 +289,35 @@ async def recipe_workflow(
     shared[label + "_recipe_task"] = task["task_id"]
     arguments = {
         "connector": tools[0]["connector"],
-        "tool": "list_notes" if oauth else "read_note",
-        "destination": "account" if oauth else "note-1",
+        "tool": "search_notes" if query else "list_notes" if oauth else "read_note",
+        "destination": "account" if query or oauth else "note-1",
     }
     await call(
         "grant.request",
         scope={
             "actions": ["app"],
-            "connector_permissions": [{**arguments, "effect": "read"}],
+            "connector_permissions": [
+                {**arguments, "effect": "read"},
+                *(
+                    [
+                        {
+                            "connector": arguments["connector"],
+                            "tool": "read_note_graphql",
+                            "destination": "note-1",
+                            "effect": "read",
+                        }
+                    ]
+                    if query
+                    else []
+                ),
+            ],
         },
     )
     await approved()
     arguments["request_id"] = "recipe-note"
+    if query:
+        assert tools[0]["inputs"][0]["name"] == "query"
+        arguments["inputs"] = {"query": "budget", "limit": 10}
     result = await call("app.call_tool", **arguments)
     while result["state"] in {"requested", "dispatched"}:
         assert time.monotonic() < deadline
@@ -304,6 +333,11 @@ async def recipe_workflow(
             "_pagination": {"pages": 2, "more_available": False},
         }
         if pagination
+        else {
+            "notes": [{"id": "n1"}],
+            "_pagination": {"pages": 2, "more_available": False},
+        }
+        if query
         else (
             {"notes": [{"id": "note-1", "title": "Synthetic note"}]}
             if oauth
@@ -314,13 +348,34 @@ async def recipe_workflow(
     shared[
         label
         + (
-            "_paginated_recipe_read"
+            "_typed_recipe_read"
+            if query
+            else "_paginated_recipe_read"
             if pagination
             else "_oauth_recipe_read"
             if oauth
             else "_reviewed_recipe_read"
         )
     ] = True
+    if query:
+        args = {
+            "connector": arguments["connector"],
+            "tool": "read_note_graphql",
+            "destination": "note-1",
+            "request_id": "fixed-query",
+        }
+        result = await call("app.call_tool", **args)
+        deadline = time.monotonic() + 15
+        while result["state"] in {"requested", "dispatched"}:
+            assert time.monotonic() < deadline
+            await asyncio.sleep(0.02)
+            result = await call("app.status", request_id=args["request_id"])
+        assert result["state"] == "succeeded", result
+        assert json.loads(result["text"]) == {
+            "note": {"id": "n1", "title": "T", "body": "B"}
+        }
+        assert await call("app.call_tool", **args) == result
+        shared[label + "_fixed_graphql_read"] = True
     await call("task.finish")
 
 
@@ -979,6 +1034,7 @@ async def sdk_client(
                 await recipe_workflow(call, shared, "sdk", writing=True)
                 await recipe_workflow(call, shared, "sdk", writing=True, nested=True)
                 await recipe_workflow(call, shared, "sdk", writing=True, plan=True)
+                await recipe_workflow(call, shared, "sdk", query=True)
 
 
 async def native_panel_workflow(call, shared, label):
@@ -1597,6 +1653,7 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         asyncio.run(
             recipe_workflow(workspace_call, shared, "raw", writing=True, plan=True)
         )
+        asyncio.run(recipe_workflow(workspace_call, shared, "raw", query=True))
     return True
 
 
@@ -1820,8 +1877,12 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             manager.store.secrets = MemorySecrets()
             oauth_http = OAuthHttp()
             write_http = WriteRecipeHttp()
+            from test_recipe_queries import QueryRecipeHttp
+
             manager.recipe_http_factory = lambda selected: (
-                write_http
+                QueryRecipeHttp()
+                if selected.version >= 7
+                else write_http
                 if selected.version >= 2
                 else oauth_http
                 if selected.authentication.kind == "oauth_pkce"
@@ -1971,6 +2032,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         write_recipe(),
                         parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
                         parse_recipe(json.dumps(RECIPE_IDENTITY_EXAMPLE).encode()),
+                        parse_recipe(json.dumps(RECIPE_QUERY_EXAMPLE).encode()),
                     )
                     assert dialog.deny_button.isDefault()
                     dialog.grab().save(f"/tmp/steed-recipe-{transport}-preview.png")
@@ -2086,6 +2148,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     write_recipe(),
                     parse_recipe(json.dumps(RECIPE_NESTED_EXAMPLE).encode()),
                     parse_recipe(json.dumps(RECIPE_IDENTITY_EXAMPLE).encode()),
+                    parse_recipe(json.dumps(RECIPE_QUERY_EXAMPLE).encode()),
                 ):
                     if selected.provider not in manager.providers or manager.busy:
                         continue

@@ -4,3 +4,4 @@ PyQt6-Qt6>=6.11,<6.12
 PyQt6-WebEngine-Qt6>=6.11,<6.12
 adblock==0.6.0
 PyNaCl==1.6.2
+graphql-core==3.2.8

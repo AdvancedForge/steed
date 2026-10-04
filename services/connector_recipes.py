@@ -596,10 +596,13 @@ def application_errors(value):
     )
 
 
-GRAPHQL_KEYWORDS = re.compile(
-    r"\b(mutation|subscription|fragment|schema|directive)\b", re.IGNORECASE
-)
-GRAPHQL_OPERATIONS = re.compile(r"\b(query|mutation|subscription)\b", re.IGNORECASE)
+def read_request(value, *, bindings=True, binding_sources=frozenset()):
+    """Read-only APIs may use an empty object or JSON null, unlike write drafts."""
+    if value is None:
+        return JsonTemplate("literal", None)
+    if value == {}:
+        return JsonTemplate("object", ())
+    return json_template(value, bindings=bindings, binding_sources=binding_sources)
 
 
 def graphql_query(value):
@@ -615,27 +618,60 @@ def graphql_query(value):
     document = value["document"]
     if (
         not isinstance(document, str)
-        or not 1 <= len(document) <= MAX_GRAPHQL_DOCUMENT
+        or not 1 <= len(document.encode("utf-8")) <= MAX_GRAPHQL_DOCUMENT
         or any(not c.isprintable() and c not in " \t\n" for c in document)
     ):
         raise RecipeError("Provide a bounded reviewed GraphQL document")
+    from graphql import GraphQLError, OperationType, parse
+    from graphql.language import Node, OperationDefinitionNode
+
+    try:
+        tree = parse(document, no_location=True, max_tokens=1024)
+    except (GraphQLError, RecursionError):
+        raise RecipeError("Provide a valid bounded GraphQL query") from None
+    definition = tree.definitions[0] if len(tree.definitions) == 1 else None
     if (
-        not document.lstrip().startswith("query ")
-        or not re.fullmatch(
-            r"[\s\S]*\bquery\s+[A-Za-z][A-Za-z0-9_]{0,63}\b[\s\S]*", document
-        )
-        or len(GRAPHQL_OPERATIONS.findall(document)) != 1
-        or GRAPHQL_KEYWORDS.search(document)
-        or document.count("{") != document.count("}")
-        or document.count('"') % 2
+        not isinstance(definition, OperationDefinitionNode)
+        or definition.operation != OperationType.QUERY
+        or definition.name is None
+        or definition.name.value != operation
     ):
         raise RecipeError(
-            "Reviewed GraphQL reads need exactly one balanced query document with no "
-            "mutations, subscriptions or fragments"
+            "Provide exactly one named query matching the reviewed operation"
         )
-    variables = json_template(
+    pending = [(tree, 0)]
+    while pending:
+        node, depth = pending.pop()
+        if depth > 32 or node.kind in (
+            "directive",
+            "fragment_spread",
+            "inline_fragment",
+        ):
+            raise RecipeError(
+                "Queries cannot use directives, fragments or deep nesting"
+            )
+        for key in node.keys:
+            child = getattr(node, key)
+            if isinstance(child, Node):
+                pending.append((child, depth + 1))
+            elif isinstance(child, tuple):
+                pending.extend(
+                    (item, depth + 1) for item in child if isinstance(item, Node)
+                )
+    if not isinstance(value["variables"], dict):
+        raise RecipeError("GraphQL variables must be a reviewed object")
+    variables = read_request(
         value["variables"], binding_sources=frozenset({"destination"})
     )
+    names = [item.variable.name.value for item in definition.variable_definitions]
+    if (
+        len(names) > MAX_GRAPHQL_VARIABLES
+        or len(names) != len(set(names))
+        or set(names) != set(value["variables"])
+    ):
+        raise RecipeError(
+            "Provide exactly the query's at most eight declared variables"
+        )
     return RecipeQuery(
         operation,
         document,
@@ -916,7 +952,7 @@ def parse_recipe(raw):
         identity_method = identity.get("method", "GET")
         identity_request = None
         if identity_method == "POST":
-            identity_request = json_template(
+            identity_request = read_request(
                 identity["request"], binding_sources=frozenset()
             )
         alternatives = ()
@@ -975,7 +1011,7 @@ def parse_recipe(raw):
             )
             name = connector_name(item["name"])
             if name in names or item["method"] not in (
-                ("GET", "POST") if writing or typed else ("GET",)
+                ("POST",) if typed else ("GET", "POST") if writing else ("GET",)
             ):
                 raise RecipeError(
                     "Recipe tools need unique names and supported requests"
@@ -1020,7 +1056,7 @@ def parse_recipe(raw):
                             "GraphQL reads bind their variables, not a path segment"
                         )
                 else:
-                    template = json_template(
+                    template = read_request(
                         item["request"],
                         binding_sources=frozenset({f"input.{i.name}" for i in declared})
                         | (
@@ -1038,7 +1074,6 @@ def parse_recipe(raw):
                             if destination_kind == "resource_id"
                             else set()
                         )
-                        or not used
                         or (
                             destination_kind == "resource_id"
                             and "destination" not in used
@@ -1143,6 +1178,8 @@ def parse_recipe(raw):
                     or location not in ("body", "query")
                     or location == "body"
                     and not (typed and template is not None)
+                    or typed
+                    and location != "body"
                 ):
                     raise RecipeError(
                         "Pagination needs a fixed collection path and 1–5 pages"
@@ -1189,7 +1226,7 @@ def parse_recipe(raw):
                     inputs=inputs,
                     errors=errors,
                     query=query,
-                    http_method="POST" if typed else "",
+                    http_method=item["method"] if typed else "",
                 )
             )
             if "plan" in item:

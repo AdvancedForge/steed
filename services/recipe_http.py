@@ -169,7 +169,9 @@ class RecipeHttp:
             header = "" if read_post else self.post_rule(parts.path, headers, payload)
             if read_post:
                 # A typed read body is a literal JSON template built by trusted code.
-                json_template(payload, bindings=False)
+                from services.connector_recipes import read_request
+
+                read_request(payload, bindings=False)
             required = (
                 {"Authorization", "Content-Type"}
                 | ({header} if header else set())
