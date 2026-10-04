@@ -447,6 +447,41 @@ installed, and a row is never a default account or an approval.
 - A write is a single POST with no automatic retry, and an uncertain write is
   reported as uncertain because nothing in this subset can reconcile it.
 
+### POST-read cases prepared for the next shared contract
+
+The next maintainer runtime contract is a typed read-only POST with bounded
+reviewed inputs. Three families are ready to promote the moment it is published,
+and their cases are already written against official sources in
+`connectors/fixtures/executable_cases.json` under `gated_post_read`:
+
+| Family | Read | Why it cannot be expressed today |
+| --- | --- | --- |
+| Notion | `POST /v1/data_sources/{id}/query` | reads are GET-only; a write is a single POST that requires an artifact |
+| Linear | `POST /graphql` | same, plus an `errors` array that can accompany HTTP 200 |
+| Dropbox | `POST /2/users/get_current_account` and `POST /2/files/list_folder` | identity is a POST too, so nothing in the family is expressible |
+
+Each case records the official request body fields, the documented response shape,
+the documented failure statuses, the documented limits and prohibitions, and the
+smallest missing behaviour. A few are worth knowing before anyone implements them:
+
+- **Notion** requires the `Notion-Version` header, which is now supported, and its
+  body is entirely optional; the documented prohibitions include not parsing or
+  storing cursors beyond passing them back as `start_cursor`, not sending
+  `in_trash`, and not assuming a sort order when none is given. A query is capped at
+  10,000 results, and a response may contain fewer results than `page_size`.
+- **Linear** documents that a query can **partially succeed with HTTP 200**, so a
+  status-only check would report partial data as success. Rate limiting is documented
+  as HTTP 400 with a `RATELIMITED` code inside the errors array, and a single query
+  is capped at 10,000 complexity points.
+- **Dropbox** documents `account_id` as the account key rather than email, and
+  `email` as unreliable without `email_verified`. Listing is capped at 2,000 entries,
+  and duplicate concurrent list calls can return a rate-limit error.
+
+These cases stay gated on purpose. A read is never disguised as a create, arbitrary
+queries are not permitted, and no origin or header rule is bypassed. When the shared
+contract lands, the cases promote through real discovery, parser, source-review,
+adapter and transport tests rather than being hand-waved into profiles.
+
 ### Promoting a candidate
 
 1. Clear its auth, identity, protocol and runtime gate using official
