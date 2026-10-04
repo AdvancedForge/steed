@@ -12,43 +12,20 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
-**Configurable browser UI, first milestone (implemented).** Manual layout
-settings let the user show, hide and reorder the address bar buttons, reorder
-the menu bar, move the agent sidebar between the left and right edges, remember
-its width, choose compact or comfortable control spacing, and save, apply or
-delete named layouts. Today’s menu order and spacing are the defaults.
-`General → Layout Settings…` edits the layout, `View → Reset Layout` restores
-today’s appearance, and `Tabs → Home` was added so hiding the Home button keeps
-it reachable. Edits preview immediately and only Save persists them; Cancel
-restores the previous layout. Layouts are stored under the `layout` key in the
-shared browser configuration and apply to every window and profile.
+**Configurable layout contributor review (changes requested; unmerged).**
+Reviewed `engineering/configurable-layout` at `988b68b`, based on main's agent/tool
+checkpoint `67c4ba2`, in an isolated checkout. It adds validated manual toolbar/menu
+settings, sidebar placement/width, density, named layouts and live preview/reset.
+The direction is useful, but shown-widget probes confirm that hidden controls
+remain keyboard-accessible, a second window can erase shared named layouts, the
+default address-bar order changes, and accepted sidebar widths below 300 px cannot
+be honored. The real-browser acceptance tests also need correction: 55 focused
+checks yielded 51 passes, three failures and one error. Ruff lint/format pass.
+Contributor source is unchanged; no merge or approval was made. The next increment
+is fixing those findings and proving real-window acceptance before agent-generated
+layout proposals. See [detailed review and continuation](ENGINEERING_HANDOFF.md#configurable-layout-review-and-continuation).
 
-Stored layouts are treated as untrusted: unknown button or menu identifiers are
-dropped, missing ones return in their default position, an unknown schema
-version falls back to today’s defaults, sidebar width is bounded to 200–800 px,
-at most 32 named layouts are kept, and unusable names are refused. Applying a
-layout changes presentation only; browser, profile, folder, file and account
-permissions are untouched.
-
-Validation: **44 new checks pass** in the headless layout suite, covering stored
-defaults, malformed documents, restart round-trips through the configuration
-file, named layout limits, menu reordering, toolbar hide/reorder, density, the
-dialog’s save/cancel/reset flow, and the real dock move and resize calls. A
-module-by-module run on this branch passes **546 checks across 40 modules**.
-Ruff lint and format pass. The five worker-bundle modules
-(`test_agent_providers`, `test_local_worker`, `test_worker_bundle`,
-`test_worker_diagnostics`, `test_worker_manager`) fail identically on pristine
-`main` in this environment because the local worker bundle is not installed
-(`local_worker_unavailable`); they are unrelated to this change. The 20
-WebEngine-backed modules, including `test_browser_layout.py`, cannot run here
-(`Could not initialize GLX`) and still need the maintainer’s display-capable
-runner. Log: `/tmp/steed-layout-modules.log`.
-
-Remaining for this scope: reviewed agent layout proposals with stable component
-IDs, a versioned JSON schema, preview/apply/export/import and last-working-layout
-recovery, then native component panels and validated appearance settings.
-
-**Codex access discovery and reported model (implemented; final validation in progress).**
+**Codex access discovery and reported model (implemented and validated).**
 The user reports an agent saying access-discovery requests were rejected. Two
 reproducible faults were found: the native Steed MCP entry used `auto` admission,
 which could reject calls before Steed saw them, and the adapter immediately
@@ -72,6 +49,18 @@ one exact workspace grant approved by its synthetic user, and keeps follow-ups
 connected under a native never-ask policy. No real resumes, knowledge-base data,
 account credentials or external applications were used. The original live task
 still needs a new-chat retry after restart; there is no discovery enable switch.
+
+Final main-checkpoint acceptance: **969 regressions pass in 376.410 seconds**.
+Installed Codex 0.159.2 passes both direct-tool and code-runtime offline workflows
+with strict checks for reported model, concurrent discovery, protected-tab denial,
+the exact requested/approved synthetic grant and connected follow-ups. The direct
+fixture decoder now handles native timing headers before its JSON output; this
+was a test-harness correction, not a production tool failure. Startup/local
+render/shutdown, Ruff lint/format and whitespace checks pass. No external model
+calls or real-account task execution were performed.
+Logs: `/tmp/steed-discovery-model-full-final.log`,
+`/tmp/steed-discovery-model-native{,-direct}-final.log`,
+`/tmp/steed-discovery-model-startup-final.log`.
 
 **Codex tool-transition compatibility and readable activity (implemented and validated).**
 The user reported a reply promising work followed by a generic connection failure.

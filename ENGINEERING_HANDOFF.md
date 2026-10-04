@@ -56,7 +56,99 @@ Waiting/Ready card and queued-message count. Generic MCP execution stays explici
 unknown. Light/dark sections and speaker headers keep plain-text rendering;
 advanced details remain collapsed. Installed Codex 0.159.2 passes offline native
 follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for logs.
-Manual configurable UI remains the next substantive layout scope.
+Manual configurable UI remains the next substantive layout scope; its first
+contributor implementation has been reviewed and needs corrections before merge.
+
+## Configurable layout review and continuation
+
+Reviewed `engineering/configurable-layout` at
+`988b68be70f2570764d9f79d01d632eebbcbdb54`, based on main `67c4ba2`, in
+`/tmp/steed-layout-review`. **Changes requested; unchanged and unmerged.**
+Toolbar/menu settings, sidebar side/width, density, named presets and reset are
+implemented. The bounded model and independent preview copies are useful; layout
+settings remain separate from browser, file and account authority.
+
+### Findings to fix before merge
+
+1. **Hidden controls remain in the focus chain.** `ui/address_bar.py:104` removes
+   widgets from the layout without hiding them. A shown Passwords button reports
+   `isVisible() == True` while absent from the layout; Tab focuses it and Space
+   emits its action. Set explicit visibility on every application and check
+   shown-widget visibility and focus traversal on hide/show/reset/cancel.
+2. **A second window overwrites shared saved layouts.** `browser_window.py:617`
+   opens from stale window preferences and saves the whole document. Window A
+   saves a left-sidebar named layout; window B changes only density and saves.
+   Stored placement returns to right and the named-layout list becomes empty.
+   Read canonical shared settings when editing and broadcast committed Save/Reset
+   to all owners. Keep preview/cancel local and preserve intervening commits.
+3. **Defaults change the established address bar.** `ui/address_bar.py:106` puts
+   every button before the address input. Preserve Back, Forward, Reload, Home,
+   address input, zoom, Passwords on first launch/reset. Represent the mandatory
+   address anchor in the model; test the actual established widget order.
+4. **Accepted widths cannot be honored.** `layout_preferences.py:32` accepts
+   200–800 px, but the native sidebar has a 300 px minimum. Requesting 260 px
+   produces 300 px. Align storage/editor constraints with the real widget and
+   test populated docks and sidebar → tab → sidebar transitions. Define whether
+   manual dock resizing persists; programmatic previews must not overwrite it.
+5. **Real browser acceptance fails.** `tests/test_browser_layout.py:38`, `:52`
+   and `:191` compare capitalized displayed titles with lowercase IDs; `:182`
+   queries grants for nonexistent task `missing`, which correctly raises
+   `KeyError`. Compare visible labels/order and create a real synthetic task for
+   permission assertions. Keep real browser coverage rather than skipping it.
+
+Also fix `ui/layout_dialog.py:332`: storage normalizes names, but the selector
+refresh uses raw input. Extra spaces can leave another preset selected; refresh
+with the normalized name and test applying the newly saved preset.
+
+### Review evidence
+
+Offscreen Qt with temporary synthetic profiles ran **55 checks in 3.172 seconds:
+51 pass, three fail, one error**. All 199 Python files pass Ruff lint/format.
+The contributor's reported GLX constraint does not prevent these checks in the
+maintainer environment. Logs: `/tmp/steed-layout-review-tests.log`,
+`/tmp/steed-layout-review-probe.log`; reproduction script:
+`/tmp/steed-layout-review-probe.py`. No real accounts or library files were used.
+
+### L1 — Finish manual layout acceptance
+
+Fix the findings on the contributor branch. Add shown-widget regressions for
+visibility/focus restoration, default/reset address anchor, two-window preset
+retention, fresh dialog state, local cancellation, committed reset propagation
+and actual sidebar bounds. Exercise presentation changes without starting agents
+or granting permissions. Keep every menu and the address field reachable.
+
+Run serially from that checkout, using its own environment or this compatible one:
+
+```bash
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu PYTHONPATH=tests:. /home/coolguy/Scripts/Python/Browser/.venv/bin/python -m unittest test_layout_preferences test_browser_layout -v
+/home/coolguy/Scripts/Python/Browser/.venv/bin/python -m ruff check .
+/home/coolguy/Scripts/Python/Browser/.venv/bin/python -m ruff format --check .
+```
+
+Run the complete suite with maintained worker bundles; record missing dependency
+limitations separately. Run startup/render/shutdown and inspect light/dark normal
+and small-window previews. Submit the new SHA, commands/results and screenshots
+for maintainer review. Rebase after this acceptance handoff is published; do not
+merge or push to main from the contributor branch.
+
+### L2 — Reviewed agent layout proposals
+
+After L1 acceptance, add versioned JSON proposals with stable component IDs,
+mandatory address/reset affordances, valid placements and bounded dimensions.
+Provide validation, readable preview/diff, explicit Apply, export/import and
+last-working-layout recovery. Unknown/invalid versions cannot damage the current
+layout. Keep drafts task-bound and treat generated content as untrusted data.
+UI approval must not grant browser/profile/file/connector authority. Generated
+Python, callbacks, JavaScript and shell commands cannot execute through this format.
+
+### L3 — Native panels and appearance
+
+Extend the accepted schema with maintained native components/actions and bounded
+appearance settings. Preserve keyboard accessibility, small-window scrolling,
+incognito isolation, shared windows and sidebar/tab ownership. Unknown actions
+cannot invoke arbitrary code or acquire capabilities. Deliver useful increments
+with real-widget acceptance. Keep Qt; an executable extension runtime is a
+separate architectural decision.
 
 ## Branches, ownership and review
 
