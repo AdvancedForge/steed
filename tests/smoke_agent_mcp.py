@@ -657,6 +657,10 @@ async def sdk_client(
                 and "shadow_control_actions_unavailable" in field["constraints"]
             )
             shared["sdk_open_shadow_observation"] = True
+            assert field["description"] == "Component help"
+            assert field["error_message"] == "Component error"
+            assert field["required"] is True and field["invalid"] is True
+            shared["sdk_bounded_form_metadata"] = True
 
             async def target(label):
                 snapshot = await call("page.inspect", session_id=session_id)
@@ -1205,6 +1209,10 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
         and "shadow_control_actions_unavailable" in field["constraints"]
     )
     shared["raw_open_shadow_observation"] = True
+    assert field["description"] == "Component help"
+    assert field["error_message"] == "Component error"
+    assert field["required"] is True and field["invalid"] is True
+    shared["raw_bounded_form_metadata"] = True
     sources = [
         e["sequence"]
         for e in call("task.events", limit=1000)
@@ -1559,7 +1567,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
         case.wait_for(lambda: bool(loaded) and loaded[-1])
         user.loadFinished.disconnect(loaded.append)
         type(case).page_fixtures = {
-            "/mcp-start": b'<p>Delegated workflow</p><a href="/mcp-form">Open form</a><div><template shadowrootmode="open"><p>Reusable component report</p><input aria-label="Component input" value="COMPONENT_PRIVATE"></template></div>',
+            "/mcp-start": b'<p>Delegated workflow</p><a href="/mcp-form">Open form</a><div><template shadowrootmode="open"><p>Reusable component report</p><p id="hint">Component help</p><p id="error">Component error</p><input aria-label="Component input" value="COMPONENT_PRIVATE" required aria-describedby="hint" aria-invalid="true" aria-errormessage="error"></template></div>',
             "/mcp-form": b'<form method="post" action="/mcp-submitted"><input aria-label="Message" name="message" value="FORM_PRIVATE"><input type="hidden" name="token" value="SYNTHETIC_TOKEN"><input aria-label="Confirm" type="checkbox" name="confirm" value="yes"><button name="decision" value="send">Send</button></form>',
             "/download-mcp": b"SYNTHETIC_DOWNLOAD_BYTES",
             "/mcp-upload-form": b'<form method="post" action="/mcp-upload-submitted" enctype="multipart/form-data"><input aria-label="Upload source" type="file" name="file"><button>Send file</button></form>',

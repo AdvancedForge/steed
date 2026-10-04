@@ -85,6 +85,82 @@ class LiveTabsTests(unittest.TestCase):
             **extra,
         )
 
+    def test_live_changed_form_help_and_errors_require_fresh_target_references(self):
+        window, view = self.window()
+        self.value(
+            view.page(),
+            """document.querySelector('#field').setAttribute('aria-describedby','hint');
+            document.querySelector('#field').setAttribute('aria-invalid','true');
+            document.querySelector('#field').setAttribute('aria-errormessage','error');
+            const help = document.createElement('div'); help.id='help';
+            help.innerHTML='<p id="hint">Original help</p><p id="error">Original error</p>';
+            document.body.append(help); true;""",
+        )
+        task, _, session = self.share(window)
+        for mutation in (
+            "document.querySelector('#hint').textContent='New help'",
+            "document.querySelector('#error').textContent='New error'",
+            "document.querySelector('#help').hidden=true",
+        ):
+            snapshot = self.inspect(task, session)
+            field = next(t for t in snapshot.frames[0].targets if t.label == "Message")
+            self.value(view.page(), mutation + "; true")
+            with self.assertRaises(PageInspectionError) as error:
+                self.command(
+                    "page.target",
+                    task_id=task,
+                    session_id=session,
+                    snapshot_id=snapshot.snapshot_id,
+                    target_id=field.target_id,
+                )
+            self.assertEqual(error.exception.code, "stale_snapshot")
+        fresh = self.inspect(task, session)
+        field = next(t for t in fresh.frames[0].targets if t.label == "Message")
+        self.assertEqual(field.description, "")
+        self.assertEqual(field.error_message, "")
+        self.assertEqual(
+            self.value(view.page(), "document.querySelector('#field').value"),
+            "PRIVATE_VALUE",
+        )
+
+    def test_live_oversized_referenced_help_reports_unavailable_target_context(self):
+        window, view = self.window()
+        self.value(
+            view.page(),
+            """document.querySelector('#action').setAttribute('aria-describedby','help');
+            const help = document.createElement('p'); help.id='help';
+            help.textContent='a'.repeat(66000); document.body.append(help); true;""",
+        )
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        target = next(t for t in snapshot.frames[0].targets if t.label == "Run action")
+        self.assertEqual(target.operations, ())
+        self.assertIn("live_target_context_limit", target.constraints)
+        self.assertIn("live_target_context_limit", snapshot.limitations)
+        with self.assertRaises(PageInspectionError):
+            self.act(task, session, snapshot, target)
+        self.assertEqual(self.value(view.page(), "window.clicked"), 0)
+
+    def test_live_unrelated_changes_preserve_targets_with_form_metadata(self):
+        window, view = self.window()
+        self.value(
+            view.page(),
+            """document.querySelector('#action').setAttribute('aria-describedby','help');
+            const help = document.createElement('p'); help.id='help'; help.textContent='Action help';
+            document.body.append(help); true;""",
+        )
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        target = next(t for t in snapshot.frames[0].targets if t.label == "Run action")
+        self.assertEqual(target.description, "Action help")
+        self.value(
+            view.page(),
+            "document.querySelector('h1').textContent='Unrelated clock'; true",
+        )
+        result = self.act(task, session, snapshot, target)
+        self.assertEqual(result.status, "dispatched")
+        self.wait_for(lambda: self.value(view.page(), "window.clicked") == 1)
+
     def test_approval_preserves_original_page_state_and_normal_scripts(self):
         window, view = self.window()
         page, profile, parent = view.page(), view.page().profile(), view.parent()

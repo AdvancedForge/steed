@@ -4,15 +4,34 @@
     const request = /* REQUEST */;
     const fail = code => JSON.stringify({error: code});
     const liveFingerprint = node => {
-        if (node.outerHTML.length > 65536) return null;
         const attributes = el => Array.from(el.attributes, a => [a.name, a.value]);
         const parent = el => el.parentElement || el.getRootNode()?.host;
-        const ancestors = [];
-        for (let el = parent(node); el; el = parent(el)) ancestors.push(attributes(el));
-        const labels = Array.from(node.labels || [], el => el.outerHTML);
-        const labelled = (node.getAttribute("aria-labelledby") || "").split(/\s+/).slice(0, 8)
-            .map(id => node.getRootNode().getElementById(id)?.outerHTML || "");
-        return JSON.stringify([node.outerHTML, node.baseURI, ancestors, labels, labelled]);
+        let remainingBytes = 65536;
+        const context = el => {
+            if (!el) return "";
+            const content = el.outerHTML;
+            remainingBytes -= content.length;
+            if (remainingBytes < 0) return null;
+            const ancestors = [];
+            for (let ancestor = parent(el); ancestor; ancestor = parent(ancestor)) {
+                if (ancestors.length >= 128) return null;
+                const values = attributes(ancestor);
+                remainingBytes -= JSON.stringify(values).length;
+                if (remainingBytes < 0) return null;
+                ancestors.push(values);
+            }
+            return [content, ancestors];
+        };
+        const own = context(node);
+        if (!own) return null;
+        if ((node.labels?.length || 0) > 8) return null;
+        const labels = Array.from(node.labels || [], context);
+        const referenced = attribute => (node.getAttribute(attribute) || "").slice(0, 2048).split(/\s+/).filter(Boolean).slice(0, 8)
+            .map(id => context(node.getRootNode().getElementById(id)));
+        const references = [referenced("aria-labelledby"), referenced("aria-describedby"), referenced("aria-errormessage")];
+        if ([...labels, ...references.flat()].some(value => value === null)) return null;
+        const encoded = JSON.stringify([own, node.baseURI, labels, references]);
+        return encoded.length <= 65536 ? encoded : null;
     };
     const submission = node => {
         const doc = node.ownerDocument, win = doc.defaultView, form = node.form;
@@ -182,11 +201,13 @@
         const frames = [], limitations = new Set([
             request.live ? "normal_website_scripts_and_network" : "document_scripts_disabled",
             "form_values_omitted", "editable_text_omitted",
-            "closed_shadow_roots_not_inspected", "canvas_content_not_inspected"
+            "closed_shadow_roots_not_inspected", "canvas_content_not_inspected",
+            "accessibility_tree_not_inspected", "hidden_accessible_references_omitted"
         ]);
         if (request.live) limitations.add("live_targets_revalidated_individually");
         const allowed = new Set(request.origins);
         let remainingText = 32000, remainingTargets = 200, remainingNodes = 12000;
+        let remainingTargetText = 16000;
         let remainingShadowRoots = 32;
         const shadowRoots = new WeakSet();
         const shadowFor = (node, depth) => {
@@ -253,18 +274,45 @@
                 return url.href.slice(0, 2048);
             } catch (_) { return ""; }
         };
+        const referenceReadable = (node, win) => {
+            let depth = 0;
+            for (let ancestor = node; ancestor; ancestor = ancestor.parentElement || ancestor.getRootNode()?.host) {
+                if (++depth > 128) { limitations.add("accessible_reference_depth_limit"); return ""; }
+                if (remainingNodes-- <= 0) { limitations.add("node_limit"); return ""; }
+                if (excluded(ancestor) || hidden(ancestor, win)) return "";
+            }
+            return readable(node, win, 256);
+        };
         const labelFor = (node, doc, win) => {
             const labelled = (node.getAttribute("aria-labelledby") || "").slice(0, 2048).split(/\s+/).slice(0, 8)
                 .map(id => node.getRootNode().getElementById(id)).filter(Boolean);
-            const labelledText = clean(labelled.map(label => readable(label, win, 256)).join(" "));
+            const labelledText = clean(labelled.map(label => referenceReadable(label, win)).join(" "));
             if (labelledText) return labelledText;
             const aria = clean(node.getAttribute("aria-label"));
             if (aria) return aria;
             const labels = [];
             if (node.labels) for (let i = 0; i < Math.min(8, node.labels.length); i++) labels.push(node.labels[i]);
-            const label = clean(labels.map(item => readable(item, win, 256)).join(" "));
+            const label = clean(labels.map(item => referenceReadable(item, win)).join(" "));
             return label || readable(node, win, 256) || clean(node.getAttribute("title")) ||
                 clean(node.getAttribute("placeholder")) || clean(node.getAttribute("name")) || node.tagName.toLowerCase();
+        };
+        const referenceText = (node, attribute, win) => {
+            const root = node.getRootNode();
+            const references = (node.getAttribute(attribute) || "").slice(0, 2048).split(/\s+/)
+                .filter(Boolean).slice(0, 8).map(id => root.getElementById(id)).filter(Boolean);
+            return clean(references.map(item => referenceReadable(item, win)).join(" "));
+        };
+        const descriptionFor = (node, label, win) => {
+            const description = referenceText(node, "aria-describedby", win) || clean(node.getAttribute("aria-description"));
+            const title = clean(node.getAttribute("title"));
+            return description || (title !== label ? title : "");
+        };
+        const boundedTargetText = text => {
+            const value = clean(text);
+            if (value.length > remainingTargetText) limitations.add("target_text_truncated");
+            const result = value.slice(0, remainingTargetText);
+            remainingTargetText -= result.length;
+            return result;
         };
         const inspectFrame = (win, parent, path, inheritedOrigin) => {
             if (frames.length >= 16 || path.split("/").length > 8) {
@@ -363,9 +411,22 @@
                             if (!enabled) constraints.push("disabled");
                             if (readOnly) constraints.push("read_only");
                             const nodeId = "node:" + state.targets.size;
-                            state.targets.set(nodeId, {node, fingerprint: request.live ? liveFingerprint(node) : null});
+                            const fingerprint = request.live ? liveFingerprint(node) : null;
+                            if (request.live && !fingerprint) {
+                                constraints.push("live_target_context_limit");
+                                limitations.add("live_target_context_limit");
+                                operations = [];
+                            }
+                            state.targets.set(nodeId, {node, fingerprint});
+                            const label = boundedTargetText(labelFor(node, doc, win));
+                            const invalidState = (node.getAttribute("aria-invalid") || "false").trim().toLowerCase();
+                            const invalid = invalidState !== "false" && invalidState !== "";
+                            const required = (["input", "textarea", "select", "checkbox", "radio"].includes(kind) && node.hasAttribute("required")) ||
+                                (node.getAttribute("aria-required") || "").trim().toLowerCase() === "true";
                             frame.targets.push({node_id: nodeId, kind, role: role || kind,
-                                label: labelFor(node, doc, win), enabled, read_only: readOnly, href,
+                                label, description: boundedTargetText(descriptionFor(node, label, win)), required, invalid,
+                                error_message: invalid ? boundedTargetText(referenceText(node, "aria-errormessage", win)) : "",
+                                enabled, read_only: readOnly, href,
                                 operations, constraints, form_action: formAction, form_method: formMethod});
                             remainingTargets--;
                         }

@@ -57,8 +57,8 @@ unknown. Light/dark sections and speaker headers keep plain-text rendering;
 advanced details remain collapsed. Installed Codex 0.159.2 passes offline native
 follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for logs.
 Manual layout L1 is accepted at `5ece7e8`; portable layout/proposal L2 is accepted.
-Native action panels and text sizing L3 are now accepted. Continue with bounded
-accessible form metadata; see the current ROADMAP acceptance record.
+Native action panels/text sizing L3 and bounded accessible form hints are delivered.
+See the current ROADMAP acceptance record and the next custom data-panel decision.
 
 ## Configurable layout review and continuation
 
@@ -71,7 +71,8 @@ evidence, not outstanding work. Continue with L2/L3 rather than redoing L1.
 
 Reviewed `engineering/configurable-layout` at
 `988b68be70f2570764d9f79d01d632eebbcbdb54`, based on main `67c4ba2`, in
-`/tmp/steed-layout-review`. **Changes requested; unchanged and unmerged.**
+`/tmp/steed-layout-review`. **Historical result: changes requested at that head.**
+The original review head remains unchanged; corrected work is now merged on main.
 Toolbar/menu settings, sidebar side/width, density, named presets and reset are
 implemented. The bounded model and independent preview copies are useful; layout
 settings remain separate from browser, file and account authority.
@@ -176,7 +177,19 @@ cannot invoke arbitrary code or acquire capabilities. Deliver useful increments
 with real-widget acceptance. Keep Qt; an executable extension runtime is a
 separate architectural decision.
 
-### Next — Accessible form metadata
+### Accessible form metadata (delivered)
+
+`services/page_inspection.js` resolves visible help/errors within each document or
+open root; `TargetDescriptor` adds four defaulted fields without new commands or
+grants. The published `page.inspect` tool documents them. References share the node
+budget; live context is limited to 65,536 characters/128 ancestor levels, reported
+as unavailable rather than actionable when exceeded. Ancestor hidden/editable checks
+also close the existing referenced-label omission gap. Synthetic stdio/HTTP SDK
+and raw clients assert all four metadata fields. Labels/help/errors share a 16,000-
+character budget with `target_text_truncated`; the worst-case Unicode fixture fits
+the MCP response envelope. Final complete acceptance passes 1,073 tests; 79 final
+focused checks pass. Startup and both MCP transports pass with synthetic data.
+See ROADMAP for logs. Original scope:
 
 Add bounded descriptions, author-declared required/invalid state and visible error
 hints to target observations. Preserve current-value omission, hidden-content
@@ -185,6 +198,34 @@ must detect changed referenced help/error text while permitting unrelated DOM
 updates. Test on local synthetic pages, including hidden/value traps and live
 stale-target failures. This is rendered-DOM metadata, not a complete accessibility
 tree. Richer agent-authored UI/data bindings remain a separate future scope.
+
+## Next major decision — Agent-authored data panels
+
+Manual/shared layouts, reviewed agent proposals, quick-action panels and font sizing
+are delivered. The next substantial customization increment would display task or
+file/connector content. Choose its UI architecture before implementing a runtime:
+
+1. **Maintained native components (recommended).** Agents compose a documented
+   catalogue of text/list/form widgets. Steed renders them and binds approved task,
+   library or connector results through existing services. Global layout preferences
+   contain placement/style only; content and bindings live separately with explicit
+   profile/task ownership. The same profile can remain collaborative across users,
+   windows and tasks. Start with task summaries/lists and visible data-source labels,
+   then reviewed form effects. This extends the current Qt architecture.
+2. **Locally hosted custom apps.** Agents build HTML/JavaScript mini-app bundles in
+   their local worker environment. Steed adds a dedicated view/host and a typed bridge
+   to its existing capability services. This offers substantially more UI freedom,
+   but requires a new lifecycle, packaging/update and data-ownership contract. It
+   should be a separate milestone rather than arbitrary callbacks in layout JSON.
+
+This choice changes how much custom UI agents can implement without maintained
+Steed widgets, and how that UI is distributed and kept working. External agents
+retain independent tools in either option. Do not put personal notes, file bodies,
+connector data or agent messages in the global appearance configuration or its
+appearance export as a shortcut. Preserve task/profile grants and explicit user
+handoff; UI review alone is not a data grant. Ask for this architectural choice
+before beginning the next data-bearing panel runtime. Other parked engineering
+areas remain listed in ROADMAP; connector-owned paths stay with their contributor.
 
 ## Branches, ownership and review
 
