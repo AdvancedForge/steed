@@ -11,10 +11,25 @@ starting the HTML bridge or another feature. This section takes precedence over
 older milestones below. The owner subsequently requested additional small tasks;
 bookmark manager shortcut B3, search keyboard opening B4 and selected-result
 keyboard opening B5 are also delivered.
-No broader engineering was started.
+The final two owner-requested small tasks are Downloads search and Copy Path,
+instead of further bookmark work. The proposed Down-from-search/Ctrl+F bookmark
+changes were never implemented. No broader engineering was started.
 
 ### What is saved
 
+- **Downloads search and Copy Path complete:** `ui/download_dialog.py` filters
+  filename/profile/destination using literal case-insensitive matching. Refresh
+  restores selection by download ID; filtering a row out clears it rather than
+  targeting another download. Copy Path copies only the selected record's full
+  destination, even for incomplete/missing files. No file-open or download action
+  occurs. Enter in search never invokes an implicit Pause/Close action.
+  Five `test_download_dialog.py` checks pass in 0.075 seconds; existing
+  real local-download completion/cancellation and menu checks pass (two tests,
+  1.457 seconds). Light/dark native previews, Ruff/format (241 files) and
+  whitespace pass. Logs:
+  `/tmp/steed-download-small-tasks.log`, `/tmp/steed-download-browser-checks.log`.
+  Broader N5 validation and agent-recovery work remain below. Stop at this final
+  daily-use checkpoint as requested.
 - **B5 complete:** the focused bookmark results list accepts arrow-key selection
   and Return/keypad Enter to open the chosen link once. Widget-scoped shortcuts
   preserve search Enter and double-click behavior. Nineteen bookmark checks pass
@@ -52,7 +67,7 @@ No broader engineering was started.
   new late-response/timeout regression. SDK/raw stdio and authenticated HTTP
   account-table workflows already pass. Light/dark bookmark and panel previews,
   startup/render/shutdown, Ruff lint/format (240 files) and whitespace pass.
-  The most recent full suite is **1,363 tests before N5 and the bookmark follow-ups**; do not report a
+  The most recent full suite is **1,363 tests before N5 and these daily UI follow-ups**; do not report a
   full-suite pass for this checkpoint. Both installed Codex smoke paths also
   remain to be rerun for v7. All test data is synthetic/temporary; real desktop
   and live-provider acceptance remain manual.

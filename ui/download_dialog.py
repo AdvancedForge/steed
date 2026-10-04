@@ -5,9 +5,11 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -29,6 +31,11 @@ class DownloadDialog(QDialog):
         self.setWindowTitle("Downloads")
         self.resize(850, 420)
         layout = QVBoxLayout(self)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search filenames, profiles and destinations")
+        self.search.setAccessibleName("Search downloads")
+        self.search.setClearButtonEnabled(True)
+        layout.addWidget(self.search)
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
             ["Name / Profile", "Progress", "Status", "Destination", "Error"]
@@ -43,16 +50,20 @@ class DownloadDialog(QDialog):
             ("Cancel", "cancel"),
             ("Open", "open"),
             ("Show Folder", "reveal"),
+            ("Copy Path", "copy_path"),
         ):
             button = QPushButton(label)
+            button.setAutoDefault(False)
             button.clicked.connect(lambda checked=False, a=action: self.perform(a))
             buttons.addWidget(button)
         close = QPushButton("Close")
+        close.setAutoDefault(False)
         close.clicked.connect(self.accept)
         buttons.addWidget(close)
         layout.addLayout(buttons)
         manager.changed.connect(self.refresh)
         self.finished.connect(lambda: manager.changed.disconnect(self.refresh))
+        self.search.textChanged.connect(self.refresh)
         self.refresh()
 
     def selected_key(self):
@@ -61,10 +72,17 @@ class DownloadDialog(QDialog):
 
     def refresh(self):
         selected = self.selected_key()
-        self.table.setRowCount(len(self.manager.records))
-        for row, (key, record) in enumerate(
-            reversed(list(self.manager.records.items()))
-        ):
+        query = self.search.text().casefold().strip()
+        records = [
+            (key, record)
+            for key, record in reversed(list(self.manager.records.items()))
+            if not query
+            or query in "\n".join((record.name, record.profile, record.path)).casefold()
+        ]
+        # Drop old row indices before restoring selection by download identity.
+        self.table.setRowCount(0)
+        self.table.setRowCount(len(records))
+        for row, (key, record) in enumerate(records):
             progress = (
                 f"{record.received:,} / {record.total:,} bytes"
                 if record.total > 0
@@ -88,6 +106,9 @@ class DownloadDialog(QDialog):
         key = self.selected_key()
         record = self.manager.records.get(key)
         if record is None:
+            return
+        if action == "copy_path":
+            QApplication.clipboard().setText(record.path)
             return
         if action in ("open", "reveal"):
             if not Path(record.path).exists() or (

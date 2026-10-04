@@ -402,6 +402,12 @@ Existing profiles are migrated conservatively: pre-existing cookies remain local
 
 Open **General → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history. Interrupted downloads are not automatically restarted.
 
+Search filenames, profiles or destination paths in the Downloads search field;
+matching ignores case and treats punctuation literally. Clear the search to show
+all records. Progress updates retain the selected download; filtering it out clears
+selection. Select a row and use **Copy Path** to copy its full destination path,
+including when the file is still downloading or is no longer available.
+
 Open **General → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, or add host-name exceptions. Only a small bootstrap rule set ships with the browser; download the full lists for broader coverage. Rule compilation runs off the GUI thread, and a failed update keeps the last working rules. Network blocking applies immediately, while cosmetic (CSS) hiding is re-applied on page load — reload pages after changing exceptions. Same-origin frames, including nested frames and `srcdoc`, receive their own CSS rules; each pass covers up to 32 documents and eight frame levels. Cross-origin frames cannot be inspected. Scriptlets and resource redirects are not enabled, and unsupported filters are not presented as full uBlock compatibility.
 
 ## Configuration

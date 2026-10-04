@@ -166,6 +166,18 @@ Ruff lint/format and whitespace pass. Log: `/tmp/steed-bookmark-results-enter.lo
 The incoming engineer's broader acceptance and agent-recovery priorities remain
 unchanged.
 
+**Downloads search and path copying (implemented and accepted).** The owner's
+last two small tasks are outside bookmarks: case-insensitive literal filtering
+by filename/profile/destination, and Copy Path for the selected record's full
+destination. Filtering and progress updates keep controls bound to stable
+download IDs; a hidden or removed selection cannot redirect Cancel or clipboard
+actions. Copy Path does not open the file or require it to exist. Enter in search
+cannot implicitly invoke Pause or close the dialog. Five focused checks pass in
+0.075 seconds; two existing real local-download/menu checks pass in 1.457 seconds.
+Light/dark native previews, Ruff lint/format (241 files) and whitespace pass. Logs:
+`/tmp/steed-download-small-tasks.log`, `/tmp/steed-download-browser-checks.log`.
+The handoff priorities below are unchanged; no broader engineering is started.
+
 **Next daily-use chunks, in order:**
 
 1. Finish account list/table broad acceptance: full regressions and both installed
