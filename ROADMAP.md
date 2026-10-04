@@ -12,6 +12,33 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Portable layouts and reviewed agent proposals L2 (implemented and accepted).**
+Strict version-1 JSON has stable mandatory controls, bounded dimensions and no
+callbacks/commands. Import opens a plain-text diff and inert native preview;
+Export writes appearance only to a new filename. Previous-layout recovery restores
+appearance across windows while keeping current presets. Configuration write
+failures restore in-memory values as well as preserving the atomic disk file.
+
+Three MCP tools discover the grammar, propose exact immutable source and poll a
+task-bound receipt. Submission creates no data permission; the native popup's
+Apply/Decline is user-only. Closed requests remain in Task Permissions → Layouts.
+Stale previews refresh before approval; limits bound pending source; cancellation
+and restart never replay requests. Schema 17 retains existing task evidence.
+
+Validation: 135 focused checks and 18 final proposal checks pass. The integrated
+run exercised **1,048 checks**: 1,043 passed; five legacy version-16 expectations
+were corrected for schema 17 and all five pass separately. An initial Qt startup
+crash did not reproduce in 26 startup/access checks or the integrated rerun.
+Installed Codex 0.159.2 passes direct-tool/code-runtime discovery and follow-ups;
+startup/render/shutdown, dependency, Ruff and whitespace checks pass. Light/dark
+review previews were inspected. All fixtures are synthetic; no real accounts or
+external model calls. Logs: `/tmp/steed-layout-proposals-focused-final.log`,
+`/tmp/steed-layout-proposals-acceptance.log`,
+`/tmp/steed-layout-proposals-full-final.log`,
+`/tmp/steed-layout-proposals-migrations.log`,
+`/tmp/steed-layout-proposals-native{,-direct}.log`.
+Next: maintained native quick-action panels and bounded browser text/appearance.
+
 **Configurable browser layout L1 (fixed, accepted and merged).** The contributor's
 manual layout milestone now preserves the original address-field position and
 explicitly hides disabled controls. The address field is a mandatory reorderable
@@ -28,8 +55,7 @@ No real accounts or profiles were used. Logs: `/tmp/steed-layout-fixes-full.log`
 `/tmp/steed-layout-fixes-focused-final.log`, `/tmp/steed-layout-fixes-startup.log`.
 Original findings and subsequent scopes are retained in
 [the engineering handoff](ENGINEERING_HANDOFF.md#configurable-layout-review-and-continuation).
-Next: strict portable layouts and task-bound agent proposals with user review,
-export/import and previous-layout recovery; maintained native panels follow.
+Portable layouts/proposals are now delivered as L2 above; native panels follow.
 
 **Codex access discovery and reported model (implemented and validated).**
 The user reports an agent saying access-discovery requests were rejected. Two
@@ -288,7 +314,7 @@ Logs: `/tmp/steed-chat-final-full.log`,
 complete; engineering branch `f6c28b4` is integrated by merge `e20cfea`.
 The first open-shadow observation increment and external component acceptance
 are complete. Reviewed non-secret API-version headers and explicit identity-label
-alternatives are implemented. Next daily-workflow scope is manual configurable UI;
+alternatives are implemented. Manual and portable layouts are complete; next daily-workflow scope is native panels;
 next shared connector scope is typed query/POST reads. Deeper accessible semantics
 and supported shadow-control input remain separate follow-ups. Further agents work on their own
 branches and submit milestones for maintainer review.
@@ -1407,16 +1433,12 @@ the required cases.
 Prioritize daily workflow and reuse the existing Qt architecture. The latest
 request distinguishes configurable browser UI from saved agent workflows.
 
-1. **Configurable UI:** the manual milestone is implemented — persisted
-   toolbar visibility/order, sidebar position/width, density and named
-   layouts, with defaults matching today's menu order, Settings and Reset
-   always reachable, and restart plus malformed-settings coverage. Next:
-   stable component IDs, versioned JSON, preview/apply/export/import and
-   last-working-layout recovery so agents can design layouts. Native
-   component panels and validated appearance settings follow; do not
-   execute generated code in the browser. Details:
-   [configurable browser layout](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
-   and [customization direction](DOCUMENTATION.md#customization-direction-planned).
+1. **Configurable UI:** manual settings, mandatory navigation, shared-window
+   commits and reviewed portable agent layouts are implemented. Export/import
+   and previous-layout recovery work. Next: maintained native action panels
+   and bounded text/appearance settings. Keep generated code outside the browser.
+   Details: [layout usage](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
+   and [agent proposals](DOCUMENTATION.md#portable-layouts-and-agent-proposals--implemented).
 2. **Connector interoperability:** typed read-only POST/query requests and bounded
    query inputs, then explicit pagination/response contracts. Credential-derived
    headers, revision guards and transforms need separate reviewed types. The

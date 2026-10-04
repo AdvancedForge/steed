@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Focus",
+  "layout": {
+    "toolbar": {
+      "order": [
+        "back",
+        "forward",
+        "reload",
+        "home",
+        "address",
+        "zoom",
+        "passwords"
+      ],
+      "hidden": [
+        "passwords"
+      ]
+    },
+    "menus": {
+      "order": [
+        "general",
+        "profile",
+        "tabs",
+        "view",
+        "cookies",
+        "agents"
+      ]
+    },
+    "sidebar": {
+      "side": "right",
+      "width": 400
+    },
+    "density": "compact"
+  }
+}

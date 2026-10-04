@@ -19,6 +19,8 @@ READ_ONLY_COMMANDS = frozenset(
     (
         "task.status",
         "task.capabilities",
+        "layout.capabilities",
+        "layout.status",
         "grant.list",
         "browser.context",
         "browser.tabs",
@@ -230,6 +232,10 @@ def create_server(discovery, *, expected_epoch=None, binding_file=None):
             + server.instructions
         )
     server.instructions += (
+        " For browser UI customization, use steed_layout_capabilities, submit "
+        "the exact JSON with steed_layout_propose and poll steed_layout_status. "
+        "The user reviews and applies it in a native popup; the agent cannot "
+        "approve it. Layout approval grants no page, profile, folder or account access. "
         " Discovery is already enabled: call steed_task_capabilities, "
         "steed_browser_context, steed_library_folders and "
         "steed_app_list_tools with {} before requesting access. Do not supply task_id; "

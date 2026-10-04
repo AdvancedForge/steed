@@ -56,8 +56,8 @@ Waiting/Ready card and queued-message count. Generic MCP execution stays explici
 unknown. Light/dark sections and speaker headers keep plain-text rendering;
 advanced details remain collapsed. Installed Codex 0.159.2 passes offline native
 follow-ups and both tool runtime paths. See current ROADMAP.md acceptance for logs.
-Manual configurable UI remains the next substantive layout scope; its first
-contributor implementation has been corrected and accepted as L1.
+Manual layout L1 is accepted at `5ece7e8`; portable layout/proposal L2 is accepted.
+Continue with maintained native components and appearance (L3).
 
 ## Configurable layout review and continuation
 
@@ -138,7 +138,16 @@ and small-window previews. Submit the new SHA, commands/results and screenshots
 for maintainer review. Rebase after this acceptance handoff is published; do not
 merge or push to main from the contributor branch.
 
-### L2 — Reviewed agent layout proposals
+### L2 — Reviewed agent layout proposals (delivered)
+
+`layout_format.py` strictly validates portable version 1; `services/layout_proposals.py`
+pins immutable source and task receipts in schema 17. `steed_layout_capabilities`,
+`steed_layout_propose`, `steed_layout_status` are published; no agent approval
+endpoint exists. `ui/layout_review.py` and the shared approval queue provide the
+native diff/preview/Apply popup, with deferred requests in Task Permissions → Layouts.
+General imports/exports appearance; View recovers the prior appearance while keeping
+presets. Config writes roll memory back on failure. See ROADMAP for split integrated
+and migration acceptance. Do not redo this milestone. Original scope:
 
 After L1 acceptance, add versioned JSON proposals with stable component IDs,
 mandatory address/reset affordances, valid placements and bounded dimensions.
@@ -201,7 +210,7 @@ unavailable: record the engineering assessment as a COMMENT instead.
   export, Trash, Versions and user-only confirmed recovery cleanup.
 - `services/task_service.py`, `task_client.py`, `agent_tools.py`: twelve library
   commands exposed through both MCP transports and native agent chat. Total
-  published tools: 70. Stable request IDs and expected revisions govern edits.
+  published tools: 73. Stable request IDs and expected revisions govern edits.
   The workspace bridge reuses library inputs and retains sealed outputs.
 - `browser_window.py`, `ui/agent_sidebar.py`: shared-window ownership, private
   profile UI guards and scrollable controls in short native chat tabs.
@@ -331,15 +340,12 @@ plans and supports optional v5 headers. Capabilities expose `identity_example`;
 journeys now use this example; v4/v5 retain regression coverage. No service-data
 files were changed; live-provider acceptance is still separate.
 
-**Next daily-workflow increment: configurable browser UI.** Read the current
-engineering queue and documentation customization plan. Start with persisted
-manual toolbar visibility/order, sidebar side/width, density and named layouts.
-Keep today's defaults and make Settings/Reset always reachable. Use stable
-component IDs and validate configuration; test restart, invalid settings and
-shared-window behavior before adding versioned agent proposals with preview,
-apply/export/import and last-working-layout recovery. Native panels come later.
-Never let layout changes grant profile/library/account capabilities or execute
-agent-generated Python. This work extends Qt; no rebuild is needed.
+**Next daily-workflow increment: native components/appearance (L3).** L1 and L2
+are delivered. Extend the strict portable grammar with maintained native actions,
+bounded panels and normal/large browser text. Preserve existing control state,
+keyboard access, private browsing, shared windows and narrow-window scrolling.
+Keep defaults unchanged and generated code outside the browser. Use reviewed
+layout proposals for installation; no rebuild is needed.
 
 **Next shared connector increment:** typed read-only POST/query inputs, separate
 from create/send and static headers. Define bounded source/request/response types,

@@ -3203,7 +3203,7 @@ the HTTP adapter uses the same broker and popup approvals as stdio.
 
 ### Shared tools and permissions
 
-Tool discovery publishes 70 input schemas. Names follow the internal command
+Tool discovery publishes 73 input schemas. Names follow the internal command
 table with `steed_` and underscores, for example `page.inspect` becomes
 `steed_page_inspect`. `steed_task_start` creates the connection's task. Arguments
 omit `task_id`; the browser assigns it. Opening pages, inspection, observed link
@@ -4302,8 +4302,45 @@ name may not be empty, longer than 48 characters or contain control characters.
 Applying a layout never changes browser, website, profile, folder, file or
 account permissions, and never grants an agent access to anything.
 
-Limits of this milestone: one global layout with no per-window or per-profile
-override, two densities, and no colors, fonts or agent-proposed layouts yet.
+Manual settings use one global layout with no per-window or per-profile override
+and two densities. Agent proposals use the portable format below.
+
+### Portable layouts and agent proposals — implemented
+
+**General → Export Layout…** saves the committed appearance as a small JSON file.
+Choose a new filename; existing files are preserved. **General → Import Layout…**
+validates the file and opens a preview of the actual control changes. Click
+**Apply layout** to commit, or Close to leave settings unchanged. Import changes
+appearance only and preserves named layouts. Save As in Layout Settings can name
+an imported appearance. **View → Recover Previous Layout** restores the previous
+committed appearance across windows and retains current named layouts; subsequent
+recovery swaps back. Preset-only edits do not erase the appearance recovery point.
+
+Agents call `steed_layout_capabilities({})` for stable IDs and a copyable example,
+then `steed_layout_propose` with `source` (the exact JSON string) and a stable
+`request_id`. Steed opens a native popup with a plain-text change summary, an inert
+address-bar preview and optional JSON source. The user chooses Apply, Decline or
+Close. Close defers the request; reopen it in **Agents → Task Permissions… →
+Layouts**. Poll `steed_layout_status` with the same request ID. No grant is needed
+for these presentation proposals; they neither read browsing data nor authorize
+websites, profiles, folders, accounts or execution. Agents cannot approve them.
+
+The [Focus example](examples/layouts/focus.json) demonstrates portable version 1:
+`version`, a printable `name`, and `layout` with complete toolbar/menu orders,
+known hideable buttons, left/right sidebar width 300–800 px, and compact/comfortable
+density. The address field and all menus are mandatory. Unknown fields, callbacks,
+commands, missing controls, duplicate JSON keys, invalid versions and oversized
+source are refused before review. Limit: 16 KiB UTF-8, 20 proposals per task,
+three pending per task and 32 pending globally. Source is immutable and task-bound;
+receipts and journal entries contain IDs/hash/state, not proposal bodies.
+
+An identical request retry returns its receipt; changed bytes with the same ID
+are rejected. A stale preview must be reviewed again after another window saves.
+Cancellation ends pending requests. Restart interrupts pending/in-flight requests
+and never reapplies them; an interrupted receipt can mean the appearance changed
+before its final receipt was saved. Inspect current settings and use recovery
+rather than retrying an uncertain application. Configuration publication preserves
+both disk and in-memory settings on failure.
 
 ### Customization direction (planned)
 

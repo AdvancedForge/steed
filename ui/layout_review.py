@@ -1,0 +1,121 @@
+"""Native review of a portable layout, with an inert toolbar preview."""
+
+import sqlite3
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+)
+
+from layout_format import layout_changes
+from layout_preferences import preferences_from_config
+from ui.address_bar import AddressBar
+
+
+class LayoutReviewDialog(QDialog):
+    def __init__(
+        self, registry, definition, parent=None, *, service=None, proposal=None
+    ):
+        super().__init__(parent)
+        self.registry, self.definition = registry, definition
+        self.service, self.proposal = service, proposal
+        self.request_key = proposal.request_key if proposal else "imported-layout"
+        self.setWindowTitle("Review browser layout")
+        if proposal is not None:
+            self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.resize(740, 520)
+        body = QVBoxLayout(self)
+        title = QLabel("Layout: " + definition.name)
+        title.setTextFormat(Qt.TextFormat.PlainText)
+        title.setWordWrap(True)
+        body.addWidget(title)
+        notice = QLabel(
+            "Apply changes browser controls in all windows and keeps your saved "
+            "layouts. It grants no website, profile, file or account access."
+        )
+        notice.setWordWrap(True)
+        body.addWidget(notice)
+        self.toolbar_preview = AddressBar()
+        self.toolbar_preview.address_input.setPlaceholderText(
+            "Preview — no page is opened"
+        )
+        body.addWidget(self.toolbar_preview)
+        self.changes = QPlainTextEdit()
+        self.changes.setReadOnly(True)
+        body.addWidget(self.changes, 1)
+        self.status = QLabel()
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.status.setWordWrap(True)
+        body.addWidget(self.status)
+        source_button = QPushButton("Show JSON source")
+        source_button.setCheckable(True)
+        self.source = QPlainTextEdit(definition.source)
+        self.source.setReadOnly(True)
+        self.source.hide()
+        source_button.toggled.connect(self.source.setVisible)
+        body.addWidget(source_button)
+        body.addWidget(self.source)
+        buttons = QHBoxLayout()
+        self.apply_button = QPushButton("Apply layout")
+        self.apply_button.clicked.connect(self.apply_layout)
+        buttons.addWidget(self.apply_button)
+        if proposal is not None:
+            deny = QPushButton("Decline")
+            deny.clicked.connect(self.decline)
+            buttons.addWidget(deny)
+        close = QPushButton("Close")
+        close.clicked.connect(self.reject)
+        buttons.addWidget(close)
+        body.addLayout(buttons)
+        self.refresh_preview()
+
+    def refresh_preview(self):
+        self.base = preferences_from_config(self.registry.config)
+        candidate = self.definition.preferences(self.base)
+        self.changes.setPlainText("\n\n".join(layout_changes(self.base, candidate)))
+        self.toolbar_preview.apply_toolbar(
+            candidate.toolbar_order, candidate.hidden_toolbar
+        )
+        self.toolbar_preview.apply_density(candidate.density)
+
+    def apply_layout(self):
+        try:
+            current = preferences_from_config(self.registry.config)
+            if current.to_dict() != self.base.to_dict():
+                self.refresh_preview()
+                self.status.setText(
+                    "The saved layout changed. Review this updated preview and click Apply again."
+                )
+                return
+            if self.proposal is not None:
+                self.service.layouts.resolve(
+                    self.proposal.task_id,
+                    self.proposal.request_id,
+                    approve=True,
+                    base=self.base,
+                )
+            else:
+                self.registry.commit_layout(
+                    self.definition.preferences(self.base), base=self.base
+                )
+            self.accept()
+        except (ValueError, KeyError, RuntimeError, OSError, sqlite3.Error):
+            self.status.setText(
+                "The layout could not be applied. Check the current settings and task, then reopen this review."
+            )
+            self.apply_button.setEnabled(False)
+
+    def decline(self):
+        try:
+            self.service.layouts.resolve(
+                self.proposal.task_id, self.proposal.request_id
+            )
+            self.accept()
+        except (ValueError, KeyError, RuntimeError, OSError, sqlite3.Error):
+            self.status.setText("This request is no longer available.")
+            self.apply_button.setEnabled(False)

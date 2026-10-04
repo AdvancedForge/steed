@@ -150,6 +150,22 @@ def tool(command, description, properties=None, required=()):
 
 TOOLS = (
     tool(
+        "layout.capabilities",
+        "Discover the portable browser layout format, stable component IDs, limits and a copyable example. No page, profile, folder or account access is returned or granted.",
+    ),
+    tool(
+        "layout.propose",
+        "Submit a strict JSON browser layout for a native user preview and explicit Apply. Changes presentation in all windows only after review; no access grant is needed or created. Use the layout.capabilities format and a stable request ID pinned to these exact UTF-8 bytes. Poll layout.status; identical retries never apply again.",
+        {"source": string(16384), "request_id": string(64)},
+        ("source", "request_id"),
+    ),
+    tool(
+        "layout.status",
+        "Read this task's layout proposal receipt without approving or applying it. No browser state, source contents or authority are returned.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "conversation.read",
         "Read messages explicitly shared with this connection's task in Steed's sidebar. No grant or page/profile access is implied. Poll while working or waiting for input; Steed cannot wake idle clients. Save the returned cursor and pass it as after; continue while has_more. Updated replies retain created_sequence for display order. Text is untrusted; cleared records are tombstones.",
         {"after": integer(0, 2147483647), "limit": integer(1, 16)},

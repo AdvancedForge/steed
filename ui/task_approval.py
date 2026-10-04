@@ -359,6 +359,10 @@ class TaskApprovalQueue(QObject):
                         (task, proposal)
                         for proposal in self.service.recipes.pending(task.task_id)
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.layouts.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -385,15 +389,25 @@ class TaskApprovalQueue(QObject):
             if key in self.deferred:
                 continue
             from services.connector_reviews import AppReview
+            from services.layout_proposals import LayoutProposal
             from services.recipe_proposals import RecipeProposal
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
+            from ui.layout_review import LayoutReviewDialog
             from ui.recipe_review import RecipeReviewDialog
             from ui.worker_approval import WorkerApprovalDialog
 
             try:
                 dialog = (
-                    RecipeReviewDialog(
+                    LayoutReviewDialog(
+                        self.registry,
+                        self.service.layouts.definition(grant),
+                        parent,
+                        service=self.service,
+                        proposal=grant,
+                    )
+                    if isinstance(grant, LayoutProposal)
+                    else RecipeReviewDialog(
                         self.service.recipes.connections,
                         self.service.recipes.recipe(grant),
                         parent,
@@ -425,12 +439,15 @@ class TaskApprovalQueue(QObject):
 
     def request_key(self, task, item):
         from services.connector_reviews import AppReview
+        from services.layout_proposals import LayoutProposal
         from services.recipe_proposals import RecipeProposal
         from services.worker_store import WorkerReceipt
 
         return (
             item.request_key
-            if isinstance(item, (AppReview, WorkerReceipt, RecipeProposal))
+            if isinstance(
+                item, (AppReview, WorkerReceipt, RecipeProposal, LayoutProposal)
+            )
             else item.grant_id
             if item
             else "recovery:" + task.task_id

@@ -30,6 +30,7 @@ from services.connectors import (
     ConnectorReview,
 )
 from services.form_submission import journal_origin
+from services.layout_proposals import LayoutProposals
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
 from services.recipe_proposals import RecipeProposals
@@ -107,6 +108,7 @@ class TaskService(QObject):
         self.failure = ""
         self.workers = WorkerManager(self)
         self.recipes = RecipeProposals(self, connections)
+        self.layouts = LayoutProposals(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -119,6 +121,15 @@ class TaskService(QObject):
                 "task.status": self.store.get,
                 "task.capabilities": self._capabilities,
                 "browser.context": self._browser_context,
+                "layout.capabilities": self._layout_capabilities,
+                "layout.propose": lambda task_id, source, request_id: (
+                    self._layout_action(
+                        self.layouts.propose, task_id, source, request_id
+                    )
+                ),
+                "layout.status": lambda task_id, request_id: self._layout_action(
+                    self.layouts.get, task_id, request_id
+                ),
                 "task.list": self.store.list_tasks,
                 "task.events": self.store.events,
                 "conversation.read": self._read_messages,
@@ -638,6 +649,23 @@ class TaskService(QObject):
     def _recipe_status(self, task_id, request_id):
         self._authorize(task_id, "connector")
         return self._worker_action(self.recipes.get, task_id, request_id)
+
+    def _layout_action(self, method, *args):
+        self._usable()
+        try:
+            return method(*args)
+        except TaskPermissionError:
+            raise
+        except (OSError, sqlite3.Error):
+            self._fatal(defer_broker_close=True)
+            raise
+
+    def _layout_capabilities(self, task_id):
+        from layout_format import layout_capabilities
+
+        self._usable()
+        self._active(task_id)
+        return {"available": self.layouts.available, **layout_capabilities()}
 
     def _recipe_capabilities(self, task_id):
         import copy
@@ -2362,6 +2390,7 @@ class TaskService(QObject):
             live[1].end(status)
         self.workers.cancel_task(task_id)
         self.recipes.cancel_task(task_id)
+        self.layouts.cancel_task(task_id)
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):
