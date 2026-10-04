@@ -1,0 +1,15 @@
+{
+  "version": 4,
+  "name": "Reusable notes",
+  "widgets": [
+    {
+      "id": "notes",
+      "kind": "text",
+      "title": "Notes",
+      "library": {
+        "folder_id": "ENABLED_LIBRARY_FOLDER_ID",
+        "path": "notes.txt"
+      }
+    }
+  ]
+}

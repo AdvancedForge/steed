@@ -17,7 +17,7 @@ browsing profiles and direct KeePassXC password management.
 - A desktop launcher, dark mode, and familiar navigation shortcuts.
 - Agent chats in a sidebar or tab, website chats, live-tab delegation and Take Back.
 - A persistent agent file library: add files once and enable full folder access.
-- Reviewed agent dashboards with text, lists, tables, forms and sealed-file images.
+- Reviewed agent dashboards with forms, saved reports, images and reusable linked files.
 
 ## Quick start
 
@@ -58,7 +58,7 @@ Codex CLI. Other external clients use the
 Google Docs/Gmail connections keep credentials in the desktop keyring and offer
 persistent account access switches. Real-account acceptance remains pending.
 Agents can propose connector recipes for REST reads, creates and sends,
-including nested payloads and separately reviewed multi-step requests;
+including typed/fixed GraphQL reads, continuation pages and reviewed multi-step writes;
 Steed owns OAuth sign-in or token setup, execution, permission switches and revocation.
 [Recipe setup](DOCUMENTATION.md#agent-designed-connector-recipes) describes this
 format, per-action payload reviews and limits. See

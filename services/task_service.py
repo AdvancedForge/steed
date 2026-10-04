@@ -416,7 +416,9 @@ class TaskService(QObject):
         if self._library is None:
             from services.file_library import FileLibrary
 
-            self._library = FileLibrary(self._library_path)
+            self._library = FileLibrary(
+                self._library_path, access_changed=self.changed.emit
+            )
         return self._library
 
     def _library_run(self, task_id, method, folder_id=None, *args, **kwargs):

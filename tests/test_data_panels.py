@@ -32,7 +32,7 @@ class PanelFormatTests(unittest.TestCase):
         self.assertEqual(parse_panel(self.source()).name, "Task dashboard")
         for change in (
             lambda d: d.update(version=True),
-            lambda d: d.update(version=4),
+            lambda d: d.update(version=5),
             lambda d: d.update(callback="exec"),
             lambda d: d.update(profile="existing:work"),
             lambda d: d.update(widgets=[]),
@@ -620,7 +620,7 @@ class DataPanelTests(unittest.TestCase):
         restarted = TaskService(path, profiles=self.registry)
         try:
             self.assertEqual(
-                restarted.store._db.execute("PRAGMA user_version").fetchone()[0], 19
+                restarted.store._db.execute("PRAGMA user_version").fetchone()[0], 20
             )
             self.assertEqual(
                 restarted.data_panels.get(task.task_id, pending.request_id).state,

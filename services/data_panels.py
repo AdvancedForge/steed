@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS data_panel_updates (
  PRIMARY KEY(task_id,request_id,update_id),
  FOREIGN KEY(task_id,request_id) REFERENCES data_panels(task_id,request_id)
 );
+CREATE TABLE IF NOT EXISTS data_panel_source_access (
+ task_id TEXT NOT NULL, request_id TEXT NOT NULL, profile_key TEXT NOT NULL,
+ enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+ PRIMARY KEY(task_id,request_id),
+ FOREIGN KEY(task_id,request_id) REFERENCES data_panels(task_id,request_id)
+);
 """
 
 
@@ -227,6 +233,8 @@ class DataPanels:
                 for key, w in definition.source_widgets.items()
             },
         )
+        for widget in definition.library_widgets.values():
+            self._library_content(widget)
         self._authority(definition, task_id, consume=True)
         with self.db:
             self.db.execute(
@@ -270,7 +278,14 @@ class DataPanels:
         return self.get(task_id, request_id)
 
     def resolve(
-        self, task_id, request_id, *, approve=False, profile=None, profile_key=None
+        self,
+        task_id,
+        request_id,
+        *,
+        approve=False,
+        profile=None,
+        profile_key=None,
+        library_access=False,
     ):
         """Trusted user review only; publishing is a separate bounded agent command."""
         try:
@@ -280,14 +295,17 @@ class DataPanels:
                 approve=approve,
                 profile=profile,
                 profile_key=profile_key,
+                library_access=library_access,
             )
         except sqlite3.Error:
             self.service._fatal()
             raise
 
-    def _resolve(self, task_id, request_id, *, approve, profile, profile_key):
+    def _resolve(
+        self, task_id, request_id, *, approve, profile, profile_key, library_access
+    ):
         self.service._usable()
-        if type(approve) is not bool:
+        if type(approve) is not bool or type(library_access) is not bool:
             raise ValueError("Provide an explicit panel decision")
         receipt = self.get(task_id, request_id)
         if receipt.state != "awaiting_approval":
@@ -304,6 +322,8 @@ class DataPanels:
                 raise ValueError("Display profile changed; review it again")
             # Revalidate the exact initial artifacts before sharing them with this profile.
             self.view(task_id, request_id)
+            for widget in definition.library_widgets.values():
+                self._library_content(widget)
             count = self.db.execute(
                 "SELECT COUNT(*) FROM data_panels WHERE profile_key=? AND state='applied'",
                 (key,),
@@ -317,8 +337,104 @@ class DataPanels:
                     (key, profile, task_id, request_id),
                 )
                 result = self._state(task_id, request_id, "applied")
+                if definition.library_widgets:
+                    self.db.execute(
+                        "INSERT INTO data_panel_source_access VALUES (?,?,?,?)",
+                        (task_id, request_id, key, int(library_access)),
+                    )
+                    self.service.store._append(
+                        task_id,
+                        "panel.source_access",
+                        {
+                            "request_id": request_id,
+                            "enabled": library_access,
+                        },
+                    )
         self.service.changed.emit()
         return result
+
+    def source_access(self, task_id, request_id):
+        self.service._usable()
+        row = self._row(task_id, request_id)
+        grant = self.db.execute(
+            "SELECT profile_key,enabled FROM data_panel_source_access WHERE task_id=? AND request_id=?",
+            (task_id, request_id),
+        ).fetchone()
+        return bool(
+            row["state"] == "applied"
+            and grant
+            and grant[1]
+            and grant[0] == row["profile_key"]
+            and any(
+                self.profile_key(name) == row["profile_key"]
+                for name in self.profile_names()
+            )
+        )
+
+    def set_source_access(self, task_id, request_id, *, profile_key, enabled):
+        """Trusted local user control; never exposed through the agent broker."""
+        try:
+            return self._set_source_access(
+                task_id, request_id, profile_key=profile_key, enabled=enabled
+            )
+        except sqlite3.Error:
+            self.service._fatal()
+            raise
+
+    def _set_source_access(self, task_id, request_id, *, profile_key, enabled):
+        self.service._usable()
+        row = self._row(task_id, request_id)
+        if (
+            type(enabled) is not bool
+            or row["state"] != "applied"
+            or not self.definition(task_id, request_id).library_widgets
+            or not profile_key
+            or profile_key != row["profile_key"]
+            or not any(self.profile_key(p) == profile_key for p in self.profile_names())
+        ):
+            raise ValueError("Choose this panel's current display profile")
+        with self.db:
+            self.db.execute(
+                "INSERT INTO data_panel_source_access VALUES (?,?,?,?) "
+                "ON CONFLICT(task_id,request_id) DO UPDATE SET enabled=excluded.enabled",
+                (task_id, request_id, profile_key, int(enabled)),
+            )
+            self.service.store._append(
+                task_id,
+                "panel.source_access",
+                {
+                    "request_id": request_id,
+                    "enabled": enabled,
+                },
+            )
+        self.service.changed.emit()
+
+    def _library_content(self, widget):
+        library = self.service.library
+        source = widget["library"]
+        folder = library.folder(source["folder_id"], agent=True)
+        # Check length before retrieving a blob; never materialize a large file.
+        row = library.db.execute(
+            "SELECT kind,revision,sha256,deleted,length(data) AS size FROM entries WHERE folder=? AND path=?",
+            (source["folder_id"], source["path"]),
+        ).fetchone()
+        if (
+            row is None
+            or row["deleted"]
+            or row["kind"] != "file"
+            or row["size"] > 16384
+        ):
+            raise ValueError("Linked file is missing, removed or larger than 16 KiB")
+        data = library.row(source["folder_id"], source["path"])["data"]
+        if hashlib.sha256(data).hexdigest() != row["sha256"]:
+            raise ValueError("Linked file integrity check failed")
+        content = widget_content(widget["kind"], data.decode("utf-8"))
+        return {
+            "content": content,
+            "source_revision": row["revision"],
+            "source_sha256": row["sha256"],
+            "folder_name": folder["name"],
+        }
 
     def publish(self, task_id, request_id, update_id, expected_revision, bindings):
         definition = self.definition(task_id, request_id)
@@ -457,10 +573,42 @@ class DataPanels:
         """Trusted local UI reads saved drafts; no agent body-reading endpoint is added."""
         definition = self.definition(task_id, request_id)
         bindings = json.loads(self._row(task_id, request_id)["bindings"])
+        row = self._row(task_id, request_id)
         result = []
         for widget in definition.widgets:
             value = dict(widget)
-            if widget["id"] in definition.workspace_widgets:
+            if widget["id"] in definition.library_widgets:
+                value.update(
+                    source_kind="library",
+                    available=False,
+                    artifact_title=widget["library"]["path"],
+                    source_revision=None,
+                    source_sha256="",
+                    folder_name="",
+                    content=""
+                    if widget["kind"] == "text"
+                    else ()
+                    if widget["kind"] == "list"
+                    else {"columns": (), "rows": ()},
+                )
+                try:
+                    if row["state"] == "awaiting_approval" or self.source_access(
+                        task_id, request_id
+                    ):
+                        value.update(
+                            self._library_content(widget),
+                            available=True,
+                            unavailable="",
+                        )
+                    else:
+                        value["unavailable"] = (
+                            "Linked reads are disabled for this panel/profile"
+                        )
+                except (ValueError, UnicodeError, KeyError):
+                    value["unavailable"] = (
+                        "Linked file unavailable; check folder access, file format and size"
+                    )
+            elif widget["id"] in definition.workspace_widgets:
                 binding = bindings[widget["id"]]
                 item, content = self._workspace(
                     task_id,

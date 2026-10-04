@@ -1076,7 +1076,7 @@ async def native_panel_workflow(call, shared, label):
     )
     source = json.dumps(
         {
-            "version": 3,
+            "version": 4,
             "name": label.upper() + " task dashboard",
             "widgets": [
                 {"id": "progress", "kind": "task", "title": "Progress"},
@@ -1128,6 +1128,15 @@ async def native_panel_workflow(call, shared, label):
                 "kind": "text",
                 "title": "Saved workspace notes",
                 "file_id": notes["file_id"],
+            },
+            {
+                "id": "linked",
+                "kind": "text",
+                "title": "Linked daily notes",
+                "library": {
+                    "folder_id": shared["library_id"],
+                    "path": "inputs/panel.txt",
+                },
             },
         ]
     )
@@ -1847,6 +1856,9 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             shared["library_id"],
             [("inputs/reference.bin", b"PERSISTENT_LIBRARY_INPUT\x00\xff")],
         )
+        case.service.library.import_files(
+            shared["library_id"], [("inputs/panel.txt", b"SYNTHETIC_LINKED_PANEL")]
+        )
         case.service.library.enable(shared["library_id"], True)
         case.service.library.create_folder("Synthetic disabled folder")
         user = window.tabs[window.current_tab_index].page()
@@ -2033,6 +2045,9 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                         for b in dialog.findChildren(type(dialog.deny_button))
                     ]
                     dialog.profiles.setCurrentText("work")
+                    dialog.linked_access.setChecked(
+                        True
+                    )  # Explicit synthetic user source grant.
                     dialog.grab().save(f"/tmp/steed-data-panel-{transport}-preview.png")
                     dialog.approve_button.click()  # Trusted synthetic user only.
                     shared["native_panel_review_popup"] = True
@@ -2324,6 +2339,27 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             for p in panels
         )
         shared["profile_native_panels_retained"] = True
+        assert all(
+            case.service.data_panels.source_access(p.task_id, p.request_id)
+            for p in panels
+        )
+        assert all(
+            case.service.data_panels.view(p.task_id, p.request_id)[-1]["content"]
+            == "SYNTHETIC_LINKED_PANEL"
+            for p in panels
+        )
+        case.service.library.enable(shared["library_id"], False)
+        assert all(
+            case.service.data_panels.view(p.task_id, p.request_id)[-1]["content"] == ""
+            for p in panels
+        )
+        case.service.library.enable(shared["library_id"], True)
+        assert all(
+            case.service.data_panels.view(p.task_id, p.request_id)[-1]["content"]
+            == "SYNTHETIC_LINKED_PANEL"
+            for p in panels
+        )
+        shared["profile_linked_panels_retained_and_revocable"] = True
         shared["shared_cookie"] = True
         shared["ordinary_user_post"] = True
         shared["task_pages_disposed"] = True

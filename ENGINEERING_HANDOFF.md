@@ -11,11 +11,24 @@ and publication status. Do not restart earlier completed milestones.
 
 Owner-approved linked-panel behavior: hide linked contents immediately on source
 revocation; refresh after restoration. Panels may outlive their creating task
-with a separate visible permission for the panel/display profile. Implement
-selected library-file bindings first; independently saved reports are unchanged.
+with a separate visible permission for the panel/display profile.
+Selected library-file bindings are delivered below; independently saved reports
+are unchanged. The owner selected manual Refresh first for account-backed panels; no recurring
+API calls on view. Continue this next.
+
+Current acceptance: **1,320 full regressions in 399.325 seconds** plus 13 final
+linked-panel checks in 4.018 seconds. SDK/raw stdio and authenticated HTTP journeys,
+both installed Codex runtime paths, startup/render/shutdown, light/dark native
+previews, Ruff, dependency, whitespace and example/document targets pass.
+The first final stdio invocation reproduced the known offscreen Qt profile-create
+segfault before task setup; the captured stack is at
+`/tmp/steed-linked-panels-stdio.log`. Retry/HTTP/native/startup pass. Diagnose this
+headless initialization failure separately; no production workaround is proven.
+Logs: `/tmp/steed-continued-engineering-full.log`, `/tmp/steed-panel-library-final.log`,
+`/tmp/steed-linked-panels-{stdio-retry,http,native,native-direct,startup}.log`.
 
 Current checkpoint adds Global startup, editable `steed:newtab`/`steed:welcome`,
-and native sealed-workspace text/JSON/image panels.
+and native sealed-workspace/image plus reusable linked-library panels.
 Read [the page guide](DOCUMENTATION.md#welcome-new-tab-and-bookmarks) and the newest
 roadmap entry. `services/start_pages.py` owns profile-local settings/bookmarks/HTML;
 `services/news_feed.py` performs optional bounded cookie-free feed reads. URL-scheme
@@ -25,16 +38,17 @@ independent settings. Legacy Default storage is retained, no longer protected as
 a built-in. Global now supports explicit reviewed task sharing and stable identity.
 
 `start_page_format.py`, `services/start_page_proposals.py` and the native review
-implement external-agent edits; schema 19 adds immutable proposals. New source
-sharing uses existing connected-task messages, with exact payload preview and an
+implement external-agent edits. Schema 19 added immutable proposals; schema 20
+adds panel-source permissions. New source sharing uses existing connected-task messages, with exact payload preview and an
 8 KB limit. Agent declarations have a 32 KB UTF-8 limit; local imports allow 256 KB.
-Native panels now support versions 1/2/3; the image/workspace milestone is
-implemented. Continue selected library/connector sources without adding arbitrary
+Native panels now support versions 1/2/3/4; selected library files are implemented
+with reusable panel/profile read permission. Continue account-backed sources
+without adding arbitrary
 code callbacks or conflating private data with global appearance exports.
 Website chatbots still use copy/export or enabled folders;
 external MCP/Codex clients discover the three start-page tools automatically.
 
-Validation checkpoint: **1,220 combined tests pass in 416.669 seconds**; 136
+Previous workspace/image validation checkpoint: **1,220 combined tests pass in 416.669 seconds**; 136
 browser/profile checks, 22 page/proposal/feed checks and 45 native source/form
 checks pass separately. SDK/raw MCP journeys pass over stdio and authenticated
 HTTP with recipes, reviewed pages, sealed file/image publication and explicit form
@@ -54,7 +68,7 @@ was corrected; this changed the fixture, not the MCP implementation.
 
 1. Read `AGENTS.md`, this checkpoint, current `ROADMAP.md`, and the page/panel/MCP
    guides in `DOCUMENTATION.md`. Fetch main and create your own branch/worktree,
-   such as `engineering/typed-post-reads`. Leave the user's running checkout and
+   such as `engineering/account-panels`. Leave the user's running checkout and
    real `~/.custom_browser/` state alone. Keep Qt tests/smokes serial.
 2. Verify baseline lint/format and the focused page/panel tests. Use the repository
    virtual environment and temporary fixtures. Keep `-X faulthandler` enabled for
@@ -78,7 +92,7 @@ capabilities describe the exact contract. Follow-ups belong to provider adoption
 not a duplicate shared-runtime implementation. Preserve old fingerprints and
 version grammars, identity rechecks and no automatic write replay.
 
-**Selected data sources — remaining N3.** Add selected library files with a
+**Selected data sources — remaining N3.** Selected library files are delivered with a
 separate user-approved panel/profile read permission that survives task end.
 Permission must remain visible/revocable; disabling a folder or panel access hides
 linked data immediately. Refresh checks exact file identity and bounds. Saved
@@ -396,8 +410,9 @@ source hides it, while grant/task end freezes updates. New examples and stdio/HT
 SDK/raw workflows cover mixed source publication. The combined 1,220-test suite
 and both transports/runtimes pass; see the checkpoint at the top of this document.
 
-Next add selected library/connector-result bindings through existing grant checks. Recheck
-permissions and identity on refresh; do not infer read authority from panel review
+Selected library files are delivered in version 4 with reusable panel/profile
+permission and immediate revocation. Next add account-backed result bindings.
+Recheck account identity and panel/source permission on refresh; do not infer read authority from panel review
 or source names. Show freshness, unavailable/revoked sources and source labels.
 Live private data and retained user drafts need distinct retention contracts.
 Add reviewed service effects only by reusing Steed's existing permissions/payload
@@ -599,17 +614,15 @@ files were changed; live-provider acceptance is still separate.
 
 **Next daily-workflow increment: remaining N3 sources.** Layout L1/L2/L3 and native
 task/text/list/form/table/image plus sealed workspace bindings are delivered.
-Continue only selected library/connector bindings; do not repeat completed layout,
+Library-file bindings are now delivered. Continue account-backed bindings; do not repeat completed layout,
 form or workspace/image work. Keep generated code outside
 the browser; optional hosted apps have their separate H1 lifecycle scope.
 
-**Next shared connector increment:** typed read-only POST/query inputs, separate
-from create/send and static headers. Define bounded source/request/response types,
-visible source review, exact approved origin and credential handling, cancellation,
-identity/page rechecks and safe replay behavior before provider adoption. Review
-query semantics against official API contracts. Credential-derived headers,
-revision guards and transforms need their own types. Contributor-owned data/fixture
-paths remain separate. Coordinate the runtime increment before parallel work.
+**Next shared connector increment:** provider adoption of delivered v7/v8 typed
+reads, fixed GraphQL, identity POST and distinct continuation contracts. Shared
+runtime is integrated on main; coordinate source/fixture promotion with the
+connector contributor. Credential-derived headers, revision guards and transforms
+still need their own reviewed types. Live-provider acceptance remains separate.
 
 ## Validation and checkpoint evidence
 

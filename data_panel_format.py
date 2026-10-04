@@ -89,6 +89,10 @@ class PanelDefinition:
             w["id"]: w for w in self.widgets if "artifact_id" in w or "file_id" in w
         }
 
+    @property
+    def library_widgets(self):
+        return {w["id"]: w for w in self.widgets if "library" in w}
+
 
 def _form_fields(fields):
     if not isinstance(fields, list) or not 1 <= len(fields) <= MAX_FORM_FIELDS:
@@ -164,7 +168,7 @@ def parse_panel(source):
         "widgets",
     }:
         raise ValueError("Use the published panel fields")
-    if type(document["version"]) is not int or document["version"] not in (1, 2, 3):
+    if type(document["version"]) is not int or document["version"] not in (1, 2, 3, 4):
         raise ValueError("Unsupported data-panel version")
     name = clean_name(document["name"])
     widgets = document["widgets"]
@@ -177,13 +181,19 @@ def parse_panel(source):
     seen = set()
     for widget in widgets:
         kinds = WIDGET_KINDS + (("form", "table") if document["version"] >= 2 else ())
-        if document["version"] == 3:
+        if document["version"] >= 3:
             kinds += ("image",)
         if not isinstance(widget, dict) or widget.get("kind") not in kinds:
             raise ValueError("Use the published native widget kinds")
         expected = {"id", "kind", "title"}
-        if widget["kind"] == "image" or (
-            document["version"] == 3
+        if (
+            document["version"] >= 4
+            and widget["kind"] in ARTIFACT_KINDS
+            and "library" in widget
+        ):
+            expected.add("library")
+        elif widget["kind"] == "image" or (
+            document["version"] >= 3
             and widget["kind"] in ARTIFACT_KINDS
             and "file_id" in widget
         ):
@@ -203,6 +213,19 @@ def parse_panel(source):
             raise ValueError("Bind a widget to one owned artifact ID")
         if "file_id" in widget and not stable_id(widget["file_id"]):
             raise ValueError("Bind a widget to one sealed owned workspace file ID")
+        if "library" in widget:
+            from services.file_library import relative_path
+
+            source = widget["library"]
+            if (
+                not isinstance(source, dict)
+                or set(source) != {"folder_id", "path"}
+                or not stable_id(source["folder_id"])
+            ):
+                raise ValueError(
+                    "Bind one exact library folder ID and relative file path"
+                )
+            relative_path(source["path"])
         seen.add(widget["id"])
         widget["title"] = clean_name(widget["title"])
         if widget["kind"] == "form":
@@ -259,20 +282,21 @@ def widget_content(kind, content):
 
 def panel_capabilities():
     return {
-        "version": 3,
-        "supported_versions": [1, 2, 3],
+        "version": 4,
+        "supported_versions": [1, 2, 3, 4],
         "widget_kinds": list(WIDGET_KINDS) + ["form", "table", "image"],
         "max_widgets": MAX_WIDGETS,
         "max_source_bytes": MAX_PANEL_SOURCE_BYTES,
         "max_list_items": MAX_LIST_ITEMS,
         "max_item_characters": MAX_ITEM_CHARS,
-        "source": "owned_immutable_artifact_or_sealed_workspace_file",
+        "source": "owned_immutable_artifact_sealed_workspace_or_selected_library_file",
         "profile": "user_selected_normal_profile",
         "approval": "native_preview_and_profile_choice",
         "updates": "same_task_owned_source_bindings_with_exact_revision",
         "source_fields": {
             "artifact_id": "text/list/table; artifact authority",
             "file_id": "version 3 text/list/table/image; sealed owned workspace file and workspace authority",
+            "library": "version 4 text/list/table; exact enabled folder/file plus separate reusable panel/profile read permission",
         },
         "max_workspace_text_bytes": 16384,
         "max_image_file_bytes": 8 * 1024 * 1024,
@@ -290,6 +314,23 @@ def panel_capabilities():
         "pending_global": 32,
         "updates_per_panel": 256,
         "retention": "saved_drafts_survive_task_end_without_update_authority",
+        "linked_retention": "hide_immediately_on_revocation_refresh_after_restoration",
+        "linked_refresh": "user_refresh_and_local_library_changes_no_background_network",
+        "library_example": {
+            "version": 4,
+            "name": "Reusable notes",
+            "widgets": [
+                {
+                    "id": "notes",
+                    "kind": "text",
+                    "title": "Notes",
+                    "library": {
+                        "folder_id": "ENABLED_LIBRARY_FOLDER_ID",
+                        "path": "notes.txt",
+                    },
+                }
+            ],
+        },
         "example": deepcopy(PANEL_EXAMPLE),
         "form_example": deepcopy(FORM_EXAMPLE),
         "image_example": {

@@ -85,7 +85,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in range(20):
+        if version not in range(21):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -153,7 +153,7 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 19;
+                PRAGMA user_version = 20;
             """
                 + CONNECTOR_SCHEMA
                 + PLAN_SCHEMA

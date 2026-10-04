@@ -66,7 +66,8 @@ def relative_path(path, *, root=False):
 
 
 class FileLibrary:
-    def __init__(self, path):
+    def __init__(self, path, *, access_changed=None):
+        self._access_changed = access_changed
         self._owner = threading.get_ident()
         fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
@@ -148,6 +149,9 @@ class FileLibrary:
                     "UPDATE writes SET state='cancelled' WHERE folder=? AND state='building'",
                     (folder_id,),
                 )
+
+        if self._access_changed is not None:
+            self._access_changed()
 
     def folder(self, folder_id, *, agent=False):
         self.check()

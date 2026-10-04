@@ -165,7 +165,7 @@ the default. Every edit requires Apply; request IDs pin exact bytes and identica
 retries return the original receipt. Changed pages/profile identities invalidate
 a preview. Applied pages survive task completion; pending proposals are cancelled
 or interrupted rather than replayed. Deferred reviews remain in **Task Permissions
-→ Start Pages**. Database schema 19 migrates existing journals in place.
+→ Start Pages**. Database schema 20 migrates existing journals in place.
 
 Steed registers a host-based local URL scheme before application startup, following
 the [Qt URL-scheme documentation](https://doc.qt.io/qt-6/qwebengineurlscheme.html).
@@ -4644,15 +4644,17 @@ under **Agents → Task Permissions… → Data Panels**. Decline leaves the bro
 unchanged. Artifact sources need the task's existing `artifact` permission;
 sealed workspace sources need `workspace` permission. Panel
 approval neither creates nor expands website, folder, file or account permission.
+Linked library reads have their own explicit checkbox and revocable panel/profile
+permission described below.
 
 The current catalogue provides these native components:
 
 | Kind | Source | Display |
 | --- | --- | --- |
 | `task` | Owning task's metadata | Objective and current task status |
-| `text` | Owned immutable artifact, or sealed UTF-8 workspace file (v3) | Selectable, read-only plain text |
-| `list` | Owned artifact, or sealed workspace JSON array (v3) | Up to 64 plain-text items, 512 characters each |
-| `table` (v2/v3) | Owned artifact, or sealed workspace JSON (v3), with `columns` and `rows` | Read-only comparison table, up to eight columns and 64 rows |
+| `text` | Owned artifact, sealed UTF-8 workspace file (v3), or selected library file (v4) | Selectable, read-only plain text |
+| `list` | Owned artifact, sealed workspace JSON array (v3), or selected library JSON (v4) | Up to 64 plain-text items, 512 characters each |
+| `table` (v2–v4) | Owned artifact, sealed workspace JSON (v3), or selected library JSON (v4), with `columns` and `rows` | Read-only comparison table, up to eight columns and 64 rows |
 | `form` (v2) | Reviewed text fields and choices | Explicit user message to the owning connected agent |
 | `image` (v3) | Sealed owned PNG/JPEG workspace file | Static native preview; no HTML/SVG or remote resource reads |
 
@@ -4712,20 +4714,63 @@ approval, while the dock labels the current profile. Other profiles and private
 browsing do not display these panels. Profile switches erase the previous native
 content immediately. Multiple windows on the same profile receive committed
 updates without rebuilding unchanged text selections. Panel templates, bindings
-and receipts live in the task database (schema 19); personal draft bodies remain
+and receipts live in the task database (schema 20); personal draft bodies remain
 in owned artifacts/sealed workspace files, not global appearance preferences, named layouts or layout
 exports. Browser text sizing also applies to the dock.
 Profile changes clear image pixels and widget source records as well as text and
 forms. These are retained task snapshots: revocation stops agent updates, while
 the user can still view previously enabled saved files. Deleting or corrupting a
 source makes it unavailable even if a decoded preview was cached. This contract
-does not authorize live reads from the persistent library or connected accounts.
+does not authorize live reads. Version 4 library bindings use the separate contract
+below; connected-account panel bindings remain pending.
 
 Editable local Welcome/New Tab HTML is implemented; broader hosted mini-apps remain
 a planned complementary option.
 They will need their own host/lifecycle and a typed bridge to existing Steed
 capabilities. The current native format does not execute extension code, and
 external agents keep their independent tools.
+
+### Reusable linked library panels — implemented
+
+Ask an external MCP/Codex agent to build a panel using a file already in an enabled
+library folder. Discover the folder/file through the existing library tools, then
+use `steed_panel_capabilities` and propose a version 4 source such as
+[the linked-notes example](examples/data_panels/library-notes.json):
+
+```json
+{
+  "version": 4,
+  "name": "Reusable notes",
+  "widgets": [{
+    "id": "notes", "kind": "text", "title": "Notes",
+    "library": {"folder_id": "ENABLED_LIBRARY_FOLDER_ID", "path": "notes.txt"}
+  }]
+}
+```
+
+Review shows the exact selected files and display profile. Tick **Allow this
+panel to read the selected library files in this profile, including after task
+end** to give reusable read permission separately from enabling the panel. Leaving
+it unchecked installs the panel with linked contents hidden. This gives neither
+file edits nor new agent-task access. Agents cannot enable this permission or
+change the selected paths through `panel.publish`.
+
+In **Agents → Data Panels**, **Refresh linked files** reads the latest file
+revision; local library changes also refresh visible panels. **Disable linked
+reads** immediately hides linked contents. **Allow linked reads…** opens a readable
+confirmation with the exact files/profile. A disabled library folder, removed
+file, malformed source or failed integrity check hides the corresponding widget;
+restoring access permits refresh. Open review previews clear on folder revocation
+as well. Independently saved reports keep their existing retention behavior.
+
+Permission survives task completion and restart, remains bound to the panel and
+stable profile identity, and cannot transfer to a recreated profile. Source data
+is read locally when viewed/refreshed; it is not saved as a panel snapshot, sent
+to a model automatically, or included in appearance exports/audit bodies. File
+revision labels distinguish linked data from saved reports. Only text/list/table
+files up to 16 KiB of valid UTF-8 are supported, with existing list/table bounds;
+linked images, live host-directory mounts and account-linked sources are separate
+future work. Library imports remain managed copies.
 
 ### Native panel inputs and comparison tables
 

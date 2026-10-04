@@ -12,7 +12,7 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
-**Review and connector runtime checkpoint (integrated locally).** Reviewed
+**Review and connector runtime checkpoint (integrated on main).** Reviewed
 engineering branch `c93748e` and connector PR #3 head `0082a19` in isolated
 worktrees, then merged both. The PR review and detailed C6–C10 continuation are
 [posted on GitHub](https://github.com/AdvancedForge/steed/pull/3#issuecomment-5983460074).
@@ -37,13 +37,43 @@ Examples: [v7](examples/connector_recipes/notes-query.json),
 [v8](examples/connector_recipes/notes-continuation.json). Provider promotion and
 live acceptance remain the connector contributor's follow-up work.
 
-**Selected panel-source decisions (owner approved).** Hide linked contents
-immediately when source access is disabled/revoked; refresh after restoration.
-Keep a linked panel reusable after its creating task ends with a separate, visible
-permission for that panel and display profile. Independently saved reports retain
-their existing behavior. Implement selected library-file bindings first, then
-account-backed read results through the same lifecycle. Public-release work and
-broader HTML mini-app hosting remain separate.
+**Reusable linked library sources N3 (implemented and accepted).**
+Native panel v4 binds text/list/table widgets to exact enabled library files.
+A separate explicit native checkbox grants read access to that panel/display
+profile after task end; Data Panels exposes Allow/Disable linked reads and Refresh.
+Folder or panel revocation synchronously scrubs linked content in docks and open
+reviews; restoring access permits refresh. Missing/deleted/corrupt/oversized or
+malformed files fail closed, with per-widget unavailable labels. Saved reports
+retain their existing behavior. Local reads are bounded to 16 KiB and verify
+revision/digest; no new agent data-reading/approval endpoint or host mount exists.
+Task schema 20 migrates a separate source-permission table without changing old
+receipts. Linked paths cannot be retargeted through saved-draft publication.
+
+The full suite passes **1,320 tests in 399.325 seconds**. Thirteen final focused
+regressions pass in 4.018 seconds, including added persistence-failure and native
+list/table scrubbing and stale confirmation checks: authority separation, active/restarted
+panels, immediate scrubbing, profile rename/recreation, source failures, agent
+refusal, audit/export containment and saved reports. Updated stdio and authenticated HTTP SDK/raw journeys pass linked-panel review,
+explicit user source grants, retained panels and disable/restore checks.
+Both installed Codex runtime paths pass against local model fixtures, and
+startup/render/shutdown passes. Ruff lint/format, dependency checks, whitespace,
+ten recipe/five panel-content examples and local document targets pass.
+Light/dark native linked-panel dock and review previews were inspected. Logs:
+`/tmp/steed-continued-engineering-full.log`, `/tmp/steed-panel-library-final.log`,
+`/tmp/steed-linked-panels-{stdio-retry,http,native,native-direct,startup}.log`. The first stdio attempt reproduced the
+known intermittent offscreen Qt crash at `QWebEngineProfile` construction
+(`profile_manager.py:324`) before task/panel setup; its faulthandler stack is saved
+in `/tmp/steed-linked-panels-stdio.log`. The retry and HTTP journey pass; this
+headless startup defect remains unresolved. Example:
+[library-notes.json](examples/data_panels/library-notes.json).
+
+**Account-panel direction (owner approved):** manual Refresh first. No recurring
+API requests on view or automatic refresh; future scheduling remains a separate
+choice.
+The owner has approved reusable panel/profile permission and immediate hiding on
+source revocation. Account-backed reads must reuse trusted tools and account identity
+checks; live-provider acceptance is separate. Public-release work and broader
+HTML mini-app hosting remain separate.
 
 **Native workspace/image sources N3 (implemented and accepted).**
 Version 3 binds text/list/table widgets to exact sealed owned files and introduces
@@ -1659,15 +1689,15 @@ request distinguishes configurable browser UI from saved agent workflows.
    and previous-layout recovery work. Maintained native action panels and bounded
    text/appearance are delivered, alongside reviewed native task/text/list data
    panels with profile-bound artifact updates, explicit native forms and tables.
-   Next: images, workspace sources and
-   richer bindings/components; local HTML/JavaScript apps remain a later option.
+   Sealed files/images and reusable library bindings are delivered. Next:
+   account-backed sources and richer components; local HTML/JavaScript apps remain a later option.
    Keep personal panel data out of global appearance exports.
    Details: [layout usage](DOCUMENTATION.md#configurable-browser-layout--implemented-first-milestone)
    and [agent proposals](DOCUMENTATION.md#portable-layouts-and-agent-proposals--implemented).
 2. **Connector interoperability:** typed read-only POST/query requests, bounded
    query inputs, fixed reviewed GraphQL documents, explicit application-error
-   contracts and body or query cursors are implemented as recipe v7 on
-   `engineering/typed-post-reads`. Credential-derived headers, revision guards
+   contracts, body/query cursors and distinct continuations are integrated as
+   recipe v7/v8 on main. Credential-derived headers, revision guards
    and transforms need separate reviewed types. The
    connector contributor's C1–C5 data/fixture pack is integrated. Future provider
    adoption follows reviewed shared-runtime checkpoints and separate live-account
