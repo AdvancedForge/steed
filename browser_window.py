@@ -499,6 +499,20 @@ class BrowserWindow(QMainWindow):
         use_global_action = QAction("Use Global Cookies for This Site...", self)
         use_global_action.triggered.connect(self._use_global_cookies)
         cookies_menu.addAction(use_global_action)
+        self._native_layout_actions = {
+            "new_tab": new_tab_action,
+            "reload": self.reload_action,
+            "home": home_action,
+            "address": focus_address_action,
+            "find": self.find_action,
+            "zoom_in": self.zoom_in_action,
+            "zoom_out": self.zoom_out_action,
+            "zoom_reset": self.zoom_reset_action,
+            "agents": self.agent_sidebar_action,
+            "downloads": downloads_action,
+            "passwords": passwords_action,
+            "layout_settings": layout_action,
+        }
 
     def setup_ui(self):
         central = QWidget()
@@ -579,6 +593,8 @@ class BrowserWindow(QMainWindow):
         sidebar = getattr(self, "agent_sidebar", None)
         if sidebar is not None:
             sidebar._apply_style()
+        if hasattr(self, "layout_preferences"):
+            self._apply_layout_text()
 
     # ---------- Manual layout ----------
 
@@ -616,7 +632,10 @@ class BrowserWindow(QMainWindow):
 
     def apply_layout(self, preferences: LayoutPreferences) -> None:
         """Show a layout in this window without saving it."""
+        from ui.layout_panel import chrome_font
+
         self.layout_preferences = preferences
+        self.setFont(chrome_font(preferences.text_size))
         self._apply_menu_order(preferences.menu_order)
         self.address_bar.apply_toolbar(
             preferences.toolbar_order, preferences.hidden_toolbar
@@ -624,6 +643,43 @@ class BrowserWindow(QMainWindow):
         self.address_bar.apply_density(preferences.density)
         self.tab_bar.apply_density(preferences.density)
         self._apply_sidebar_layout()
+        self._apply_layout_panels()
+        self._apply_layout_text()
+
+    def _apply_layout_text(self):
+        from ui.layout_panel import apply_chrome_font
+
+        roots = [self.menuBar(), self.address_bar, self.tab_bar]
+        roots.extend(getattr(self, name, None) for name in ("find_bar", "status_bar"))
+        roots.extend(getattr(self, "_layout_panels", []))
+        for root in roots:
+            if root is not None:
+                apply_chrome_font(root, self.layout_preferences.text_size)
+
+    def _apply_layout_panels(self):
+        from ui.layout_panel import QuickActionsPanel
+
+        if not hasattr(self, "tab_container"):
+            return
+        layout = self.centralWidget().layout()
+        for panel in getattr(self, "_layout_panels", []):
+            layout.removeWidget(panel)
+            panel.hide()
+            panel.deleteLater()
+        self._layout_panels = []
+        for placement in ("top", "bottom"):
+            position = (
+                2 if placement == "top" else layout.indexOf(self.tab_container) + 1
+            )
+            for definition in self.layout_preferences.panels:
+                if definition["placement"] != placement:
+                    continue
+                panel = QuickActionsPanel(
+                    definition, self._native_layout_actions, self.centralWidget()
+                )
+                self._layout_panels.append(panel)
+                layout.insertWidget(position, panel)
+                position += 1
 
     def _open_layout_settings(self) -> None:
         """Edit the manual layout, previewing edits and saving on Save."""
@@ -710,7 +766,7 @@ class BrowserWindow(QMainWindow):
         if (
             not isinstance(previous, dict)
             or type(previous.get("version")) is not int
-            or previous["version"] != LAYOUT_VERSION
+            or previous["version"] not in (1, LAYOUT_VERSION)
         ):
             QMessageBox.information(
                 self, "Previous layout", "There is no previous saved layout to recover."
@@ -792,6 +848,7 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar.setGeometry(tab.rect())
         self.agent_sidebar.show()
         self.agent_sidebar.raise_()
+        self._update_page_actions()
         self.agent_sidebar_action.setChecked(False)
         self.tab_bar.set_tab_title(self.tabs.index(tab), "External Agents")
         self.address_bar.set_url("steed:agents")
@@ -813,6 +870,7 @@ class BrowserWindow(QMainWindow):
                 Qt.Orientation.Horizontal,
             )
         self.agent_sidebar.hide()
+        self._update_page_actions()
 
     def _dock_web_chat(self):
         from ui.web_chat import WebChatDock
@@ -1200,7 +1258,7 @@ class BrowserWindow(QMainWindow):
             )
         # Update address bar and navigation buttons
         cur = self.tabs[index]
-        self.find_bar.set_page(cur.page())
+        self._update_page_actions()
         self._update_zoom()
         self.address_bar.set_url(
             "steed:agents"
@@ -1212,6 +1270,26 @@ class BrowserWindow(QMainWindow):
         self._update_window_title(cur.url())
         self.status_bar.showMessage(f"Tab {index + 1} of {len(self.tabs)}")
         self._refresh_live_control()
+
+    def _update_page_actions(self):
+        tab = (
+            self.tabs[self.current_tab_index]
+            if 0 <= self.current_tab_index < len(self.tabs)
+            else None
+        )
+        page_available = tab is not None and not getattr(tab, "agent_panel", False)
+        for action in (
+            self.reload_action,
+            self.find_action,
+            self.zoom_in_action,
+            self.zoom_out_action,
+            self.zoom_reset_action,
+        ):
+            action.setEnabled(page_available)
+        self.address_bar.reload_btn.setEnabled(page_available)
+        self.address_bar.zoom_btn.setEnabled(page_available)
+        if not getattr(self, "_closing", False):
+            self.find_bar.set_page(tab.page() if page_available else None)
 
     def _bind_live_tasks(self, service):
         if self._live_tasks is service:

@@ -3,6 +3,7 @@
 import sqlite3
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -10,11 +11,14 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
+from layout_components import PANEL_ACTIONS
 from layout_format import layout_changes
 from layout_preferences import preferences_from_config
 from ui.address_bar import AddressBar
+from ui.layout_panel import QuickActionsPanel, apply_chrome_font
 
 
 class LayoutReviewDialog(QDialog):
@@ -45,6 +49,13 @@ class LayoutReviewDialog(QDialog):
             "Preview — no page is opened"
         )
         body.addWidget(self.toolbar_preview)
+        self.panel_preview = QWidget()
+        self.panel_preview_layout = QVBoxLayout(self.panel_preview)
+        self.panel_preview_layout.setContentsMargins(0, 0, 0, 0)
+        self.inert_actions = {
+            name: QAction(label, self) for name, label in PANEL_ACTIONS.items()
+        }
+        body.addWidget(self.panel_preview)
         self.changes = QPlainTextEdit()
         self.changes.setReadOnly(True)
         body.addWidget(self.changes, 1)
@@ -82,6 +93,18 @@ class LayoutReviewDialog(QDialog):
             candidate.toolbar_order, candidate.hidden_toolbar
         )
         self.toolbar_preview.apply_density(candidate.density)
+        apply_chrome_font(self.toolbar_preview, candidate.text_size)
+        while self.panel_preview_layout.count():
+            item = self.panel_preview_layout.takeAt(0)
+            item.widget().hide()
+            item.widget().deleteLater()
+        for definition in candidate.panels:
+            panel = QuickActionsPanel(
+                definition, self.inert_actions, self.panel_preview
+            )
+            apply_chrome_font(panel, candidate.text_size)
+            self.panel_preview_layout.addWidget(panel)
+        self.panel_preview.setVisible(bool(candidate.panels))
 
     def apply_layout(self):
         try:

@@ -1,0 +1,49 @@
+{
+  "version": 2,
+  "name": "Daily tools",
+  "layout": {
+    "toolbar": {
+      "order": [
+        "back",
+        "forward",
+        "reload",
+        "home",
+        "address",
+        "zoom",
+        "passwords"
+      ],
+      "hidden": []
+    },
+    "menus": {
+      "order": [
+        "general",
+        "profile",
+        "tabs",
+        "view",
+        "cookies",
+        "agents"
+      ]
+    },
+    "sidebar": {
+      "side": "right",
+      "width": 320
+    },
+    "density": "comfortable",
+    "text_size": "large",
+    "panels": [
+      {
+        "kind": "quick_actions",
+        "id": "daily-tools",
+        "title": "Daily tools",
+        "placement": "top",
+        "emphasis": "accent",
+        "actions": [
+          "new_tab",
+          "reload",
+          "find",
+          "agents"
+        ]
+      }
+    ]
+  }
+}

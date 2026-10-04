@@ -29,12 +29,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from layout_components import TEXT_SIZES
 from layout_preferences import (
     DENSITIES,
     SIDEBAR_SIDES,
     SIDEBAR_WIDTH_RANGE,
     LayoutPreferences,
 )
+from ui.layout_panel_editor import PanelEditor
 
 TOOLBAR_LABELS = {
     "back": "Back",
@@ -116,6 +118,9 @@ class LayoutDialog(QDialog):
         body.addWidget(self._build_menu_group())
         body.addWidget(self._build_sidebar_group())
         body.addWidget(self._build_named_group())
+        self.panel_editor = PanelEditor()
+        self.panel_editor.changed.connect(self._on_density_changed)
+        body.addWidget(self.panel_editor)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(controls)
@@ -204,6 +209,11 @@ class LayoutDialog(QDialog):
         self.density.setCurrentIndex(DENSITIES.index(self._working.density))
         self.density.currentIndexChanged.connect(self._on_density_changed)
         form.addRow("Control spacing:", self.density)
+        self.text_size = QComboBox()
+        for value in TEXT_SIZES:
+            self.text_size.addItem(value.title(), value)
+        self.text_size.currentIndexChanged.connect(self._on_density_changed)
+        form.addRow("Browser text:", self.text_size)
         return group
 
     def _build_named_group(self) -> QGroupBox:
@@ -267,6 +277,8 @@ class LayoutDialog(QDialog):
             self.sidebar_side.currentData(), self.sidebar_width.value()
         )
         self._working.set_density(self.density.currentData())
+        self._working.set_text_size(self.text_size.currentData())
+        self._working.set_panels(self.panel_editor.panels)
 
     def _publish(self) -> None:
         """Report the edited layout so the window can preview it."""
@@ -316,6 +328,8 @@ class LayoutDialog(QDialog):
         )
         self.sidebar_width.setValue(self._working.sidebar_width)
         self.density.setCurrentIndex(DENSITIES.index(self._working.density))
+        self.text_size.setCurrentIndex(TEXT_SIZES.index(self._working.text_size))
+        self.panel_editor.set_panels(self._working.panels)
         self._updating = False
 
     # ---------- Commands ----------

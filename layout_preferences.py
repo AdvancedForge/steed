@@ -14,7 +14,9 @@ defaults rather than guessing at a partial layout.
 from copy import deepcopy
 from typing import Any
 
-LAYOUT_VERSION = 1
+from layout_components import TEXT_SIZES, clean_panels
+
+LAYOUT_VERSION = 2
 
 # The address bar buttons a layout may reorder or hide. Every one of these also
 # stays reachable from the menu bar.
@@ -47,6 +49,8 @@ def default_appearance() -> dict[str, Any]:
         "menus": {"order": list(MENU_ITEMS)},
         "sidebar": {"side": DEFAULT_SIDEBAR_SIDE, "width": DEFAULT_SIDEBAR_WIDTH},
         "density": DEFAULT_DENSITY,
+        "text_size": "normal",
+        "panels": [],
     }
 
 
@@ -59,7 +63,7 @@ def clean_name(value: Any) -> str:
     """
     if not isinstance(value, str):
         return ""
-    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+    if any(not character.isprintable() for character in value):
         return ""
     name = " ".join(segment for segment in value.split(" ") if segment)
     if not name or len(name) > MAX_LAYOUT_NAME:
@@ -135,6 +139,8 @@ def clean_appearance(raw: Any) -> dict[str, Any]:
             "width": clean_width(sidebar.get("width")),
         },
         "density": clean_choice(source.get("density"), DENSITIES, DEFAULT_DENSITY),
+        "text_size": clean_choice(source.get("text_size"), TEXT_SIZES, "normal"),
+        "panels": clean_panels(source.get("panels")),
     }
 
 
@@ -150,7 +156,7 @@ class LayoutPreferences:
     def _load(self, raw: Any) -> None:
         document = raw if isinstance(raw, dict) else {}
         version = document.get("version")
-        if isinstance(version, bool) or version != LAYOUT_VERSION:
+        if type(version) is not int or version not in (1, LAYOUT_VERSION):
             document = {}
         self._layout = clean_appearance(document.get("layout"))
         stored = document.get("named")
@@ -204,6 +210,14 @@ class LayoutPreferences:
     def density(self) -> str:
         """Control spacing for the browser chrome."""
         return self._layout["density"]
+
+    @property
+    def text_size(self) -> str:
+        return self._layout["text_size"]
+
+    @property
+    def panels(self) -> list[dict]:
+        return deepcopy(self._layout["panels"])
 
     # ---------- Named layouts ----------
 
@@ -297,6 +311,14 @@ class LayoutPreferences:
         """Restore today's appearance, keeping saved layouts available."""
         self._layout = default_appearance()
         self._active = None
+
+    def set_text_size(self, value) -> None:
+        self._layout["text_size"] = clean_choice(value, TEXT_SIZES, "normal")
+        self._sync_active()
+
+    def set_panels(self, value) -> None:
+        self._layout["panels"] = clean_panels(value)
+        self._sync_active()
 
     # ---------- Persistence ----------
 

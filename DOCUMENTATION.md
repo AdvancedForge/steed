@@ -4295,7 +4295,8 @@ Layouts are stored under the `layout` key in the shared browser configuration
 the same way as other browser preferences. Stored values are treated as
 untrusted input: unknown button or menu identifiers are dropped, identifiers
 missing from a stored order return in their default position, and a document
-written by another schema version is ignored in favour of today's defaults.
+written by an unknown future schema version falls back to today's defaults.
+Stored version 1 settings migrate without adding panels or changing text size.
 Sidebar width is bounded to 300–800 px, at most 32 named layouts are kept, and a
 name may not be empty, longer than 48 characters or contain control characters.
 
@@ -4342,6 +4343,34 @@ before its final receipt was saved. Inspect current settings and use recovery
 rather than retrying an uncertain application. Configuration publication preserves
 both disk and in-memory settings on failure.
 
+### Native quick-action panels and browser text — implemented
+
+Open **General → Layout Settings…**, scroll to **Quick-action panels**, and click
+**Add panel**. Set a title, top/bottom placement and neutral/accent appearance;
+choose one to eight actions and use Move action up/down to arrange them. Add up
+to two panels. Changes preview in this window; Save commits to all windows,
+Cancel discards the preview, and Reset removes panels while retaining named presets.
+The Browser text selector provides normal or 15% larger menu, toolbar, tab,
+find/status and panel text. It does not change website font sizes or page zoom.
+
+The [Daily tools example](examples/layouts/daily-tools.json) uses portable version 2
+with `text_size` and `panels`. Each panel has `kind: "quick_actions"`, a unique
+ASCII ID of at most 32 characters, printable title of at most 48 characters,
+`placement` (`top`/`bottom`), `emphasis` (`neutral`/`accent`) and distinct action IDs.
+`steed_layout_capabilities` returns the current grammar and a panel example.
+Version 1 imports/proposals remain supported and use normal text/no panels.
+Unknown component kinds, arbitrary callbacks, executable source and unsupported
+actions are rejected. Human review previews the actual native panels with inert
+buttons before applying them through the existing task-bound receipt workflow.
+
+Supported actions: New tab, Reload, Home, Address/search, Find in page, Zoom in,
+Zoom out, Reset zoom, Agent sidebar, Downloads, Passwords and Layout settings.
+Real panels reuse the browser's QAction instances and their disabled/checkable
+state; applying a panel runs no action. Buttons execute only when the user clicks.
+Reload, Find and Zoom disable on native agent-chat tabs and restore on webpages.
+Narrow panels scroll horizontally and reveal keyboard-focused controls. Panels
+remain native UI in private windows; they create no agent access or data grant.
+
 ### Customization direction (planned)
 
 The user means configurable **browser UI**: the placement and appearance of
@@ -4351,16 +4380,16 @@ rebuild is unnecessary for this scope.
 
 1. **Manual layout settings — implemented** (see above). Per-window/profile
    overrides can follow if they are needed.
-2. **Reviewed agent layout proposals:** stable component IDs and a versioned JSON
+2. **Reviewed agent layout proposals — implemented:** stable component IDs and a versioned JSON
    layout schema, bounded sizes and valid placements, preview before Apply,
    export/import, migration, Reset and recovery to the last working layout. An
    agent can propose a layout through a typed interface without installing code.
    Changing layout never enables an account, folder, profile or task permission.
-3. **Agent-designed native panels:** expose a small palette of text, lists,
+3. **Agent-designed native panels — quick actions implemented:** richer text, lists,
    tables, forms and buttons for reading queues, research panels and project
    dashboards. Actions use existing Steed capabilities, with visible data sources
    and access choices. Panel updates support review, disable and rollback.
-4. **Appearance and optional actions:** validated colors, fonts and spacing, plus
+4. **Appearance and optional actions — bounded text/emphasis implemented:** more colors, fonts and spacing, plus
    shortcuts or named workflows attached to supported controls. Arbitrary styles
    must not hide approvals or make recovery controls unreadable.
 
