@@ -1,12 +1,14 @@
 {
   "version": 1,
-  "note": "Provider acceptance worksheet for the shipped starter subsets. It separates what the automated synthetic checks already prove from what only a user-approved live run can prove. No account has been connected and no test object has been sent to create these rows: every live field is empty and must be filled by the account owner. Automated results never imply live acceptance.",
+  "note": "Provider acceptance worksheet for the shipped subsets. It separates what the automated synthetic checks already prove from what only a user-approved live run can prove. No account has been connected and no test object has been sent to create these rows: every live field is empty and must be filled by the account owner. Automated results never imply live acceptance, and a fixture cannot fill a live field.",
   "how_to_use": [
-    "Run one case per account and per reviewed source, on a real account, only after the maintainer approves a live acceptance task.",
-    "Use a user-owned token with the least permission documented in connectors/SETUP.md, and record the token type and expiry, never the token itself.",
+    "Work one service at a time, and one account at a time, only after the maintainer approves a live acceptance task.",
+    "Follow the numbered steps for that service from install through disconnect, and record the outcome of each one.",
+    "Use a user-owned token of the documented type with the least permission recorded in connectors/SETUP.md, and record the token type and expiry, never the token itself.",
     "Record the API version in use and the date, because both the wire shape and the reviewed source can change.",
     "Leave case as synthetic unless a real account was really used. A synthetic fixture is never upgraded to live by editing this file.",
-    "For an uncertain write, record how it was checked in the service's own UI rather than resending."
+    "For an uncertain write, record how it was checked in the service's own UI rather than resending.",
+    "If a step fails, record the failure rather than working around it, and leave later live fields empty."
   ],
   "fields": [
     "setup_and_least_permission",
@@ -50,7 +52,18 @@
         "date": "",
         "api_version": "",
         "case": ""
-      }
+      },
+      "steps": [
+        "Install connectors/recipes/todoist.json from App Connections, read the source review and install it.",
+        "Connect a synthetic account check: create a Todoist personal API token in Settings, Integrations, Developer and paste it into the Connect step.",
+        "Enable only the actions you want this account to offer to tasks.",
+        "Run read_task for a known task ID, then read_task_detail, then read_project and list_projects, and record the returned fields.",
+        "Run list_tasks and record how many pages were returned and whether more_available was true.",
+        "Create a draft, review the exact payload and payload hash, approve it, and record the created task id and whether it landed in the Inbox.",
+        "Record the receipt the tool returned, including the created task id, and read the task back to see the stored result.",
+        "If the create was uncertain, check the Inbox by hand and record how you checked.",
+        "Disconnect the account, confirm the stored credential is gone, then revoke the token in Todoist."
+      ]
     },
     {
       "provider": "github",
@@ -79,7 +92,18 @@
         "date": "",
         "api_version": "",
         "case": ""
-      }
+      },
+      "steps": [
+        "Install your own copy: copy connectors/recipes/templates/github-owner-template.json, replace the owner and repository placeholders, and import it with Add Connector Recipe.",
+        "Connect with a fine-grained token created for that one repository with a short expiry and Issues read and write only.",
+        "Enable the actions you want this account to offer to tasks.",
+        "Run read_repository, then read_issue for a known issue number, and record the returned fields including any documented nulls.",
+        "Create a draft, review the exact payload, approve it, and record the created issue number and URL.",
+        "Read the issue again by its number to see the created result; record that this confirming read was manual and is not automatic reconciliation.",
+        "Record the receipt the tool returned, including the created issue number and URL, and read that issue back to see the stored result; that confirming read is manual, not automatic reconciliation.",
+        "If the create was uncertain, check the repository issue list and record how you checked.",
+        "Disconnect the account, confirm the credential is gone, then revoke the token on the fine-grained tokens page."
+      ]
     },
     {
       "provider": "gitlab",
@@ -108,7 +132,18 @@
         "date": "",
         "api_version": "",
         "case": ""
-      }
+      },
+      "steps": [
+        "Install connectors/recipes/gitlab.json, or install a copy of the per-project template with your numeric project ID when you want issue reads.",
+        "Connect a token created with a short expiry and the narrowest scope you need: read_api for reads, api for reviewed issue creation.",
+        "Enable the actions you want this account to offer to tasks.",
+        "Run read_project for a numeric project ID, then read_issue for a known issue IID, and record the returned fields.",
+        "Create a draft whose description starts a line with a slash command, review the exact payload, approve it, and record the created issue IID and URL.",
+        "Confirm in GitLab what the quick-action line actually did; the profile sends it unchanged and does not strip or guess it.",
+        "Record the receipt the tool returned, including the created issue IID and URL, then read that issue back to see the stored result.",
+        "If the create was uncertain, check the issue list and record how you checked.",
+        "Disconnect the account, confirm the credential is gone, then revoke the token on the access tokens page."
+      ]
     },
     {
       "provider": "asana",
@@ -136,7 +171,15 @@
         "date": "",
         "api_version": "",
         "case": ""
-      }
+      },
+      "steps": [
+        "Install connectors/recipes/asana.json from App Connections, read the source review and install it.",
+        "Connect with a personal access token created in Asana and pasted into the Connect step.",
+        "Enable only the read actions you want this account to offer to tasks.",
+        "Run read_project and read_task for known GIDs taken from the Asana URLs, and record the returned fields.",
+        "Confirm the identity result shows your account name rather than an opt-in email field.",
+        "Disconnect the account, confirm the credential is gone, then deauthorize the token from My Apps."
+      ]
     },
     {
       "provider": "raindrop",
@@ -164,7 +207,15 @@
         "date": "",
         "api_version": "",
         "case": ""
-      }
+      },
+      "steps": [
+        "Install connectors/recipes/raindrop.json from App Connections, read the source review and install it.",
+        "Connect an access token or test token copied from the App Management Console and pasted into the Connect step.",
+        "Enable only the read actions you want this account to offer to tasks.",
+        "Run read_collection for a collection ID from a collection URL, then list_root_collections, and record the returned fields.",
+        "Confirm what a failed read looks like in your account so the recorded behaviour matches the documented result flag.",
+        "Disconnect the account, confirm the credential is gone, then revoke the token in the app console."
+      ]
     },
     {
       "provider": "zotero",
@@ -191,7 +242,16 @@
         "date": "",
         "api_version": "",
         "case": ""
-      }
+      },
+      "steps": [
+        "Install your own copy: copy connectors/recipes/templates/zotero-library-template.json, replace the numeric library ID, and import it with Add Connector Recipe.",
+        "Confirm in the source review that the pinned library ID is disclosed as user-supplied and unchecked.",
+        "Connect a Zotero API key pasted into the Connect step.",
+        "Enable the read action you want this account to offer to tasks.",
+        "Run read_item for a known item key and record the returned fields, noting that no title is returned.",
+        "Open a second library you can access and record what read_item returns for it, so the unchecked mismatch risk is a recorded fact rather than a claim.",
+        "Disconnect the account, confirm the credential is gone, then revoke the key on the API Keys page."
+      ]
     },
     {
       "provider": "microsoft365",
@@ -220,7 +280,15 @@
         "date": "",
         "api_version": "",
         "case": ""
-      }
+      },
+      "steps": [
+        "Install connectors/recipes/microsoft365-read.json from App Connections, read the source review and install it.",
+        "Connect a delegated access token you obtained yourself for your own account with only the documented read scopes; an application token will not work.",
+        "Enable the reads you want this account to offer to tasks.",
+        "Run read_drive_item with a driveItem ID taken from a Graph response, not from a sharing URL or encoded sharing token.",
+        "Run the calendar and To Do reads and record that only the first page was returned and that no next link was followed.",
+        "Disconnect the account, confirm the token is gone from Steed, then revoke it or let it expire according to your own tooling."
+      ]
     }
   ],
   "live_acceptance_preconditions": [
@@ -228,5 +296,16 @@
     "A user-owned token supplied by the account owner; no credential is ever committed or pasted into a recipe.",
     "Agreement on what may be created in the real account, and on cleaning it up afterwards.",
     "Confirmation that no completion, delete, administrative or unrelated effect is in scope for any case."
-  ]
+  ],
+  "step_order": [
+    "install and review source",
+    "connect with a user-owned token",
+    "enable selected actions",
+    "selected read",
+    "reviewed draft and write, for services that offer one",
+    "receipt and follow-up read, when a write was made",
+    "disconnect and revoke"
+  ],
+  "live_fields_may_not_be_filled_from_fixtures": "A synthetic result belongs in synthetic_expectations only. Live fields stay empty until an operator explicitly authorizes and completes the steps against a real account.",
+  "step_order_note": "A read-only service has fewer steps than phases: the write and receipt phases are recorded as not applicable rather than padded with filler."
 }

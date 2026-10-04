@@ -1890,3 +1890,131 @@ class ProjectedFieldSetTests(ProfileCase):
             "no expiry is documented for a todoist personal token",
         ):
             self.assertIn(phrase, guide)
+
+
+class AcceptanceWorksheetTests(unittest.TestCase):
+    """C6: a complete, reproducible worksheet with live fields left empty."""
+
+    def setUp(self):
+        self.worksheet = json.loads(
+            (FIXTURES / "acceptance_worksheet.json").read_text("utf-8")
+        )
+        self.rows = {row["provider"]: row for row in self.worksheet["providers"]}
+
+    def test_a_worksheet_row_exists_for_every_shipped_provider(self):
+        self.assertEqual(
+            set(self.rows),
+            {
+                "asana",
+                "gitlab",
+                "github",
+                "microsoft365",
+                "raindrop",
+                "todoist",
+                "zotero",
+            },
+        )
+        expectations = set(self.worksheet["fields"]) - {
+            "date",
+            "api_version",
+            "case",
+            "setup_and_least_permission",
+        }
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                self.assertTrue(row["reviewed_source"])
+                self.assertTrue(row["official_reference"].startswith("https://"))
+                self.assertTrue(row["tools"])
+                self.assertTrue(row["least_permission"].endswith("."))
+                self.assertEqual(
+                    sorted(row["synthetic_expectations"]), sorted(expectations)
+                )
+
+    def test_every_service_has_reproducible_steps_in_the_workflow_order(self):
+        order = self.worksheet["step_order"]
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                steps = row["steps"]
+                # Steps may be finer-grained than the phases, but every phase is
+                # covered, the run starts by installing the reviewed source, and
+                # the last step disconnects and revokes.
+                self.assertGreaterEqual(len(steps), 6, provider)
+                # A phase may be split into more than one step, never fewer.
+                self.assertLessEqual(len(order), len(steps) + 1, provider)
+                joined = " ".join(steps).lower()
+                for phrase in ("install", "connect", "enable", "read", "disconnect"):
+                    self.assertIn(phrase, joined, provider + ": " + phrase)
+                self.assertIn("install", steps[0].lower(), provider)
+                last = steps[-1].lower()
+                self.assertIn("disconnect", last, provider)
+                self.assertTrue(
+                    "revoke" in last or "deauthorize" in last or "expire" in last,
+                    provider + ": the last step revokes",
+                )
+                writes = any(tool.startswith("create_") for tool in row["tools"])
+                if writes:
+                    self.assertIn("review the exact payload", joined, provider)
+                    self.assertIn("uncertain", joined, provider)
+                    self.assertIn("receipt", joined, provider)
+                else:
+                    # A read-only service records the omitted phases instead.
+                    self.assertNotIn("review the exact payload", joined, provider)
+                # Provider-specific traps are recorded as steps, not as prose.
+                expectations = {
+                    "zotero": "unchecked",
+                    "github": "manual",
+                    "gitlab": "quick-action",
+                    "microsoft365": "first page",
+                    "raindrop": "result flag",
+                    "todoist": "inbox",
+                }
+                for name, phrase in expectations.items():
+                    if name == provider:
+                        self.assertIn(phrase, joined, provider)
+
+    def test_live_fields_are_empty_and_cannot_be_filled_from_a_fixture(self):
+        self.assertIn(
+            "Live fields stay empty",
+            self.worksheet["live_fields_may_not_be_filled_from_fixtures"],
+        )
+        self.assertIn(
+            "synthetic_expectations",
+            self.worksheet["live_fields_may_not_be_filled_from_fixtures"],
+        )
+        self.assertIn("a fixture cannot fill a live field", self.worksheet["note"])
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                self.assertEqual(sorted(row["live"]), sorted(self.worksheet["fields"]))
+                for field, value in row["live"].items():
+                    self.assertEqual(value, "", provider + "." + field)
+                self.assertEqual(row["live"]["case"], "")
+                self.assertTrue(row["synthetic_expectations"])
+
+    def test_live_acceptance_needs_an_approved_task_and_specific_preconditions(self):
+        note = (
+            self.worksheet["note"] + " " + " ".join(self.worksheet["how_to_use"])
+        ).lower()
+        self.assertIn("no account has been connected", note)
+        self.assertIn("never upgraded to live by editing this file", note)
+        self.assertIn(
+            "a fixture cannot fill a live field", self.worksheet["note"].lower()
+        )
+        self.assertTrue(self.worksheet["live_acceptance_preconditions"])
+        self.assertTrue(
+            any(
+                "maintainer-approved live acceptance task" in item
+                for item in self.worksheet["live_acceptance_preconditions"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "delete" in item
+                for item in self.worksheet["live_acceptance_preconditions"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "credential" in item
+                for item in self.worksheet["live_acceptance_preconditions"]
+            )
+        )
