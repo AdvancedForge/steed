@@ -745,7 +745,7 @@ class GitLabProfileTests(ProfileCase):
         self.assertEqual(len(self.api.posts), 1)
 
 
-PACKAGED_SLUGS = {"gitlab.json", "todoist.json"}
+PACKAGED_SLUGS = {"asana.json", "gitlab.json", "todoist.json"}
 TEMPLATE_NAMES = {"github-owner-template.json", "gitlab-project-template.json"}
 
 
@@ -806,6 +806,7 @@ class AssessedCandidateQueueTests(unittest.TestCase):
         for name, label, host in (
             ("todoist", "Todoist", "api.todoist.com"),
             ("gitlab", "GitLab.com", "gitlab.com"),
+            ("asana", "Asana", "app.asana.com"),
         ):
             with self.subTest(service=name):
                 entry = by_name[label]
@@ -820,7 +821,12 @@ class AssessedCandidateQueueTests(unittest.TestCase):
         self.assertEqual(by_name["GitHub"]["status"], "template")
         self.assertIn("Bearer", by_name["GitHub"]["auth"])
         self.assertEqual(urlsplit(template.origin).hostname, "api.github.com")
-        shipped_origins = {"api.todoist.com", "gitlab.com", "api.github.com"}
+        shipped_origins = {
+            "api.todoist.com",
+            "gitlab.com",
+            "api.github.com",
+            "app.asana.com",
+        }
         for entry in self.services:
             if entry["status"] in ("packaged", "template", "maintained"):
                 continue
@@ -1433,3 +1439,85 @@ class ExecutableContractCaseTests(unittest.TestCase):
         self.assertEqual(oversized["expected"]["outcome"], "must_remain_a_failure")
         self.assertEqual(oversized["expected"]["status"], 200)
         self.assertIn("None", oversized["smallest_missing_behavior"])
+
+
+class AsanaProfileTests(ProfileCase):
+    """C2 audit: a personal-token single-resource read, proved through the adapter."""
+
+    def setUp(self):
+        self.recipe = packaged_recipe("asana")
+        self.adapter = self.install(self.recipe, "asana")
+
+    def test_identity_uses_the_documented_me_route_and_data_envelope(self):
+        self.assertEqual(self.recipe.identity_path, "/api/1.0/users/me")
+        self.assertEqual(self.recipe.subject_pointer, "/data/gid")
+        self.assertEqual(self.recipe.label_pointer, "/data/name")
+        self.assertEqual(self.adapter.account.subject, "12345")
+        self.assertEqual(self.adapter.account.label, "Fixture User")
+        # email is opt-in through field selection, so it is never the label.
+        self.assertNotEqual(self.recipe.label_pointer, "/data/email")
+
+    def test_project_read_projects_documented_fields_and_explicit_nulls(self):
+        result = self.read(self.adapter, "read_project", "1331")
+        self.assertEqual(result.state, "succeeded")
+        selected = json.loads(result.text)
+        self.assertEqual(selected["gid"], "1331")
+        self.assertEqual(selected["name"], "Fixture project")
+        self.assertEqual(selected["due_on"], "2019-09-15")
+        self.assertEqual(selected["owner"]["name"], "Fixture User")
+        self.assertEqual(selected["url"], "https://app.asana.com/0/12345/1331/list")
+        empty = json.loads(self.read(self.adapter, "read_project", "1332").text)
+        self.assertIsNone(empty["due_on"])
+        self.assertIsNone(empty["owner"])
+        self.assertEqual(self.api.posts, [])
+        self.assertEqual(
+            self.api.calls[-1][1], "https://app.asana.com/api/1.0/projects/1332"
+        )
+
+    def test_task_read_returns_documented_nullable_fields_as_null(self):
+        selected = json.loads(self.read(self.adapter, "read_task", "12345").text)
+        self.assertEqual(selected["gid"], "12345")
+        self.assertFalse(selected["completed"])
+        self.assertIsNone(selected["due_on"])
+        self.assertEqual(selected["assignee"]["name"], "Fixture User")
+        self.assertEqual(
+            [label for label, _ in self.recipe.tools[1].response],
+            ["gid", "name", "notes", "completed", "due_on", "assignee", "url"],
+        )
+        self.assertNotIn(TOKEN, json.dumps(selected))
+
+    def test_gid_destinations_reject_paths_queries_and_spaces(self):
+        for tool in self.recipe.tools:
+            for value in (
+                "1331/notes",
+                "../1331",
+                "1331?opt_fields=name",
+                "a b",
+                "x/y",
+            ):
+                with (
+                    self.subTest(tool=tool.name, value=value),
+                    self.assertRaises(RecipeError),
+                ):
+                    tool.destination(value)
+            self.assertEqual(tool.destination("1331"), "1331")
+
+    def test_documented_failures_surface_and_never_create_anything(self):
+        for status in (401, 403, 404, 429):
+            with self.subTest(status=status):
+                self.api.fail("GET", "/api/1.0/projects/1331", status)
+                with self.assertRaises(ApiError):
+                    self.read(self.adapter, "read_project", "1331")
+                self.api.failure = None
+        self.assertEqual(self.api.posts, [])
+
+    def test_no_write_is_offered_because_a_create_needs_a_body_destination(self):
+        self.assertEqual([t.effect for t in self.recipe.tools], ["read", "read"])
+        for tool in self.recipe.tools:
+            self.assertFalse(tool.request)
+            self.assertFalse(tool.request_template)
+            self.assertEqual(tool.idempotency_header, "")
+            self.assertIsNone(tool.reconciliation)
+        # Asana documents creating a task with a workspace or project named in
+        # the body, which no reviewed path can carry, so nothing claims to do it.
+        self.assertEqual(len(self.recipe.tools), 2)

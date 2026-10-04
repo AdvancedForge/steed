@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "name": "Asana",
+  "origin": "https://app.asana.com",
+  "authentication": {
+    "type": "bearer"
+  },
+  "identity": {
+    "path": "/api/1.0/users/me",
+    "subject": "/data/gid",
+    "label": "/data/name"
+  },
+  "tools": [
+    {
+      "name": "read_project",
+      "description": "Read one Asana project by its numeric project GID, which is the number in the project URL between / and /project/ in app.asana.com. due_on, start_on and owner are documented as possibly null and are returned as null.",
+      "method": "GET",
+      "path": "/api/1.0/projects/{destination}",
+      "response": [
+        {
+          "label": "gid",
+          "pointer": "/data/gid"
+        },
+        {
+          "label": "name",
+          "pointer": "/data/name"
+        },
+        {
+          "label": "notes",
+          "pointer": "/data/notes"
+        },
+        {
+          "label": "archived",
+          "pointer": "/data/archived"
+        },
+        {
+          "label": "due_on",
+          "pointer": "/data/due_on"
+        },
+        {
+          "label": "owner",
+          "pointer": "/data/owner"
+        },
+        {
+          "label": "url",
+          "pointer": "/data/permalink_url"
+        }
+      ]
+    },
+    {
+      "name": "read_task",
+      "description": "Read one Asana task by its numeric task GID, which is the number in the task URL in app.asana.com. due_on, start_on, assignee, completed_at and parent are documented as possibly null and are returned as null.",
+      "method": "GET",
+      "path": "/api/1.0/tasks/{destination}",
+      "response": [
+        {
+          "label": "gid",
+          "pointer": "/data/gid"
+        },
+        {
+          "label": "name",
+          "pointer": "/data/name"
+        },
+        {
+          "label": "notes",
+          "pointer": "/data/notes"
+        },
+        {
+          "label": "completed",
+          "pointer": "/data/completed"
+        },
+        {
+          "label": "due_on",
+          "pointer": "/data/due_on"
+        },
+        {
+          "label": "assignee",
+          "pointer": "/data/assignee"
+        },
+        {
+          "label": "url",
+          "pointer": "/data/permalink_url"
+        }
+      ]
+    }
+  ]
+}
