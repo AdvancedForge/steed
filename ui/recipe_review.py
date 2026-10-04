@@ -35,7 +35,8 @@ class RecipeReviewDialog(QDialog):
             f"Service: {recipe.name}\nDomain: {recipe.origin}\n"
             "Installs these exact API requests. Connecting an account and allowing task access are separate steps. "
             "Credentials stay in Steed's desktop keyring. "
-            "Check each request's actual API behavior. Creates and sends require a separate payload preview and approval every time."
+            "Check each request's actual API behavior. Creates and sends require a separate payload preview and approval every time. "
+            "Typed reads and fixed GraphQL documents only read; they never create, change or replay anything."
         )
         summary.setTextFormat(Qt.TextFormat.PlainText)
         summary.setWordWrap(True)
@@ -60,8 +61,17 @@ class RecipeReviewDialog(QDialog):
                 if recipe.request_headers
                 else ""
             )
-            + f"Account identity: GET {recipe.identity_path}\n"
-            f"Account ID: {recipe.subject_pointer}\nAccount label: {recipe.label_pointer}\n\n"
+            + f"Account identity: {recipe.identity_method} {recipe.identity_path}\n"
+            + (
+                "Identity body (fixed, literal):\n"
+                + json.dumps(
+                    recipe.identity_request.source(), ensure_ascii=False, indent=2
+                )
+                + "\n"
+                if recipe.identity_request is not None
+                else ""
+            )
+            + f"Account ID: {recipe.subject_pointer}\nAccount label: {recipe.label_pointer}\n\n"
             + (
                 "Label alternatives in order: "
                 + ", ".join(recipe.label_alternatives)
@@ -100,7 +110,47 @@ class RecipeReviewDialog(QDialog):
                     else ""
                 )
                 + (
-                    f"\nPagination: up to {t.pagination.max_pages} pages; query parameter {t.pagination.parameter}; next cursor {t.pagination.cursor}; selected fields must be arrays"
+                    "\nTyped read inputs (agents supply values only):\n"
+                    + "\n".join(
+                        f"- {i.name}: {i.kind}"
+                        + (
+                            f", max {i.maximum_length} characters"
+                            if i.kind == "string"
+                            else f", {i.minimum}..{i.maximum}"
+                            if i.kind == "integer"
+                            else ""
+                        )
+                        + (
+                            f", default {json.dumps(i.default)}"
+                            if i.has_default
+                            else ""
+                        )
+                        + (" (required)" if not i.has_default else "")
+                        for i in t.inputs
+                    )
+                    + "\nRead-only POST body built from those inputs; no payload approval, "
+                    "no operation header and no retry."
+                    if t.inputs
+                    else ""
+                )
+                + (
+                    "\nFixed GraphQL read (no agent query text):\n"
+                    + f"operation {t.query.operation}\n"
+                    + t.query.document
+                    + "\nvariables: "
+                    + json.dumps(t.query.variables.source(), ensure_ascii=False)
+                    + f"\ndata: {t.query.data_pointer}; errors reported from {t.query.errors_pointer}"
+                    if t.query
+                    else ""
+                )
+                + (
+                    "\nApplication errors reported from "
+                    f"{t.errors.pointer} (code {t.errors.code}, message {t.errors.message})"
+                    if t.errors
+                    else ""
+                )
+                + (
+                    f"\nPagination: up to {t.pagination.max_pages} pages; {t.pagination.location} parameter {t.pagination.parameter}; next cursor {t.pagination.cursor}; selected fields must be arrays"
                     if t.pagination
                     else ""
                 )

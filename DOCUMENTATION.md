@@ -1748,7 +1748,7 @@ permissions and reviews cannot authorize the changed source.
 Version 6 retains nested requests and sequential plans. Its `request_headers`
 field is optional; if present it has the same strict v5 allowlist and limits.
 Versions 1–5 keep their own strict grammar and do not accept label alternatives.
-`steed_recipe_capabilities` exposes versions 1–6, the alternative limit/policy and
+`steed_recipe_capabilities` exposes versions 1–7, the alternative limit/policy and
 `identity_example`; [notes-identity.json](examples/connector_recipes/notes-identity.json)
 is the corresponding synthetic plan, not a live provider integration.
 
@@ -1768,6 +1768,103 @@ its bounded timeout now matches the existing raw client's 15s, and the rerun pas
 Live-provider/native desktop acceptance remains separate. Logs:
 `/tmp/steed-sidebar-identity-full.log`, `/tmp/steed-identity-mcp-stdio.log`,
 `/tmp/steed-identity-mcp-http-final.log`, `/tmp/steed-sidebar-identity-startup.log`.
+
+**Version 7 typed reads, query inputs and fixed GraphQL documents.** Version 7
+keeps every v1-v6 grammar and adds bounded declarative read inputs. A v7 read tool
+declares `"effect": "read"` explicitly and may use `method: "POST"`:
+
+```json
+{
+  "name": "search_notes",
+  "description": "Search this account's notes with reviewed inputs",
+  "method": "POST",
+  "effect": "read",
+  "path": "/notes/search",
+  "destination": "account",
+  "inputs": {
+    "query": {"type": "string", "max_length": 200},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+    "archived": {"type": "boolean", "default": false}
+  },
+  "request": {
+    "text": {"$bind": "input.query"},
+    "limit": {"$bind": "input.limit"},
+    "include_archived": {"$bind": "input.archived"},
+    "cursor": null
+  },
+  "response": [{"label": "notes", "pointer": "/items"}],
+  "pagination": {
+    "cursor": "/cursor",
+    "parameter": "cursor",
+    "max_pages": 3,
+    "location": "body"
+  },
+  "errors": {"pointer": "/error", "code": "/reason", "message": "/summary"}
+}
+```
+
+- **Inputs are typed and bounded.** At most 8 per tool, lowercase names, and
+  `string` (with `max_length` up to 512), `integer` (with ordered `minimum`/
+  `maximum`) or `boolean`. An input without `default` is required. Unknown names,
+  wrong types and out-of-range values fail before any receipt or HTTP request.
+- **The body is fixed by the recipe.** Only `input.<name>` and `destination`
+  bindings are accepted in a typed read `request`; draft, credential and
+  operation-ID bindings are rejected. The effect stays `read`, so there is no
+  payload preview, no operation header, no reconciliation and no automatic retry.
+- **Cursors may travel in the body.** `pagination.location` is `query` (the
+  existing behavior) or `body`, where the named field must already exist in the
+  reviewed request and is filled with the next cursor. Identity is rechecked
+  before every page and a repeated or credential-reflecting cursor fails closed.
+- **Application errors are declared, not hidden.** `errors` names the pointer
+  that reports a failure plus its code and message. An HTTP 200 body that
+  reports an error there fails the read and surfaces the reported code/message
+  instead of returning empty reviewed fields. Absent, null and empty error fields
+  are ordinary successful responses.
+
+**Fixed GraphQL reads.** A typed read tool may replace `request` with `query`:
+
+```json
+"query": {
+  "operation": "NoteById",
+  "document": "query NoteById($id: ID!) { note(id: $id) { id title body } }",
+  "variables": {"id": {"$bind": "destination"}},
+  "data_pointer": "/data",
+  "errors_pointer": "/errors"
+}
+```
+
+The document is a reviewed literal in the recipe, at most 4 KiB, and must be a
+single balanced `query` document. Mutations, subscriptions, fragments, schema
+definitions, directives and multiple operations are rejected, and agents have no
+argument that carries query text. Variables bind only the reviewed destination.
+A non-empty errors array fails the read and reports up to five bounded
+code/message pairs; partial data is never returned as if it had succeeded, and a
+missing or null `data` fails rather than yielding empty fields.
+
+**Reviewed POST identity.** `identity` may declare `"method": "POST"` with a
+literal bounded `request` body for services that require one (for example a
+fixed GraphQL `me` document). The body accepts no bindings at all. The same exact
+body is used for connect, every authorization recheck, every pagination recheck
+and OAuth refresh, and it is pinned to the same reviewed origin and headers.
+
+**Agent surface.** `app.list_tools` publishes each read tool's `inputs` schema,
+and `steed_app_call_tool` accepts an optional `inputs` object containing only
+those names. Inputs are values, not authority: they cannot change the reviewed
+endpoint, effect or destination, they are not part of any permission, and the
+existing app permission still governs the call. The stable `request_id` is
+fingerprinted over the resolved inputs, so a repeated request ID with different
+inputs is rejected instead of silently reusing an earlier receipt.
+
+Source review shows the identity method and body, each typed input with its type,
+bounds and default, the exact request bindings, the full GraphQL document and
+variables, the application-error pointers and the cursor location.
+`steed_recipe_capabilities` reports version 7, the typed-read and GraphQL
+policies, the new limits and `query_example`;
+[notes-query.json](examples/connector_recipes/notes-query.json) is the same
+synthetic source, not a live provider integration. Credential, origin, header,
+cancellation, identity-recheck and no-write-replay rules are unchanged. Live
+provider acceptance, credential-derived headers, revision guards, transforms and
+gated providers remain separate.
 
 **Version 3 nested JSON templates:** GET tools retain the existing format. POST
 `request` can contain nested objects, arrays and JSON literals. Bind draft data

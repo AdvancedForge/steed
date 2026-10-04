@@ -110,6 +110,12 @@ def token_http(recipe, http=None):
             if tool.effect != "read"
             for step in (tool.steps or (tool,))
         ],
+        read_posts=[
+            tool.path
+            for tool in recipe.tools
+            if tool.method == "POST" and tool.effect == "read"
+        ]
+        + ([recipe.identity_path] if recipe.identity_request is not None else []),
     )
 
 

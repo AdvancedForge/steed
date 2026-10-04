@@ -5,9 +5,14 @@ import re
 from urllib.parse import urlencode
 
 from services.app_accounts import AccountError
-from services.connector_recipes import RecipeError, page_cursor, select
+from services.connector_recipes import (
+    RecipeError,
+    page_cursor,
+    read_inputs,
+    select,
+)
 from services.connectors import ConnectorOutcome, ConnectorTool
-from services.recipe_http import RecipeHttp, check_cancelled
+from services.recipe_http import check_cancelled
 from services.recipe_oauth import RecipeOAuthAccess, token_http
 
 
@@ -34,6 +39,24 @@ def redact(value, credentials):
     return value
 
 
+def input_schema(tool):
+    """Bounded agent-visible description of each tool's typed read inputs."""
+    return tuple(
+        {
+            "name": item.name,
+            "type": item.kind,
+            **({"max_length": item.maximum_length} if item.kind == "string" else {}),
+            **(
+                {"minimum": item.minimum, "maximum": item.maximum}
+                if item.kind == "integer"
+                else {}
+            ),
+            **({"default": item.default} if item.has_default else {}),
+        }
+        for item in tool.inputs
+    )
+
+
 def tool_description(recipe, account, tool):
     label = account.label if len(account.label) <= 64 else account.label[:63] + "…"
     prefix = f"{recipe.name} [{recipe.origin}] ({label}): "
@@ -46,6 +69,10 @@ def tool_description(recipe, account, tool):
     )
     if tool.pagination:
         suffix += f" (up to {tool.pagination.max_pages} pages)"
+    if tool.inputs:
+        suffix += f" ({len(tool.inputs)} reviewed inputs)"
+    if tool.query is not None:
+        suffix += " (one fixed GraphQL read; no query text)"
     if tool.steps:
         suffix += f" ({len(tool.steps)} separately reviewed steps)"
     budget = 512 - len(prefix) - len(suffix)
@@ -87,12 +114,90 @@ def identity_label(recipe, result, subject, credentials):
     raise AccountError("The service returned no usable reviewed account label")
 
 
+def application_error(response, errors, credentials):
+    """Report an HTTP-200 application failure honestly instead of empty fields."""
+    if errors is None:
+        return
+    try:
+        value = select(response, errors.pointer)
+    except (KeyError, IndexError, RecipeError):
+        return  # An absent error field means the read did not report one.
+    if value in (None, "", [], {}):
+        return
+    try:
+        code, message = select(value, errors.code), select(value, errors.message)
+    except (KeyError, IndexError, RecipeError):
+        code, message = "", ""
+    detail = (
+        {"code": code, "message": message}
+        if isinstance(code, str) and isinstance(message, str)
+        else {}
+    )
+    raise RecipeError(
+        "The service reported an application error: "
+        + json.dumps(redact(detail, credentials), ensure_ascii=False)[:512]
+    )
+
+
+def graphql_result(response, rule, credentials):
+    """A fixed reviewed read never returns partial data as if it had succeeded."""
+    try:
+        errors = select(response, rule.errors_pointer)
+    except (KeyError, IndexError, RecipeError):
+        errors = None
+    if errors not in (None, "", [], {}):
+        entries = []
+        for item in errors if isinstance(errors, list) else [errors]:
+            if not isinstance(item, dict):
+                continue
+            extensions = item.get("extensions")
+            entries.append(
+                {
+                    key: value
+                    for key, value in (
+                        ("message", item.get("message")),
+                        (
+                            "code",
+                            extensions.get("code")
+                            if isinstance(extensions, dict)
+                            else item.get("code"),
+                        ),
+                    )
+                    if isinstance(value, str)
+                }
+            )
+            if len(entries) == 5:
+                break
+        raise RecipeError(
+            "The reviewed GraphQL read returned errors: "
+            + json.dumps(redact(entries, credentials), ensure_ascii=False)[:1024]
+        )
+    try:
+        data = select(response, rule.data_pointer)
+    except (KeyError, IndexError, RecipeError):
+        data = None
+    if data is None:
+        raise RecipeError("The reviewed GraphQL read returned no data")
+    return data
+
+
 def identity(recipe, http, token, cancelled, *, credentials=()):
     check_cancelled(cancelled)
+    headers = {**dict(recipe.request_headers), "Authorization": "Bearer " + token}
+    body, method = None, "GET"
+    if recipe.identity_request is not None:
+        method = "POST"
+        headers["Content-Type"] = "application/json"
+        body = json.dumps(
+            recipe.identity_request.materialize({}),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
     result = http.request(
-        "GET",
+        method,
         recipe.origin + recipe.identity_path,
-        headers={**dict(recipe.request_headers), "Authorization": "Bearer " + token},
+        headers=headers,
+        body=body,
         cancelled=cancelled,
     )
     subject = select(result, recipe.subject_pointer)
@@ -121,12 +226,9 @@ def connect_recipe(
         raise AccountError("Select supported recipe tools")
     token = bearer_token(token)
     store.secrets.check()
-    http = http or RecipeHttp(
-        recipe.origin,
-        request_headers=dict(recipe.request_headers)
-        if recipe.request_headers
-        else None,
-    )
+    from services.recipe_oauth import token_http
+
+    http = http or token_http(recipe)
     subject, label = identity(recipe, http, token, cancelled)
     catalog.active(recipe)
     check_cancelled(cancelled)
@@ -196,6 +298,12 @@ class RecipeConnector:
                 else None,
                 review_kind="payload" if tool.effect != "read" else "document",
                 plan=RecipePlan(self, tool) if tool.steps else None,
+                validate_inputs=(
+                    lambda values, selected=tool: read_inputs(values, selected.inputs)
+                )
+                if tool.inputs
+                else None,
+                input_schema=input_schema(tool),
             )
             for tool in self.recipe.tools
             if tool.name in self.account.capabilities
@@ -212,8 +320,13 @@ class RecipeConnector:
         ):
             raise ValueError("Recipe request does not match the configured tool")
         destination = tool.destination(request.destination)
+        inputs = read_inputs(request.inputs, tool.inputs)
         token, credentials = self.authorize(cancelled)
-        result = self.read(tool, destination, token, credentials, cancelled)
+        result = (
+            self.typed_read(tool, destination, inputs, token, credentials, cancelled)
+            if tool.method == "POST"
+            else self.read(tool, destination, token, credentials, cancelled)
+        )
         check_cancelled(cancelled)
         self.catalog.active(self.recipe)
         self.store.active(self.account)
@@ -317,4 +430,89 @@ class RecipeConnector:
             if cursor in (None, ""):
                 break
             url = base + "?" + urlencode({tool.pagination.parameter: cursor})
+        return merged
+
+    def typed_body(self, tool, destination, inputs, cursor=""):
+        """Materialize the exact reviewed read body; no agent-authored structure."""
+        sources = {f"input.{name}": value for name, value in inputs.items()}
+        if tool.destination_type == "resource_id":
+            sources["destination"] = destination
+        if tool.query is not None:
+            return {
+                "query": tool.query.document,
+                "operationName": tool.query.operation,
+                "variables": tool.query.variables.materialize(sources),
+            }
+        body = tool.request_template.materialize(sources)
+        if tool.pagination and tool.pagination.location == "body":
+            body[tool.pagination.parameter] = cursor or None
+        return body
+
+    def typed_read(self, tool, destination, inputs, token, credentials, cancelled):
+        """Bounded read-only POSTs: reviewed inputs, exact bodies, honest errors."""
+        headers = {
+            **dict(self.recipe.request_headers),
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+        }
+        base = self.recipe.origin + tool.path.replace("{destination}", destination)
+        url, cursors = base, []
+        merged = {label: [] for label, _ in tool.response}
+        pages = tool.pagination.max_pages if tool.pagination else 1
+        for index in range(pages):
+            self.catalog.active(self.recipe)
+            self.store.active(self.account)
+            check_cancelled(cancelled)
+            if index and identity(
+                self.recipe, self.http, token, cancelled, credentials=credentials
+            ) != (
+                self.account.subject,
+                self.account.label,
+            ):
+                raise AccountError("Account identity changed during pagination")
+            body = json.dumps(
+                self.typed_body(
+                    tool, destination, inputs, cursor=cursors[-1] if cursors else ""
+                ),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+            response = self.http.request(
+                "POST", url, headers=headers, body=body, cancelled=cancelled
+            )
+            check_cancelled(cancelled)
+            self.catalog.active(self.recipe)
+            self.store.active(self.account)
+            if tool.query is not None:
+                response = graphql_result(response, tool.query, credentials)
+            else:
+                application_error(response, tool.errors, credentials)
+            selected = {label: select(response, path) for label, path in tool.response}
+            if not tool.pagination:
+                return selected
+            for label, values in selected.items():
+                if not isinstance(values, list):
+                    raise RecipeError("Paginated response fields must be arrays")
+                merged[label].extend(values)
+            cursor = select(response, tool.pagination.cursor)
+            if cursor not in (None, ""):
+                cursor = page_cursor(cursor)
+                if cursor in cursors or any(value in cursor for value in credentials):
+                    raise RecipeError(
+                        "Pagination cursor repeated or reflected credentials"
+                    )
+                cursors.append(cursor)
+            merged["_pagination"] = {
+                "pages": index + 1,
+                "more_available": cursor not in (None, ""),
+            }
+            ConnectorOutcome(
+                text=json.dumps(
+                    redact(merged, credentials), ensure_ascii=False, allow_nan=False
+                )
+            ).validate()
+            if cursor in (None, ""):
+                break
+            if tool.pagination.location == "query":
+                url = base + "?" + urlencode({tool.pagination.parameter: cursor})
         return merged

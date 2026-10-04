@@ -724,6 +724,7 @@ class TaskService(QObject):
             RECIPE_OAUTH_EXAMPLE,
             RECIPE_PAGINATED_EXAMPLE,
             RECIPE_PLAN_EXAMPLE,
+            RECIPE_QUERY_EXAMPLE,
             RECIPE_WRITE_EXAMPLE,
             STATIC_HEADER_FORMATS,
         )
@@ -733,8 +734,12 @@ class TaskService(QObject):
         return {
             "available": self.recipes.connections is not None
             and self.recipes.connections.recipes is not None,
-            "version": 6,
-            "supported_versions": [1, 2, 3, 4, 5, 6],
+            "version": 7,
+            "supported_versions": [1, 2, 3, 4, 5, 6, 7],
+            "typed_reads": "version 7 read tools post a bounded body of typed string/integer/boolean inputs to one exact reviewed path; effect stays read, so no payload approval or operation header exists",
+            "graphql_reads": "one fixed reviewed query document per tool; agents supply no query text and mutations, subscriptions and fragments are rejected",
+            "application_errors": "declare an errors pointer/code/message so an HTTP-200 service failure is reported instead of empty fields; GraphQL errors are reported, never silently returned as partial data",
+            "identity_method": "identity may use one reviewed POST with a literal bounded body",
             "identity_label_alternatives": "ordered reviewed pointers; missing/null/empty only; explicit subject pointer may label an account",
             "request_headers": dict(STATIC_HEADER_FORMATS),
             "authentication": ["bearer", "oauth_pkce"],
@@ -763,6 +768,9 @@ class TaskService(QObject):
                 "plan_steps": 5,
                 "request_headers": 4,
                 "identity_label_alternatives": 3,
+                "read_inputs": 8,
+                "input_string_length": 512,
+                "graphql_document_bytes": 4096,
             },
             "example": copy.deepcopy(RECIPE_EXAMPLE),
             "oauth_example": copy.deepcopy(RECIPE_OAUTH_EXAMPLE),
@@ -772,6 +780,7 @@ class TaskService(QObject):
             "plan_example": copy.deepcopy(RECIPE_PLAN_EXAMPLE),
             "headers_example": copy.deepcopy(RECIPE_HEADERS_EXAMPLE),
             "identity_example": copy.deepcopy(RECIPE_IDENTITY_EXAMPLE),
+            "query_example": copy.deepcopy(RECIPE_QUERY_EXAMPLE),
         }
 
     def _recipe_list(self, task_id):
@@ -876,7 +885,14 @@ class TaskService(QObject):
         return live[1]
 
     def _app_call(
-        self, task_id, connector, tool, request_id, destination, artifact_id=None
+        self,
+        task_id,
+        connector,
+        tool,
+        request_id,
+        destination,
+        artifact_id=None,
+        inputs=None,
     ):
         if not isinstance(request_id, str) or not re.fullmatch(
             r"[A-Za-z0-9_-]{1,64}", request_id
@@ -888,6 +904,15 @@ class TaskService(QObject):
         destination_name(destination)
         if definition.validate_destination is not None:
             definition.validate_destination(destination)
+        # Typed read inputs are validated by the trusted tool definition before
+        # any receipt exists; they never widen the reviewed effect or destination.
+        resolved_inputs = (
+            definition.validate_inputs(inputs)
+            if definition.validate_inputs is not None
+            else None
+        )
+        if inputs is not None and resolved_inputs is None:
+            raise ValueError("This app tool does not accept typed inputs")
         request = ConnectorRequest(
             request_id, connector, tool, definition.effect, destination, None
         )
@@ -908,9 +933,10 @@ class TaskService(QObject):
             destination,
             artifact,
             uuid4().hex,
+            inputs=resolved_inputs,
         )
         fingerprint = request_fingerprint(
-            connector, tool, definition.effect, destination, artifact
+            connector, tool, definition.effect, destination, artifact, resolved_inputs
         )
         try:
             existing = self.connector_store.get(task_id, request_id)
