@@ -2304,3 +2304,385 @@ class GatedPostReadCaseTests(unittest.TestCase):
         self.assertEqual(sorted(group["services"]), ["Dropbox", "Linear", "Notion"])
         for requirement in group["requirements"]:
             self.assertTrue(requirement["blocks"])
+
+
+def _project(adapter, tool_name, document):
+    """The labels a tool selects, from a documented response document."""
+
+    tool = next(t for t in adapter.recipe.tools if t.name == tool_name)
+    from services.connector_recipes import select
+
+    return {label: select(document, pointer) for label, pointer in tool.response}
+
+
+class StarterWorkflowTests(ProfileCase):
+    """C9: a whole task-to-result run for the starters that can express one.
+
+    Each test walks the shape a real task would: connect an account, read context,
+    build a draft, review the exact payload, dispatch it once, read the receipt, then
+    confirm the result by a follow-up read the caller performs. The confirming read is
+    never claimed as automatic reconciliation, an altered draft is refused before any
+    dispatch, and an uncertain write is never resent.
+    """
+
+    def workflow(
+        self,
+        adapter,
+        read_tool,
+        read_destination,
+        write_tool,
+        write_destination,
+        confirm_tool,
+        confirm_path,
+        confirm_document,
+        artifact,
+    ):
+        api, cancelled = self.api, self.cancelled
+
+        context = self.read(adapter, read_tool, read_destination)
+        self.assertEqual(context.state, "succeeded")
+        self.assertEqual(api.posts, [], "reading context must not write")
+
+        request, definition, review = self.reviewed_create(
+            adapter, write_tool, write_destination, artifact
+        )
+        # An unreviewed payload is refused before dispatch.
+        self.assertEqual(definition.execute(request, cancelled).state, "not_applied")
+        self.assertEqual(api.posts, [])
+        receipt = definition.execute(replace(request, review=review), cancelled)
+        self.assertEqual(receipt.state, "succeeded")
+        self.assertEqual(len(api.posts), 1, "exactly one dispatch")
+
+        # The service stores what was reviewed, and the caller reads it back.
+        api.data["routes"][confirm_path] = confirm_document
+        confirmed = self.read(
+            adapter, confirm_tool, urlsplit(confirm_path).path.strip("/").split("/")[-1]
+        )
+        self.assertEqual(confirmed.state, "succeeded")
+        self.assertEqual(
+            json.loads(confirmed.text),
+            _project(adapter, confirm_tool, confirm_document),
+        )
+        self.assertEqual(len(api.posts), 1, "the confirming read must not write")
+        return receipt, confirmed
+
+    def test_todoist_read_draft_review_receipt_and_confirming_read(self):
+        adapter = self.install(packaged_recipe("todoist"), "todoist")
+        receipt, confirmed = self.workflow(
+            adapter,
+            "read_task",
+            "6XGgmFVcrG5RRjVr",
+            "create_task",
+            "account",
+            "read_task",
+            "/api/v1/tasks/6XGgmFVcrG5RRjVrC",
+            {"id": "6XGgmFVcrG5RRjVrC", "content": "Workflow title"},
+            draft_artifact("Workflow draft", "Workflow title"),
+        )
+        self.assertEqual(
+            self.api.posts,
+            [
+                (
+                    "/api/v1/tasks",
+                    {"content": "Workflow title", "description": "Workflow draft"},
+                )
+            ],
+        )
+        self.assertEqual(json.loads(receipt.text)["id"], "6XGgmFVcrG5RRjVrC")
+        self.assertEqual(json.loads(confirmed.text)["content"], "Workflow title")
+        self.assertNotIn(TOKEN, confirmed.text)
+
+    def test_todoist_uncertain_create_is_reported_once_and_never_resent(self):
+        adapter = self.install(packaged_recipe("todoist"), "todoist")
+        api, cancelled = self.api, self.cancelled
+        self.read(adapter, "read_task", "6XGgmFVcrG5RRjVr")
+        request, definition, review = self.reviewed_create(
+            adapter, "create_task", "account", draft_artifact("Draft", "Body")
+        )
+        api.fail("POST", "/api/v1/tasks", 429)
+        outcome = definition.execute(replace(request, review=review), cancelled)
+        self.assertEqual(outcome.state, "uncertain")
+        self.assertIn("do not resend automatically", outcome.text)
+        self.assertEqual(len(api.posts), 1)
+        # Clearing the failure changes nothing: Steed does not retry on its own.
+        api.failure = None
+        self.read(adapter, "read_task", "6XGgmFVcrG5RRjVr")
+        self.assertEqual(len(api.posts), 1)
+
+    def github_recipe(self):
+        template = (PACKAGED / "templates" / "github-owner-template.json").read_bytes()
+        return parse_recipe(
+            template.replace(
+                b"REPLACE-WITH-YOUR-GITHUB-OWNER", b"fixture-owner"
+            ).replace(b"REPLACE-WITH-YOUR-GITHUB-REPOSITORY", b"fixture-repo")
+        )
+
+    def test_github_workflow_confirms_the_created_issue_by_a_manual_read(self):
+        adapter = self.install(self.github_recipe(), "github")
+        receipt, confirmed = self.workflow(
+            adapter,
+            "read_repository",
+            "account",
+            "create_issue",
+            "account",
+            "read_issue",
+            "/repos/fixture-owner/fixture-repo/issues/1",
+            {
+                "number": 1,
+                "title": "Workflow issue",
+                "state": "open",
+                "state_reason": None,
+                "body": "Workflow draft body",
+                "html_url": "https://github.com/fixture-owner/fixture-repo/issues/1",
+            },
+            draft_artifact("Workflow draft body", "Workflow issue"),
+        )
+        self.assertEqual(
+            self.api.posts,
+            [
+                (
+                    "/repos/fixture-owner/fixture-repo/issues",
+                    {"title": "Workflow issue", "body": "Workflow draft body"},
+                )
+            ],
+        )
+        self.assertEqual(json.loads(receipt.text)["number"], 1)
+        self.assertEqual(json.loads(confirmed.text)["body"], "Workflow draft body")
+        # The confirming read is a caller-driven read, not a reconciliation step.
+        self.assertIsNone(self.definition(adapter, "create_issue").reconcile)
+
+    def test_github_workflow_refuses_an_altered_draft_before_any_dispatch(self):
+        adapter = self.install(self.github_recipe(), "github")
+        api, cancelled = self.api, self.cancelled
+        self.read(adapter, "read_repository", "account")
+        request, definition, review = self.reviewed_create(
+            adapter, "create_issue", "account", draft_artifact("Body", "Original")
+        )
+        for altered in ('{"title": "Rewritten", "body": "Body"}', "{}"):
+            with self.subTest(altered=altered):
+                outcome = definition.execute(
+                    replace(request, review=replace(review, before=altered)), cancelled
+                )
+                self.assertEqual(outcome.state, "not_applied")
+                self.assertEqual(api.posts, [])
+
+    def test_gitlab_workflow_ends_at_the_receipt_and_says_how_to_confirm_it(self):
+        """The generic GitLab profile stops at the receipt.
+
+        It ships read_project and create_issue, so the iid in the receipt is the
+        thing a person confirms in the GitLab UI. The project template adds
+        read_issue, which the readiness matrix records as the confirming read.
+        """
+
+        adapter = self.install(packaged_recipe("gitlab"), "gitlab")
+        api, cancelled = self.api, self.cancelled
+        self.assertEqual(self.read(adapter, "read_project", "7").state, "succeeded")
+        request, definition, review = self.reviewed_create(
+            adapter,
+            "create_issue",
+            "7",
+            draft_artifact("Workflow draft description", "Workflow issue"),
+        )
+        receipt = definition.execute(replace(request, review=review), cancelled)
+        self.assertEqual(receipt.state, "succeeded")
+        self.assertEqual(
+            api.posts,
+            [
+                (
+                    "/api/v4/projects/7/issues",
+                    {
+                        "title": "Workflow issue",
+                        "description": "Workflow draft description",
+                    },
+                )
+            ],
+        )
+        iid = json.loads(receipt.text)["iid"]
+        self.assertEqual(iid, 1)
+        # Nothing claims to confirm it, and this profile has no read that could.
+        self.assertIsNone(definition.reconcile)
+        self.assertNotIn("read_issue", [tool.tool for tool in adapter.tools()])
+        # A repeated read must not create a second issue.
+        self.read(adapter, "read_project", "7")
+        self.assertEqual(len(api.posts), 1)
+
+    def test_a_read_only_starter_produces_a_report_without_a_write(self):
+        adapter = self.install(packaged_recipe("asana"), "asana")
+        result = self.read(adapter, "read_project", "1331")
+        self.assertEqual(result.state, "succeeded")
+        report = {
+            "project": json.loads(result.text),
+            "writes_available": [
+                tool.tool for tool in adapter.tools() if tool.requires_artifact
+            ],
+        }
+        self.assertEqual(report["writes_available"], [])
+        self.assertEqual(self.api.posts, [])
+        self.assertNotIn(TOKEN, json.dumps(report))
+
+
+class AcceptanceReadinessMatrixTests(unittest.TestCase):
+    """C10: provider, task, attempt, phase and outcome, in one reviewable place."""
+
+    def setUp(self):
+        self.matrix = json.loads(
+            (FIXTURES / "acceptance_matrix.json").read_text("utf-8")
+        )
+        self.rows = {row["provider"]: row for row in self.matrix["tasks"]}
+        self.worksheet = json.loads(
+            (FIXTURES / "acceptance_worksheet.json").read_text("utf-8")
+        )
+        self.cases = json.loads((FIXTURES / "executable_cases.json").read_text("utf-8"))
+
+    # Three of the seven providers ship as templates a person fills in.
+    RECIPE_FILES = {
+        "github": "templates/github-owner-template.json",
+        "gitlab": "templates/gitlab-project-template.json",
+        "zotero": "templates/zotero-library-template.json",
+        "microsoft365": "microsoft365-read.json",
+    }
+    # A packaged file whose name is not the provider name.
+    ALIASED_FILES = {"microsoft365-read"}
+
+    def recipe(self, name):
+        relative = self.RECIPE_FILES.get(name, f"{name}.json")
+        return json.loads((PACKAGED / relative).read_text("utf-8"))
+
+    def test_the_matrix_covers_exactly_the_packaged_templates(self):
+        self.assertEqual(
+            sorted(self.rows),
+            sorted(
+                (
+                    set(self.RECIPE_FILES)
+                    | {path.stem for path in PACKAGED.glob("*.json")}
+                )
+                - self.ALIASED_FILES
+            ),
+        )
+        self.assertEqual(
+            sorted(self.rows),
+            sorted(row["provider"] for row in self.worksheet["providers"]),
+        )
+
+    def test_every_row_states_readiness_attempts_phases_and_outcomes(self):
+        vocabulary = self.matrix["vocabulary"]
+        self.assertEqual(self.matrix["version"], 1)
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                self.assertEqual(
+                    [task["task"] for task in row["tasks"]],
+                    ["read_context", "write_draft", "confirm_result"],
+                )
+                for task in row["tasks"]:
+                    self.assertIn(task["readiness"], vocabulary["readiness"])
+                    self.assertIn(task["readiness"], vocabulary["readiness_meaning"])
+                    self.assertIsInstance(task["phases"], list)
+                    self.assertTrue(task["phases"])
+                    self.assertTrue(task["evidence"].strip())
+                    for outcome in task["outcomes"]:
+                        self.assertIn(outcome, vocabulary["outcomes"])
+                    if task["readiness"] == "not_applicable":
+                        self.assertEqual(task["outcomes"], ["not_applicable"])
+                        self.assertEqual(task["attempts"], 0)
+                        self.assertTrue(
+                            task["smallest_missing_behavior"].strip(),
+                            "an unavailable task must name what would enable it",
+                        )
+                    else:
+                        self.assertGreaterEqual(task["attempts"], 1)
+                        self.assertNotIn("not_applicable", task["outcomes"])
+
+    def test_a_write_task_is_claimed_only_where_a_write_tool_exists(self):
+        for provider, row in self.rows.items():
+            with self.subTest(provider=provider):
+                recipe = self.recipe(provider)
+                writes = [t for t in recipe["tools"] if t.get("effect") == "write"]
+                task = next(t for t in row["tasks"] if t["task"] == "write_draft")
+                self.assertEqual(task["readiness"] == "ready", bool(writes))
+                if not writes:
+                    continue
+                self.assertEqual(task["phases"], ["write", "receipt"])
+                self.assertEqual(task["attempts"], 1, "a write is never resent")
+                self.assertIn("uncertain", task["outcomes"])
+                self.assertIn("blocked", task["outcomes"])
+                self.assertIn("create_", " ".join(t["name"] for t in writes))
+
+    def test_a_read_task_never_claims_a_write_or_an_automatic_retry(self):
+        for provider, row in self.rows.items():
+            task = next(t for t in row["tasks"] if t["task"] == "read_context")
+            with self.subTest(provider=provider):
+                self.assertEqual(task["attempts"], 1)
+                self.assertEqual(task["phases"][-1], "disconnect")
+                self.assertNotIn("uncertain", task["outcomes"])
+                self.assertIn(
+                    "never retried",
+                    " ".join(self.matrix["vocabulary"]["attempt_rules"]),
+                )
+
+    def test_confirmation_is_manual_exactly_where_no_read_covers_the_written_object(
+        self,
+    ):
+        for provider, row in self.rows.items():
+            recipe = self.recipe(provider)
+            task = next(t for t in row["tasks"] if t["task"] == "confirm_result")
+            with self.subTest(provider=provider):
+                if task["readiness"] == "not_applicable":
+                    continue
+                self.assertEqual(task["phases"], ["receipt"])
+                self.assertEqual(task["attempts"], 1)
+                reads = {
+                    t["name"] for t in recipe["tools"] if t.get("effect") != "write"
+                }
+                creates = {
+                    t["name"] for t in recipe["tools"] if t.get("effect") == "write"
+                }
+                if not creates:
+                    continue
+                # A read that can confirm must exist, or the row says it is manual.
+                confirming = [name for name in reads if name.startswith("read_")]
+                self.assertEqual(
+                    task["readiness"] == "manual",
+                    not any("issue" in name or "task" in name for name in confirming),
+                )
+                if task["readiness"] == "manual":
+                    self.assertIn("iid", task["evidence"])
+
+    def test_deferred_providers_are_gated_or_absent_and_never_half_claimed(self):
+        deferred = {row["provider"]: row for row in self.matrix["deferred"]}
+        gated = {
+            case["provider"].lower(): case["id"]
+            for case in self.cases["cases"]
+            if case["kind"] == "gated_post_read"
+        }
+        for provider, row in deferred.items():
+            with self.subTest(provider=provider):
+                self.assertIn("reason", row)
+                if row["gated_case"] is None:
+                    self.assertNotIn(provider, gated)
+                else:
+                    self.assertEqual(gated.get(provider), row["gated_case"])
+                # A deferred provider must not also appear as a starter task row.
+                self.assertNotIn(provider, self.rows)
+
+    def test_the_vocabulary_is_closed_and_defines_every_term_it_uses(self):
+        vocabulary = self.matrix["vocabulary"]
+        for key, meanings in (
+            ("readiness", "readiness_meaning"),
+            ("outcomes", "outcome_meaning"),
+        ):
+            with self.subTest(key=key):
+                self.assertEqual(sorted(vocabulary[key]), sorted(vocabulary[meanings]))
+        used_readiness = {
+            task["readiness"] for row in self.rows.values() for task in row["tasks"]
+        }
+        used_outcomes = {
+            outcome
+            for row in self.rows.values()
+            for task in row["tasks"]
+            for outcome in task["outcomes"]
+        }
+        self.assertTrue(used_readiness <= set(vocabulary["readiness"]))
+        self.assertTrue(used_outcomes <= set(vocabulary["outcomes"]))
+        # Every attempt rule is a plain sentence a reviewer can act on.
+        for rule in vocabulary["attempt_rules"]:
+            self.assertTrue(rule.endswith("."))
