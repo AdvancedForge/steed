@@ -1,11 +1,11 @@
 {
   "provider": "notion",
-  "status": "gated",
-  "note": "Read candidate contract for Notion, the priority gated family. This is reference data for the runtime owner, not a profile: no credential appears here, nothing is installed, and no packaged recipe exists. Every value is synthetic.",
+  "status": "packaged",
+  "note": "Synthetic documents for the packaged Notion profile, kept beside the read assessment that justified it. Field names come from Notion's own reference; every value is synthetic, no credential appears here, and nothing has been sent to a live workspace.",
   "origin": "https://api.notion.com",
   "api_version": {
     "header": "Notion-Version",
-    "pinned": "2026-03-11",
+    "pinned": "2025-09-03",
     "documented_level": "required",
     "documented": "Setting this header is required, and the Notion-Version header must be included in all REST API requests so the response is consistent with what the client expects.",
     "documented_versions": [
@@ -18,16 +18,19 @@
     ],
     "blocks_a_read": true,
     "version_changes": "At 2026-03-11 the after parameter on Append Block Children becomes a position object, archived becomes in_trash across request parameters and response bodies, and the transcription block type is renamed meeting_notes.",
-    "note": "Every fixture in this file is bound to one explicit version. Response shapes are version specific and must not be mixed; the deprecation notes below are what make an unversioned fixture dangerous."
+    "note": "Every fixture in this file is bound to one explicit version. Response shapes are version specific and must not be mixed; the deprecation notes below are what make an unversioned fixture dangerous.",
+    "recipe_pins": "2025-09-03",
+    "pinned_note": "The shipped recipe pins 2025-09-03 because the reviewed data source query and its response shape were taken from that version. 2026-03-11 is also documented and is recorded above, but moving to it changes archived to in_trash, so it needs its own review."
   },
   "headers": {
     "required_static": {
       "Authorization": "Bearer <integration token supplied by the user>",
-      "Notion-Version": "2026-03-11",
+      "Notion-Version": "2025-09-03",
       "blocks_a_read": false,
       "documented": "The integration sends Authorization: Bearer with its integration token, and Notion-Version is required on every request.",
       "reference": "https://developers.notion.com/guides/get-started/authorization",
-      "supported_now": "Notion-Version is one of the four reviewed non-secret static header names main accepts, with a canonical YYYY-MM-DD value, so the required header can be sent on every request."
+      "supported_now": "Notion-Version is one of the four reviewed non-secret static header names main accepts, with a canonical YYYY-MM-DD value, so the required header can be sent on every request.",
+      "recipe_pins": "2025-09-03"
     },
     "never": {
       "path": "No credential may appear in a path or query, and no version may be inferred per endpoint.",
@@ -252,18 +255,10 @@
     "code_stability": "Programmatic error code values such as validation_error and object_not_found are documented as stable and not changing without a version bump."
   },
   "framework_gap": {
-    "capabilities": [
-      "post_reads",
-      "query_inputs"
-    ],
-    "minimum_missing_behavior": "A first read is now expressible: main carries reviewed non-secret static headers, so the required Notion-Version header can be sent, and reviewed identity label alternatives, so a documented null name falls back to a reviewed pointer instead of refusing the account. What remains is listing a data source, which is a POST read with a request object.",
-    "not_required_for_a_first_read": [
-      "The Notion-Version header, which main now supports as a reviewed static header with a canonical date value.",
-      "A tolerant nullable label, because reviewed identity label alternatives now cover it.",
-      "Any identity-derived path binding, because a database or data source id comes from the caller.",
-      "A write: nested v3 templates exist, but no Notion write is proposed in this queue."
-    ],
-    "not_a_gap": "Nothing here requires weakening origin rules, adding a credential to a path, or bypassing the documented version requirement. The header must be sent, not worked around."
+    "status": "closed for reads",
+    "capabilities": [],
+    "minimum_missing_behavior": "Nothing is missing for the shipped read. The typed read-only POST contract now expresses the data source query, and a reviewed static header sends the required Notion-Version. A write would need a separate review of the property set and of a token with write capability.",
+    "shipped_recipe": "connectors/recipes/notion.json"
   },
   "references": [
     "https://developers.notion.com/reference/get-self",
@@ -309,5 +304,83 @@
         "blocks": "any field projection"
       }
     ]
+  },
+  "routes": {
+    "/v1/users/me": {
+      "object": "user",
+      "id": "notion-user-id",
+      "name": "Fixture Notion User",
+      "avatar_url": null,
+      "type": "bot",
+      "bot": {},
+      "workspace_name": "Fixture Workspace"
+    }
+  },
+  "routes_without_a_name": {
+    "/v1/users/me": {
+      "object": "user",
+      "id": "notion-user-id",
+      "name": null,
+      "type": "bot",
+      "bot": {}
+    }
+  },
+  "post_routes": {
+    "/v1/data_sources/ds-1/query": {
+      "object": "list",
+      "type": "page_or_data_source",
+      "page_or_data_source": {},
+      "results": [
+        {
+          "object": "page",
+          "id": "page-1",
+          "properties": {},
+          "url": "https://www.notion.so/page-1"
+        }
+      ],
+      "next_cursor": null,
+      "has_more": false
+    }
+  },
+  "errors": {
+    "/v1/data_sources/ds-1/query": {
+      "400": "validation_error, invalid_request, missing_version or invalid_json",
+      "401": "unauthorized",
+      "403": "restricted_resource when the connection lacks the read capability",
+      "404": "object_not_found or directory_not_found, including a database not shared with the connection",
+      "429": "rate_limited",
+      "529": "service_overload is documented as a code; its operational meaning is not documented."
+    }
+  },
+  "created": {
+    "object": "list",
+    "results": [],
+    "next_cursor": null,
+    "has_more": false
+  },
+  "paging_documents": {
+    "description": "Two documented pages, served by the paging test in the order Notion returns them.",
+    "first": {
+      "object": "list",
+      "results": [
+        {
+          "object": "page",
+          "id": "page-1"
+        }
+      ],
+      "next_cursor": "CURSOR-2",
+      "has_more": true
+    },
+    "second": {
+      "object": "list",
+      "results": [
+        {
+          "object": "page",
+          "id": "page-2"
+        }
+      ],
+      "next_cursor": null,
+      "has_more": false
+    }
   }
 }

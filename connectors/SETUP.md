@@ -399,7 +399,7 @@ Official references:
 ## Wider queue: assessed, not shipped
 
 `connectors/fixtures/assessed_candidates.json` records the API assessment for all
-21 service families, including the three shipped above. Each row has one
+21 service families, including the ones shipped here. Each row has one
 official starting reference, the documented authentication header, the documented
 identity route and label, the paging model, the error contract, the host, and the
 gate that must be cleared before a profile may be packaged.
@@ -414,11 +414,11 @@ installed, and a row is never a default account or an approval.
 | GitHub | template | owner must be fixed in newly reviewed source |
 | GitLab.com | packaged + template | none outstanding for the shipped subset |
 | Microsoft 365 | packaged (read-only, supplied delegated token) | native OAuth, `@odata.nextLink` paging and writes remain deferred |
-| Notion | gated (first read expressible) | data-source listing is a POST read; a real integration token is still unverified |
+| Notion | packaged (read-only) | none outstanding; writes need a property review and a token with write capability |
 | Slack | gated | channel destinations and `ok:false` error checking |
 | Asana | packaged (read-only) | none outstanding; collections and task creation are excluded by design |
-| Dropbox | gated | reads are RPC-style POST request objects |
-| Linear | gated | reads are GraphQL POSTs with variables |
+| Dropbox | packaged (read-only) | none outstanding; a single item read waits for an id destination rule |
+| Linear | packaged (read-only) | none outstanding; mutations and paged queries are excluded by design |
 | Raindrop.io | packaged (read-only) | none outstanding; the `result` flag stays unchecked, which matters for writes |
 | Airtable | gated | base/table pinning, optional identity label, offset paging |
 | Calendly | gated | identity is a URI; next page is a full URL |
@@ -447,40 +447,31 @@ installed, and a row is never a default account or an approval.
 - A write is a single POST with no automatic retry, and an uncertain write is
   reported as uncertain because nothing in this subset can reconcile it.
 
-### POST-read cases prepared for the next shared contract
+### POST reads: three families promoted
 
-The next maintainer runtime contract is a typed read-only POST with bounded
-reviewed inputs. Three families are ready to promote the moment it is published,
-and their cases are already written against official sources in
-`connectors/fixtures/executable_cases.json` under `gated_post_read`:
+Main now carries a typed read-only POST contract, so the three families that were
+waiting for it ship as profiles. Their cases stay in
+`connectors/fixtures/executable_cases.json` under `typed_post_read`, and each one
+names the recipe it is reviewed against:
 
-| Family | Read | Why it cannot be expressed today |
-| --- | --- | --- |
-| Notion | `POST /v1/data_sources/{id}/query` | reads are GET-only; a write is a single POST that requires an artifact |
-| Linear | `POST /graphql` | same, plus an `errors` array that can accompany HTTP 200 |
-| Dropbox | `POST /2/users/get_current_account` and `POST /2/files/list_folder` | identity is a POST too, so nothing in the family is expressible |
+| Family | Recipe | Read | What the contract supplied |
+| --- | --- | --- | --- |
+| Notion | `connectors/recipes/notion.json` | `POST /v1/data_sources/{id}/query` | a pinned `Notion-Version` static header, a bounded `page_size` input, body-location `start_cursor` paging |
+| Linear | `connectors/recipes/linear.json` | `POST /graphql` | two fixed reviewed documents, and an `errors` array surfaced as an application-level failure |
+| Dropbox | `connectors/recipes/dropbox.json` | `POST /2/files/list_folder` | a Void-argument identity POST, bounded inputs, and the documented `/continue` cursor request |
 
-Each case records the official request body fields, the documented response shape,
-the documented failure statuses, the documented limits and prohibitions, and the
-smallest missing behaviour. A few are worth knowing before anyone implements them:
+A typed POST read is reviewed like a write: the body is fixed in the recipe, the
+agent supplies values only, and an unreviewed field never reaches the wire. Three
+bounds are worth knowing before using them:
 
-- **Notion** requires the `Notion-Version` header, which is now supported, and its
-  body is entirely optional; the documented prohibitions include not parsing or
-  storing cursors beyond passing them back as `start_cursor`, not sending
-  `in_trash`, and not assuming a sort order when none is given. A query is capped at
-  10,000 results, and a response may contain fewer results than `page_size`.
-- **Linear** documents that a query can **partially succeed with HTTP 200**, so a
-  status-only check would report partial data as success. Rate limiting is documented
-  as HTTP 400 with a `RATELIMITED` code inside the errors array, and a single query
-  is capped at 10,000 complexity points.
-- **Dropbox** documents `account_id` as the account key rather than email, and
-  `email` as unreliable without `email_verified`. Listing is capped at 2,000 entries,
-  and duplicate concurrent list calls can return a rate-limit error.
-
-These cases stay gated on purpose. A read is never disguised as a create, arbitrary
-queries are not permitted, and no origin or header rule is bypassed. When the shared
-contract lands, the cases promote through real discovery, parser, source-review,
-adapter and transport tests rather than being hand-waved into profiles.
+- **Notion** pins `Notion-Version: 2025-09-03`, the version the reviewed query and
+  response shape came from. Notion also documents `2026-03-11`, where `archived`
+  becomes `in_trash`, so moving the pin needs its own review.
+- **Linear** sends fixed documents, so a paged query cannot ship: a document cannot
+  bind a returned cursor. Mutations are out of scope, so the family is read-only.
+- **Dropbox** cannot read a single item. The engine refuses a path-like
+  destination, Dropbox documents metadata by path only, and there is no documented
+  id-keyed metadata route. The shipped subset lists a folder.
 
 ### Promoting a candidate
 
@@ -509,7 +500,7 @@ two files in agreement. None of these is worked around in a connector.
 
 | Capability group | Services that need it |
 | --- | --- |
-| Reviewed static request headers | Notion, Nextcloud, Zotero |
+| Reviewed static request headers | delivered for Notion; still open for Nextcloud, Zotero |
 | Credential-derived token headers | Figma, Zotero |
 | Binding an identity-derived account id into a later read path | Zotero |
 | Offset, page-number, keyset, Link-header and nextLink paging | GitHub, GitLab.com, Microsoft 365, Airtable, Raindrop.io, Calendly, Asana, Spotify, Joplin, Zotero, ClickUp |
@@ -517,7 +508,7 @@ two files in agreement. None of these is worked around in a connector.
 | Application-level success flags | Slack, Raindrop.io, Nextcloud |
 | Account identity beyond one subject string and one label | Calendly, Readwise / Reader, Spotify, Airtable, Notion, Microsoft 365, Joplin |
 | Native OAuth sign-in, scope normalization and refresh | Microsoft 365, Asana, Spotify, Trello |
-| Reads that are POST requests with request objects | Dropbox, Linear, Notion |
+| Reads that are POST requests with request objects | delivered: Dropbox, Linear, Notion |
 | Approved local and self-hosted service origins | Nextcloud, Joplin, Zotero |
 | Reviewed fixed query inputs | Figma, Microsoft 365, Airtable, Asana, ClickUp, Raindrop.io, Spotify, Calendly, Joplin |
 | Reconciliation of uncertain writes | GitLab.com, Todoist, GitHub, Airtable |
@@ -548,20 +539,10 @@ a family from looking blocked when only its listing is:
   (`start_cursor`/`next_cursor`). Readwise stays gated on its authentication
   scheme and its identity-less probe, not on paging.
 
-### Notion is now a first-read candidate
-
-Main's reviewed static headers and reviewed identity label alternatives clear the two
-things that previously gated Notion, so its queue entry keeps only `post_reads`: a
-data-source listing is `POST /v1/data_sources/{id}/query` with a request object. The
-required `Notion-Version` header and the documented null `name` are both handled by
-capabilities that exist today, which is why neither appears as a gate any more. A
-Notion profile is still not shipped here: it belongs with the runtime owner's
-acceptance of a real integration token.
-
 ### Notion assessment notes
 
-Notion stays gated, but for narrower and better-documented reasons than a missing
-identity route. The synthetic contract is `connectors/fixtures/notion.json`.
+Notion now ships `connectors/recipes/notion.json`, and its synthetic contract,
+assessment and wire documentation stay in `connectors/fixtures/notion.json`.
 
 - Identity is documented: `GET /v1/users/me` is titled *Retrieve your token's bot
   user* and returns the user associated with the token. `object` and `id` are
@@ -677,7 +658,6 @@ What each one needs before a profile could exist:
 
 | Candidate | Blocks a first read | Only blocks later work |
 | --- | --- | --- |
-| Notion | the required `Notion-Version` header, and a label contract that tolerates the documented null `name` | data-source listing, which is a POST read |
 | Zotero | nothing structural: see the pinned-library alternative below | `Link`-header listing; the recommended version header |
 | Figma | carrying a personal access token in `X-Figma-Token` | a document read, which needs a fixed `depth` query input |
 
@@ -904,6 +884,118 @@ Official references:
 
 ---
 
+## Notion (one data source, read-only)
+
+`connectors/recipes/notion.json` reads one data source per account. The read is a
+POST query, because Notion's query endpoint takes a request object, so the profile
+uses the typed read-only POST contract: the body is fixed in the recipe, the agent
+supplies only the reviewed `page_size`, and the returned `next_cursor` is passed
+straight back as `start_cursor` for at most three pages.
+
+The recipe pins `Notion-Version: 2025-09-03`, the version the reviewed query and
+response shape were taken from. Notion documents `2026-03-11` as well, where
+`archived` becomes `in_trash`; moving the pin is a review, not a config change.
+
+Only the `results` array is projected. Notion documents `next_cursor` as opaque and
+says it must not be parsed, validated or stored, so the profile treats it as a
+pass-through value only.
+
+### Least-permission setup
+
+1. In Notion create an internal integration, copy its token, and open
+   **Settings → Connections → install** it. The token starts as `secret_...`.
+2. In Notion open the database, then **••• → Connections**, and add the
+   integration with read capability. A data source that is not shared answers 404,
+   which the profile reports rather than treating as an empty result.
+3. In Steed install the profile, paste the token into the Connect step, and use the
+   data source ID as the read destination.
+4. Revoke the token in the integration's own settings. Steed removes the stored
+   credential when you disconnect.
+
+The account label is `name`, with the bot owner's name and then the user ID as
+reviewed fallbacks, because Notion documents `name` as optional rather than
+nullable. The profile ships no write, and never asks for write capability.
+
+Official references:
+
+- [Query a data source](https://developers.notion.com/reference/query-a-data-source)
+- [Retrieve your token's bot user](https://developers.notion.com/reference/get-self)
+- [Versioning](https://developers.notion.com/reference/versioning)
+
+---
+
+## Linear (viewer and one team, read-only)
+
+`connectors/recipes/linear.json` sends two fixed reviewed GraphQL documents:
+`read_viewer` and `read_team`. Every Linear read is a POST, so the profile uses the
+fixed-document contract. The agent never supplies a query, variables or an
+operation name; only the exact team ID is bound as a variable.
+
+Connecting already performs the documented `viewer` query, because Linear has no
+separate identity endpoint. A GraphQL query can answer HTTP 200 while carrying an
+`errors` array, and the profile treats that as a failed read rather than returning
+partial data as a success.
+
+The family is read-only by design: mutations are outside the fixed-document
+contract, and a paged query cannot ship because a fixed document cannot bind a
+returned cursor.
+
+### Least-permission setup
+
+1. In Linear open **Settings → Security & access → Personal API keys** and create
+   a key, or create an OAuth app if you prefer per-user access.
+2. In Steed install the profile and paste the key into the Connect step. Read
+   access to the team you intend to read is enough.
+3. Record which budget applies: Linear documents 2,500 requests per hour for an API
+   key, 5,000 for an OAuth app and 600 per IP unauthenticated, with an hourly
+   complexity budget of 3,000,000 points for an API key, 2,000,000 for an OAuth app
+   and 100,000 unauthenticated, and 10,000 complexity points for a single query.
+4. Revoke the key in Linear's settings, or disconnect the OAuth app. Steed removes
+   the stored credential when you disconnect.
+
+Official references:
+
+- [GraphQL API](https://linear.app/developers/graphql)
+- [Rate limiting](https://linear.app/developers/rate-limiting)
+
+---
+
+## Dropbox (one folder listing, read-only)
+
+`connectors/recipes/dropbox.json` lists one folder. The account identity is
+`POST /2/users/get_current_account`, which the API specification declares with a
+Void argument, so the request body is empty. Listing is
+`POST /2/files/list_folder`, and when `has_more` is true the profile calls the
+documented `/2/files/list_folder/continue` route with the returned cursor and
+nothing else, for at most three pages.
+
+The account label is `name.display_name`, never `email`: the specification says
+apps should not use email to identify an account and should use `account_id`
+instead, and documents email as unreliable without `email_verified`.
+
+A single item read does not ship. The engine refuses a path-like destination,
+Dropbox documents `get_metadata` by path, and there is no documented id-keyed
+metadata route, so the honest subset lists a folder rather than pretending to read
+one file. A reviewed path input is also capped at 512 characters, which is shorter
+than the longest path Dropbox documents.
+
+### Least-permission setup
+
+1. In the Dropbox App Console create an app with the smallest folder scope that
+   covers what you want to read. App credentials are not accepted by the account
+   route, which is declared `auth = user`, so connect with a user access token.
+2. In Steed install the profile and paste the user token into the Connect step.
+3. Use the folder path as the reviewed `path` input. `""` is the documented root.
+4. Revoke the token in the App Console. Steed removes the stored credential when
+   you disconnect.
+
+Official references:
+
+- [API specification, users](https://github.com/dropbox/dropbox-api-spec/blob/main/users.stone)
+- [API specification, files](https://github.com/dropbox/dropbox-api-spec/blob/main/files.stone)
+
+---
+
 ## Provider acceptance checklist
 
 This checklist is the same for every profile. Automated results and live
@@ -919,6 +1011,8 @@ on the strength of synthetic tests alone.
       rejected before dispatch.
 - [ ] Reads return exactly the documented fields; an omitted optional field fails
       closed rather than being invented.
+- [ ] A typed read-only POST sends exactly the reviewed body, refuses an unreviewed
+      input before dispatch, and follows only the documented cursor route.
 - [ ] Each create sends exactly the reviewed JSON payload, with a payload
       preview and hash shown before dispatch.
 - [ ] Documented failure, quota and revocation statuses are surfaced, and a

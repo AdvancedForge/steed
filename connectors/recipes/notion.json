@@ -1,0 +1,57 @@
+{
+ "version": 8,
+ "name": "notion",
+ "origin": "https://api.notion.com",
+ "authentication": {
+  "type": "bearer"
+ },
+ "identity": {
+  "path": "/v1/users/me",
+  "subject": "/id",
+  "label": "/name",
+  "label_alternatives": [
+   "/bot.owner.user.name",
+   "/id"
+  ]
+ },
+ "request_headers": {
+  "Notion-Version": "2025-09-03"
+ },
+ "tools": [
+  {
+   "name": "query_data_source",
+   "description": "Read one page of a data source the integration can read",
+   "method": "POST",
+   "effect": "read",
+   "path": "/v1/data_sources/{destination}/query",
+   "inputs": {
+    "page_size": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 100,
+     "default": 25
+    }
+   },
+   "request": {
+    "page_size": {
+     "$bind": "input.page_size"
+    },
+    "start_cursor": null
+   },
+   "response": [
+    {
+     "label": "results",
+     "pointer": "/results"
+    }
+   ],
+   "pagination": {
+    "cursor": "/next_cursor",
+    "parameter": "start_cursor",
+    "max_pages": 3,
+    "location": "body",
+    "has_more": "/has_more"
+   },
+   "destination": "resource_id"
+  }
+ ]
+}

@@ -6,7 +6,7 @@
     "dispatch": "Install the generated recipe, connect one synthetic account and execute the case read through RecipeConnector with a synthetic transport serving the documented response.",
     "transport": "Drive the real RecipeHttp request gate directly, which refuses an unreviewed header or query before any socket work.",
     "documented_bound": "Record a documented engine or provider bound that cannot be executed locally, with the arithmetic that makes it a bound and the reason it is not executable.",
-    "gated_post_read": "A documented read-only POST that no current contract expresses. The case records the official request and response shapes so a shared typed read-only POST contract can be promoted through real parser, review, adapter and transport tests once it is published."
+    "typed_post_read": "A read-only POST that the shared typed contract now expresses. The case keeps the official request and response shapes so the shipped recipe can be checked against the provider's own documentation rather than against Steed's synthetic documents."
   },
   "cases": [
     {
@@ -683,9 +683,9 @@
       "smallest_missing_behavior": "None. This is a behaviour to preserve."
     },
     {
-      "id": "notion_data_source_query_gated",
+      "id": "notion_data_source_query",
       "provider": "Notion",
-      "kind": "gated_post_read",
+      "kind": "typed_post_read",
       "purpose": "Querying a data source is a POST read with an optional body, which no current read contract expresses.",
       "request": {
         "method": "POST",
@@ -761,12 +761,14 @@
         "stop_signal": "has_more false, or the 10,000 result cap with request_status set",
         "note": "Notion states cursors are opaque and must not be parsed, validated or stored."
       },
-      "cancellation": "A cancelled query must stop before dispatch, because a query consumes part of the documented request limit and Steed must not resend it automatically."
+      "cancellation": "A cancelled query must stop before dispatch, because a query consumes part of the documented request limit and Steed must not resend it automatically.",
+      "shipped_recipe": "connectors/recipes/notion.json",
+      "promoted": "Expressed by the shared typed read-only POST and fixed GraphQL contracts; the recipe named here is reviewed against this case."
     },
     {
-      "id": "linear_graphql_viewer_gated",
+      "id": "linear_graphql_viewer",
       "provider": "Linear",
-      "kind": "gated_post_read",
+      "kind": "typed_post_read",
       "purpose": "Linear reads are GraphQL POSTs whose errors array can accompany HTTP 200.",
       "request": {
         "method": "POST",
@@ -842,12 +844,14 @@
         "subject_pointer": "/data/viewer/id",
         "label_pointer": "/data/viewer/name",
         "label_limitation": "No field nullability is documented for the viewer object."
-      }
+      },
+      "shipped_recipe": "connectors/recipes/linear.json",
+      "promoted": "Expressed by the shared typed read-only POST and fixed GraphQL contracts; the recipe named here is reviewed against this case."
     },
     {
-      "id": "dropbox_account_and_folder_reads_gated",
+      "id": "dropbox_account_and_folder_reads",
       "provider": "Dropbox",
-      "kind": "gated_post_read",
+      "kind": "typed_post_read",
       "purpose": "Dropbox reads are RPC POSTs whose argument and result live in the HTTP body.",
       "request": {
         "method": "POST",
@@ -945,10 +949,12 @@
         }
       },
       "cancellation": "A cancelled read must stop before dispatch, and a cancelled continuation must not be retried, because the spec documents that duplicate concurrent list calls can be rate limited.",
-      "verification_note": "The dropbox.com documentation page is rendered client side and its prose could not be read, so the route, body and field facts here come from the official API specification repository and the official SDKs it links. Treat the error body shape as unverified: error_summary appears in no readable official source."
+      "verification_note": "The dropbox.com documentation page is rendered client side and its prose could not be read, so the route, body and field facts here come from the official API specification repository and the official SDKs it links. Treat the error body shape as unverified: error_summary appears in no readable official source.",
+      "shipped_recipe": "connectors/recipes/dropbox.json",
+      "promoted": "Expressed by the shared typed read-only POST and fixed GraphQL contracts; the recipe named here is reviewed against this case."
     }
   ],
-  "gated_post_read_note": "These cases stay gated on purpose: a read is never disguised as a create, arbitrary queries are not permitted, and no origin or header rule is bypassed. Nothing here ships as a profile.",
   "documentation_check_date": "2026-10-04",
-  "evidence_note": "Each case separates an official example body, quoted from the provider's own documentation, from a synthesized document written for Steed's synthetic transport. A synthesized document proves Steed's behaviour against a documented shape and is never evidence about the provider."
+  "evidence_note": "Each case separates an official example body, quoted from the provider's own documentation, from a synthesized document written for Steed's synthetic transport. A synthesized document proves Steed's behaviour against a documented shape and is never evidence about the provider.",
+  "typed_post_read_note": "Notion, Linear and Dropbox were promoted from gated cases once the typed read-only POST and fixed GraphQL contracts landed. Their cases stay in the registry as the documented source each shipped recipe is reviewed against."
 }

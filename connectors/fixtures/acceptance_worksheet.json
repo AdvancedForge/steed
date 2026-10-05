@@ -23,24 +23,20 @@
   ],
   "providers": [
     {
-      "provider": "todoist",
-      "reviewed_source": "connectors/recipes/todoist.json",
-      "official_reference": "https://developer.todoist.com/api/v1/",
+      "provider": "asana",
+      "reviewed_source": "connectors/recipes/asana.json",
+      "official_reference": "https://developers.asana.com/reference/",
       "tools": [
-        "read_task",
-        "read_task_detail",
-        "list_tasks",
         "read_project",
-        "list_projects",
-        "create_task"
+        "read_task"
       ],
-      "least_permission": "A Todoist personal API token from Settings, Integrations, Developer. It is account-wide and cannot be scoped per project, so the subset keeps its authority minimal by reading selected IDs, bounding listings to three cursor pages, and creating only reviewed Inbox tasks.",
+      "least_permission": "An Asana personal access token, which carries exactly the access of the user who created it, so the narrowest reduction is a dedicated account limited to the projects or tasks intended for reading. Asana documents personal access tokens as persistent by default with no documented expiry, so the token must be revoked manually.",
       "synthetic_expectations": {
-        "identity_result": "subject 1234567 from /id and label from /email, with the account's own echoed token field never leaving identity selection",
-        "read_result": "read_task returns id and content; read_task_detail also returns description; read_project returns id, name, is_shared and is_favorite; list_tasks and list_projects stop at three pages and report more_available",
-        "reviewed_create_preview": "POST /api/v1/tasks with exactly content and description, an omitted project_id so the task lands in the Inbox, and a payload_sha256 over the reviewed bytes",
-        "uncertain_write_handling": "A create that fails after dispatch is reported as uncertain and never replayed; the Inbox is checked by hand",
-        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked in the same Todoist settings screen"
+        "identity_result": "subject from the numeric /data/gid and label from /data/name, never from the opt-in /data/email",
+        "read_result": "read_project returns gid, name, notes, archived, due_on, owner and permalink_url; read_task returns gid, name, notes, completed, due_on, assignee and permalink_url. Every projected field is one Asana does not mark [Opt In], and no opt-in or html_notes field is projected.",
+        "reviewed_create_preview": "none: the profile is read-only, because Asana names the workspace or project in a create body rather than in the path",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked from the same Asana account page"
       },
       "live": {
         "setup_and_least_permission": "",
@@ -56,45 +52,109 @@
       "steps": [
         {
           "phase": "install",
-          "operation": "Install connectors/recipes/todoist.json from App Connections and read the source review before installing."
+          "operation": "Install connectors/recipes/asana.json from App Connections and read the source review before installing."
         },
         {
           "phase": "connect",
-          "operation": "Create a Todoist personal API token in Settings, Integrations, Developer and paste it into the Connect step. Expect the identity request to return your account id and email."
+          "operation": "Connect a personal access token created in Asana. Expect identity to return your account name, not an email field."
         },
         {
           "phase": "enable",
-          "operation": "Enable only the actions this account should offer to tasks. Expect no other action to appear for this account."
+          "operation": "Enable only the read actions this account should offer to tasks."
         },
         {
           "phase": "read",
-          "operation": "Run read_task for a known task id and record the returned id and content."
+          "operation": "Run read_project for a project GID taken from an Asana URL and record the returned fields, including whether due_on or owner came back null."
         },
         {
           "phase": "read",
-          "operation": "Run list_tasks and record how many pages came back and whether more_available was true."
+          "operation": "Run read_task for a task GID and record the returned fields."
         },
         {
           "phase": "write",
-          "operation": "Create a draft with a unique title, review the exact payload and payload hash, then approve it once. Expect one POST to /api/v1/tasks with content and description only."
+          "operation": "Not applicable: this profile is read-only.",
+          "status": "not_applicable"
         },
         {
           "phase": "receipt",
-          "operation": "Record the returned task id and the receipt, then read that task back. Expect the task to be in the Inbox because project_id was omitted."
-        },
-        {
-          "phase": "receipt",
-          "operation": "If the create was uncertain, open the Todoist Inbox in the service UI and record what you found. Do not resend from Steed."
-        },
-        {
-          "phase": "receipt",
-          "operation": "If the create was uncertain, open the Todoist Inbox in the service UI and record what you found. Do not resend from Steed."
+          "operation": "Not applicable: this profile is read-only.",
+          "status": "not_applicable"
         },
         {
           "phase": "disconnect",
-          "operation": "Disconnect the account, confirm the stored credential is gone from Steed, then revoke the token in Todoist and record the revocation date."
+          "operation": "Disconnect the account, confirm the credential is gone, then deauthorize the token from My Apps and record the revocation date."
         }
       ]
+    },
+    {
+      "provider": "dropbox",
+      "reviewed_source": "connectors/recipes/dropbox.json, which reads one folder across the documented /continue cursor route",
+      "official_reference": "https://github.com/dropbox/dropbox-api-spec/blob/main/files.stone",
+      "tools": [
+        "list_folder"
+      ],
+      "least_permission": "A user access token sent as Authorization: Bearer. The account route is declared auth = user, so app credentials are not accepted. Scope only the folder being read; the spec requires apps to avoid full-Dropbox access.",
+      "synthetic_expectations": {
+        "identity_result": "subject from /account_id and label from /name/display_name, never from email",
+        "read_result": "list_folder returns up to three documented pages of entries, following the returned cursor through /2/files/list_folder/continue",
+        "reviewed_create_preview": "none: the profile is read-only",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored token; the token is revoked in the Dropbox account's App Console"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      },
+      "steps": [
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/dropbox.json and record the app's folder scope.",
+          "status": "executable"
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect with a user access token and record the account id and display name.",
+          "status": "executable"
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable the account for read access.",
+          "status": "executable"
+        },
+        {
+          "phase": "read",
+          "operation": "Run list_folder on one folder and record the returned entries and whether has_more was true.",
+          "status": "executable"
+        },
+        {
+          "phase": "read",
+          "operation": "Confirm the continuation call used only the returned cursor, and record the second page's entries.",
+          "status": "executable"
+        },
+        {
+          "phase": "write",
+          "operation": "Not applicable: the profile ships two read tools and no upload.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "receipt",
+          "operation": "Not applicable: no object is created, so there is no receipt to confirm.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect, then revoke the token in the Dropbox App Console and confirm Steed asks for reconnection.",
+          "status": "executable"
+        }
+      ],
+      "engine_bound_note": "A reviewed path input is capped at 512 characters by the engine, and a path destination is refused outright, so the shipped subset lists a folder rather than reading one file by its path."
     },
     {
       "provider": "github",
@@ -233,20 +293,20 @@
       }
     },
     {
-      "provider": "asana",
-      "reviewed_source": "connectors/recipes/asana.json",
-      "official_reference": "https://developers.asana.com/reference/",
+      "provider": "linear",
+      "reviewed_source": "connectors/recipes/linear.json, which sends two fixed reviewed GraphQL documents",
+      "official_reference": "https://linear.app/developers/graphql",
       "tools": [
-        "read_project",
-        "read_task"
+        "read_viewer",
+        "read_team"
       ],
-      "least_permission": "An Asana personal access token, which carries exactly the access of the user who created it, so the narrowest reduction is a dedicated account limited to the projects or tasks intended for reading. Asana documents personal access tokens as persistent by default with no documented expiry, so the token must be revoked manually.",
+      "least_permission": "An API key or OAuth token sent as Authorization: Bearer. Read access to the target team is enough; the packaged documents are queries only.",
       "synthetic_expectations": {
-        "identity_result": "subject from the numeric /data/gid and label from /data/name, never from the opt-in /data/email",
-        "read_result": "read_project returns gid, name, notes, archived, due_on, owner and permalink_url; read_task returns gid, name, notes, completed, due_on, assignee and permalink_url. Every projected field is one Asana does not mark [Opt In], and no opt-in or html_notes field is projected.",
-        "reviewed_create_preview": "none: the profile is read-only, because Asana names the workspace or project in a create body rather than in the path",
+        "identity_result": "subject from /data/viewer/id and label from /data/viewer/name, because Linear has no separate identity endpoint",
+        "read_result": "read_viewer returns the viewer id, name and email; read_team returns one team's id, key and name",
+        "reviewed_create_preview": "none: the profile ships queries only, and no mutation document is reviewed",
         "uncertain_write_handling": "not applicable while no write is offered",
-        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked from the same Asana account page"
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored token; an API key is revoked in Linear's API settings, and an OAuth app is disconnected in its settings"
       },
       "live": {
         "setup_and_least_permission": "",
@@ -262,23 +322,100 @@
       "steps": [
         {
           "phase": "install",
-          "operation": "Install connectors/recipes/asana.json from App Connections and read the source review before installing."
+          "operation": "Install connectors/recipes/linear.json and record the credential type: API key or OAuth app.",
+          "status": "executable"
         },
         {
           "phase": "connect",
-          "operation": "Connect a personal access token created in Asana. Expect identity to return your account name, not an email field."
+          "operation": "Connect with the token and record the viewer id and name returned by the identity query.",
+          "status": "executable"
         },
         {
           "phase": "enable",
-          "operation": "Enable only the read actions this account should offer to tasks."
+          "operation": "Enable the account for read access.",
+          "status": "executable"
         },
         {
           "phase": "read",
-          "operation": "Run read_project for a project GID taken from an Asana URL and record the returned fields, including whether due_on or owner came back null."
+          "operation": "Run read_viewer and record the selected viewer fields.",
+          "status": "executable"
         },
         {
           "phase": "read",
-          "operation": "Run read_task for a task GID and record the returned fields."
+          "operation": "Run read_team with one exact team ID and record the selected team fields.",
+          "status": "executable"
+        },
+        {
+          "phase": "read",
+          "operation": "Record which hourly request and complexity budget applies to the credential type used.",
+          "status": "executable"
+        },
+        {
+          "phase": "write",
+          "operation": "Not applicable: the profile ships fixed query documents only.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "receipt",
+          "operation": "Not applicable: no object is created, so there is no receipt to confirm.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect, then revoke the API key or OAuth grant in Linear and confirm Steed asks for reconnection.",
+          "status": "executable"
+        }
+      ],
+      "partial_failure_note": "A GraphQL query can answer HTTP 200 with data and errors together. Steed reports the errors array rather than returning the partial data as a success."
+    },
+    {
+      "provider": "microsoft365",
+      "reviewed_source": "connectors/recipes/microsoft365-read.json",
+      "official_reference": "https://learn.microsoft.com/en-us/graph/api/overview",
+      "tools": [
+        "read_drive_item",
+        "list_events_first_page",
+        "list_todo_lists_first_page"
+      ],
+      "least_permission": "A delegated Microsoft Graph access token that the user obtains with their own tooling, requesting only User.Read, Files.Read, Calendars.Read and Tasks.Read. An application token must not be used, because /me requires a delegated token.",
+      "synthetic_expectations": {
+        "identity_result": "subject from the not-nullable /id and label from /userPrincipalName, never from a mail field whose nullability is not formally documented",
+        "read_result": "read_drive_item returns id, name, webUrl, size and lastModifiedDateTime for both a file and a folder, since the file and folder facets are absent rather than null; the two collection reads return only /value from the first page and never follow @odata.nextLink",
+        "reviewed_create_preview": "none: the profile is read-only",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored token immediately; the delegated token itself is revoked or expires according to the user's own tooling"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      },
+      "steps": [
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/microsoft365-read.json from App Connections and read the source review before installing."
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect a delegated access token you obtained yourself for your own account with only the documented read scopes. An application token is expected to fail, because /me requires a delegated token."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable only the reads this account should offer to tasks."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_drive_item with a driveItem id taken from a Graph response, not from a sharing URL or an encoded sharing token, and record the returned fields."
+        },
+        {
+          "phase": "read",
+          "operation": "Run the calendar and To Do reads and record that only the first page came back and that no next link was followed."
         },
         {
           "phase": "write",
@@ -292,9 +429,84 @@
         },
         {
           "phase": "disconnect",
-          "operation": "Disconnect the account, confirm the credential is gone, then deauthorize the token from My Apps and record the revocation date."
+          "operation": "Disconnect the account, confirm the token is gone from Steed, then revoke it or let it expire according to your own tooling, and record which."
         }
       ]
+    },
+    {
+      "provider": "notion",
+      "reviewed_source": "connectors/recipes/notion.json, which pins the Notion-Version header and reads one data source",
+      "official_reference": "https://developers.notion.com/reference/query-a-data-source",
+      "tools": [
+        "query_data_source"
+      ],
+      "least_permission": "An internal integration token shared with read capability for the target data source, sent as Authorization: Bearer. The data source must be shared with the integration, or Notion answers 404.",
+      "synthetic_expectations": {
+        "identity_result": "subject from /id and label from /name, falling back to the bot owner name and then the id when the documented optional name is absent",
+        "read_result": "query_data_source returns the results array for one page, with the reviewed page_size bound of 1 to 100 and at most three pages",
+        "reviewed_create_preview": "none: the profile is read-only",
+        "uncertain_write_handling": "not applicable while no write is offered",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored integration token; the token is revoked in the Notion integration's own settings"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      },
+      "steps": [
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/notion.json and record the pinned Notion-Version 2025-09-03.",
+          "status": "executable"
+        },
+        {
+          "phase": "install",
+          "operation": "Share the target data source with the integration, and record which data source ID is used.",
+          "status": "executable"
+        },
+        {
+          "phase": "connect",
+          "operation": "Connect with the internal integration token and record the returned user id and name.",
+          "status": "executable"
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable the account for the read capability only.",
+          "status": "executable"
+        },
+        {
+          "phase": "read",
+          "operation": "Run query_data_source with a reviewed page_size and record the selected results.",
+          "status": "executable"
+        },
+        {
+          "phase": "read",
+          "operation": "Re-run with the returned start_cursor and record whether has_more was true.",
+          "status": "executable"
+        },
+        {
+          "phase": "write",
+          "operation": "Not applicable: the profile ships one read tool and no write.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "receipt",
+          "operation": "Not applicable: no object is created, so there is no receipt to confirm.",
+          "status": "not_applicable"
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect, then revoke the integration token in Notion and confirm Steed asks for reconnection.",
+          "status": "executable"
+        }
+      ],
+      "api_version_note": "The recipe pins 2025-09-03. Notion also documents 2026-03-11, where archived becomes in_trash, so a version bump needs its own review."
     },
     {
       "provider": "raindrop",
@@ -357,6 +569,80 @@
         {
           "phase": "disconnect",
           "operation": "Disconnect the account, confirm the credential is gone, then revoke the token in the app console and record the revocation date."
+        }
+      ]
+    },
+    {
+      "provider": "todoist",
+      "reviewed_source": "connectors/recipes/todoist.json",
+      "official_reference": "https://developer.todoist.com/api/v1/",
+      "tools": [
+        "read_task",
+        "read_task_detail",
+        "list_tasks",
+        "read_project",
+        "list_projects",
+        "create_task"
+      ],
+      "least_permission": "A Todoist personal API token from Settings, Integrations, Developer. It is account-wide and cannot be scoped per project, so the subset keeps its authority minimal by reading selected IDs, bounding listings to three cursor pages, and creating only reviewed Inbox tasks.",
+      "synthetic_expectations": {
+        "identity_result": "subject 1234567 from /id and label from /email, with the account's own echoed token field never leaving identity selection",
+        "read_result": "read_task returns id and content; read_task_detail also returns description; read_project returns id, name, is_shared and is_favorite; list_tasks and list_projects stop at three pages and report more_available",
+        "reviewed_create_preview": "POST /api/v1/tasks with exactly content and description, an omitted project_id so the task lands in the Inbox, and a payload_sha256 over the reviewed bytes",
+        "uncertain_write_handling": "A create that fails after dispatch is reported as uncertain and never replayed; the Inbox is checked by hand",
+        "disconnect_and_revoke": "Disconnecting in Steed removes the stored credential; the token is revoked in the same Todoist settings screen"
+      },
+      "live": {
+        "setup_and_least_permission": "",
+        "identity_result": "",
+        "read_result": "",
+        "reviewed_create_preview": "",
+        "uncertain_write_handling": "",
+        "disconnect_and_revoke": "",
+        "date": "",
+        "api_version": "",
+        "case": ""
+      },
+      "steps": [
+        {
+          "phase": "install",
+          "operation": "Install connectors/recipes/todoist.json from App Connections and read the source review before installing."
+        },
+        {
+          "phase": "connect",
+          "operation": "Create a Todoist personal API token in Settings, Integrations, Developer and paste it into the Connect step. Expect the identity request to return your account id and email."
+        },
+        {
+          "phase": "enable",
+          "operation": "Enable only the actions this account should offer to tasks. Expect no other action to appear for this account."
+        },
+        {
+          "phase": "read",
+          "operation": "Run read_task for a known task id and record the returned id and content."
+        },
+        {
+          "phase": "read",
+          "operation": "Run list_tasks and record how many pages came back and whether more_available was true."
+        },
+        {
+          "phase": "write",
+          "operation": "Create a draft with a unique title, review the exact payload and payload hash, then approve it once. Expect one POST to /api/v1/tasks with content and description only."
+        },
+        {
+          "phase": "receipt",
+          "operation": "Record the returned task id and the receipt, then read that task back. Expect the task to be in the Inbox because project_id was omitted."
+        },
+        {
+          "phase": "receipt",
+          "operation": "If the create was uncertain, open the Todoist Inbox in the service UI and record what you found. Do not resend from Steed."
+        },
+        {
+          "phase": "receipt",
+          "operation": "If the create was uncertain, open the Todoist Inbox in the service UI and record what you found. Do not resend from Steed."
+        },
+        {
+          "phase": "disconnect",
+          "operation": "Disconnect the account, confirm the stored credential is gone from Steed, then revoke the token in Todoist and record the revocation date."
         }
       ]
     },
@@ -429,71 +715,6 @@
         {
           "phase": "disconnect",
           "operation": "Disconnect both accounts if you installed the optional second copy, confirm the credentials are gone, then revoke the key on the API Keys page and record the revocation date."
-        }
-      ]
-    },
-    {
-      "provider": "microsoft365",
-      "reviewed_source": "connectors/recipes/microsoft365-read.json",
-      "official_reference": "https://learn.microsoft.com/en-us/graph/api/overview",
-      "tools": [
-        "read_drive_item",
-        "list_events_first_page",
-        "list_todo_lists_first_page"
-      ],
-      "least_permission": "A delegated Microsoft Graph access token that the user obtains with their own tooling, requesting only User.Read, Files.Read, Calendars.Read and Tasks.Read. An application token must not be used, because /me requires a delegated token.",
-      "synthetic_expectations": {
-        "identity_result": "subject from the not-nullable /id and label from /userPrincipalName, never from a mail field whose nullability is not formally documented",
-        "read_result": "read_drive_item returns id, name, webUrl, size and lastModifiedDateTime for both a file and a folder, since the file and folder facets are absent rather than null; the two collection reads return only /value from the first page and never follow @odata.nextLink",
-        "reviewed_create_preview": "none: the profile is read-only",
-        "uncertain_write_handling": "not applicable while no write is offered",
-        "disconnect_and_revoke": "Disconnecting in Steed removes the stored token immediately; the delegated token itself is revoked or expires according to the user's own tooling"
-      },
-      "live": {
-        "setup_and_least_permission": "",
-        "identity_result": "",
-        "read_result": "",
-        "reviewed_create_preview": "",
-        "uncertain_write_handling": "",
-        "disconnect_and_revoke": "",
-        "date": "",
-        "api_version": "",
-        "case": ""
-      },
-      "steps": [
-        {
-          "phase": "install",
-          "operation": "Install connectors/recipes/microsoft365-read.json from App Connections and read the source review before installing."
-        },
-        {
-          "phase": "connect",
-          "operation": "Connect a delegated access token you obtained yourself for your own account with only the documented read scopes. An application token is expected to fail, because /me requires a delegated token."
-        },
-        {
-          "phase": "enable",
-          "operation": "Enable only the reads this account should offer to tasks."
-        },
-        {
-          "phase": "read",
-          "operation": "Run read_drive_item with a driveItem id taken from a Graph response, not from a sharing URL or an encoded sharing token, and record the returned fields."
-        },
-        {
-          "phase": "read",
-          "operation": "Run the calendar and To Do reads and record that only the first page came back and that no next link was followed."
-        },
-        {
-          "phase": "write",
-          "operation": "Not applicable: this profile is read-only.",
-          "status": "not_applicable"
-        },
-        {
-          "phase": "receipt",
-          "operation": "Not applicable: this profile is read-only.",
-          "status": "not_applicable"
-        },
-        {
-          "phase": "disconnect",
-          "operation": "Disconnect the account, confirm the token is gone from Steed, then revoke it or let it expire according to your own tooling, and record which."
         }
       ]
     }

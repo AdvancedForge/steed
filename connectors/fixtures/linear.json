@@ -1,0 +1,84 @@
+{
+ "provider": "linear",
+ "status": "packaged",
+ "note": "Synthetic responses for the packaged Linear profile. Every Linear read is a POST GraphQL query, so these fixtures are the data half of the standard GraphQL envelope. Every value is synthetic, no credential appears here, and nothing has been sent to a live account.",
+ "origin": "https://api.linear.app",
+ "authentication": {
+  "type": "bearer",
+  "documented_types": "An API key or an OAuth access token, both sent as a bearer token."
+ },
+ "references": [
+  "https://linear.app/developers/graphql",
+  "https://linear.app/developers/rate-limiting"
+ ],
+ "identity": {
+  "/graphql": {
+   "data": {
+    "viewer": {
+     "id": "fixture-user-id",
+     "name": "Fixture Linear User",
+     "email": "fixture@example.test"
+    }
+   },
+   "errors": null
+  }
+ },
+ "post_routes": {
+  "/graphql": {
+   "data": {
+    "viewer": {
+     "id": "fixture-user-id",
+     "name": "Fixture Linear User",
+     "email": "fixture@example.test"
+    },
+    "team": {
+     "id": "fixture-team-id",
+     "key": "FIX",
+     "name": "Fixture Team"
+    }
+   },
+   "errors": null
+  }
+ },
+ "errors_in_body": {
+  "RATELIMITED": {
+   "status": 400,
+   "note": "Rate limiting is reported as HTTP 400 with the RATELIMITED code inside the errors array, so the status alone is not sufficient."
+  },
+  "INVALID_QUERY": {
+   "status": 200,
+   "note": "A query can fail inside the errors array while the status stays 200, which is why the recipe declares an errors contract."
+  }
+ },
+ "partial_data": {
+  "note": "A GraphQL query can partially succeed with HTTP 200, returning data while including errors for the fields that failed.",
+  "response": {
+   "data": {
+    "team": null
+   },
+   "errors": [
+    {
+     "message": "Entity not found: Team",
+     "extensions": {
+      "code": "INVALID_QUERY"
+     }
+    }
+   ]
+  }
+ },
+ "documented_limits": [
+  "Request rate per hour: 2,500 for an API key, 5,000 for an OAuth app, and 600 per IP unauthenticated.",
+  "Hourly complexity budget: 3,000,000 points for an API key, 2,000,000 for an OAuth app, and 100,000 unauthenticated.",
+  "A single query is limited to 10,000 complexity points at any time.",
+  "Default pagination returns up to 50 records."
+ ],
+ "pagination_note": "The packaged tools are deliberately unpaginated: a fixed document cannot bind a returned cursor, so team listings stay out until a reviewed paged document exists.",
+ "created": {
+  "data": {},
+  "errors": null
+ },
+ "notes": [
+  "Linear publishes no example response for the viewer query, so the fixture mirrors the documented selection set inside the standard GraphQL envelope.",
+  "No field nullability is documented for the viewer object, so the label pointer is reviewed rather than declared safe."
+ ]
+}
