@@ -393,6 +393,21 @@ class BrowserWindow(QMainWindow):
         task_action = QAction("Task Permissions...", self)
         task_action.triggered.connect(self._open_tasks)
         agents_menu.addAction(task_action)
+        self.auto_approval_action = QAction(
+            "YOLO mode: auto-approve agent requests (unsafe)", self
+        )
+        self.auto_approval_action.setCheckable(True)
+        self.auto_approval_action.toggled.connect(self._toggle_auto_approval)
+        agents_menu.addAction(self.auto_approval_action)
+        self.auto_approval_notice = QLabel(
+            "YOLO mode: agent requests auto-approved", self
+        )
+        self.auto_approval_notice.setStyleSheet("color:#cc5500;font-weight:bold;")
+        if self.profile_manager.registry._tasks is not None:
+            self.profile_manager.registry._tasks.changed.connect(
+                self._refresh_auto_approval
+            )
+        self._refresh_auto_approval()
         site_action = QAction("Website Permissions...", self)
         site_action.triggered.connect(
             lambda: SitePermissionsDialog(
@@ -615,6 +630,7 @@ class BrowserWindow(QMainWindow):
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
+        self.status_bar.addPermanentWidget(self.auto_approval_notice)
         # Permission and download signals are connected per tab in _new_tab
 
     def apply_dark_mode(self):
@@ -915,6 +931,44 @@ class BrowserWindow(QMainWindow):
             self.agent_sidebar.setVisible(visible)
             if visible:
                 self.agent_sidebar.raise_()
+
+    def _refresh_auto_approval(self):
+        service = self.profile_manager.registry._tasks
+        enabled = bool(service and service.auto_approve_requests)
+        self.auto_approval_action.blockSignals(True)
+        self.auto_approval_action.setChecked(enabled)
+        self.auto_approval_action.blockSignals(False)
+        self.auto_approval_notice.setVisible(enabled)
+
+    def _toggle_auto_approval(self, enabled):
+        if (
+            enabled
+            and QMessageBox.warning(
+                self,
+                "Enable unsafe agent auto-approval?",
+                "YOLO mode automatically approves Steed requests from every connected agent, "
+                "across profiles, for this browser run. Agents can take control of tabs, "
+                "send or change account data, run generated packages and apply page/layout changes "
+                "without another approval. This may be unsafe: websites and agent output can "
+                "contain malicious instructions.\n\nOnly enable this for agents you trust. "
+                "You can turn it off in Agents; Take Back and Cancel still work. It does not "
+                "connect accounts, enable library folders, bypass validation or replay uncertain effects.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            self._refresh_auto_approval()
+            return
+        try:
+            self.profile_manager.registry.tasks.set_auto_approval(enabled)
+        except (RuntimeError, ValueError, sqlite3.Error, OSError):
+            QMessageBox.warning(
+                self,
+                "Agent approvals",
+                "The permission mode could not be changed; check Task Permissions and journal status.",
+            )
+        self._refresh_auto_approval()
 
     def _open_agent_tab(self):
         if self.agent_tab in self.tabs:

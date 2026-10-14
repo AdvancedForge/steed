@@ -116,9 +116,10 @@ def navigation_url(url: str) -> QUrl:
 class TaskPage(QWebEnginePage):
     """Suppress dialogs, uploads, and unsupported main-document schemes."""
 
-    def __init__(self, profile, parent, grant, blocked):
+    def __init__(self, profile, parent, grant, blocked, *, live=False):
         super().__init__(profile, parent)
         self.grant = grant
+        self.live = live
         self.report_blocked = blocked
         self.is_task_page = True
         self.network_ready = True
@@ -127,9 +128,19 @@ class TaskPage(QWebEnginePage):
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
         if not self.network_ready and url.toString() != "about:blank":
             return False
+        if self.live and not is_main_frame:
+            # Embedded sites are normal background activity in live browsing.
+            # DOM reads still independently check each frame's origin.
+            return url.scheme() in (
+                "http",
+                "https",
+                "blob",
+                "data",
+            ) or url.toString() in ("about:blank", "about:srcdoc")
         reason = self.grant.navigation(url.toString())
         if (
             not reason
+            and not self.live
             and navigation_type == self.NavigationType.NavigationTypeFormSubmitted
         ):
             reason = self.submission.navigation(url.toString(), is_main_frame)
@@ -214,13 +225,15 @@ class QtSession:
     connections: list = field(default_factory=list)
     shield: QObject | None = None
     focus_policy: Qt.FocusPolicy | None = None
+    mode: str = "restricted"
+    computer_capture: dict | None = None
 
 
 class QtBrowserBackend(QObject):
     changed = pyqtSignal(object)
     blocked = pyqtSignal(str, str)
 
-    def __init__(self, parent=None, *, profile_provider=None):
+    def __init__(self, parent=None, *, profile_provider=None, browser_config=None):
         super().__init__(parent)
         app = QApplication.instance()
         if app is None or QThread.currentThread() != app.thread():
@@ -230,6 +243,7 @@ class QtBrowserBackend(QObject):
         self.inspector = PageInspector(self)
         self._closed = False
         self.profile_provider = profile_provider
+        self.browser_config = browser_config
         self.navigation_timeout_ms = 15000
         self.input_timeout_ms = 10000
 
@@ -245,16 +259,31 @@ class QtBrowserBackend(QObject):
         require_owner_thread(self)
         return qt_engine_capabilities()
 
-    def open_session(self, task_id, *, grant, profile="private"):
+    def open_session(self, task_id, *, grant, profile="private", mode="restricted"):
         require_owner_thread(self)
         if self._closed:
             raise RuntimeError("Browser backend is closed")
         grant.check("open", profile=profile)
+        if mode not in ("restricted", "live"):
+            raise ValueError("Use restricted or live browsing mode")
+        if mode == "live":
+            grant.check("live", profile=profile)
+            grant.check("read")
         session_id = uuid4().hex
         owns_profile = profile == "private"
         if owns_profile:
             profile = QWebEngineProfile(self)
             profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+            if mode == "live":
+                from webengine import configure_web_settings
+
+                configure_web_settings(profile.settings())
+                if self.browser_config is not None:
+                    override = self.browser_config.get(
+                        "user_agent_override", ""
+                    ).strip()
+                    if override:
+                        profile.setHttpUserAgent(override)
         elif self.profile_provider is not None:
             profile = self.profile_provider(task_id, profile)
         else:
@@ -263,8 +292,8 @@ class QtBrowserBackend(QObject):
         def report(reason):
             self.blocked.emit(task_id, reason)
 
-        page = TaskPage(profile, self, grant, report)
-        if owns_profile:
+        page = TaskPage(profile, self, grant, report, live=mode == "live")
+        if owns_profile and mode == "restricted":
             interceptor = TaskRequestInterceptor(
                 grant, report, profile, submission=page.submission
             )
@@ -273,7 +302,7 @@ class QtBrowserBackend(QObject):
             profile.downloadRequested.connect(
                 lambda request: page.task_download_handler(request)
             )
-        if not owns_profile:
+        if not owns_profile and mode == "restricted":
             interceptor = TaskRequestInterceptor(
                 grant, report, page, submission=page.submission
             )
@@ -297,12 +326,20 @@ class QtBrowserBackend(QObject):
         ):
             settings.setAttribute(attribute, False)
 
+        if mode == "live":
+            settings.setAttribute(
+                QWebEngineSettings.WebAttribute.JavascriptEnabled, True
+            )
+        if owns_profile and mode == "live":
+            profile.downloadRequested.connect(
+                lambda request: page.task_download_handler(request)
+            )
         page.setAudioMuted(True)
         page.fullScreenRequested.connect(lambda request: request.reject())
         page.registerProtocolHandlerRequested.connect(lambda request: request.reject())
         page.selectClientCertificate.connect(lambda selection: selection.selectNone())
         PermissionService.deny_page(page, lambda: self._closed)
-        session = QtSession(task_id, profile, page, grant, owns_profile)
+        session = QtSession(task_id, profile, page, grant, owns_profile, mode=mode)
         self._sessions[session_id] = session
         page.task_download_handler = lambda request: self._download_requested(
             session_id, request
@@ -312,7 +349,7 @@ class QtBrowserBackend(QObject):
         page.urlChanged.connect(lambda url: self._url_changed(session_id))
         page.titleChanged.connect(lambda title: self._updated(session_id))
         page.renderProcessTerminated.connect(lambda *_: self._terminated(session_id))
-        if not owns_profile:
+        if not owns_profile and mode == "restricted":
             page.setUrl(QUrl("about:blank"))
             session.network = TaskNetwork(page, self)
         return self.inspect(session_id)
@@ -338,6 +375,7 @@ class QtBrowserBackend(QObject):
         session_id = uuid4().hex
         session = QtSession(task_id, page.profile(), page, grant, False)
         session.borrowed_view = view
+        session.mode = "live"
         session.focus_policy = view.focusPolicy()
         session.shield = InputShield(view)
         view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -415,7 +453,7 @@ class QtBrowserBackend(QObject):
             session.revision,
             session.load_success,
             session.control_owner,
-            "live" if session.borrowed_view is not None else "restricted",
+            session.mode,
         )
 
     def navigate(self, session_id, url):
@@ -622,7 +660,7 @@ class QtBrowserBackend(QObject):
             if session.page.devToolsPage() is not None:
                 raise PageInspectionError("native_frontend_in_use")
             session.network = TaskNetwork(
-                session.page, self, live=session.borrowed_view is not None
+                session.page, self, live=session.mode == "live"
             )
         revision = session.revision
 
@@ -641,14 +679,128 @@ class QtBrowserBackend(QObject):
             try:
                 data = source.result()
                 validate()
+                capture_id = uuid4().hex
+                session.computer_capture = {
+                    "capture_id": capture_id,
+                    "revision": revision,
+                    "created": time.monotonic(),
+                    **{
+                        k: data[k]
+                        for k in (
+                            "width",
+                            "height",
+                            "css_width",
+                            "css_height",
+                            "viewport",
+                        )
+                    },
+                }
                 response.set_result(
-                    {"session_id": session_id, "revision": revision, **data}
+                    {
+                        "session_id": session_id,
+                        "revision": revision,
+                        "capture_id": capture_id,
+                        **data,
+                    }
                 )
             except Exception as error:
                 response.set_exception(error)
 
         result.add_done_callback(completed)
         return response
+
+    def computer(self, session_id, action_id, capture_id, operation, values):
+        from services.computer_input import KEYS, SCRIPT, arguments
+
+        values = arguments(operation, values)
+        session, validate_read = self._edit_context(session_id, "computer")
+        session.grant.check("visual")
+        session.grant.check("live")
+        if session.mode != "live":
+            raise PageInspectionError("live_session_required")
+        capture = session.computer_capture
+        if (
+            not capture
+            or capture["capture_id"] != capture_id
+            or capture["revision"] != session.revision
+            or time.monotonic() - capture["created"] > 60
+            or not isinstance(capture["viewport"], dict)
+        ):
+            raise PageInspectionError("stale_capture")
+        if operation == "click" and (
+            values["x"] >= capture["width"] or values["y"] >= capture["height"]
+        ):
+            raise PageInspectionError("invalid_coordinates")
+        view = session.borrowed_view or next(
+            (v for v in session.views if not sip.isdeleted(v)), None
+        )
+        if view is None or not view.isVisible():
+            raise PageInspectionError("visible_view_required")
+        session.computer_capture = None  # One dispatch per screenshot; never replay.
+        network = session.network
+        if network is None:
+            raise PageInspectionError("capture_required")
+        result = Future()
+        session.pending_action = result
+
+        def validate_after():
+            current = self._session(session_id)
+            for action in ("computer", "read", "visual", "live"):
+                current.grant.check(action, url=current.page.url().toString())
+            if current.control_owner != "agent":
+                raise PageInspectionError("user_control_active")
+            if sip.isdeleted(view) or not view.isVisible():
+                raise PageInspectionError("visible_view_required")
+
+        def ready(source):
+            if result.done():
+                return
+            try:
+                source.result()
+                validate_read()
+                validate_after()
+                request = {
+                    "operation": operation,
+                    "values": values,
+                    "viewport": capture["viewport"],
+                    "css_width": capture["css_width"],
+                    "css_height": capture["css_height"],
+                    "image_width": capture["width"],
+                    "image_height": capture["height"],
+                }
+                if operation == "key":
+                    request["key"] = KEYS[values["key"]]
+                dispatched = network.input._run(SCRIPT, request, validate_after)
+                dispatched.add_done_callback(completed)
+            except Exception as error:
+                result.set_exception(error)
+
+        def completed(source):
+            if result.done():
+                return
+            try:
+                source.result()
+                validate_after()
+                self.inspector.invalidate(session_id)
+                result.set_result(
+                    {
+                        "session_id": session_id,
+                        "action_id": action_id,
+                        "operation": operation,
+                        "status": "dispatched",
+                        "revision": session.revision,
+                    }
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def cleanup(_):
+            if session.pending_action is result:
+                session.pending_action = None
+
+        result.add_done_callback(cleanup)
+        network.ready.add_done_callback(ready)
+        return result
 
     def inspect_target(self, session_id, snapshot_id, target_id):
         session, validate = self._read_context(session_id)
@@ -672,7 +824,7 @@ class QtBrowserBackend(QObject):
     def act(self, session_id, action_id, snapshot_id, target_id, arguments):
         arguments = action_arguments(**arguments)
         session, validate = self._edit_context(session_id, "edit")
-        if session.borrowed_view is not None and arguments["operation"] == "activate":
+        if session.mode == "live" and arguments["operation"] == "activate":
             _, descriptor = self.inspector._target_reference(
                 session_id, snapshot_id, target_id
             )
@@ -768,7 +920,7 @@ class QtBrowserBackend(QObject):
         )
         if session.network is None:
             session.network = TaskNetwork(
-                session.page, self, live=session.borrowed_view is not None
+                session.page, self, live=session.mode == "live"
             )
         network = session.network
         result = Future()
@@ -962,7 +1114,9 @@ class QtBrowserBackend(QObject):
             session_id, snapshot_id, target_id, {"operation": "upload"}
         )
         if session.network is None:
-            session.network = TaskNetwork(session.page, self)
+            session.network = TaskNetwork(
+                session.page, self, live=session.mode == "live"
+            )
         result = Future()
         copy = UploadCopy(
             source,
@@ -1098,7 +1252,7 @@ class QtBrowserBackend(QObject):
     def submit_form(self, session_id, action_id, snapshot_id, target_id):
         """Authorize one native submission and observe its document load."""
         session, validate_edit = self._edit_context(session_id, "submit")
-        if session.borrowed_view is not None:
+        if session.mode == "live":
             return self._submit_live(
                 session_id, action_id, snapshot_id, target_id, validate_edit
             )
@@ -1523,6 +1677,10 @@ class QtBrowserBackend(QObject):
         self.inspector.invalidate(session_id, "control_changed")
         session.revision += 1
         session.control_owner = owner
+        if session.mode == "live":
+            for view in session.views:
+                if not sip.isdeleted(view):
+                    view.input_shield.setEnabled(owner == "agent")
         return self.inspect(session_id)
 
     def close_session(self, session_id):

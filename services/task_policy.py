@@ -31,6 +31,7 @@ SUPPORTED_ACTIONS = frozenset(
         "app",
         "live",
         "visual",
+        "computer",
     }
 )
 
@@ -145,6 +146,15 @@ class TaskScope:
 
     @classmethod
     def parse(cls, values):
+        from services.agent_errors import scope_error
+
+        try:
+            return cls._parse(values)
+        except ValueError as error:
+            raise scope_error(error) from None
+
+    @classmethod
+    def _parse(cls, values):
         if not isinstance(values, dict):
             raise ValueError("Provide a task scope object")
         unknown = set(values) - set(cls.__dataclass_fields__)
@@ -161,12 +171,27 @@ class TaskScope:
             or not set(actions) <= SUPPORTED_ACTIONS
         ):
             raise ValueError("Unsupported task action")
+        if "computer" in actions:
+            # These are dependencies of screenshot-guided browser input, all
+            # visible in the normalized approval instead of separate prompts.
+            actions = sorted(
+                set(actions)
+                | {"read", "visual", "live", "navigate", "inspect", "attach"}
+            )
         profile = values.get("profile", "private")
         if profile != "private":
             task_profile_name(profile)
-        if "live" in actions and profile == "private":
-            raise ValueError("Live delegation requires an existing named profile")
-        private = values.get("allow_private_network", False)
+
+        def named(origin):
+            try:
+                ipaddress.ip_address(urlsplit(origin).hostname)
+                return False
+            except ValueError:
+                return True
+
+        # Named sites need DNS permission in this engine. Include it in the
+        # reviewed request by default, rather than rejecting ordinary websites.
+        private = values.get("allow_private_network", any(named(o) for o in origins))
         if not isinstance(private, bool):
             raise ValueError("Network permission must be a boolean")
         for origin in origins:

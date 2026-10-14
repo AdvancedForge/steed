@@ -296,6 +296,30 @@ class AppReviewTests(unittest.TestCase):
             self.service.app_reviews.get(client.task_id, "change").status, "pending"
         )
 
+    def test_explicit_yolo_mode_approves_reviewed_write_once_without_a_popup(self):
+        self.service.set_auto_approval(True)
+        client, _ = self.proposal()
+        window = QWidget()
+        registry = QObject()
+        owner = QObject(window)
+        registry.owners = [owner]
+        queue = TaskApprovalQueue(registry, self.service)
+        try:
+            self.wait(
+                lambda: (
+                    self.service.connector_store.get(client.task_id, "change").state
+                    == "succeeded"
+                )
+            )
+            self.assertEqual(len(self.http.replacement_writes), 1)
+            self.assertIsNone(queue.dialog)
+            queue.refresh()
+            self.app.processEvents()
+            self.assertEqual(len(self.http.replacement_writes), 1)
+        finally:
+            sip.delete(registry)
+            sip.delete(window)
+
     def test_automatic_queue_presents_review_and_never_autoapproves_content(self):
         client, _ = self.proposal()
         window = QWidget()

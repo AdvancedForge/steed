@@ -257,7 +257,7 @@ class PageProposalTests(unittest.TestCase):
                 restarted.start_pages.get(task.task_id, "pending").state, "interrupted"
             )
             self.assertEqual(
-                restarted.store._db.execute("PRAGMA user_version").fetchone()[0], 20
+                restarted.store._db.execute("PRAGMA user_version").fetchone()[0], 21
             )
         finally:
             restarted.close()

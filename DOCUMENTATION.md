@@ -190,7 +190,7 @@ the default. Every edit requires Apply; request IDs pin exact bytes and identica
 retries return the original receipt. Changed pages/profile identities invalidate
 a preview. Applied pages survive task completion; pending proposals are cancelled
 or interrupted rather than replayed. Deferred reviews remain in **Task Permissions
-→ Start Pages**. Database schema 20 migrates existing journals in place.
+→ Start Pages**. Database schema 21 migrates existing journals in place.
 
 Steed registers a host-based local URL scheme before application startup, following
 the [Qt URL-scheme documentation](https://doc.qt.io/qt-6/qwebengineurlscheme.html).
@@ -2699,9 +2699,9 @@ interception before page interception; see the
 
 ### Grant enforcement and persistence
 
-`allow_private_network=false` permits public literal IP addresses only. Private
-addresses and all DNS hostnames require `true`, explicitly disclosed in the
-approval dialog. The [Qt request-info API](https://doc.qt.io/qt-6.11/qwebengineurlrequestinfo.html)
+`allow_private_network=false` permits public literal IP addresses only. Private literal addresses require explicit `true`. DNS hostnames infer `true`
+when the flag is omitted; this is disclosed in the approval dialog. Explicit
+`false` remains enforced. The [Qt request-info API](https://doc.qt.io/qt-6.11/qwebengineurlrequestinfo.html)
 provides URLs but no resolved peer address; Steed therefore treats a DNS name's
 network route as unverified. Allowing this flag still restricts requests to the
 listed origins; it does not add other sites or ports. There is no DNS pinning,
@@ -2712,8 +2712,9 @@ commits. Command checks happen at dispatch, and a profile or task-page
 [Qt request interceptor](https://doc.qt.io/qt-6.11/qwebengineurlrequestinterceptor.html)
 also checks page requests and request budgets. It uses live policy without
 calling engine objects or SQLite from its callback. Denials record reason codes;
-denied URL queries are excluded from those events. Broader access requires a new
-task/request and user approval. Stop, close, and terminal task transitions remain
+denied URL queries are excluded from those events. Broader access requires a new reviewed request. An approved replacement ends
+prior authority and closes prior task pages; repeating an unchanged request is
+idempotent. Stop, close, and terminal task transitions remain
 available for cleanup without spending operation budget.
 
 Revocation, expiry, and exhausted budgets cancel the task and dispose its pages.
@@ -2921,6 +2922,99 @@ engine migration would require its own compatibility and maintenance proposal.
 
 ## Local agent access (MCP)
 
+### Daily browser access and permission diagnostics
+
+Restart Steed and start a new agent conversation after updating the tool catalogue.
+This applies to native Codex and other MCP clients. Steed now exposes 85 tools.
+
+Ordinary DNS names no longer need an extra flag just to request access. Omitting
+`allow_private_network` with named origins includes that permission in the review;
+the popup still explains that DNS can resolve to private addresses. Explicit
+`false` remains enforced, and private literal IP addresses still need explicit
+`true`. Origins remain exact, without paths, credentials or wildcards. Connector
+HTTP/DNS protections are unchanged.
+
+Grant errors report stable codes, maintained explanations and a field when known,
+such as `invalid_scope` / `origins` or `invalid_app_scope` /
+`connector_permissions`. They never echo arbitrary exceptions, submitted secrets
+or storage paths. Exact repeated requests return the existing pending/approved
+grant. A different scope can request replacement while the old grant remains
+usable; approval atomically ends the old grant and closes its task sessions.
+Reopen/adopt pages after replacement. A different pending request must finish
+before another can be queued. The task database migrates to schema 21.
+
+For an isolated, interactive website, a minimal screenshot-control request is:
+
+```json
+{
+  "scope": {
+    "profile": "private",
+    "origins": ["https://example.com"],
+    "actions": ["computer"]
+  }
+}
+```
+
+Send this to `steed_grant_request`, then poll `steed_grant_list`. `computer`
+includes its required `read`, `visual`, `live`, `navigate`, `inspect` and `attach`
+permissions in the same visible review. Open `steed_session_open` with
+`profile="private"`, navigate and wait for readiness, then use
+`steed_session_watch`. A live grant makes omitted session mode default to `live`;
+explicit `mode="restricted"` retains script-disabled retrieval. Without `live`,
+the default remains restricted. New private sessions use separate off-the-record
+storage, with normal website JavaScript/background traffic in live mode. They do
+not access the user's incognito tabs. In Watch, Take control pauses the agent and
+allows direct interaction with a private live page; Return control resumes it.
+
+To take over the user's current tab, call `steed_browser_request_control` with a
+stable `request_id` and `selection="current_tab"` (or `profile_tabs`, up to ten
+website tabs). One popup shows the task, profile, selected tabs and sites. Poll
+`steed_browser_control_status`, then use `steed_browser_tabs` and
+`steed_session_adopt` after approval. The selected profile/sites are pinned;
+changed previews become `stale`. Take Back returns tabs immediately. Status becomes
+`returned` after all selected tabs are returned, and repeating an old request ID
+never retakes them. The sidebar's **Give agent tab control…** remains available.
+
+When DOM actions are missing, inspection includes guidance distinguishing a
+restricted page from custom/canvas controls. `steed_page_capture` returns an image
+and `capture_id`; `steed_page_click` takes that ID plus `x`/`y` pixels measured
+from the returned image's top-left corner. `steed_page_type` enters literal text
+into the focused website control; `steed_page_key` supports a maintained key enum
+including Enter, Tab, Escape, arrows, PageUp/Down and SelectAll. Each image ID is
+usable once, expires after 60 seconds and is checked against navigation, scrolling
+and viewport geometry. Capture again after each action. These controls operate
+inside the website, including visible embedded content, and can submit data or
+change accounts. They do not target desktop applications or browser chrome.
+Native input uses the [Chromium Input protocol](https://chromedevtools.github.io/devtools-protocol/tot/Input/)
+through Steed's existing private frontend; no debug listener or caller scripts are
+exposed. A dispatched action is not proof of website success. Inspect its result;
+timeouts may leave an uncertain outcome and must never trigger automatic replay.
+
+### Unsafe automatic agent approval (YOLO mode)
+
+Enable **Agents → YOLO mode: auto-approve agent requests (unsafe)** and explicitly
+confirm the warning. This affects every connected agent and profile for the
+current browser run. The status bar and sidebar mark the mode; it is off again
+after restarting Steed. Agents cannot enable it through MCP. Disable it from the
+same menu without another confirmation.
+
+While enabled, Steed automatically resolves permission grants, tab takeover,
+generated-worker execution, connector recipe installation, account payload
+reviews and panel/layout/start-page proposals. Account writes and sends can occur
+without payload review. This can be unsafe, especially with untrusted agents or
+website instructions. Take Back ends the current handoff, but a new request can
+be auto-approved while YOLO remains enabled; turn it off or cancel the task to
+prevent that. Existing grants remain explicit and revocable in Task Permissions.
+
+YOLO changes approval, not supported operations or validation. Account sign-in,
+enabled library folders, exact destinations, ownership, sandbox/resource limits
+and no-replay rules still apply. Website device permissions keep their separate
+profile rules; external agents keep their own host permissions and tools. It never silently selects archived private task
+data: an unspecified recovery source picker is declined, so choose historical
+material with normal review before enabling the mode. Native file pickers/new
+windows remain limited on task-owned pages; external agents retain their own tools
+for work outside Steed. The read-only HTML data bridge stays deferred.
+
 The optional `agent_mcp.py` adapter exposes the existing task operations over
 stdio or loopback Streamable HTTP using the
 [official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
@@ -2972,8 +3066,9 @@ process. Local access is off when the browser starts.
    }
    ```
 
-   DNS hostnames currently require explicit private-network permission because
-   the Qt filter cannot pin their resolved routes. The named profile must exist.
+   Hostname network permission is included in the review when its flag is omitted;
+   explicit false remains enforced because Qt cannot pin DNS routes. The named
+   profile must exist. Use private for a new isolated session.
 5. Read the nonmodal approval popup and choose **Approve** or **Deny**. The client
    polls `steed_grant_list` for the decision, then opens a session with the exact
    approved profile. You can keep browsing on that same profile.
@@ -3011,7 +3106,7 @@ A new sidebar shows a short welcome with **New Codex chat** and **Connect anothe
 agent…**. It hides the empty transcript, inactive task controls and the model/
 file/receipt administration until needed. Starting or choosing a conversation
 shows the transcript, message box, **Send**, **Cancel task** and, for connected
-agents, **Share browser tabs…**. Existing conversations appear in the picker.
+agents, **Give agent tab control…**. Existing conversations appear in the picker.
 
 **More options** is collapsed initially. It contains model selection for a new
 chat, connection settings, the persistent file library, sidebar/tab presentation,
@@ -3125,7 +3220,7 @@ library** or connect the service in **App Connections**; discovery itself does
 not connect accounts or expose disabled folders. Enabled library folders already
 permit file access without repeated task grants.
 
-`steed_browser_tabs` has a different requirement: use **Share browser tabs…** and
+`steed_browser_tabs` has a different requirement: use **Give agent tab control…** and
 approve live/read access first. Rejection of that call does not disable library,
 connector or capability discovery. Other browser/connector access uses
 `steed_grant_request` with the exact scope, then `steed_grant_list` to check approval.
@@ -3204,9 +3299,8 @@ fields and forms. Bounded open-root text/control-name reads improve component
 coverage; closed roots, shadow-control actions and exact slot ordering remain
 limited. Snapshot limitations report canvas content, form values/editable text, inaccessible frames,
 out-of-scope frame origins and truncation. Images, PDFs, video/audio, visual
-layout, custom widgets and unloaded/virtualized content can be missed. Current
-task pages disable website JavaScript; modern apps may therefore be incomplete
-or unusable even when an ordinary user tab works. Agents should inspect the
+layout, custom widgets and unloaded/virtualized content can be missed. Restricted task pages disable website JavaScript and can miss modern app content;
+live task sessions and explicitly shared user tabs run normal website scripts. Agents should inspect the
 capability report and snapshot limitations rather than claim a complete view.
 
 Existing-profile permission shares cookies/login state with ordinary browsing and
@@ -3216,7 +3310,7 @@ preserves that task page.
 #### Delegate normal live tabs
 
 1. Open the agent sidebar and select a connected task.
-2. Click **Share browser tabs…**. Choose the current tab or all currently open
+2. Click **Give agent tab control…**. Choose the current tab or all currently open
    tabs on this named profile, across its windows (maximum ten).
 3. Review the popup's profile, sites, selected tabs and actions, then approve.
    Existing task authority is replaced by a fresh reviewed scope; prior task
@@ -3244,15 +3338,17 @@ scripts can send requests or change account data following interaction. Their
 background requests are not filtered or counted against restricted-page network
 budgets. Native button activation and form dispatch report `dispatched`, not
 confirmed website success; observe the result and never retry uncertain effects.
-Password/file forms, custom widgets and live upload/download automation remain
-unsupported; use restricted task transfers or explicitly shared files instead.
+DOM actions on password/file forms and custom widgets, plus borrowed-tab
+upload/download automation, remain limited. Separately approved computer input
+can operate visible password/custom controls; use restricted task transfers or explicitly shared files instead.
 Normal user download/permission dialogs keep their ordinary browser behavior.
 
 Live targets are revalidated individually against their node, markup, labels,
 base URI and ancestor attributes, so unrelated DOM updates do not invalidate
 all controls. Replaced or changed controls still require a fresh inspection.
-Restricted pages retain their whole-document staleness checks. Control references
-remain opaque and no arbitrary script, selector or coordinate tool is exposed.
+Restricted pages retain their whole-document staleness checks. Control references remain opaque. Separate screenshot-guided computer permission
+adds native click/type/key tools; arbitrary caller scripts and selectors remain
+unavailable.
 
 #### Website observation coverage
 
@@ -3268,8 +3364,8 @@ restricted-page permissions do not silently expand. The sidebar's live delegatio
 popup explicitly includes visual permission. The bounded JPEG is at most
 1280×960 pixels and 256,000 bytes; metadata reports clipping and viewport-only
 coverage. The native frontend preserves the original viewport, scroll, scripts
-and normal service-worker behavior. It opens no debugging listener. Image pixels
-are untrusted site content and do not confer click/selector authority.
+and normal service-worker behavior. It opens no debugging listener. Image pixels are untrusted site content. They confer no input authority without
+separate computer/live approval; each computer operation needs a fresh capture ID.
 
 `page.inspect` provides bounded rendered DOM text and native controls, with flags
 for truncation, inaccessible/out-of-scope frames, observed open shadow roots,
@@ -3795,6 +3891,21 @@ It saves `/tmp/steed-google-document-receipts.png` and
 establish real account, consent, certificate or desktop-keyring acceptance.
 
 ## Verification record
+
+### Daily agent reliability — October 13, 2026
+
+The final full suite passes **1,405 tests in 454.935 seconds**; 46 final sidebar,
+permission/takeover/watch checks pass in 17.583 seconds. Both independent SDK/raw
+MCP clients pass stdio and authenticated HTTP with private screenshot click/type/key,
+reviewed live takeover/return, connector recipes/documents and retained account
+panels. Both installed Codex runtime paths pass with synthetic local responses;
+startup/render/shutdown and light/dark previews pass. Ruff (247 files), dependencies,
+whitespace, all 85 client routes and panel/recipe examples pass. User data, real
+accounts and external model calls were not used. Desktop/live-provider acceptance
+remains manual. See ROADMAP for logs and the separately recorded offscreen Qt
+profile-startup crash; one transport retry reproduced it before task setup, then
+subsequent transport/native/startup checks passed. No production crash fix is claimed.
+
 
 Codex sidebar integration (October 3, 2026): the deterministic provider suite
 exercises real child processes, Qt IPC and synthetic Steed tasks without models
@@ -4748,7 +4859,7 @@ approval, while the dock labels the current profile. Other profiles and private
 browsing do not display these panels. Profile switches erase the previous native
 content immediately. Multiple windows on the same profile receive committed
 updates without rebuilding unchanged text selections. Panel templates, bindings
-and receipts live in the task database (schema 20); personal draft bodies remain
+and receipts live in the task database (schema 21); personal draft bodies remain
 in owned artifacts/sealed workspace files, not global appearance preferences, named layouts or layout
 exports. Browser text sizing also applies to the dock.
 Profile changes clear image pixels and widget source records as well as text and

@@ -150,6 +150,11 @@ class ProfileRegistry(QObject):
             self.app_connections.task_service = self._tasks
             self.task_approvals = TaskApprovalQueue(self, self._tasks)
             self._tasks.failed.connect(lambda _: self.set_agent_access(False))
+            for owner in self.owners:
+                window = owner.parent()
+                if window is not None and hasattr(window, "auto_approval_action"):
+                    self._tasks.changed.connect(window._refresh_auto_approval)
+                    window._refresh_auto_approval()
         return self._tasks
 
     @property

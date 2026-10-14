@@ -27,6 +27,10 @@ class EngineCapabilities:
     live_tab_delegation: bool = True
     live_website_scripts: bool = True
     live_network_policy: str = "normal_browser_background_traffic"
+    permission_mode: str = "review"
+    computer_use: tuple[str, ...] = ("page.click", "page.type", "page.key")
+    private_live_sessions: bool = True
+    session_modes: tuple[str, ...] = ("restricted", "live")
     observation_sources: tuple[str, ...] = ("rendered_dom", "native_viewport")
 
 

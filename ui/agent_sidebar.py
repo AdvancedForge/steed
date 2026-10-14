@@ -150,7 +150,7 @@ class AgentSidebar(QDockWidget):
         self.cancel.clicked.connect(self.cancel_task)
         send_controls.addWidget(self.cancel)
         chat_layout.addLayout(send_controls)
-        self.delegate = QPushButton("Share browser tabs…")
+        self.delegate = QPushButton("Give agent tab control…")
         self.delegate.clicked.connect(self.delegate_tabs)
         chat_layout.addWidget(self.delegate)
         layout.addWidget(self.conversation, 1)
@@ -378,6 +378,8 @@ class AgentSidebar(QDockWidget):
         ):
             title = "Codex chat stopped"
             hint = self.providers.status(self._task_id)
+        if self.service.auto_approve_requests:
+            hint = "YOLO mode: Steed requests are automatically approved.\n" + hint
         self.activity_title.setText(title)
         self.activity_hint.setText(hint)
         self.busy.setVisible(
@@ -405,6 +407,13 @@ class AgentSidebar(QDockWidget):
             "2. Add Steed to your agent and ask it to start a task.\n"
             "3. Choose its conversation and send a message."
         )
+        if self.service.auto_approve_requests:
+            self.welcome.setText(
+                "YOLO mode: Steed automatically approves agent requests.\n\n"
+                + self.welcome.text()
+                .replace("Browser access is shared only when you approve it.", "")
+                .rstrip()
+            )
         self.start_controls.setVisible(available)
         self.setup.setVisible(not usable)
         self.connection_settings.setVisible(usable)
@@ -690,7 +699,7 @@ class AgentSidebar(QDockWidget):
             return
         choice, accepted = QInputDialog.getItem(
             self,
-            "Share live tabs with this agent",
+            "Give this agent live tab control",
             "Tabs to delegate:",
             ["Current tab", "All open website tabs on this profile (up to 10)"],
             0,

@@ -645,6 +645,82 @@ store_file('report.png',out.getvalue(),'image/png')
             assert b"<v>42</v>" in archive.read("xl/worksheets/sheet1.xml")
 
 
+async def computer_workflow(call, origin, shared, label):
+    task = await call("task.start", objective=label + " screenshot browser controls")
+    shared[label + "_computer_task"] = task["task_id"]
+    scope = {
+        "origins": [origin],
+        "allow_private_network": True,
+        "actions": ["computer"],
+        "max_operations": 100,
+    }
+    grant = await call("grant.request", scope=scope)
+    assert (await call("grant.request", scope=scope))["grant_id"] == grant["grant_id"]
+    deadline = time.monotonic() + 10
+    while not any(g["status"] == "approved" for g in await call("grant.list")):
+        assert time.monotonic() < deadline, "Computer approval fixture timed out"
+        await asyncio.sleep(0.02)
+    opened = await call("session.open", profile="private")
+    assert opened["mode"] == "live"
+    session = opened["session_id"]
+    await call("session.navigate", session_id=session, url=origin + "/mcp-computer")
+    await call("page.wait", session_id=session)
+    await call("session.watch", session_id=session)
+    before = await call("page.inspect", session_id=session)
+    assert before["source"] == "rendered_dom"
+    image = await call("page.capture", session_id=session)
+    clicked = await call(
+        "page.click", session_id=session, capture_id=image["capture_id"], x=50, y=40
+    )
+    assert clicked["status"] == "dispatched"
+    after = await call("page.inspect", session_id=session)
+    assert "Clicked 1" in after["frames"][0]["text"]
+    image = await call("page.capture", session_id=session)
+    await call(
+        "page.click", session_id=session, capture_id=image["capture_id"], x=40, y=140
+    )
+    image = await call("page.capture", session_id=session)
+    await call(
+        "page.type",
+        session_id=session,
+        capture_id=image["capture_id"],
+        text="SYNTHETIC_COMPUTER_PRIVATE",
+    )
+    image = await call("page.capture", session_id=session)
+    await call(
+        "page.key", session_id=session, capture_id=image["capture_id"], key="SelectAll"
+    )
+    image = await call("page.capture", session_id=session)
+    await call(
+        "page.key", session_id=session, capture_id=image["capture_id"], key="Backspace"
+    )
+    assert "SYNTHETIC_COMPUTER_PRIVATE" not in json.dumps(await call("task.events"))
+    await call("task.finish")
+    shared[label + "_private_computer_input"] = True
+    task = await call("task.start", objective=label + " explicit user-tab takeover")
+    shared[label + "_control_task"] = task["task_id"]
+    receipt = await call("browser.request_control", request_id=label + "-control")
+    deadline = time.monotonic() + 10
+    while receipt["state"] == "requested":
+        assert time.monotonic() < deadline, "Takeover approval fixture timed out"
+        await asyncio.sleep(0.02)
+        receipt = await call("browser.control_status", request_id=label + "-control")
+    assert receipt["state"] == "approved", receipt
+    tabs = (await call("browser.tabs"))["tabs"]
+    assert len(tabs) == 1 and tabs[0]["session_id"]
+    assert (await call("session.adopt", tab_id=tabs[0]["tab_id"]))["mode"] == "live"
+    await call("session.close", session_id=tabs[0]["session_id"])
+    assert (await call("browser.control_status", request_id=label + "-control"))[
+        "state"
+    ] == "returned"
+    assert (await call("browser.request_control", request_id=label + "-control"))[
+        "state"
+    ] == "returned"
+    assert not (await call("browser.tabs"))["tabs"]
+    await call("task.finish")
+    shared[label + "_reviewed_control_and_return"] = True
+
+
 async def sdk_client(
     discovery, origin, shared, revoke, revoked, destination, source, endpoint=None
 ):
@@ -677,6 +753,7 @@ async def sdk_client(
             )
             await library_workflow(call, shared, "sdk")
             await call("task.finish", status="completed")
+            await computer_workflow(call, origin, shared, "sdk")
             task = await call(
                 "task.start", objective="Complete a synthetic form beside the user"
             )
@@ -1739,6 +1816,7 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     call("task.finish")
     shared["raw_user_selected_recovery"] = True
     shared["raw_recovery_write_not_replayed"] = True
+    asyncio.run(computer_workflow(workspace_call, origin, shared, "raw"))
     if shared["require_recipes"]:
         asyncio.run(recipe_workflow(workspace_call, shared, "raw"))
         asyncio.run(recipe_workflow(workspace_call, shared, "raw", oauth=True))
@@ -1957,6 +2035,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
         case.wait_for(lambda: bool(loaded) and loaded[-1])
         user.loadFinished.disconnect(loaded.append)
         type(case).page_fixtures = {
+            "/mcp-computer": b"<!doctype html><title>Computer fixture</title><body style='margin:0'><canvas id='box' width='160' height='100'></canvas><p id='status'>Clicked 0</p><input style='position:absolute;left:20px;top:130px'><script>window.clicks=0;box.getContext('2d').fillRect(20,20,80,40);box.onclick=()=>document.getElementById('status').textContent='Clicked '+(++window.clicks);</script></body>",
             "/mcp-start": b'<p>Delegated workflow</p><a href="/mcp-form">Open form</a><div><template shadowrootmode="open"><p>Reusable component report</p><p id="hint">Component help</p><p id="error">Component error</p><input aria-label="Component input" value="COMPONENT_PRIVATE" required aria-describedby="hint" aria-invalid="true" aria-errormessage="error"></template></div>',
             "/mcp-form": b'<form method="post" action="/mcp-submitted"><input aria-label="Message" name="message" value="FORM_PRIVATE"><input type="hidden" name="token" value="SYNTHETIC_TOKEN"><input aria-label="Confirm" type="checkbox" name="confirm" value="yes"><button name="decision" value="send">Send</button></form>',
             "/download-mcp": b"SYNTHETIC_DOWNLOAD_BYTES",
@@ -2068,7 +2147,10 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
 
         worker = threading.Thread(target=run, daemon=True)
         worker.start()
-        deadline = time.monotonic() + 60
+        # Two additional real-renderer computer/takeover journeys precede the
+        # existing document/recipe workflows. Keep per-operation deadlines;
+        # give the complete synthetic acceptance journey enough time.
+        deadline = time.monotonic() + 120
         user_posted = False
         user_edit_started = False
         while worker.is_alive() and time.monotonic() < deadline:
@@ -2197,14 +2279,27 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
             if dialog is not None and dialog.isVisible():
                 assert not dialog.isModal()
                 assert dialog.task_id in (
-                    shared["task_id"],
+                    shared.get("task_id"),
                     shared.get("raw_approval_task"),
                     shared.get("sdk_recovery_task"),
                     shared.get("raw_recovery_task"),
                     shared.get("sdk_recipe_task"),
                     shared.get("raw_recipe_task"),
+                    shared.get("sdk_computer_task"),
+                    shared.get("raw_computer_task"),
+                    shared.get("sdk_control_task"),
+                    shared.get("raw_control_task"),
                 )
-                if isinstance(dialog, StartPageReviewDialog):
+                from ui.live_control_review import LiveControlDialog
+
+                if isinstance(dialog, LiveControlDialog):
+                    assert dialog.record.task_id in (
+                        shared.get("sdk_control_task"),
+                        shared.get("raw_control_task"),
+                    )
+                    dialog.allow_button.click()
+                    shared["takeover_review_popup"] = True
+                elif isinstance(dialog, StartPageReviewDialog):
                     dialog.profile.setCurrentText("work")
                     dialog.apply_button.click()  # Trusted synthetic user review only.
                     shared["start_page_review_popup"] = True
@@ -2332,7 +2427,7 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                     dialog.grab().save(f"/tmp/steed-recovery-{transport}-preview.png")
                     dialog.share.click()  # Trusted synthetic user selection only.
                 else:
-                    if dialog.task_id == shared["task_id"]:
+                    if dialog.task_id == shared.get("task_id"):
                         dialog.remember.setCurrentIndex(1)
                     dialog.approve_button.click()  # Trusted synthetic fixture only.
                 shared["approval_popup"] = True
@@ -2446,6 +2541,26 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                 case.service.cancel_task(shared["task_id"])
                 revoked.set()
             time.sleep(0.005)
+        if worker.is_alive():
+            print(
+                "Completed acceptance stages:",
+                {k: v for k, v in shared.items() if type(v) is bool},
+            )
+            print(
+                "Active synthetic tasks:",
+                [
+                    (t.objective, t.status)
+                    for t in case.service.store.list_tasks()
+                    if t.status in ("created", "running")
+                ],
+            )
+            print(
+                "Pending control requests:",
+                [
+                    (r.selection, r.state)
+                    for r in case.service.control_requests.values()
+                ],
+            )
         assert not worker.is_alive(), "External workflow timed out"
         assert not errors, errors
         assert (

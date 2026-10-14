@@ -12,6 +12,14 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 
 from services.task_input import TaskInput
 
+
+class TaskNetworkError(RuntimeError):
+    code = "native_frontend_unavailable"
+
+    def __init__(self):
+        super().__init__("Task network protection unavailable")
+
+
 PREPARE_SCRIPT = """
 window.__steedTaskNetwork = null;
 (async () => {
@@ -77,9 +85,7 @@ class TaskNetwork(QObject):
             self.page.triggerAction(QWebEnginePage.WebAction.Stop)
         self.timer.stop()
         if not self.ready.done():
-            self.ready.set_exception(
-                RuntimeError("Task network protection unavailable")
-            )
+            self.ready.set_exception(TaskNetworkError())
 
     def _poll(self):
         self.attempts += 1
@@ -100,7 +106,7 @@ class TaskNetwork(QObject):
 
     def validate(self):
         if self.closed or not self.healthy:
-            raise RuntimeError("Task network protection unavailable")
+            raise TaskNetworkError()
 
     def close(self):
         self.closed = True

@@ -160,8 +160,50 @@ class TaskStoreTests(unittest.TestCase):
         self.assertEqual(self.store.grants(), [])
         with sqlite3.connect(self.path) as connection:
             self.assertEqual(
-                connection.execute("PRAGMA user_version").fetchone()[0], 20
+                connection.execute("PRAGMA user_version").fetchone()[0], 21
             )
+
+    def test_schema_20_migrates_separate_pending_grants_and_atomic_replacement(self):
+        self.store.close()
+        with sqlite3.connect(self.path) as connection:
+            connection.execute("DROP INDEX grants_one_requested_per_task")
+            connection.execute("DROP INDEX grants_one_approved_per_task")
+            connection.execute(
+                "CREATE UNIQUE INDEX grants_one_live_per_task ON grants(task_id) WHERE status IN ('requested','approved')"
+            )
+            connection.execute("PRAGMA user_version=20")
+        self.store = TaskStore(self.path)
+        task = self.store.create("Synthetic replacement after migration")
+        old = self.store.request_grant(task.task_id, {"actions": ["read"]})
+        self.store.approve_with_rule(task.task_id, old.grant_id, "fixture")
+        replacement = self.store.request_grant(
+            task.task_id, {"actions": ["read", "visual"]}
+        )
+        before = self.store.events(task.task_id)
+        append = self.store._append
+
+        def fail_new_approval(task_id, kind, payload):
+            if kind == "grant.approved":
+                raise sqlite3.OperationalError("synthetic approval write failed")
+            append(task_id, kind, payload)
+
+        with patch.object(self.store, "_append", side_effect=fail_new_approval):
+            with self.assertRaises(sqlite3.OperationalError):
+                self.store.approve_with_rule(
+                    task.task_id, replacement.grant_id, "fixture"
+                )
+        self.assertEqual(
+            self.store.grant(task.task_id, old.grant_id).status, "approved"
+        )
+        self.assertEqual(
+            self.store.grant(task.task_id, replacement.grant_id).status, "requested"
+        )
+        self.assertEqual(self.store.events(task.task_id), before)
+        self.store.approve_with_rule(task.task_id, replacement.grant_id, "fixture")
+        self.assertEqual(self.store.grant(task.task_id, old.grant_id).status, "ended")
+        self.assertEqual(
+            self.store.grant(task.task_id, replacement.grant_id).status, "approved"
+        )
 
     def test_partially_added_worker_columns_can_finish_migration(self):
         task = self.store.create("Interrupted dependency-environment migration")

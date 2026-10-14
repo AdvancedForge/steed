@@ -33,6 +33,8 @@ CAPTURE_SCRIPT = """
             if (response.getError() || !response.data || response.data.length > 1500000 || window[id] === false)
                 throw new Error('Capture unavailable');
             window[id] = JSON.stringify({data:response.data,
+                css_width:width,css_height:height,
+                viewport:Object.fromEntries(['pageX','pageY','offsetX','offsetY','clientWidth','clientHeight','scale'].map(k => [k,viewport[k]])),
                 viewport_clipped:width < viewport.clientWidth || height < viewport.clientHeight});
         } catch (_) { if (window[id] !== false) window[id] = false; }
     })();
@@ -80,6 +82,9 @@ def image_payload(raw):
                 },
                 "width": image.width(),
                 "height": image.height(),
+                "css_width": data.get("css_width", size.width()),
+                "css_height": data.get("css_height", size.height()),
+                "viewport": data.get("viewport"),
                 "viewport_clipped": data["viewport_clipped"],
                 "source": "native_viewport",
                 "limitations": [

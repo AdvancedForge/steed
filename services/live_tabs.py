@@ -75,6 +75,7 @@ class LiveTabs:
                     "scroll",
                     "submit",
                     "visual",
+                    "computer",
                 }
             ),
             allow_private_network=values.get("allow_private_network", False)

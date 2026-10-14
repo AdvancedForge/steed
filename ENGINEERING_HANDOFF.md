@@ -1,6 +1,87 @@
-# Engineering handoff — October 4, 2026
+# Engineering handoff — October 13, 2026
 
 ## Start here
+
+**Work resumed for daily agent blockers — October 13.** This section supersedes
+old stop/handoff instructions below. The latest scope is grant reliability,
+private live browsing, clear takeover, missing website actions, screenshot-guided
+computer input and an explicit unsafe automatic-approval option. Those changes
+are implemented and accepted; the current main checkpoint contains them. Do not restart the old
+bookmark/download tasks or begin the deferred HTML bridge.
+
+- New shared modules: `services/agent_errors.py` (maintained public diagnostics),
+  `services/computer_input.py` (fixed native input/keys),
+  `services/live_control.py` (pinned one-popup takeover) and
+  `ui/live_control_review.py` (trusted review). Core private-live code lives in
+  `services/browser_backend.py`; source routing/approval in `task_service.py`.
+- Schema 21 replaces the one-live-grant index with separate pending/approved
+  uniqueness. `approve_with_rule` ends prior approved grants in the same journal
+  transaction. Preserve rollback and old permission fingerprints. Exact-repeat
+  requests reuse receipts; approving replacement closes old task sessions.
+- `computer` normalizes its read/visual/live/navigate/inspect/attach dependencies
+  before review. Omitted session mode follows live authority; explicit restricted
+  mode keeps old script-disabled retrieval. Private live pages use separate
+  off-the-record profiles. Normal embeds load, but DOM frame access still obeys
+  origin/same-origin limits; screenshot input is separately authorized.
+- A capture ID binds one operation to the current visible page/revision/viewport
+  for 60 seconds. Point coordinates refer to the returned image, mapped to CSS
+  pixels. Native dispatch does not prove business success; never replay uncertain
+  clicks/typing/keys. Input text/pixels are absent from journal bodies.
+- YOLO is a trusted desktop, confirmation-required, per-run opt-in. Agents cannot
+  enable it via MCP. It resolves exact Steed reviews, including writes/code/UI
+  changes; auth/source setup and host/website permissions remain separate. Status
+  bar/sidebar show it. Take Back returns a tab, but a fresh request can auto-share
+  while YOLO is enabled. Old IDs never retake tabs. Recovery doesn't silently pick
+  archived data. Keep mode changes/automatic decisions auditable and fail closed
+  on journal failure.
+- Generic MCP and native Codex instructions now describe the new workflow. There
+  are 85 tools. Existing chats need restart/reconnect to pick up the catalogue.
+  `tests/test_agent_daily_controls.py`, `test_agent_control_ui.py`, migration tests
+  and updated stdio/HTTP synthetic journeys cover the contract. Keep Qt checks
+  serial. User state/accounts remain untouched by automated checks.
+- Final acceptance: **1,405 full regressions in 454.935 seconds**, 46 final UI
+  checks in 17.583 seconds, SDK/raw stdio and authenticated HTTP, both installed
+  Codex runtimes, startup/render/shutdown, light/dark previews, Ruff (247 files),
+  dependencies, whitespace, 85 tool routes and all panel/recipe examples pass.
+  This completes N5 broad acceptance too. All fixtures are synthetic/temporary.
+  Logs: `/tmp/steed-agent-acceptance-oct13.log`,
+  `/tmp/steed-agent-final-ui-oct13.log`,
+  `/tmp/steed-agent-mcp-{stdio,http}-oct13.log`,
+  `/tmp/steed-agent-native{,-direct}-oct13.log`,
+  `/tmp/steed-agent-{startup,visual}-oct13.log`.
+- A stdio retry reproduced the known offscreen Qt profile-startup segfault before
+  task setup; preserve `/tmp/steed-agent-mcp-stdio-native-crash-oct13.log` as evidence.
+  Later transport/native/startup pass. No production startup fix is claimed.
+  The smoke fixture was extended for preceding private tasks and more renderer
+  operations (120-second whole journey; original per-operation deadlines).
+
+### Next work from this checkpoint
+
+1. Create a fresh branch/worktree from published main; read the active October 13
+   roadmap and [daily workflow guide](DOCUMENTATION.md#daily-browser-access-and-permission-diagnostics).
+   Native/generic clients need a fresh chat or reconnect to load all 85 tools.
+   Do not rerun the old N5 acceptance agenda or restart completed small tasks.
+2. Address real desktop/site failures using exact public error codes, active
+   grant status, session mode/control owner and snapshot guidance. Avoid collecting
+   input text, auth headers, cookies or raw image bytes in diagnostics. For normal
+   private websites request live/read or computer; restricted mode is still useful
+   for static retrieval. Do not revive the old active-script networking workaround.
+3. Continue bounded agent connection/recovery polish. Already implemented: model
+   reports, native working/thinking/queue indicators, mailbox delivery receipts,
+   one-popup takeover and permission error guidance. Generic polling does not
+   prove thinking or wake idle website chats. Recovery must keep fresh authority
+   and duplicate prevention; never replay dispatched browser/app effects.
+4. Keep the independently recorded offscreen initialization crash separate from
+   live permission failures. Diagnose with faulthandler and serial fixtures; do
+   not hide failures with retries or disable policy broadly as a workaround.
+5. Agent-built HTML's reviewed read-only data bridge, Google shared registration
+   and password improvements remain deferred. Broader desktop input, popup/device
+   workflows and complete accessibility/frame observation need their own concrete
+   scopes; this milestone only exposes browser viewport input. External agents
+   keep their own tools. Preserve native/manual/API workflows alongside generic MCP.
+
+The following October 4 material is historical context; the current section above
+takes precedence.
 
 **Owner-requested handoff checkpoint.** The owner asked for quick external-agent
 work only if it fit a small milestone; otherwise finish the smallest daily-use

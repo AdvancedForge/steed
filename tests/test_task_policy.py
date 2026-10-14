@@ -60,7 +60,11 @@ class TaskPolicyTests(unittest.TestCase):
             "https://example.org",
         ):
             with self.subTest(origin=origin), self.assertRaises(ValueError):
-                TaskScope.parse({"origins": [origin]})
+                TaskScope.parse({"origins": [origin], "allow_private_network": False})
+        inferred = TaskScope.parse({"origins": ["https://example.org"]})
+        self.assertTrue(inferred.allow_private_network)
+        with self.assertRaises(ValueError):
+            TaskScope.parse({"origins": ["http://127.0.0.1"]})
         scope = TaskScope.parse({"origins": ["https://8.8.8.8"]})
         self.assertFalse(scope.allow_private_network)
         grant = LiveGrant(self.scope(origins=["http://127.0.0.1:8000"]))

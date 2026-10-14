@@ -8,13 +8,14 @@ import stat
 import time
 from concurrent.futures import Future
 from contextvars import ContextVar
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from PyQt6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, pyqtSignal
 
+from services.agent_errors import AgentRequestError
 from services.app_plans import AppPlans
 from services.browser_backend import BrowserBackend, QtBrowserBackend, navigation_url
 from services.command_broker import CommandBroker, require_owner_thread
@@ -94,7 +95,9 @@ class TaskService(QObject):
             backend
             if backend is not None
             else QtBrowserBackend(
-                self, profile_provider=profiles.task_profile if profiles else None
+                self,
+                profile_provider=profiles.task_profile if profiles else None,
+                browser_config=getattr(profiles, "config", None),
             )
         )
         self._clock = clock
@@ -108,6 +111,8 @@ class TaskService(QObject):
         self._actor = ContextVar("task_user_actor", default="agent")
         self._closed = False
         self.failure = ""
+        self.auto_approve_requests = False
+        self.control_requests = {}
         self.workers = WorkerManager(self)
         self.recipes = RecipeProposals(self, connections)
         self.layouts = LayoutProposals(self)
@@ -125,6 +130,8 @@ class TaskService(QObject):
                 "task.status": self.store.get,
                 "task.capabilities": self._capabilities,
                 "browser.context": self._browser_context,
+                "browser.request_control": self._request_control,
+                "browser.control_status": self._control_status,
                 "start_page.capabilities": self._start_page_capabilities,
                 "start_page.propose": lambda task_id, source, request_id: (
                     self._layout_action(
@@ -251,6 +258,21 @@ class TaskService(QObject):
                 "session.inspect": self._inspect,
                 "page.inspect": self._inspect_page,
                 "page.capture": self._capture_page,
+                "page.click": lambda task_id, session_id, capture_id, x, y: (
+                    self._computer_page(
+                        task_id, session_id, capture_id, "click", {"x": x, "y": y}
+                    )
+                ),
+                "page.type": lambda task_id, session_id, capture_id, text: (
+                    self._computer_page(
+                        task_id, session_id, capture_id, "type", {"text": text}
+                    )
+                ),
+                "page.key": lambda task_id, session_id, capture_id, key: (
+                    self._computer_page(
+                        task_id, session_id, capture_id, "key", {"key": key}
+                    )
+                ),
                 "page.target": self._inspect_target,
                 "page.navigate": self._navigate_target,
                 "page.act": self._act,
@@ -1506,7 +1528,15 @@ class TaskService(QObject):
         report = getattr(self.backend, "capabilities", None)
         if not callable(report):
             raise RuntimeError("Browser backend capability report unavailable")
-        return report()
+        result = report()
+        if is_dataclass(result) and hasattr(result, "permission_mode"):
+            result = replace(
+                result,
+                permission_mode="auto_approve"
+                if self.auto_approve_requests
+                else "review",
+            )
+        return result
 
     def _owned(self, task_id, session_id, *, allow_user=False, actor=None):
         self._active(task_id)
@@ -1525,19 +1555,92 @@ class TaskService(QObject):
         self.store.record_event(task_id, "permission.denied", {"reason": code})
         raise TaskPermissionError(code)
 
+    def _request_control(self, task_id, request_id, selection="current_tab"):
+        from services.live_control import request
+
+        return request(self, task_id, request_id, selection)
+
+    def _control_status(self, task_id, request_id):
+        self._active(task_id)
+        record = self.control_requests.get((task_id, request_id))
+        if record is None:
+            raise AgentRequestError(
+                "control_request_unknown",
+                "Request control before polling this request_id.",
+            )
+        if record.state == "approved" and not any(
+            owner == task_id and grant == record.grant_id
+            for owner, grant, _ in self.live_tabs.offers.values()
+        ):
+            record.state = "returned"
+        return record.payload()
+
+    def set_auto_approval(self, enabled):
+        """Trusted desktop opt-in for this browser run; never an agent command."""
+        require_owner_thread(self)
+        self._usable()
+        if type(enabled) is not bool:
+            raise ValueError("Provide a boolean auto-approval choice")
+        try:
+            for task in self.store.list_tasks():
+                if task.status in ACTIVE_STATUSES:
+                    self.store.record_event(
+                        task.task_id,
+                        "permission.mode_changed",
+                        {"auto_approve": enabled},
+                    )
+        except (sqlite3.Error, OSError):
+            self.auto_approve_requests = False
+            self._fatal()
+            raise
+        self.auto_approve_requests = enabled
+        self.changed.emit()
+
     def _request_grant(self, task_id, scope):
         self._active(task_id)
         scope = TaskScope.parse(scope)
-        self.connectors.check_scope(scope)
+        try:
+            self.connectors.check_scope(scope)
+        except ValueError:
+            raise AgentRequestError(
+                "invalid_app_scope",
+                "Use configured tools from app.list_tools with their exact effects/destinations. Tools requiring a draft also need the artifact action.",
+                "connector_permissions",
+            ) from None
         recovery = self.store.recovery(task_id)
         if recovery["status"] == "requested":
-            raise ValueError(
-                "Wait for the user to choose or deny recovery before requesting access"
+            raise AgentRequestError(
+                "recovery_pending",
+                "Wait for task.recovery to finish before requesting access.",
             )
         if scope.profile != "private":
             if self.profiles is None:
-                raise ValueError("Existing profiles require the application registry")
-            self.profiles.validate_task_profile(scope.profile)
+                raise AgentRequestError(
+                    "profile_unavailable",
+                    "Named profiles need the desktop browser. Use profile='private' for an isolated session.",
+                    "profile",
+                )
+            try:
+                self.profiles.validate_task_profile(scope.profile)
+            except ValueError:
+                raise AgentRequestError(
+                    "profile_unavailable",
+                    "The selected profile is unavailable. Read browser.context for its exact selector, or use profile='private'.",
+                    "profile",
+                ) from None
+        current = self.store.grants(task_id)
+        for existing in current:
+            if (
+                existing.status in ("requested", "approved")
+                and TaskScope.parse(existing.scope) == scope
+            ):
+                return existing
+        for existing in current:
+            if existing.status == "requested":
+                raise AgentRequestError(
+                    "grant_request_pending",
+                    "A different permission request is pending. Poll grant.list for its decision before requesting another scope.",
+                )
         result = self.store.request_grant(task_id, scope.payload())
         try:
             # Sharing archived data and approving current access are separate decisions.
@@ -1551,7 +1654,14 @@ class TaskService(QObject):
                 else ""
             )
             rule = next((r for r in rules if r.covers(scope, profile_key)), None)
-            if rule is not None:
+            if self.auto_approve_requests:
+                result = self.approve_grant(task_id, result.grant_id)
+                self.store.record_event(
+                    task_id,
+                    "permission.auto_approved",
+                    {"grant_id": result.grant_id, "mode": "yolo"},
+                )
+            elif rule is not None:
                 result = self.approve_grant(task_id, result.grant_id, _rule=rule)
             elif recovery["status"] != "approved" and self.account_access.covers(scope):
                 result = self.approve_grant(
@@ -1614,6 +1724,12 @@ class TaskService(QObject):
                 rule=_rule,
                 account_access=_account_access,
             )
+            previous = self._grants.get(task_id)
+            if previous is not None:
+                previous[1].end("replaced")
+                self._discard_sessions(task_id)
+                if existing:
+                    self.profiles.reserve_task_profile(task_id, scope.profile)
             self._grants[task_id] = (grant_id, grant)
         except Exception:
             grant.end("approval_failed")
@@ -1765,17 +1881,33 @@ class TaskService(QObject):
             raise
         return grant
 
-    def _open_session(self, task_id, profile="private"):
+    def _open_session(self, task_id, profile="private", mode=None):
         if not isinstance(profile, str):
             self._deny(task_id, "profile_out_of_scope")
+        if mode is None:
+            live = self._grants.get(task_id)
+            mode = "live" if live and "live" in live[1].scope.actions else "restricted"
+        if mode not in ("restricted", "live"):
+            raise AgentRequestError(
+                "invalid_browsing_mode",
+                "Use mode=restricted for static retrieval or mode=live for normal websites.",
+                "mode",
+            )
         grant = self._authorize(task_id, "open", profile=profile)
+        if mode == "live":
+            grant.check("live", profile=profile)
+            grant.check("read")
         if (
             sum(owner == task_id for owner in self._sessions.values())
             >= grant.scope.max_sessions
         ):
             self._deny(task_id, "session_budget_exceeded")
         self.store.record_event(task_id, "session.open_requested", {"profile": profile})
-        snapshot = self.backend.open_session(task_id, grant=grant, profile=profile)
+        snapshot = (
+            self.backend.open_session(task_id, grant=grant, profile=profile, mode=mode)
+            if mode == "live"
+            else self.backend.open_session(task_id, grant=grant, profile=profile)
+        )
         try:
             self.store.transition(task_id, "running")
             self.store.record_event(task_id, "session.opened", asdict(snapshot))
@@ -1798,7 +1930,19 @@ class TaskService(QObject):
                     grant[1].check("read", url=snapshot.url)
                 except TaskPermissionError:
                     view = self.backend.live_view(snapshot.session_id)
-                    self.live_tabs.release_id(view.agent_tab_id)
+                    if view is not None:
+                        self.live_tabs.release_id(view.agent_tab_id)
+                    else:
+                        QTimer.singleShot(
+                            0,
+                            lambda: (
+                                self._close_session(
+                                    snapshot.task_id, snapshot.session_id
+                                )
+                                if snapshot.session_id in self._sessions
+                                else None
+                            ),
+                        )
                     return
             self.store.record_event(
                 snapshot.task_id, "session.updated", self._metadata_evidence(snapshot)
@@ -1893,6 +2037,30 @@ class TaskService(QObject):
                     "limitations",
                 )
             },
+        )
+
+    def _computer_page(self, task_id, session_id, capture_id, operation, values):
+        from services.computer_input import arguments
+
+        values = arguments(operation, values)
+        grant = self._action_authority(task_id, session_id, "computer")
+        grant.check("visual")
+        grant.check("live")
+        action_id = uuid4().hex
+        return self._start_action(
+            task_id,
+            session_id,
+            grant,
+            action_id,
+            {
+                "action_id": action_id,
+                "session_id": session_id,
+                "capture_id": capture_id,
+                "operation": operation,
+            },
+            lambda: self.backend.computer(
+                session_id, action_id, capture_id, operation, values
+            ),
         )
 
     def _inspect_target(self, task_id, session_id, snapshot_id, target_id):
@@ -2169,7 +2337,7 @@ class TaskService(QObject):
             grant,
             source,
             "page.action_finished",
-            asdict,
+            lambda value: dict(value) if isinstance(value, dict) else asdict(value),
             failure_kind="page.action_failed",
             failure_details={"action_id": action_id},
         )
@@ -2327,7 +2495,7 @@ class TaskService(QObject):
 
     def _watch(self, task_id, session_id):
         view = self._attach(task_id, session_id)
-        if getattr(self.backend.inspect(session_id), "mode", "restricted") == "live":
+        if getattr(view, "browser_window", None) is not None:
             window = view.browser_window
             window._switch_tab(window.tabs.index(view))
             window.show()
@@ -2451,13 +2619,17 @@ class TaskService(QObject):
             watcher.session_ended()
         if getattr(self.backend.inspect(session_id), "mode", "restricted") == "live":
             view = self.backend.live_view(session_id)
-            self.live_tabs.offers.pop(view.agent_tab_id, None)
+            if view is not None:
+                self.live_tabs.offers.pop(view.agent_tab_id, None)
         self.backend.close_session(session_id)
         self.store.record_event(task_id, "session.closed", {"session_id": session_id})
         self.changed.emit()
 
     def _finish_task(self, task_id, status="completed"):
         self._active(task_id)
+        for (owner, _), request in self.control_requests.items():
+            if owner == task_id and request.state == "requested":
+                request.state = "cancelled"
         if status not in TERMINAL_STATUSES:
             raise ValueError("Choose a terminal task status")
         if self._library is not None:

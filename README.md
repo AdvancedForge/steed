@@ -16,7 +16,8 @@ browsing profiles and direct KeePassXC password management.
 - Cookie controls, a global-cookie baseline, downloads, and ad blocking.
 - In-browser KeePassXC login selection, filling, and explicit saving.
 - A desktop launcher, dark mode, and familiar navigation shortcuts.
-- Agent chats in a sidebar or tab, website chats, live-tab delegation and Take Back.
+- Agent chats, private live browsing, reviewed tab takeover and Take Back.
+- Screenshot-guided browser click/type/key and optional unsafe agent auto-approval.
 - A persistent agent file library: add files once and enable full folder access.
 - Reviewed agent dashboards with forms, reports, images and linked files/account tables.
 - Reusable instruction buttons with a selected agent and message preview.

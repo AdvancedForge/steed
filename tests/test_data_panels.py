@@ -620,7 +620,7 @@ class DataPanelTests(unittest.TestCase):
         restarted = TaskService(path, profiles=self.registry)
         try:
             self.assertEqual(
-                restarted.store._db.execute("PRAGMA user_version").fetchone()[0], 20
+                restarted.store._db.execute("PRAGMA user_version").fetchone()[0], 21
             )
             self.assertEqual(
                 restarted.data_panels.get(task.task_id, pending.request_id).state,

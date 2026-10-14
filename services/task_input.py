@@ -136,6 +136,8 @@ class TaskInput(QObject):
                 self.network.validate()
                 if value is False:
                     raise PageInspectionError("native_input_unavailable")
+                if isinstance(value, dict) and value.get("error") == "stale_capture":
+                    raise PageInspectionError("stale_capture")
                 if value is True:
                     result.set_result(None)
             except Exception as error:

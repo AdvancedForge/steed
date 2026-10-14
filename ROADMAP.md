@@ -7,10 +7,73 @@ execution, and evidence; external agents provide planning and generation.
 See [DOCUMENTATION.md](DOCUMENTATION.md) for setup and implementation details,
 including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
-## Current work — October 4, 2026
+## Current work — October 13, 2026
 
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
+
+**Daily agent reliability — October 13 (implemented and accepted).**
+The owner reported generic grant failures, private-browser/takeover friction and
+missing website actions, and requested screenshot input plus unsafe automatic
+approval. Reproduced ordinary DNS-origin validation failures and repeated-grant
+rejection; the gateway previously flattened those exceptions into
+`operation_failed`. Named-origin requests now infer the reviewed network flag;
+explicit false and exact-origin bounds remain enforced. Maintained error codes,
+field hints and corrective messages exclude submitted secrets/exception strings.
+Unchanged requests are idempotent; scope changes request replacement while old
+access remains usable. Schema 21 separates pending/approved uniqueness and ends
+old grants atomically on approved replacement, closing prior task sessions.
+
+Private live sessions now run normal website scripts and embedded/background
+traffic in separate off-the-record storage. Existing scoped document retrieval
+stays available with explicit restricted mode. Live grants default to live mode;
+computer permission includes its required visible browser dependencies. One
+agent-requested takeover popup pins the selected profile/tabs/sites. Take Back
+returns control; old request IDs report returned and never retake tabs. Private
+Watch supports direct user interaction while agent operations are paused.
+
+Native `page.click`, `page.type` and `page.key` use a visible viewport capture:
+image-pixel coordinates, one-use capture IDs, 60-second expiry, geometry/lifetime
+checks and value-free receipts. They cover canvas/custom/embedded controls when
+DOM references are absent; inspection explains missing actions. No arbitrary
+caller script, desktop input, or automatic effect replay is added. Five additive
+MCP tools bring the catalogue to 85; reconnect agent conversations after restart.
+
+**YOLO mode** is an explicit, warning-confirmed Agents menu option, disabled by
+default and after browser restart. Status bar/sidebar mark it. It automatically
+approves Steed grants/takeover, worker execution, recipes, account payload reviews
+and panel/layout/page proposals for all connected agents/profiles this run.
+Validation, ownership, supported APIs, source setup, resource limits and no-replay
+remain. Recovery source selection is not guessed; website/host permissions stay
+separate. Take Back ends the current handoff, but a fresh request can be approved
+while the mode remains on. Disable it or cancel the task to stop new handoffs.
+
+Acceptance: **1,405 full regressions pass in 454.935 seconds** and 46 final
+sidebar/approval/takeover/watch checks pass in 17.583 seconds. Both SDK and
+independent raw clients pass stdio and authenticated HTTP journeys with private
+click/type/key, one-popup takeover/return/no replay, reviewed recipes, document
+bundles and retained account tables. Both installed native Codex runtimes pass
+using synthetic local model fixtures; startup/render/shutdown and light/dark
+private permission, takeover and unsafe-mode previews pass. Ruff lint/format
+(247 files), dependency checks, whitespace, 85 client tool routes and all panel/
+recipe examples pass. No real accounts, user profiles or external model calls
+were used; real desktop/live-provider acceptance remains manual.
+
+The expanded transport fixture now allows its private tasks to precede the main
+workflow and has a 120-second whole-journey bound, retaining individual-operation
+bounds. Earlier full attempts caught optional profile-config compatibility,
+private-live/visual test expectations and native-error wording; these corrections
+are verified. One stdio retry reproduced the known offscreen Qt profile-startup
+segfault before task setup. Its stack is preserved at
+`/tmp/steed-agent-mcp-stdio-native-crash-oct13.log`; the subsequent full transport,
+HTTP, native and startup checks pass. Do not claim a production startup fix.
+Logs: `/tmp/steed-agent-acceptance-oct13.log`,
+`/tmp/steed-agent-final-ui-oct13.log`,
+`/tmp/steed-agent-mcp-{stdio,http}-oct13.log`,
+`/tmp/steed-agent-native{,-direct}-oct13.log`,
+`/tmp/steed-agent-{startup,visual}-oct13.log`. This also finishes the previously
+handed-off N5 broad acceptance. Restart Steed and start/reconnect agent chats to
+load the new catalogue. The HTML data bridge remains deferred.
 
 **Review and connector runtime checkpoint (integrated on main).** Reviewed
 engineering branch `c93748e` and connector PR #3 head `0082a19` in isolated
@@ -108,7 +171,7 @@ agent/provider contracts are unchanged. Logs: `/tmp/steed-bookmarks-full.log`,
 `/tmp/steed-bookmark-workflows-final-focused.log`, `/tmp/steed-bookmarks-{visual,startup}.log`.
 No new agent reading/mutation authority is added.
 
-**Explicit account list/table mappings N5 (implemented; handoff checkpoint).**
+**Explicit account list/table mappings N5 (implemented and accepted).**
 Panel v7 projects exact JSON-array/scalar fields from manual account reads into
 native lists and up to eight table columns. Proposal/review never fetch. Review
 shows the exact mapping; only projected fields remain cached. A 64-row/512-character
@@ -121,9 +184,8 @@ scrubbing and native empty-table shape. SDK/raw stdio and authenticated HTTP
 journeys pass with synthetic fixtures; light/dark native previews and startup
 pass. Logs: `/tmp/steed-handoff-all-panels.log`,
 `/tmp/steed-panel-mappings-{stdio,http-retry,visual}.log`,
-`/tmp/steed-handoff-startup.log`. The full suite and both installed Codex smoke
-paths have not been rerun for v7; the incoming engineer should finish those
-acceptance checks before broadening shared-agent work. Example:
+`/tmp/steed-handoff-startup.log`. The October 13 checkpoint above completes full-suite, independent transport and
+both installed Codex-runtime acceptance for v7. Example:
 [account-table.json](examples/data_panels/account-table.json).
 
 **Direct bookmark opening B2 (implemented and accepted).** Manage Bookmarks
@@ -180,8 +242,9 @@ The handoff priorities below are unchanged; no broader engineering is started.
 
 **Next daily-use chunks, in order:**
 
-1. Finish account list/table broad acceptance: full regressions and both installed
-   Codex runtime paths. Targeted panel/transport/native-preview checks already pass.
+1. Check the corrected workflows on real desktop sites and accounts, using the
+   documented private-live, takeover and screenshot controls; capture remaining
+   failures as concrete, value-free diagnostics. Synthetic acceptance is complete.
 2. Improve external-agent connection health, queued/read/working indicators and
    interrupted-task recovery. Keep generic MCP and website-chat workflows clear;
    automatic delivery must reflect what the connected client actually supports.

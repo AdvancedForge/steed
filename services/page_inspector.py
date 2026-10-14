@@ -64,6 +64,7 @@ class PageSnapshot:
     frames: tuple[FrameSnapshot, ...]
     limitations: tuple[str, ...]
     source: str = "rendered_dom"
+    guidance: tuple[str, ...] = ()
 
 
 @dataclass
@@ -204,6 +205,18 @@ class PageInspector(QObject):
                 tuple(data["limitations"]),
             )
             state.snapshot, state.targets = snapshot, targets
+            if not any(t.operations for f in frames for t in f.targets):
+                from dataclasses import replace
+
+                guidance = (
+                    "No actionable DOM controls found. The page may use canvas, closed shadow roots or custom controls. Use page.capture with visual/read access and page.click/type/key with computer/live access.",
+                )
+                if metadata.mode != "live":
+                    guidance += (
+                        "This is a restricted page with website scripts disabled. Request live/read access and open session.open(mode='live') for a normal interactive website.",
+                    )
+                snapshot = replace(snapshot, guidance=guidance)
+                state.snapshot = snapshot
             return snapshot
 
         return self._run(

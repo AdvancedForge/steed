@@ -90,7 +90,9 @@ class PageCaptureTests(unittest.TestCase):
         existing = self.service._grants[task][1]
         payload = existing.scope.payload()
         payload["actions"] = [
-            action for action in payload["actions"] if action != "visual"
+            action
+            for action in payload["actions"]
+            if action not in ("visual", "computer")
         ]
         grant = LiveGrant(TaskScope.parse(payload))
         self.service._grants[task] = (self.service._grants[task][0], grant)

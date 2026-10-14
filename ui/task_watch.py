@@ -50,12 +50,14 @@ class InputShield(QObject):
     def __init__(self, view):
         super().__init__(view)
         self.view = view
+        self.enabled = True
         view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         QApplication.instance().installEventFilter(self)
 
     def eventFilter(self, target, event):
         if (
-            event.type() in self.BLOCKED
+            self.enabled
+            and event.type() in self.BLOCKED
             and isinstance(target, QWidget)
             and not sip.isdeleted(self.view)
             and (target is self.view or self.view.isAncestorOf(target))
@@ -63,6 +65,14 @@ class InputShield(QObject):
             event.accept()
             return True
         return False
+
+    def setEnabled(self, enabled):
+        self.enabled = enabled
+        self.view.setFocusPolicy(
+            Qt.FocusPolicy.NoFocus if enabled else Qt.FocusPolicy.StrongFocus
+        )
+        if enabled:
+            self.view.clearFocus()
 
 
 class TaskWatchDialog(QDialog):
@@ -147,7 +157,9 @@ class TaskWatchDialog(QDialog):
         controls.addLayout(extra)
         controls.addWidget(
             QLabel(
-                "Approved files, sites and actions still apply. Scripts, password/multi-file forms and custom controls are unavailable."
+                "Approved sites and actions still apply. Use the live page directly while you have control."
+                if service.backend.inspect(session_id).mode == "live"
+                else "Approved files, sites and actions still apply. Scripts, password/multi-file forms and custom controls are unavailable."
             )
         )
         layout.addWidget(self.controls)
@@ -184,7 +196,9 @@ class TaskWatchDialog(QDialog):
         self.address.setText(state.url)
         owned = self.owns_control()
         self.notice.setText(
-            "You have control. The agent is paused on this page. Use the controls below; return it when ready."
+            "You have control. Use this live page directly; the agent is paused until you return control."
+            if owned and state.mode == "live"
+            else "You have control. The agent is paused on this page. Use the controls below; return it when ready."
             if owned
             else "Watching the agent's page. Take control to use the supported links and fields below."
         )

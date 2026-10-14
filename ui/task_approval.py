@@ -22,8 +22,9 @@ from PyQt6.QtWidgets import (
 from ui.task_recovery import TaskRecoveryDialog
 
 ACTION_LABELS = {
+    "computer": "Click, type and press keys in visible website contents, including embedded frames and sensitive fields. This can submit forms, send data and change accounts.",
     "visual": "See viewport screenshots, including visible form values and embedded content from other sites (images are returned to the agent, not saved in the task journal)",
-    "live": "Control tabs you explicitly share, with normal JavaScript and background network activity (website handlers can change account data). Take Back ends access to a tab immediately.",
+    "live": "Use live pages with normal JavaScript and background activity (website handlers can change account data). Existing user tabs need a separate handoff; Take Back ends that access.",
     "navigate": "Open links on these sites",
     "inspect": "See page addresses and titles",
     "read": "Read page text and control labels",
@@ -103,7 +104,13 @@ class TaskApprovalDialog(QDialog):
         summary.setWordWrap(True)
         summary.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         layout.addWidget(summary)
-        if "live" in scope["actions"]:
+        if "live" in scope["actions"] and not existing:
+            private_notice = WrappedLabel(
+                "Private live browsing creates new isolated pages with normal website scripts. It does not take over your existing tabs."
+            )
+            private_notice.setWordWrap(True)
+            layout.addWidget(private_notice)
+        if "live" in scope["actions"] and existing:
             titles = []
             for owner, grant_id, reference in service.live_tabs.offers.values():
                 view = reference()
@@ -213,7 +220,7 @@ class TaskApprovalDialog(QDialog):
                 if "submit" in scope["actions"]
                 else ""
             )
-            + "You can revoke access in File → Task Permissions."
+            + "You can revoke access in Agents → Task Permissions."
         )
         notice.setWordWrap(True)
         notice.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
@@ -343,6 +350,11 @@ class TaskApprovalQueue(QObject):
                     ):
                         pending.append((task, None))
                     pending.extend(
+                        (task, r)
+                        for (owner, _), r in self.service.control_requests.items()
+                        if owner == task.task_id and r.state == "requested"
+                    )
+                    pending.extend(
                         (task, grant)
                         for grant in self.service.store.grants(task.task_id)
                         if grant.status == "requested"
@@ -374,6 +386,9 @@ class TaskApprovalQueue(QObject):
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
+            if self.service.auto_approve_requests:
+                self.dialog.done(QDialog.DialogCode.Accepted)
+                return
             if any(
                 self.request_key(task, grant) == self.dialog.request_key
                 for task, grant in pending
@@ -394,23 +409,26 @@ class TaskApprovalQueue(QObject):
             parent = windows[0]
         for task, grant in reversed(pending):
             key = self.request_key(task, grant)
-            if key in self.deferred:
+            if key in self.deferred and not self.service.auto_approve_requests:
                 continue
             from services.connector_reviews import AppReview
             from services.data_panels import PanelReceipt
             from services.layout_proposals import LayoutProposal
+            from services.live_control import ControlRequest
             from services.recipe_proposals import RecipeProposal
             from services.start_page_proposals import PageProposal
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
             from ui.data_panels import DataPanelReviewDialog
             from ui.layout_review import LayoutReviewDialog
+            from ui.live_control_review import LiveControlDialog
             from ui.recipe_review import RecipeReviewDialog
             from ui.start_page_review import StartPageReviewDialog
             from ui.worker_approval import WorkerApprovalDialog
 
             if (
-                isinstance(grant, (PanelReceipt, PageProposal))
+                not self.service.auto_approve_requests
+                and isinstance(grant, (PanelReceipt, PageProposal))
                 and parent.profile_manager.is_search_profile()
             ):
                 normal = [
@@ -422,7 +440,9 @@ class TaskApprovalQueue(QObject):
                 parent = normal[0]
             try:
                 dialog = (
-                    StartPageReviewDialog(self.service, grant, parent)
+                    LiveControlDialog(self.service, grant, parent)
+                    if isinstance(grant, ControlRequest)
+                    else StartPageReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PageProposal)
                     else DataPanelReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PanelReceipt)
@@ -459,6 +479,43 @@ class TaskApprovalQueue(QObject):
             except (OSError, sqlite3.Error):
                 self.service._fatal()
                 return
+            if self.service.auto_approve_requests:
+                try:
+                    self.service.store.record_event(
+                        task.task_id,
+                        "permission.automatic_review",
+                        {"request_key": key, "mode": "yolo"},
+                    )
+                except (sqlite3.Error, OSError):
+                    dialog.deleteLater()
+                    self.service._fatal()
+                    return
+                if grant is None:
+                    # Recovery is a source picker, not an approval of an exact
+                    # agent request. Never silently select archived private data.
+                    self.service.deny_recovery(task.task_id)
+                elif isinstance(grant, PanelReceipt):
+                    dialog.linked_access.setChecked(True)
+                    dialog.approve()
+                    if dialog.result() != QDialog.DialogCode.Accepted:
+                        dialog.decline()
+                elif isinstance(grant, PageProposal):
+                    dialog.apply()
+                    if dialog.result() != QDialog.DialogCode.Accepted:
+                        dialog.decline()
+                elif isinstance(grant, LayoutProposal):
+                    dialog.apply_layout()
+                    if dialog.result() != QDialog.DialogCode.Accepted:
+                        self.service.layouts.resolve(
+                            task.task_id, grant.request_id, approve=False
+                        )
+                else:
+                    dialog.decide(True)
+                    if dialog.result() != QDialog.DialogCode.Accepted:
+                        dialog.decide(False)
+                dialog.deleteLater()
+                self.schedule()
+                return
             self.dialog = dialog
             dialog.finished.connect(lambda result, gid=key: self._finished(result, gid))
             dialog.show()
@@ -468,6 +525,7 @@ class TaskApprovalQueue(QObject):
         from services.connector_reviews import AppReview
         from services.data_panels import PanelReceipt
         from services.layout_proposals import LayoutProposal
+        from services.live_control import ControlRequest
         from services.recipe_proposals import RecipeProposal
         from services.start_page_proposals import PageProposal
         from services.worker_store import WorkerReceipt
@@ -478,6 +536,7 @@ class TaskApprovalQueue(QObject):
                 item,
                 (
                     AppReview,
+                    ControlRequest,
                     WorkerReceipt,
                     RecipeProposal,
                     LayoutProposal,

@@ -386,8 +386,10 @@ class LiveTabsTests(unittest.TestCase):
         other_window._switch_to_profile("search")
         with self.assertRaises(ValueError):
             other_window.delegate_tabs(other)
-        with self.assertRaises(ValueError):
-            TaskScope.parse({"origins": [], "actions": ["live"]})
+        # Agent-created private live sessions are allowed; they confer no
+        # access to the user's shared off-the-record search profile.
+        scope = TaskScope.parse({"origins": [], "actions": ["live"]})
+        self.assertEqual(scope.profile, "private")
 
     def test_expiry_and_profile_switch_restore_control(self):
         window, view = self.window()

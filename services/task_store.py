@@ -85,7 +85,7 @@ class TaskStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in range(21):
+        if version not in range(22):
             self._db.close()
             raise RuntimeError("Unsupported task database version")
         with self._db:
@@ -138,8 +138,11 @@ class TaskStore:
                     created_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL DEFAULT ''
                 );
-                CREATE UNIQUE INDEX IF NOT EXISTS grants_one_live_per_task
-                    ON grants(task_id) WHERE status IN ('requested', 'approved');
+                DROP INDEX IF EXISTS grants_one_live_per_task;
+                CREATE UNIQUE INDEX IF NOT EXISTS grants_one_requested_per_task
+                    ON grants(task_id) WHERE status = 'requested';
+                CREATE UNIQUE INDEX IF NOT EXISTS grants_one_approved_per_task
+                    ON grants(task_id) WHERE status = 'approved';
                 CREATE TABLE IF NOT EXISTS artifacts (
                     artifact_id TEXT PRIMARY KEY,
                     task_id TEXT NOT NULL REFERENCES tasks(task_id),
@@ -153,7 +156,7 @@ class TaskStore:
                 );
                 CREATE INDEX IF NOT EXISTS artifacts_by_task
                     ON artifacts(task_id, created_at, artifact_id);
-                PRAGMA user_version = 20;
+                PRAGMA user_version = 21;
             """
                 + CONNECTOR_SCHEMA
                 + PLAN_SCHEMA
@@ -211,9 +214,7 @@ class TaskStore:
     def request_grant(self, task_id, scope) -> TaskGrant:
         if self.get(task_id).status not in ACTIVE_STATUSES:
             raise ValueError("Task is no longer active")
-        if any(
-            grant.status in ("requested", "approved") for grant in self.grants(task_id)
-        ):
+        if any(grant.status == "requested" for grant in self.grants(task_id)):
             raise ValueError("This task already has a pending or approved grant")
         grant_id = uuid4().hex
         with self._db:
@@ -339,6 +340,9 @@ class TaskStore:
                 r.rule_id == rule_id for r in self.approval_rules()
             ):
                 raise ValueError("Saved approval is no longer available")
+            for previous in self.grants(task_id):
+                if previous.status == "approved":
+                    self._resolve_grant(previous, "ended", reason="replaced")
             self._resolve_grant(
                 grant,
                 "approved",
