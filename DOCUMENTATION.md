@@ -361,10 +361,17 @@ a supported password-manager option.
 
 ### Creating and Switching Profiles
 
-1. Go to **Profile → New Profile**
-2. Enter a profile name
-3. The browser will switch to the new profile
-4. Use **Profile → Switch Profile** to change profiles
+1. Go to **Profile → New Profile** to open the HTML settings/profile workspace.
+2. Enter a name under **A new space** and choose **Create & switch**.
+3. Use **Switch** or **New window** beside a profile, or the existing quick-switch
+   shortcuts. Reopening a profile menu action reuses this window's workspace.
+
+Rename and archive show a review with the exact profile and proposed change.
+Archiving moves its complete directory to `deleted_profiles` for recovery.
+Built-in profiles cannot be renamed or archived; profiles in use by windows or
+agents must be released first. To rename/archive the saved startup profile,
+choose another startup profile and save first. These actions happen immediately;
+**Cancel** in settings only discards unsaved preferences, not profile actions.
 
 ### Search Profile (Incognito)
 
@@ -414,10 +421,30 @@ Open **General → Ad Blocking** to download/update EasyList and EasyPrivacy, to
 
 Configuration is stored in `~/.custom_browser/config.json`. You can edit this file directly or use the browser's settings interface.
 
+### Settings workspace
+
+**General → Settings** opens a nonmodal HTML workspace with **General**, **Profile**,
+**Tabs**, **View**, **Cookies** and **Agents** sections. Browser preferences apply
+across profiles, including when settings is opened from private browsing.
+Home/search and website compatibility are in General; new-tab address and session
+restore are in Tabs; appearance and layout are in View. Cookie sharing keeps its
+existing profile/isolation rules. Agents links open the existing conversation or
+connection setup; opening them does not grant browser access.
+
+Choose **Save changes** to apply the preference draft, or **Cancel** to discard it.
+Dark appearance previews inside settings first; Save updates open browser windows.
+Independent changes from another settings window are merged. If the same setting
+was changed to a different value, Save stops and keeps the draft; **Reload saved
+values** explicitly discards preference edits and reloads saved values.
+
+Interface reload preserves the controller-held preference draft and clears pending
+profile reviews. It does not save preferences or repeat profile operations.
+
 ### Configuration Options
 
 - `default_profile`: Default profile to use on startup
 - `home_page`: URL to load for home button
+- `new_tab_page`: URL for new tabs, independent of the Home button
 - `search_engine`: URL prefix such as `https://www.duckduckgo.com/?q=` (search text is appended)
 - `dark_mode`: Enable dark mode by default
 - `restore_tabs_on_startup`: Restore tabs when opening a profile
@@ -431,13 +458,21 @@ Configuration is stored in `~/.custom_browser/config.json`. You can edit this fi
 - `adblock_exceptions`: Host names excluded from filtering
 
 The same directory also holds browser-managed state, which is not configuration:
-`downloads.json`, `filter_lists.json`, `global_cookie_deletions.json`, `site_permissions.json`, the
+`downloads.json`, `filter_lists.json`, `global_cookie_deletions.json`, `site_permissions.json`, `retired_profiles.json`, the
 `profiles/` and `global_profile/` storage directories, `deleted_profiles/` for
 archived profiles, and per-profile `tabs.json`, `groups.json`, `history.json`,
 `password_manager.json`, and
 `cookie_inheritance.json`. The inheritance journal stores hashes, never cookie
 values. Internal task services create `tasks.sqlite` on first use to store task
 metadata and their event journal.
+
+Existing profiles retain their engine storage/cache locations. Fresh profiles
+have a `.steed_profile.json` manifest selecting unique storage/cache subdirectories.
+Qt can finish storage writes after a profile is destroyed; the retired-name index
+prevents those markerless remnants from appearing as active profiles. Explicitly
+recreating a retired name preserves remnants under `deleted_profiles` and uses a
+fresh engine directory. Restore or back up the complete profile directory,
+including its manifest; copying only an engine subdirectory is insufficient.
 
 ## Project Structure
 
@@ -545,7 +580,8 @@ The smoke and profile-restart files are runnable scripts rather than unittest mo
 - **Storage**: JSON files for configuration, SQLite for cookies (via Qt)
 - **Profiles**: Isolated storage directories per profile
 
-JSON preferences and tab files are replaced atomically. Settings are saved when you click Save in the preferences dialog.
+JSON preferences and tab files are replaced atomically. Settings are saved when
+you click Save changes in the HTML preferences workspace.
 
 High-DPI scaling uses Qt's pass-through rounding policy. Hardware acceleration follows Qt's platform defaults. Saved tabs are restored eagerly.
 

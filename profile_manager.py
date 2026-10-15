@@ -25,6 +25,7 @@ from services.agent_gateway import AgentGateway
 from services.app_connections import AppConnections
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
+from services.profile_storage import ProfileStorage
 from services.site_permissions import SitePermissions, configure_permission_policy
 from services.start_pages import StartPageHandler, StartPages
 from services.task_policy import task_profile_name
@@ -51,10 +52,13 @@ class ProfileRegistry(QObject):
     profiles_updated = pyqtSignal()
     agent_access_changed = pyqtSignal(bool)
     layout_changed = pyqtSignal(object)
+    settings_changed = pyqtSignal()
+    profile_usage_changed = pyqtSignal()
 
     def __init__(self, config, parent):
         super().__init__(parent)
         self.config = config
+        self.storage = ProfileStorage(config)
         self.profiles = {}
         self.bootstrap_pages = {}
         self.snapshots = {}
@@ -297,6 +301,7 @@ class ProfileRegistry(QObject):
         name = self.validate_task_profile(selector)
         self.get(name)
         self.task_profiles.setdefault(name, set()).add(task_id)
+        self.profile_usage_changed.emit()
 
     def task_profile(self, task_id, selector):
         require_owner_thread(self)
@@ -307,6 +312,7 @@ class ProfileRegistry(QObject):
 
     def release_task_profiles(self, task_id=None):
         require_owner_thread(self)
+        previous = set(self.task_profiles)
         for name, tasks in list(self.task_profiles.items()):
             if task_id is None:
                 tasks.clear()
@@ -314,6 +320,8 @@ class ProfileRegistry(QObject):
                 tasks.discard(task_id)
             if not tasks:
                 self.task_profiles.pop(name)
+        if previous != set(self.task_profiles):
+            self.profile_usage_changed.emit()
 
     def check_user_profile(self, name):
         # Task authority belongs to its pages; user browsing remains available.
@@ -323,13 +331,21 @@ class ProfileRegistry(QObject):
         self.check_user_profile(name)
         return self.get(name)
 
-    def create(self, name, directory):
-        fresh = not directory.exists()
-        directory.mkdir(parents=True, exist_ok=True)
+    def create(self, name, directory, *, new_profile=False):
+        if (
+            not new_profile
+            and name in self.storage.retired
+            and (not directory.exists() or self.storage.retired_stub(name, directory))
+        ):
+            raise ValueError(
+                "This profile was renamed or archived. Create it explicitly to reuse its name."
+            )
+        fresh = new_profile or not directory.exists()
+        storage, cache = self.storage.prepare(name, directory, new=fresh)
         profile = QWebEngineProfile(name, self)
         configure_permission_policy(profile)
-        profile.setPersistentStoragePath(str(directory / "storage"))
-        profile.setCachePath(str(directory / "cache"))
+        profile.setPersistentStoragePath(str(storage))
+        profile.setCachePath(str(cache))
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
         profile.setPersistentCookiesPolicy(
             QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies
@@ -360,12 +376,16 @@ class ProfileRegistry(QObject):
         snapshot = CookieSnapshot(page, self)
         self.snapshots[name] = snapshot
         snapshot.loaded.connect(
-            lambda cookies, n=name: self.snapshot_loaded(n, cookies)
+            lambda cookies, n=name, source=profile: (
+                self.snapshot_loaded(n, cookies)
+                if self.profiles.get(n) is source
+                else None
+            )
         )
         snapshot.failed.connect(logger.warning)
 
     def snapshot_loaded(self, name, cookies):
-        if name == "search" or self.sharing.closed:
+        if name == "search" or self.sharing.closed or name not in self.profiles:
             return
         if name == "global":
             present = {cookie_key(cookie) for cookie in cookies}
@@ -452,6 +472,7 @@ class ProfileRegistry(QObject):
 
     def release(self, owner):
         self.owners.discard(owner)
+        self.profile_usage_changed.emit()
         if self.last_active_owner is owner:
             self.last_active_owner = None
         if self.owners:
@@ -532,10 +553,16 @@ class ProfileManager(QObject):
         if (
             not name
             or name in ("global", "search")
-            or self.get_profile_path(name).exists()
+            or name in self._profiles
+            or (
+                self.get_profile_path(name).exists()
+                and not self.registry.storage.retired_stub(
+                    name, self.get_profile_path(name)
+                )
+            )
         ):
             return False
-        self.get_profile(name)
+        self.registry.create(name, self.get_profile_path(name), new_profile=True)
         if self.registry.sharing_applies_to_all():
             self.registry.sharing.enable(name)
         self.registry.profiles_updated.emit()
@@ -561,13 +588,15 @@ class ProfileManager(QObject):
                 }
                 sharing.enable(name)
         self.profile_changed.emit(name)
+        self.registry.profile_usage_changed.emit()
 
     def list_profiles(self):
         names = {"global"}
         names.update(
             p.name
             for p in self.config.profiles_dir.iterdir()
-            if p.is_dir() and p.name not in ("search", "global_profile")
+            if p.name not in ("search", "global_profile")
+            and self.registry.storage.active(p.name, p)
         )
         return sorted(names)
 
@@ -596,9 +625,7 @@ class ProfileManager(QObject):
                 sip.delete(page)
             sip.delete(profile)
             del self._profiles[name]
-            self.registry.sharing.profiles.pop(name, None)
-            self.registry.sharing.enabled.discard(name)
-            self.registry.sharing.suspended.discard(name)
+        self.registry.sharing.unregister(name)
         history = self.registry.histories.pop(name, None)
         self.registry.start_pages.forget(name)
         if history is not None:
@@ -616,6 +643,7 @@ class ProfileManager(QObject):
         trash = self.config.config_dir / "deleted_profiles"
         trash.mkdir(exist_ok=True)
         try:
+            self.registry.storage.retire(name, directory)
             directory.rename(trash / f"{name}-{uuid4().hex}")
         except OSError:
             logger.exception("Could not archive profile %s", name)
@@ -634,6 +662,7 @@ class ProfileManager(QObject):
         if not self._available_for_mutation(old):
             return False
         try:
+            self.registry.storage.retire(old, self.get_profile_path(old))
             self.get_profile_path(old).rename(self.get_profile_path(new))
         except OSError:
             logger.exception("Could not rename profile %s", old)

@@ -107,14 +107,36 @@ class CookieSharing(QObject):
         if fresh:
             self.fresh.add(name)
         store = profile.cookieStore()
-        store.cookieAdded.connect(lambda cookie, n=name: self.target_added(n, cookie))
+        store.cookieAdded.connect(
+            lambda cookie, n=name, source=profile: (
+                self.target_added(n, cookie) if self.profiles.get(n) is source else None
+            )
+        )
         store.cookieRemoved.connect(
-            lambda cookie, n=name: self.target_removed(n, cookie)
+            lambda cookie, n=name, source=profile: (
+                self.target_removed(n, cookie)
+                if self.profiles.get(n) is source
+                else None
+            )
         )
         store.loadAllCookies()
 
     def save(self, name):
-        save_json(self.paths[name], self.states[name])
+        if name in self.profiles:
+            save_json(self.paths[name], self.states[name])
+
+    def unregister(self, name):
+        """Retire observers before moving a profile's directory."""
+        for mapping in (
+            self.profiles,
+            self.states,
+            self.observed,
+            self.pending,
+            self.paths,
+        ):
+            mapping.pop(name, None)
+        for collection in (self.fresh, self.enabled, self.suspended):
+            collection.discard(name)
 
     def enable(self, name):
         # A registry being torn down must not resume writing cookies from a
@@ -173,7 +195,11 @@ class CookieSharing(QObject):
                 delete_exact(self.profiles[name].cookieStore(), observed)
 
     def target_added(self, name, cookie):
-        if self.closed or (key := cookie_key(cookie)) is None:
+        if (
+            self.closed
+            or name not in self.profiles
+            or (key := cookie_key(cookie)) is None
+        ):
             return
         self.observed[name][key] = QNetworkCookie(cookie)
         digest = fingerprint(cookie)
@@ -210,7 +236,11 @@ class CookieSharing(QObject):
             self.copy(name, self.global_cookies[key])
 
     def target_removed(self, name, cookie):
-        if self.closed or (key := cookie_key(cookie)) is None:
+        if (
+            self.closed
+            or name not in self.profiles
+            or (key := cookie_key(cookie)) is None
+        ):
             return
         self.observed[name].pop(key, None)
         if key in self.pending[name]:

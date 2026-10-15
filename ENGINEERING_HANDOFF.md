@@ -2,6 +2,44 @@
 
 ## Start here
 
+**HTML restyle H2 — October 15.** Settings/profile management is now the active
+checkpoint, superseding H1's next-work instruction below. The shared local HTML
+surface remains maintained Steed UI, not the deferred agent-authored app bridge.
+
+- `ui/settings_dialog.py` now controls a nonmodal HTML workspace, reused per
+  browser window. `ui/web/settings.{html,css,js}` share H1 tokens. General/Profile/
+  Tabs/View/Cookies/Agents preserve the owner's category order. Preferences save
+  atomically, merge independent edits and detect conflicts; Cancel discards only
+  unsaved preferences. Profile actions happen immediately and say so in the UI.
+- Browser menu routes use the workspace; quick-switch shortcuts still switch
+  directly. Save broadcasts appearance updates to open windows. The shared
+  profile registry emits settings/usage signals without initializing task access.
+- Profile targets bind directory identity to opaque IDs; rename/archive reviews
+  are one-use and recheck current windows/tasks/defaults. Reload retains preference
+  drafts, clears reviews, rotates document/context authority and replays nothing.
+  QWebChannel command delivery is queued so closing settings cannot destroy the
+  bridge while its own dispatch slot is on the stack.
+- `services/profile_storage.py` fixes late Chromium writes recreating retired
+  profile paths. Legacy engine paths stay in place. Fresh profiles have manifest-
+  selected UUID engine directories; retired-name metadata hides markerless late
+  remnants and explicit name reuse preserves them under deleted_profiles. Full
+  archive restoration includes `.steed_profile.json`. Never delete or merge late
+  remnants automatically. Cookie/snapshot observers check the original engine
+  identity and unregister before retirement.
+- H2 is accepted: **1,441 full regressions / 469.217 s**, then **36 final
+  HTML/storage checks / 27.226 s**, including bounded initial sizing for smaller
+  logical desktops. Startup/render/shutdown, process-boundary cookie write/read,
+  SDK/raw stdio and authenticated HTTP MCP, Ruff (252 files), dependencies and
+  whitespace checks passed. `/tmp/steed-h2-*.png` contains inspected previews;
+  logs are `/tmp/steed-h2-{acceptance,final-ui,startup,persistence-write,persistence-read,mcp-stdio,mcp-http}.log`.
+  No real user profiles/accounts were used. The standalone persistence fixture
+  reproduced the known offscreen Qt constructor crash before setup; preserve
+  `/tmp/steed-h2-persistence-startup-crash.log`. Its startup attribute now matches
+  main.py; later checks passed, but a production engine-crash fix is not claimed.
+- Next after H2 acceptance: H3 history/bookmarks/downloads/file-library screens,
+  then H4 task/data panels. Keep external agents/MCP and existing source/permission
+  lifetimes. Toolbar/tab-strip HTML and Qt replacement remain separate decisions.
+
 **HTML restyle H1 — October 15.** The owner's latest instruction is to begin the
 HTML restyle, starting with the agent interface. This supersedes the old scope
 below where it concerns maintained Steed UI. It does not authorize arbitrary

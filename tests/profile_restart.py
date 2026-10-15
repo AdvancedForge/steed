@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from PyQt6 import sip
-from PyQt6.QtCore import QDateTime, QTimer, QUrl
+from PyQt6.QtCore import QCoreApplication, QDateTime, Qt, QTimer, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWidgets import QApplication
 
@@ -24,6 +24,7 @@ def check(data, phase):
             "home_page",
             (Path(__file__).resolve().parents[1] / "codec_test.html").as_uri(),
         )
+        QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         app = QApplication(["profile-restart"])
         app.setQuitOnLastWindowClosed(False)
         window = BrowserWindow("default")
@@ -33,6 +34,10 @@ def check(data, phase):
             window.profile_manager.global_profile.isOffTheRecord(),
             window.profile_manager.global_profile.persistentStoragePath(),
             window.profile_manager.global_profile.persistentCookiesPolicy().name,
+        )
+        storage_paths = (
+            Path(window.profile_manager.global_profile.persistentStoragePath()),
+            Path(window.profile_manager.current_profile.persistentStoragePath()),
         )
 
         def finish():
@@ -70,10 +75,7 @@ def check(data, phase):
             len(sharing.observed["default"]),
             flush=True,
         )
-        for directory in (
-            config.config_dir / "global_profile" / "storage",
-            config.profiles_dir / "default" / "storage",
-        ):
+        for directory in storage_paths:
             for db_path in (directory / "Cookies", directory / "Network" / "Cookies"):
                 if db_path.exists():
                     with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as db:

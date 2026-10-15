@@ -215,6 +215,7 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar = None
         self.data_panels_dock = None
         self.agent_setup_dialog = None
+        self.settings_dialog = None
         self.setup_window()
         self.setup_menus()
         self.setup_ui()
@@ -224,6 +225,7 @@ class BrowserWindow(QMainWindow):
         self._layout_editing = False
         self.apply_layout(self.layout_preferences)
         self.profile_manager.registry.layout_changed.connect(self._layout_committed)
+        self.profile_manager.registry.settings_changed.connect(self._settings_changed)
 
         self._was_fullscreen = False
         self._pending_desktop_request = None
@@ -1130,12 +1132,7 @@ class BrowserWindow(QMainWindow):
         self.setWindowTitle(title)
 
     def _switch_profile(self):
-        profiles = self.profile_manager.list_profiles() + ["search"]
-        profile, ok = QInputDialog.getItem(
-            self, "Switch Profile", "Select profile:", profiles, 0, False
-        )
-        if ok:
-            self._switch_to_profile(profile)
+        self._open_settings("profile", intent="switch")
 
     def _switch_to_profile(self, profile_name: str):
         try:
@@ -1162,84 +1159,16 @@ class BrowserWindow(QMainWindow):
         self.restore_tab_action.setEnabled(self.closed_tabs.available(profile_name))
 
     def _create_profile(self):
-        name, ok = QInputDialog.getText(self, "New Profile", "Profile name:")
-        if ok and name:
-            name = name.strip()
-            if self.profile_manager.create_profile(name):
-                self._switch_to_profile(name)
-            else:
-                QMessageBox.warning(
-                    self, "New Profile", "Choose a new, non-reserved profile name."
-                )
+        self._open_settings("profile", intent="create")
 
     def _rename_profile(self):
-        profiles = self.profile_manager.list_profiles()
-        if not profiles:
-            return
-        profile, ok = QInputDialog.getItem(
-            self, "Rename Profile", "Select profile:", profiles, 0, False
-        )
-        if ok and profile:
-            new_name, ok2 = QInputDialog.getText(
-                self, "Rename Profile", f"New name for '{profile}':"
-            )
-            if ok2 and new_name:
-                if self.profile_manager.rename_profile(profile, new_name):
-                    QMessageBox.information(
-                        self, "Success", f"Profile renamed to '{new_name}'"
-                    )
-                    self._update_profile_shortcuts()
-                    self._switch_to_profile(new_name)
-                    self._update_profile_shortcuts()
-                else:
-                    QMessageBox.warning(
-                        self,
-                        "Error",
-                        "Could not rename profile. Switch all windows away from it first, and choose an unused name.",
-                    )
+        self._open_settings("profile", intent="rename")
 
     def _delete_profile(self):
-        profiles = self.profile_manager.list_profiles()
-        current = self.profile_manager.current_profile_name
-        # Exclude current profile
-        profiles = [p for p in profiles if p != current]
-        if not profiles:
-            QMessageBox.information(
-                self, "No Profiles", "No profiles available to delete."
-            )
-            return
-        profile, ok = QInputDialog.getItem(
-            self, "Delete Profile", "Select profile to delete:", profiles, 0, False
-        )
-        if ok and profile:
-            reply = QMessageBox.question(
-                self,
-                "Delete Profile",
-                f"Archive profile '{profile}'? It can be recovered from deleted_profiles in the browser data directory.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                if self.profile_manager.delete_profile(profile):
-                    QMessageBox.information(
-                        self,
-                        "Archived",
-                        f"Profile '{profile}' moved to deleted_profiles and can be recovered.",
-                    )
-                    self._update_profile_shortcuts()
-                else:
-                    QMessageBox.warning(
-                        self,
-                        "Failed",
-                        "Could not archive profile. Switch all windows away from it first.",
-                    )
+        self._open_settings("profile", intent="archive")
 
     def _pop_out_profile(self):
-        profiles = self.profile_manager.list_profiles()
-        profile, ok = QInputDialog.getItem(
-            self, "Pop out Profile", "Select profile:", profiles, 0, False
-        )
-        if ok and profile:
-            self._pop_out_profile_named(profile)
+        self._open_settings("profile", intent="open_window")
 
     def _pop_out_profile_named(self, profile: str):
         try:
@@ -2023,6 +1952,8 @@ class BrowserWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        if self.settings_dialog is not None:
+            self.settings_dialog.reject()
         if self.data_panels_dock is not None:
             self.data_panels_dock.refresh()
         if self.file_library_dialog is not None:
@@ -2129,17 +2060,46 @@ class BrowserWindow(QMainWindow):
             return
         super().keyPressEvent(event)
 
-    def _open_settings(self):
-        dlg = SettingsDialog(
-            self.config, self, self.profile_manager.current_profile.httpUserAgent()
+    def _open_settings(self, section="general", *, intent=""):
+        if self._closing:
+            return
+        if self.settings_dialog is None:
+            try:
+                dialog = SettingsDialog(
+                    self.config,
+                    self,
+                    self.profile_manager.current_profile.httpUserAgent(),
+                )
+            except (OSError, ValueError, RuntimeError):
+                QMessageBox.warning(
+                    self, "Settings", "The settings workspace could not be opened."
+                )
+                return
+            self.settings_dialog = dialog
+            dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            dialog.applied.connect(self._settings_applied)
+            dialog.finished.connect(lambda: setattr(self, "settings_dialog", None))
+        self.settings_dialog.open_section(
+            section if isinstance(section, str) else "general", intent=intent
         )
-        if dlg.exec():
-            dlg.apply()
+        self.settings_dialog.show()
+        self.settings_dialog.raise_()
+        self.settings_dialog.activateWindow()
 
-            # Apply dark mode immediately
-            self.apply_dark_mode()
-
+    def _settings_applied(self):
+        try:
             self.profile_manager.refresh_settings()
+        except (OSError, RuntimeError, ValueError):
+            QMessageBox.warning(
+                self,
+                "Settings saved",
+                "Preferences were saved, but some engine settings could not be applied. Restart Steed to retry them.",
+            )
+        self.profile_manager.registry.settings_changed.emit()
+
+    def _settings_changed(self):
+        if not self._closing:
+            self.apply_dark_mode()
             self._start_page_changed(self.profile_manager.current_profile_name)
 
     def _startup_page(self):

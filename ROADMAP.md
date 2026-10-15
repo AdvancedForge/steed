@@ -12,6 +12,41 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**HTML interface H2 — settings and profiles (implemented and accepted).**
+General Settings and the profile create/switch/pop-out/rename/archive menu routes
+now open one reusable nonmodal HTML workspace. Sections follow General, Profile,
+Tabs, View, Cookies, Agents. Existing preferences have explicit Save/Cancel;
+appearance previews only inside settings until Save, which updates open windows.
+Per-key conflict checks merge independent edits and stop conflicting saves.
+Reload preserves the preference draft and discards pending profile reviews.
+
+Profile actions remain immediate and separate from preference saving. Rename and
+recoverable archive use one-use visible reviews pinned to the selected directory;
+built-in, active, agent-used and startup-profile restrictions have explanations.
+Usage notifications update other workspaces without changing task authority.
+
+Real HTML acceptance exposed delayed Chromium storage writes recreating retired
+profile directories. `services/profile_storage.py` preserves existing legacy
+stores in place, records retired names and gives fresh profile identities unique
+engine storage/cache subdirectories. Late-write remnants remain recoverable and
+are not offered as active profiles. Explicit name reuse preserves remnants and
+uses a fresh engine path; stale cookie/snapshot callbacks cannot join it. Keep
+the per-profile `.steed_profile.json` with complete backups/restores.
+
+Acceptance: **1,441 full regressions in 469.217 seconds**, then **36 final
+HTML/storage checks in 27.226 seconds** including the small-desktop sizing guard.
+Startup/render/shutdown, two-process cookie write/read, SDK/raw stdio and
+authenticated HTTP MCP journeys, Ruff (252 files), dependency and whitespace
+checks passed. Settings/profile light, dark, narrow and review previews were
+inspected in `/tmp/steed-h2-*.png`. Logs:
+`/tmp/steed-h2-{acceptance,final-ui,startup,persistence-write,persistence-read,mcp-stdio,mcp-http}.log`.
+All account/profile fixtures were synthetic/temporary; real desktop checks remain
+separate. One standalone persistence attempt reproduced the pre-existing offscreen
+Qt profile-constructor crash before test setup; its log is
+`/tmp/steed-h2-persistence-startup-crash.log`. The fixture now sets the application's
+shared-OpenGL-context attribute; subsequent persistence and transports passed.
+This does not establish a production fix for the known initialization instability.
+
 **HTML interface H1 — agent workspace (implemented and accepted).**
 The owner approved beginning an HTML restyle after the architecture review.
 The conversation sidebar and `steed:agents` now share one maintained local HTML
@@ -42,10 +77,9 @@ dependency checks and whitespace checks passed. Logs:
 `/tmp/steed-html-{acceptance,final-ui,startup,mcp}.log`. These checks used temporary
 profiles/local fixtures; real desktop/account acceptance remains separate.
 
-Next HTML milestones, keeping the engine and Python services:
+HTML milestones, keeping the engine and Python services:
 
-1. H2: shared settings/profile workspace, using explicit commands and the same
-   visual tokens; preserve existing configuration and profile semantics.
+1. H2: settings/profile workspace is implemented and accepted above.
 2. H3: history/bookmarks/downloads/library screens, preserving source access,
    recoverable deletion, private browsing and native file selection.
 3. H4: task/data-panel presentation, retaining reviewed source lifetimes and

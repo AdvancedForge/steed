@@ -15,7 +15,7 @@ browsing profiles and direct KeePassXC password management.
 - Find in page with match counts and per-tab page zoom.
 - Cookie controls, a global-cookie baseline, downloads, and ad blocking.
 - In-browser KeePassXC login selection, filling, and explicit saving.
-- A desktop launcher, dark mode, and familiar navigation shortcuts.
+- A desktop launcher, HTML settings/profile workspace, dark mode, and familiar shortcuts.
 - HTML agent chats in a sidebar or tab, private live browsing, takeover and Take Back.
 - Screenshot-guided browser click/type/key and optional unsafe agent auto-approval.
 - A persistent agent file library: add files once and enable full folder access.

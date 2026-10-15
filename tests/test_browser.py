@@ -1044,12 +1044,13 @@ class BrowserTests(unittest.TestCase):
 
     def test_settings_save_once(self):
         dialog = SettingsDialog(self.window.config)
-        self.assertTrue(dialog.google_login_compatibility.isChecked())
-        dialog.google_login_compatibility.setChecked(False)
+        self.assertTrue(dialog.state["preferences"]["google_login_compatibility"])
+        dialog.set_preference("google_login_compatibility", False)
         with patch.object(self.window.config, "save_config") as save:
             dialog.apply()
         save.assert_called_once()
         self.assertFalse(self.window.config.get("google_login_compatibility"))
+        dialog.reject()
         dialog.deleteLater()
 
     def test_ctrl_r_and_f5_reload_active_tab_from_both_focus_locations(self):

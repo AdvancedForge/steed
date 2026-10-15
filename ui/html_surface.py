@@ -69,9 +69,10 @@ class HtmlSurface(QWidget):
     command = pyqtSignal(dict)
     reloading = pyqtSignal()
 
-    def __init__(self, asset, parent=None):
+    def __init__(self, asset, parent=None, *, label="agent"):
         super().__init__(parent)
         self.asset = asset
+        self.label = label
         self.ready = False
         self.disposed = False
         self.generation = ""
@@ -82,7 +83,7 @@ class HtmlSurface(QWidget):
         self.fallback = QWidget(self)
         layout = QVBoxLayout(self.fallback)
         layout.addStretch()
-        self.notice = QLabel("Opening agents…", self.fallback)
+        self.notice = QLabel(f"Opening {label} interface…", self.fallback)
         self.notice.setWordWrap(True)
         layout.addWidget(self.notice)
         self.retry = QPushButton("Reload interface", self.fallback)
@@ -93,7 +94,7 @@ class HtmlSurface(QWidget):
         self.stack.addWidget(self.fallback)
         self.view = QWebEngineView(self)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        self.view.setAccessibleName("Steed agent conversations")
+        self.view.setAccessibleName(f"Steed {label} interface")
         self.stack.addWidget(self.view)
         self.profile = QWebEngineProfile(self)
         self.interceptor = _NoNetwork(self.profile)
@@ -124,7 +125,11 @@ class HtmlSurface(QWidget):
         self.channel.registerObject("interface", self.bridge)
         self.page.setWebChannel(self.channel)
         self.bridge.ready_received.connect(self._ready)
-        self.bridge.command_received.connect(self._dispatch)
+        # A command can close its view. Leave the bridge's own slot before a
+        # controller is allowed to destroy the page/channel that owns it.
+        self.bridge.command_received.connect(
+            self._dispatch, Qt.ConnectionType.QueuedConnection
+        )
         self.page.renderProcessTerminated.connect(lambda *_: self._failed())
         self.page.loadFinished.connect(self._loaded)
         self.timeout = QTimer(self)
@@ -140,7 +145,7 @@ class HtmlSurface(QWidget):
         self._last_payload = None
         self.reloading.emit()
         self.stack.setCurrentWidget(self.fallback)
-        self.notice.setText("Opening agents…")
+        self.notice.setText(f"Opening {self.label} interface…")
         self.retry.hide()
         assets = Path(__file__).parent / "web"
         library = QFile(":/qtwebchannel/qwebchannel.js")
@@ -155,6 +160,13 @@ class HtmlSurface(QWidget):
             html = html.replace(
                 "{{STYLE}}", (assets / "theme.css").read_text(encoding="utf-8")
             )
+            extra_style = assets / f"{self.asset}.css"
+            if extra_style.exists():
+                # Separate maintained screens share tokens without sharing
+                # screen-specific layouts. No file or URL is supplied by HTML.
+                html = html.replace(
+                    "{{EXTRA_STYLE}}", extra_style.read_text(encoding="utf-8")
+                )
             html = html.replace(
                 "{{SCRIPT}}", (assets / f"{self.asset}.js").read_text(encoding="utf-8")
             )
@@ -234,7 +246,7 @@ class HtmlSurface(QWidget):
         self.timeout.stop()
         self.stack.setCurrentWidget(self.fallback)
         self.notice.setText(
-            "The agent interface could not load. Browsing and running tasks are unaffected. "
+            f"The {self.label} interface could not load. Browsing and running tasks are unaffected. "
             "Reload the interface to reconnect; sent messages are not replayed."
         )
         self.retry.show()

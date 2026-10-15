@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Steed · Settings &amp; profiles</title>
+  <style nonce="{{NONCE}}">{{STYLE}}
+  {{EXTRA_STYLE}}</style>
+</head>
+<body>
+  <div class="settings-shell">
+    <header class="header"><div class="brand"><span class="brand-mark" aria-hidden="true">s</span><div><h1>Make Steed yours</h1><p>Settings &amp; profiles</p></div></div><span class="scope-tag">Browser preferences</span></header>
+    <div class="settings-body">
+      <nav class="settings-nav" aria-label="Settings sections">
+        <button data-section="general">General</button><button data-section="profile">Profile</button><button data-section="tabs">Tabs</button><button data-section="view">View</button><button data-section="cookies">Cookies</button><button data-section="agents">Agents</button>
+      </nav>
+      <main id="settings-content" class="settings-content">
+        <div id="error" class="notice error" role="alert" hidden></div>
+        <div id="notice" class="notice success" role="status" hidden></div>
+        <div id="external" class="notice warning" role="status" hidden>Saved preferences changed in another window. Your draft is kept. Save merges independent edits and stops if the same setting conflicts.</div>
+        <div id="private" class="notice warning" hidden>You are browsing privately. Preferences saved here still apply across Steed.</div>
+        <section data-panel="general">
+          <div class="section-heading"><span class="eyebrow">Your everyday browser</span><h2>General</h2><p>Choose where you start and how you search.</p></div>
+          <div class="settings-card">
+            <label for="home_page">Home page</label><input id="home_page" data-pref="home_page" type="text" maxlength="4096" spellcheck="false" autocomplete="off"><p class="help">Opened by the Home button. Use steed:newtab for your customizable start page.</p>
+            <label for="search_engine">Search URL prefix</label><input id="search_engine" data-pref="search_engine" type="text" maxlength="4096" spellcheck="false" autocomplete="off"><p class="help">Steed adds your search text to this address. For example, https://www.google.com/search?q=</p>
+          </div>
+          <details class="settings-card advanced"><summary>Website compatibility</summary><div>
+            <label for="user_agent_override">User-Agent override</label><input id="user_agent_override" data-pref="user_agent_override" type="text" maxlength="4096" placeholder="Leave blank to use the engine default" spellcheck="false" autocomplete="off">
+            <p class="help">Current effective User-Agent</p><p id="effective-ua" class="technical"></p>
+            <label class="toggle-row" for="google_login_compatibility"><span><strong>Google sign-in compatibility</strong><small>Use the existing sign-in-host workaround. Reload the sign-in page after changing it.</small></span><input id="google_login_compatibility" data-pref="google_login_compatibility" type="checkbox" role="switch"></label>
+          </div></details>
+        </section>
+        <section data-panel="profile" hidden>
+          <div class="section-heading"><span class="eyebrow">Separate spaces, shared browser</span><h2>Profiles</h2><p>Keep accounts and browsing data in their own spaces.</p></div>
+          <p id="profile-intent" class="help"></p>
+          <div class="settings-card"><label for="default_profile">Startup profile</label><select id="default_profile" data-pref="default_profile"></select><p class="help">Used when Steed starts without an explicit profile. This preference takes effect when you save.</p></div>
+          <div id="profile-list" class="profile-list" aria-label="Browser profiles"></div>
+          <div id="rename-form" class="settings-card" hidden><label for="rename-name">New profile name</label><input id="rename-name" type="text" maxlength="80" autocomplete="off"><div class="inline-actions"><button id="review-rename" class="primary" data-action="review_rename">Review rename</button><button id="cancel-rename" data-action="cancel_rename">Cancel</button></div></div>
+          <div class="settings-card"><h3>A new space</h3><label for="new-profile-name">Profile name</label><input id="new-profile-name" type="text" maxlength="80" placeholder="Work, Personal, Research…" autocomplete="off"><div class="inline-actions"><button id="create-profile" class="primary" data-action="create">Create &amp; switch</button></div><p class="help">Profile actions happen immediately. Switching saves and restores your tabs through Steed's existing profile controls.</p></div>
+        </section>
+        <section data-panel="tabs" hidden>
+          <div class="section-heading"><span class="eyebrow">A fresh place to begin</span><h2>Tabs</h2><p>Set up new tabs and pick up where you left off.</p></div>
+          <div class="settings-card"><label for="new_tab_page">New tab page</label><input id="new_tab_page" data-pref="new_tab_page" type="text" maxlength="4096" autocomplete="off" spellcheck="false"><p class="help">Use steed:newtab for the built-in page, or enter another address.</p>
+          <label class="toggle-row" for="restore_tabs_on_startup"><span><strong>Restore tabs on startup</strong><small>Reopen the saved tabs for your profile.</small></span><input id="restore_tabs_on_startup" data-pref="restore_tabs_on_startup" type="checkbox" role="switch"></label></div>
+          <div class="settings-card link-card"><div><h3>Make your new tab yours</h3><p class="help">Search, bookmarks, a background, news, or your own HTML.</p></div><button id="customize-newtab" data-action="open" data-destination="newtab">Customize page</button></div>
+        </section>
+        <section data-panel="view" hidden>
+          <div class="section-heading"><span class="eyebrow">Room for your work</span><h2>View</h2><p>Choose an appearance and arrange your browser.</p></div>
+          <div class="settings-card"><label class="toggle-row" for="dark_mode"><span><strong>Dark appearance</strong><small>Previewed here. The rest of Steed changes when you save.</small></span><input id="dark_mode" data-pref="dark_mode" type="checkbox" role="switch"></label></div>
+          <div class="settings-card link-card"><div><h3>Layout &amp; toolbar</h3><p class="help">Adjust density, navigation controls, menu order and sidebar position.</p></div><button data-action="open" data-destination="layout">Layout settings</button></div>
+        </section>
+        <section data-panel="cookies" hidden>
+          <div class="section-heading"><span class="eyebrow">Accounts across your spaces</span><h2>Cookies</h2><p>Control how Global's cookie baseline reaches regular profiles.</p></div>
+          <div class="settings-card"><label for="global_cookie_sharing_mode">Global cookie sharing</label><select id="global_cookie_sharing_mode" data-pref="global_cookie_sharing_mode"><option value="on_switch">When switching to a profile</option><option value="all_profiles">Across all regular profiles</option></select><p class="help">Uses Steed's existing global-cookie sharing rules. This can affect which account is signed in. Private browsing remains separate.</p>
+          <label class="toggle-row" for="global_cookie_sharing_apply_on_startup"><span><strong>Apply global cookies on startup</strong><small>Reconcile the baseline as the profile opens.</small></span><input id="global_cookie_sharing_apply_on_startup" data-pref="global_cookie_sharing_apply_on_startup" type="checkbox" role="switch"></label></div>
+        </section>
+        <section data-panel="agents" hidden>
+          <div class="section-heading"><span class="eyebrow">Bring your own agent</span><h2>Agents</h2><p>Connect an external agent and keep access in your control.</p></div>
+          <div class="settings-card link-card"><div><h3>Your agent workspace</h3><p class="help">Conversations, model status, task files and permission controls.</p></div><button data-action="open" data-destination="agents">Open agents</button></div>
+          <div class="settings-card link-card"><div><h3>Connection setup</h3><p class="help">View MCP settings or connect Codex and other external agents. Opening setup does not grant browser access.</p></div><button data-action="open" data-destination="setup">Connection setup</button></div>
+        </section>
+      </main>
+    </div>
+    <footer class="settings-footer"><div><strong id="save-state" role="status">Preferences are up to date</strong><small>Preferences apply across profiles. Profile actions happen immediately.</small></div><div class="footer-buttons"><button id="reset" data-action="reset">Reload saved values</button><button id="cancel" data-action="cancel">Cancel</button><button id="save" class="primary" data-action="save">Save changes</button></div></footer>
+  </div>
+  <div id="review-overlay" class="review-overlay" hidden><section class="review-dialog" role="alertdialog" aria-modal="true" aria-labelledby="review-title" aria-describedby="review-description"><span class="eyebrow">Review profile change</span><h2 id="review-title"></h2><p id="review-description"></p><div class="inline-actions"><button id="cancel-review" data-action="cancel_review">Keep profile</button><button id="confirm-review" class="primary" data-action="confirm">Confirm</button></div></section></div>
+  <script nonce="{{NONCE}}">{{CHANNEL}}</script>
+  <script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script>
+</body>
+</html>
