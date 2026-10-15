@@ -23,6 +23,7 @@ from bookmark_format import (
     parse_bookmarks,
 )
 from services.command_broker import require_owner_thread
+from services.page_style import ROOT_CSS
 from utils import load_json, save_json
 
 NEW_TAB = "steed:newtab"
@@ -36,6 +37,19 @@ DEFAULT_SETTINGS = {
 }
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
 MAX_HTML_BYTES = 256 * 1024
+WORKSPACES = ("settings", "agents", "style")
+
+
+def workspace_name(text):
+    """Resolve maintained workspaces separately from authored start pages."""
+    if not isinstance(text, str):
+        return None
+    for name in WORKSPACES:
+        if text in ("steed:" + name, "steed://" + name, "steed://" + name + "/"):
+            return name
+    return None
+
+
 CUSTOM_EXAMPLE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>My New Tab</title>
 <style>body { font: 18px system-ui; max-width: 680px; margin: 15vh auto;
@@ -69,10 +83,11 @@ def internal_url(text):
         "steed::newtab": "steed://newtab/",
         "steed::welcome": "steed://welcome/",
     }
+    aliases.update({"steed:" + name: "steed://" + name + "/" for name in WORKSPACES})
     if text in aliases:
         return QUrl(aliases[text])
     url = QUrl(text)
-    return url if page_name(url) is not None else None
+    return url if page_name(url) is not None or workspace_name(url.toString()) else None
 
 
 def page_name(url):
@@ -330,11 +345,18 @@ class StartPages(QObject):
 
     def render(self, profile, name):
         state = self.state(profile)
+        styles = self.registry.page_style
+        root_css = ROOT_CSS.read_text(encoding="utf-8") + styles.css(profile)
         custom_html = state["html" if name == "newtab" else "welcome_html"]
         if custom_html:
             # A first policy cannot be loosened by policies in user-authored HTML.
             return (
-                '<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; style-src &apos;unsafe-inline&apos;; script-src &apos;unsafe-inline&apos;; img-src data:; form-action http: https:; base-uri &apos;none&apos;; object-src &apos;none&apos;">'
+                '<!doctype html><html data-theme="'
+                + ("dark" if styles.dark(profile) else "light")
+                + '"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; style-src &apos;unsafe-inline&apos;; script-src &apos;unsafe-inline&apos;; img-src data:; form-action http: https:; base-uri &apos;none&apos;; object-src &apos;none&apos;">'
+                + "<style>"
+                + root_css
+                + "</style></head>"
                 + custom_html
             ).encode()
         private = profile == "search"
@@ -370,11 +392,8 @@ class StartPages(QObject):
                 if module == "search":
                     body += '<form class="search" action="steed://action/search" method="get"><label class="sr-only" for="query">Search or enter a web address</label><input id="query" name="q" placeholder="Search or enter a web address" autocomplete="off" maxlength="4096" autofocus required><button type="submit">Go</button></form>'
                 elif module == "image":
-                    body += (
-                        f'<figure class="picture"><img alt="Your chosen new-tab image" src="{escape(settings["image"], quote=True)}"></figure>'
-                        if settings["image"]
-                        else '<section class="card"><h2>Your image</h2><p>Choose a local image in Customize.</p></section>'
-                    )
+                    # The selected image fills the viewport behind the content.
+                    pass
                 elif module == "bookmarks":
                     body += section(
                         "Bookmarks",
@@ -408,7 +427,14 @@ class StartPages(QObject):
         css = (
             Path(__file__).resolve().parents[1] / "ui" / "assets" / "start_page.css"
         ).read_text(encoding="utf-8")
-        theme = "dark" if self.registry.config.dark_mode else "light"
+        css += root_css
+        background = ""
+        if name == "newtab" and "image" in state["settings"]["modules"]:
+            image = state["settings"]["image"]
+            if image:
+                css += 'body { --newtab-image: url("' + image + '"); }'
+                background = " has-background"
+        theme = "dark" if styles.dark(profile) else "light"
         title = "Welcome to Steed" if name == "welcome" else "New Tab"
         private_note = " · Temporary; nothing is saved" if private else ""
         template = Template(
@@ -424,10 +450,12 @@ class StartPages(QObject):
             title=title,
             css=css,
             body=body,
+            menu=newtab_menu() if styles.get(profile)["newtab_menu"] else "",
             profile=escape(profile_label + private_note),
-            body_class="minimal"
-            if name == "newtab" and state["settings"]["minimal"]
-            else "",
+            body_class=(
+                "minimal" if name == "newtab" and state["settings"]["minimal"] else ""
+            )
+            + background,
         ).encode()
 
     def news_section(self, profile):
@@ -442,13 +470,33 @@ class StartPages(QObject):
         )
 
 
+def newtab_menu():
+    links = "".join(
+        f'<a href="steed://action/menu?name={name}">{label}</a>'
+        for name, label in (
+            ("general", "General"),
+            ("profile", "Profile"),
+            ("tabs", "Tabs"),
+            ("view", "View"),
+            ("cookies", "Cookies"),
+            ("agents", "Agents"),
+        )
+    )
+    return (
+        '<details class="browser-menu"><summary>☰ Browser menu</summary><div>'
+        + links
+        + '<hr><a href="steed://settings/">Settings</a>'
+        + '<a href="steed://style/">Style</a></div></details>'
+    )
+
+
 def section(title, items, empty, action="", *, identifier=""):
     links = "".join(
         f'<li><a href="{escape(url, quote=True)}"><span>{escape(title)}</span><span class="arrow" aria-hidden="true">↗</span></a></li>'
         for title, url in items
     )
     content = f'<ul class="links">{links}</ul>' if links else f"<p>{escape(empty)}</p>"
-    return f'<section class="card" id="{identifier}"><div class="section-head"><h2>{title}</h2>{action}</div>{content}</section>'
+    return f'<section class="card" id="{identifier}"><div class="section-head"><h2>{title}</h2><span class="section-actions">{action}</span></div>{content}</section>'
 
 
 def clean_html(value):

@@ -124,7 +124,7 @@ spellings are accepted as aliases; the address bar shows one colon.
 Open **General → Customize New Tab**, or click Customize on a built-in page:
 
 - Check and drag sections to choose their presence and order: search, local
-  image, bookmarks, recently closed tabs, recent visits and news.
+  background image, bookmarks, recently closed tabs, recent visits and news.
   Minimal page hides the heading/header/footer, allowing just a search bar.
 - Choose a local image; Steed resizes and copies it, so moving the original file
   does not break the page. Input is bounded to 8 MB/32 megapixels and the saved
@@ -423,7 +423,7 @@ Configuration is stored in `~/.custom_browser/config.json`. You can edit this fi
 
 ### Settings workspace
 
-**General → Settings** opens a nonmodal HTML workspace with **General**, **Profile**,
+**General → Settings** (Ctrl+,) opens `steed:settings` in a browser tab, with **General**, **Profile**,
 **Tabs**, **View**, **Cookies** and **Agents** sections. Browser preferences apply
 across profiles, including when settings is opened from private browsing.
 Home/search and website compatibility are in General; new-tab address and session
@@ -440,6 +440,56 @@ values** explicitly discards preference edits and reloads saved values.
 Interface reload preserves the controller-held preference draft and clears pending
 profile reviews. It does not save preferences or repeat profile operations.
 
+### Internal pages and shared styling
+
+Type `steed:newtab`, `steed:welcome`, `steed:settings`, `steed:agents` or
+`steed:style` in the address bar. Settings, Agents and Style are maintained HTML
+workspaces with isolated, off-the-record engines; their addresses are preserved
+in saved tabs. Website pages and authored New Tab HTML never receive their native
+bridge. Settings and Style support normal find, zoom and reload controls.
+
+Open **View → Page Style** or **Settings → View → Page style**:
+
+1. Choose a theme/accent and optionally edit the root CSS (up to 16,000 characters).
+   All Steed pages start with `ui/web/root.css` and inherit this profile's overrides.
+   Useful tokens include `--bg`, `--surface`, `--ink`, `--muted` and `--accent`;
+   `[data-theme="dark"]` rules customize the dark palette. Custom page HTML may add
+   its own CSS after the inherited stylesheet. Styles cannot enable external
+   requests or grant browser/data permissions.
+2. Show or hide the **top menu bar** and **bottom status bar**. The address bar's
+   **☰** button always exposes all six browser menus. **Ctrl+Shift+M** toggles the
+   top menu. Unsafe agent auto-approval remains marked on ☰ when enabled.
+3. Enable the loading indicator below the address bar, choose its color/height
+   (1–10 px), and optionally show a percentage. The default is a 3 px bar using
+   Qt WebEngine's loading estimate. The percentage option uses an 18 px row for
+   legibility. Progress follows the selected website tab and clears on completion,
+   stop or failure; it is hidden for maintained workspaces and fullscreen video.
+4. Click **Apply style** for this profile, or check **Apply to all profiles and
+   use for new profiles** first. Synchronization replaces other appearance
+   overrides in one atomic configuration write and updates open windows. It
+   copies styling/bar preferences, not HTML, images, bookmarks, account data or
+   toolbar layouts. Incognito edits last for this session and cannot sync outward.
+
+Unsaved style fields stay in the form after an error. Conflicting saves from a
+second window stop with an explanation; **Reload saved** explicitly discards that
+form draft. Reloading the interface discards unsaved style fields and does not
+repeat a save. **Reset form** fills defaults without applying them. If custom CSS
+makes a page unusable, open **☰ → View → Reset Page Style** to recover with a native
+confirmation. Existing authored HTML and background images are preserved.
+
+New Tab's image section is now a fixed, centered **cover background** behind the
+content, with a tint to keep text readable. Choose it under **Customize New Tab →
+Background image**. The optional **Browser menu** dropdown stays visible even in
+minimal mode; `steed:style` can hide it independently. Its six category links open
+the maintained browser menus. Custom HTML remains isolated from these native
+actions; agents can continue to propose/edit authored pages through existing
+reviewed start-page tools. Home and New Tab addresses remain independently editable.
+
+Appearance lives in the shared `config.json` under `page_style`, with per-profile
+overrides keyed by the stable profile identity. Renaming a profile preserves its
+style; creating another profile with an archived name does not inherit its
+override. A complete backup retains this configuration and the profile identity.
+
 ### Configuration Options
 
 - `default_profile`: Default profile to use on startup
@@ -447,6 +497,8 @@ profile reviews. It does not save preferences or repeat profile operations.
 - `new_tab_page`: URL for new tabs, independent of the Home button
 - `search_engine`: URL prefix such as `https://www.duckduckgo.com/?q=` (search text is appended)
 - `dark_mode`: Enable dark mode by default
+- `page_style`: Shared stylesheet and profile-specific theme/bar/loading overrides;
+  configure these through `steed:style` rather than editing identity keys manually
 - `restore_tabs_on_startup`: Restore tabs when opening a profile
 - `window_width`: Default window width
 - `window_height`: Default window height

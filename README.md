@@ -9,13 +9,14 @@ browsing profiles and direct KeePassXC password management.
 - Separate profiles and an incognito search profile.
 - Global starts fresh installs; Welcome and editable HTML New Tab pages are built in.
 - Searchable profile bookmarks with folders and HTML import/export.
-- Start-page sections, local images and optional news feeds.
+- Start-page sections, background images and optional news feeds.
 - Saved tab sessions, tab groups, and recently closed tab restoration.
 - Address suggestions from per-profile browsing history.
 - Find in page with match counts and per-tab page zoom.
 - Cookie controls, a global-cookie baseline, downloads, and ad blocking.
 - In-browser KeePassXC login selection, filling, and explicit saving.
 - A desktop launcher, HTML settings/profile workspace, dark mode, and familiar shortcuts.
+- `steed:style` for shared page CSS, profile themes, hidden bars and loading progress.
 - HTML agent chats in a sidebar or tab, private live browsing, takeover and Take Back.
 - Screenshot-guided browser click/type/key and optional unsafe agent auto-approval.
 - A persistent agent file library: add files once and enable full folder access.

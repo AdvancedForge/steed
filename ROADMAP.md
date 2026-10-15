@@ -12,6 +12,31 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**HTML pages and appearance — owner-requested continuation (implemented and
+accepted).** `steed:settings`, `steed:agents` and `steed:style` expose
+maintained HTML workspaces as tabs, alongside New Tab/Welcome. A shared root
+stylesheet and profile identity-scoped overrides support themes, accent/CSS,
+menu/status visibility, a New Tab menu and configurable estimated loading progress.
+Apply-all replaces appearance overrides atomically, including defaults for future
+profiles; private edits stay in memory. Images now cover the New Tab background.
+Hidden menus retain keyboard shortcuts and the mandatory address-bar menu button;
+native Reset Page Style recovers from unusable CSS. Maintained workspaces cannot
+be delegated as website tabs, including during a pending navigation. Custom page
+HTML retains its existing isolation and reviewed editing workflow.
+
+Acceptance: **1,466 full regressions / 532.260 s**, plus **162 focused checks /
+106.133 s** covering real HTML, profile scope, keyboard access, loading progress,
+source isolation, conflicts and storage failures. Startup/render/shutdown and
+SDK/raw stdio + authenticated HTTP MCP journeys passed. Ruff (256 Python files),
+formatting, dependency and whitespace checks passed. Light/dark Style, cover
+background and loading-bar previews were inspected at `/tmp/steed-pages-*.png`.
+Logs: `/tmp/steed-pages-{acceptance-final,final-focused,startup,mcp-stdio,mcp-http}.log`.
+All fixtures used temporary profiles and synthetic/local data; actual desktop
+checks remain separate, and the known headless Qt initialization issue remains
+tracked in H2 below.
+Next remains H3 history/bookmarks/downloads/file-library HTML screens; Qt replacement
+and the deferred authored-app data bridge are not part of this milestone.
+
 **HTML interface H2 — settings and profiles (implemented and accepted).**
 General Settings and the profile create/switch/pop-out/rename/archive menu routes
 now open one reusable nonmodal HTML workspace. Sections follow General, Profile,

@@ -33,7 +33,7 @@ from services.start_pages import (
 
 LABELS = {
     "search": "Search bar",
-    "image": "Local image",
+    "image": "Background image",
     "bookmarks": "Bookmarks",
     "recent": "Recently closed tabs",
     "history": "Recent visits",
@@ -64,7 +64,9 @@ class StartPageDialog(QDialog):
         tabs.addTab(custom, "Custom HTML")
         form = QVBoxLayout(built_in)
         form.addWidget(
-            QLabel("Check sections to show. Drag them to change their order.")
+            QLabel(
+                "Check sections to show. Drag content sections to reorder them; the image fills the background."
+            )
         )
         self.modules = QListWidget()
         self.modules.setDragDropMode(QListWidget.DragDropMode.InternalMove)
@@ -81,7 +83,9 @@ class StartPageDialog(QDialog):
         self.minimal.setChecked(state["settings"]["minimal"])
         form.addWidget(self.minimal)
         images = QHBoxLayout()
-        self.image_label = QLabel("Image chosen" if self.image else "No image chosen")
+        self.image_label = QLabel(
+            "Background image chosen" if self.image else "No background image chosen"
+        )
         images.addWidget(self.image_label, 1)
         choose = QPushButton("Choose image…")
         choose.clicked.connect(self.choose_image)

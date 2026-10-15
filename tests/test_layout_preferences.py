@@ -345,6 +345,7 @@ class AddressBarLayoutTests(unittest.TestCase):
                 self.bar.address_input,
                 self.bar.zoom_btn,
                 self.bar.passwords_btn,
+                self.bar.menu_btn,
             ],
         )
 
@@ -396,6 +397,7 @@ class AddressBarLayoutTests(unittest.TestCase):
                 self.bar.reload_btn,
                 self.bar.address_input,
                 self.bar.zoom_btn,
+                self.bar.menu_btn,
             ],
         )
 
@@ -403,7 +405,7 @@ class AddressBarLayoutTests(unittest.TestCase):
         self.bar.apply_toolbar(["home", "button_from_the_future"], [])
         self.assertEqual(self.bar.toolbar_order[0], "home")
         self.assertEqual(set(self.bar.toolbar_order), set(TOOLBAR_ORDER))
-        self.assertEqual(len(self._shown()), len(TOOLBAR_ITEMS) + 1)
+        self.assertEqual(len(self._shown()), len(TOOLBAR_ITEMS) + 2)
 
     def test_density_changes_spacing(self):
         self.bar.apply_density("compact")
@@ -422,7 +424,7 @@ class AddressBarLayoutTests(unittest.TestCase):
             for index in range(layout.count())
             if layout.itemAt(index).widget() is not None
         ]
-        self.assertEqual(widgets, [self.bar.address_input])
+        self.assertEqual(widgets, [self.bar.address_input, self.bar.menu_btn])
 
 
 class TabBarDensityTests(unittest.TestCase):

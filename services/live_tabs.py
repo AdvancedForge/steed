@@ -34,6 +34,10 @@ class LiveTabs:
         for view in views:
             if sip.isdeleted(view):
                 raise ValueError("Tab closed before delegation")
+            if getattr(view, "native_panel", None) is not None:
+                raise ValueError(
+                    "Select a website tab; internal Steed workspaces cannot be delegated"
+                )
             offer = self.offers.get(view.agent_tab_id)
             if offer is not None and offer[0] != task_id:
                 raise ValueError("This tab is already shared with another task")

@@ -94,12 +94,18 @@ class StartPageTests(unittest.TestCase):
 
     def test_aliases_reload_and_restorable_urls(self):
         tab = self.window.tabs[0]
+        completed = []
+        tab.loadFinished.connect(completed.append)
         for address in (NEW_TAB, "steed::newtab", "steed://newtab/"):
+            count = len(completed)
             self.window._navigate_to_url(address)
+            self.wait(lambda count=count: len(completed) > count and completed[-1])
             self.loaded(tab)
             self.assertEqual(self.js("document.title", tab), "New Tab")
             self.assertEqual(self.window.address_bar.address_input.text(), NEW_TAB)
+            count = len(completed)
             self.window._reload()
+            self.wait(lambda count=count: len(completed) > count and completed[-1])
             self.loaded(tab)
             self.assertEqual(self.js("document.title", tab), "New Tab")
         self.window._save_current_tabs()
@@ -183,7 +189,10 @@ class StartPageTests(unittest.TestCase):
         self.pages.configure("global", settings)
         data = self.pages.render("global", "newtab").decode()
         self.assertIn("data:image/png;base64,", data)
-        self.assertLess(data.index('class="picture"'), data.index("Recent visits"))
+        self.assertIn("has-background", data)
+        self.assertIn("--newtab-image: url(", data)
+        self.assertNotIn('<figure class="picture">', data)
+        self.assertIn("Recent visits", data)
         self.window._new_tab(url="about:blank")
         self.window._close_current_tab()
         self.assertTrue(self.window.closed_tabs.entries("global"))

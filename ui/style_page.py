@@ -1,0 +1,107 @@
+"""Maintained HTML editor for the shared Steed stylesheet and browser bars."""
+
+from secrets import token_hex
+
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
+
+from services.page_style import DEFAULTS
+from ui.html_surface import HtmlSurface
+
+
+class StylePage(QWidget):
+    def __init__(self, window):
+        super().__init__(window)
+        self.manager = window.profile_manager
+        self.styles = self.manager.registry.page_style
+        self.context = token_hex(16)
+        self.sequence = 0
+        self.base = self.styles.get(self.manager.current_profile_name)
+        self.error = ""
+        self.notice = ""
+        self.disposed = False
+        self.surface = HtmlSurface("style", self, label="appearance")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.surface)
+        self.surface.command.connect(self.command)
+        self.surface.reloading.connect(self.reset)
+        self.manager.profile_changed.connect(self.reset)
+        self.styles.changed.connect(self.publish)
+        self.publish()
+
+    def reset(self, *_):
+        self.context = token_hex(16)
+        self.sequence = 0
+        self.base = self.styles.get(self.manager.current_profile_name)
+        self.error = self.notice = ""
+        self.publish()
+
+    def publish(self):
+        if self.disposed:
+            return
+        profile = self.manager.current_profile_name
+        self.surface.publish(
+            {
+                "context": self.context,
+                "ack": self.sequence,
+                "values": self.base,
+                "defaults": DEFAULTS,
+                "profile": "Incognito · temporary for this session"
+                if profile == "search"
+                else profile,
+                "private": profile == "search",
+                "dark": self.styles.dark(profile),
+                "error": self.error,
+                "notice": self.notice,
+                "external_changes": self.styles.get(profile) != self.base,
+            }
+        )
+
+    def command(self, command):
+        if self.disposed or command.get("context") != self.context:
+            return
+        sequence = command.get("sequence")
+        if type(sequence) is not int or sequence <= self.sequence:
+            return
+        self.sequence = sequence
+        self.error = self.notice = ""
+        try:
+            action = command.get("action")
+            if action == "reload":
+                self.reset()
+                return
+            if action != "save" or set(command) != {
+                "context",
+                "sequence",
+                "action",
+                "values",
+                "all_profiles",
+            }:
+                raise ValueError("Unsupported appearance request.")
+            self.styles.save(
+                self.manager.current_profile_name,
+                command["values"],
+                all_profiles=command["all_profiles"],
+                expected=self.base,
+            )
+            self.base = self.styles.get(self.manager.current_profile_name)
+            self.notice = (
+                "Saved for all profiles, including new profiles."
+                if command["all_profiles"]
+                else "Saved for this profile."
+            )
+        except ValueError as error:
+            self.error = str(error)
+        except (OSError, RuntimeError):
+            self.error = (
+                "Appearance could not be saved. Your current settings are preserved."
+            )
+        self.publish()
+
+    def dispose(self):
+        if self.disposed:
+            return
+        self.disposed = True
+        self.manager.profile_changed.disconnect(self.reset)
+        self.styles.changed.disconnect(self.publish)
+        self.surface.dispose()

@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QStatusBar,
@@ -42,7 +43,13 @@ from layout_preferences import (
 from profile_manager import ProfileManager
 from services.permission_service import PermissionService
 from services.site_permissions import FEATURES
-from services.start_pages import NEW_TAB, WELCOME, display_url, page_name
+from services.start_pages import (
+    NEW_TAB,
+    WELCOME,
+    display_url,
+    page_name,
+    workspace_name,
+)
 from tab_manager import TabManager, TabState
 from ui.adblock_dialog import AdBlockDialog
 from ui.address_bar import AddressBar
@@ -104,6 +111,22 @@ class BrowserPage(QWebEnginePage):
         self.setUrlRequestInterceptor(self.site_compatibility)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        if is_main_frame and workspace_name(url.toString()):
+            tab = self.parent()
+            window = getattr(tab, "browser_window", None)
+            if (
+                window is not None
+                and page_name(self.url()) is not None
+                and navigation_type
+                == QWebEnginePage.NavigationType.NavigationTypeLinkClicked
+                and not window.profile_manager.registry.start_pages.state(
+                    window.profile_manager.current_profile_name
+                )["html" if page_name(self.url()) == "newtab" else "welcome_html"]
+            ):
+                QTimer.singleShot(
+                    0, lambda: window._navigate_tab_to_url(tab, url.toString())
+                )
+            return False
         if url.scheme() == "steed" and url.host() == "action":
             tab = self.parent()
             window = getattr(tab, "browser_window", None)
@@ -157,6 +180,10 @@ class BrowserTab(QWebEngineView):
         self.group = None
         self.group_id = None
         self.native_panel = None
+        self.workspace_name = None
+        self.workspace_controller = None
+        self.load_progress = 100
+        self.is_loading = False
         self.tab_id = uuid4().hex
         # Runtime references must stay distinct when windows restore saved IDs.
         self.agent_tab_id = uuid4().hex
@@ -237,10 +264,14 @@ class BrowserWindow(QMainWindow):
 
         # Connect profile signals
         self.profile_manager.profile_changed.connect(self._on_profile_changed)
+        self.profile_manager.registry.page_style.changed.connect(
+            self._appearance_changed
+        )
         self.profile_manager.profiles_updated.connect(self._update_profile_shortcuts)
         self.profile_manager.registry.start_pages.changed.connect(
             self._start_page_changed
         )
+        self._apply_page_style()
         self.profile_manager.registry.start_pages.news_changed.connect(
             self._start_news_changed
         )
@@ -358,6 +389,24 @@ class BrowserWindow(QMainWindow):
         settings_action.setShortcut(QKeySequence("Ctrl+,"))
         settings_action.triggered.connect(self._open_settings)
         general_menu.addAction(settings_action)
+        style_action = QAction("Page Style…", self)
+        style_action.triggered.connect(lambda: self._new_tab(url="steed:style"))
+        view_menu.addAction(style_action)
+        reset_style = QAction("Reset Page Style…", self)
+        reset_style.triggered.connect(self._reset_page_style)
+        view_menu.addAction(reset_style)
+        self.menu_bar_action = QAction("Show Top Menu Bar", self, checkable=True)
+        self.menu_bar_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
+        self.menu_bar_action.triggered.connect(
+            lambda checked: self._set_bar("menu_bar", checked)
+        )
+        self.status_bar_action = QAction("Show Bottom Status Bar", self, checkable=True)
+        self.status_bar_action.triggered.connect(
+            lambda checked: self._set_bar("status_bar", checked)
+        )
+        for action in (self.menu_bar_action, self.status_bar_action):
+            view_menu.addAction(action)
+            self.addAction(action)
         general_menu.addAction("Customize New Tab…").triggered.connect(
             self._customize_new_tab
         )
@@ -578,6 +627,16 @@ class BrowserWindow(QMainWindow):
             "layout_settings": layout_action,
         }
 
+        def register_actions(menu):
+            # Hidden menu bars must not disable ordinary browsing shortcuts.
+            for action in menu.actions():
+                self.addAction(action)
+                if action.menu() is not None:
+                    register_actions(action.menu())
+
+        for menu in self._layout_menus.values():
+            register_actions(menu)
+
     def setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -604,7 +663,16 @@ class BrowserWindow(QMainWindow):
         self.address_bar.home_requested.connect(self._go_home)
         self.address_bar.passwords_requested.connect(lambda: self._open_passwords())
         self.address_bar.reset_zoom_requested.connect(lambda: self._zoom())
+        self.browser_menu = QMenu(self)
+        for menu in self._layout_menus.values():
+            self.browser_menu.addMenu(menu)
+        self.address_bar.menu_btn.setMenu(self.browser_menu)
         layout.addWidget(self.address_bar)
+        self.loading_indicator = QProgressBar()
+        self.loading_indicator.setRange(0, 100)
+        self.loading_indicator.setAccessibleName("Page loading progress")
+        self.loading_indicator.hide()
+        layout.addWidget(self.loading_indicator)
         self.find_bar = FindBar(self.navigation)
         self.find_bar.closed.connect(self._focus_page)
         layout.addWidget(self.find_bar)
@@ -636,7 +704,9 @@ class BrowserWindow(QMainWindow):
         # Permission and download signals are connected per tab in _new_tab
 
     def apply_dark_mode(self):
-        if self.config.dark_mode:
+        if self.profile_manager.registry.page_style.dark(
+            self.profile_manager.current_profile_name
+        ):
             self.setStyleSheet("""
                 QMainWindow {background-color:#1e1e1e;color:#fff;}
                 QWidget {background-color:#1e1e1e;color:#fff;}
@@ -846,6 +916,8 @@ class BrowserWindow(QMainWindow):
 
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):
+        self._apply_page_style()
+        self.apply_dark_mode()
         self._update_window_title()
         self._update_profile_shortcuts()
         self.file_library_action.setEnabled(profile_name != "search")
@@ -941,6 +1013,14 @@ class BrowserWindow(QMainWindow):
         self.auto_approval_action.setChecked(enabled)
         self.auto_approval_action.blockSignals(False)
         self.auto_approval_notice.setVisible(enabled)
+        if hasattr(self, "address_bar"):
+            self.address_bar.menu_btn.setText("☰ YOLO" if enabled else "☰")
+            self.address_bar.menu_btn.setMaximumWidth(100 if enabled else 42)
+            self.address_bar.menu_btn.setToolTip(
+                "Browser menu · unsafe agent auto-approval is enabled"
+                if enabled
+                else "Browser menu"
+            )
 
     def _toggle_auto_approval(self, enabled):
         if (
@@ -1204,12 +1284,29 @@ class BrowserWindow(QMainWindow):
         if not url:
             url = self.config.get("new_tab_page", NEW_TAB) or NEW_TAB
 
-        agent_panel = url == "steed:agents"
+        workspace = workspace_name(url)
+        agent_panel = workspace == "agents"
+        if workspace in ("settings", "style"):
+            existing = next(
+                (t for t in self.tabs if t.workspace_name == workspace), None
+            )
+            if existing is not None:
+                self._switch_tab(self.tabs.index(existing))
+                return existing if return_tab else None
         source_tab = self.tabs[self.current_tab_index] if self.tabs else None
+        if source_tab is not None and source_tab.workspace_name:
+            source_tab = next(
+                (
+                    t
+                    for t in reversed(self.tabs)
+                    if not t.workspace_name and not getattr(t, "agent_panel", False)
+                ),
+                None,
+            )
         if agent_panel and self.agent_tab in self.tabs:
             self._switch_tab(self.tabs.index(self.agent_tab))
             return self.agent_tab if return_tab else None
-        qurl = self._text_to_qurl("about:blank" if agent_panel else url)
+        qurl = self._text_to_qurl("about:blank" if workspace else url)
 
         profile = self.profile_manager.current_profile
         tab = BrowserTab(profile, self.tab_container, self)
@@ -1220,6 +1317,7 @@ class BrowserWindow(QMainWindow):
         tab.urlChanged.connect(lambda u: self._on_tab_url_changed(tab, u))
         tab.titleChanged.connect(lambda t: self._on_tab_title_changed(tab, t))
         tab.loadProgress.connect(lambda p: self._on_load_progress(tab, p))
+        tab.loadStarted.connect(lambda: self._on_load_started(tab))
         tab.loadFinished.connect(lambda ok: self._on_load_finished(tab, ok))
         if hasattr(tab.page(), "zoomFactorChanged"):
             tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
@@ -1237,6 +1335,8 @@ class BrowserWindow(QMainWindow):
         self.navigation.navigate(tab, qurl)
         if agent_panel:
             self._embed_agent_sidebar(tab)
+        elif workspace:
+            self._embed_workspace(tab, workspace)
 
         if not self._restoring_tabs:
             self._save_current_tabs()
@@ -1253,7 +1353,11 @@ class BrowserWindow(QMainWindow):
         state = TabState(
             "steed:agents"
             if getattr(tab, "agent_panel", False)
-            else tab.url().toString() or tab.page().requestedUrl().toString(),
+            else (
+                "steed:" + tab.workspace_name
+                if tab.workspace_name
+                else tab.url().toString() or tab.page().requestedUrl().toString()
+            ),
             tab.title() or self.tab_bar.tab_bar.tabText(index),
             tab.group,
             tab.tab_id,
@@ -1320,6 +1424,7 @@ class BrowserWindow(QMainWindow):
             getattr(self.tabs[index], "agent_panel", False)
             and previous is not self.tabs[index]
             and not getattr(previous, "agent_panel", False)
+            and not getattr(previous, "workspace_name", None)
         ):
             self.tabs[index].agent_source = previous
         self.current_tab_index = index
@@ -1339,13 +1444,18 @@ class BrowserWindow(QMainWindow):
         self.address_bar.set_url(
             "steed:agents"
             if getattr(cur, "agent_panel", False)
-            else display_url(cur.url())
+            else (
+                "steed:" + cur.workspace_name
+                if cur.workspace_name
+                else display_url(cur.url())
+            )
         )
         self.address_bar.set_back_enabled(cur.history().canGoBack())
         self.address_bar.set_forward_enabled(cur.history().canGoForward())
         self._update_window_title(cur.url())
         self.status_bar.showMessage(f"Tab {index + 1} of {len(self.tabs)}")
         self._refresh_live_control()
+        self._update_loading_indicator()
 
     def _update_page_actions(self):
         tab = (
@@ -1365,7 +1475,13 @@ class BrowserWindow(QMainWindow):
         self.address_bar.reload_btn.setEnabled(page_available)
         self.address_bar.zoom_btn.setEnabled(page_available)
         if not getattr(self, "_closing", False):
-            self.find_bar.set_page(tab.page() if page_available else None)
+            self.find_bar.set_page(self._visible_page(tab) if page_available else None)
+
+    @staticmethod
+    def _visible_page(tab):
+        return (
+            tab.workspace_controller.surface.page if tab.workspace_name else tab.page()
+        )
 
     def _bind_live_tasks(self, service):
         if self._live_tasks is service:
@@ -1409,10 +1525,13 @@ class BrowserWindow(QMainWindow):
                 if owner.current_profile_name == name
                 for tab in getattr(owner.parent(), "tabs", ())
                 if not getattr(tab, "agent_panel", False)
+                and not tab.workspace_name
                 and tab.url().scheme() in ("http", "https")
             ]
         else:
             tabs = [self.tabs[self.current_tab_index]] if self.tabs else []
+            if tabs and tabs[0].workspace_name:
+                raise ValueError("Select a browsing tab before delegating it")
             if tabs and getattr(tabs[0], "agent_panel", False):
                 source = tabs[0].agent_source
                 if source not in self.tabs:
@@ -1426,10 +1545,40 @@ class BrowserWindow(QMainWindow):
         self._navigate_tab_to_url(self.tabs[self.current_tab_index], url_text)
 
     def _navigate_tab_to_url(self, tab: BrowserTab, url_text: str):
+        if tab not in self.tabs or self._closing:
+            return
+        tab.workspace_exit_token = None
+        self._take_back_tab(tab)
+        workspace = workspace_name(url_text)
+        if workspace in ("settings", "style"):
+            existing = next(
+                (t for t in self.tabs if t.workspace_name == workspace), None
+            )
+            if existing is not None:
+                self._switch_tab(self.tabs.index(existing))
+                return
+        if workspace:
+            if workspace == "agents":
+                if self.agent_tab in self.tabs:
+                    self._switch_tab(self.tabs.index(self.agent_tab))
+                    return
+                self._detach_workspace(tab)
+                self.navigation.navigate(tab, QUrl("about:blank"))
+                self._embed_agent_sidebar(tab)
+            else:
+                if getattr(tab, "agent_panel", False):
+                    self._return_agent_sidebar(tab)
+                self._detach_workspace(tab)
+                self.navigation.navigate(tab, QUrl("about:blank"))
+                self._embed_workspace(tab, workspace)
+            self._schedule_tab_save()
+            return
+        self._detach_workspace(tab)
         if getattr(tab, "agent_panel", False):
             self._return_agent_sidebar(tab)
-        self._take_back_tab(tab)
         self.navigation.navigate(tab, self._text_to_qurl(url_text))
+        self._update_page_actions()
+        self._update_zoom()
 
     def _text_to_qurl(self, url_text: str) -> QUrl:
         search = self.config.get("search_engine", "https://www.google.com/search?q=")
@@ -1438,21 +1587,41 @@ class BrowserWindow(QMainWindow):
     def _go_back(self):
         if self.tabs:
             self._take_back_current_tab()
-            self.navigation.action(self.tabs[self.current_tab_index], "back")
+            tab = self.tabs[self.current_tab_index]
+            tab.workspace_exit_token = None
+            self._detach_workspace(tab)
+            if getattr(tab, "agent_panel", False):
+                self._return_agent_sidebar(tab)
+            self.navigation.action(tab, "back")
+            self._update_page_actions()
+            self._update_zoom()
 
     def _go_forward(self):
         if self.tabs:
             self._take_back_current_tab()
-            self.navigation.action(self.tabs[self.current_tab_index], "forward")
+            tab = self.tabs[self.current_tab_index]
+            tab.workspace_exit_token = None
+            self._detach_workspace(tab)
+            if getattr(tab, "agent_panel", False):
+                self._return_agent_sidebar(tab)
+            self.navigation.action(tab, "forward")
+            self._update_page_actions()
+            self._update_zoom()
 
     def _reload(self):
         if self.tabs:
             self._take_back_current_tab()
-            self.navigation.action(self.tabs[self.current_tab_index], "reload")
+            tab = self.tabs[self.current_tab_index]
+            if tab.workspace_name:
+                tab.workspace_controller.surface.reload()
+            else:
+                self.navigation.action(tab, "reload")
 
     def _open_find(self):
         if not self._closing and self.tabs:
-            self.find_bar.set_page(self.tabs[self.current_tab_index].page())
+            self.find_bar.set_page(
+                self._visible_page(self.tabs[self.current_tab_index])
+            )
             self.find_bar.open_find()
 
     def event(self, event):
@@ -1505,16 +1674,24 @@ class BrowserWindow(QMainWindow):
 
     def _focus_page(self):
         if not self._closing and self.tabs:
-            self.tabs[self.current_tab_index].setFocus()
+            tab = self.tabs[self.current_tab_index]
+            if tab.workspace_name:
+                tab.workspace_controller.surface.view.setFocus()
+            else:
+                tab.setFocus()
 
     def _zoom(self, direction=0):
         if not self._closing and self.tabs:
-            self.navigation.zoom(self.tabs[self.current_tab_index], direction)
+            self.navigation.zoom(
+                self._visible_page(self.tabs[self.current_tab_index]), direction
+            )
             self._update_zoom()
 
     def _update_zoom(self):
         if not self._closing and self.tabs:
-            percent = round(self.tabs[self.current_tab_index].zoomFactor() * 100)
+            percent = round(
+                self._visible_page(self.tabs[self.current_tab_index]).zoomFactor() * 100
+            )
             self.address_bar.zoom_btn.setText(f"{percent}%")
             self.zoom_reset_action.setText(f"Reset Zoom ({percent}%)")
 
@@ -1565,14 +1742,16 @@ class BrowserWindow(QMainWindow):
         if not self.tabs or not (0 <= self.current_tab_index < len(self.tabs)):
             return
 
-        if tab == self.tabs[self.current_tab_index] and not getattr(
-            tab, "agent_panel", False
+        if (
+            tab == self.tabs[self.current_tab_index]
+            and not getattr(tab, "agent_panel", False)
+            and not tab.workspace_name
         ):
             self.address_bar.set_url(display_url(url))
             self._update_window_title(url)
 
     def _on_tab_title_changed(self, tab: BrowserTab, title: str):
-        if getattr(tab, "agent_panel", False):
+        if getattr(tab, "agent_panel", False) or tab.workspace_name:
             return
         if tab in self.tabs:
             idx = self.tabs.index(tab)
@@ -1581,15 +1760,25 @@ class BrowserWindow(QMainWindow):
             self.tab_bar.set_tab_title(idx, title)
 
     def _on_load_progress(self, tab: BrowserTab, progress: int):
+        tab.load_progress = max(0, min(100, progress))
         if not self._closing and self.tabs and tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage(f"Loading... {progress}%")
+            self._update_loading_indicator()
+
+    def _on_load_started(self, tab):
+        tab.is_loading = True
+        tab.load_progress = 0
+        if not self._closing and self.tabs and tab == self.tabs[self.current_tab_index]:
+            self._update_loading_indicator()
 
     def _on_load_finished(self, tab: BrowserTab, ok: bool):
         if self._closing or tab not in self.tabs:
             return
+        tab.is_loading = False
         if tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
             self.find_bar.page_loaded()
+            self._update_loading_indicator()
         if ok:
             self.history.record(tab.url().toString(), tab.title())
             self.adblock.apply_cosmetic(tab)
@@ -1628,11 +1817,15 @@ class BrowserWindow(QMainWindow):
             url = tab.url().toString() or tab.page().requestedUrl().toString()
             if getattr(tab, "agent_panel", False):
                 url = "steed:agents"
+            elif tab.workspace_name:
+                url = "steed:" + tab.workspace_name
             if not url:
                 url = self.config.get("new_tab_page", NEW_TAB) or NEW_TAB
             title = tab.title() or "New Tab"
             if getattr(tab, "agent_panel", False):
                 title = "External Agents"
+            elif tab.workspace_name:
+                title = tab.workspace_name.title()
             if not title or title == "about:blank":
                 title = "New Tab"
 
@@ -1907,6 +2100,7 @@ class BrowserWindow(QMainWindow):
         """Stop a tab and detach its callbacks before scheduling deletion."""
         tab.browser_window._take_back_tab(tab)
         window = tab.browser_window
+        window._detach_workspace(tab)
         window._return_agent_sidebar(tab)
         if window.web_chat_dock and window.web_chat_dock.view is tab:
             window.web_chat_dock.release()
@@ -1914,6 +2108,7 @@ class BrowserWindow(QMainWindow):
             tab.urlChanged,
             tab.titleChanged,
             tab.loadProgress,
+            tab.loadStarted,
             tab.loadFinished,
         ):
             signal.disconnect()
@@ -2029,6 +2224,7 @@ class BrowserWindow(QMainWindow):
         self.find_bar.hide()
         if self.statusBar():
             self.statusBar().setVisible(False)
+        self.loading_indicator.hide()
 
         self.showFullScreen()
 
@@ -2052,6 +2248,7 @@ class BrowserWindow(QMainWindow):
         self.find_bar.page_loaded()
         if self.statusBar():
             self.statusBar().setVisible(self._saved_vis.get("status", True))
+        self._apply_page_style()
 
     def keyPressEvent(self, event):
         if self._was_fullscreen and event.key() == Qt.Key.Key_Escape:
@@ -2060,9 +2257,16 @@ class BrowserWindow(QMainWindow):
             return
         super().keyPressEvent(event)
 
-    def _open_settings(self, section="general", *, intent=""):
+    def _open_settings(self, section="general", *, intent="", _dialog_only=False):
         if self._closing:
             return
+        if not _dialog_only:
+            self._new_tab(url="steed:settings")
+            if self.settings_dialog is not None:
+                self.settings_dialog.open_section(
+                    section if isinstance(section, str) else "general", intent=intent
+                )
+            return self.settings_dialog
         if self.settings_dialog is None:
             try:
                 dialog = SettingsDialog(
@@ -2079,12 +2283,169 @@ class BrowserWindow(QMainWindow):
             dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             dialog.applied.connect(self._settings_applied)
             dialog.finished.connect(lambda: setattr(self, "settings_dialog", None))
+            dialog.finished.connect(lambda: self._workspace_finished(dialog))
         self.settings_dialog.open_section(
             section if isinstance(section, str) else "general", intent=intent
         )
-        self.settings_dialog.show()
-        self.settings_dialog.raise_()
-        self.settings_dialog.activateWindow()
+        if _dialog_only:
+            return self.settings_dialog
+
+    def _open_page_style(self):
+        return self._new_tab(url="steed:style", return_tab=True)
+
+    def _embed_workspace(self, tab, name):
+        if name == "settings":
+            controller = self._open_settings(_dialog_only=True)
+            if controller is None:
+                return
+            controller.hide()
+            panel = controller.surface
+        else:
+            from ui.style_page import StylePage
+
+            controller = panel = StylePage(self)
+        tab.workspace_name = name
+        tab.workspace_controller = controller
+        tab.native_panel = panel
+        panel.setParent(tab)
+        panel.setGeometry(tab.rect())
+        panel.show()
+        panel.raise_()
+        self.tab_bar.set_tab_title(self.tabs.index(tab), name.title())
+        self.address_bar.set_url("steed:" + name)
+        self._update_page_actions()
+        self._update_zoom()
+        self._update_loading_indicator()
+
+    def _detach_workspace(self, tab):
+        controller = tab.workspace_controller
+        name = tab.workspace_name
+        if name is None:
+            return
+        if self.find_bar._page is controller.surface.page:
+            self.find_bar.set_page(None)
+        tab.workspace_name = tab.workspace_controller = tab.native_panel = None
+        if name == "settings":
+            controller.layout().addWidget(controller.surface)
+            controller.hide()
+        else:
+            controller.dispose()
+            controller.hide()
+            controller.deleteLater()
+
+    def _workspace_finished(self, controller):
+        # closeEvent still needs the workspace address for its session snapshot.
+        # The normal tab disposal detaches it after saving that snapshot.
+        if self._closing:
+            return
+        for tab in self.tabs:
+            if tab.workspace_controller is controller:
+                self._detach_workspace(tab)
+                token = uuid4().hex
+                tab.workspace_exit_token = token
+
+                def leave(tab=tab, token=token):
+                    if (
+                        not self._closing
+                        and tab in self.tabs
+                        and getattr(tab, "workspace_exit_token", None) == token
+                    ):
+                        self._navigate_tab_to_url(tab, NEW_TAB)
+
+                QTimer.singleShot(0, leave)
+
+    def _set_bar(self, name, visible):
+        styles = self.profile_manager.registry.page_style
+        profile = self.profile_manager.current_profile_name
+        value = styles.get(profile)
+        value[name] = visible
+        try:
+            styles.save(profile, value)
+        except (OSError, ValueError):
+            QMessageBox.warning(
+                self, "Appearance", "Bar visibility could not be saved."
+            )
+            self._apply_page_style()
+
+    def _reset_page_style(self):
+        from services.page_style import DEFAULTS
+
+        if (
+            QMessageBox.question(
+                self,
+                "Reset page style?",
+                "Reset the root CSS, theme, bar visibility and loading indicator for this profile? Custom page HTML and images are preserved.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+        try:
+            self.profile_manager.registry.page_style.save(
+                self.profile_manager.current_profile_name, DEFAULTS
+            )
+        except (OSError, ValueError):
+            QMessageBox.warning(self, "Appearance", "Page style could not be reset.")
+
+    def _apply_page_style(self):
+        if self._closing:
+            return
+        value = self.profile_manager.registry.page_style.get(
+            self.profile_manager.current_profile_name
+        )
+        self.menu_bar_action.setChecked(value["menu_bar"])
+        self.status_bar_action.setChecked(value["status_bar"])
+        if not self.isFullScreen():
+            self.menuBar().setVisible(value["menu_bar"])
+            self.status_bar.setVisible(value["status_bar"])
+        indicator = self.loading_indicator
+        indicator.setTextVisible(value["loading_percent"])
+        indicator.setFormat("%p%")
+        indicator.setFixedHeight(
+            max(18 if value["loading_percent"] else 1, value["loading_height"])
+        )
+        indicator.setStyleSheet(
+            "QProgressBar { border: 0; border-radius: 0; background: transparent; text-align: center; }"
+            "QProgressBar::chunk { border-radius: 0; background: "
+            + value["loading_color"]
+            + "; }"
+        )
+        self._update_loading_indicator()
+
+    def _update_loading_indicator(self):
+        if not hasattr(self, "loading_indicator"):
+            return
+        tab = (
+            self.tabs[self.current_tab_index]
+            if 0 <= self.current_tab_index < len(self.tabs)
+            else None
+        )
+        enabled = self.profile_manager.registry.page_style.get(
+            self.profile_manager.current_profile_name
+        )["loading"]
+        active = (
+            tab is not None
+            and tab.is_loading
+            and not tab.workspace_name
+            and not getattr(tab, "agent_panel", False)
+        )
+        self.loading_indicator.setValue(tab.load_progress if tab is not None else 0)
+        self.loading_indicator.setVisible(
+            bool(enabled and active and not self.isFullScreen())
+        )
+
+    def _appearance_changed(self):
+        if self._closing:
+            return
+        self.apply_dark_mode()
+        self._apply_page_style()
+        if self.settings_dialog is not None:
+            self.settings_dialog.refresh()
+        for tab in self.tabs:
+            if tab.workspace_name == "style":
+                tab.workspace_controller.publish()
+        self._start_page_changed(self.profile_manager.current_profile_name)
 
     def _settings_applied(self):
         try:
@@ -2196,6 +2557,14 @@ class BrowserWindow(QMainWindow):
                 self._navigate_tab_to_url(tab, text)
         elif action == "reopen" and len(params) == 1 and params[0][0] == "id":
             self._restore_closed_tab(params[0][1])
+        elif action == "menu" and len(params) == 1 and params[0][0] == "name":
+            menu = self._layout_menus.get(params[0][1])
+            if menu is not None:
+                menu.popup(
+                    self.address_bar.menu_btn.mapToGlobal(
+                        self.address_bar.menu_btn.rect().bottomLeft()
+                    )
+                )
         elif not params:
             if action == "customize":
                 self._customize_new_tab()

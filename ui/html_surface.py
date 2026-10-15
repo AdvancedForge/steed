@@ -158,7 +158,9 @@ class HtmlSurface(QWidget):
         try:
             html = (assets / f"{self.asset}.html").read_text(encoding="utf-8")
             html = html.replace(
-                "{{STYLE}}", (assets / "theme.css").read_text(encoding="utf-8")
+                "{{STYLE}}",
+                (assets / "root.css").read_text(encoding="utf-8")
+                + (assets / "theme.css").read_text(encoding="utf-8"),
             )
             extra_style = assets / f"{self.asset}.css"
             if extra_style.exists():
@@ -207,6 +209,18 @@ class HtmlSurface(QWidget):
         self.command.emit(command)
 
     def publish(self, state, *, force=False):
+        state = dict(state)
+        owner = self.parentWidget()
+        while owner is not None and not hasattr(owner, "profile_manager"):
+            owner = owner.parentWidget()
+        if owner is not None:
+            manager = owner.profile_manager
+            style = manager.registry.page_style
+            profile = manager.current_profile_name
+            state["root_css"] = style.css(profile)
+            # Settings may preview its unsaved global dark-mode preference.
+            if style.get(profile)["theme"] != "system" or "dark" not in state:
+                state["dark"] = style.dark(profile)
         self._state = state
         if not self.ready or self.disposed:
             return
@@ -215,6 +229,15 @@ class HtmlSurface(QWidget):
             return
         self._last_payload = payload
         generation = self.generation
+
+        self.page.runJavaScript(
+            "(() => { let s = document.getElementById('steed-root-overrides');"
+            "if (!s) { s = document.createElement('style'); s.id = 'steed-root-overrides';"
+            "s.nonce = document.querySelector('style[nonce]').nonce;"
+            "document.head.append(s); } s.textContent = "
+            + json.dumps(state.get("root_css", ""), ensure_ascii=True)
+            + "; })()"
+        )
 
         def rendered(ok):
             if (

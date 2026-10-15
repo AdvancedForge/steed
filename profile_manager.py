@@ -66,6 +66,9 @@ class ProfileRegistry(QObject):
         self.histories = {}
         self.closed_tabs = ClosedTabHistory()
         self.start_pages = StartPages(self)
+        from services.page_style import PageStyle
+
+        self.page_style = PageStyle(self)
         self.snapshot_disagreements = 0
         self.global_fingerprints = None
         self.owners = set()

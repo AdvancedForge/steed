@@ -117,12 +117,15 @@ def request(service, task_id, request_id, selection="current_tab"):
             if o.current_profile_name == profile
             for v in o.parent().tabs
             if not getattr(v, "agent_panel", False)
+            and not getattr(v, "workspace_name", None)
             and v.url().scheme() in ("http", "https")
         ]
     else:
         view = window.tabs[window.current_tab_index]
         if getattr(view, "agent_panel", False):
             view = getattr(view, "agent_source", None)
+        if getattr(view, "workspace_name", None):
+            view = None
         views = (
             [view]
             if view is not None and view.url().scheme() in ("http", "https")
@@ -173,6 +176,7 @@ def resolve(service, record, *, approve=False):
                 or sip.isdeleted(v)
                 or v not in v.browser_window.tabs
                 or v.browser_window._closing
+                or getattr(v, "native_panel", None) is not None
                 or v.url().scheme() not in ("http", "https")
                 or v.browser_window.profile_manager.current_profile_name
                 != record.profile

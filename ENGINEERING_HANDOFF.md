@@ -2,6 +2,56 @@
 
 ## Start here
 
+**Internal pages and appearance — October 15 (current checkpoint).** This owner's
+requested continuation supersedes H2's next-work instruction below. Workspaces
+now have `steed:settings`, `steed:agents` and `steed:style` tab routes. Settings keeps
+its existing controller and drafts; only its HtmlSurface moves into a tab. The
+ordinary engine below is about:blank and never gets the maintained bridge. Agent
+dock/tab hosting is retained. `BrowserTab.workspace_name/workspace_controller`
+track other maintained overlays; detach before tab/profile destruction. A finished
+settings controller disposes its page before a queued return to New Tab. Sessions
+save the workspace address, including when closing Settings with the window.
+Find/zoom target the visible surface; detach clears find callbacks before disposal.
+Repeated Agents navigation reuses the existing panel. Website/custom-HTML navigation cannot open native
+workspaces; owner address entry and maintained start-page links can.
+
+- `services/page_style.py` owns strict presentation preferences in Config's
+  `page_style` document. Profile overrides use stable permission identities;
+  apply-all clears overrides and sets defaults with one atomic write. Private
+  styling is memory-only. No new agent, data or account authority is granted.
+- `ui/web/root.css` supplies common tokens. HtmlSurface injects effective overrides
+  in a nonce-bearing stylesheet; StartPages also inherits them before custom HTML.
+  The offline CSP/interceptor remains intact. CSS rejects markup, invalid Unicode
+  and excessive size. `ui/style_page.py` with `ui/web/style.*` exposes the editor,
+  scope, conflicts/failures, bars and loading options.
+- Bar visibility follows profiles. Address-bar ☰ always opens all six menus;
+  Ctrl+Shift+M restores the menu, shortcuts stay window-associated, and YOLO remains
+  marked when the status bar is hidden. View's native Reset Page Style recovers
+  from CSS hiding HTML controls. New Tab's optional dropdown survives minimal mode;
+  its image is now a fixed cover background.
+- `loadStarted/loadProgress/loadFinished` maintain per-tab progress; changing tabs
+  updates the bar, completion/failure clears it, and maintained overlays/fullscreen
+  suppress it. Native chrome uses the same appearance service for color/height.
+- `live_tabs` and `live_control` reject maintained overlays even while an underlying
+  page still reports its preceding website URL. User navigation takes control back
+  before embedding a workspace.
+- Acceptance logs: `/tmp/steed-pages-*.log`; `tests/test_html_pages.py` exercises the
+  real bridge, routing, synchronization, shortcuts, background and progress;
+  `tests/test_page_style.py` covers persistence/failure/identity/scope. The older
+  alias/reload fixture now waits for the new loadFinished event before inspecting
+  the document, fixing a race exposed in a larger run.
+- Accepted: **1,466 full tests / 532.260 s**, **162 focused checks / 106.133 s**,
+  actual startup/render/shutdown, SDK/raw stdio and authenticated HTTP MCP smoke
+  journeys, Ruff/formatting (256 files), dependencies and whitespace. Final logs:
+  `/tmp/steed-pages-{acceptance-final,final-focused,startup,mcp-stdio,mcp-http}.log`.
+  Visuals inspected: `/tmp/steed-pages-style-{light,dark}.png`,
+  `/tmp/steed-pages-newtab-background.png`, `/tmp/steed-pages-progress.png`.
+  Temporary/synthetic profiles only; real desktop checks remain separate. No
+  claim is made to fix H2's known headless Qt initialization instability.
+- Next: H3 history/bookmarks/downloads/library HTML screens. Preserve persistence,
+  private/source lifetimes and website/maintained-page separation. Authored-app
+  data access and Qt replacement remain separate decisions.
+
 **HTML restyle H2 — October 15.** Settings/profile management is now the active
 checkpoint, superseding H1's next-work instruction below. The shared local HTML
 surface remains maintained Steed UI, not the deferred agent-authored app bridge.

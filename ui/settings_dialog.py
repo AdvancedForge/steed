@@ -429,6 +429,7 @@ class SettingsDialog(QDialog):
                         "newtab": "_customize_new_tab",
                         "setup": "_open_agent_setup",
                         "agents": "_open_agent_tab",
+                        "style": "_open_page_style",
                     }.get(command["destination"])
                     if isinstance(command["destination"], str)
                     else None
