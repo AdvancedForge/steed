@@ -7,10 +7,53 @@ execution, and evidence; external agents provide planning and generation.
 See [DOCUMENTATION.md](DOCUMENTATION.md) for setup and implementation details,
 including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
-## Current work — October 13, 2026
+## Current work — October 15, 2026
 
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
+
+**HTML interface H1 — agent workspace (implemented and accepted).**
+The owner approved beginning an HTML restyle after the architecture review.
+The conversation sidebar and `steed:agents` now share one maintained local HTML
+surface, with light/dark tokens, separate sender cards, a fixed composer, clearer
+runtime model/activity indicators and collapsed conversation settings. The same
+page moves between sidebar and tab, preserving drafts, selection and UI state.
+Connection setup, exact access reviews and task details still use their existing
+trusted dialogs. Generic MCP and website-chat workflows remain supported.
+
+`ui/html_surface.py` owns an off-the-record engine profile, an allowlisted command
+bridge, nonce-based content policy, network/navigation denial and a native reload
+fallback. Python retains service authority. Conversation-context and document-
+generation checks reject stale commands; draft revisions protect newer typing,
+and Send waits for a result before another submission. Private-profile changes
+cover stale pixels immediately and clear messages, choices and unsent drafts.
+Reload restores controller-held drafts without replaying messages or effects.
+This is Steed's maintained UI API; the broader agent-built HTML data bridge stays
+deferred and user-authored start pages gain no native access.
+
+H1 acceptance covers actual HTML/bridge events, Ctrl+Enter, streaming literal
+text, failed/duplicate sends, private transitions, model/activity/YOLO notices,
+renderer fallback, local drafts and sidebar/tab continuity. Light/dark sidebar
+and full-tab previews are in `/tmp/steed-html-*.png`. Acceptance: **1,415 full
+regressions in 486.928 seconds**, followed by **27 final UI checks in 24.882
+seconds** covering the final storage-read recovery and connection-guidance fixes.
+Startup/render/shutdown, SDK/raw stdio MCP journeys, Ruff (249 Python files),
+dependency checks and whitespace checks passed. Logs:
+`/tmp/steed-html-{acceptance,final-ui,startup,mcp}.log`. These checks used temporary
+profiles/local fixtures; real desktop/account acceptance remains separate.
+
+Next HTML milestones, keeping the engine and Python services:
+
+1. H2: shared settings/profile workspace, using explicit commands and the same
+   visual tokens; preserve existing configuration and profile semantics.
+2. H3: history/bookmarks/downloads/library screens, preserving source access,
+   recoverable deletion, private browsing and native file selection.
+3. H4: task/data-panel presentation, retaining reviewed source lifetimes and
+   existing approval boundaries. Evaluate browser toolbar/tab-strip migration
+   separately after the internal screens are proven.
+
+Qt/Chromium replacement is not part of this restyle. Engine upgrades remain a
+separate capability/compatibility decision rather than a styling prerequisite.
 
 **Daily agent reliability — October 13 (implemented and accepted).**
 The owner reported generic grant failures, private-browser/takeover friction and

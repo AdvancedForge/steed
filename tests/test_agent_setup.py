@@ -97,9 +97,9 @@ class AgentSetupTests(unittest.TestCase):
     def test_sidebar_setup_button_reuses_one_dialog_and_reopens_after_close(self):
         window = self.window()
         window.agent_sidebar_action.trigger()
-        window.agent_sidebar.setup.click()
+        window.agent_sidebar.setup_requested.emit()
         first = window.agent_setup_dialog
-        window.agent_sidebar.setup.click()
+        window.agent_sidebar.setup_requested.emit()
         self.assertIs(window.agent_setup_dialog, first)
         first.close()
         self.assertIsNone(window.agent_setup_dialog)

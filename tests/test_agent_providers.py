@@ -58,7 +58,7 @@ class AgentProviderTests(unittest.TestCase):
     def chat(self, mode="normal"):
         self.mode = mode
         task = self.manager.new_chat()
-        self.sidebar.tasks.setCurrentIndex(self.sidebar.tasks.findData(task))
+        self.sidebar.select_task(task)
         self.wait_for(
             lambda: (
                 self.manager.status(task) == "Codex ready"
@@ -68,8 +68,8 @@ class AgentProviderTests(unittest.TestCase):
         return task
 
     def send(self, text):
-        self.sidebar.composer.setPlainText(text)
-        self.sidebar.send.click()
+        self.sidebar.set_draft(text)
+        self.sidebar.send_message()
 
     def complete(self, task, count=1):
         self.wait_for(
@@ -90,7 +90,7 @@ class AgentProviderTests(unittest.TestCase):
 
     def test_sidebar_starts_turn_and_continues_same_task(self):
         task = self.chat()
-        self.assertTrue(self.sidebar.send.isEnabled())
+        self.assertTrue(self.sidebar.state["active"])
         self.send("First prompt")
         self.complete(task)
         self.send("Follow-up")
@@ -105,7 +105,7 @@ class AgentProviderTests(unittest.TestCase):
             ],
         )
         self.assertEqual(self.service.store.grants(task), [])
-        self.assertIn("Agent fetched", self.sidebar.status.text())
+        self.assertIn("Agent fetched", self.sidebar.state["status"])
         self.assertEqual(len(self.drivers), 1)
 
     def test_clock_optional_rpc_and_child_events_keep_followups_connected(self):
@@ -120,19 +120,19 @@ class AgentProviderTests(unittest.TestCase):
                     lambda task=task: self.manager.status(task) == "Codex ready"
                 )
                 self.assertIn(task, self.manager.chats)
-                self.assertNotIn("CHILD_PRIVATE", self.sidebar.transcript.toPlainText())
+                self.assertNotIn("CHILD_PRIVATE", self.sidebar.transcript_text)
                 self.assertEqual(self.service.store.grants(task), [])
                 self.service.cancel_task(task)
 
     def test_native_tool_event_changes_the_visible_working_state(self):
         task = self.chat("tool-work")
         self.send("Use a tool")
-        self.wait_for(lambda: "working" in self.sidebar.activity_title.text())
-        self.assertFalse(self.sidebar.busy.isHidden())
+        self.wait_for(lambda: "working" in self.sidebar.state["activity"]["title"])
+        self.assertTrue(self.sidebar.state["activity"]["busy"])
         self.complete(task)
         self.wait_for(lambda: self.manager.status(task) == "Codex ready")
-        self.assertIn("ready", self.sidebar.activity_title.text())
-        self.assertTrue(self.sidebar.busy.isHidden())
+        self.assertIn("ready", self.sidebar.state["activity"]["title"])
+        self.assertFalse(self.sidebar.state["activity"]["busy"])
 
     def test_foreign_thread_reply_is_never_imported_or_treated_as_our_turn(self):
         task = self.chat("wrong-thread")
@@ -147,7 +147,7 @@ class AgentProviderTests(unittest.TestCase):
         self.send("Ask me before working")
         self.wait_for(lambda: self.manager.chats[task]["requests"])
         self.assertEqual(self.manager.activity(task)["state"], "waiting")
-        self.assertIn("needs your input", self.sidebar.activity_title.text())
+        self.assertIn("needs your input", self.sidebar.state["activity"]["title"])
         self.sidebar.show_requests()
         dialog = self.sidebar._request_dialogs[(task, "native-request")]
         dialog.answers["choice"][0].setCurrentIndex(1)
@@ -159,19 +159,18 @@ class AgentProviderTests(unittest.TestCase):
         task = self.chat("hang")
         self.send("Start")
         self.assertEqual(self.manager.activity(task)["state"], "sending")
-        self.assertIn("Sending", self.sidebar.activity_title.text())
+        self.assertIn("Sending", self.sidebar.state["activity"]["title"])
         self.manager._accepted(task, self.messages(task)[0]["message_id"])
-        self.assertIn("thinking", self.sidebar.activity_title.text())
+        self.assertIn("thinking", self.sidebar.state["activity"]["title"])
         self.drivers[-1].activity.emit("working")
-        self.assertIn("working", self.sidebar.activity_title.text())
-        self.assertFalse(self.sidebar.busy.isHidden())
+        self.assertIn("working", self.sidebar.state["activity"]["title"])
+        self.assertTrue(self.sidebar.state["activity"]["busy"])
         self.send("Follow-up")
-        self.assertIn("1 follow-up", self.sidebar.activity_hint.text())
+        self.assertIn("1 follow-up", self.sidebar.state["activity"]["hint"])
         self.drivers[-1].activity.emit("replying")
-        self.assertIn("replying", self.sidebar.activity_title.text())
-        self.assertFalse(self.sidebar.more.isChecked())
-        self.sidebar.cancel.click()
-        self.assertTrue(self.sidebar.busy.isHidden())
+        self.assertIn("replying", self.sidebar.state["activity"]["title"])
+        self.sidebar.cancel_task()
+        self.assertFalse(self.sidebar.state["activity"]["busy"])
 
     def test_busy_queue_keeps_order_and_does_not_duplicate(self):
         task = self.chat()
@@ -234,35 +233,33 @@ class AgentProviderTests(unittest.TestCase):
         self.assertIn(task, self.manager.chats)
         self.send("New prompt")
         self.complete(task)
-        self.assertIn(
-            "Synthetic reply: New prompt", self.sidebar.transcript.toPlainText()
-        )
+        self.assertIn("Synthetic reply: New prompt", self.sidebar.transcript_text)
 
     def test_cancel_stops_child_and_keeps_history(self):
         task = self.chat()
         self.send("Explicitly shared")
-        self.sidebar.cancel.click()
+        self.sidebar.cancel_task()
         self.wait_for(
             lambda: self.drivers[0].process.state() == QProcess.ProcessState.NotRunning
         )
         self.assertNotIn(task, self.manager.chats)
         self.assertEqual(self.service.store.get(task).status, "cancelled")
         self.assertEqual(self.messages(task)[0]["text"], "Explicitly shared")
-        self.assertFalse(self.sidebar.send.isEnabled())
+        self.assertFalse(self.sidebar.state["active"])
 
     def test_incognito_disables_new_chat_without_cancelling_work(self):
         task = self.chat()
         self.sidebar.set_private(True)
-        self.assertFalse(self.sidebar.new_chat.isEnabled())
-        self.assertFalse(self.sidebar.send.isEnabled())
+        self.assertFalse(self.sidebar.state["available"])
+        self.assertFalse(self.sidebar.state["active"])
         self.assertIn(task, self.manager.chats)
 
     def test_signin_is_external_and_failure_retains_readonly_task(self):
         task = self.chat("signin")
         self.assertNotIn(task, self.manager.chats)
-        self.assertIn("codex login", self.sidebar.status.text())
+        self.assertIn("codex login", self.sidebar.state["status"])
         self.assertEqual(self.service.store.get(task).status, "cancelled")
-        self.assertFalse(self.sidebar.send.isEnabled())
+        self.assertFalse(self.sidebar.state["active"])
 
     def test_extra_server_and_wrong_task_fail_closed(self):
         for mode in ("extra-server", "wrong-task"):
@@ -270,7 +267,7 @@ class AgentProviderTests(unittest.TestCase):
                 task = self.chat(mode)
                 self.assertNotIn(task, self.manager.chats)
                 self.assertEqual(self.service.store.get(task).status, "cancelled")
-                self.assertFalse(self.sidebar.send.isEnabled())
+                self.assertFalse(self.sidebar.state["active"])
 
     def test_native_permission_settings_are_preserved(self):
         task = self.chat("unsafe-profile")
@@ -337,7 +334,7 @@ class AgentProviderTests(unittest.TestCase):
                 self.assertEqual(self.service.store.get(task).status, "cancelled")
                 self.assertEqual(self.messages(task)[1]["text"], "Queued")
                 self.assertNotIn(
-                    "synthetic-private-command", self.sidebar.status.text()
+                    "synthetic-private-command", self.sidebar.state["status"]
                 )
                 self.assertEqual(self.service.store.grants(task), [])
 
@@ -398,18 +395,20 @@ class AgentProviderTests(unittest.TestCase):
         self.assertEqual(self.service.store.list_tasks(), [])
 
     def test_trusted_model_choice_is_scoped_to_this_chat(self):
-        self.sidebar.model.setCurrentIndex(1)
-        self.sidebar.new_chat.click()
+        self.sidebar.set_model("gpt-5.4")
+        self.sidebar.start_chat()
         task = next(iter(self.manager.chats))
         self.wait_for(lambda: self.manager.status(task) == "Codex ready")
         self.assertEqual(self.drivers[-1].model, "gpt-5.4")
-        self.assertIn("synthetic-runtime-model", self.sidebar.running_model.text())
-        self.assertNotIn("gpt-5.4", self.sidebar.running_model.text())
-        self.assertFalse(self.sidebar.more.isChecked())
-        self.assertFalse(self.sidebar.running_model.isHidden())
-        self.sidebar.model.setCurrentIndex(0)
+        self.assertIn(
+            "synthetic-runtime-model", self.sidebar.state["activity"]["model"]
+        )
+        self.assertNotIn("gpt-5.4", self.sidebar.state["activity"]["model"])
+        self.sidebar.set_model(None)
         self.assertEqual(self.drivers[-1].model, "gpt-5.4")
-        self.assertIn("synthetic-runtime-model", self.sidebar.running_model.text())
+        self.assertIn(
+            "synthetic-runtime-model", self.sidebar.state["activity"]["model"]
+        )
         with self.assertRaises(ValueError):
             self.manager.new_chat(model="invalid model/argument")
         self.assertEqual(len(self.service.store.list_tasks()), 1)
@@ -419,7 +418,7 @@ class AgentProviderTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 task = self.chat(mode)
                 self.assertEqual(
-                    self.sidebar.running_model.text(),
+                    self.sidebar.state["activity"]["model"],
                     "Model: not reported by the agent",
                 )
                 self.send("Still connected")
@@ -437,12 +436,14 @@ class AgentProviderTests(unittest.TestCase):
                 self.assertEqual(
                     self.manager.model_info(task)["model"], "synthetic-rerouted-model"
                 )
-                self.assertIn("rerouted this turn", self.sidebar.running_model.text())
                 self.assertIn(
-                    "synthetic-runtime-model", self.sidebar.running_model.text()
+                    "rerouted this turn", self.sidebar.state["activity"]["model"]
+                )
+                self.assertIn(
+                    "synthetic-runtime-model", self.sidebar.state["activity"]["model"]
                 )
                 self.service.cancel_task(task)
-                self.assertIn("last reported", self.sidebar.running_model.text())
+                self.assertIn("last reported", self.sidebar.state["activity"]["model"])
 
     def test_foreign_model_reroute_cannot_change_the_selected_chat(self):
         task = self.chat("model-foreign-reroute")
@@ -451,7 +452,7 @@ class AgentProviderTests(unittest.TestCase):
         self.assertEqual(
             self.manager.model_info(task)["model"], "synthetic-runtime-model"
         )
-        self.assertNotIn("rerouted", self.sidebar.running_model.text())
+        self.assertNotIn("rerouted", self.sidebar.state["activity"]["model"])
 
     def test_invalid_reroute_marks_the_model_unknown_and_keeps_chat_connected(self):
         task = self.chat("model-invalid-reroute")
@@ -459,7 +460,7 @@ class AgentProviderTests(unittest.TestCase):
         self.complete(task)
         self.assertIsNone(self.manager.model_info(task))
         self.assertEqual(
-            self.sidebar.running_model.text(), "Model: not reported by the agent"
+            self.sidebar.state["activity"]["model"], "Model: not reported by the agent"
         )
         self.assertIn(task, self.manager.chats)
 
@@ -467,19 +468,27 @@ class AgentProviderTests(unittest.TestCase):
         task = self.chat("model-rerouted-once")
         self.send("Rerouted turn")
         self.complete(task)
-        self.assertIn("synthetic-rerouted-model", self.sidebar.running_model.text())
+        self.assertIn(
+            "synthetic-rerouted-model", self.sidebar.state["activity"]["model"]
+        )
         self.send("Normal next turn")
         self.complete(task, 2)
         self.assertEqual(self.manager.model_info(task)["source"], "thread")
-        self.assertIn("synthetic-runtime-model", self.sidebar.running_model.text())
-        self.assertNotIn("rerouted", self.sidebar.running_model.text())
+        self.assertIn(
+            "synthetic-runtime-model", self.sidebar.state["activity"]["model"]
+        )
+        self.assertNotIn("rerouted", self.sidebar.state["activity"]["model"])
 
     def test_model_reports_remain_scoped_when_switching_conversations(self):
         first = self.chat("model-rerouted")
         self.send("First")
         self.complete(first)
         second = self.chat()
-        self.assertNotIn("synthetic-rerouted-model", self.sidebar.running_model.text())
-        self.sidebar.tasks.setCurrentIndex(self.sidebar.tasks.findData(first))
-        self.assertIn("synthetic-rerouted-model", self.sidebar.running_model.text())
+        self.assertNotIn(
+            "synthetic-rerouted-model", self.sidebar.state["activity"]["model"]
+        )
+        self.sidebar.select_task(first)
+        self.assertIn(
+            "synthetic-rerouted-model", self.sidebar.state["activity"]["model"]
+        )
         self.assertEqual(self.manager.model_info(second)["source"], "thread")

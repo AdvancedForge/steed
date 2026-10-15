@@ -2159,11 +2159,11 @@ def check(transport="stdio", require_documents=False, require_recipes=False):
                 task_id = shared.get(label + "_conversation_task")
                 if task_id and not shared.get(label + "_conversation_sent"):
                     sidebar = window.agent_sidebar
-                    sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(task_id))
-                    assert sidebar.send.isEnabled()
-                    sidebar.composer.setPlainText(label + " explicit sidebar prompt")
-                    sidebar.send.click()
-                    assert sidebar.composer.toPlainText() == ""
+                    sidebar.select_task(task_id)
+                    assert sidebar.state["active"]
+                    sidebar.set_draft(label + " explicit sidebar prompt")
+                    sidebar.send_message()
+                    assert sidebar.draft == ""
                     shared[label + "_conversation_sent"] = True
                 request_id = shared.get(label + "_form_request")
                 if request_id and not shared.get(label + "_native_form_sent"):

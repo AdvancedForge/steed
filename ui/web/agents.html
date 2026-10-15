@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Steed · Agents</title>
+  <style nonce="{{NONCE}}">{{STYLE}}</style>
+</head>
+<body>
+  <div class="workspace">
+    <header class="header">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">s</span><div><h1>Agents</h1><p>Your work, with a little help.</p></div></div>
+      <button id="new-chat" class="icon-button" data-action="new_chat" aria-label="Start a new Codex chat" title="New Codex chat">＋</button>
+    </header>
+    <div id="unsafe" class="notice warning" role="status" hidden><strong>YOLO mode is on</strong><span>Steed automatically approves agent requests for all profiles this run.</span></div>
+    <div class="task-picker" id="task-picker" hidden><label for="tasks">Conversation</label><select id="tasks"></select></div>
+    <main id="welcome" class="welcome">
+      <div class="welcome-symbol" aria-hidden="true">↗</div>
+      <span class="eyebrow">A space to collaborate</span>
+      <h2>Your agent,<br>beside your work.</h2>
+      <p id="welcome-copy">Start a conversation, delegate a task, and keep browsing while your agent works.</p>
+      <button id="welcome-start" class="primary" data-action="new_chat">Start a Codex chat <span aria-hidden="true">↗</span></button>
+      <button id="setup" data-action="setup">Connect another agent</button>
+      <div id="welcome-note" class="welcome-note">Only messages you send are shared. You choose when an agent can access your browser.</div>
+    </main>
+    <section id="activity" class="activity" aria-label="Agent activity" hidden>
+      <div class="activity-heading"><span id="activity-dot" class="dot" aria-hidden="true"></span><strong id="activity-title" role="status" aria-live="polite"></strong></div>
+      <p id="running-model" class="model"></p><p id="activity-hint"></p>
+      <div id="progress" class="progress" role="progressbar" aria-label="Agent is working" hidden></div>
+    </section>
+    <div id="error" class="notice error" role="alert" hidden></div>
+    <div id="attention" class="attention" hidden>
+      <button id="pending" data-action="permissions" hidden></button>
+      <button id="agent-requests" data-action="requests" hidden></button>
+    </div>
+    <section id="conversation" class="conversation" aria-label="Conversation" hidden>
+      <div id="messages" class="messages" role="log" aria-label="Agent messages" aria-live="polite" aria-relevant="additions text"></div>
+      <p id="empty-chat" class="empty-chat">What would you like to work on?</p>
+    </section>
+    <section id="compose" class="compose" aria-label="Write a message" hidden>
+      <label class="sr-only" for="composer">Message to selected agent</label>
+      <div class="composer-box"><textarea id="composer" placeholder="Ask your agent…" rows="3" spellcheck="true"></textarea><div class="compose-actions"><span>Ctrl + Enter to send</span><button id="send" class="primary" data-action="send">Send <span aria-hidden="true">↑</span></button></div></div>
+      <div class="task-actions"><button id="delegate" class="text-button" data-action="delegate" hidden>Give tab control…</button><button id="cancel" class="text-button" data-action="cancel" hidden>Stop task</button></div>
+    </section>
+    <details id="options" class="options">
+      <summary>Conversation &amp; settings <span aria-hidden="true">⌄</span></summary>
+      <div class="options-content">
+        <p id="status" class="status"></p>
+        <div id="model-control"><label for="model">Model for new chats</label><select id="model"><option value="">Codex default</option><option value="gpt-5.4">GPT-5.4 (tested direct Steed tools)</option></select><p class="caption">Existing conversations keep their running model.</p></div>
+        <div class="button-grid"><button data-action="setup">Connection setup</button><button id="library" data-action="library">File library</button><button id="open-tab" data-action="open_tab">Open as tab</button><button id="show-sidebar" data-action="show_sidebar">Show sidebar</button></div>
+        <div class="button-grid task-tools"><button id="permissions" data-action="permissions">Permissions</button><button id="files" data-action="files">Task files</button><button id="receipts" data-action="receipts">Receipts</button><button id="clear" data-action="clear">Clear chat</button></div>
+        <p id="summary" class="caption"></p><p class="caption">Closing this panel keeps the task running.</p>
+      </div>
+    </details>
+  </div>
+  <script nonce="{{NONCE}}">{{CHANNEL}}</script>
+  <script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script>
+</body>
+</html>

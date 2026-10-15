@@ -1,0 +1,116 @@
+const $ = id => document.getElementById(id);
+let bridge = null, state = null, context = null, draftVersion = 0, messagesKey = null, pendingSend = null;
+const composer = $("composer");
+
+function command(action, values = {}) {
+  if (!bridge || !state) return;
+  bridge.dispatch(JSON.stringify({generation: STEED_GENERATION, context, action, ...values}));
+}
+
+function send() {
+  if (!state?.active || composer.disabled || pendingSend) return;
+  pendingSend = {context, version: ++draftVersion};
+  $("send").disabled = true;
+  command("send", {value: composer.value, version: draftVersion});
+}
+
+function visible(id, show) { $(id).hidden = !show; }
+function text(id, value) { $(id).textContent = value || ""; }
+
+function renderMessages(messages, reset) {
+  const key = JSON.stringify(messages);
+  if (key === messagesKey) return;
+  messagesKey = key;
+  const log = $("messages");
+  const position = log.scrollTop;
+  const atEnd = reset || position + log.clientHeight >= log.scrollHeight - 40;
+  const previous = new Map([...log.children].map(node => [node.dataset.id, node]));
+  for (const message of messages) {
+    let node = previous.get(message.id);
+    if (!node) {
+      node = document.createElement("article");
+      node.dataset.id = message.id;
+      const heading = document.createElement("div");
+      heading.className = "message-heading";
+      heading.append(document.createElement("span"), document.createElement("span"));
+      heading.lastChild.className = "message-state";
+      const body = document.createElement("div");
+      body.className = "message-body";
+      node.append(heading, body);
+    }
+    previous.delete(message.id);
+    node.className = "message " + (message.role === "user" ? "user" : "agent");
+    node.firstChild.firstChild.textContent = message.role === "user" ? "YOU" : "AGENT";
+    node.firstChild.lastChild.textContent = message.state === "complete" ? "" : message.state;
+    // Agent messages and service diagnostics are data, never HTML or commands.
+    if (node.lastChild.textContent !== message.text) node.lastChild.textContent = message.text;
+    log.append(node);
+  }
+  for (const node of previous.values()) node.remove();
+  log.scrollTop = atEnd ? log.scrollHeight : position;
+}
+
+window.steedUI = {render(next) {
+  const switched = context !== next.context;
+  state = next;
+  if (switched) { context = next.context; draftVersion = next.draft_version; messagesKey = null; }
+  if (switched || !next.active || (next.send_result.context === context && next.send_result.version >= pendingSend?.version)) pendingSend = null;
+  document.documentElement.dataset.theme = next.dark ? "dark" : "light";
+  visible("unsafe", next.yolo);
+  visible("welcome", !next.usable);
+  visible("welcome-start", next.available && next.has_provider);
+  visible("setup", next.available);
+  $("setup").textContent = next.has_provider ? "Connect another agent" : "Connect an agent";
+  text("welcome-copy", next.private ? "Agent conversations are unavailable in private browsing. Switch to a regular profile to continue." : next.available ? "Start a conversation, delegate a task, and keep browsing while your agent works." : "Agent conversations are unavailable. Open connection setup from the Agents menu to check your connection.");
+  text("welcome-note", next.yolo ? "YOLO mode automatically approves Steed requests. Turn it off in the Agents menu to review access." : "Only messages you send are shared. You choose when an agent can access your browser.");
+  visible("new-chat", next.available && next.has_provider);
+  visible("task-picker", next.available && next.tasks.length > 0);
+  const taskOptions = JSON.stringify(next.tasks);
+  if ($("tasks").dataset.options !== taskOptions) {
+    $("tasks").replaceChildren(new Option("Choose a conversation", ""), ...next.tasks.map(t => new Option(t.label, t.id)));
+    $("tasks").dataset.options = taskOptions;
+  }
+  $("tasks").value = next.task_id || "";
+  visible("activity", next.usable);
+  text("activity-title", next.activity.title);
+  text("activity-hint", next.activity.hint);
+  text("running-model", next.activity.model);
+  visible("progress", next.activity.busy);
+  $("activity-dot").classList.toggle("working", next.activity.busy);
+  visible("error", !!next.error); text("error", next.error);
+  visible("attention", next.usable && (next.pending > 0 || next.requests > 0));
+  visible("pending", next.usable && next.pending > 0); text("pending", `Review ${next.pending} approval(s)`);
+  visible("agent-requests", next.usable && next.requests > 0); text("agent-requests", `Answer agent (${next.requests})`);
+  visible("conversation", next.usable); visible("compose", next.usable);
+  renderMessages(next.messages, switched);
+  visible("empty-chat", next.messages.length === 0);
+  if (switched || next.draft_version >= draftVersion) {
+    if (composer.value !== next.draft) composer.value = next.draft;
+    draftVersion = next.draft_version;
+  }
+  composer.disabled = !next.active;
+  $("send").disabled = !next.active || !!pendingSend;
+  visible("cancel", next.can_cancel); visible("delegate", next.can_delegate);
+  visible("options", next.available);
+  if (!next.available) $("options").open = false;
+  visible("model-control", next.has_provider);
+  $("model").value = next.new_model || "";
+  $("library").disabled = !next.can_library;
+  for (const id of ["permissions", "files", "receipts", "clear"]) $(id).disabled = !next.usable;
+  text("status", next.status); text("summary", next.summary);
+  return true;
+}};
+
+composer.addEventListener("input", () => command("draft", {value: composer.value, version: ++draftVersion}));
+composer.addEventListener("keydown", event => {
+  if (event.key === "Enter" && event.ctrlKey && !event.isComposing) { event.preventDefault(); send(); }
+});
+$("tasks").addEventListener("change", () => command("select", {value: $("tasks").value}));
+$("model").addEventListener("change", () => command("model", {value: $("model").value}));
+document.addEventListener("click", event => {
+  const button = event.target.closest("button[data-action]");
+  if (!button || button.disabled) return;
+  if (button.dataset.action === "send") send();
+  else command(button.dataset.action);
+});
+new QWebChannel(qt.webChannelTransport, channel => { bridge = channel.objects.interface; bridge.ready(STEED_GENERATION); });

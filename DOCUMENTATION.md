@@ -1136,7 +1136,7 @@ forensic erasure from SQLite journals, free pages or external copies.
 
 ### Persistent agent file library
 
-Use **Agents → Agent File Library…**, or **More options → File library…** in the
+Use **Agents → Agent File Library…**, or **Conversation & settings → File library…** in the
 agent sidebar, to keep reusable files outside individual tasks:
 
 1. Choose **New library folder…** and name it, for example `Research`.
@@ -3081,8 +3081,8 @@ process. Local access is off when the browser starts.
 ### External-agent conversation sidebar
 
 **Agents → Agent Connection Setup…**, also available from the sidebar's
-**Connect another agent…** button (or **More options → Connection setup…** during
-a conversation), opens a nonmodal setup screen. It enables local
+**Connect another agent** button (or **Conversation & settings → Connection setup**
+during a conversation), opens a nonmodal setup screen. It enables local
 access only when you click **Enable Local Agent Access**, then offers **Copy
 Connection Settings** and **Copy Starter Prompt**. The settings use the running
 Python interpreter, repository and browser data directory, including paths with
@@ -3102,14 +3102,16 @@ can still use the task mailbox directly. Steed does not store model credentials.
 
 #### Sidebar setup and everyday use
 
-A new sidebar shows a short welcome with **New Codex chat** and **Connect another
-agent…**. It hides the empty transcript, inactive task controls and the model/
-file/receipt administration until needed. Starting or choosing a conversation
-shows the transcript, message box, **Send**, **Cancel task** and, for connected
-agents, **Give agent tab control…**. Existing conversations appear in the picker.
+The HTML sidebar shows a short welcome with **Start a Codex chat** and
+**Connect another agent**; the header **+** also starts a new Codex chat. It hides
+the empty transcript, inactive task controls and model/file/receipt administration
+until needed. Starting or choosing a conversation
+shows distinct message cards, a fixed message box, **Send**, **Stop task** and,
+for connected agents, **Give tab control…**. Existing conversations appear in the
+picker.
 
-**More options** is collapsed initially. It contains model selection for a new
-chat, connection settings, the persistent file library, sidebar/tab presentation,
+**Conversation & settings** is collapsed initially. It contains model selection
+for a new chat, connection settings, the persistent file library, sidebar/tab presentation,
 task permissions/files/receipts, detailed counts and chat clearing. Opening or
 closing options preserves your local draft and creates no task or permission.
 Pending approvals and unanswered agent questions stay visible above the chat
@@ -3123,24 +3125,36 @@ The activity card shows **Sending**, **Thinking**, **Working**, **Replying**,
 and queued follow-up count. These are transient runtime states; they do not expose
 reasoning text or establish that an external action succeeded. Other MCP clients
 show **External agent connected** because Steed cannot observe their execution.
-Conversation and message entry have distinct headings, sender highlighting and
-primary buttons. Light/dark appearance follows the browser; details stay under
-More options. Messages remain plain text.
+Messages have separate sender cards and a fixed composer with a primary Send
+button. Light/dark appearance follows the browser; details stay under
+Conversation & settings. Messages remain plain text, including code or markup
+returned by an agent.
 
 The card also shows **Model: … (reported by Codex)**, using the resolved model and
 provider returned by the running App Server thread. A reported model reroute
 updates the name and shows the previous model for that turn. **Model for new
-chats** in More options selects a future chat; changing it does not change the
-selected conversation. Missing/invalid runtime metadata and other MCP clients
+chats** in Conversation & settings selects a future chat; changing it does not
+change the selected conversation. Missing/invalid runtime metadata and other MCP clients
 show **Model: not reported by the agent**, rather than guessing from the selector.
 After a chat ends, its name is marked **last reported** for this browser run;
 these transient reports are not restored from old chat history after restart.
 
-Sidebar acceptance: 27 menu/sidebar/web-chat checks pass in 12.606 seconds,
-including setup/active/options states, visible pending permissions, draft
-preservation, private-profile isolation and a short scrolling chat tab. Synthetic
-welcome, conversation, options and menu previews were inspected.
-Log: `/tmp/steed-sidebar-simplified-final.log`.
+The maintained interface lives in `ui/web/agents.html`, `agents.js` and
+`theme.css`. There is no frontend installation/build step or localhost server.
+`ui/html_surface.py` loads those assets into its own off-the-record profile,
+with network/navigation/file access denied and a small QWebChannel command API.
+Python validates commands against the current document and selected conversation;
+all browser/task authority remains in the existing services. User/agent-editable
+start pages and remote websites do not receive this bridge.
+
+If the interface fails to load or its renderer exits, **Reload interface** restores
+the selected conversation and local draft received by the controller. It does not
+replay sent messages, start another task, or repeat browser/app actions. Browser
+windows retain independent unsent drafts. Private-profile changes immediately
+cover the previous view and clear conversation text and drafts before showing the
+private state. Light/dark, keyboard, bridge, draft, failure, privacy and sidebar/tab
+checks use temporary profiles and synthetic messages in
+`tests/test_html_agents.py`.
 
 #### Codex chats from Steed
 
@@ -3150,15 +3164,16 @@ Log: `/tmp/steed-sidebar-simplified-final.log`.
    may be incompatible; failed setup leaves a cancelled, read-only task.
 2. Install Steed's optional adapter dependencies:
    `.venv/bin/python -m pip install -r requirements-mcp.txt`.
-3. Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) and choose **New Codex chat**.
+3. Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) and choose **Start a Codex chat**
+   (or the header **+**).
    This explicitly enables local agent access for this browser run and starts a
    new task. No MCP client configuration or starter prompt is required.
-   Before starting a chat, **More options** contains the model selector. It can
+   Before starting a chat, **Conversation & settings** contains the model selector. It can
    use your Codex default or request GPT-5.4 for this chat
    without changing Codex's saved configuration. Direct Steed tools were verified
    with GPT-5.4 and code-runtime Steed calls with GPT-6.1 Sol in offline native
    fixtures; your account must still provide the selected model.
-4. When the status says **Codex ready**, type a message and press **Send** or
+4. When the status says **Codex is ready**, type a message and press **Send** or
    `Ctrl+Enter`. Codex starts a turn automatically. Follow-ups queue in order while
    a reply is running, then continue the same live Codex thread and Steed task.
 
@@ -3203,7 +3218,7 @@ Codex's active thread, local files or external effects.
 
 Messages still grant no Steed page, profile, connector or worker access. Codex
 requests the same Steed permissions and payload reviews as any other MCP agent;
-expand **More options** for **Permissions**, **Task files**, and **Receipts**. Replies
+expand **Conversation & settings** for **Permissions**, **Task files**, and **Receipts**. Replies
 are streamed as plain text, coalesced and split at UTF-8 boundaries within existing
 chat limits. No message bodies, account details or runtime stderr enter activity
 events. **Clear Chat** removes queued prompts and suppresses the rest of an erased
@@ -3398,12 +3413,12 @@ lifetime and each frame's authority must be checked before exposing its content.
    or waiting for your input. The sidebar shows pending messages and when the
    agent's read tool has fetched them; this does not prove the agent understood
    or acted on the text.
-6. Expand **More options** for **Permissions**, **Task files**, and **Receipts**,
+6. Expand **Conversation & settings** for **Permissions**, **Task files**, and **Receipts**,
    which open the selected task's controls in a nonmodal window. The sidebar shows counts for pending
    grant, package, recipe and app reviews, files, drafts and app receipts.
    Website, task, package, recipe and payload approvals retain their existing
    separate controls. Conversation text never approves a request.
-7. Hiding or closing the sidebar keeps the task running. **Cancel Task** ends
+7. Hiding or closing the sidebar keeps the task running. **Stop task** ends
    it explicitly. Finish a final reply before calling `steed_task_finish`.
    Adapter disconnects still cancel unfinished tasks; restarting the browser
    retains history and marks active tasks and incomplete replies interrupted.
@@ -3427,9 +3442,9 @@ Choose **Agents → Agent Chat Tab** or **Open as tab** in the agent sidebar to 
 the same Steed conversation into a full browser tab. **Show sidebar** returns it
 to the dock. Sent messages, selected task and unsent draft survive the move;
 closing the tab hides the conversation and keeps its task running. Normal saved
-tab restoration can reopen this native UI. Its address is `steed:agents`; it
-does not load a remote page or confer browser permission. Incognito still clears
-and disables the native conversation.
+tab restoration can reopen this local HTML interface. Its address is
+`steed:agents`; it does not load a remote page or confer browser permission. Incognito still clears
+and disables the Steed conversation.
 
 For website subscriptions, choose **Agents → Website Chats → ChatGPT / Claude /
 Gemini**. These open `chatgpt.com`, `claude.ai` and `gemini.google.com` in normal

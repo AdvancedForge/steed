@@ -35,43 +35,32 @@ class AgentSidebarTests(unittest.TestCase):
     def connect_task(self, sidebar, objective="Synthetic external agent"):
         task = self.command("task.create", objective=objective)
         self.service.external_connection(task.task_id, True)
-        sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(task.task_id))
+        sidebar.select_task(task.task_id)
         return task.task_id
 
-    def test_first_open_shows_setup_without_empty_chat_or_administration(self):
+    def test_first_open_is_available_without_a_conversation_or_grants(self):
         _, sidebar = self.sidebar()
-        self.assertTrue(sidebar.welcome.isVisible())
-        self.assertTrue(sidebar.new_chat.isVisible())
-        self.assertTrue(sidebar.setup.isVisible())
-        self.assertFalse(sidebar.conversation.isVisible())
-        self.assertFalse(sidebar.tools_panel.isVisible())
-        self.assertFalse(sidebar.tasks.isVisible())
-        self.assertFalse(sidebar.pending.isVisible())
-        sidebar.more.click()
-        self.assertTrue(sidebar.library_button.isVisible())
-        sidebar.more.click()
-        self.assertFalse(sidebar.tools_panel.isVisible())
+        self.assertTrue(sidebar.state["available"])
+        self.assertFalse(sidebar.state["usable"])
+        self.assertEqual(sidebar.state["messages"], [])
+        self.assertEqual(sidebar.state["pending"], 0)
+        self.assertTrue(sidebar.state["can_library"])
 
-    def test_connected_chat_keeps_draft_and_task_when_options_collapse(self):
+    def test_connected_chat_keeps_its_draft_local(self):
         _, sidebar = self.sidebar()
         task = self.connect_task(sidebar)
-        self.assertFalse(sidebar.welcome.isVisible())
-        self.assertTrue(sidebar.conversation.isVisible())
-        sidebar.composer.setPlainText("Draft stays local")
-        sidebar.more.click()
-        sidebar.more.click()
-        self.assertFalse(sidebar.tools_panel.isVisible())
-        self.assertEqual(sidebar.composer.toPlainText(), "Draft stays local")
+        self.assertTrue(sidebar.state["usable"])
+        sidebar.set_draft("Draft stays local")
+        self.assertEqual(sidebar.draft, "Draft stays local")
         self.assertEqual(self.service.store.grants(task), [])
-        self.assertTrue(sidebar.send.isEnabled())
+        self.assertTrue(sidebar.state["active"])
 
     def test_pending_permissions_stay_visible_with_options_collapsed(self):
         _, sidebar = self.sidebar()
         task = self.connect_task(sidebar)
         self.command("grant.request", task_id=task, scope={"actions": ["artifact"]})
-        self.assertFalse(sidebar.tools_panel.isVisible())
-        self.assertTrue(sidebar.pending.isVisible())
-        sidebar.pending.click()
+        self.assertEqual(sidebar.state["pending"], 1)
+        sidebar.open_details("Permissions")
         dialog = sidebar.findChildren(TaskDialog)[-1]
         self.assertEqual(dialog.selection()[0].task_id, task)
         self.assertEqual(
@@ -90,13 +79,11 @@ class AgentSidebarTests(unittest.TestCase):
         )
         with patch.object(sidebar, "providers", provider):
             sidebar.refresh()
-            self.assertFalse(sidebar.agent_requests.isVisible())
-            sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(first))
-            self.assertTrue(sidebar.agent_requests.isVisible())
-            self.assertIn("(1)", sidebar.agent_requests.text())
-            self.assertFalse(sidebar.tools_panel.isVisible())
-            sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(second))
-            self.assertFalse(sidebar.agent_requests.isVisible())
+            self.assertEqual(sidebar.state["requests"], 0)
+            sidebar.select_task(first)
+            self.assertEqual(sidebar.state["requests"], 1)
+            sidebar.select_task(second)
+            self.assertEqual(sidebar.state["requests"], 0)
 
     def test_light_dark_sections_and_speaker_headers_preserve_plain_text(self):
         window, sidebar = self.sidebar()
@@ -108,21 +95,19 @@ class AgentSidebarTests(unittest.TestCase):
             message_id="styled",
             text="<b>Literal reply</b>",
         )
-        self.assertIn("<b>Literal reply</b>", sidebar.transcript.toPlainText())
-        self.assertEqual(len(sidebar.transcript.extraSelections()), 2)
-        self.assertIn("External agent connected", sidebar.activity_title.text())
-        self.assertTrue(sidebar.busy.isHidden())
-        self.assertFalse(sidebar.tools_panel.isVisible())
-        light = sidebar.styleSheet()
+        self.assertIn("<b>Literal reply</b>", sidebar.transcript_text)
+        self.assertEqual(len(sidebar.state["messages"]), 2)
+        self.assertIn("External agent connected", sidebar.state["activity"]["title"])
+        self.assertFalse(sidebar.state["activity"]["busy"])
+        self.assertFalse(sidebar.state["dark"])
         window.config.dark_mode = True
         window.apply_dark_mode()
-        self.assertNotEqual(sidebar.styleSheet(), light)
-        self.assertIn("#202630", sidebar.styleSheet())
-        self.assertEqual(len(sidebar.transcript.extraSelections()), 2)
+        self.assertTrue(sidebar.state["dark"])
+        self.assertEqual(len(sidebar.state["messages"]), 2)
         self.assertEqual(self.service.store.grants(task), [])
         sidebar.set_private(True)
-        self.assertFalse(sidebar.activity_card.isVisible())
-        self.assertEqual(sidebar.transcript.toPlainText(), "")
+        self.assertFalse(sidebar.state["usable"])
+        self.assertEqual(sidebar.transcript_text, "")
 
     def test_managed_codex_chat_is_shared_and_access_toggle_stops_it(self):
         first_window, first = self.sidebar()
@@ -138,35 +123,35 @@ class AgentSidebarTests(unittest.TestCase):
                 "normal",
             ],
         )
-        first.new_chat.click()
+        first.start_chat()
         task = next(iter(providers.chats))
         self.wait_for(lambda: providers.status(task) == "Codex ready")
-        second.tasks.setCurrentIndex(second.tasks.findData(task))
-        first.composer.setPlainText("First window")
-        first.send.click()
-        second.composer.setPlainText("Second window")
-        second.send.click()
+        second.select_task(task)
+        first.set_draft("First window")
+        first.send_message()
+        second.set_draft("Second window")
+        second.send_message()
         self.wait_for(
-            lambda: "Synthetic reply: Second window" in second.transcript.toPlainText()
+            lambda: "Synthetic reply: Second window" in second.transcript_text
         )
-        self.assertIn("Synthetic reply: Second window", first.transcript.toPlainText())
+        self.assertIn("Synthetic reply: Second window", first.transcript_text)
         self.assertEqual(self.service.store.grants(task), [])
         first_window.close()
         self.assertIn(task, providers.chats)
-        self.assertTrue(second.send.isEnabled())
+        self.assertTrue(second.state["active"])
         self.assertTrue(second_window.agent_access_action.isChecked())
         second_window.agent_access_action.trigger()
         self.assertIsNone(self.registry.agent_gateway)
         self.assertEqual(providers.chats, {})
         self.assertEqual(self.service.store.get(task).status, "cancelled")
-        self.assertFalse(second.send.isEnabled())
+        self.assertFalse(second.state["active"])
 
     def test_send_and_stream_are_plain_text_without_grants(self):
         _, sidebar = self.sidebar()
         task = self.connect_task(sidebar)
-        sidebar.composer.setPlainText("Only explicitly shared text")
-        sidebar.send.click()
-        self.assertEqual(sidebar.composer.toPlainText(), "")
+        sidebar.set_draft("Only explicitly shared text")
+        sidebar.send_message()
+        self.assertEqual(sidebar.draft, "")
         self.command(
             "conversation.reply",
             task_id=task,
@@ -174,7 +159,7 @@ class AgentSidebarTests(unittest.TestCase):
             text="<script>literal</script>",
             state="streaming",
         )
-        self.assertIn("<script>literal</script>", sidebar.transcript.toPlainText())
+        self.assertIn("<script>literal</script>", sidebar.transcript_text)
         self.command(
             "conversation.reply",
             task_id=task,
@@ -182,38 +167,38 @@ class AgentSidebarTests(unittest.TestCase):
             text="<script>literal</script> finished",
             revision=1,
         )
-        self.assertEqual(sidebar.transcript.toPlainText().count("Agent\n"), 1)
-        self.assertNotIn("streaming", sidebar.transcript.toPlainText())
+        self.assertEqual(sidebar.transcript_text.count("Agent\n"), 1)
+        self.assertNotIn("streaming", sidebar.transcript_text)
         self.assertEqual(self.service.store.grants(task), [])
         self.assertFalse(self.service._sessions)
-        self.assertIn("waiting for the agent", sidebar.status.text())
+        self.assertIn("waiting for the agent", sidebar.state["status"])
         self.command("conversation.read", task_id=task)
-        self.assertIn("Agent fetched", sidebar.status.text())
+        self.assertIn("Agent fetched", sidebar.state["status"])
 
     def test_hide_show_keeps_task_and_draft_cancel_is_explicit(self):
         window, sidebar = self.sidebar()
         task = self.connect_task(sidebar)
-        sidebar.composer.setPlainText("Unsent draft")
+        sidebar.set_draft("Unsent draft")
         window.agent_sidebar_action.trigger()
         self.assertFalse(sidebar.isVisible())
         self.assertIn(self.service.store.get(task).status, ("created", "running"))
         window.agent_sidebar_action.trigger()
-        self.assertEqual(sidebar.composer.toPlainText(), "Unsent draft")
-        sidebar.cancel.click()
+        self.assertEqual(sidebar.draft, "Unsent draft")
+        sidebar.cancel_task()
         self.assertEqual(self.service.store.get(task).status, "cancelled")
-        self.assertFalse(sidebar.send.isEnabled())
+        self.assertFalse(sidebar.state["active"])
 
     def test_task_switch_retains_drafts_without_sharing_them(self):
         _, sidebar = self.sidebar()
         first = self.connect_task(sidebar, "First")
-        sidebar.composer.setPlainText("Draft for first")
+        sidebar.set_draft("Draft for first")
         second = self.connect_task(sidebar, "Second")
-        self.assertEqual(sidebar.composer.toPlainText(), "")
-        sidebar.composer.setPlainText("Message for second")
-        sidebar.send.click()
-        sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(first))
-        self.assertEqual(sidebar.composer.toPlainText(), "Draft for first")
-        self.assertNotIn("Message for second", sidebar.transcript.toPlainText())
+        self.assertEqual(sidebar.draft, "")
+        sidebar.set_draft("Message for second")
+        sidebar.send_message()
+        sidebar.select_task(first)
+        self.assertEqual(sidebar.draft, "Draft for first")
+        self.assertNotIn("Message for second", sidebar.transcript_text)
         self.assertEqual(self.service.messages.read(first)["messages"], [])
         self.assertEqual(
             self.service.messages.read(second)["messages"][0]["text"],
@@ -224,14 +209,14 @@ class AgentSidebarTests(unittest.TestCase):
         window, sidebar = self.sidebar()
         task = self.connect_task(sidebar)
         self.service.send_message(task, "Regular profile text")
-        sidebar.composer.setPlainText("Unsent regular draft")
+        sidebar.set_draft("Unsent regular draft")
         window._switch_to_profile("search")
-        self.assertEqual(sidebar.transcript.toPlainText(), "")
-        self.assertEqual(sidebar.composer.toPlainText(), "")
-        self.assertFalse(sidebar.send.isEnabled())
-        self.assertEqual(sidebar.tasks.count(), 1)
+        self.assertEqual(sidebar.transcript_text, "")
+        self.assertEqual(sidebar.draft, "")
+        self.assertFalse(sidebar.state["active"])
+        self.assertEqual(sidebar.state["tasks"], [])
         window._switch_to_profile("default")
-        self.assertEqual(sidebar.transcript.toPlainText(), "")
+        self.assertEqual(sidebar.transcript_text, "")
         self.assertEqual(
             self.service.messages.read(task)["messages"][0]["text"],
             "Regular profile text",
@@ -241,7 +226,7 @@ class AgentSidebarTests(unittest.TestCase):
         first_window, first = self.sidebar()
         _, second = self.sidebar()
         task = self.connect_task(first)
-        second.tasks.setCurrentIndex(second.tasks.findData(task))
+        second.select_task(task)
         grant = self.command(
             "grant.request",
             task_id=task,
@@ -249,16 +234,16 @@ class AgentSidebarTests(unittest.TestCase):
         )
         self.service.approve_grant(task, grant.grant_id)
         first_window._switch_to_profile("default")
-        self.assertIn("existing:work", first.status.text())
-        self.assertIn("0 pending", first.summary.text())
-        first.composer.setPlainText("Shared conversation")
-        first.send.click()
-        self.assertIn("Shared conversation", second.transcript.toPlainText())
-        first.composer.setPlainText("Unsent private draft")
-        self.assertEqual(second.composer.toPlainText(), "")
-        first.clear.click()
-        self.assertEqual(first.transcript.toPlainText(), "")
-        self.assertEqual(second.transcript.toPlainText(), "")
+        self.assertIn("existing:work", first.state["status"])
+        self.assertIn("0 pending", first.state["summary"])
+        first.set_draft("Shared conversation")
+        first.send_message()
+        self.assertIn("Shared conversation", second.transcript_text)
+        first.set_draft("Unsent private draft")
+        self.assertEqual(second.draft, "")
+        first.clear_messages()
+        self.assertEqual(first.transcript_text, "")
+        self.assertEqual(second.transcript_text, "")
 
     def test_permissions_files_and_receipts_select_the_same_task_nonmodally(self):
         _, sidebar = self.sidebar()
@@ -276,12 +261,12 @@ class AgentSidebarTests(unittest.TestCase):
     def test_disconnected_or_oversized_send_preserves_composer(self):
         _, sidebar = self.sidebar()
         task = self.connect_task(sidebar)
-        sidebar.composer.setPlainText("é" * 4097)
-        sidebar.send.click()
-        self.assertTrue(sidebar.error.text())
-        self.assertEqual(sidebar.composer.toPlainText(), "é" * 4097)
+        sidebar.set_draft("é" * 4097)
+        sidebar.send_message()
+        self.assertTrue(sidebar.state["error"])
+        self.assertEqual(sidebar.draft, "é" * 4097)
         self.service.external_connection(task, False)
-        self.assertFalse(sidebar.send.isEnabled())
+        self.assertFalse(sidebar.state["active"])
         self.assertEqual(self.service.messages.read(task)["messages"], [])
 
     def test_sidebar_startup_failure_leaves_browsing_available(self):
@@ -306,9 +291,28 @@ class AgentSidebarTests(unittest.TestCase):
             "read",
             side_effect=sqlite3.OperationalError("fixture"),
         ):
-            sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(task.task_id))
-        self.assertFalse(sidebar.send.isEnabled())
-        self.assertFalse(sidebar.clear.isEnabled())
-        self.assertEqual(sidebar.transcript.toPlainText(), "")
-        self.assertTrue(sidebar.error.text())
+            sidebar.select_task(task.task_id)
+        self.assertFalse(sidebar.state["active"])
+        self.assertFalse(sidebar.state["usable"])
+        self.assertEqual(sidebar.transcript_text, "")
+        self.assertTrue(sidebar.state["error"])
         self.assertTrue(window.tabs)
+
+    def test_recovering_storage_read_restores_already_seen_messages_and_draft(self):
+        _, sidebar = self.sidebar()
+        task = self.connect_task(sidebar)
+        self.service.send_message(task, "Already seen message")
+        sidebar.set_draft("Unsent text survives")
+        with patch.object(
+            self.service.messages,
+            "read",
+            side_effect=sqlite3.OperationalError("fixture"),
+        ):
+            sidebar.refresh()
+        self.assertFalse(sidebar.state["usable"])
+        self.assertEqual(sidebar.transcript_text, "")
+        sidebar.refresh()
+        self.assertTrue(sidebar.state["usable"])
+        self.assertIn("Already seen message", sidebar.transcript_text)
+        self.assertEqual(sidebar.draft, "Unsent text survives")
+        self.assertEqual(sidebar.state["error"], "")

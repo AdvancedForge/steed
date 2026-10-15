@@ -43,27 +43,32 @@ class WebChatTests(unittest.TestCase):
         window = self.window()
         window._toggle_agent_sidebar(True)
         sidebar = window.agent_sidebar
-        sidebar.composer.setPlainText("Unsent draft")
+        sidebar.set_draft("Unsent draft")
         tab = window._open_agent_tab()
         self.assertIs(window.agent_sidebar, sidebar)
         self.assertIs(sidebar.parentWidget(), tab)
-        self.assertEqual(sidebar.composer.toPlainText(), "Unsent draft")
+        self.assertEqual(sidebar.draft, "Unsent draft")
         self.assertIs(window._open_agent_tab(), tab)
         self.assertEqual(sum(getattr(t, "agent_panel", False) for t in window.tabs), 1)
         window._toggle_agent_sidebar(True)
         self.assertIsNone(window.agent_tab)
         self.assertIs(sidebar.parentWidget(), window)
-        self.assertEqual(sidebar.composer.toPlainText(), "Unsent draft")
+        self.assertEqual(sidebar.draft, "Unsent draft")
         self.assertNotIn(tab, window.tabs)
 
     def test_short_agent_tab_keeps_all_controls_reachable_by_scrolling(self):
         window = self.window()
         window.resize(900, 350)
         window._open_agent_tab()
-        scroll = window.agent_sidebar.widget()
-        window.agent_sidebar.more.click()
-        self.wait_for(lambda: scroll.verticalScrollBar().maximum() > 0)
-        self.assertTrue(window.agent_sidebar.library_button.isEnabled())
+        surface = window.agent_sidebar.surface
+        self.wait_for(lambda: surface.ready)
+        self.value(surface.view, "document.getElementById('options').open = true")
+        self.wait_for(
+            lambda: self.value(
+                surface.view, "document.documentElement.scrollHeight > innerHeight"
+            )
+        )
+        self.assertTrue(window.agent_sidebar.state["can_library"])
 
     def test_agent_tab_persists_and_reopens_as_native_ui(self):
         window = self.window()
@@ -85,11 +90,11 @@ class WebChatTests(unittest.TestCase):
     ):
         window = self.window()
         window._open_agent_tab()
-        window.agent_sidebar.composer.setPlainText("Private unsent draft")
+        window.agent_sidebar.set_draft("Private unsent draft")
         window._switch_to_profile("search")
         self.assertIsNone(window.agent_tab)
-        self.assertEqual(window.agent_sidebar.composer.toPlainText(), "")
-        self.assertFalse(window.agent_sidebar.send.isEnabled())
+        self.assertEqual(window.agent_sidebar.draft, "")
+        self.assertFalse(window.agent_sidebar.state["active"])
         tab = window._open_agent_tab()
         window._navigate_tab_to_url(tab, "about:blank")
         self.assertIsNone(window.agent_tab)
@@ -252,8 +257,8 @@ class WebChatTests(unittest.TestCase):
         task = self.command("task.create", objective="Delegate from chat")
         self.service.external_connection(task.task_id, True)
         sidebar = window.agent_sidebar
-        sidebar.tasks.setCurrentIndex(sidebar.tasks.findData(task.task_id))
-        self.assertTrue(sidebar.delegate.isEnabled())
+        sidebar.select_task(task.task_id)
+        self.assertTrue(sidebar.state["can_delegate"])
         with patch.object(self.service.live_tabs, "request") as request:
             window.delegate_tabs(task.task_id)
             self.assertEqual(request.call_args.args[1], [source])

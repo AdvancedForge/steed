@@ -1,6 +1,42 @@
-# Engineering handoff — October 13, 2026
+# Engineering handoff — October 15, 2026
 
 ## Start here
+
+**HTML restyle H1 — October 15.** The owner's latest instruction is to begin the
+HTML restyle, starting with the agent interface. This supersedes the old scope
+below where it concerns maintained Steed UI. It does not authorize arbitrary
+user/agent HTML to access data, or replace Qt/Chromium.
+
+- `ui/agent_sidebar.py` is now a presentation controller and dock host; use
+  `select_task`, `set_draft`, `send_message`, `start_chat` and presentation `state`
+  in controller fixtures. There are no hidden legacy Widgets acting as a model.
+- `ui/web/agents.html`, `agents.js` and `theme.css` are repository-owned assets.
+  No frontend build or network server is required. The same surface survives
+  sidebar/tab moves. Native permission/setup/task dialogs remain available.
+- `ui/html_surface.py` owns an isolated off-the-record profile and only exposes
+  ready/dispatch through QWebChannel. CSP nonces, denied navigation/network/file
+  selection, command schemas, document generations and conversation contexts
+  keep this bridge separate from website pages and editable start-page HTML.
+  Never attach it to a normal browser profile or expose raw task/service objects.
+- Draft versions prevent older render updates from replacing newer input. A
+  matching send result unlocks the button; repeated clicks are not resubmitted.
+  Private transitions synchronously cover old pixels before clearing the HTML.
+  Interface reload restores controller-held drafts without replaying effects;
+  closing a browser window explicitly destroys its UI page before its profile.
+- Real HTML acceptance lives in `tests/test_html_agents.py`; controller/provider
+  fixtures and `tests/smoke_agent_mcp.py` use the new controller methods. Light,
+  dark, welcome and tab screenshots are `/tmp/steed-html-*.png`. H1 acceptance:
+  **1,415 full regressions / 486.928 s**, then **27 final UI checks / 24.882 s**
+  after storage-read recovery and connection-guidance fixes. Startup, SDK/raw
+  stdio MCP, Ruff (249 files), dependencies and whitespace checks passed. Logs:
+  `/tmp/steed-html-{acceptance,final-ui,startup,mcp}.log`. No real user accounts or
+  profiles were used. Desktop/account checks remain distinct from these fixtures.
+- Next: H2 shared settings/profile workspace; H3 history/bookmarks/downloads/file
+  library; H4 task/panel presentation. Reuse the existing authorities rather than
+  rewriting persistence or permissions. Toolbar/tab-strip HTML is a separate,
+  later milestone. See the active H1 section in ROADMAP.md.
+
+The October 13 checkpoint below remains the browser/agent capability baseline.
 
 **Work resumed for daily agent blockers — October 13.** This section supersedes
 old stop/handoff instructions below. The latest scope is grant reliability,
