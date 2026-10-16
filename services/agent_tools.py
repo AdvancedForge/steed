@@ -195,7 +195,7 @@ TOOLS = (
     ),
     tool(
         "start_page.capabilities",
-        "Discover how to propose built-in sections or self-contained HTML/CSS/JavaScript for steed:newtab or steed:welcome. No current page source, bookmarks, history, folders or account data are returned. User review chooses a normal profile; every edit requires explicit Apply.",
+        "Discover reviewed New Tab/Welcome customization and page=style, mode=theme patches for theme colors, root CSS and browser bars. Includes the CSS token/selector guide, defaults and examples. No existing user content is disclosed. User review chooses a profile; every edit requires explicit Apply.",
     ),
     tool(
         "start_page.propose",

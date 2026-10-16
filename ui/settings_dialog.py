@@ -442,7 +442,14 @@ class SettingsDialog(QDialog):
                         raise ValueError(
                             "Switch to a regular profile to customize its New Tab page."
                         )
-                    getattr(self.window, method)()
+                    host = getattr(self, "_html_host", None)
+                    previous = self.window._menu_anchor
+                    if host is not None and not host.closed:
+                        self.window._menu_anchor = host.pos()
+                    try:
+                        getattr(self.window, method)()
+                    finally:
+                        self.window._menu_anchor = previous
         except ValueError as error:
             self._error = str(error)
         except (OSError, RuntimeError, sqlite3.Error):

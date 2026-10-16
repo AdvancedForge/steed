@@ -485,8 +485,8 @@ def newtab_menu():
     return (
         '<details class="browser-menu"><summary>☰ Browser menu</summary><div>'
         + links
-        + '<hr><a href="steed://settings/">Settings</a>'
-        + '<a href="steed://style/">Style</a></div></details>'
+        + '<a href="steed://style/">Style</a><hr>'
+        + '<a href="steed://settings/">Open in Settings ↗</a></div></details>'
     )
 
 

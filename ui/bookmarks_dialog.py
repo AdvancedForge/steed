@@ -6,7 +6,6 @@ from PyQt6.QtCore import QIODevice, QSaveFile, Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
@@ -21,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from bookmark_format import MAX_BOOKMARK_HTML_BYTES
+from ui.html_dialog import HtmlSettingsDialog
 
 
 def profile_identity(pages, profile):
@@ -34,7 +34,7 @@ def check_profile(pages, profile, identity):
         )
 
 
-class BookmarkDialog(QDialog):
+class BookmarkDialog(HtmlSettingsDialog):
     def __init__(
         self, pages, profile, parent=None, url="", title="", *, identity=None, folder=""
     ):
@@ -95,7 +95,7 @@ class BookmarkDialog(QDialog):
         self.accept()
 
 
-class BookmarksDialog(QDialog):
+class BookmarksDialog(HtmlSettingsDialog):
     def __init__(self, pages, profile, parent=None, *, open_url=None):
         super().__init__(parent)
         self.pages, self.profile = pages, profile

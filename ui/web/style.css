@@ -1,13 +1,19 @@
 .style-shell { max-width: 900px; margin: 0 auto; padding: 32px 28px; }
+.style-shell { padding-bottom: 190px; }
 .style-shell header { margin-bottom: 22px; } .style-shell h1 { font-size: 30px; margin: 8px 0; }
 .style-shell h2 { font-size: 19px; letter-spacing: -.3px; margin-bottom: 18px; }
 .style-shell p { color: var(--muted); } .scope { font-weight: 600; margin-bottom: 16px; }
 .style-shell section, .style-shell footer { background: var(--surface); border: 1px solid var(--border); padding: 24px; border-radius: 16px; margin: 16px 0; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 20px; }
+.palette-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin: 18px 0; }
+.palette-grid code { display: block; color: var(--muted); font-size: 11px; }
+#css-guide table { width: 100%; border-collapse: collapse; margin-top: 14px; } #css-guide td { border-bottom: 1px solid var(--border); padding: 7px; }
 .style-shell input, .style-shell textarea { font: inherit; background: var(--bg); color: var(--ink); border: 1px solid var(--border); border-radius: 7px; padding: 8px; }
 .style-shell textarea { width: 100%; resize: vertical; font-family: monospace; } .style-shell input[type=color] { width: 80px; height: 40px; padding: 4px; }
 .style-shell input[type=checkbox] { accent-color: var(--accent); } .check { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 14px; margin-bottom: 13px; }
 .hint { font-size: 12px; margin-top: 12px; } .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
 #error, #notice, #conflict { padding: 14px; border-radius: 9px; background: var(--warning-bg); color: var(--warning); margin: 12px 0; }
 #error { background: var(--error-bg); color: var(--error); } #notice { background: var(--green-soft); color: var(--green); }
-@media(max-width: 600px) { .style-shell { padding: 20px 16px; } .grid { gap: 12px; } }
+@media(max-width: 600px) { .style-shell { padding: 20px 16px 190px; } .grid { gap: 12px; } }
+.style-shell > footer { position: fixed; bottom: 0; left: 16px; right: 16px; max-width: 844px; margin: 0 auto; padding: 12px 18px; z-index: 10; box-shadow: 0 -4px 20px #0001; border-radius: 14px 14px 0 0; }
+.style-shell > footer .actions { margin-top: 8px; } .style-shell > footer .check { margin-bottom: 3px; } .style-shell > footer .hint { margin-top: 3px; }

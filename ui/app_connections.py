@@ -8,7 +8,6 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
@@ -27,11 +26,12 @@ from PyQt6.QtWidgets import (
 from services.app_accounts import AccountError
 from services.connector_access import GROUP_LABELS
 from services.connector_recipes import MAX_RECIPE_BYTES, parse_recipe
+from ui.html_dialog import HtmlSettingsDialog
 from ui.recipe_review import RecipeReviewDialog
 from ui.task_approval import WrappedLabel
 
 
-class AppConnectionsDialog(QDialog):
+class AppConnectionsDialog(HtmlSettingsDialog):
     def __init__(self, manager, parent=None):
         super().__init__(parent)
         self.manager = manager

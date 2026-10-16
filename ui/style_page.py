@@ -4,7 +4,7 @@ from secrets import token_hex
 
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from services.page_style import DEFAULTS
+from services.page_style import DEFAULTS, palette, style_guide
 from ui.html_surface import HtmlSurface
 
 
@@ -46,6 +46,8 @@ class StylePage(QWidget):
                 "ack": self.sequence,
                 "values": self.base,
                 "defaults": DEFAULTS,
+                "guide": style_guide(),
+                "palettes": {"light": palette(), "dark": palette(True)},
                 "profile": "Incognito · temporary for this session"
                 if profile == "search"
                 else profile,

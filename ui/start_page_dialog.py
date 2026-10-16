@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
@@ -30,6 +29,7 @@ from services.start_pages import (
     clean_html,
     image_data,
 )
+from ui.html_dialog import HtmlSettingsDialog
 
 LABELS = {
     "search": "Search bar",
@@ -41,7 +41,7 @@ LABELS = {
 }
 
 
-class StartPageDialog(QDialog):
+class StartPageDialog(HtmlSettingsDialog):
     def __init__(self, pages, profile, parent=None):
         super().__init__(parent)
         self.pages, self.profile = pages, profile

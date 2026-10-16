@@ -105,7 +105,7 @@ class PageProposalTests(unittest.TestCase):
         client = self.service.client(task.task_id)
         capabilities = self.command("start_page.capabilities", client=client)
         self.assertTrue(capabilities["available"])
-        self.assertEqual(capabilities["pages"], ["newtab", "welcome"])
+        self.assertEqual(capabilities["pages"], ["newtab", "welcome", "style"])
         self.assertEqual(
             self.registry.start_pages.state("work")["settings"]["modules"],
             ["search", "bookmarks", "recent"],

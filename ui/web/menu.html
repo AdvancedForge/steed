@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Steed menu</title><style nonce="{{NONCE}}">{{STYLE}}{{EXTRA_STYLE}}</style></head><body>
+<header><button id="back" aria-label="Previous menu" hidden>←</button><h1 id="title">Browser menu</h1></header><nav id="items" role="menu"></nav><footer><button id="open-settings">Open in Settings ↗</button></footer>
+<script nonce="{{NONCE}}">{{CHANNEL}}</script><script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script></body></html>

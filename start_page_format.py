@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 
 from layout_preferences import clean_name
+from services.page_style import DEFAULTS, clean_style, style_guide
 from services.start_pages import CUSTOM_EXAMPLE, MODULES, clean_html, clean_settings
 
 MAX_SOURCE_BYTES = 32768
@@ -36,6 +37,8 @@ class PageDefinition:
     document: dict
 
     def candidate(self, state):
+        if self.page == "style":
+            return clean_style({**state, **self.document["style"]})
         result = deepcopy(state)
         key = "html" if self.page == "newtab" else "welcome_html"
         result[key] = self.document.get("html", "")
@@ -60,10 +63,29 @@ def parse_page(source):
         or type(document["version"]) is not int
         or document["version"] != 1
         or not clean_name(document["name"])
-        or document["page"] not in ("newtab", "welcome")
-        or document["mode"] not in ("builtin", "custom")
+        or document["page"] not in ("newtab", "welcome", "style")
+        or document["mode"] not in ("builtin", "custom", "theme")
     ):
         raise ValueError("Use the published version, name, page and mode")
+    if document["page"] == "style":
+        if (
+            document["mode"] != "theme"
+            or set(document) != base | {"style"}
+            or not isinstance(document["style"], dict)
+            or not document["style"]
+            or set(document["style"]) - set(DEFAULTS)
+        ):
+            raise ValueError("Use page=style, mode=theme and a nonempty style patch.")
+        clean_style({**DEFAULTS, **document["style"]})
+        return PageDefinition(
+            source,
+            hashlib.sha256(source.encode()).hexdigest(),
+            clean_name(document["name"]),
+            "style",
+            document,
+        )
+    if document["mode"] == "theme":
+        raise ValueError("Theme mode is only supported for page=style.")
     allowed = base | (
         {"html"}
         if document["mode"] == "custom"
@@ -105,8 +127,17 @@ def capabilities():
     return {
         "version": 1,
         "max_source_bytes": MAX_SOURCE_BYTES,
-        "pages": ["newtab", "welcome"],
-        "modes": ["builtin", "custom"],
+        "pages": ["newtab", "welcome", "style"],
+        "modes": ["builtin", "custom", "theme"],
+        "style_guide": style_guide(),
+        "style_fields": deepcopy(DEFAULTS),
+        "style_example": {
+            "version": 1,
+            "name": "Ocean palette",
+            "page": "style",
+            "mode": "theme",
+            "style": style_guide()["example"],
+        },
         "modules": list(MODULES),
         "settings_fields": {
             "modules": "ordered enabled section IDs",

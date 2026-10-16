@@ -1,7 +1,6 @@
 """Cookie viewer/editor dialog."""
 
 from PyQt6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -13,9 +12,10 @@ from PyQt6.QtWidgets import (
 )
 
 from cookie_manager import CookieInfo, CookieManager
+from ui.html_dialog import HtmlSettingsDialog
 
 
-class CookieDialog(QDialog):
+class CookieDialog(HtmlSettingsDialog):
     """Dialog for viewing and managing cookies."""
 
     def __init__(self, manager: CookieManager, parent=None, protect_deletion=None):

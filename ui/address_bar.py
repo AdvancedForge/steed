@@ -97,6 +97,7 @@ class AddressBar(QWidget):
         self.menu_btn.setToolTip("Browser menu")
         self.menu_btn.setAccessibleName("Browser menu")
         self.menu_btn.setMaximumWidth(42)
+        self.buttons["menu"] = self.menu_btn
         self.toolbar_order = list(TOOLBAR_ORDER)
         self.hidden_toolbar: list[str] = []
         self.density = "comfortable"
@@ -105,7 +106,6 @@ class AddressBar(QWidget):
     def _apply_toolbar(self) -> None:
         """Place controls around the mandatory address field and hide omissions."""
         layout = self.layout()
-        layout.removeWidget(self.menu_btn)
         for widget in list(self.buttons.values()) + [self.address_input]:
             layout.removeWidget(widget)
         for name, button in self.buttons.items():
@@ -118,7 +118,6 @@ class AddressBar(QWidget):
                 layout.addWidget(self.address_input, 1)
             elif name not in self.hidden_toolbar:
                 layout.addWidget(self.buttons[name])
-        layout.addWidget(self.menu_btn)
 
     def apply_toolbar(self, order, hidden) -> None:
         """Show and hide address bar buttons according to a layout.
@@ -128,7 +127,9 @@ class AddressBar(QWidget):
         control unreachable.
         """
         self.toolbar_order = clean_toolbar_order(order)
-        self.hidden_toolbar = [name for name in hidden if name in self.buttons]
+        self.hidden_toolbar = [
+            name for name in hidden if name in self.buttons and name != "menu"
+        ]
         self._apply_toolbar()
 
     def apply_density(self, density: str) -> None:

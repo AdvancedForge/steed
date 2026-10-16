@@ -51,6 +51,27 @@ class PageStyleTests(unittest.TestCase):
         self.assertTrue(self.styles.get("renamed")["css"])
         self.assertEqual(self.styles.get("work"), DEFAULTS)
 
+    def test_legacy_styles_preserve_saved_preferences_without_palette(self):
+        legacy = {key: value for key, value in DEFAULTS.items() if key != "colors"}
+        legacy.update(theme="dark", css=".card { border-radius: 12px; }")
+        self.config.set("page_style", {"version": 1, "default": legacy, "profiles": {}})
+        self.assertEqual(self.styles.get("global"), {**legacy, "colors": {}})
+
+    def test_palette_overrides_are_validated_and_returned_as_independent_copies(self):
+        colors = {"bg": "#102030", "ink": "#ffffff"}
+        self.styles.save("work", {**DEFAULTS, "colors": colors})
+        result = self.styles.get("work")
+        result["colors"]["bg"] = "#aabbcc"
+        self.assertEqual(self.styles.get("work")["colors"], colors)
+        self.assertIn("--bg: #102030", self.styles.css("work"))
+        self.config.set("page_style", {"version": 1, "default": {"css": "broken"}})
+        fallback = self.styles.get("global")
+        fallback["colors"]["bg"] = "#aabbcc"
+        self.assertEqual(DEFAULTS["colors"], {})
+        for invalid in ({"unknown": "#ffffff"}, {"bg": "red"}, {"bg": 1}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                clean_style({**DEFAULTS, "colors": invalid})
+
     def test_private_changes_are_memory_only_and_cannot_sync(self):
         self.config.set("unrelated", True)
         before = self.config.config_file.read_bytes()

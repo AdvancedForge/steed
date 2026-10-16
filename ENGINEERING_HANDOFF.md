@@ -1,8 +1,71 @@
-# Engineering handoff — October 15, 2026
+# Engineering handoff — October 16, 2026
 
 ## Start here
 
-**Internal pages and appearance — October 15 (current checkpoint).** This owner's
+**New Tab menus, palette editing and placement — October 16 (current checkpoint).** The owner explicitly limited HTML dropdowns and
+anchored editors to the **New Tab menu**, not the desktop top menu. Keep the desktop
+QMenuBar and address-bar QMenu behavior native. The toolbar menu now starts at the
+left edge; Layout Settings can reorder its `menu` ID but cannot hide it. Existing
+stored/portable orders without the ID migrate it onto the left. Other relative
+positions are retained; the layout schema remains backward compatible.
+
+- `ui/html_menu.py` renders original QAction state in a maintained HtmlSurface.
+  Only submenus/editor actions open on long hover; ordinary commands require click.
+  A footer opens the corresponding `steed:settings` section as a tab. Opaque action
+  IDs, sequence/context checks and disposal prevent stale document commands.
+- BrowserWindow reads maintained-page DOM trigger geometry, scales it for page
+  zoom, and clamps popups to the trigger's screen. A lightweight Qt timer polls
+  hover only in the active maintained start page. Website/authored HTML cannot
+  invoke these menus; callbacks recheck current tab/profile/source. Maintained
+  overlays are excluded, including pending underlying navigations.
+- `ui/html_dialog.py` adapts existing controllers into HTML **only** while invoked
+  by that menu or a nested HTML controller. Otherwise original `.exec()`/`.show()`
+  paths stay native. Widget validation, saves, selections, protection prompts and
+  backend services remain authoritative. Password values are never serialized.
+  Stable row identities reject replaced items; hidden/disabled/read-only controls
+  are checked at dispatch. Tables/lists cap presentation at 500 records with
+  available source filtering/paging; desktop editors remain available for more.
+  Profile switches/window close stop UI timers and destroy HTML pages before
+  off-record profiles. Security reviews and OS dialogs remain native.
+- `services/page_style.py` adds a strict fourteen-token `colors` map with migration
+  for older complete preferences. The Style workspace has color pickers, restore
+  palette, a fixed Apply/scope footer and the CSS guide. CSS applies after colors;
+  explicit colors apply to either base theme. Native chrome uses palette fields.
+  **Ctrl+Alt+Shift+R** prompts with native colors and resets the selected profile.
+- External agents discover the guide/defaults via `steed_start_page_capabilities`
+  and propose `{page:"style",mode:"theme",style:{...}}` using existing immutable
+  start-page proposal receipts. Only trusted review selects profile/all-profile
+  scope; no agent approval endpoint or existing-content disclosure was added.
+- `choose_download_destination` starts Save As in QStandardPaths.DownloadLocation,
+  falling back to `~/Downloads`, and strips directories from the suggested name.
+- Acceptance: **1,487 full checks / 633.642 s**, then **141 HTML/workspace checks /
+  85.929 s** after renderer fixes and **112 final checks / 51.502 s** after hover
+  dismissal/protected-row fixes. Earlier 234 focused checks also passed. All nine
+  controller types render in real HTML hosts. Additional regression paths include
+  Layout's QGroupBox title shadowing, multiline textarea edits, renderer failure
+  with visible Reload, no-save/replay recovery and stale/hidden controls. The
+  renderer uses CheckStateRole presence as well as flags, so native list rows
+  without checkboxes never gain phantom ones. Escape suppresses repeat hover until
+  the pointer leaves; late callbacks recheck active window/menu state.
+- Logs: `/tmp/steed-menu-{acceptance,final-render,verified,preview}.log`.
+  The real entry-point startup/render/shutdown check passed. External SDK/raw stdio
+  and authenticated HTTP MCP checks passed, now exercising reviewed theme proposals
+  and stable retries as well as authored Welcome pages. Smoke logs are
+  `/tmp/steed-menu-{startup,mcp-stdio,mcp-http}.log`.
+  Keep the updated capabilities assertion in `tests/smoke_agent_mcp.py` when adding
+  supported page kinds; do not revert it to the older two-page list.
+  Inspected previews: `/tmp/steed-menu-{newtab,dropdown,editor,layout}.png` and
+  `/tmp/steed-menu-colors-{light,dark}.png`. Ruff/formatting (260 files), dependency
+  and whitespace checks passed. Test using temporary profiles only; keep Qt
+  processes serial. Several invocations hit the known intermittent offscreen Qt/Vulkan
+  initialization crash; a documented-configuration retry passed. No claim is made
+  to fix that unrelated issue or replace actual desktop checks.
+- Next: dedicated collection HTML screens and focused daily-use polish; preserve
+  the desktop-menu clarification. The broader authored-app data bridge, automatic
+  linked-panel refresh and Qt replacement remain deferred. No connector runtime,
+  account setup or permission-policy changes are needed for this milestone.
+
+**Internal pages and appearance — October 15 (previous checkpoint).** This owner's
 requested continuation supersedes H2's next-work instruction below. Workspaces
 now have `steed:settings`, `steed:agents` and `steed:style` tab routes. Settings keeps
 its existing controller and drafts; only its HtmlSurface moves into a tab. The

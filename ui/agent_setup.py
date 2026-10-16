@@ -9,13 +9,14 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
 )
+
+from ui.html_dialog import HtmlSettingsDialog
 
 AGENT_PROMPT = (
     'Start a Steed task called "Browser collaboration" and keep its MCP connection '
@@ -44,7 +45,7 @@ def launch_config(config_dir, *, executable=None, repository=None):
     }
 
 
-class AgentSetupDialog(QDialog):
+class AgentSetupDialog(HtmlSettingsDialog):
     enable_requested = pyqtSignal()
 
     def __init__(self, registry, parent=None):

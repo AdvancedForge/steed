@@ -9,7 +9,6 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
@@ -24,11 +23,12 @@ from PyQt6.QtWidgets import (
 
 from services.file_library import FILE_BYTES, read_import
 from services.task_downloads import DownloadDestination
+from ui.html_dialog import HtmlSettingsDialog
 
 PAGE_ROWS = 200
 
 
-class FileLibraryDialog(QDialog):
+class FileLibraryDialog(HtmlSettingsDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service

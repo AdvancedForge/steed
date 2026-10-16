@@ -2,7 +2,6 @@
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QInputDialog,
     QListWidget,
@@ -11,8 +10,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.html_dialog import HtmlSettingsDialog
 
-class GroupDialog(QDialog):
+
+class GroupDialog(HtmlSettingsDialog):
     def __init__(self, window):
         super().__init__(window)
         self.window = window

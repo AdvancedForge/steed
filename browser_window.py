@@ -4,11 +4,12 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
+from time import monotonic
 from urllib.parse import parse_qsl
 from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
-from PyQt6.QtCore import QEvent, Qt, QTimer, QUrl
+from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
@@ -243,6 +244,16 @@ class BrowserWindow(QMainWindow):
         self.data_panels_dock = None
         self.agent_setup_dialog = None
         self.settings_dialog = None
+        self._menu_anchor = None
+        self._html_menu = None
+        self._html_dialogs = []
+        self._newtab_hover = None
+        self._newtab_hover_opened = False
+        self._newtab_hover_since = 0
+        self._newtab_hover_pending = False
+        self._newtab_hover_timer = QTimer(self)
+        self._newtab_hover_timer.setInterval(250)
+        self._newtab_hover_timer.timeout.connect(self._poll_newtab_menu)
         self.setup_window()
         self.setup_menus()
         self.setup_ui()
@@ -284,6 +295,7 @@ class BrowserWindow(QMainWindow):
             self._restore_tabs()
         else:
             self._new_tab(url=self._startup_page())
+        self._newtab_hover_timer.start()
 
     def _initialize_profile(self, profile_name: str):
         if self.history is not None:
@@ -376,12 +388,17 @@ class BrowserWindow(QMainWindow):
         downloads_action = QAction("Downloads...", self)
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(
-            lambda: DownloadDialog(self.download_manager, self).exec()
+            lambda: self._present_dialog(
+                DownloadDialog(self.download_manager, self),
+                modal=self._menu_anchor is None,
+            )
         )
         general_menu.addAction(downloads_action)
         adblock_action = QAction("Ad Blocking...", self)
         adblock_action.triggered.connect(
-            lambda: AdBlockDialog(self.adblock, self).exec()
+            lambda: self._present_dialog(
+                AdBlockDialog(self.adblock, self), modal=self._menu_anchor is None
+            )
         )
         general_menu.addAction(adblock_action)
         general_menu.addSeparator()
@@ -390,9 +407,10 @@ class BrowserWindow(QMainWindow):
         settings_action.triggered.connect(self._open_settings)
         general_menu.addAction(settings_action)
         style_action = QAction("Page Style…", self)
-        style_action.triggered.connect(lambda: self._new_tab(url="steed:style"))
+        style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
         reset_style = QAction("Reset Page Style…", self)
+        reset_style.setShortcut(QKeySequence("Ctrl+Alt+Shift+R"))
         reset_style.triggered.connect(self._reset_page_style)
         view_menu.addAction(reset_style)
         self.menu_bar_action = QAction("Show Top Menu Bar", self, checkable=True)
@@ -461,9 +479,11 @@ class BrowserWindow(QMainWindow):
         self._refresh_auto_approval()
         site_action = QAction("Website Permissions...", self)
         site_action.triggered.connect(
-            lambda: SitePermissionsDialog(
-                self.profile_manager.registry.site_permissions, self
-            ).exec()
+            lambda: self._present_dialog(
+                SitePermissionsDialog(
+                    self.profile_manager.registry.site_permissions, self
+                )
+            )
         )
         general_menu.addAction(site_action)
         apps_action = QAction("App Connections...", self)
@@ -636,6 +656,32 @@ class BrowserWindow(QMainWindow):
 
         for menu in self._layout_menus.values():
             register_actions(menu)
+        editors = {
+            "Downloads",
+            "Ad Blocking",
+            "Settings",
+            "Page Style",
+            "Passwords",
+            "Website Permissions",
+            "Layout Settings",
+            "Customize New Tab",
+            "Manage Bookmarks",
+            "Bookmark This Page",
+            "Task Permissions",
+            "App Connections",
+            "Agent File Library",
+            "Agent Connection Setup",
+            "New Profile",
+            "Switch Profile",
+            "Rename Profile",
+            "Delete Profile",
+            "Pop out Profile",
+            "Manage Tab Groups",
+            "View Cookies",
+        }
+        for action in self.actions():
+            if action.text().replace("...", "").replace("…", "").strip() in editors:
+                action.setProperty("steed_editor", True)
 
     def setup_ui(self):
         central = QWidget()
@@ -704,7 +750,36 @@ class BrowserWindow(QMainWindow):
         # Permission and download signals are connected per tab in _new_tab
 
     def apply_dark_mode(self):
-        if self.profile_manager.registry.page_style.dark(
+        styles = self.profile_manager.registry.page_style
+        colors = styles.get(self.profile_manager.current_profile_name)["colors"]
+        if colors:
+            from services.page_style import palette
+
+            chosen = {
+                **palette(styles.dark(self.profile_manager.current_profile_name)),
+                **colors,
+            }
+            self.setStyleSheet(
+                "QWidget {background:" + chosen["bg"] + ";color:" + chosen["ink"] + ";}"
+                "QLineEdit, QComboBox, QPushButton {background:"
+                + chosen["surface"]
+                + ";color:"
+                + chosen["ink"]
+                + ";border:1px solid "
+                + chosen["border"]
+                + ";padding:4px 8px;}"
+                "QPushButton:hover {background:" + chosen["soft"] + ";}"
+                "QTabBar::tab {background:"
+                + chosen["surface"]
+                + ";color:"
+                + chosen["ink"]
+                + ";padding:8px 16px;border:1px solid "
+                + chosen["border"]
+                + ";}"
+                "QTabBar::tab:selected {background:" + chosen["bg"] + ";}"
+                "QMenu::item:selected {background:" + chosen["soft"] + ";}"
+            )
+        elif self.profile_manager.registry.page_style.dark(
             self.profile_manager.current_profile_name
         ):
             self.setStyleSheet("""
@@ -916,6 +991,10 @@ class BrowserWindow(QMainWindow):
 
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):
+        for host in list(self._html_dialogs):
+            host.reject()
+        if self._html_menu is not None:
+            self._html_menu.close()
         self._apply_page_style()
         self.apply_dark_mode()
         self._update_window_title()
@@ -1173,9 +1252,7 @@ class BrowserWindow(QMainWindow):
             self.agent_setup_dialog.finished.connect(
                 lambda: setattr(self, "agent_setup_dialog", None)
             )
-        self.agent_setup_dialog.show()
-        self.agent_setup_dialog.raise_()
-        self.agent_setup_dialog.activateWindow()
+        self._present_dialog(self.agent_setup_dialog, modal=False)
 
     def _open_file_library(self):
         if self._closing or self.profile_manager.is_search_profile():
@@ -1194,8 +1271,7 @@ class BrowserWindow(QMainWindow):
             self.file_library_dialog.finished.connect(
                 lambda: setattr(self, "file_library_dialog", None)
             )
-        self.file_library_dialog.show()
-        self.file_library_dialog.raise_()
+        self._present_dialog(self.file_library_dialog, modal=False)
 
     def _update_window_title(self, url=None):
         profile_name = self.profile_manager.current_profile_name
@@ -2147,6 +2223,11 @@ class BrowserWindow(QMainWindow):
                 event.ignore()
                 return
         self._closing = True
+        self._newtab_hover_timer.stop()
+        if self._html_menu is not None:
+            self._html_menu.close()
+        for host in list(self._html_dialogs):
+            host.reject()
         if self.settings_dialog is not None:
             self.settings_dialog.reject()
         if self.data_panels_dock is not None:
@@ -2260,6 +2341,16 @@ class BrowserWindow(QMainWindow):
     def _open_settings(self, section="general", *, intent="", _dialog_only=False):
         if self._closing:
             return
+        if self._menu_anchor is not None and not _dialog_only:
+            dialog = SettingsDialog(
+                self.config, self, self.profile_manager.current_profile.httpUserAgent()
+            )
+            dialog.applied.connect(self._settings_applied)
+            dialog.open_section(
+                section if isinstance(section, str) else "general", intent=intent
+            )
+            self._present_dialog(dialog, modal=False)
+            return dialog
         if not _dialog_only:
             self._new_tab(url="steed:settings")
             if self.settings_dialog is not None:
@@ -2291,7 +2382,179 @@ class BrowserWindow(QMainWindow):
             return self.settings_dialog
 
     def _open_page_style(self):
+        if self._menu_anchor is not None:
+            from ui.style_page import StylePage
+
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Page Style")
+            page = StylePage(self)
+            QVBoxLayout(dialog).addWidget(page)
+            dialog.surface = page.surface
+            dialog.finished.connect(lambda _: page.dispose())
+            self._present_dialog(dialog, modal=False)
+            return dialog
         return self._new_tab(url="steed:style", return_tab=True)
+
+    def _show_html_menu(self, menu, anchor):
+        from ui.html_menu import HtmlMenu
+
+        if self._closing:
+            return
+        if self._html_menu is not None:
+            self._html_menu.close()
+        popup = HtmlMenu(menu, self, anchor)
+        self._html_menu = popup
+        popup.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        popup.finished.connect(
+            lambda _: (
+                setattr(self, "_html_menu", None) if self._html_menu is popup else None
+            )
+        )
+        popup.show()
+        return popup
+
+    def _present_dialog(self, dialog, *, modal=True, force_html=False):
+        from ui.html_dialog import HtmlDialog
+
+        host = getattr(dialog, "_html_host", None)
+        if (host is None or sip.isdeleted(host) or host.closed) and not (
+            force_html or self._menu_anchor is not None
+        ):
+            if modal:
+                return QDialog.exec(dialog)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            return dialog
+        if host is None or sip.isdeleted(host) or host.closed:
+            host = HtmlDialog(dialog, self, anchor=self._menu_anchor)
+            if not modal:
+                dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            dialog._html_host = host
+            self._html_dialogs.append(host)
+            host.finished.connect(
+                lambda _: (
+                    self._html_dialogs.remove(host)
+                    if host in self._html_dialogs
+                    else None
+                )
+            )
+            host.finished.connect(host.deleteLater)
+        if modal:
+            return host.exec()
+        host.show()
+        host.raise_()
+        host.activateWindow()
+        return host
+
+    def _builtin_menu_page(self, tab):
+        return (
+            not self._closing
+            and tab in self.tabs
+            and tab is self.tabs[self.current_tab_index]
+            and tab.native_panel is None
+            and not getattr(tab, "agent_panel", False)
+            and page_name(tab.url()) in ("newtab", "welcome")
+            and not self.profile_manager.registry.start_pages.state(
+                self.profile_manager.current_profile_name
+            )["html" if page_name(tab.url()) == "newtab" else "welcome_html"]
+        )
+
+    def _newtab_menu_at(self, tab, name, *, hover=False):
+        """Read trigger geometry from the maintained page, never authored HTML."""
+        if name not in self._layout_menus or not self._builtin_menu_page(tab):
+            return
+        profile = self.profile_manager.current_profile
+        page = tab.page()
+        selector = f'.browser-menu a[href="steed://action/menu?name={name}"]'
+        script = (
+            "(() => { const e=document.querySelector("
+            + json.dumps(selector)
+            + "); if (!e || !e.getClientRects().length) return null; "
+            + ("if (!e.matches(':hover')) return null; " if hover else "")
+            + "const r=e.getBoundingClientRect(); return [r.right,r.top]; })()"
+        )
+
+        def opened(point):
+            if (
+                not sip.isdeleted(tab)
+                and self._builtin_menu_page(tab)
+                and self.profile_manager.current_profile is profile
+                and tab.page() is page
+                and self.isActiveWindow()
+                and (not hover or self._html_menu is None)
+                and isinstance(point, list)
+                and len(point) == 2
+                and all(type(value) in (int, float) for value in point)
+                and 0 <= point[0] * tab.zoomFactor() <= tab.width()
+                and 0 <= point[1] * tab.zoomFactor() <= tab.height()
+            ):
+                self._newtab_hover = (tab, name)
+                self._newtab_hover_opened = True
+                self._show_html_menu(
+                    self._layout_menus[name],
+                    tab.mapToGlobal(
+                        QPoint(
+                            int(point[0] * tab.zoomFactor()),
+                            int(point[1] * tab.zoomFactor()),
+                        )
+                    ),
+                )
+
+        page.runJavaScript(script, opened)
+
+    def _poll_newtab_menu(self):
+        """Long hover applies only inside maintained New Tab, not desktop menus."""
+        if self._closing or not self.tabs:
+            self._newtab_hover = None
+            return
+        if (
+            self._html_menu is not None
+            or self._newtab_hover_pending
+            or not self.isActiveWindow()
+        ):
+            return
+        tab = self.tabs[self.current_tab_index]
+        if not self._builtin_menu_page(tab):
+            self._newtab_hover = None
+            return
+        profile = self.profile_manager.current_profile
+        self._newtab_hover_pending = True
+
+        def hovered(value):
+            self._newtab_hover_pending = False
+            if (
+                sip.isdeleted(tab)
+                or not self._builtin_menu_page(tab)
+                or self.profile_manager.current_profile is not profile
+                or self._html_menu is not None
+                or not self.isActiveWindow()
+            ):
+                return
+            key = (tab, value) if isinstance(value, str) else None
+            if key != self._newtab_hover:
+                self._newtab_hover, self._newtab_hover_since = key, monotonic()
+                self._newtab_hover_opened = False
+            elif (
+                key is not None
+                and not self._newtab_hover_opened
+                and monotonic() - self._newtab_hover_since >= 0.65
+            ):
+                self._newtab_hover_opened = True
+                if value == "summary":
+                    tab.page().runJavaScript(
+                        "document.querySelector('.browser-menu').open=true"
+                    )
+                else:
+                    self._newtab_menu_at(tab, value, hover=True)
+
+        tab.page().runJavaScript(
+            "(() => { const s=document.querySelector('.browser-menu summary:hover'); "
+            "if(s && !s.parentElement.open) return 'summary'; "
+            "const a=document.querySelector('.browser-menu a:hover'); "
+            "return a ? new URL(a.href).searchParams.get('name') : null; })()",
+            hovered,
+        )
 
     def _embed_workspace(self, tab, name):
         if name == "settings":
@@ -2370,16 +2633,19 @@ class BrowserWindow(QMainWindow):
     def _reset_page_style(self):
         from services.page_style import DEFAULTS
 
-        if (
-            QMessageBox.question(
+        previous = self.styleSheet()
+        self.setStyleSheet("")
+        try:
+            decision = QMessageBox.question(
                 self,
                 "Reset page style?",
                 "Reset the root CSS, theme, bar visibility and loading indicator for this profile? Custom page HTML and images are preserved.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
-            != QMessageBox.StandardButton.Yes
-        ):
+        finally:
+            self.setStyleSheet(previous)
+        if decision != QMessageBox.StandardButton.Yes:
             return
         try:
             self.profile_manager.registry.page_style.save(
@@ -2483,11 +2749,12 @@ class BrowserWindow(QMainWindow):
     def _customize_new_tab(self):
         from ui.start_page_dialog import StartPageDialog
 
-        StartPageDialog(
+        dialog = StartPageDialog(
             self.profile_manager.registry.start_pages,
             self.profile_manager.current_profile_name,
             self,
-        ).exec()
+        )
+        dialog.exec()
 
     def _start_news_changed(self, profile):
         if self._closing or profile != self.profile_manager.current_profile_name:
@@ -2513,13 +2780,14 @@ class BrowserWindow(QMainWindow):
     def _edit_bookmark(self, url="", title=""):
         from ui.bookmarks_dialog import BookmarkDialog
 
-        BookmarkDialog(
+        dialog = BookmarkDialog(
             self.profile_manager.registry.start_pages,
             self.profile_manager.current_profile_name,
             self,
             url,
             title,
-        ).exec()
+        )
+        dialog.exec()
 
     def _manage_bookmarks(self):
         from ui.bookmarks_dialog import BookmarksDialog
@@ -2531,9 +2799,10 @@ class BrowserWindow(QMainWindow):
                 raise ValueError("Bookmark display profile changed")
             self._new_tab(url=url)
 
-        BookmarksDialog(
+        dialog = BookmarksDialog(
             self.profile_manager.registry.start_pages, profile, self, open_url=open_url
-        ).exec()
+        )
+        dialog.exec()
 
     def _start_page_action(self, tab, url):
         if self._closing or tab not in self.tabs or page_name(tab.url()) is None:
@@ -2558,13 +2827,7 @@ class BrowserWindow(QMainWindow):
         elif action == "reopen" and len(params) == 1 and params[0][0] == "id":
             self._restore_closed_tab(params[0][1])
         elif action == "menu" and len(params) == 1 and params[0][0] == "name":
-            menu = self._layout_menus.get(params[0][1])
-            if menu is not None:
-                menu.popup(
-                    self.address_bar.menu_btn.mapToGlobal(
-                        self.address_bar.menu_btn.rect().bottomLeft()
-                    )
-                )
+            self._newtab_menu_at(tab, params[0][1])
         elif not params:
             if action == "customize":
                 self._customize_new_tab()

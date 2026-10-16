@@ -7,10 +7,48 @@ execution, and evidence; external agents provide planning and generation.
 See [DOCUMENTATION.md](DOCUMENTATION.md) for setup and implementation details,
 including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
-## Current work — October 15, 2026
+## Current work — October 16, 2026
 
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
+
+**New Tab HTML menus, palettes and placement — owner-requested continuation
+(implemented and accepted).** The desktop top menu and toolbar
+menu retain native behavior, as clarified by the owner. The maintained New Tab
+menu opens HTML category dropdowns and settings editors beside their trigger;
+long hover opens editors/submenus without running ordinary commands. Each
+category has **Open in Settings**, opening its matching `steed:settings` section.
+Popups follow root styling, account for zoom and screen bounds, and release their
+pages before profiles. Native security reviews and OS pickers are retained.
+
+`steed:style` adds fourteen editable palette colors and a CSS reference also
+published to external agents. Strict, reviewed `page=style`/`mode=theme` proposals
+reuse existing start-page receipts; the owner chooses the profile and optional
+all-profile synchronization. Existing-data grants do not approve styling, and
+capabilities disclose no current CSS. Old stored styles migrate without losing
+preferences. A native **Ctrl+Alt+Shift+R** reset remains usable with bad colors.
+
+The toolbar menu starts at the left edge and joins Layout Settings' reorderable
+controls; menu/address remain mandatory. Older stored/portable layouts retain
+other controls' relative order. Downloads' Save As picker starts in the system
+Downloads folder (fallback `~/Downloads`). Detailed usage is in DOCUMENTATION.md.
+
+Acceptance: **1,487 full regressions / 633.642 s**. Subsequent renderer/editor
+fixes passed **141 HTML/workspace checks / 85.929 s** and **112 final checks /
+51.502 s**, including all nine adapted settings controllers, actual Layout panel
+editing, multiline source editing, render-failure/reload, protected toolbar rows,
+Escape/hover dismissal, stale controls, zoom and profile lifetime checks. Earlier
+234 focused checks also passed. Ruff/formatting (260 Python files), dependency
+and whitespace checks passed. Final screenshots for New Tab, dropdown, editors
+and light/dark palette controls were inspected at `/tmp/steed-menu-*.png`.
+The real startup/render/shutdown and SDK/raw stdio + authenticated HTTP MCP
+journeys passed, including reviewed agent theme proposals and exact retries.
+Logs: `/tmp/steed-menu-{acceptance,final-render,verified,preview,startup,mcp-stdio,mcp-http}.log`. The known
+intermittent headless Qt/Vulkan initialization failure remains tracked separately;
+actual desktop checks remain separate from offscreen acceptance.
+Next: continue dedicated HTML collection screens and daily-use polish in bounded
+milestones. Preserve the owner's native desktop-menu behavior. Agent-authored
+read-only data bridges and replacing Qt remain deferred architecture work.
 
 **HTML pages and appearance — owner-requested continuation (implemented and
 accepted).** `steed:settings`, `steed:agents` and `steed:style` expose

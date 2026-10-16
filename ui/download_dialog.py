@@ -2,11 +2,10 @@
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QStandardPaths, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
-    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
@@ -17,14 +16,22 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.html_dialog import HtmlSettingsDialog
+
 
 def choose_download_destination(suggested, parent=None):
     """UI adapter; managers can instead receive a noninteractive destination."""
-    path, _ = QFileDialog.getSaveFileName(parent, "Save Download", suggested)
+    directory = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.DownloadLocation
+    )
+    directory = Path(directory) if directory else Path.home() / "Downloads"
+    path, _ = QFileDialog.getSaveFileName(
+        parent, "Save Download", str(directory / Path(suggested).name)
+    )
     return path
 
 
-class DownloadDialog(QDialog):
+class DownloadDialog(HtmlSettingsDialog):
     def __init__(self, manager, parent=None):
         super().__init__(parent)
         self.manager = manager

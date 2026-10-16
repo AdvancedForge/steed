@@ -45,6 +45,7 @@ LABELS = {
     "address": "Address/search",
     "zoom": "Reset zoom",
     "passwords": "Passwords",
+    "menu": "Browser menu",
     **{key: key.title() for key in MENU_ITEMS},
 }
 
@@ -113,7 +114,12 @@ def parse_layout(source):
         fields.extend(["text_size", "panels"])
     _fields(appearance, fields)
     _fields(appearance["toolbar"], ("order", "hidden"))
-    _ids(appearance["toolbar"]["order"], TOOLBAR_ORDER, complete=True)
+    # Older portable layouts predate the movable, mandatory browser-menu button.
+    toolbar_order = appearance["toolbar"]["order"]
+    known = TOOLBAR_ORDER
+    if isinstance(toolbar_order, list) and "menu" not in toolbar_order:
+        known = tuple(name for name in known if name != "menu")
+    _ids(toolbar_order, known, complete=True)
     _ids(appearance["toolbar"]["hidden"], TOOLBAR_ITEMS)
     _fields(appearance["menus"], ("order",))
     _ids(appearance["menus"]["order"], MENU_ITEMS, complete=True)

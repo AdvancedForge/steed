@@ -1408,29 +1408,43 @@ async def native_panel_file(call, name, data, media_type):
 
 async def start_page_workflow(call, shared, label):
     capabilities = await call("start_page.capabilities")
-    assert capabilities["available"] and capabilities["pages"] == ["newtab", "welcome"]
-    source = json.dumps(
+    assert capabilities["available"] and capabilities["pages"] == [
+        "newtab",
+        "welcome",
+        "style",
+    ]
+    assert "--bg" in capabilities["style_guide"]["colors"]
+    declarations = (
         {
             "version": 1,
             "name": label.upper() + " welcome",
             "page": "welcome",
             "mode": "custom",
             "html": "<title>Welcome</title><h1>" + label + " reviewed welcome</h1>",
-        }
+        },
+        {
+            "version": 1,
+            "name": label.upper() + " theme",
+            "page": "style",
+            "mode": "theme",
+            "style": {"colors": {"accent": "#4767db"}},
+        },
     )
-    request_id = label + "-welcome"
-    receipt = await call("start_page.propose", source=source, request_id=request_id)
-    assert receipt["state"] == "awaiting_approval"
-    deadline = time.monotonic() + 15
-    while receipt["state"] == "awaiting_approval":
-        assert time.monotonic() < deadline, "Native page review did not complete"
-        await asyncio.sleep(0.02)
-        receipt = await call("start_page.status", request_id=request_id)
-    assert receipt["state"] == "applied"
-    assert (
-        await call("start_page.propose", source=source, request_id=request_id)
-        == receipt
-    )
+    for declaration in declarations:
+        source = json.dumps(declaration)
+        request_id = label + "-" + declaration["page"]
+        receipt = await call("start_page.propose", source=source, request_id=request_id)
+        assert receipt["state"] == "awaiting_approval"
+        deadline = time.monotonic() + 15
+        while receipt["state"] == "awaiting_approval":
+            assert time.monotonic() < deadline, "Native page review did not complete"
+            await asyncio.sleep(0.02)
+            receipt = await call("start_page.status", request_id=request_id)
+        assert receipt["state"] == "applied"
+        assert (
+            await call("start_page.propose", source=source, request_id=request_id)
+            == receipt
+        )
     shared[label + "_reviewed_start_page"] = True
 
 

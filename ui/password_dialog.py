@@ -22,9 +22,10 @@ from password_forms import (
     inspect_form_script,
     login_url,
 )
+from ui.html_dialog import HtmlSettingsDialog
 
 
-class SaveLoginDialog(QDialog):
+class SaveLoginDialog(HtmlSettingsDialog):
     def __init__(self, site, login, password, parent):
         super().__init__(parent)
         self.setWindowTitle("Save Login to KeePassXC")
@@ -47,7 +48,7 @@ class SaveLoginDialog(QDialog):
         layout.addRow(buttons)
 
 
-class PasswordDialog(QDialog):
+class PasswordDialog(HtmlSettingsDialog):
     def __init__(self, manager, profile, page, parent, auto_fill=False):
         super().__init__(parent)
         self.manager = manager

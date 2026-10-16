@@ -10,7 +10,6 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
-    QDialog,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -26,11 +25,12 @@ from PyQt6.QtWidgets import (
 )
 
 from services.task_store import ACTIVE_STATUSES
+from ui.html_dialog import HtmlSettingsDialog
 from ui.task_approval import ACTION_LABELS, app_description
 from ui.task_recovery import TaskRecoveryDialog
 
 
-class TaskDialog(QDialog):
+class TaskDialog(HtmlSettingsDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service

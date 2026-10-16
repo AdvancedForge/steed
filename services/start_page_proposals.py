@@ -157,11 +157,12 @@ class StartPageProposals:
         profile=None,
         profile_key=None,
         base=None,
+        all_profiles=False,
     ):
         """Trusted UI only: check the exact profile identity and reviewed state."""
         self.service._usable()
         self.service._active(task_id)
-        if type(approve) is not bool:
+        if type(approve) is not bool or type(all_profiles) is not bool:
             raise ValueError("Provide an explicit page decision")
         proposal = self.get(task_id, request_id)
         if not approve:
@@ -176,13 +177,23 @@ class StartPageProposals:
         ):
             raise ValueError("Review an existing normal profile")
         pages = registry.start_pages
-        current = pages.state(profile)
+        definition = self.definition(proposal)
+        current = (
+            registry.page_style.get(profile)
+            if definition.page == "style"
+            else pages.state(profile)
+        )
         if not base or state_digest(current) != base:
             raise ValueError("The page changed; review it again before applying")
-        candidate = self.definition(proposal).candidate(current)
+        candidate = definition.candidate(current)
         self.update(task_id, request_id, "applying")
         try:
-            pages._commit(profile, candidate)
+            if definition.page == "style":
+                registry.page_style.save(
+                    profile, candidate, expected=current, all_profiles=all_profiles
+                )
+            else:
+                pages._commit(profile, candidate)
         except Exception:
             self.update(task_id, request_id, "failed")
             raise

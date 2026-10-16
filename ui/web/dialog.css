@@ -1,0 +1,15 @@
+body { background: var(--bg); } .dialog-header { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.dialog-header h1 { font-size: 18px; } #close { font-size: 24px; padding: 0 10px; }
+main { padding: 12px 18px 22px; } #error { background: var(--error-bg); color: var(--error); padding: 12px; border-radius: 8px; margin-bottom: 12px; }
+.form-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; } .form-group .form-group { width: 100%; }
+.control { max-width: 100%; } .form-label { white-space: pre-wrap; overflow-wrap: anywhere; width: 100%; color: var(--muted); font-size: 13px; }
+input, textarea { color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font: inherit; }
+input[type=text], input[type=password], textarea, .table-wrap, .tabs { width: 100%; } textarea { min-height: 110px; resize: vertical; } textarea[readonly] { font: 12px/1.5 monospace; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; margin: 0; color: var(--ink); } input[type=checkbox] { accent-color: var(--accent); }
+.tabs > nav { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 12px; } .tabs > nav button[aria-selected=true] { color: var(--accent); background: var(--soft); border-color: var(--accent); }
+.table-wrap { overflow: auto; max-height: 340px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; } th { text-align: left; position: sticky; top: 0; background: var(--surface); } td, th { padding: 9px 11px; border-bottom: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 380px; }
+tr[aria-selected=true] { background: var(--soft); color: var(--accent); } tbody tr { cursor: pointer; } tbody tr:hover { background: var(--soft); } .row-button { min-height: 25px; padding: 0 7px; margin-right: 5px; }
+.row-count { font-size: 11px; color: var(--muted); margin: 8px; }
+
+.form-group > div { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; } .form-group h2 { width: 100%; font-size: 16px; margin-top: 8px; }

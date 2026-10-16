@@ -69,10 +69,11 @@ class HtmlSurface(QWidget):
     command = pyqtSignal(dict)
     reloading = pyqtSignal()
 
-    def __init__(self, asset, parent=None, *, label="agent"):
+    def __init__(self, asset, parent=None, *, label="agent", command_limit=48000):
         super().__init__(parent)
         self.asset = asset
         self.label = label
+        self.command_limit = command_limit
         self.ready = False
         self.disposed = False
         self.generation = ""
@@ -195,7 +196,7 @@ class HtmlSurface(QWidget):
         self.publish(self._state, force=True)
 
     def _dispatch(self, raw):
-        if self.disposed or not self.ready or len(raw) > 48000:
+        if self.disposed or not self.ready or len(raw) > self.command_limit:
             return
         try:
             command = json.loads(raw)
@@ -245,9 +246,11 @@ class HtmlSurface(QWidget):
                 and self.ready
                 and generation == self.generation
                 and payload == self._last_payload
-                and ok
             ):
-                self.stack.setCurrentWidget(self.view)
+                if ok:
+                    self.stack.setCurrentWidget(self.view)
+                else:
+                    self._failed()
 
         dark = state.get("dark", False)
         self.page.setBackgroundColor(QColor("#151b25" if dark else "#f5f7fb"))

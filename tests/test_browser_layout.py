@@ -119,7 +119,9 @@ class BrowserLayoutTests(unittest.TestCase):
 
         def accept_as_compact(dialog):
             dialog.density.setCurrentIndex(0)
-            dialog.toolbar_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+            dialog.toolbar_list.item(
+                dialog.preferences.toolbar_order.index("back")
+            ).setCheckState(Qt.CheckState.Unchecked)
             return 1
 
         with patch.object(LayoutDialog, "exec", accept_as_compact):

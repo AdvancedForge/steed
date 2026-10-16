@@ -2,15 +2,16 @@
 
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QDialog,
     QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
 )
 
+from ui.html_dialog import HtmlSettingsDialog
 
-class AdBlockDialog(QDialog):
+
+class AdBlockDialog(HtmlSettingsDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service

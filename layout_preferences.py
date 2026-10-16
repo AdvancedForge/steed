@@ -21,7 +21,16 @@ LAYOUT_VERSION = 2
 # The address bar buttons a layout may reorder or hide. Every one of these also
 # stays reachable from the menu bar.
 TOOLBAR_ITEMS = ("back", "forward", "reload", "home", "zoom", "passwords")
-TOOLBAR_ORDER = ("back", "forward", "reload", "home", "address", "zoom", "passwords")
+TOOLBAR_ORDER = (
+    "menu",
+    "back",
+    "forward",
+    "reload",
+    "home",
+    "address",
+    "zoom",
+    "passwords",
+)
 
 # Menus may be reordered but never hidden, so Settings and Reset Layout are
 # always available.
@@ -99,6 +108,9 @@ def clean_toolbar_order(value: Any) -> list[str]:
     if not isinstance(value, (list, tuple)) or "address" not in value:
         order.remove("address")
         order.insert(order.index("zoom"), "address")
+    if not isinstance(value, (list, tuple)) or "menu" not in value:
+        order.remove("menu")
+        order.insert(0, "menu")
     return order
 
 

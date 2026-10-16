@@ -4,6 +4,7 @@ import sqlite3
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -38,6 +39,12 @@ class StartPageReviewDialog(QDialog):
             if document["mode"] == "custom"
             else f"Restore the built-in {page} page."
         )
+        if self.definition.page == "style":
+            self.setWindowTitle("Review theme and CSS")
+            description = (
+                "Change theme colors, root CSS or browser bars for the profile you select. CSS changes presentation only; no browser, account or file access is granted. View → Reset Page Style recovers from unusable CSS.\nChanged fields: "
+                + ", ".join(document["style"])
+            )
         if "settings" in document:
             description += "\nSections: " + ", ".join(document["settings"]["modules"])
             if document["settings"]["feed"]:
@@ -59,6 +66,11 @@ class StartPageReviewDialog(QDialog):
             self.profile.setCurrentText(manager.current_profile_name)
         layout.addWidget(QLabel("Apply to this profile:"))
         layout.addWidget(self.profile)
+        self.all_profiles = QCheckBox(
+            "Apply styling to all profiles and use for new profiles (replaces appearance overrides)"
+        )
+        self.all_profiles.setVisible(self.definition.page == "style")
+        layout.addWidget(self.all_profiles)
         self.source = QPlainTextEdit(self.definition.source)
         self.source.setReadOnly(True)
         layout.addWidget(
@@ -91,7 +103,11 @@ class StartPageReviewDialog(QDialog):
         self.profile_key = registry.start_pages.profile_key(
             self.profile.currentText(), create=True
         )
-        self.base = state_digest(registry.start_pages.state(self.profile.currentText()))
+        self.base = state_digest(
+            registry.page_style.get(self.profile.currentText())
+            if self.definition.page == "style"
+            else registry.start_pages.state(self.profile.currentText())
+        )
 
     def apply(self):
         try:
@@ -102,6 +118,9 @@ class StartPageReviewDialog(QDialog):
                 profile=self.profile.currentText(),
                 profile_key=self.profile_key,
                 base=self.base,
+                all_profiles=self.all_profiles.isChecked()
+                if self.definition.page == "style"
+                else False,
             )
         except (ValueError, KeyError, TaskPermissionError):
             self.status.setText(

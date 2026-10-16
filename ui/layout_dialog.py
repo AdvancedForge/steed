@@ -12,7 +12,6 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QFormLayout,
     QGroupBox,
@@ -36,6 +35,7 @@ from layout_preferences import (
     SIDEBAR_WIDTH_RANGE,
     LayoutPreferences,
 )
+from ui.html_dialog import HtmlSettingsDialog
 from ui.layout_panel_editor import PanelEditor
 
 TOOLBAR_LABELS = {
@@ -46,6 +46,7 @@ TOOLBAR_LABELS = {
     "zoom": "Reset zoom",
     "passwords": "Passwords",
     "address": "Address and search (always visible)",
+    "menu": "Browser menu (always visible)",
 }
 
 MENU_LABELS = {
@@ -89,7 +90,7 @@ def _fill_ordered(list_widget: QListWidget, order, labels: dict) -> None:
         list_widget.addItem(item)
 
 
-class LayoutDialog(QDialog):
+class LayoutDialog(HtmlSettingsDialog):
     """Edit toolbar, menu, sidebar and density settings by hand."""
 
     layout_changed = pyqtSignal(object)
@@ -269,7 +270,8 @@ class LayoutDialog(QDialog):
             self.toolbar_list.item(row).data(Qt.ItemDataRole.UserRole)
             for row in range(self.toolbar_list.count())
             if self.toolbar_list.item(row).checkState() == Qt.CheckState.Unchecked
-            and self.toolbar_list.item(row).data(Qt.ItemDataRole.UserRole) != "address"
+            and self.toolbar_list.item(row).data(Qt.ItemDataRole.UserRole)
+            not in ("address", "menu")
         ]
         self._working.set_toolbar(_reorder_rows(self.toolbar_list), hidden)
         self._working.set_menu_order(_reorder_rows(self.menu_list))
@@ -314,7 +316,7 @@ class LayoutDialog(QDialog):
         _fill_ordered(self.toolbar_list, self._working.toolbar_order, TOOLBAR_LABELS)
         for row in range(self.toolbar_list.count()):
             item = self.toolbar_list.item(row)
-            if item.data(Qt.ItemDataRole.UserRole) == "address":
+            if item.data(Qt.ItemDataRole.UserRole) in ("address", "menu"):
                 continue
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(

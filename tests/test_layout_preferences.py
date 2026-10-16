@@ -88,7 +88,16 @@ class LayoutPreferenceStorageTests(unittest.TestCase):
         )
         self.assertEqual(
             preferences.toolbar_order,
-            ["address", "zoom", "home", "back", "forward", "reload", "passwords"],
+            [
+                "menu",
+                "address",
+                "zoom",
+                "home",
+                "back",
+                "forward",
+                "reload",
+                "passwords",
+            ],
         )
         self.assertEqual(preferences.hidden_toolbar, ["back"])
         self.assertNotIn("nonsense", preferences.visible_toolbar)
@@ -338,6 +347,7 @@ class AddressBarLayoutTests(unittest.TestCase):
         self.assertEqual(
             self._shown(),
             [
+                self.bar.menu_btn,
                 self.bar.back_btn,
                 self.bar.forward_btn,
                 self.bar.reload_btn,
@@ -345,7 +355,6 @@ class AddressBarLayoutTests(unittest.TestCase):
                 self.bar.address_input,
                 self.bar.zoom_btn,
                 self.bar.passwords_btn,
-                self.bar.menu_btn,
             ],
         )
 
@@ -390,6 +399,7 @@ class AddressBarLayoutTests(unittest.TestCase):
         self.assertEqual(
             ordered,
             [
+                self.bar.menu_btn,
                 self.bar.passwords_btn,
                 self.bar.back_btn,
                 self.bar.home_btn,
@@ -397,15 +407,20 @@ class AddressBarLayoutTests(unittest.TestCase):
                 self.bar.reload_btn,
                 self.bar.address_input,
                 self.bar.zoom_btn,
-                self.bar.menu_btn,
             ],
         )
 
     def test_a_stale_layout_still_shows_every_button(self):
         self.bar.apply_toolbar(["home", "button_from_the_future"], [])
-        self.assertEqual(self.bar.toolbar_order[0], "home")
+        self.assertEqual(self.bar.toolbar_order[:2], ["menu", "home"])
         self.assertEqual(set(self.bar.toolbar_order), set(TOOLBAR_ORDER))
         self.assertEqual(len(self._shown()), len(TOOLBAR_ITEMS) + 2)
+
+    def test_menu_can_move_across_address_but_cannot_be_hidden(self):
+        self.bar.apply_toolbar(["menu", "address", "passwords"], ["menu", "passwords"])
+        self.assertEqual(self._shown()[:2], [self.bar.menu_btn, self.bar.address_input])
+        self.assertFalse(self.bar.menu_btn.isHidden())
+        self.assertNotIn("menu", self.bar.hidden_toolbar)
 
     def test_density_changes_spacing(self):
         self.bar.apply_density("compact")
@@ -424,7 +439,7 @@ class AddressBarLayoutTests(unittest.TestCase):
             for index in range(layout.count())
             if layout.itemAt(index).widget() is not None
         ]
-        self.assertEqual(widgets, [self.bar.address_input, self.bar.menu_btn])
+        self.assertEqual(widgets, [self.bar.menu_btn, self.bar.address_input])
 
 
 class TabBarDensityTests(unittest.TestCase):
@@ -470,18 +485,20 @@ class LayoutDialogTests(unittest.TestCase):
         self.assertEqual(self.published, [])
 
     def test_unchecking_a_button_previews_the_hidden_toolbar(self):
-        self.dialog.toolbar_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+        self.dialog.toolbar_list.item(TOOLBAR_ORDER.index("back")).setCheckState(
+            Qt.CheckState.Unchecked
+        )
         self.assertEqual(self._last().hidden_toolbar, ["back"])
         self.assertNotIn("back", self._last().visible_toolbar)
 
     def test_moving_a_row_reorders_and_previews(self):
         self.dialog.toolbar_list.setCurrentRow(0)
         self.dialog._move_row(self.dialog.toolbar_list, 1)
-        self.assertEqual(_item_ids(self.dialog.toolbar_list)[:2], ["forward", "back"])
-        self.assertEqual(self._last().toolbar_order[:2], ["forward", "back"])
+        self.assertEqual(_item_ids(self.dialog.toolbar_list)[:2], ["back", "menu"])
+        self.assertEqual(self._last().toolbar_order[:2], ["back", "menu"])
         # The address field can move, but cannot be hidden.
         self.dialog._move_row(self.dialog.toolbar_list, -1)
-        self.assertEqual(_item_ids(self.dialog.toolbar_list)[:2], ["back", "forward"])
+        self.assertEqual(_item_ids(self.dialog.toolbar_list)[:2], ["menu", "back"])
 
     def test_a_row_cannot_move_past_the_ends(self):
         self.dialog.toolbar_list.setCurrentRow(0)
@@ -501,7 +518,9 @@ class LayoutDialogTests(unittest.TestCase):
 
     def test_reset_restores_todays_appearance(self):
         self.dialog.density.setCurrentIndex(0)
-        self.dialog.toolbar_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+        self.dialog.toolbar_list.item(TOOLBAR_ORDER.index("back")).setCheckState(
+            Qt.CheckState.Unchecked
+        )
         self.dialog.reset_layout()
         self.assertEqual(self._last().menu_order, list(MENU_ITEMS))
         self.assertEqual(self._last().visible_toolbar, list(TOOLBAR_ITEMS))

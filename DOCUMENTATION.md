@@ -409,6 +409,11 @@ Existing profiles are migrated conservatively: pre-existing cookies remain local
 
 Open **General → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history. Interrupted downloads are not automatically restarted.
 
+The Save Download picker starts in your system's Downloads directory, using the
+suggested filename without any supplied directory components. If the desktop
+does not publish a Downloads location, Steed uses `~/Downloads`. You can choose
+another destination before saving.
+
 Search filenames, profiles or destination paths in the Downloads search field;
 matching ignores case and treats punctuation literally. Clear the search to show
 all records. Progress updates retain the selected download; filtering it out clears
@@ -450,7 +455,9 @@ bridge. Settings and Style support normal find, zoom and reload controls.
 
 Open **View → Page Style** or **Settings → View → Page style**:
 
-1. Choose a theme/accent and optionally edit the root CSS (up to 16,000 characters).
+1. Choose a base theme and edit individual **Theme colors** for backgrounds,
+   cards, text, borders, hover states, accents and feedback. **Restore base palette
+   colors** removes color overrides. Optionally edit root CSS (up to 16,000 characters).
    All Steed pages start with `ui/web/root.css` and inherit this profile's overrides.
    Useful tokens include `--bg`, `--surface`, `--ink`, `--muted` and `--accent`;
    `[data-theme="dark"]` rules customize the dark palette. Custom page HTML may add
@@ -474,16 +481,69 @@ Unsaved style fields stay in the form after an error. Conflicting saves from a
 second window stop with an explanation; **Reload saved** explicitly discards that
 form draft. Reloading the interface discards unsaved style fields and does not
 repeat a save. **Reset form** fills defaults without applying them. If custom CSS
-makes a page unusable, open **☰ → View → Reset Page Style** to recover with a native
-confirmation. Existing authored HTML and background images are preserved.
+makes a page unusable, open **☰ → View → Reset Page Style** or press
+**Ctrl+Alt+Shift+R** to recover with a native confirmation. The confirmation uses
+native styling so custom colors cannot hide it. Existing authored HTML and
+background images are preserved.
 
 New Tab's image section is now a fixed, centered **cover background** behind the
 content, with a tint to keep text readable. Choose it under **Customize New Tab →
 Background image**. The optional **Browser menu** dropdown stays visible even in
-minimal mode; `steed:style` can hide it independently. Its six category links open
-the maintained browser menus. Custom HTML remains isolated from these native
+minimal mode; `steed:style` can hide it independently. Click or pause over the
+summary to open it; its six category links open HTML dropdowns beside the selected
+link. Submenus and settings editors also open after a long hover. Ordinary commands
+such as Close Tab run only on click. Editors use the shared root styling and appear
+beside their trigger, clamped to the screen. **Open in Settings** at the bottom
+opens the corresponding section in a full `steed:settings` tab. The desktop top
+menu and address-bar menu retain their native behavior. Custom HTML remains isolated from these native
 actions; agents can continue to propose/edit authored pages through existing
 reviewed start-page tools. Home and New Tab addresses remain independently editable.
+
+The toolbar's **☰** button starts at the left edge. Open **General → Layout Settings**
+to move it, the navigation buttons, Passwords, zoom or the address field. The menu
+button and address field cannot be hidden. Layout Settings also controls menu
+order, sidebar side/width, section order and supported quick-action panel placement;
+it does not provide unrestricted dragging of every browser control. Existing saved
+layouts gain the menu button on the left while retaining their other relative
+positions; new portable declarations publish its `menu` ID. Layout changes are
+shared across windows; profile-scoped colors remain separate.
+
+**CSS reference for users and agents** in `steed:style` lists supported tokens
+and maintained selectors. Start with `--bg` (background), `--surface` (cards/menus),
+`--ink` (text), `--muted`, `--border`, `--soft`, `--accent` and `--accent-hover`.
+Feedback uses `--green`/`--green-soft`, `--warning`/`--warning-bg` and
+`--error`/`--error-bg`. New Tab aliases `--card` to `--surface` and `--hover` to
+`--soft`; `--shadow` controls shadows. Base theme colors apply first, then legacy
+accent, explicit color overrides and finally custom CSS. For example:
+
+```css
+:root, :root[data-theme="dark"] { --bg: #18202b; --ink: #f1f5fb; }
+.search { border-radius: 24px; }
+```
+
+Agents use `steed_start_page_capabilities` for the reference, then
+`steed_start_page_propose` for a theme declaration:
+
+```json
+{"version":1,"name":"Ocean palette","page":"style","mode":"theme","style":{"colors":{"bg":"#18202b","surface":"#243044","ink":"#f1f5fb"},"css":".search { border-radius: 24px; }"}}
+```
+
+`style` is a nonempty patch; omitted fields keep their existing values. `colors`
+replaces the explicit color map and uses token names without `--`, with six-digit
+hex colors. Capabilities disclose defaults/reference only, not the current CSS.
+The user reviews exact source and chooses the display profile; only the review's
+visible checkbox can synchronize all profiles. Agents cannot choose their own
+approval. Existing profile/data grants do not approve style changes. Stale previews,
+reused request IDs with changed bytes, and private/recreated profiles retain the
+existing proposal protections. Theme proposals grant no browser or data access.
+
+New Tab's HTML editor host adapts the existing controllers; their validation,
+persistence, cancellation and permission reviews remain authoritative. It renders
+only enumerated controls through an isolated, offline HtmlSurface. No bridge is
+installed in ordinary websites or authored start pages. Security confirmations
+and OS file choosers remain native. Lists show at most 500 records per HTML editor;
+use available filters/paging or the full native editor from the desktop menu for
+larger collections.
 
 Appearance lives in the shared `config.json` under `page_style`, with per-profile
 overrides keyed by the stable profile identity. Renaming a profile preserves its
@@ -4833,7 +4893,9 @@ websites, profiles, folders, accounts or execution. Agents cannot approve them.
 The [Focus example](examples/layouts/focus.json) demonstrates portable version 1:
 `version`, a printable `name`, and `layout` with complete toolbar/menu orders,
 known hideable buttons, left/right sidebar width 300–800 px, and compact/comfortable
-density. The address field and all menus are mandatory. Unknown fields, callbacks,
+density. The address field, browser-menu button and all menus are mandatory.
+Older portable layouts without the `menu` toolbar ID remain importable; it is
+restored on the left. Unknown fields, callbacks,
 commands, missing controls, duplicate JSON keys, invalid versions and oversized
 source are refused before review. Limit: 16 KiB UTF-8, 20 proposals per task,
 three pending per task and 32 pending globally. Source is immutable and task-bound;

@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; frame-src 'none'; font-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Steed settings</title><style nonce="{{NONCE}}">{{STYLE}}{{EXTRA_STYLE}}</style></head><body>
+<header class="dialog-header"><h1 id="title">Settings</h1><button id="close" aria-label="Close settings">×</button></header>
+<main><div id="error" role="alert" hidden></div><div id="controls"></div></main>
+<script nonce="{{NONCE}}">{{CHANNEL}}</script><script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script></body></html>
