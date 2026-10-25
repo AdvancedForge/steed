@@ -196,6 +196,17 @@ class AgentProviders(QObject):
             return None
         return {**report, "live": task_id in self.chats}
 
+    def delivery(self, task_id, message_id):
+        chat = self.chats.get(task_id)
+        if chat is None:
+            return None
+        current = chat["current"]
+        if current is not None and current["message_id"] == message_id:
+            return "Awaiting acceptance"
+        if any(message["message_id"] == message_id for message in chat["queue"]):
+            return "Queued for agent"
+        return None
+
     def _model_reported(self, task_id, report):
         if task_id not in self.chats:
             return

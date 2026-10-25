@@ -2,6 +2,20 @@
 
 ## Start here
 
+**Agent health — latest checkpoint.** `services/conversation_health.py` maps
+connection/read facts and bounded failure metadata to presentation. Gateway
+rejections emit service.changed after journaling, so diagnostics are visible
+without waiting for unrelated activity. Sidebar messages carry delivery labels;
+provider queue membership distinguishes awaiting acceptance from queued follow-ups.
+Pending approvals do not invent a generic client's execution state. The composer
+remains editable offline/after task end while Send stays gated. Failure cards use
+maintained guidance and known tool/code names, never arbitrary exception values.
+Dismissal is local and task-specific. Existing 88 targeted checks passed; the new
+DOM/gateway regressions live in `test_agent_health.py`. When testing HTML reload,
+wait for the new surface.ready before evaluating its document. The next planned
+increment is explicit, previewed continuation into a fresh task or other connected
+external agent; Codex threads remain ephemeral and old grants stay ended.
+
 **Website-chat HTML and compact navigation — latest continuation.**
 `WebChatDock` embeds an `HtmlSettingsDialog` controller in compact, headerless
 `HtmlDialog`. The live website view remains a separate sibling below it, with its

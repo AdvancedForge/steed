@@ -159,6 +159,9 @@ class AgentProviderTests(unittest.TestCase):
         task = self.chat("hang")
         self.send("Start")
         self.assertEqual(self.manager.activity(task)["state"], "sending")
+        self.assertEqual(
+            self.sidebar.state["messages"][0]["delivery"], "Awaiting acceptance"
+        )
         self.assertIn("Sending", self.sidebar.state["activity"]["title"])
         self.manager._accepted(task, self.messages(task)[0]["message_id"])
         self.assertIn("thinking", self.sidebar.state["activity"]["title"])
@@ -166,6 +169,9 @@ class AgentProviderTests(unittest.TestCase):
         self.assertIn("working", self.sidebar.state["activity"]["title"])
         self.assertTrue(self.sidebar.state["activity"]["busy"])
         self.send("Follow-up")
+        self.assertEqual(
+            self.sidebar.state["messages"][-1]["delivery"], "Queued for agent"
+        )
         self.assertIn("1 follow-up", self.sidebar.state["activity"]["hint"])
         self.drivers[-1].activity.emit("replying")
         self.assertIn("replying", self.sidebar.state["activity"]["title"])

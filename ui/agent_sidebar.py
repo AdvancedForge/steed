@@ -5,6 +5,11 @@ import sqlite3
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QDockWidget
 
+from services.conversation_health import (
+    connection_state,
+    delivery_label,
+    latest_failure,
+)
 from services.task_store import ACTIVE_STATUSES
 from ui.agent_request import AgentRequestDialog
 from ui.html_surface import HtmlSurface
@@ -46,6 +51,7 @@ class AgentSidebar(QDockWidget):
         self._send_result = {"context": -1, "version": -1}
         self._error = ""
         self._load_failed = False
+        self._dismissed_failures = {}
         self._detached = False
         self._state = {}
         self.surface = HtmlSurface("agents", self)
@@ -131,6 +137,7 @@ class AgentSidebar(QDockWidget):
             "delegate": self.delegate_tabs,
             "cancel": self.cancel_task,
             "clear": self.clear_messages,
+            "dismiss_failure": self.dismiss_failure,
             "library": self.open_library,
             "open_tab": lambda: self.change_display("_open_agent_tab"),
             "show_sidebar": lambda: self.change_display("_toggle_agent_sidebar"),
@@ -176,6 +183,10 @@ class AgentSidebar(QDockWidget):
             "requests": 0,
             "can_cancel": False,
             "can_delegate": False,
+            "can_draft": False,
+            "connection": {"state": "unavailable", "label": "", "tone": "neutral"},
+            "delivery": "",
+            "failure": None,
             "can_library": available
             and hasattr(self.browser_window, "_open_file_library"),
             "status": (
@@ -217,6 +228,7 @@ class AgentSidebar(QDockWidget):
         if private:
             self._drafts.clear()
             self._draft_versions.clear()
+            self._dismissed_failures.clear()
             self._task_id = None
             self._messages = {}
             self._cursor = 0
@@ -339,12 +351,38 @@ class AgentSidebar(QDockWidget):
         state.update(
             usable=True,
             active=active,
+            can_draft=True,
+            connection=connection_state(
+                task.status,
+                task_id in self.service.external_tasks,
+                self.providers.activity(task_id)
+                if self.providers and hasattr(self.providers, "activity")
+                else None,
+            ),
+            delivery=(
+                f"{waiting} message(s) waiting to be read"
+                if waiting and active
+                else f"{waiting} message(s) not read before the connection became unavailable"
+                if waiting
+                else "Sent messages were read; this does not confirm completed work."
+                if any(
+                    m["role"] == "user" and m["state"] != "cleared"
+                    for m in self._messages.values()
+                )
+                else "Only messages you send are shared."
+            ),
+            failure=latest_failure(
+                self.service.store, task_id, self._dismissed_failures.get(task_id, 0)
+            ),
             messages=[
                 {
                     "id": m["message_id"],
                     "role": m["role"],
                     "text": m["text"],
                     "state": m["state"],
+                    "delivery": delivery_label(
+                        m, read, active=active, provider=self.providers, task_id=task_id
+                    ),
                 }
                 for m in sorted(
                     self._messages.values(), key=lambda m: m["created_sequence"]
@@ -357,11 +395,11 @@ class AgentSidebar(QDockWidget):
             can_delegate=active and hasattr(self.browser_window, "delegate_tabs"),
             status=status,
             summary=f"{counts['pending']} pending approval(s) · {counts['files']} file(s) · {counts['artifacts']} draft(s) · {counts['receipts']} app receipt(s)",
-            activity=self._activity(active),
+            activity=self._activity(active, counts["pending"], task.status),
         )
         self._state = state
 
-    def _activity(self, active):
+    def _activity(self, active, pending=0, task_status=""):
         model = (
             self.providers.model_info(self._task_id)
             if self.providers is not None and hasattr(self.providers, "model_info")
@@ -425,6 +463,13 @@ class AgentSidebar(QDockWidget):
         )
         if report and report["queued"]:
             hint += f" {report['queued']} follow-up message(s) queued."
+        if pending and active and not (report and report["state"] == "waiting"):
+            title = "Approval requested"
+            hint = "Review the pending access or action request. The agent may continue other work."
+            state = "approval"
+        if not report and not active and task_status in ACTIVE_STATUSES:
+            title = "Agent disconnected"
+            hint = "Your conversation and draft are kept. Use Connection setup to reconnect your client; messages are not resent automatically."
         if (
             not report
             and self.providers
@@ -440,6 +485,12 @@ class AgentSidebar(QDockWidget):
             "busy": state
             in ("connecting", "sending", "thinking", "working", "replying"),
         }
+
+    def dismiss_failure(self):
+        failure = self.state.get("failure")
+        if failure is not None:
+            self._dismissed_failures[self._task_id] = failure["sequence"]
+            self.refresh()
 
     def _request_added(self, task_id, request_id, payload):
         if task_id == self._task_id and not self._private and self.isVisible():
@@ -525,10 +576,16 @@ class AgentSidebar(QDockWidget):
         try:
             self.service.send_message(self._task_id, self.draft)
         except _ERRORS:
-            self._error = (
-                "Message was not sent. Use nonempty text up to 8 KiB; "
-                "check the agent connection and task limits."
-            )
+            if not self.draft.strip():
+                self._error = "Enter a message before sending."
+            elif len(self.draft.encode("utf-8", errors="replace")) > 8192:
+                self._error = "Message exceeds 8 KiB of UTF-8 text. Shorten it; your draft is kept."
+            elif self._task_id not in self.service.external_tasks:
+                self._error = "Agent disconnected. Your draft is kept; use Connection setup before sending."
+            elif not self.state.get("can_cancel"):
+                self._error = "This task has ended. Your draft is kept; prepare a continuation for another chat."
+            else:
+                self._error = "Message could not be queued. Your draft is kept; check conversation limits and connection details."
         else:
             self._drafts.pop(self._task_id, None)
             self._error = ""

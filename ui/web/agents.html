@@ -25,11 +25,16 @@
       <div id="welcome-note" class="welcome-note">Only messages you send are shared. You choose when an agent can access your browser.</div>
     </main>
     <section id="activity" class="activity" aria-label="Agent activity" hidden>
-      <div class="activity-heading"><span id="activity-dot" class="dot" aria-hidden="true"></span><strong id="activity-title" role="status" aria-live="polite"></strong></div>
+      <div class="activity-heading"><span id="activity-dot" class="dot" aria-hidden="true"></span><strong id="activity-title" role="status" aria-live="polite"></strong><span id="connection" class="connection-badge"></span></div>
       <p id="running-model" class="model"></p><p id="activity-hint"></p>
+      <p id="delivery" class="delivery" role="status" aria-live="polite"></p>
       <div id="progress" class="progress" role="progressbar" aria-label="Agent is working" hidden></div>
     </section>
     <div id="error" class="notice error" role="alert" hidden></div>
+    <section id="tool-failure" class="notice warning" aria-label="Last tool failure" hidden>
+      <strong id="failure-title"></strong><span id="failure-operation"></span><p id="failure-guidance"></p>
+      <div class="failure-actions"><button id="failure-details" data-action="receipts">Check Receipts</button><button data-action="dismiss_failure">Dismiss</button></div>
+    </section>
     <div id="attention" class="attention" hidden>
       <button id="pending" data-action="permissions" hidden></button>
       <button id="agent-requests" data-action="requests" hidden></button>

@@ -41,7 +41,7 @@ function renderMessages(messages, reset) {
     previous.delete(message.id);
     node.className = "message " + (message.role === "user" ? "user" : "agent");
     node.firstChild.firstChild.textContent = message.role === "user" ? "YOU" : "AGENT";
-    node.firstChild.lastChild.textContent = message.state === "complete" ? "" : message.state;
+    node.firstChild.lastChild.textContent = message.role === "user" ? message.delivery || "" : message.state === "complete" ? "" : message.state;
     // Agent messages and service diagnostics are data, never HTML or commands.
     if (node.lastChild.textContent !== message.text) node.lastChild.textContent = message.text;
     log.append(node);
@@ -75,9 +75,17 @@ window.steedUI = {render(next) {
   text("activity-title", next.activity.title);
   text("activity-hint", next.activity.hint);
   text("running-model", next.activity.model);
+  text("connection", next.connection.label); $("connection").dataset.tone = next.connection.tone;
+  text("delivery", next.delivery);
   visible("progress", next.activity.busy);
   $("activity-dot").classList.toggle("working", next.activity.busy);
   visible("error", !!next.error); text("error", next.error);
+  visible("tool-failure", !!next.failure);
+  text("failure-title", next.failure ? 'Last tool failure · ' + next.failure.title : '');
+  text("failure-operation", next.failure ? next.failure.command + ' · ' + next.failure.code : '');
+  text("failure-guidance", next.failure?.guidance);
+  $("failure-details").dataset.action = next.failure?.action || 'receipts';
+  $("failure-details").textContent = next.failure?.action === 'permissions' ? 'Check Permissions' : 'Check Receipts';
   visible("attention", next.usable && (next.pending > 0 || next.requests > 0));
   visible("pending", next.usable && next.pending > 0); text("pending", `Review ${next.pending} approval(s)`);
   visible("agent-requests", next.usable && next.requests > 0); text("agent-requests", `Answer agent (${next.requests})`);
@@ -88,7 +96,8 @@ window.steedUI = {render(next) {
     if (composer.value !== next.draft) composer.value = next.draft;
     draftVersion = next.draft_version;
   }
-  composer.disabled = !next.active;
+  composer.disabled = !next.can_draft;
+  composer.placeholder = next.active ? 'Ask your agent…' : 'Write a local draft while the agent is unavailable…';
   $("send").disabled = !next.active || !!pendingSend;
   visible("cancel", next.can_cancel); visible("delegate", next.can_delegate);
   visible("options", next.available);

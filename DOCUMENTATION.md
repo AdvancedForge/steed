@@ -3649,6 +3649,20 @@ fresh permissions.
 
 #### Chat tabs and website chats
 
+The agent panel separates connection health, runtime activity and message delivery.
+User messages show waiting/queued/awaiting acceptance/read states from actual
+transport and runtime facts. A generic MCP fetch confirms a read, not execution
+or completion. Pending permissions show **Approval requested** without asserting
+that all other agent work has stopped. Disconnected and ended conversations keep
+an editable local draft; Send stays disabled until a connected task is available.
+Reloading the interface or reconnecting never resends messages automatically.
+
+The **Last tool failure** card names the failed operation and a maintained cause
+with a concrete next step. **Check Permissions** and **Check Receipts** open the
+selected task's details; Dismiss hides that event locally until another failure.
+Diagnostics contain no request values, raw exceptions or credentials. Uncertain
+input outcomes direct you to inspect the website/receipts before another attempt.
+
 Choose **Agents → Agent Chat Tab** or **Open as tab** in the agent sidebar to move
 the same Steed conversation into a full browser tab. **Show sidebar** returns it
 to the dock. Sent messages, selected task and unsent draft survive the move;

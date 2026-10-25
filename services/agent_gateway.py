@@ -248,6 +248,7 @@ class AgentConnection(QObject):
                             "stage": "validation",
                         },
                     )
+                    service.changed.emit()
                 except Exception:
                     service._fatal()
                     return
@@ -329,6 +330,7 @@ class AgentConnection(QObject):
                         "client.rejected",
                         {"command": spec.command, "code": code, "stage": "execution"},
                     )
+                    service.changed.emit()
                 except Exception:
                     service._fatal()
                     return

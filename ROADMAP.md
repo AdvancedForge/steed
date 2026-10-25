@@ -12,6 +12,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Agent connection health and delivery — implemented.** The sidebar now separates
+transport health, runtime activity and message-read facts; generic MCP reads never
+imply thinking, work or completion. Managed queues distinguish pending acceptance
+from follow-ups. Pending approvals are prominent, offline/ended conversations keep
+editable local drafts, and reconnect/interface reload never replays sends. Real
+gateway validation/execution failures notify the UI and expose task-scoped,
+sanitized diagnostics with permission/receipt recovery links and local dismissal.
+The existing 88 sidebar/runtime/gateway/HTTP checks passed. Dedicated live-HTML and
+gateway checks are in `test_agent_health.py`; logs are
+`/tmp/steed-agent-health-{baseline,live,final}.log`. Next: reviewed continuations
+from interrupted conversations into a new chat or another external agent, without
+restoring old authority or automatically repeating earlier work.
+
 **HTML website-chat controls and compact navigation — implemented and accepted.**
 Website-chat sidebars now use the maintained HTML
 presenter for address/profile status and handoff controls. The original website
