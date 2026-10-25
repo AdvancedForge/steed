@@ -3666,15 +3666,46 @@ fresh permissions.
 
 #### Chat tabs and website chats
 
-##### Planned: structured chatbot relay
+##### Structured chatbot relay
 
-The proposed relay lets a website chatbot plan work while Steed validates and
-executes structured tool requests. This is a roadmap design, not a working relay
-or permission to read chatbot responses automatically. The input choice is still
-open: pasted proposals first, or extraction from a user-enabled chat tab.
+Open **Agents → Website Chats → Chatbot relay…**, or **Use as agent…** in
+website-chat sidebar controls. This lets a chatbot propose tool requests through
+structured messages in **both directions**. It uses the existing task broker,
+tool schemas, grant approvals and receipts. It does not give a website native MCP
+or a native management bridge. Ordinary website chat and native external-agent
+connections remain separate options.
 
-The loop is **instruction → structured request → Steed validation/permissions →
-execution → structured results → next chatbot request**. A proposed envelope is:
+1. Enter the task and choose **Copy/paste JSON manually** or **Enabled chat tab**.
+   Tab mode requires explicit consent for a loaded HTTPS tab in this window's
+   regular profile. The exact destination/profile/task remain visible. Incognito
+   cannot start a persistent relay.
+2. **Start relay task** prepares the first outbound JSON: your task, Steed's
+   instructions, published tool schemas, exchange ID and queued user messages.
+   Review the exact text. **Copy reviewed message** works with any chatbot UI;
+   tab mode also offers **Paste reviewed message**. Steed focuses one unambiguous
+   visible composer and uses native Paste. It never presses Send. If the composer
+   is ambiguous, copy and paste into the intended field yourself.
+3. Send in the chatbot. Paste its complete JSON response into Steed, or select
+   only that response in the enabled tab and use **Read selected response**.
+   Steed does not scrape the conversation or guess the latest assistant message.
+4. **Review response** validates the complete batch and displays a canonical
+   preview. **Run reviewed requests** dispatches that exact preview. Editing the
+   response invalidates the review. Approve requested access through the normal
+   Steed popup; a chatbot cannot approve itself. **Task permissions / details…**
+   selects this task, including its pending approvals and recorded activity.
+   If validation fails, **Prepare outbound message** includes structured
+   `response_feedback` so the chatbot can correct its response; no requests from
+   that rejected batch are dispatched.
+5. Inspect **Results**, then **Prepare outbound message**. Review/copy/paste the
+   new JSON back to the chatbot and repeat. Subsequent messages carry structured
+   results/errors, the next exchange ID and new user messages. Tool schemas are
+   omitted by default after the first exchange; the checkbox can include them
+   again. Copy/paste sends the exact prepared snapshot, never an invisible refresh.
+6. A `final` response becomes a reviewed answer in the task conversation; it does
+   not prove external effects. **Stop relay** or closing the review cancels the task
+   and its authority. No relay is resumed or replayed after restart.
+
+Chatbots must return one JSON object (an exact `json` code fence is also accepted):
 
 ```json
 {
@@ -3690,31 +3721,41 @@ execution → structured results → next chatbot request**. A proposed envelope
 }
 ```
 
-Reuse `services/agent_tools.py` tool names/schemas and the task-bound `TaskClient`
-executor. The trusted UI creates the task; a response cannot choose another task,
-approve its own requests or add commands. Raw Python/shell/JavaScript is not a
-relay command; generated code would use existing reviewed worker/package paths.
-Malformed/ambiguous JSON, duplicate keys, oversized inputs, unknown tools/fields,
-stale exchanges and invented references must fail without dispatch. One-use
-exchange/call identities and receipts prevent accidental re-execution. An uncertain
-write/input result remains uncertain and is never automatically retried.
+Use `{"version":1,"exchange_id":"current-ID","final":"Answer"}` for an answer
+without tool calls. Each request needs a new short call ID, a published tool name
+and schema-valid arguments. The trusted UI assigns task identity. Raw Python,
+shell, JavaScript, approval and lifecycle commands are unavailable; generated code
+uses existing reviewed worker/package tools. The parser rejects duplicate keys,
+unknown fields/tools, nested schema mismatches, stale exchanges and reused IDs
+before dispatch. Accepted IDs are consumed even when execution fails or later
+calls are skipped. This prevents replay of the same IDs, not semantically duplicate
+writes with invented new IDs: users and chatbots must still inspect outcomes.
 
-An enable/review popup must identify the chatbot destination, profile, task and
-requested capabilities. Existing task/profile permission rules and explicit Take
-Back/Stop remain authoritative. The user can allow recurring access within the
-displayed scope; permission claims inside a chatbot response have no effect.
-Reading browser/folder/account data and sending those results to a chatbot must
-both be clear. Results should preserve existing tool error/outcome semantics,
-contain only approved task data and never include Steed credentials. Sending them
-to the chat needs explicit review or a clearly scoped automatic-exchange setting.
+Requests are limited to 64 KiB, four calls per batch and 32 exchanges per task.
+Goals/final answers are limited to 8 KiB. The first transport is text/JSON; screenshot
+and pixel-input tools, automatic image/file attachments and provider-specific
+response extraction are not offered. Large results are explicitly omitted within
+a 600 KiB result budget; outbound messages must fit 1 MiB. Any failure or omitted
+result stops the remaining batch. Check outcomes before issuing further requests;
+Steed never retries uncertain writes. A 35-second deadline ends an unresponsive
+relay, without claiming that already-dispatched work had no effect.
 
-For later direct-tab exchange, pin the enabled origin/profile/tab/conversation,
-extract only a designated response, and stop on navigation, profile change,
-ambiguous provider markup or access revocation. The website never receives Steed's
-native management bridge. A live relay must report waiting/executing/results-ready
-from actual events and offer structured error feedback, not pretend a chatbot has
-native MCP support. Provider compatibility and live-account acceptance need their
-own checks before direct-tab automation is presented as supported.
+Tab binding checks the exact view/page/profile/address (excluding the URL fragment)
+at sharing and dispatch. It cannot detect an invisible provider conversation switch
+that keeps the same URL; selected-response reading and request review remain required.
+Before the first accepted response, a chat's initial conversation-address change
+pauses exchange: **Enable this initial conversation** deliberately rebinds to a
+loaded address on the same HTTPS origin. Subsequent navigation/reload, closing the
+tab, profile changes, task/grant termination or reduced enabled-folder access
+stops the relay and clears its unshared buffers. Clipboard text and data already
+sent outside Steed cannot be recalled. Existing saved grant rules still apply
+within their scope; reviewed requests never create an extra approval bypass.
+
+Copy/paste acknowledges exported queued user messages; it does not establish that
+the chatbot read them, is thinking or finished. Steed reports its own request
+execution and result readiness. No real-account provider compatibility or
+automatic Send/extract loop is claimed by synthetic page acceptance. Provider
+adapters and image-capable exchange remain later milestones.
 
 ##### Current chat interfaces
 

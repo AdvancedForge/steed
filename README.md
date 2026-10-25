@@ -18,6 +18,7 @@ browsing profiles and direct KeePassXC password management.
 - A desktop launcher, HTML settings/profile workspace, dark mode, and familiar shortcuts.
 - `steed:style` for shared page CSS, profile themes, hidden bars and loading progress.
 - HTML agent chats in a sidebar or tab, private live browsing, takeover and Take Back.
+- A reviewed JSON chatbot relay, with manual exchange or an explicitly enabled chat tab.
 - Screenshot-guided browser click/type/key and optional unsafe agent auto-approval.
 - A persistent agent file library: add files once and enable full folder access.
 - Reviewed agent dashboards with forms, reports, images and linked files/account tables.

@@ -229,6 +229,7 @@ class BrowserWindow(QMainWindow):
         self.tabs: list[BrowserTab] = []
         self.agent_tab = None
         self.web_chat_dock = None
+        self.chatbot_relay_dialog = None
         self.file_library_dialog = None
         self.current_tab_index = 0
         self._restoring_tabs = False
@@ -531,6 +532,9 @@ class BrowserWindow(QMainWindow):
         )
         web_chats_menu.addAction("Share instructions with a chat…").triggered.connect(
             self._choose_web_chat
+        )
+        web_chats_menu.addAction("Chatbot relay…").triggered.connect(
+            lambda: self._open_chatbot_relay()
         )
         view_menu.addSeparator()
         self.zoom_in_action = QAction("Zoom In", self)
@@ -1223,6 +1227,17 @@ class BrowserWindow(QMainWindow):
         dialog = WebChatPromptDialog(self, view)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.show()
+
+    def _open_chatbot_relay(self, target=None):
+        from ui.chatbot_relay import ChatbotRelayDialog
+
+        if self.chatbot_relay_dialog is None:
+            dialog = ChatbotRelayDialog(self, target)
+            self.chatbot_relay_dialog = dialog
+            dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            dialog.finished.connect(lambda: setattr(self, "chatbot_relay_dialog", None))
+        self.chatbot_relay_dialog.show()
+        return self.chatbot_relay_dialog
 
     def _open_agent_setup(self):
         return self._open_management("agent-setup")

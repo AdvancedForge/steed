@@ -35,18 +35,33 @@ Python files), dependencies and whitespace passed. Logs:
 run's Undo-test failure is retained in `/tmp/steed-live-editors-full.log`; final
 acceptance is the clean serial run. Signed-in desktop/provider checks remain manual.
 
-**Chatbot-to-agent relay — owner-proposed direction; input design pending.** Add a
-structured request/result loop so chatbots can propose Steed tasks using existing
-tool schemas and task-bound execution. The trusted UI owns task identity, approvals,
-stop/revocation and receipts; a parsed response grants no authority. Reject malformed,
-unknown, stale or replayed requests; preserve uncertain outcomes without retrying.
-Make the destination/profile/data sharing clear in a simple enable/review popup,
-with recurring permissions confined to the displayed task/profile scope. Initial
-input choice remains open: paste/review first or directly read a user-enabled chat
-tab. Direct exchange needs source/conversation binding and explicit result-sharing
-consent; it never exposes native UI bridges to websites. The proposed design is in
-DOCUMENTATION.md under **Planned: structured chatbot relay**. No relay execution or
-automatic website response-reading is implemented in this checkpoint.
+**Chatbot-to-agent relay — both options implemented.**
+The owner chose manual pasted JSON and an explicitly enabled chat tab, with
+structured messages in both directions. The maintained HTML review prepares the
+goal/tool catalogue, then returns structured results/errors with fresh exchange
+IDs. Tab mode reads only selected response text and pastes the exact reviewed
+outbound message through native editing; the user presses Send. Whole-batch schema
+validation, task-bound guarded dispatch, consumed IDs and metadata-only relay
+events preserve existing approval/receipt controls. Errors stop later calls; no
+uncertain operation is retried. Task/profile/source revocation hides unshared
+buffers; first-conversation same-origin rebinding requires an explicit click.
+Subsequent navigation ends the task. Input is bounded to 64 KiB/four calls, output
+to 1 MiB, 32 exchanges per task. Text transport excludes screenshot/pixel tools
+and automatic attachments. See **Structured chatbot relay** in DOCUMENTATION.md.
+Remaining: signed-in provider/manual desktop acceptance, provider-specific
+response identification/automatic exchange only with separately reviewed scope,
+and image-capable transport. These are not claimed by the selected-response path.
+Full regression acceptance: **1,579 tests / 547.384 s**. A follow-up preserves
+specific permission error codes/fields, adds structured validation feedback and
+validates escaped Unicode; **75 final relay/chat/gateway checks / 20.612 s** passed.
+Real entry-point startup/local render/shutdown and independent SDK/raw MCP journeys
+over stdio and authenticated HTTP passed. Ruff lint/format (276 Python files),
+dependencies and whitespace passed. Synthetic HTML setup/exchange previews were
+inspected; real-account provider acceptance remains manual. Logs:
+`/tmp/steed-relay-{full,final,startup,stdio,http,preview-final}.log`. Both directions
+are exact reviewed JSON; exported messages do not prove chatbot activity.
+The final destination/status text polish passed **11 HTML relay checks / 7.029 s**
+(`/tmp/steed-relay-final-ui.log`).
 
 **Reviewed conversation recovery and handoff — implemented and accepted.**
 **Continue / hand off** previews one new instruction, with optional editable recent

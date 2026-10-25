@@ -25,8 +25,10 @@ WEB_CHATS = {
 # Focus only an unambiguous visible editor. No provider-specific DOM writes,
 # arbitrary scripts, Enter key, form submission, or response scraping.
 FOCUS_COMPOSER = """(() => {
-  const editors = [...document.querySelectorAll('textarea,[contenteditable="true"]')]
+  const editors = [...document.querySelectorAll('textarea,[contenteditable]')]
     .filter(e => !e.disabled && !e.readOnly && e.getClientRects().length &&
+      (e.tagName === 'TEXTAREA' || e.isContentEditable) &&
+      !e.closest('[data-steed-private],[aria-readonly="true"]') &&
       getComputedStyle(e).visibility === 'visible' &&
       !e.closest('[inert],[aria-hidden="true"]'));
   if (editors.length !== 1) return false;
@@ -73,6 +75,9 @@ class WebChatDock(QDockWidget):
         self.prompt = QPushButton("Share instructions…")
         self.prompt.clicked.connect(self.share)
         buttons.addWidget(self.prompt)
+        self.relay = QPushButton("Use as agent…")
+        self.relay.clicked.connect(lambda: self.window._open_chatbot_relay(self.view))
+        buttons.addWidget(self.relay)
         self.restore = QPushButton("Back to tab")
         self.restore.clicked.connect(self.back_to_tab)
         buttons.addWidget(self.restore)
@@ -114,6 +119,7 @@ class WebChatDock(QDockWidget):
             url.toDisplayString(QUrl.UrlFormattingOption.RemoveUserInfo)
         )
         self.prompt.setEnabled(self.view is not None and url.scheme() == "https")
+        self.relay.setEnabled(self.prompt.isEnabled())
         self.restore.setEnabled(self.view is not None)
         self.presentation.publish()
 
@@ -152,6 +158,7 @@ class WebChatDock(QDockWidget):
         self.address.clear()
         self.status.setText("Open a website chat tab to begin.")
         self.prompt.setEnabled(False)
+        self.relay.setEnabled(False)
         self.restore.setEnabled(False)
         self.presentation.reload()
         self.hide()

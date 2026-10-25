@@ -33,16 +33,57 @@ serial. Signed-in desktop/provider compatibility still needs manual acceptance.
 Next coverage audit: specialized native input/multiple-select operation metadata,
 role/custom controls, and separately accepted frame/open-shadow action support.
 
-**Chatbot relay direction:** the owner proposed making chatbot responses into
-structured executable tasks with user permission. An asynchronous question asks
-whether to start with pasted/reviewed JSON or direct reading from an enabled chat
-tab; no answer yet. Continue independent website work while that choice is open.
-The reusable design in DOCUMENTATION.md uses the existing tool catalogue, a
-task-bound executor and a reviewed request/result loop. It requires one-use request
-identities, source/destination binding, clear data-sharing consent, existing grant/
-receipt controls and no automatic replay of uncertain operations. It is a plan,
-not an implemented parser/executor or authorization to scrape any chat tab. Keep
-the choice and next implementation milestone explicit when resuming.
+**Chatbot relay — new working increment.** The owner chose
+both manual pasted JSON and an enabled chat tab, and explicitly clarified that
+Steed must send structured instructions too. New `services/chatbot_protocol.py`
+uses the existing tool catalogue and recursively validates the entire batch
+before any dispatch. `services/chatbot_relay.py` creates a trusted task and runs
+only published task-client commands through guarded Qt-thread broker dispatch.
+Task identity, approvals/lifecycle and pixel tools cannot be supplied by chat JSON.
+Worker/package/connector tools retain their normal reviews. Gateway diagnostics
+now reuse the unchanged maintained messages in `services/agent_errors.py`.
+
+`ui/chatbot_relay.py` is a maintained HTML controller accessible from Website Chats
+and the chat dock's **Use as agent…**. Setup pins the regular profile and optional
+HTTPS view/page/exact address. Prepare freezes the outbound goal/schema/message/
+result envelope; Copy/Paste share only that reviewed snapshot. Tab reading uses
+only selected text, never whole-thread DOM scraping. Native Paste requires one
+visible writable composer; no Send is pressed. The composer finder now accepts
+actual contenteditable semantics including empty/plaintext-only attributes.
+First-conversation navigation pauses before any accepted response; explicit same-
+origin re-enable retains its nonce. After any accepted response, navigation/reload
+ends the relay. Task/grant/profile/folder access reduction clears buffered data
+and conceals stale HTML pixels. No persistent relay resume or semantic-write
+deduplication is claimed; consumed IDs prevent replay of identical calls.
+
+Failures/omitted results skip the remainder of the batch. Accepted/dispatched/
+returned events exclude argument/result bodies. Receipt-storage failure ends
+authority and forwards no unrecorded result. Worker completions return via Qt
+signals; late replies after stop/deletion cannot refill buffers. Limits: 64 KiB
+response, four calls, 32 exchanges, 35-second timeout, 600 KiB results, 1 MiB
+outbound, 8 KiB goal/final. User-message exported watermarks indicate relay fetch/
+copy/paste, never model execution. Tests: `test_chatbot_protocol.py`,
+`test_chatbot_relay.py`, `test_html_chatbot_relay.py`; the earlier first UI run caught
+a wrong registry lookup and aborted from the Qt slot. It was corrected; logs
+remain at `/tmp/steed-relay-ui{,-fixed}.log`. **Full acceptance: 1,579 tests /
+547.384 s** (`/tmp/steed-relay-full.log`); the preceding relay/chat/gateway run passed
+**73 checks / 34.638 s**. Follow-up: `response_feedback` returns maintained validation
+errors in the next prepared outbound JSON, with valid response examples. Escaped
+unpaired Unicode is rejected before dispatch; permission errors preserve their
+specific codes/fields instead of turning every unknown mapped code into
+`operation_failed`. **75 final relay/chat/gateway checks / 20.612 s** passed after
+those changes. Real startup/local render/shutdown, independent SDK/raw stdio and
+authenticated HTTP smoke passed. Ruff lint/format (276 Python files), dependencies
+and whitespace passed. Logs: `/tmp/steed-relay-{full,final,startup,stdio,http}.log`.
+Stable synthetic HTML previews were inspected at
+`/tmp/steed-relay-{setup,exchange}.png` (wait for Chromium's painted frame after
+DOM readiness; the first capture was premature). Log:
+`/tmp/steed-relay-preview-final.log`. The final text polish labels an unstarted
+relay accurately and shows the candidate address before initial-conversation
+re-enabling; **11 final HTML checks / 7.029 s** passed
+(`/tmp/steed-relay-final-ui.log`). Do not present provider-specific automatic extraction or vision
+as implemented. Next milestone: manual signed-in acceptance, then optional narrow
+provider adapters/image exchange while preserving this manual fallback.
 
 **Conversation continuation — latest checkpoint.** `ui/conversation_recovery.py`
 owns the maintained HTML review for **Continue / hand off**. It snapshots the
