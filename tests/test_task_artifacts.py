@@ -249,7 +249,7 @@ class ArtifactServiceTests(unittest.TestCase):
             dialog.close()
 
     def test_user_delete_requires_confirmation_and_agents_cannot_delete(self):
-        from PyQt6.QtWidgets import QMessageBox
+        from ui.prompts import MessageBox as QMessageBox
 
         client, _ = self.client()
         self.resolve(client.submit("artifact.store", title="Draft", content="Body"))

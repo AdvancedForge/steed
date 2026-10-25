@@ -7,7 +7,6 @@ from uuid import uuid4
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QLabel,
     QLineEdit,
@@ -18,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from data_panel_format import MAX_FIELD_CHARS, FormInputError
+from ui.html_dialog import HtmlSettingsDialog
 
 
 def plain_label(text):
@@ -132,7 +132,7 @@ class PanelForm(QWidget):
         if self._attempt is None or self._attempt[0] != values:
             self._attempt = (values, uuid4().hex)
         submission_id = self._attempt[1]
-        dialog = QDialog(self)
+        dialog = HtmlSettingsDialog(self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.setWindowTitle("Send form to agent")
         dialog.resize(600, 480)

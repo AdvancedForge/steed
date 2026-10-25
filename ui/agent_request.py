@@ -5,7 +5,6 @@ import json
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -14,8 +13,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.html_dialog import HtmlSettingsDialog
 
-class AgentRequestDialog(QDialog):
+
+class AgentRequestDialog(HtmlSettingsDialog):
     def __init__(self, payload, respond, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)

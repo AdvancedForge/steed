@@ -5,7 +5,6 @@ import sqlite3
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -18,10 +17,11 @@ from layout_components import PANEL_ACTIONS
 from layout_format import layout_changes
 from layout_preferences import preferences_from_config
 from ui.address_bar import AddressBar
+from ui.html_dialog import HtmlSettingsDialog
 from ui.layout_panel import QuickActionsPanel, apply_chrome_font
 
 
-class LayoutReviewDialog(QDialog):
+class LayoutReviewDialog(HtmlSettingsDialog):
     def __init__(
         self, registry, definition, parent=None, *, service=None, proposal=None
     ):

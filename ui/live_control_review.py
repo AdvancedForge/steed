@@ -4,9 +4,10 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from services.live_control import resolve
+from ui.html_dialog import HtmlSettingsDialog
 
 
-class LiveControlDialog(QDialog):
+class LiveControlDialog(HtmlSettingsDialog):
     def __init__(self, service, record, parent=None):
         super().__init__(parent)
         self.service, self.record = service, record

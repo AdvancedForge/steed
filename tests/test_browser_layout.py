@@ -16,7 +16,6 @@ from PyQt6.QtCore import Qt
 
 from browser_window import BrowserWindow
 from layout_preferences import MENU_ITEMS, TOOLBAR_ITEMS, LayoutPreferences
-from ui.layout_dialog import LayoutDialog
 
 
 class BrowserLayoutTests(unittest.TestCase):
@@ -124,8 +123,9 @@ class BrowserLayoutTests(unittest.TestCase):
             ).setCheckState(Qt.CheckState.Unchecked)
             return 1
 
-        with patch.object(LayoutDialog, "exec", accept_as_compact):
-            window._open_layout_settings()
+        tab = window._open_layout_settings()
+        dialog = tab.workspace_controller.source
+        dialog.done(accept_as_compact(dialog))
 
         self.assertEqual(window.address_bar.density, "compact")
         stored = LayoutPreferences(self.config.get("layout"))
@@ -141,8 +141,9 @@ class BrowserLayoutTests(unittest.TestCase):
             dialog.layout_changed.connect(window.apply_layout)
             return 0
 
-        with patch.object(LayoutDialog, "exec", preview_then_cancel):
-            window._open_layout_settings()
+        tab = window._open_layout_settings()
+        dialog = tab.workspace_controller.source
+        dialog.done(preview_then_cancel(dialog))
 
         self.assertEqual(window.address_bar.density, "comfortable")
         self.assertIsNone(self.config.get("layout"))
@@ -207,8 +208,9 @@ class BrowserLayoutTests(unittest.TestCase):
             dialog.preferences.save_named("Shared layout")
             return 1
 
-        with patch.object(LayoutDialog, "exec", save_first):
-            first._open_layout_settings()
+        tab = first._open_layout_settings()
+        dialog = tab.workspace_controller.source
+        dialog.done(save_first(dialog))
         self.assertEqual(second.layout_preferences.sidebar_side, "left")
 
         def save_second(dialog):
@@ -216,8 +218,9 @@ class BrowserLayoutTests(unittest.TestCase):
             dialog.density.setCurrentIndex(0)
             return 1
 
-        with patch.object(LayoutDialog, "exec", save_second):
-            second._open_layout_settings()
+        tab = second._open_layout_settings()
+        dialog = tab.workspace_controller.source
+        dialog.done(save_second(dialog))
         stored = LayoutPreferences(self.config.get("layout"))
         self.assertEqual(stored.sidebar_side, "left")
         self.assertEqual(stored.named_layouts, ["Shared layout"])
@@ -235,8 +238,9 @@ class BrowserLayoutTests(unittest.TestCase):
             self.registry.commit_layout(external)
             return 0
 
-        with patch.object(LayoutDialog, "exec", cancel_after_external_commit):
-            first._open_layout_settings()
+        tab = first._open_layout_settings()
+        dialog = tab.workspace_controller.source
+        dialog.done(cancel_after_external_commit(dialog))
         self.assertEqual(first.layout_preferences.density, "comfortable")
         self.assertEqual(first.layout_preferences.sidebar_side, "left")
         self.assertEqual(second.layout_preferences.sidebar_side, "left")
@@ -251,8 +255,9 @@ class BrowserLayoutTests(unittest.TestCase):
             self.registry.commit_layout(external)
             return 1
 
-        with patch.object(LayoutDialog, "exec", accept_with_concurrent_change):
-            window._open_layout_settings()
+        tab = window._open_layout_settings()
+        dialog = tab.workspace_controller.source
+        dialog.done(accept_with_concurrent_change(dialog))
         self.assertEqual(window.layout_preferences.named_layouts, ["Other window"])
         self.assertEqual(window.layout_preferences.sidebar_width, 400)
 
@@ -264,10 +269,11 @@ class BrowserLayoutTests(unittest.TestCase):
             return 1
 
         with (
-            patch.object(LayoutDialog, "exec", accept_conflicting_change),
             patch("browser_window.QMessageBox.warning") as warning,
         ):
-            window._open_layout_settings()
+            tab = window._open_layout_settings()
+            dialog = tab.workspace_controller.source
+            dialog.done(accept_conflicting_change(dialog))
         warning.assert_called_once()
         self.assertEqual(window.layout_preferences.sidebar_width, 600)
         self.assertEqual(window.layout_preferences.named_layouts, ["Other window"])

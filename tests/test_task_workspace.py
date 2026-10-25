@@ -507,7 +507,7 @@ class WorkspaceTests(unittest.TestCase):
             self.assertTrue(dialog.export_workspace_button.isEnabled())
             self.assertIn(item.sha256, dialog.workspace_preview.toPlainText())
             self.assertNotIn("PRIVATE", dialog.workspace_preview.toPlainText())
-            from PyQt6.QtWidgets import QMessageBox
+            from ui.prompts import MessageBox as QMessageBox
 
             with patch(
                 "ui.task_dialog.QMessageBox.question",

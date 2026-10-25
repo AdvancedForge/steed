@@ -19,7 +19,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtTest import QSignalSpy, QTest
 from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest
-from PyQt6.QtWidgets import QDialog, QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QDialog, QFileDialog
 from qt_test_support import application, keep_directory
 from test_password_manager import KeePassXCProtocolFixture
 
@@ -34,6 +34,7 @@ from password_manager import KeePassXCClient
 from tab_manager import TabManager, TabState
 from ui.cookie_dialog import CookieDialog
 from ui.password_dialog import PasswordDialog, SaveLoginDialog
+from ui.prompts import MessageBox as QMessageBox
 from ui.settings_dialog import SettingsDialog
 from ui.tab_bar import TabBar
 from utils import load_json, sanitize_profile_name, save_json
@@ -166,18 +167,15 @@ class BrowserTests(unittest.TestCase):
         self.assertFalse(actions["Collapse / Expand Current Group"].isEnabled())
 
     def test_task_permissions_menu_reports_storage_failure_without_crashing(self):
-        with (
-            patch(
-                "profile_manager.TaskService",
-                side_effect=sqlite3.OperationalError("fixture unavailable"),
-            ),
-            patch("browser_window.TaskDialog") as dialog,
-            patch.object(QMessageBox, "warning") as warning,
-            self.assertLogs("browser_window", level="ERROR"),
+        with patch(
+            "profile_manager.TaskService",
+            side_effect=sqlite3.OperationalError("fixture unavailable"),
         ):
-            self.window._open_tasks()
-        warning.assert_called_once()
-        dialog.assert_not_called()
+            tab = self.window._open_tasks()
+        self.assertEqual(tab.workspace_name, "tasks")
+        self.assertEqual(
+            tab.workspace_controller.source.windowTitle(), "Page unavailable"
+        )
         self.assertIsNone(self.window.profile_manager.registry._tasks)
 
     @classmethod
@@ -451,6 +449,7 @@ class BrowserTests(unittest.TestCase):
         second = Mock()
 
         def hold_dialog(dialog):
+            dialog = getattr(dialog, "source", dialog)
             self.window._on_desktop_media_requested(second)
             dialog.reject()
             return QDialog.DialogCode.Rejected
@@ -991,6 +990,7 @@ class BrowserTests(unittest.TestCase):
         request.windowsModel.return_value.rowCount.return_value = 0
 
         def reject_dialog(dialog):
+            dialog = getattr(dialog, "source", dialog)
             dialog.reject()
             return QDialog.DialogCode.Rejected
 
@@ -1006,6 +1006,7 @@ class BrowserTests(unittest.TestCase):
                 request.windowsModel.return_value.rowCount.return_value = 1
 
                 def select_source(dialog, screen=screen):
+                    dialog = getattr(dialog, "source", dialog)
                     items = dialog.screens_list if screen else dialog.windows_list
                     button = dialog.share_screen if screen else dialog.share_window
                     items.setCurrentRow(0)

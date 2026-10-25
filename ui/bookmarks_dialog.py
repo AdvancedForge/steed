@@ -14,13 +14,13 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
 
 from bookmark_format import MAX_BOOKMARK_HTML_BYTES
 from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import MessageBox as QMessageBox
 
 
 def profile_identity(pages, profile):
@@ -96,10 +96,13 @@ class BookmarkDialog(HtmlSettingsDialog):
 
 
 class BookmarksDialog(HtmlSettingsDialog):
-    def __init__(self, pages, profile, parent=None, *, open_url=None):
+    def __init__(
+        self, pages, profile, parent=None, *, open_url=None, close_on_open=True
+    ):
         super().__init__(parent)
         self.pages, self.profile = pages, profile
         self.open_url = open_url
+        self.close_on_open = close_on_open
         self.profile_identity = profile_identity(pages, profile)
         self.setWindowTitle("Manage Bookmarks • " + profile)
         self.resize(680, 480)
@@ -249,7 +252,8 @@ class BookmarksDialog(HtmlSettingsDialog):
                 "Could not open this bookmark; reopen Bookmarks in the current profile."
             )
             return
-        self.accept()
+        if self.close_on_open:
+            self.accept()
 
     def remove(self):
         item = self.selected()

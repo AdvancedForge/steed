@@ -3,10 +3,8 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDialog,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -14,6 +12,8 @@ from PyQt6.QtWidgets import (
 )
 
 from services.site_permissions import FEATURES
+from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import MessageBox as QMessageBox
 
 
 def plain_label(text):
@@ -23,7 +23,7 @@ def plain_label(text):
     return label
 
 
-class SitePermissionDialog(QDialog):
+class SitePermissionDialog(HtmlSettingsDialog):
     def __init__(self, origin, feature, profile, *, private=False, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Website Permission")
@@ -84,7 +84,7 @@ class SitePermissionDialog(QDialog):
         layout.addLayout(buttons)
 
 
-class SitePermissionsDialog(QDialog):
+class SitePermissionsDialog(HtmlSettingsDialog):
     def __init__(self, store, parent=None):
         super().__init__(parent)
         self.store = store

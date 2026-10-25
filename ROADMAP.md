@@ -7,10 +7,47 @@ execution, and evidence; external agents provide planning and generation.
 See [DOCUMENTATION.md](DOCUMENTATION.md) for setup and implementation details,
 including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
-## Current work — October 16, 2026
+## Current work — October 25, 2026
 
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
+
+**HTML management pages and browser dialogs — owner-requested continuation
+(implemented and accepted).** The owner expanded the restyle to all
+browser management popups. Native menu interactions are retained, with commands
+opening reusable HTML tabs. Fifteen new `steed:` routes cover cookies, downloads,
+bookmarks, history, files, connections, tasks, passwords, layout, start-page
+customization, groups, website permissions, agent setup, ad blocking and the
+service catalog. The rail groups browsing/customization/agents and labels shared
+versus profile-local management. Tables page beyond 500 rows; hidden pages suspend
+presentation polling and refresh on return. Existing private/profile rules,
+backend operations and exact permission reviews remain authoritative.
+
+Transient browser messages, text/choice inputs, website/media requests, agent
+questions, recipe/layout/package/page/panel reviews and sharing previews now have
+HTML presentation too. Live task views retain their separate engine under HTML
+controls. Image previews are bounded raster data; sensitive review changes cover
+stale pixels before publishing replacement state. Website-chat handoff hides its
+presenter before native paste and scrubs the draft on close/profile change. Layout
+preview cancellation, password-source rebinding/return, failed-backend reload and
+internal-page delegation guards are covered by regressions. Native OS pickers,
+startup failure handling and emergency style recovery remain available.
+
+Acceptance: **1,508 full regressions / 355.449 s**, plus **16 real-management
+checks / 14.517 s** covering actual cookie arrival/deletion, all fifteen routes,
+HTML permission decisions, secret masking, pagination, image clearing, keyboard
+opening, private/profile cleanup, password return, background refresh and backend
+retry. The web-chat fixes passed 80 targeted checks. Ruff/formatting (263 Python
+files), dependencies and whitespace passed. Inspected management/approval previews
+are `/tmp/steed-management-*.png`. Logs:
+`/tmp/steed-management-{release-checks,live-checks,final-focus,preview}.log`.
+Real startup/local render/shutdown and both SDK/raw stdio + authenticated HTTP
+MCP smoke journeys passed. These include approval, live takeover/return, normal
+browsing, conversations, linked panels and exact reviewed page/theme changes.
+Smoke logs: `/tmp/steed-management-{startup,mcp-stdio,mcp-http}.log`.
+Next: daily-use polish and direct HTML data-panel/sidebar presentation. The broader
+agent-authored data bridge and replacing Qt remain deferred; this milestone keeps
+existing Qt controllers behind maintained HTML.
 
 **New Tab HTML menus, palettes and placement — owner-requested continuation
 (implemented and accepted).** The desktop top menu and toolbar

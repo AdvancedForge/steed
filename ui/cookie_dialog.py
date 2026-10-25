@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -13,6 +12,7 @@ from PyQt6.QtWidgets import (
 
 from cookie_manager import CookieInfo, CookieManager
 from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import MessageBox as QMessageBox
 
 
 class CookieDialog(HtmlSettingsDialog):

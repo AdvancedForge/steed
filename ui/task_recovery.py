@@ -20,9 +20,10 @@ from PyQt6.QtWidgets import (
 )
 
 from services.task_store import TERMINAL_STATUSES
+from ui.html_dialog import HtmlSettingsDialog
 
 
-class TaskRecoveryDialog(QDialog):
+class TaskRecoveryDialog(HtmlSettingsDialog):
     def __init__(self, service, task, parent=None):
         super().__init__(parent)
         self.service, self.task_id = service, task.task_id

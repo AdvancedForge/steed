@@ -11,10 +11,8 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -24,6 +22,8 @@ from PyQt6.QtWidgets import (
 from services.file_library import FILE_BYTES, read_import
 from services.task_downloads import DownloadDestination
 from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import InputDialog as QInputDialog
+from ui.prompts import MessageBox as QMessageBox
 
 PAGE_ROWS = 200
 

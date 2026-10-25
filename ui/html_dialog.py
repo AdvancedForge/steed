@@ -4,11 +4,13 @@ Only enumerated controls and operations cross the bridge. Native controllers
 still own validation, confirmations, persistence and service lifetimes.
 """
 
+import base64
 from secrets import token_hex
 
 from PyQt6 import sip
-from PyQt6.QtCore import QItemSelectionModel, QPoint, Qt, QTimer
-from PyQt6.QtGui import QGuiApplication, QTextDocument
+from PyQt6.QtCore import QBuffer, QIODevice, QItemSelectionModel, QPoint, Qt, QTimer
+from PyQt6.QtGui import QGuiApplication, QImage, QTextDocument
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QAbstractItemView,
@@ -36,21 +38,59 @@ from PyQt6.QtWidgets import (
 from ui.html_surface import HtmlSurface
 
 
-class HtmlSettingsDialog(QDialog):
-    """Opt an existing settings controller into the maintained HTML host."""
+class HtmlPresentation:
+    """Keep native controllers hidden while a maintained HTML host is visible."""
+
+    def presentation_owner(self):
+        owner = self.parentWidget()
+        while owner is not None and not hasattr(owner, "_present_dialog"):
+            owner = owner.parentWidget()
+        return owner
+
+    def presentation_host(self):
+        host = getattr(self, "_html_host", None)
+        return (
+            host
+            if host is not None and not sip.isdeleted(host) and not host.closed
+            else None
+        )
 
     def exec(self):
-        owner = self.parentWidget()
-        nested_html = False
-        while owner is not None and not hasattr(owner, "_present_dialog"):
-            host = getattr(owner, "_html_host", None)
-            nested_html |= (
-                host is not None and not sip.isdeleted(host) and not host.closed
-            )
-            owner = owner.parentWidget()
+        owner = self.presentation_owner()
         if owner is not None:
-            return owner._present_dialog(self, force_html=nested_html)
+            return owner._present_dialog(self, force_html=True)
         return super().exec()
+
+    def show(self):
+        if owner := self.presentation_owner():
+            return owner._present_dialog(self, modal=False, force_html=True)
+        return super().show()
+
+    def hide(self):
+        host = self.presentation_host()
+        return host.hide() if host is not None else super().hide()
+
+    def isVisible(self):
+        if sip.isdeleted(self):
+            return False
+        host = self.presentation_host()
+        return host.isVisible() if host is not None else super().isVisible()
+
+    def raise_(self):
+        host = self.presentation_host()
+        return host.raise_() if host is not None else super().raise_()
+
+    def activateWindow(self):
+        host = self.presentation_host()
+        return host.activateWindow() if host is not None else super().activateWindow()
+
+    def resize(self, *size):
+        host = self.presentation_host()
+        return host.resize(*size) if host is not None else super().resize(*size)
+
+
+class HtmlSettingsDialog(HtmlPresentation, QDialog):
+    """A settings/review controller with maintained HTML presentation."""
 
 
 def place_popup(widget, owner, anchor=None, size=(780, 640)):
@@ -68,8 +108,14 @@ def place_popup(widget, owner, anchor=None, size=(780, 640)):
 class HtmlDialog(QDialog):
     """A visual host, not a second settings implementation."""
 
-    def __init__(self, source, owner, *, anchor=None):
-        super().__init__(owner, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
+    def __init__(self, source, owner, *, anchor=None, workspace=None):
+        flags = (
+            Qt.WindowType.Widget
+            if workspace
+            else Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+        )
+        super().__init__(owner, flags)
+        self.workspace = workspace
         self.source, self.owner = source, owner
         source.hide()
         self._source_close = source.close
@@ -80,8 +126,13 @@ class HtmlDialog(QDialog):
         self.error = ""
         self.objects = {}
         self.tokens = {}
+        self.table_offsets = {}
+        self.image_cache = {}
+        self.image_ids = set()
         self.active_tokens = set()
         self.existing_surface = getattr(source, "surface", None)
+        view = getattr(source, "view", None)
+        self.embedded_view = view if isinstance(view, QWebEngineView) else None
         self.surface = HtmlSurface(
             "dialog", self, label="settings", command_limit=650000
         )
@@ -91,21 +142,46 @@ class HtmlDialog(QDialog):
         if self.existing_surface:
             self.surface.setFixedHeight(68)
             layout.addWidget(self.existing_surface)
+        if self.embedded_view:
+            source.layout().removeWidget(self.embedded_view)
+            layout.addWidget(self.embedded_view, 3)
+            self.surface.setMaximumHeight(360)
+            self.embedded_view.show()
         self.setWindowTitle(source.windowTitle())
         self.surface.command.connect(self.command)
         self.surface.reloading.connect(self.reload)
         source.finished.connect(self.source_done)
+        self.sensitive_signal = None
+        if getattr(source, "html_sensitive_updates", False):
+            self.sensitive_signal = source.service.changed
+            self.sensitive_signal.connect(self.refresh_sensitive)
         self.timer = QTimer(self)
         self.timer.setInterval(200)
-        self.timer.timeout.connect(self.publish)
+        self.timer.timeout.connect(self.poll)
         self.timer.start()
-        place_popup(self, owner, anchor)
+        if not workspace:
+            self.setWindowModality(source.windowModality())
+            place_popup(self, owner, anchor)
         self.publish()
+
+    def poll(self):
+        if self.isVisible():
+            self.publish()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "surface") and not self.closed:
+            self.publish()
 
     def reload(self):
         self.context = token_hex(16)
         self.sequence = 0
         self.publish()
+
+    def refresh_sensitive(self):
+        if not self.closed:
+            self.surface.conceal()
+            self.publish(force=True)
 
     def token(self, obj):
         identity = id(obj)
@@ -143,13 +219,16 @@ class HtmlDialog(QDialog):
             return None
         node = {"id": self.token(widget), "enabled": widget.isEnabled()}
         if isinstance(widget, QTabWidget):
+            current = widget.currentWidget()
             node.update(
                 kind="tabs",
                 selected=widget.currentIndex(),
                 labels=[widget.tabText(i) for i in range(widget.count())],
                 tab_enabled=[widget.isTabEnabled(i) for i in range(widget.count())],
-                children=self.children(widget.currentWidget().layout()),
+                children=self.children(current.layout()) if current is not None else [],
             )
+        elif isinstance(widget, QWebEngineView):
+            return None  # Live website content is a separate, unbridged engine view.
         elif isinstance(widget, QAbstractButton):
             node.update(
                 kind="button",
@@ -158,6 +237,49 @@ class HtmlDialog(QDialog):
                 checked=widget.isChecked(),
             )
         elif isinstance(widget, QLabel):
+            from ui.panel_image import PanelImage
+
+            pixmap = widget.pixmap()
+            image = (
+                widget._image
+                if isinstance(widget, PanelImage)
+                else pixmap.toImage()
+                if pixmap is not None
+                else QImage()
+            )
+            if not image.isNull():
+                key = id(widget)
+                self.image_ids.add(key)
+                cached = self.image_cache.get(key)
+                if cached is None or cached[0] != image.cacheKey():
+                    reduced = image.scaled(
+                        1000,
+                        700,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                    while True:
+                        data = QBuffer()
+                        data.open(QIODevice.OpenModeFlag.WriteOnly)
+                        reduced.save(data, "PNG")
+                        encoded = bytes(data.data())
+                        if len(encoded) <= 1024 * 1024:
+                            break
+                        reduced = reduced.scaledToWidth(
+                            max(1, reduced.width() * 3 // 4)
+                        )
+                    cached = (
+                        image.cacheKey(),
+                        "data:image/png;base64,"
+                        + base64.b64encode(encoded).decode("ascii"),
+                    )
+                    self.image_cache[key] = cached
+                node.update(
+                    kind="image",
+                    value=cached[1],
+                    text=widget.accessibleName() or "Image preview",
+                )
+                return node
             text = widget.text()
             if widget.textFormat() == Qt.TextFormat.RichText or (
                 widget.textFormat() == Qt.TextFormat.AutoText
@@ -226,7 +348,12 @@ class HtmlDialog(QDialog):
                 headers = [
                     widget.headerItem().text(i) for i in range(widget.columnCount())
                 ]
-            for item in items[:500]:
+            key = id(widget)
+            offset = min(
+                self.table_offsets.get(key, 0), max(0, (len(items) - 1) // 500 * 500)
+            )
+            self.table_offsets[key] = offset
+            for item in items[offset : offset + 500]:
                 if item is None or (hasattr(item, "isHidden") and item.isHidden()):
                     continue
                 if isinstance(widget, QTableWidget):
@@ -267,6 +394,7 @@ class HtmlDialog(QDialog):
                 headers=headers,
                 rows=rows,
                 count=len(items),
+                offset=offset,
                 reorder=isinstance(widget, QListWidget)
                 and widget.dragDropMode()
                 == QAbstractItemView.DragDropMode.InternalMove,
@@ -274,10 +402,15 @@ class HtmlDialog(QDialog):
         elif isinstance(widget, QDialogButtonBox):
             node.update(
                 kind="group",
+                footer=True,
                 children=[self.node(button) for button in widget.buttons()],
             )
         elif isinstance(widget, QScrollArea):
-            node.update(kind="group", children=self.children(widget.widget().layout()))
+            content = widget.widget()
+            node.update(
+                kind="group",
+                children=self.children(content.layout()) if content is not None else [],
+            )
         elif isinstance(widget, QSplitter):
             node.update(
                 kind="group",
@@ -289,17 +422,25 @@ class HtmlDialog(QDialog):
                 node["title"] = QGroupBox.title(widget)
         return node
 
-    def publish(self):
+    def publish(self, *, force=False):
         if self.closed or sip.isdeleted(self.source):
             return
         self.active_tokens = set()
+        self.image_ids = set()
         tree = [] if self.existing_surface else self.children(self.source.layout())
+        self.image_cache = {
+            key: value
+            for key, value in self.image_cache.items()
+            if key in self.image_ids
+        }
         self.objects = {
             key: value
             for key, value in self.objects.items()
             if key in self.active_tokens
         }
         self.tokens = {id(obj): key for key, obj in self.objects.items()}
+        from ui.management_pages import SHARED_PAGES
+
         self.surface.publish(
             {
                 "context": self.context,
@@ -307,10 +448,14 @@ class HtmlDialog(QDialog):
                 "title": self.source.windowTitle(),
                 "children": tree,
                 "error": self.error,
+                "workspace": self.workspace,
+                "profile": self.owner.profile_manager.current_profile_name,
+                "shared": self.workspace in SHARED_PAGES,
                 "dark": self.owner.profile_manager.registry.page_style.dark(
                     self.owner.profile_manager.current_profile_name
                 ),
-            }
+            },
+            force=force,
         )
 
     def command(self, command):
@@ -323,6 +468,18 @@ class HtmlDialog(QDialog):
         self.error = ""
         try:
             action = command.get("action")
+            if (
+                getattr(self.source, "html_sensitive_updates", False)
+                and action == "choose"
+            ):
+                self.surface.conceal()
+            if action == "workspace" and self.workspace:
+                from services.start_pages import WORKSPACES
+
+                if command.get("value") not in WORKSPACES:
+                    raise ValueError("Unknown browser page.")
+                self.owner._new_tab(url="steed:" + command["value"])
+                return
             if action == "close":
                 self.source.reject()
                 return
@@ -338,8 +495,25 @@ class HtmlDialog(QDialog):
             ):
                 raise ValueError("This control is unavailable.")
             value = command.get("value")
-            if action == "click" and isinstance(obj, QAbstractButton):
+            if action == "page" and isinstance(
+                obj, (QListWidget, QTableWidget, QTreeWidget)
+            ):
+                if type(value) is not int or value not in (-1, 1):
+                    raise ValueError("Choose the previous or next results page.")
+                self.table_offsets[id(obj)] = max(
+                    0, self.table_offsets.get(id(obj), 0) + value * 500
+                )
+                obj.clearSelection()
+                if isinstance(obj, QListWidget):
+                    obj.setCurrentRow(-1)
+                elif isinstance(obj, QTableWidget):
+                    obj.setCurrentCell(-1, -1)
+                else:
+                    obj.setCurrentItem(None)
+            elif action == "click" and isinstance(obj, QAbstractButton):
                 obj.click()
+            elif action == "enter" and isinstance(obj, QLineEdit):
+                obj.returnPressed.emit()
             elif action == "edit" and isinstance(value, str) and len(value) <= 300000:
                 if isinstance(obj, QLineEdit) and not obj.isReadOnly():
                     obj.setText(value[: obj.maxLength()])
@@ -451,8 +625,19 @@ class HtmlDialog(QDialog):
         self.timer.stop()
         if not sip.isdeleted(self.source):
             self.source.close = self._source_close
+            if self.embedded_view is not None and not sip.isdeleted(self.embedded_view):
+                self.embedded_view.hide()
+                self.embedded_view.setParent(self.source)
             for timer in self.source.findChildren(QTimer):
                 timer.stop()
+        if self.sensitive_signal is not None:
+            try:
+                self.sensitive_signal.disconnect(self.refresh_sensitive)
+            except (TypeError, RuntimeError):
+                pass
+        self.objects.clear()
+        self.tokens.clear()
+        self.image_cache.clear()
         self.surface.dispose()
         if self.existing_surface:
             self.existing_surface.dispose()
@@ -463,6 +648,9 @@ class HtmlDialog(QDialog):
             self.source.reject()
         elif not self.closed:
             self.source_done(QDialog.DialogCode.Rejected)
+
+    def dispose(self):
+        self.reject()
 
     def closeEvent(self, event):
         self.reject()

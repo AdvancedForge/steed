@@ -6,7 +6,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -16,9 +15,10 @@ from PyQt6.QtWidgets import (
 
 from services.task_policy import TaskPermissionError
 from start_page_format import state_digest
+from ui.html_dialog import HtmlSettingsDialog
 
 
-class StartPageReviewDialog(QDialog):
+class StartPageReviewDialog(HtmlSettingsDialog):
     def __init__(self, service, proposal, parent=None):
         super().__init__(parent)
         self.service, self.proposal = service, proposal

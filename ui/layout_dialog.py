@@ -16,11 +16,9 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -37,6 +35,8 @@ from layout_preferences import (
 )
 from ui.html_dialog import HtmlSettingsDialog
 from ui.layout_panel_editor import PanelEditor
+from ui.prompts import InputDialog as QInputDialog
+from ui.prompts import MessageBox as QMessageBox
 
 TOOLBAR_LABELS = {
     "back": "Back",

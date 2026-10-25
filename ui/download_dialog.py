@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -17,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import MessageBox as QMessageBox
 
 
 def choose_download_destination(suggested, parent=None):

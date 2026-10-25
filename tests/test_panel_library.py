@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import test_data_panels as panels
 from PyQt6 import sip
-from PyQt6.QtWidgets import QMessageBox
 
 from data_panel_format import parse_panel
 from layout_format import export_layout
@@ -16,6 +15,7 @@ from layout_preferences import preferences_from_config
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
 from ui.data_panels import DataPanelReviewDialog
+from ui.prompts import MessageBox as QMessageBox
 
 
 class LibraryPanelTests(unittest.TestCase):

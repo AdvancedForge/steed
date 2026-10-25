@@ -1,12 +1,13 @@
 """Choose a shipped service; source, account and payload reviews remain separate."""
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QComboBox, QDialog, QLabel, QPushButton, QVBoxLayout
+from PyQt6.QtWidgets import QComboBox, QLabel, QPushButton, QVBoxLayout
 
+from ui.html_dialog import HtmlSettingsDialog
 from ui.recipe_review import RecipeReviewDialog
 
 
-class BundledRecipesDialog(QDialog):
+class BundledRecipesDialog(HtmlSettingsDialog):
     def __init__(self, manager, parent=None):
         super().__init__(parent)
         self.manager = manager

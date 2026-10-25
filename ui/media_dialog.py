@@ -2,7 +2,6 @@
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -10,8 +9,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.html_dialog import HtmlSettingsDialog
 
-class DesktopMediaDialog(QDialog):
+
+class DesktopMediaDialog(HtmlSettingsDialog):
     def __init__(self, request, parent=None):
         super().__init__(parent)
         self.request = request

@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ui.html_dialog import HtmlSettingsDialog
 from ui.task_recovery import TaskRecoveryDialog
 
 ACTION_LABELS = {
@@ -60,7 +61,7 @@ class WrappedLabel(QLabel):
         self.setMinimumHeight(self.heightForWidth(event.size().width()))
 
 
-class TaskApprovalDialog(QDialog):
+class TaskApprovalDialog(HtmlSettingsDialog):
     def __init__(self, service, task, grant, parent=None):
         super().__init__(parent)
         self.service, self.task_id, self.grant_id = (

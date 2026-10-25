@@ -244,7 +244,10 @@ class BookmarkWorkflowTests(unittest.TestCase):
             patch.object(BookmarksDialog, "exec", new=open_filtered),
             patch.object(self.window, "_new_tab") as opened,
         ):
-            self.window._manage_bookmarks()
+            dialog = BookmarksDialog(
+                self.pages, "global", open_url=lambda url: self.window._new_tab(url=url)
+            )
+            dialog.exec()
         opened.assert_called_once_with(url="https://two.example/")
 
     def test_enter_in_search_opens_first_match_without_selecting_a_row(self):
@@ -263,7 +266,10 @@ class BookmarkWorkflowTests(unittest.TestCase):
             patch.object(BookmarksDialog, "exec", new=search_and_open),
             patch.object(self.window, "_new_tab") as opened,
         ):
-            self.window._manage_bookmarks()
+            dialog = BookmarksDialog(
+                self.pages, "global", open_url=lambda url: self.window._new_tab(url=url)
+            )
+            dialog.exec()
         opened.assert_called_once_with(url="https://two.example/")
 
     def test_arrow_keys_and_enter_open_selected_result_once(self):
@@ -287,7 +293,12 @@ class BookmarkWorkflowTests(unittest.TestCase):
                     patch.object(BookmarksDialog, "exec", new=choose_and_open),
                     patch.object(self.window, "_new_tab") as opened,
                 ):
-                    self.window._manage_bookmarks()
+                    dialog = BookmarksDialog(
+                        self.pages,
+                        "global",
+                        open_url=lambda url: self.window._new_tab(url=url),
+                    )
+                    dialog.exec()
                 opened.assert_called_once_with(url="https://two.example/")
 
     def test_enter_with_no_search_matches_keeps_manager_open(self):
@@ -318,7 +329,10 @@ class BookmarkWorkflowTests(unittest.TestCase):
             patch.object(BookmarksDialog, "exec", new=double_click),
             patch.object(self.window, "_new_tab") as opened,
         ):
-            self.window._manage_bookmarks()
+            dialog = BookmarksDialog(
+                self.pages, "global", open_url=lambda url: self.window._new_tab(url=url)
+            )
+            dialog.exec()
         opened.assert_called_once_with(url="https://one.example/")
 
     def test_manager_does_not_open_after_the_browser_changes_profile(self):

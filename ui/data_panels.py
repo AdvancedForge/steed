@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -27,8 +26,10 @@ from PyQt6.QtWidgets import (
 from services.app_accounts import AccountError
 from services.task_store import ACTIVE_STATUSES
 from ui.data_panel_form import PanelForm
+from ui.html_dialog import HtmlSettingsDialog
 from ui.panel_image import PanelImage
 from ui.panel_instruction import PanelInstruction
+from ui.prompts import MessageBox as QMessageBox
 
 
 def display_text(value):
@@ -498,7 +499,9 @@ class DataPanelDock(QDockWidget):
             self.refresh()
 
 
-class DataPanelReviewDialog(QDialog):
+class DataPanelReviewDialog(HtmlSettingsDialog):
+    html_sensitive_updates = True
+
     def __init__(self, service, receipt, parent=None):
         super().__init__(parent)
         self.service, self.receipt = service, receipt

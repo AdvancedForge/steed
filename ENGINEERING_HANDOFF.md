@@ -1,8 +1,73 @@
-# Engineering handoff — October 16, 2026
+# Engineering handoff — October 25, 2026
 
 ## Start here
 
-**New Tab menus, palette editing and placement — October 16 (current checkpoint).** The owner explicitly limited HTML dropdowns and
+**HTML management pages and browser dialogs — October 25 (current checkpoint).** The owner now requests HTML for all browser management
+popups, superseding the earlier New-Tab-only restriction on editor presentation.
+Desktop menus still behave as native menus; their commands now open HTML tabs.
+
+- `ui/management_pages.py` defines fifteen routes and their original backend
+  controllers. `services/start_pages.WORKSPACES` recognizes them, so all use the
+  existing internal navigation, restore, find/zoom and delegation protections.
+  `steed:cookies`, `downloads`, `bookmarks`, `history`, `library`, `connections`,
+  `tasks`, `passwords`, `layout`, `newtab-settings`, `tab-groups`, `permissions`,
+  `agent-setup`, `adblock` and `services` are singleton tabs per window/profile.
+  Shared/profile-local scope is explicit; private library and persistent start-page
+  customization show a regular-profile explanation without enabling access.
+- BrowserWindow embeds `HtmlDialog(..., workspace=name)` as a Widget in BrowserTab.
+  It owns the off-record HtmlSurface; the ordinary underlying engine is about:blank
+  and has no native bridge. Close/navigation/profile switch detach the workspace,
+  finish its source controller and dispose pages before profiles. Layout preview
+  save/cancel is asynchronous and preserves merge/conflict handling. Passwords
+  rebinds to the selected website and returns there on successful fill. Failed
+  backend pages reconstruct on Reload rather than repeating prior actions.
+- `HtmlPresentation` in `ui/html_dialog.py` presents controller `.show()`/`.exec()`
+  through HTML, including reviews and anonymous sharing dialogs. Visibility,
+  hide/raise/activation and resize follow the presenter. Preserve each controller's
+  explicit WA_DeleteOnClose flag; do not force deletion for every `.show()`: async
+  website-chat callbacks may still need the result. Explicitly owned management
+  pages/popovers set their deletion flag at creation.
+- `ui/prompts.py` provides Qt-compatible HTML MessageBox/InputDialog helpers. Yes/No
+  results and default-decline semantics are preserved. UI modules import these
+  aliases, while OS file/directory pickers stay native. Startup failure notices and
+  the emergency Ctrl+Alt+Shift+R confirmation intentionally retain native recovery.
+- The HTML table adapter pages beyond 500 rows, clears selection on page changes
+  and rejects stale item identities. Enter on QLineEdit invokes its original
+  returnPressed handler. Bookmarks stays available after opening a site. The rail
+  and body[data-page] selectors inherit root styles and are published in the CSS
+  guide. Hidden pages skip presentation polling; job timers still finish work.
+- Panel preview images are PNG data only, bounded and cached by image identity.
+  Cache/state clears on removal/disposal. Sensitive panel-review updates conceal
+  old pixels synchronously before forced publication, including unchanged payloads.
+  HTML controls never share their bridge with a TaskWatch live website engine.
+- WebChatPromptDialog.done now clears context/instructions/preview before closing.
+  BrowserWindow closes presenters before the profile signal reaches later handlers;
+  relying only on its profile-change slot would retain the old draft. Presenter
+  hide must also hide the actual window before focusing/pasting into a website.
+- Backend tests that patched modal `.exec()` were updated to exercise actual page
+  controllers and their finish signals; controller-only keyboard tests retain their
+  isolated Qt coverage, with real HTML input/selection coverage added separately.
+  Test prompts must patch `ui.prompts.MessageBox`, including function-local imports.
+- Acceptance: **1,508 full regressions / 355.449 s**, **16 management checks /
+  14.517 s** including actual cookie load/delete with a separate UI profile, plus
+  80 targeted checks after website-chat lifecycle fixes. The earlier 147/164-check
+  runs also passed. Ruff/formatting (263 Python files), dependencies and whitespace
+  passed. Logs: `/tmp/steed-management-{release-checks,live-checks,final-focus}.log`.
+  Inspected previews: `/tmp/steed-management-{cookies,downloads,bookmarks,history,
+  layout,connections,tasks,approval}.png`. Keep Qt runs serial and use only
+  temporary/synthetic profiles. A previous run hit the known offscreen Qt profile
+  initialization crash; the accepted serial retry passed. This milestone does not
+  claim to fix that unrelated issue or replace real-desktop acceptance.
+- Real entry-point startup/local render/shutdown passed with Qt 6.11.2. Independent
+  SDK/raw stdio MCP smoke passed, including approvals, takeover/return, website
+  submission, conversations, linked panels and reviewed page/theme proposals.
+  Authenticated HTTP MCP smoke passed too. Smoke logs:
+  `/tmp/steed-management-{startup,mcp-stdio,mcp-http}.log`.
+- Next: direct HTML data-panel/sidebar content and daily-use polish. QDockWidget
+  chrome, browser toolbar/menus and normal website engines remain Qt; no Qt removal,
+  connector runtime changes or broader agent-authored app bridge was introduced.
+
+**New Tab menus, palette editing and placement — October 16 (previous checkpoint).** The owner explicitly limited HTML dropdowns and
 anchored editors to the **New Tab menu**, not the desktop top menu. Keep the desktop
 QMenuBar and address-bar QMenu behavior native. The toolbar menu now starts at the
 left edge; Layout Settings can reorder its `menu` ID but cannot hide it. Existing

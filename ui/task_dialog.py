@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QTableWidget,
@@ -26,6 +25,7 @@ from PyQt6.QtWidgets import (
 
 from services.task_store import ACTIVE_STATUSES
 from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import MessageBox as QMessageBox
 from ui.task_approval import ACTION_LABELS, app_description
 from ui.task_recovery import TaskRecoveryDialog
 

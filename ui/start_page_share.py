@@ -6,7 +6,6 @@ import sqlite3
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -16,9 +15,10 @@ from PyQt6.QtWidgets import (
 
 from services.task_messages import MESSAGE_BYTES
 from services.task_policy import TaskPermissionError
+from ui.html_dialog import HtmlSettingsDialog
 
 
-class PageSourceShareDialog(QDialog):
+class PageSourceShareDialog(HtmlSettingsDialog):
     def __init__(self, service, profile, page, html, parent=None):
         super().__init__(parent)
         self.service = service

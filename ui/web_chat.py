@@ -5,7 +5,6 @@ from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QDialog,
     QDockWidget,
     QHBoxLayout,
     QLabel,
@@ -14,6 +13,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from ui.html_dialog import HtmlSettingsDialog
 
 WEB_CHATS = {
     "ChatGPT": "https://chatgpt.com/",
@@ -112,7 +113,7 @@ class WebChatDock(QDockWidget):
         event.accept()
 
 
-class WebChatPromptDialog(QDialog):
+class WebChatPromptDialog(HtmlSettingsDialog):
     """User-authored instructions with opt-in, bounded context and exact preview."""
 
     def __init__(self, window, target):
@@ -201,6 +202,10 @@ class WebChatPromptDialog(QDialog):
 
     def done(self, result):
         self._handoff_pending = False
+        self.context = ""
+        self.include_context.setChecked(False)
+        self.instructions.clear()
+        self.preview.clear()
         if not self._connections_closed:
             self._connections_closed = True
             if not sip.isdeleted(self.target):

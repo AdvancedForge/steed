@@ -447,6 +447,62 @@ profile reviews. It does not save preferences or repeat profile operations.
 
 ### Internal pages and shared styling
 
+The browser's management tools now open HTML tabs rather than separate Qt
+management windows. The desktop menus keep their usual click/shortcut behavior;
+their commands open the corresponding page. New Tab's anchored HTML editors are
+still available. These pages share `steed:style`, search/find, zoom, reload and
+session restore:
+
+| Address | Tools |
+| --- | --- |
+| `steed:cookies` | Filter, inspect and delete cookies; existing deletion protection applies |
+| `steed:downloads` | Search downloads, progress, pause/resume/cancel, open/reveal/copy path |
+| `steed:bookmarks` | Search and organize bookmarks, import/export, open links |
+| `steed:history` | Search recent page names/addresses, open/copy a link, clear history |
+| `steed:library` | Enabled folders, imports, files, versions and recovery |
+| `steed:connections` | Accounts, connector recipes and reusable access settings |
+| `steed:services` | Browse packaged connectors and open an exact recipe review |
+| `steed:tasks` | Agent tasks, requests, grants, results, packages and reviews |
+| `steed:passwords` | KeePassXC connection, login selection, filling and saving |
+| `steed:layout` | Preview/save/cancel browser placement and named layouts |
+| `steed:newtab-settings` | Built-in start-page sections and custom New Tab/Welcome HTML |
+| `steed:tab-groups` | Create, rename, reorder, collapse and remove groups |
+| `steed:permissions` | Saved website permissions and their scope |
+| `steed:agent-setup` | External-client setup and explicit local-access toggle |
+| `steed:adblock` | Filter-list updates, blocking preference and exceptions |
+
+The navigation rail groups browsing, customization and agent tools. Opening an
+existing page selects its tab. Headers distinguish profile-local data from
+browser-wide management. History uses the existing most-recent-first collection;
+opening internal pages does not add them to history. Bookmark Enter/double-click
+opens a website while retaining the manager. Passwords binds to the selected
+website tab and returns to it after successful filling. Library and persistent
+start-page customization require a regular profile; private cookies/history and
+bookmarks retain their existing session-only behavior.
+
+Results are paged in groups of up to 500 rows, in addition to any existing
+backend paging. Changing the results page clears selection; stale row targets
+cannot act on replacement records. Hidden tabs pause presentation polling and
+refresh when shown. Source operations, such as an already-started file import,
+retain their own lifecycle. Closing/navigating away cancels a layout preview;
+Save keeps the existing conflict/merge rules. Reload retries a page whose backend
+could not initialize, without repeating previous approvals or writes.
+
+Browser confirmation dialogs, short text/choice prompts, website/media permission
+requests, agent questions, connector/package/layout/page reviews and sharing
+previews also use maintained HTML. The existing controllers still validate and
+execute decisions. Secret field values are omitted from published state. Image
+previews are bounded raster data; linked-review updates cover stale content before
+rendering replacement state. Live task pages keep their separate website engine
+below HTML controls, without receiving the management bridge. Website-chat paste
+hides the presenter first, and closing the preview clears its private draft.
+
+OS file/directory pickers remain native. Startup failures and the emergency
+**Ctrl+Alt+Shift+R** appearance reset retain a native recovery path so broken CSS
+or an unavailable HTML engine cannot prevent recovery. Browser menus and browser
+chrome still use Qt; this milestone changes the management/dialog presentation,
+not the engine or permission architecture.
+
 Type `steed:newtab`, `steed:welcome`, `steed:settings`, `steed:agents` or
 `steed:style` in the address bar. Settings, Agents and Style are maintained HTML
 workspaces with isolated, off-the-record engines; their addresses are preserved
@@ -537,13 +593,12 @@ approval. Existing profile/data grants do not approve style changes. Stale previ
 reused request IDs with changed bytes, and private/recreated profiles retain the
 existing proposal protections. Theme proposals grant no browser or data access.
 
-New Tab's HTML editor host adapts the existing controllers; their validation,
+The HTML editor host adapts the existing controllers; their validation,
 persistence, cancellation and permission reviews remain authoritative. It renders
 only enumerated controls through an isolated, offline HtmlSurface. No bridge is
-installed in ordinary websites or authored start pages. Security confirmations
-and OS file choosers remain native. Lists show at most 500 records per HTML editor;
-use available filters/paging or the full native editor from the desktop menu for
-larger collections.
+installed in ordinary websites or authored start pages. Decisions still use the
+existing trusted confirmation handlers. OS file choosers remain native; result
+tables provide Previous/Next controls when more than 500 records are available.
 
 Appearance lives in the shared `config.json` under `page_style`, with per-profile
 overrides keyed by the stable profile identity. Renaming a profile preserves its

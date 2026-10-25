@@ -6,13 +6,13 @@ from unittest.mock import patch
 
 import test_live_tabs as live_fixture
 from PyQt6.QtCore import QUrl
-from PyQt6.QtWidgets import QMessageBox
 
 from layout_format import LAYOUT_EXAMPLE
 from services.live_control import resolve
 from services.task_policy import TaskPermissionError
 from start_page_format import EXAMPLE
 from ui.live_control_review import LiveControlDialog
+from ui.prompts import MessageBox as QMessageBox
 
 
 class AgentControlUITests(unittest.TestCase):

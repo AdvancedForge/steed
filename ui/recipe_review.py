@@ -5,7 +5,6 @@ import sqlite3
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -13,8 +12,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.html_dialog import HtmlSettingsDialog
 
-class RecipeReviewDialog(QDialog):
+
+class RecipeReviewDialog(HtmlSettingsDialog):
     def __init__(self, manager, recipe, parent=None, *, service=None, proposal=None):
         super().__init__(parent)
         self.manager, self.recipe, self.service, self.proposal = (

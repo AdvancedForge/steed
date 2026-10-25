@@ -21,11 +21,9 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
-    QMessageBox,
     QProgressBar,
     QPushButton,
     QSizePolicy,
@@ -52,20 +50,16 @@ from services.start_pages import (
     workspace_name,
 )
 from tab_manager import TabManager, TabState
-from ui.adblock_dialog import AdBlockDialog
 from ui.address_bar import AddressBar
-from ui.app_connections import AppConnectionsDialog
-from ui.cookie_dialog import CookieDialog
-from ui.download_dialog import DownloadDialog
 from ui.find_bar import FindBar
-from ui.group_dialog import GroupDialog
 from ui.layout_dialog import LayoutDialog
 from ui.media_dialog import DesktopMediaDialog
 from ui.password_dialog import PasswordDialog
+from ui.prompts import InputDialog as QInputDialog
+from ui.prompts import MessageBox as QMessageBox
 from ui.settings_dialog import SettingsDialog
-from ui.site_permissions import SitePermissionDialog, SitePermissionsDialog
+from ui.site_permissions import SitePermissionDialog
 from ui.tab_bar import TabBar
-from ui.task_dialog import TaskDialog
 from webengine import (
     SiteCompatibilityInterceptor,
     configure_web_settings,
@@ -372,6 +366,9 @@ class BrowserWindow(QMainWindow):
         focus_address_action.setShortcut(QKeySequence("Ctrl+L"))
         focus_address_action.triggered.connect(lambda: self.address_bar.focus_address())
         view_menu.addAction(focus_address_action)
+        history_action = cookies_menu.addAction("Browsing History…")
+        history_action.setShortcut(QKeySequence("Ctrl+H"))
+        history_action.triggered.connect(lambda: self._open_management("history"))
         clear_history_action = QAction("Clear Browsing History...", self)
         clear_history_action.triggered.connect(self._clear_browsing_history)
         cookies_menu.addAction(clear_history_action)
@@ -387,19 +384,10 @@ class BrowserWindow(QMainWindow):
         general_menu.addAction(fill_login_action)
         downloads_action = QAction("Downloads...", self)
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
-        downloads_action.triggered.connect(
-            lambda: self._present_dialog(
-                DownloadDialog(self.download_manager, self),
-                modal=self._menu_anchor is None,
-            )
-        )
+        downloads_action.triggered.connect(lambda: self._open_management("downloads"))
         general_menu.addAction(downloads_action)
         adblock_action = QAction("Ad Blocking...", self)
-        adblock_action.triggered.connect(
-            lambda: self._present_dialog(
-                AdBlockDialog(self.adblock, self), modal=self._menu_anchor is None
-            )
-        )
+        adblock_action.triggered.connect(lambda: self._open_management("adblock"))
         general_menu.addAction(adblock_action)
         general_menu.addSeparator()
         settings_action = QAction("Settings...", self)
@@ -478,13 +466,7 @@ class BrowserWindow(QMainWindow):
             )
         self._refresh_auto_approval()
         site_action = QAction("Website Permissions...", self)
-        site_action.triggered.connect(
-            lambda: self._present_dialog(
-                SitePermissionsDialog(
-                    self.profile_manager.registry.site_permissions, self
-                )
-            )
-        )
+        site_action.triggered.connect(lambda: self._open_management("permissions"))
         general_menu.addAction(site_action)
         apps_action = QAction("App Connections...", self)
         apps_action.triggered.connect(self._open_app_connections)
@@ -892,31 +874,35 @@ class BrowserWindow(QMainWindow):
                 layout.insertWidget(position, panel)
                 position += 1
 
-    def _open_layout_settings(self) -> None:
-        """Edit the manual layout, previewing edits and saving on Save."""
+    def _open_layout_settings(self):
+        return self._open_management("layout")
+
+    def _layout_controller(self):
         if self._layout_editing:
-            return
+            raise ValueError("Finish the open layout editor first.")
         saved = preferences_from_config(self.config)
         dialog = LayoutDialog(saved, self)
         dialog.layout_changed.connect(self.apply_layout)
         self._layout_editing = True
-        try:
-            if dialog.exec():
-                try:
+
+        def finish(result):
+            try:
+                if result == QDialog.DialogCode.Accepted:
                     self.profile_manager.registry.commit_layout(
                         dialog.preferences, base=saved
                     )
-                except LayoutConflict:
-                    QMessageBox.warning(
-                        self,
-                        "Layout changed in another window",
-                        "Your settings were not saved because another window changed "
-                        "the same setting. Reopen Layout Settings to try again.",
-                    )
-        finally:
-            self._layout_editing = False
-            self.apply_layout(preferences_from_config(self.config))
-            dialog.deleteLater()
+            except LayoutConflict:
+                QMessageBox.warning(
+                    self,
+                    "Layout changed in another window",
+                    "Your settings were not saved because another window changed the same setting. Reopen Layout Settings to try again.",
+                )
+            finally:
+                self._layout_editing = False
+                self.apply_layout(preferences_from_config(self.config))
+
+        dialog.finished.connect(finish)
+        return dialog
 
     def _layout_committed(self, preferences) -> None:
         if not self._layout_editing:
@@ -1238,40 +1224,10 @@ class BrowserWindow(QMainWindow):
         dialog.show()
 
     def _open_agent_setup(self):
-        if self._closing:
-            return
-        if self.agent_setup_dialog is None:
-            from ui.agent_setup import AgentSetupDialog
-
-            self.agent_setup_dialog = AgentSetupDialog(
-                self.profile_manager.registry, self
-            )
-            self.agent_setup_dialog.enable_requested.connect(
-                lambda: self._set_agent_access(True)
-            )
-            self.agent_setup_dialog.finished.connect(
-                lambda: setattr(self, "agent_setup_dialog", None)
-            )
-        self._present_dialog(self.agent_setup_dialog, modal=False)
+        return self._open_management("agent-setup")
 
     def _open_file_library(self):
-        if self._closing or self.profile_manager.is_search_profile():
-            return
-        if self.file_library_dialog is None:
-            from ui.file_library import FileLibraryDialog
-
-            try:
-                self.file_library_dialog = FileLibraryDialog(
-                    self.profile_manager.registry.tasks, self
-                )
-            except (ValueError, OSError, RuntimeError, sqlite3.Error) as error:
-                QMessageBox.warning(self, "Agent File Library", str(error))
-                return
-            self.file_library_dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-            self.file_library_dialog.finished.connect(
-                lambda: setattr(self, "file_library_dialog", None)
-            )
-        self._present_dialog(self.file_library_dialog, modal=False)
+        return self._open_management("library")
 
     def _update_window_title(self, url=None):
         profile_name = self.profile_manager.current_profile_name
@@ -1362,7 +1318,7 @@ class BrowserWindow(QMainWindow):
 
         workspace = workspace_name(url)
         agent_panel = workspace == "agents"
-        if workspace in ("settings", "style"):
+        if workspace and workspace != "agents":
             existing = next(
                 (t for t in self.tabs if t.workspace_name == workspace), None
             )
@@ -1370,7 +1326,9 @@ class BrowserWindow(QMainWindow):
                 self._switch_tab(self.tabs.index(existing))
                 return existing if return_tab else None
         source_tab = self.tabs[self.current_tab_index] if self.tabs else None
-        if source_tab is not None and source_tab.workspace_name:
+        if source_tab is not None and (
+            source_tab.workspace_name or getattr(source_tab, "agent_panel", False)
+        ):
             source_tab = next(
                 (
                     t
@@ -1386,7 +1344,7 @@ class BrowserWindow(QMainWindow):
 
         profile = self.profile_manager.current_profile
         tab = BrowserTab(profile, self.tab_container, self)
-        tab.agent_source = source_tab if agent_panel else None
+        tab.agent_source = source_tab if workspace else None
         self.tab_layout.addWidget(tab)
         self._connect_page_signals(tab.page())
 
@@ -1626,7 +1584,7 @@ class BrowserWindow(QMainWindow):
         tab.workspace_exit_token = None
         self._take_back_tab(tab)
         workspace = workspace_name(url_text)
-        if workspace in ("settings", "style"):
+        if workspace and workspace != "agents":
             existing = next(
                 (t for t in self.tabs if t.workspace_name == workspace), None
             )
@@ -1689,7 +1647,13 @@ class BrowserWindow(QMainWindow):
             self._take_back_current_tab()
             tab = self.tabs[self.current_tab_index]
             if tab.workspace_name:
-                tab.workspace_controller.surface.reload()
+                host = tab.workspace_controller
+                if getattr(getattr(host, "source", None), "page_unavailable", False):
+                    name = tab.workspace_name
+                    self._detach_workspace(tab)
+                    self._embed_workspace(tab, name)
+                else:
+                    host.surface.reload()
             else:
                 self.navigation.action(tab, "reload")
 
@@ -1726,27 +1690,10 @@ class BrowserWindow(QMainWindow):
         )
 
     def _open_tasks(self):
-        if not self._closing:
-            try:
-                dialog = TaskDialog(self.profile_manager.registry.tasks, self)
-            except (OSError, ValueError, RuntimeError, sqlite3.Error):
-                logger.error("Could not open task permissions")
-                QMessageBox.warning(
-                    self,
-                    "Task Permissions",
-                    "Task permissions could not be opened. Check that the task database is available and supported.",
-                )
-                return
-            dialog.exec()
-            dialog.deleteLater()
+        return self._open_management("tasks")
 
     def _open_app_connections(self):
-        if not self._closing:
-            dialog = AppConnectionsDialog(
-                self.profile_manager.registry.app_connections, self
-            )
-            dialog.exec()
-            dialog.deleteLater()
+        return self._open_management("connections")
 
     def _focus_page(self):
         if not self._closing and self.tabs:
@@ -1790,6 +1737,25 @@ class BrowserWindow(QMainWindow):
     def _open_passwords(self, auto_fill=False):
         if self._closing or not self.tabs:
             return
+        if not auto_fill and self._menu_anchor is None:
+            current = self.tabs[self.current_tab_index]
+            existing = next(
+                (tab for tab in self.tabs if tab.workspace_name == "passwords"), None
+            )
+            if (
+                existing is not None
+                and not current.workspace_name
+                and not getattr(current, "agent_panel", False)
+            ):
+                existing.agent_source = current
+                source = existing.workspace_controller.source
+                source.manager.cancel(source)
+                source.entries.clear()
+                source.context = None
+                source.page = current.page()
+                source._set_busy(False)
+                source.refresh()
+            return self._open_management("passwords")
         if self._password_dialog is not None:
             self._password_dialog.raise_()
             return
@@ -2142,15 +2108,10 @@ class BrowserWindow(QMainWindow):
         self._save_current_tabs()
 
     def _manage_tab_groups(self):
-        GroupDialog(self).exec()
+        return self._open_management("tab-groups")
 
     def _view_cookies(self):
-        if not self.cookie_manager:
-            return
-        dlg = CookieDialog(
-            self.cookie_manager, self, self.profile_manager.protect_cookie_deletion
-        )
-        dlg.exec()
+        return self._open_management("cookies")
 
     def _clear_all_cookies(self):
         if not self.cookie_manager:
@@ -2417,19 +2378,8 @@ class BrowserWindow(QMainWindow):
         from ui.html_dialog import HtmlDialog
 
         host = getattr(dialog, "_html_host", None)
-        if (host is None or sip.isdeleted(host) or host.closed) and not (
-            force_html or self._menu_anchor is not None
-        ):
-            if modal:
-                return QDialog.exec(dialog)
-            dialog.show()
-            dialog.raise_()
-            dialog.activateWindow()
-            return dialog
         if host is None or sip.isdeleted(host) or host.closed:
             host = HtmlDialog(dialog, self, anchor=self._menu_anchor)
-            if not modal:
-                dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             dialog._html_host = host
             self._html_dialogs.append(host)
             host.finished.connect(
@@ -2472,7 +2422,7 @@ class BrowserWindow(QMainWindow):
             + json.dumps(selector)
             + "); if (!e || !e.getClientRects().length) return null; "
             + ("if (!e.matches(':hover')) return null; " if hover else "")
-            + "const r=e.getBoundingClientRect(); return [r.right,r.top]; })()"
+            + "const r=e.getBoundingClientRect(); return [r.right,r.top,innerWidth,innerHeight]; })()"
         )
 
         def opened(point):
@@ -2484,10 +2434,12 @@ class BrowserWindow(QMainWindow):
                 and self.isActiveWindow()
                 and (not hover or self._html_menu is None)
                 and isinstance(point, list)
-                and len(point) == 2
+                and len(point) == 4
                 and all(type(value) in (int, float) for value in point)
-                and 0 <= point[0] * tab.zoomFactor() <= tab.width()
-                and 0 <= point[1] * tab.zoomFactor() <= tab.height()
+                and point[2] > 0
+                and point[3] > 0
+                and 0 <= point[0] <= point[2]
+                and 0 <= point[1] <= point[3]
             ):
                 self._newtab_hover = (tab, name)
                 self._newtab_hover_opened = True
@@ -2495,8 +2447,8 @@ class BrowserWindow(QMainWindow):
                     self._layout_menus[name],
                     tab.mapToGlobal(
                         QPoint(
-                            int(point[0] * tab.zoomFactor()),
-                            int(point[1] * tab.zoomFactor()),
+                            int(point[0] * tab.width() / point[2]),
+                            int(point[1] * tab.height() / point[3]),
                         )
                     ),
                 )
@@ -2556,6 +2508,22 @@ class BrowserWindow(QMainWindow):
             hovered,
         )
 
+    def _open_management(self, name):
+        from ui.management_pages import PAGES, controller
+
+        if self._closing or name not in PAGES:
+            return
+        if self._menu_anchor is not None:
+            source = self.tabs[self.current_tab_index] if self.tabs else None
+            try:
+                dialog = controller(self, name, source)
+                dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+                return self._present_dialog(dialog, modal=False)
+            except (ValueError, OSError, sqlite3.Error) as error:
+                QMessageBox.warning(self, PAGES[name], str(error))
+                return
+        return self._new_tab(url="steed:" + name, return_tab=True)
+
     def _embed_workspace(self, tab, name):
         if name == "settings":
             controller = self._open_settings(_dialog_only=True)
@@ -2563,10 +2531,28 @@ class BrowserWindow(QMainWindow):
                 return
             controller.hide()
             panel = controller.surface
-        else:
+        elif name == "style":
             from ui.style_page import StylePage
 
             controller = panel = StylePage(self)
+        else:
+            from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
+            from ui.management_pages import controller as create_controller
+
+            try:
+                source = create_controller(self, name, tab.agent_source)
+            except (ValueError, OSError, sqlite3.Error) as error:
+                source = HtmlSettingsDialog(self)
+                source.page_unavailable = True
+                source.setWindowTitle("Page unavailable")
+                label = QLabel(str(error))
+                label.setTextFormat(Qt.TextFormat.PlainText)
+                label.setWordWrap(True)
+                QVBoxLayout(source).addWidget(label)
+            source.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            controller = panel = HtmlDialog(source, self, workspace=name)
+            source._html_host = controller
+            controller.finished.connect(lambda _: self._workspace_finished(controller))
         tab.workspace_name = name
         tab.workspace_controller = controller
         tab.native_panel = panel
@@ -2574,7 +2560,9 @@ class BrowserWindow(QMainWindow):
         panel.setGeometry(tab.rect())
         panel.show()
         panel.raise_()
-        self.tab_bar.set_tab_title(self.tabs.index(tab), name.title())
+        from ui.management_pages import PAGES
+
+        self.tab_bar.set_tab_title(self.tabs.index(tab), PAGES.get(name, name.title()))
         self.address_bar.set_url("steed:" + name)
         self._update_page_actions()
         self._update_zoom()
@@ -2603,7 +2591,15 @@ class BrowserWindow(QMainWindow):
             return
         for tab in self.tabs:
             if tab.workspace_controller is controller:
+                return_to = (
+                    tab.agent_source
+                    if tab.workspace_name == "passwords"
+                    and controller.source.result() == QDialog.DialogCode.Accepted
+                    else None
+                )
                 self._detach_workspace(tab)
+                if return_to in self.tabs:
+                    self._switch_tab(self.tabs.index(return_to))
                 token = uuid4().hex
                 tab.workspace_exit_token = token
 
@@ -2631,12 +2627,14 @@ class BrowserWindow(QMainWindow):
             self._apply_page_style()
 
     def _reset_page_style(self):
+        from PyQt6.QtWidgets import QMessageBox as NativeMessageBox
+
         from services.page_style import DEFAULTS
 
         previous = self.styleSheet()
         self.setStyleSheet("")
         try:
-            decision = QMessageBox.question(
+            decision = NativeMessageBox.question(
                 self,
                 "Reset page style?",
                 "Reset the root CSS, theme, bar visibility and loading indicator for this profile? Custom page HTML and images are preserved.",
@@ -2709,7 +2707,7 @@ class BrowserWindow(QMainWindow):
         if self.settings_dialog is not None:
             self.settings_dialog.refresh()
         for tab in self.tabs:
-            if tab.workspace_name == "style":
+            if tab.workspace_name and tab.workspace_name != "settings":
                 tab.workspace_controller.publish()
         self._start_page_changed(self.profile_manager.current_profile_name)
 
@@ -2747,14 +2745,7 @@ class BrowserWindow(QMainWindow):
                 tab.reload()
 
     def _customize_new_tab(self):
-        from ui.start_page_dialog import StartPageDialog
-
-        dialog = StartPageDialog(
-            self.profile_manager.registry.start_pages,
-            self.profile_manager.current_profile_name,
-            self,
-        )
-        dialog.exec()
+        return self._open_management("newtab-settings")
 
     def _start_news_changed(self, profile):
         if self._closing or profile != self.profile_manager.current_profile_name:
@@ -2790,19 +2781,7 @@ class BrowserWindow(QMainWindow):
         dialog.exec()
 
     def _manage_bookmarks(self):
-        from ui.bookmarks_dialog import BookmarksDialog
-
-        profile = self.profile_manager.current_profile_name
-
-        def open_url(url):
-            if self._closing or self.profile_manager.current_profile_name != profile:
-                raise ValueError("Bookmark display profile changed")
-            self._new_tab(url=url)
-
-        dialog = BookmarksDialog(
-            self.profile_manager.registry.start_pages, profile, self, open_url=open_url
-        )
-        dialog.exec()
+        return self._open_management("bookmarks")
 
     def _start_page_action(self, tab, url):
         if self._closing or tab not in self.tabs or page_name(tab.url()) is None:

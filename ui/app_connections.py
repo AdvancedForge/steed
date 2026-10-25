@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QLayout,
     QLineEdit,
@@ -27,6 +26,7 @@ from services.app_accounts import AccountError
 from services.connector_access import GROUP_LABELS
 from services.connector_recipes import MAX_RECIPE_BYTES, parse_recipe
 from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import InputDialog as QInputDialog
 from ui.recipe_review import RecipeReviewDialog
 from ui.task_approval import WrappedLabel
 

@@ -3,7 +3,6 @@
 import json
 import unittest
 from copy import deepcopy
-from unittest.mock import patch
 
 import qt_test_support
 import test_task_profiles as profiles
@@ -16,7 +15,6 @@ from browser_window import BrowserWindow
 from layout_components import PANEL_ACTIONS
 from layout_format import LAYOUT_EXAMPLE, PANEL_EXAMPLE, export_layout, parse_layout
 from layout_preferences import LayoutPreferences
-from ui.layout_dialog import LayoutDialog
 from ui.layout_panel import QuickActionsPanel
 from ui.layout_panel_editor import PanelEditor
 
@@ -231,8 +229,9 @@ class BrowserPanelTests(unittest.TestCase):
             self.assertEqual(second._layout_panels, [])
             return 0
 
-        with patch.object(LayoutDialog, "exec", cancel):
-            first._open_layout_settings()
+        tab = first._open_layout_settings()
+        dialog = tab.workspace_controller.source
+        dialog.done(cancel(dialog))
         self.assertEqual(first._layout_panels, [])
         self.assertIsNone(self.config.get("layout"))
 

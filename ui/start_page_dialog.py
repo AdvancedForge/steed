@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QTabWidget,
@@ -30,6 +29,7 @@ from services.start_pages import (
     image_data,
 )
 from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import MessageBox as QMessageBox
 
 LABELS = {
     "search": "Search bar",

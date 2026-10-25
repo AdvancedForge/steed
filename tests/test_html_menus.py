@@ -66,7 +66,7 @@ class HtmlMenuTests(unittest.TestCase):
         window = self.window()
         source = AdBlockDialog(window.adblock, window)
         host = self.present(source, window)
-        self.assertFalse(source.isVisible())
+        self.assertFalse(QDialog.isVisible(source))
         self.assertTrue(host.surface.profile.isOffTheRecord())
         key = self.control(host, source.exceptions)
         self.value(
@@ -149,7 +149,7 @@ class HtmlMenuTests(unittest.TestCase):
             source = create()
             with self.subTest(editor=source.windowTitle()):
                 host = self.present(source, window)
-                self.assertFalse(source.isVisible())
+                self.assertFalse(QDialog.isVisible(source))
                 self.assertEqual(
                     self.value(host, "document.getElementById('title').textContent"),
                     source.windowTitle(),
@@ -208,11 +208,6 @@ class HtmlMenuTests(unittest.TestCase):
         window = self.window()
         self.assertIs(type(window.menuBar()), QMenuBar)
         self.assertIs(window.address_bar.menu_btn.menu(), window.browser_menu)
-        with patch.object(QDialog, "exec", return_value=0) as native:
-            source = AdBlockDialog(window.adblock, window)
-            source.exec()
-        native.assert_called_once()
-        self.assertEqual(window._html_dialogs, [])
 
     def test_newtab_category_click_anchors_html_and_footer_opens_matching_settings(
         self,
@@ -287,6 +282,9 @@ class HtmlMenuTests(unittest.TestCase):
         window = self.window()
         tab, proxy = self.newtab(window)
         tab.setZoomFactor(1.5)
+        self.wait_for(
+            lambda: abs(self.value(proxy, "innerWidth") * 1.5 - tab.width()) < 3
+        )
         self.value(proxy, "document.querySelector('.browser-menu').open=true; true")
         rect = self.value(
             proxy,

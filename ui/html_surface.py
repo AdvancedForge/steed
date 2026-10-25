@@ -282,6 +282,8 @@ class HtmlSurface(QWidget):
         if self.disposed:
             return
         self.disposed = True
+        self._state = {}
+        self._last_payload = None
         self.ready = False
         self.timeout.stop()
         self.page.setWebChannel(None)

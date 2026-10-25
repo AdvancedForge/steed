@@ -7,7 +7,6 @@ from uuid import uuid4
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QPlainTextEdit,
     QPushButton,
@@ -16,6 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.data_panel_form import plain_label
+from ui.html_dialog import HtmlSettingsDialog
 
 
 class PanelInstruction(QWidget):
@@ -99,7 +99,7 @@ class PanelInstruction(QWidget):
         except (ValueError, KeyError, OSError, sqlite3.Error):
             self.notice.setText("Instruction unavailable; check the panel and profile.")
             return
-        dialog = QDialog(self)
+        dialog = HtmlSettingsDialog(self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.setWindowTitle("Send instruction to agent")
         dialog.resize(620, 450)

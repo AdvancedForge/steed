@@ -7,13 +7,13 @@ from unittest.mock import patch
 import test_archived_probes as archives
 import test_connectors as fixtures
 from PyQt6 import sip
-from PyQt6.QtWidgets import QMessageBox
 from qt_test_support import application
 
 from services.agent_tools import TOOLS_BY_NAME
 from services.connectors import ConnectorOutcome
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
+from ui.prompts import MessageBox as QMessageBox
 from ui.task_dialog import TaskDialog
 
 

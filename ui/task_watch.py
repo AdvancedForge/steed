@@ -7,7 +7,6 @@ from PyQt6.QtCore import QEvent, QObject, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -16,6 +15,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from ui.html_dialog import HtmlSettingsDialog
 
 
 class InputShield(QObject):
@@ -75,7 +76,7 @@ class InputShield(QObject):
             self.view.clearFocus()
 
 
-class TaskWatchDialog(QDialog):
+class TaskWatchDialog(HtmlSettingsDialog):
     def __init__(self, service, task_id, session_id, view, parent=None):
         super().__init__(parent)
         self.service, self.task_id, self.session_id = service, task_id, session_id

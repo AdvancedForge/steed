@@ -37,7 +37,26 @@ DEFAULT_SETTINGS = {
 }
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
 MAX_HTML_BYTES = 256 * 1024
-WORKSPACES = ("settings", "agents", "style")
+WORKSPACES = (
+    "settings",
+    "agents",
+    "style",
+    "cookies",
+    "downloads",
+    "bookmarks",
+    "history",
+    "library",
+    "connections",
+    "tasks",
+    "passwords",
+    "layout",
+    "newtab-settings",
+    "tab-groups",
+    "permissions",
+    "agent-setup",
+    "adblock",
+    "services",
+)
 
 
 def workspace_name(text):

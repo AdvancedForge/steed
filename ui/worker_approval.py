@@ -5,7 +5,6 @@ import sqlite3
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QDialog,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -14,10 +13,11 @@ from PyQt6.QtWidgets import (
 )
 
 from services.worker_bundle import environment
+from ui.html_dialog import HtmlSettingsDialog
 from ui.task_approval import app_description
 
 
-class WorkerApprovalDialog(QDialog):
+class WorkerApprovalDialog(HtmlSettingsDialog):
     def __init__(self, service, task, receipt, parent=None):
         super().__init__(parent)
         self.service, self.task_id, self.request_id = (

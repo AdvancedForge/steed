@@ -4,7 +4,6 @@ import difflib
 import json
 
 from PyQt6.QtWidgets import (
-    QDialog,
     QDialogButtonBox,
     QLabel,
     QPlainTextEdit,
@@ -12,8 +11,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui.html_dialog import HtmlSettingsDialog
 
-class AppReviewDialog(QDialog):
+
+class AppReviewDialog(HtmlSettingsDialog):
     def __init__(self, service, task, review, parent=None):
         super().__init__(parent)
         self.service, self.review = service, review
