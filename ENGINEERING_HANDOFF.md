@@ -2,7 +2,45 @@
 
 ## Start here
 
-**Agent health — latest checkpoint.** `services/conversation_health.py` maps
+**Conversation continuation — latest checkpoint.** `ui/conversation_recovery.py`
+owns the maintained HTML review for **Continue / hand off**. It snapshots the
+selected conversation, seeds only the local draft as the new instruction, and
+defaults history sharing off. Bounded recent history marks omissions and keeps
+UTF-8 boundaries; the complete preview must fit 8 KiB. Destinations are clipboard,
+another connected task or a newly launched Codex task. New-task startup must be
+verified before the one reviewed message is sent. Mark the send attempt before
+emitting service signals; recursive refreshes cannot resend. Original task history,
+drafts and grants are not moved or restored. Codex's ephemeral native thread is
+not persisted/resumed; the UI says so explicitly in the usage guide.
+
+Selection, profile/private transitions, sidebar detach/reload and review close
+invalidate the review. Close while starting a new runtime cancels only that new
+empty task. Store failures in signal callbacks invoke the existing fatal authority
+shutdown. An uncertain send stays disabled and explains how to inspect outcomes;
+startup failure feedback survives later service refreshes until the user edits or
+retries. The synthetic fixture adds `startup-hang` for cancellation coverage.
+Actual HTML tests wait for the rendered Send button to be enabled after changing
+native controller fields. **71 related checks / 27.267 s** and **9 final recovery
+checks / 21.067 s** passed. Full acceptance: **1,534 regressions / 332.054 s**.
+Real startup/render/shutdown and independent SDK/raw stdio + authenticated HTTP
+external-agent journeys passed. **13 final health/recovery checks / 21.361 s** passed
+after final status/text polish; log:
+`/tmp/steed-agent-reliability-final-controls.log`. Ruff lint/format (269 Python
+files), dependencies and whitespace passed. Logs:
+`/tmp/steed-agent-reliability-{full,startup,stdio,http}.log`. Synthetic previews:
+`/tmp/steed-agent-{health,recovery}-preview.png`. Two standalone attempts hit the
+known offscreen Qt profile-initialization crash, preserved in
+`/tmp/steed-agent-recovery-preview{,-retry}.log`; the successful fixture-first import
+retry is `/tmp/steed-agent-recovery-preview-final.log`. This does not establish an
+engine crash fix. Keep Qt runs serial and separate signed-in desktop acceptance.
+Tests: `test_conversation_recovery.py`, `test_agent_health.py`, plus existing runtime,
+sidebar and HTML suites. Logs: `/tmp/steed-agent-recovery-{final-focus,storage}.log`.
+Next daily-use work after acceptance: website action coverage and file-library
+friction. Persistent runtime resumption/cloud pairing need separate decisions;
+Google registration, password improvements and the broader HTML data bridge stay
+deferred.
+
+**Agent health — preceding checkpoint.** `services/conversation_health.py` maps
 connection/read facts and bounded failure metadata to presentation. Gateway
 rejections emit service.changed after journaling, so diagnostics are visible
 without waiting for unrelated activity. Sidebar messages carry delivery labels;

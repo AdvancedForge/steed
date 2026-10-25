@@ -79,6 +79,7 @@ window.steedUI = {render(next) {
   text("delivery", next.delivery);
   visible("progress", next.activity.busy);
   $("activity-dot").classList.toggle("working", next.activity.busy);
+  $("activity-dot").dataset.connection = next.connection.state;
   visible("error", !!next.error); text("error", next.error);
   visible("tool-failure", !!next.failure);
   text("failure-title", next.failure ? 'Last tool failure · ' + next.failure.title : '');

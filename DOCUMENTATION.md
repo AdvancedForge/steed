@@ -3663,6 +3663,34 @@ selected task's details; Dismiss hides that event locally until another failure.
 Diagnostics contain no request values, raw exceptions or credentials. Uncertain
 input outcomes direct you to inspect the website/receipts before another attempt.
 
+For an interrupted or ended conversation, choose **Continue / hand off…**:
+
+1. Write the new instruction; the original local draft is initially copied into
+   the editor. **Use last unread message** is explicit and does not assume that
+   earlier work had no effects.
+2. Optionally check **Include the reviewed recent conversation** and edit that
+   snapshot. History is unchecked by default. Long transcripts include a marked,
+   UTF-8-safe recent excerpt; files, browser contents and tool results are never
+   attached automatically. Review text for secrets.
+3. Choose a fresh Codex chat, another connected external agent, or copy for an
+   external agent/website chatbot. Inspect the exact message preview (8 KiB total).
+4. **Send reviewed continuation** shares once. A fresh Codex chat receives a new
+   Steed task and the message waits for its verified connection. **Copy reviewed
+   message** only uses the clipboard; paste and send in your chosen client.
+
+Other MCP clients must fetch queued messages through `conversation.read`. Steed
+does not claim that sending a continuation automatically wakes an arbitrary client.
+
+The old history/draft remains available. Old grants, live-tab handoffs and queued
+messages are not restored or resent. This is a reviewed continuation, not resuming
+the ephemeral native Codex thread. An active source task keeps running until you
+explicitly stop it. Failed startup explains the problem and sends
+nothing. Closing the review while connecting cancels its new, empty task. Profile
+changes, private browsing, source selection changes and sidebar reload invalidate
+the review. An uncertain send is never retried automatically; check the recipient's
+conversation and Receipts before preparing another attempt. Interrupted work may
+already have affected a website or external service.
+
 Choose **Agents → Agent Chat Tab** or **Open as tab** in the agent sidebar to move
 the same Steed conversation into a full browser tab. **Show sidebar** returns it
 to the dock. Sent messages, selected task and unsent draft survive the move;

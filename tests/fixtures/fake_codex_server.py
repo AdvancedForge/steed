@@ -25,6 +25,8 @@ for line in sys.stdin:
         continue
     method, params = request["method"], request.get("params", {})
     result = {}
+    if mode == "startup-hang" and method == "initialize":
+        continue
     if method == "initialize":
         result = {"userAgent": "codex_cli_rs/0.160.0"}
     elif method == "account/read":

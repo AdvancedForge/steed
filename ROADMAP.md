@@ -12,6 +12,36 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Reviewed conversation recovery and handoff — implemented and accepted.**
+**Continue / hand off** previews one new instruction, with optional editable recent
+history (unchecked by default). It can copy for website/personal agents, send to
+another connected external task, or start a fresh Codex chat and deliver once after
+its verified connection. Original history/drafts remain available; old permissions,
+queued prompts and uncertain actions are never automatically restored/replayed.
+Close during startup cancels only the newly created empty task; private/profile,
+source selection and sidebar reload invalidate the review. Failed startup remains
+explanatory; uncertain delivery disables another send. Text is bounded, UTF-8-safe
+and fully previewed. Codex threads remain ephemeral; persistent native-thread
+resumption and cloud pairing remain separate architecture decisions.
+Validation so far: **71 agent/runtime/HTML checks / 27.267 s**, plus **9 focused
+recovery checks / 21.067 s**, including storage-failure cleanup. Logs:
+`/tmp/steed-agent-recovery-{final-focus,storage}.log`.
+
+Full acceptance: **1,534 regressions / 332.054 s**. Real entry-point startup/local
+render/shutdown passed with Qt 6.11.2. Independent SDK/raw stdio and authenticated
+HTTP acceptance passed. **13 final health/recovery checks / 21.361 s** passed after
+status-color and explanatory-text polish. Log:
+`/tmp/steed-agent-reliability-final-controls.log`. Ruff
+lint/format (269 Python files), dependencies and whitespace passed. Full/smoke logs:
+`/tmp/steed-agent-reliability-{full,startup,stdio,http}.log`. Synthetic health and
+review previews were inspected at `/tmp/steed-agent-{health,recovery}-preview.png`.
+Two standalone preview attempts encountered the known offscreen Qt profile-init
+crash; the successful retry is `/tmp/steed-agent-recovery-preview-final.log`, with
+the original logs preserved. This milestone does not claim to resolve that Qt
+issue. Signed-in desktop/live-provider acceptance remains manual. Next: website
+action coverage and concrete file-library friction; persistent runtime resume,
+cloud pairing and the previously deferred architecture work remain separate.
+
 **Agent connection health and delivery — implemented.** The sidebar now separates
 transport health, runtime activity and message-read facts; generic MCP reads never
 imply thinking, work or completion. Managed queues distinguish pending acceptance
@@ -21,9 +51,8 @@ gateway validation/execution failures notify the UI and expose task-scoped,
 sanitized diagnostics with permission/receipt recovery links and local dismissal.
 The existing 88 sidebar/runtime/gateway/HTTP checks passed. Dedicated live-HTML and
 gateway checks are in `test_agent_health.py`; logs are
-`/tmp/steed-agent-health-{baseline,live,final}.log`. Next: reviewed continuations
-from interrupted conversations into a new chat or another external agent, without
-restoring old authority or automatically repeating earlier work.
+`/tmp/steed-agent-health-{baseline,live,final}.log`. Reviewed continuations are
+implemented in the subsequent checkpoint above.
 
 **HTML website-chat controls and compact navigation — implemented and accepted.**
 Website-chat sidebars now use the maintained HTML

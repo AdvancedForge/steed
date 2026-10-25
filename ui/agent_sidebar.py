@@ -47,6 +47,7 @@ class AgentSidebar(QDockWidget):
         self._context = 0
         self._choices = []
         self._request_dialogs = {}
+        self._recovery_dialog = None
         self._new_model = None
         self._send_result = {"context": -1, "version": -1}
         self._error = ""
@@ -102,6 +103,8 @@ class AgentSidebar(QDockWidget):
             return
         if task_id == self._task_id:
             return
+        if self._recovery_dialog is not None:
+            self._recovery_dialog.reject()
         self._task_id = task_id
         self._context += 1
         self._messages = {}
@@ -115,6 +118,8 @@ class AgentSidebar(QDockWidget):
             self._publish()
 
     def _reload_context(self):
+        if self._recovery_dialog is not None:
+            self._recovery_dialog.reject()
         self._context += 1
         self.refresh()
 
@@ -138,6 +143,7 @@ class AgentSidebar(QDockWidget):
             "cancel": self.cancel_task,
             "clear": self.clear_messages,
             "dismiss_failure": self.dismiss_failure,
+            "recover": self.recover_conversation,
             "library": self.open_library,
             "open_tab": lambda: self.change_display("_open_agent_tab"),
             "show_sidebar": lambda: self.change_display("_toggle_agent_sidebar"),
@@ -223,6 +229,8 @@ class AgentSidebar(QDockWidget):
         if self._private == private:
             return
         self.surface.conceal()
+        if self._recovery_dialog is not None:
+            self._recovery_dialog.reject()
         self._private = private
         self._context += 1
         if private:
@@ -448,11 +456,11 @@ class AgentSidebar(QDockWidget):
             ),
             "external": (
                 "External agent connected",
-                "Messages are delivered through Steed. This client's working state is not available.",
+                "Messages queue in Steed; this client must fetch them. Its working state is not reported.",
             ),
             "history": (
                 "Conversation ended",
-                "Saved messages are available below. Start a new chat to continue.",
+                "Saved messages and local drafts stay available. Use Continue / hand off to prepare a reviewed continuation.",
             ),
         }.get(
             state,
@@ -491,6 +499,19 @@ class AgentSidebar(QDockWidget):
         if failure is not None:
             self._dismissed_failures[self._task_id] = failure["sequence"]
             self.refresh()
+
+    def recover_conversation(self):
+        if not self.state.get("usable") or self._private or self._detached:
+            return
+        if self._recovery_dialog is not None:
+            self._recovery_dialog.raise_()
+            return
+        from ui.conversation_recovery import ConversationRecoveryDialog
+
+        dialog = ConversationRecoveryDialog(self)
+        self._recovery_dialog = dialog
+        dialog.finished.connect(lambda *_: setattr(self, "_recovery_dialog", None))
+        dialog.show()
 
     def _request_added(self, task_id, request_id, payload):
         if task_id == self._task_id and not self._private and self.isVisible():
@@ -636,6 +657,8 @@ class AgentSidebar(QDockWidget):
         if self._detached:
             return
         self._detached = True
+        if self._recovery_dialog is not None:
+            self._recovery_dialog.reject()
         for key, dialog in list(self._request_dialogs.items()):
             dialog.reject()
             if self.providers and key[0] in self.providers.chats:
