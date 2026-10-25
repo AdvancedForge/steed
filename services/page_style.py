@@ -58,6 +58,8 @@ def style_guide():
             ".form-group": "Settings form groups",
             ".workspace-page": "Management pages",
             "#workspace-nav": "Management page navigation",
+            "#workspace-picker": "Compact management page navigation",
+            ".compact-page": "HTML sidebar controls",
             ".table-wrap": "Scrollable results tables",
             ".table-paging": "Previous/next result controls",
             'body[data-page="cookies"]': "Example: style only the Cookies page",

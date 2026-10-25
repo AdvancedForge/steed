@@ -12,6 +12,37 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**HTML website-chat controls and compact navigation — implemented and accepted.**
+Website-chat sidebars now use the maintained HTML
+presenter for address/profile status and handoff controls. The original website
+engine, session and unsent draft survive sidebar/tab moves; controls receive no
+conversation content. Navigation/replacement/reload rotates control identities;
+profile/window cleanup clears state and disposes the offline control engine.
+Loading percentage and failure state are explicit, including a previously failed
+page moved into the dock. Management pages use a compact page dropdown below
+780 CSS pixels; editor tabs support arrows/Home/End with disabled sections skipped
+and focus retained. Empty panels hide unused selectors. Root CSS exposes the new
+compact navigation/sidebar selectors. Embedded Escape/close dismisses reusable
+sidebars, and identical cookie snapshots retain row identities/selection while
+changed data clears selection. Background panel updates preserve unsent form text
+and focus.
+
+Acceptance: **1,521 full regressions / 373.148 s**, plus **46 final HTML checks /
+26.002 s** covering reusable native close/HTML controls and focus preservation.
+Startup/local rendering/shutdown and SDK/raw external-client journeys over stdio
+and authenticated HTTP passed, including approval, takeover/return, conversations,
+linked panels and reviewed page/theme proposals. Ruff lint/format (265 Python
+files), dependencies and whitespace passed. Logs:
+`/tmp/steed-html-continuation-{accepted,startup,mcp-stdio,mcp-http,final-controls}.log`.
+Inspected synthetic previews: `/tmp/steed-html-{chat,narrow}-preview.png` and
+`/tmp/steed-html-panels-preview.png`. The initial full run exposed a redundant
+cookie-row rebuild and an unsynchronized viewport-resize test; the accepted run
+includes stable cookie rows and a wait for actual Chromium viewport changes.
+Normal signed-in desktop acceptance remains manual. Next: use these interfaces in
+daily workflows and address concrete findings; the broader authored-page data
+bridge, Qt replacement, Google production registration and password improvements
+remain deferred.
+
 **HTML data-panel tab and sidebar — implemented.** `steed:panels` and the compact
 sidebar share the existing panel controller, root theme, image previews, forms,
 instruction reviews and manual linked-source refresh. The sidebar can open the
@@ -21,8 +52,8 @@ panels. Tab and dock disposal release presentation pages before engine profiles.
 Validation: **106 targeted regressions / 35.699 s**, plus dedicated live-HTML
 checks for literal contents, revocation, profile isolation, reopening, form preview
 and explicit delivery. Logs: `/tmp/steed-panels-milestone.log` and
-`/tmp/steed-panels-html-final.log`. Next: website-chat HTML controls and responsive,
-keyboard and loading-state polish; the broader data bridge remains deferred.
+`/tmp/steed-panels-html-final.log`. Website-chat controls and responsive/keyboard
+polish are covered by the continuation above; the broader data bridge remains deferred.
 
 **HTML management pages and browser dialogs — owner-requested continuation
 (implemented and accepted).** The owner expanded the restyle to all
@@ -57,7 +88,8 @@ Real startup/local render/shutdown and both SDK/raw stdio + authenticated HTTP
 MCP smoke journeys passed. These include approval, live takeover/return, normal
 browsing, conversations, linked panels and exact reviewed page/theme changes.
 Smoke logs: `/tmp/steed-management-{startup,mcp-stdio,mcp-http}.log`.
-Next: daily-use polish and direct HTML data-panel/sidebar presentation. The broader
+The subsequent HTML panel and compact-sidebar checkpoints above complete that
+presentation work. The broader
 agent-authored data bridge and replacing Qt remain deferred; this milestone keeps
 existing Qt controllers behind maintained HTML.
 

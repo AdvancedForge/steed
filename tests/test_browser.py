@@ -598,6 +598,26 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(delete.call_args.args[0].name, "second")
         dialog.accept()
 
+    def test_cookie_enumeration_preserves_identical_rows_but_clears_changed_targets(
+        self,
+    ):
+        manager = self.window.cookie_manager
+        cookie = QNetworkCookie(b"stable", b"first")
+        cookie.setDomain(".row-fixture.example")
+        manager.cookies = [CookieInfo(cookie)]
+        dialog = CookieDialog(manager, self.window)
+        dialog.table.selectRow(0)
+        item = dialog.table.item(0, 0)
+        dialog.update_cookies([CookieInfo(QNetworkCookie(cookie))])
+        self.assertIs(dialog.table.item(0, 0), item)
+        self.assertTrue(dialog.table.selectedItems())
+        replacement = QNetworkCookie(cookie)
+        replacement.setValue(b"changed")
+        dialog.update_cookies([CookieInfo(replacement)])
+        self.assertFalse(dialog.table.selectedItems())
+        self.assertEqual(dialog.table.item(0, 2).text(), "changed")
+        dialog.accept()
+
     def test_exact_cookie_deletion_preserves_same_name_on_other_path(self):
         manager = self.window.cookie_manager
         store = manager.cookie_store

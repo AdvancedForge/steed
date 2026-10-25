@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.html_dialog import HtmlSettingsDialog
+from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
 
 WEB_CHATS = {
     "ChatGPT": "https://chatgpt.com/",
@@ -46,37 +46,66 @@ class WebChatDock(QDockWidget):
         self.setAllowedAreas(
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
-        self.setMinimumWidth(380)
+        self.setMinimumWidth(300)
         body = QWidget(self)
         self.body_layout = QVBoxLayout(body)
+        self.body_layout.setContentsMargins(0, 0, 0, 0)
+        self.controls = HtmlSettingsDialog(self)
+        self.controls.setWindowTitle("Website chat")
+        controls = QVBoxLayout(self.controls)
         self.address = QLabel()
         self.address.setTextFormat(Qt.TextFormat.PlainText)
         self.address.setWordWrap(True)
-        self.body_layout.addWidget(self.address)
+        self.address.setAccessibleName("Website chat address")
+        controls.addWidget(self.address)
+        self.status = QLabel("Open a website chat tab to begin.")
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.status.setProperty("htmlStatus", True)
+        self.status.setWordWrap(True)
+        controls.addWidget(self.status)
         note = QLabel(
-            "Normal website chat using this profile's sign-in. Website login does "
-            "not connect Steed MCP. Instructions are previewed; you send the message."
+            "Website sign-in · MCP access is separate. "
+            "Preview instructions here; send in the website."
         )
         note.setWordWrap(True)
-        self.body_layout.addWidget(note)
+        controls.addWidget(note)
         buttons = QHBoxLayout()
-        prompt = QPushButton("Share instructions…")
-        prompt.clicked.connect(self.share)
-        buttons.addWidget(prompt)
-        restore = QPushButton("Back to tab")
-        restore.clicked.connect(self.back_to_tab)
-        buttons.addWidget(restore)
-        self.body_layout.addLayout(buttons)
+        self.prompt = QPushButton("Share instructions…")
+        self.prompt.clicked.connect(self.share)
+        buttons.addWidget(self.prompt)
+        self.restore = QPushButton("Back to tab")
+        self.restore.clicked.connect(self.back_to_tab)
+        buttons.addWidget(self.restore)
+        controls.addLayout(buttons)
+        self.presentation = HtmlDialog(
+            self.controls,
+            window,
+            embedded=True,
+            compact=True,
+            header=False,
+            on_close=self.back_to_tab,
+        )
+        self.controls._html_host = self.presentation
+        self.presentation.setFixedHeight(200)
+        self.body_layout.addWidget(self.presentation)
         self.setWidget(body)
 
     def adopt(self, view):
         self.release()
         self.window._take_back_tab(view)
         self.view = view
+        self.presentation.reload()
         self.window.tab_layout.removeWidget(view)
         self.body_layout.addWidget(view, 1)
         view.urlChanged.connect(self.update_address)
+        view.loadStarted.connect(self._loading)
+        view.loadProgress.connect(self._progress)
+        view.loadFinished.connect(self._loaded)
         self.update_address(view.url())
+        if view.is_loading:
+            self._progress(view.load_progress)
+        else:
+            self._loaded(view.load_succeeded is not False)
         self.show()
         view.show()
 
@@ -84,11 +113,35 @@ class WebChatDock(QDockWidget):
         self.address.setText(
             url.toDisplayString(QUrl.UrlFormattingOption.RemoveUserInfo)
         )
+        self.prompt.setEnabled(self.view is not None and url.scheme() == "https")
+        self.restore.setEnabled(self.view is not None)
+        self.presentation.publish()
+
+    def _loading(self):
+        self.presentation.reload()
+        self._progress(0)
+
+    def _progress(self, percentage):
+        self.status.setText(f"Loading website · {percentage}%")
+        self.presentation.publish()
+
+    def _loaded(self, ok):
+        profile = self.window.profile_manager.current_profile_name
+        profile = "Incognito" if profile == "search" else "Profile: " + profile
+        self.status.setText(
+            ("Website ready" if ok else "Website could not load · reload its tab")
+            + " · "
+            + profile
+        )
+        self.presentation.publish()
 
     def release(self):
         view, self.view = self.view, None
         if view is not None and not sip.isdeleted(view):
             view.urlChanged.disconnect(self.update_address)
+            view.loadStarted.disconnect(self._loading)
+            view.loadProgress.disconnect(self._progress)
+            view.loadFinished.disconnect(self._loaded)
             self.body_layout.removeWidget(view)
             view.setParent(self.window.tab_container)
             self.window.tab_layout.addWidget(view)
@@ -96,6 +149,11 @@ class WebChatDock(QDockWidget):
                 0 <= self.window.current_tab_index < len(self.window.tabs)
                 and view is self.window.tabs[self.window.current_tab_index]
             )
+        self.address.clear()
+        self.status.setText("Open a website chat tab to begin.")
+        self.prompt.setEnabled(False)
+        self.restore.setEnabled(False)
+        self.presentation.reload()
         self.hide()
         return view
 
@@ -111,6 +169,10 @@ class WebChatDock(QDockWidget):
     def closeEvent(self, event):
         self.release()
         event.accept()
+
+    def dispose(self):
+        self.release()
+        self.presentation.dispose()
 
 
 class WebChatPromptDialog(HtmlSettingsDialog):

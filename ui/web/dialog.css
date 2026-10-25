@@ -22,12 +22,21 @@ body.workspace-page { display: grid; grid-template-columns: 190px minmax(0, 1fr)
 .workspace-page main { max-width: 1300px; margin: 0 auto; padding: 20px 28px; }
 .workspace-page .table-wrap { max-height: 65vh; }
 [data-footer=true] { position: sticky; bottom: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; z-index: 2; }
-@media(max-width: 780px) { body.workspace-page { grid-template-columns: 140px minmax(0, 1fr); } .workspace-page main { padding: 14px; } }
 .compact-page .dialog-header { padding: 12px; gap: 8px; }
 .compact-page .dialog-header h1 { font-size: 16px; }
 .compact-page main { padding: 10px 12px 18px; }
 .compact-page .form-group { gap: 7px; }
 .compact-page .control { min-width: 0; }
+.compact-page button { padding: 7px 9px; font-size: 13px; }
 .compact-page .table-wrap { max-height: 45vh; }
+#workspace-picker { display: none; max-width: 100%; margin-top: 8px; }
+@media(max-width: 780px) {
+  body.workspace-page { display: block; }
+  .workspace-page #workspace-nav { display: none; }
+  .workspace-page #workspace-picker { display: block; }
+  .workspace-page .dialog-header > div { min-width: 0; flex: 1; }
+  .workspace-page .dialog-header { padding: 12px; gap: 12px; }
+  .workspace-page main { padding: 12px; }
+}
 
 .form-group > div { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; } .form-group h2 { width: 100%; font-size: 16px; margin-top: 8px; }

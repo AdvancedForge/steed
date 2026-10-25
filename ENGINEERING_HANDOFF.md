@@ -2,6 +2,55 @@
 
 ## Start here
 
+**Website-chat HTML and compact navigation — latest continuation.**
+`WebChatDock` embeds an `HtmlSettingsDialog` controller in compact, headerless
+`HtmlDialog`. The live website view remains a separate sibling below it, with its
+original page/profile; it never receives the HTML bridge. Keep adopt/release
+identity rotation and signal disconnects. Release clears the address/status before
+profile reuse; BrowserWindow disposes the controls before profile destruction.
+Loading and error status has a polite live region. BrowserTab retains the last
+load result so moving an already-failed page does not claim success. Toolbar reload
+recreates only the local controls and cannot repeat a handoff. Actual-HTML checks
+are in `test_html_web_chat.py`.
+
+Embedded presenters route both DOM and native fallback Escape/close through their
+dismissal callback; explicit `dispose()` still ends the source. This prevents a
+temporary interface failure from permanently closing a reusable dock. Real HTML
+form coverage also checks that background artifact updates preserve unsent text
+and document focus. Cookie controllers skip identical snapshots to preserve HTML
+row identities; actual changes clear selection before rebuilding. The live-cookie
+regression now selects through HTML. Resize tests must use the presenter's current
+dimensions and wait for Chromium's viewport update; hidden controller dimensions
+and one `processEvents()` do not establish that the displayed viewport changed.
+
+The management rail becomes `#workspace-picker` below 780 CSS pixels. Navigation
+uses the same reviewed internal-page command and never navigates ordinary website
+engines into a bridge. Generic tabs now have tablist/tab/tabpanel semantics,
+arrow/Home/End navigation, disabled-section skipping and focus restoration. The
+style guide publishes `#workspace-picker`/`.compact-page`. Dedicated regressions
+in `test_management_pages.py` verify real narrow rendering/navigation and keyboard
+selection. Acceptance: **1,521 full regressions / 373.148 s**; the initial focused
+58-check run and subsequent 41-check timing/input regression run passed too. Real
+startup/render/shutdown and SDK/raw stdio + authenticated HTTP MCP journeys passed.
+These include user approvals, live takeover/return, ordinary browsing,
+conversations, linked panels and exact reviewed page/theme changes. Ruff
+lint/formatting (265 Python files), dependencies and whitespace passed. Final
+control checks passed **46 tests / 26.002 s** and are logged separately in
+`/tmp/steed-html-continuation-final-controls.log`; full/smoke logs are
+`/tmp/steed-html-continuation-{accepted,startup,mcp-stdio,mcp-http}.log`.
+Inspected synthetic previews are `/tmp/steed-html-{chat,narrow}-preview.png` and
+`/tmp/steed-html-panels-preview.png`. The first full run's two failures are preserved
+in `/tmp/steed-html-continuation-full.log`; the accepted run includes cookie row
+stability and an actual viewport-resize wait. Keep Qt runs serial and use only
+temporary profiles; normal signed-in desktop acceptance remains manual.
+
+**Next engineering work:** run normal signed-in desktop acceptance of these
+interfaces (real website sessions are intentionally outside automated fixtures),
+then address concrete daily-use findings. A broader read-only bridge for authored
+HTML dashboards remains roadmap work with lower priority. Qt replacement, Google
+production registration and password improvements remain deferred. Preserve external-agent
+support and existing permission/backend contracts when polishing the presentation.
+
 **HTML panels — October 25 continuation.** `steed:panels` is now a profile-local
 management tab. `DataPanelController(HtmlSettingsDialog)` holds the former dock's
 panel model/actions; `DataPanelDock` embeds `HtmlDialog(..., embedded=True,
@@ -16,7 +65,7 @@ passed 106 checks in 35.699 s; see `/tmp/steed-panels-milestone.log` and the ded
 `/tmp/steed-panels-html-final.log`. Continue with website-chat controls, keeping the
 live website engine separate from offline HTML, then responsive/keyboard polish.
 
-**HTML management pages and browser dialogs — October 25 (current checkpoint).** The owner now requests HTML for all browser management
+**HTML management pages and browser dialogs — October 25 (earlier checkpoint).** The owner now requests HTML for all browser management
 popups, superseding the earlier New-Tab-only restriction on editor presentation.
 Desktop menus still behave as native menus; their commands now open HTML tabs.
 
@@ -77,7 +126,7 @@ Desktop menus still behave as native menus; their commands now open HTML tabs.
   submission, conversations, linked panels and reviewed page/theme proposals.
   Authenticated HTTP MCP smoke passed too. Smoke logs:
   `/tmp/steed-management-{startup,mcp-stdio,mcp-http}.log`.
-- Next: direct HTML data-panel/sidebar content and daily-use polish. QDockWidget
+- The subsequent checkpoints above add HTML panels/chat and daily-use polish. QDockWidget
   chrome, browser toolbar/menus and normal website engines remain Qt; no Qt removal,
   connector runtime changes or broader agent-authored app bridge was introduced.
 

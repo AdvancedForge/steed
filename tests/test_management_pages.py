@@ -8,7 +8,15 @@ import test_html_menus as fixtures
 import test_task_profiles as task_fixtures
 from PyQt6.QtCore import QTimer, QUrl
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtWidgets import QDialog, QLabel, QTableWidget, QTableWidgetItem, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QDialog,
+    QLabel,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from services.start_pages import WORKSPACES, workspace_name
 from ui.management_pages import PAGES
@@ -35,6 +43,65 @@ class ManagementPageTests(unittest.TestCase):
         host = tab.workspace_controller
         self.ready(host)
         return window, tab, host
+
+    def test_narrow_page_uses_compact_navigation_and_keeps_content_width(self):
+        window, tab, host = self.opened("history")
+        window.resize(560, 600)
+        self.wait_for(lambda: self.value(host, "innerWidth < 620"))
+        self.assertEqual(
+            self.value(
+                host,
+                "getComputedStyle(document.getElementById('workspace-nav')).display",
+            ),
+            "none",
+        )
+        self.assertNotEqual(
+            self.value(
+                host,
+                "getComputedStyle(document.getElementById('workspace-picker')).display",
+            ),
+            "none",
+        )
+        self.value(
+            host,
+            "const picker=document.getElementById('workspace-picker'); picker.value='panels'; picker.dispatchEvent(new Event('change')); true",
+        )
+        self.wait_for(
+            lambda: window.tabs[window.current_tab_index].workspace_name == "panels"
+        )
+        self.assertIn(tab, window.tabs)
+
+    def test_keyboard_tabs_skip_disabled_sections_and_keep_visible_focus(self):
+        from ui.html_dialog import HtmlSettingsDialog
+
+        window = self.window()
+        source = HtmlSettingsDialog(window)
+        layout = QVBoxLayout(source)
+        tabs = QTabWidget()
+        for title in ("First", "Unavailable", "Last"):
+            tabs.addTab(QWidget(), title)
+        tabs.setTabEnabled(1, False)
+        layout.addWidget(tabs)
+        source.show()
+        host = source.presentation_host()
+        self.ready(host)
+        self.value(
+            host,
+            "const tab=document.querySelector('[role=tab][aria-selected=true]'); tab.focus(); tab.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowRight', bubbles:true})); true",
+        )
+        self.wait_for(lambda: tabs.currentIndex() == 2)
+        self.wait_for(
+            lambda: self.value(
+                host,
+                "document.activeElement.textContent === 'Last' && document.activeElement.getAttribute('role') === 'tab'",
+            )
+        )
+        self.value(
+            host,
+            "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key:'Home', bubbles:true})); true",
+        )
+        self.wait_for(lambda: tabs.currentIndex() == 0)
+        source.reject()
 
     def test_every_management_route_renders_html_without_native_controller_window(self):
         window = self.window()
@@ -90,12 +157,11 @@ class ManagementPageTests(unittest.TestCase):
                 host, "document.body.textContent.includes('task_cookie')"
             )
         )
-        row = next(
-            index
-            for index, cookie in enumerate(source.displayed_cookies)
-            if cookie.name == "task_cookie"
+        self.value(
+            host,
+            "[...document.querySelectorAll('tbody tr')].find(row => row.textContent.includes('task_cookie')).click(); true",
         )
-        source.table.selectRow(row)
+        self.wait_for(lambda: bool(source.table.selectedItems()))
         with patch(
             "ui.cookie_dialog.QMessageBox.question",
             return_value=MessageBox.StandardButton.Yes,

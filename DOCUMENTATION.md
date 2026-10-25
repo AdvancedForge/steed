@@ -463,6 +463,7 @@ session restore:
 | `steed:connections` | Accounts, connector recipes and reusable access settings |
 | `steed:services` | Browse packaged connectors and open an exact recipe review |
 | `steed:tasks` | Agent tasks, requests, grants, results, packages and reviews |
+| `steed:panels` | Profile dashboards, linked-source refresh, reviewed forms and agent instructions |
 | `steed:passwords` | KeePassXC connection, login selection, filling and saving |
 | `steed:layout` | Preview/save/cancel browser placement and named layouts |
 | `steed:newtab-settings` | Built-in start-page sections and custom New Tab/Welcome HTML |
@@ -471,7 +472,12 @@ session restore:
 | `steed:agent-setup` | External-client setup and explicit local-access toggle |
 | `steed:adblock` | Filter-list updates, blocking preference and exceptions |
 
-The navigation rail groups browsing, customization and agent tools. Opening an
+The navigation rail groups browsing, customization and agent tools. Below 780 CSS
+pixels, a **Browser page** dropdown replaces the rail to keep content usable.
+Tabbed editors support Left/Right arrows and Home/End, skip unavailable sections,
+and preserve focus on the selected tab. These selectors can be customized through
+`steed:style`: `#workspace-nav`, `#workspace-picker` and `.compact-page` (HTML
+sidebar controls). Opening an
 existing page selects its tab. Headers distinguish profile-local data from
 browser-wide management. History uses the existing most-recent-first collection;
 opening internal pages does not add them to history. Bookmark Enter/double-click
@@ -482,7 +488,9 @@ bookmarks retain their existing session-only behavior.
 
 Results are paged in groups of up to 500 rows, in addition to any existing
 backend paging. Changing the results page clears selection; stale row targets
-cannot act on replacement records. Hidden tabs pause presentation polling and
+cannot act on replacement records. Repeated identical cookie snapshots preserve
+rows and selection; changed cookie data clears selection before replacing rows.
+Hidden tabs pause presentation polling and
 refresh when shown. Source operations, such as an already-started file import,
 retain their own lifecycle. Closing/navigating away cancels a layout preview;
 Save keeps the existing conflict/merge rules. Reload retries a page whose backend
@@ -3655,7 +3663,12 @@ tabs using the current profile's ordinary cookies and sign-in. Open another
 HTTPS chat website normally to use it too. Choose **Current tab in chat sidebar**
 to move that exact page beside your browsing. **Back to tab**, or selecting its
 existing tab, returns it without reloading or copying its conversation. Changing
-profiles closes the old profile's chat view. Private website chats use the
+profiles closes the old profile's chat view. Its address, profile/loading status,
+**Share instructions…** and **Back to tab** controls now use themed, offline HTML.
+The website stays in its original profile's separate engine. Only its displayed
+address/status enter the controls; its conversation and draft are not read.
+Changing websites or reloading the controls invalidates queued control actions;
+interface recovery never replays sharing or reloads the website. Private website chats use the
 incognito profile; a provider's server-side retention still applies.
 
 To pass instructions:

@@ -33,9 +33,15 @@ class CookieDialog(HtmlSettingsDialog):
         manager.load_all_cookies()
 
     def update_cookies(self, cookies):
+        unchanged = len(cookies) == len(self.cookies) and all(
+            before.cookie == after.cookie
+            for before, after in zip(self.cookies, cookies, strict=True)
+        )
         self.cookies = cookies
         self.status.setText(self.manager.status)
-        self.filter_cookies(self.filter_input.text())
+        # Repeated enumeration must not replace row identities during a click.
+        if not unchanged:
+            self.filter_cookies(self.filter_input.text())
 
     def setup_ui(self) -> None:
         """Set up the UI."""
@@ -95,6 +101,7 @@ class CookieDialog(HtmlSettingsDialog):
             cookies = self.cookies
         self.displayed_cookies = list(cookies)
 
+        self.table.clearSelection()
         self.table.setRowCount(len(cookies))
 
         for row, cookie_info in enumerate(cookies):

@@ -117,6 +117,7 @@ class HtmlDialog(QDialog):
         workspace=None,
         embedded=False,
         compact=False,
+        header=True,
         on_close=None,
     ):
         flags = (
@@ -127,6 +128,7 @@ class HtmlDialog(QDialog):
         super().__init__(owner, flags)
         self.workspace = workspace
         self.compact = compact
+        self.header = header
         self.on_close = on_close
         self.source, self.owner = source, owner
         source.hide()
@@ -301,7 +303,9 @@ class HtmlDialog(QDialog):
                 document = QTextDocument()
                 document.setHtml(text)
                 text = document.toPlainText()
-            node.update(kind="label", text=text)
+            node.update(
+                kind="label", text=text, status=bool(widget.property("htmlStatus"))
+            )
         elif isinstance(widget, QLineEdit):
             secret = widget.echoMode() != QLineEdit.EchoMode.Normal
             node.update(
@@ -462,6 +466,7 @@ class HtmlDialog(QDialog):
                 "error": self.error,
                 "workspace": self.workspace,
                 "compact": self.compact,
+                "header": self.header,
                 "profile": self.owner.profile_manager.current_profile_name,
                 "shared": self.workspace in SHARED_PAGES,
                 "dark": self.owner.profile_manager.registry.page_style.dark(
@@ -668,6 +673,19 @@ class HtmlDialog(QDialog):
     def dispose(self):
         self.reject()
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape and self.on_close is not None:
+            self.on_close()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def closeEvent(self, event):
+        if self.on_close is not None and not self.closed:
+            # The callback owns dismissal of a reusable containing dock. Letting
+            # Qt also close this child would keep it hidden when the dock reopens.
+            event.ignore()
+            self.on_close()
+            return
         self.reject()
         event.accept()

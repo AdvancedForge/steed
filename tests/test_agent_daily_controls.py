@@ -159,8 +159,11 @@ class PrivateComputerTests(unittest.TestCase):
             )
         self.assertEqual(outside.exception.code, "invalid_coordinates")
         window = self.service._watchers[session]
-        window.resize(window.width() + 100, window.height() + 100)
-        self.app.processEvents()
+        presenter = window.presentation_host() or window
+        window.resize(presenter.width() + 100, presenter.height() + 100)
+        # Native geometry and Chromium's viewport update on separate event turns.
+        previous = [image["viewport"][key] for key in ("clientWidth", "clientHeight")]
+        self.wait_for(lambda: self.value(page, "[innerWidth, innerHeight]") != previous)
         with self.assertRaises(PageInspectionError) as stale:
             self.command(
                 "page.click",

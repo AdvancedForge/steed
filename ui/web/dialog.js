@@ -1,5 +1,10 @@
 let state = null, bridge = null, sequence = 0, context = null, seen = new Set();
 const nodes = new Map(), $ = id => document.getElementById(id);
+const workspaceGroups = [
+  ['Browse', [['history','History'],['bookmarks','Bookmarks'],['downloads','Downloads'],['cookies','Cookies'],['passwords','Passwords'],['library','Files']]],
+  ['Customize', [['settings','Settings'],['style','Style'],['layout','Layout'],['newtab-settings','Start pages'],['tab-groups','Tab groups'],['adblock','Ad blocking'],['permissions','Website permissions']]],
+  ['Agents', [['agents','Conversations'],['tasks','Tasks & permissions'],['panels','Data panels'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
+];
 function command(action, id, value, extra = {}) {
   if (!bridge || !state) return;
   bridge.dispatch(JSON.stringify({generation: STEED_GENERATION, context, sequence: ++sequence, action, id, value, ...extra}));
@@ -49,6 +54,7 @@ function update(entry, node) {
     element.alt = node.text;
   } else if (node.kind === 'label' || node.kind === 'button') {
     element.textContent = (node.checkable ? (node.checked ? '✓ ' : '○ ') : '') + node.text;
+    if (node.status) { element.setAttribute('role', 'status'); element.setAttribute('aria-live', 'polite'); }
     if (node.checkable) element.setAttribute('aria-pressed', node.checked);
   } else if (['input','text','number'].includes(node.kind)) {
     if (document.activeElement !== element && element.value !== String(node.value)) element.value = node.value;
@@ -71,8 +77,29 @@ function update(entry, node) {
   else if (node.kind === 'tabs') {
     const key = JSON.stringify([node.labels, node.selected, node.tab_enabled]);
     if (entry.tabs !== key) {
+      const restoreFocus = entry.nav.contains(document.activeElement);
       entry.nav.replaceChildren();
-      node.labels.forEach((name, index) => { const button = document.createElement('button'); button.textContent = name; button.disabled = !node.tab_enabled[index]; button.setAttribute('aria-selected', index === node.selected); button.onclick = () => command('choose', node.id, index); entry.nav.append(button); });
+      entry.nav.setAttribute('role', 'tablist');
+      node.labels.forEach((name, index) => {
+        const button = document.createElement('button'); button.textContent = name;
+        button.disabled = !node.tab_enabled[index]; button.setAttribute('role', 'tab');
+        button.id = 'tab-' + node.id + '-' + index;
+        button.tabIndex = index === node.selected ? 0 : -1;
+        button.setAttribute('aria-controls', 'panel-' + node.id);
+        button.setAttribute('aria-selected', index === node.selected);
+        button.onclick = () => command('choose', node.id, index);
+        button.onkeydown = event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const enabled = node.labels.map((_, i) => i).filter(i => node.tab_enabled[i]);
+          const target = event.key === 'Home' ? enabled[0] : event.key === 'End' ? enabled[enabled.length - 1] : enabled[(enabled.indexOf(index) + (event.key === 'ArrowRight' ? 1 : enabled.length - 1)) % enabled.length];
+          if (target !== undefined) command('choose', node.id, target);
+        };
+        entry.nav.append(button);
+      });
+      entry.body.id = 'panel-' + node.id; entry.body.setAttribute('role', 'tabpanel');
+      entry.body.setAttribute('aria-labelledby', 'tab-' + node.id + '-' + node.selected);
+      if (restoreFocus) entry.nav.children[node.selected]?.focus();
       entry.tabs = key;
     }
     children(entry.body, node.children || []);
@@ -125,26 +152,32 @@ window.steedUI = {render(next) {
   state = next; document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
   document.body.classList.toggle('workspace-page', !!next.workspace);
   document.body.classList.toggle('compact-page', !!next.compact);
+  document.querySelector('.dialog-header').hidden = next.header === false;
   document.body.dataset.page = next.workspace || 'dialog';
   $('workspace-nav').hidden = !next.workspace;
+  $('workspace-picker').hidden = !next.workspace;
   $('scope').hidden = !next.workspace;
   $('scope').textContent = next.shared ? 'Browser-wide · viewing ' + (next.profile === 'search' ? 'Incognito' : next.profile) : next.profile === 'search' ? 'Incognito · temporary session' : 'Profile · ' + next.profile;
   if (next.workspace && $('workspace-nav').dataset.page !== next.workspace) {
     const nav = $('workspace-nav'); nav.replaceChildren(); nav.dataset.page = next.workspace;
-    for (const [heading, entries] of [
-      ['Browse', [['history','History'],['bookmarks','Bookmarks'],['downloads','Downloads'],['cookies','Cookies'],['passwords','Passwords'],['library','Files']]],
-      ['Customize', [['settings','Settings'],['style','Style'],['layout','Layout'],['newtab-settings','Start pages'],['tab-groups','Tab groups'],['adblock','Ad blocking'],['permissions','Website permissions']]],
-      ['Agents', [['agents','Conversations'],['tasks','Tasks & permissions'],['panels','Data panels'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
-    ]) {
+    $('workspace-picker').replaceChildren();
+    for (const [heading, entries] of workspaceGroups) {
       const title = document.createElement('h2'); title.textContent = heading; nav.append(title);
-      for (const [page, name] of entries) { const button = document.createElement('button'); button.textContent = name; button.setAttribute('aria-current', page === next.workspace ? 'page' : 'false'); button.onclick = () => command('workspace', null, page); nav.append(button); }
+      const group = document.createElement('optgroup'); group.label = heading;
+      for (const [page, name] of entries) {
+        const button = document.createElement('button'); button.textContent = name; button.setAttribute('aria-current', page === next.workspace ? 'page' : 'false'); button.onclick = () => command('workspace', null, page); nav.append(button);
+        const option = document.createElement('option'); option.value = page; option.textContent = name; group.append(option);
+      }
+      $('workspace-picker').append(group);
     }
   }
+  if (document.activeElement !== $('workspace-picker')) $('workspace-picker').value = next.workspace;
   $('title').textContent = next.title; $('error').textContent = next.error; $('error').hidden = !next.error;
   seen = new Set(); children($('controls'), next.children);
   for (const [id, entry] of nodes) if (!seen.has(id)) { entry.list?.remove(); nodes.delete(id); }
   return true;
 }};
 $('close').onclick = () => command('close');
+$('workspace-picker').onchange = event => command('workspace', null, event.target.value);
 document.addEventListener('keydown', event => { if (event.key === 'Escape') command('close'); });
 new QWebChannel(qt.webChannelTransport, channel => { bridge = channel.objects.interface; bridge.ready(STEED_GENERATION); });

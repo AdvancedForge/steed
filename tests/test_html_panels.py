@@ -7,6 +7,8 @@ import test_data_panel_inputs as inputs
 import test_html_menus as html
 import test_panel_accounts as accounts
 import test_panel_library as library
+from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QDialog
 
 
@@ -91,6 +93,18 @@ class HtmlPanelTests(unittest.TestCase):
         self.assertFalse(host.closed)
         window._toggle_data_panels(True)
         self.ready(host)
+        # Escape from the native reload fallback must hide, not dispose, the dock.
+        QTest.keyClick(host, Qt.Key.Key_Escape)
+        self.assertFalse(dock.isVisible())
+        self.assertFalse(host.closed)
+        window._toggle_data_panels(True)
+        self.ready(host)
+        host.close()
+        self.assertFalse(dock.isVisible())
+        self.assertFalse(host.closed)
+        window._toggle_data_panels(True)
+        self.ready(host)
+        self.assertTrue(host.isVisible())
         self.click(host, dock.open_page)
         self.wait_for(lambda: any(t.workspace_name == "panels" for t in window.tabs))
         window.close()
@@ -116,6 +130,7 @@ class HtmlPanelFormTests(unittest.TestCase):
     request = inputs.PanelInputTests.request
     wait_for = inputs.PanelInputTests.wait_for
     task = inputs.PanelInputTests.task
+    artifact = inputs.PanelInputTests.artifact
     window = inputs.PanelInputTests.window
     approve = inputs.PanelInputTests.approve
     proposal = inputs.PanelInputTests.proposal
@@ -124,6 +139,39 @@ class HtmlPanelFormTests(unittest.TestCase):
     value = html.HtmlMenuTests.value
     control = html.HtmlMenuTests.control
     click = html.HtmlMenuTests.click
+
+    def test_background_draft_update_preserves_html_input_value_and_focus(self):
+        task = self.task()
+        artifact = self.artifact(task)
+        self.approve(self.proposal(task, artifact))
+        self.service.external_connection(task.task_id, True)
+        window = self.window()
+        window._toggle_data_panels(True)
+        host = window.data_panels_dock.presentation
+        self.ready(host)
+        form = host.source.scroll.widget().displays["preferences"]
+        token = self.control(host, form.inputs["focus"])
+        self.value(
+            host,
+            f"const e=document.querySelector('[data-control=\"{token}\"]'); "
+            'e.focus(); e.value="UNSENT_HTML_VALUE"; e.dispatchEvent(new Event("input")); true',
+        )
+        self.wait_for(lambda: form.inputs["focus"].text() == "UNSENT_HTML_VALUE")
+        replacement = self.artifact(task, "REPLACEMENT_SUMMARY")
+        self.command(
+            "panel.publish",
+            task_id=task.task_id,
+            request_id="inputs",
+            update_id="update",
+            expected_revision=0,
+            bindings=[{"id": "summary", "artifact_id": replacement.artifact_id}],
+        )
+        self.ready(host)
+        self.assertEqual(
+            self.value(host, "document.activeElement.value"), "UNSENT_HTML_VALUE"
+        )
+        self.assertIs(host.source.scroll.widget().displays["preferences"], form)
+        self.assertEqual(self.service.messages.read(task.task_id)["messages"], [])
 
     def test_html_form_requires_preview_and_explicit_send_and_does_not_replay(self):
         task, _ = self.enabled()

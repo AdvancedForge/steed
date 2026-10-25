@@ -323,6 +323,8 @@ class DataPanelController(HtmlSettingsDialog):
             except (ValueError, sqlite3.Error, OSError):
                 rows = []
         self._rows = rows
+        self.selector.setVisible(bool(rows))
+        self.remove_button.setVisible(bool(rows))
         self.selector.blockSignals(True)
         self.selector.clear()
         for receipt in rows:

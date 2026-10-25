@@ -179,6 +179,7 @@ class BrowserTab(QWebEngineView):
         self.workspace_controller = None
         self.load_progress = 100
         self.is_loading = False
+        self.load_succeeded = None
         self.tab_id = uuid4().hex
         # Runtime references must stay distinct when windows restore saved IDs.
         self.agent_tab_id = uuid4().hex
@@ -1817,6 +1818,7 @@ class BrowserWindow(QMainWindow):
         if self._closing or tab not in self.tabs:
             return
         tab.is_loading = False
+        tab.load_succeeded = ok
         if tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
             self.find_bar.page_loaded()
@@ -2194,6 +2196,8 @@ class BrowserWindow(QMainWindow):
         if self.data_panels_dock is not None:
             self.data_panels_dock.refresh()
             self.data_panels_dock.dispose()
+        if self.web_chat_dock is not None:
+            self.web_chat_dock.dispose()
         if self.file_library_dialog is not None:
             self.file_library_dialog.reject()
         if self.agent_sidebar is not None:
