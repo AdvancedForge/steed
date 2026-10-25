@@ -2,6 +2,48 @@
 
 ## Start here
 
+**Website editor coverage — latest increment.** `page_inspection.js` now emits
+`kind="editable"` descriptors while pruning their contents/descendants. Restricted,
+child-frame and shadow-root editors are still observation-only. Explicit main-frame live
+editors accept `enter` through the existing read/edit path: focus/select native
+contents, Chromium insertText/delete, return only change/match facts. Native editing
+can preserve prior formatting; literal inserted markup is escaped text, not nodes.
+Tests verify multiline input, real input events/undo, value/journal omission,
+read/readonly/disabled gates, dynamic controls, stale user edits, shadow omissions
+and dispatch-time focus redirects. `PageInspector.input_request` admits the new
+kind; operations/permissions remain checked. Inspection guidance also describes
+partial unsupported coverage and treats only enabled writable operations as usable.
+The final follow-up uses actual isContentEditable semantics: static false wrappers
+retain ordinary text/control discovery, while false islands nested in a real
+editor remain pruned and cannot leak through accessible references. Child-frame
+editor entry is explicitly unavailable until its own acceptance; metadata remains
+observable without contents. Gateway/sidebar diagnostics explain unsupported,
+uneditable and redirected-focus errors without suggesting unnecessary grants.
+The 91-check inspection/action/live suite passed in 46.378 s and final focused
+coverage passed 93 checks. **Full acceptance: 1,543 tests / 411.981 s**, clean serial
+run. Real startup/local render/shutdown and SDK/raw stdio plus authenticated HTTP
+smoke passed. Ruff lint/format (270 Python files), dependencies and
+whitespace passed. Logs: `/tmp/steed-live-editors-{accepted,final,startup,stdio,http}.log`.
+The initial broad run failed only the Undo fixture: test Undo after trusted Take
+Back, activating the window, focusing the editor and waiting for its native Undo
+action, then wait for the renderer result. Do not test user Undo while the agent
+still owns the tab. The first run is preserved in `/tmp/steed-live-editors-full.log`.
+One intermediate focused process briefly overlapped another; final acceptance is
+serial. Signed-in desktop/provider compatibility still needs manual acceptance.
+Next coverage audit: specialized native input/multiple-select operation metadata,
+role/custom controls, and separately accepted frame/open-shadow action support.
+
+**Chatbot relay direction:** the owner proposed making chatbot responses into
+structured executable tasks with user permission. An asynchronous question asks
+whether to start with pasted/reviewed JSON or direct reading from an enabled chat
+tab; no answer yet. Continue independent website work while that choice is open.
+The reusable design in DOCUMENTATION.md uses the existing tool catalogue, a
+task-bound executor and a reviewed request/result loop. It requires one-use request
+identities, source/destination binding, clear data-sharing consent, existing grant/
+receipt controls and no automatic replay of uncertain operations. It is a plan,
+not an implemented parser/executor or authorization to scrape any chat tab. Keep
+the choice and next implementation milestone explicit when resuming.
+
 **Conversation continuation — latest checkpoint.** `ui/conversation_recovery.py`
 owns the maintained HTML review for **Continue / hand off**. It snapshots the
 selected conversation, seeds only the local draft as the new instruction, and

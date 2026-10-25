@@ -178,13 +178,22 @@
                     !node.getClientRects().length || style.visibility !== "visible") return fail("target_not_editable");
                 const tag = node.tagName.toLowerCase(), type = node.type;
                 if (request.operation === "enter") {
-                    if (!(tag === "textarea" || (tag === "input" && ["text", "search", "email", "url", "tel"].includes(type))))
+                    const editor = state.live && win === window && node.isContentEditable && node.hasAttribute("contenteditable") &&
+                        !["INPUT", "TEXTAREA", "SELECT", "OPTION"].includes(node.tagName) && node.getRootNode() === doc;
+                    if (!(editor || tag === "textarea" || (tag === "input" && ["text", "search", "email", "url", "tel"].includes(type))))
                         return fail("control_unsupported");
-                    const before = node.value;
-                    node.focus({preventScroll: true}); node.select();
+                    const before = editor ? node.innerText : node.value;
+                    node.focus({preventScroll: true});
+                    if (editor) {
+                        if (doc.activeElement !== node) return fail("focus_unavailable");
+                        const range = doc.createRange(), selection = doc.getSelection();
+                        if (!selection) return fail("focus_unavailable");
+                        range.selectNodeContents(node); selection.removeAllRanges(); selection.addRange(range);
+                    } else node.select();
                     if (doc.activeElement !== node) return fail("focus_unavailable");
                     const accepted = doc.execCommand(request.text ? "insertText" : "delete", false, request.text);
-                    const changed = node.value !== before, matches = node.value === request.text;
+                    const value = editor ? node.innerText : node.value;
+                    const changed = value !== before, matches = value === request.text;
                     return JSON.stringify({status: matches ? (changed ? "applied" : "no_change") :
                         (accepted ? "constrained" : "unsupported"), changed,
                         input_semantics: "chromium_editing_command", text_matches: matches});
@@ -226,7 +235,7 @@
         const excluded = node => {
             if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
             return /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|INPUT|TEXTAREA|SELECT|OPTION)$/.test(node.tagName) ||
-                node.isContentEditable || node.hasAttribute("contenteditable");
+                node.isContentEditable;
         };
         const hidden = (node, win) => {
             if (node.hidden || node.getAttribute("aria-hidden") === "true") return true;
@@ -293,7 +302,7 @@
             const labels = [];
             if (node.labels) for (let i = 0; i < Math.min(8, node.labels.length); i++) labels.push(node.labels[i]);
             const label = clean(labels.map(item => referenceReadable(item, win)).join(" "));
-            return label || readable(node, win, 256) || clean(node.getAttribute("title")) ||
+            return label || (excluded(node) ? "" : readable(node, win, 256)) || clean(node.getAttribute("title")) ||
                 clean(node.getAttribute("placeholder")) || clean(node.getAttribute("name")) || node.tagName.toLowerCase();
         };
         const referenceText = (node, attribute, win) => {
@@ -343,13 +352,14 @@
                 let node = walker.currentNode;
                 while (node && remainingNodes-- > 0) {
                     if (node.nodeType !== Node.ELEMENT_NODE) { node = walker.nextNode(); continue; }
-                    // Prune hidden/editable subtrees: their text and descendants are not candidates.
-                    if (hidden(node, win) || node.hasAttribute("contenteditable")) {
+                    // Observe an editor's boundary/label, never its text or descendants.
+                    if (hidden(node, win)) {
                         node = walker.nextSibling();
                         while (!node && walker.parentNode()) node = walker.nextSibling();
                         continue;
                     }
                     const tag = node.tagName.toLowerCase(), type = clean(node.getAttribute("type"), 32).toLowerCase();
+                    const editable = node.isContentEditable;
                     if ((tag === "iframe" || tag === "frame") && frameElements.length < 16) frameElements.push(node);
                     if (node.tagName === "SLOT") limitations.add("shadow_slot_order_approximate");
                     if (tag === "canvas") limitations.add("canvas_present");
@@ -357,7 +367,16 @@
                     const role = clean(node.getAttribute("role"), 64).toLowerCase();
                     let kind = "", operations = [], href = null, formAction = null, formMethod = null;
                     const constraints = [];
-                    if (tag === "a" && node.hasAttribute("href")) {
+                    if (editable && !["input", "textarea", "select", "option"].includes(tag)) {
+                        kind = "editable";
+                        constraints.push("values_omitted");
+                        limitations.add("editable_controls_present");
+                        if (request.live && win === window && node.isContentEditable && node.hasAttribute("contenteditable")) {
+                            operations = ["enter"];
+                            constraints.push("website_handlers_can_change_data");
+                        }
+                        else constraints.push("editable_control_actions_unavailable");
+                    } else if (tag === "a" && node.hasAttribute("href")) {
                         kind = "link";
                         const link = new URL(node.href, doc.baseURI);
                         if (link.href.length > 2048) constraints.push("link_url_too_long");
@@ -423,13 +442,18 @@
                             const invalid = invalidState !== "false" && invalidState !== "";
                             const required = (["input", "textarea", "select", "checkbox", "radio"].includes(kind) && node.hasAttribute("required")) ||
                                 (node.getAttribute("aria-required") || "").trim().toLowerCase() === "true";
-                            frame.targets.push({node_id: nodeId, kind, role: role || kind,
+                            frame.targets.push({node_id: nodeId, kind, role: role || (kind === "editable" ? "textbox" : kind),
                                 label, description: boundedTargetText(descriptionFor(node, label, win)), required, invalid,
                                 error_message: invalid ? boundedTargetText(referenceText(node, "aria-errormessage", win)) : "",
                                 enabled, read_only: readOnly, href,
                                 operations, constraints, form_action: formAction, form_method: formMethod});
                             remainingTargets--;
                         }
+                    }
+                    if (editable) {
+                        node = walker.nextSibling();
+                        while (!node && walker.parentNode()) node = walker.nextSibling();
+                        continue;
                     }
                     const shadow = shadowFor(node, shadowDepth);
                     if (shadow) {

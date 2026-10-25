@@ -1022,7 +1022,7 @@ properties that do not produce DOM mutations. File actions remain pending.
 
 Inspection uses fixed browser code in Qt's
 [isolated application world](https://doc.qt.io/qt-6.11/qwebenginescript.html#ScriptWorldId-enum).
-Clients cannot supply scripts or selectors. Document JavaScript stays disabled;
+Clients cannot supply scripts or selectors. Restricted sessions keep document JavaScript disabled;
 the reader changes no DOM content. It omits input/select/textarea values, editable
 text, and hidden/script/style content. These omissions do not classify arbitrary
 visible page text as safe: site text and labels remain untrusted data.
@@ -1042,6 +1042,22 @@ fresh snapshot after changes. Mutations inside inspected roots invalidate
 restricted snapshots, and live targets recheck their own names and host ancestry.
 Truncation and unsupported content are reported, not silently presented as a
 complete page.
+
+Visible rich-text editor boundaries now appear as `kind="editable"` with labels,
+help/error metadata and `values_omitted`. Their text and nested controls stay out
+of observations, including in open shadow roots. On a normal live page, an explicit
+main-frame document-root `contenteditable` editor supports `page.act(operation="enter")` with
+read/edit permission. Chromium replaces its selected contents as literal text;
+multiline text, trusted input events and native undo are supported. The receipt
+contains only changed/text-match facts. Existing formatting may be retained by the
+browser. Live website input handlers may change data; Enter/Send is not pressed.
+Readonly/disabled controls, redirected focus and changed targets are rejected.
+Restricted, child-frame and shadow-root editors remain observation-only. Missing or
+partly unsupported controls produce screenshot/computer-input guidance without
+claiming the entire page was understood.
+Static `contenteditable="false"` wrappers retain normal text/control discovery.
+Their noneditable islands inside a real editor remain omitted with that editor,
+including when another control references them as help text.
 
 The read permission and live grant are checked at dispatch and before returning
 content. Revocation, expiry, navigation, stop, renderer termination, supersession,
@@ -1137,7 +1153,8 @@ There is no synthetic-click/selection fallback or automatic retry.
 
 These semantics do not establish compatibility with JS handlers, custom widgets,
 or SPA workflows. Password/file fields, specialized inputs, generic buttons,
-and contenteditable controls remain unavailable to `page.act`. Scriptless edits
+and contenteditable controls remain unavailable to restricted-page `page.act`.
+Normal live-page rich-text entry is described above. Scriptless edits
 change the task page's DOM; they do not submit the form or update another tab's
 controls, even when those tabs share the profile.
 
@@ -3648,6 +3665,58 @@ conversation replay into another task remain unavailable. Each new task needs
 fresh permissions.
 
 #### Chat tabs and website chats
+
+##### Planned: structured chatbot relay
+
+The proposed relay lets a website chatbot plan work while Steed validates and
+executes structured tool requests. This is a roadmap design, not a working relay
+or permission to read chatbot responses automatically. The input choice is still
+open: pasted proposals first, or extraction from a user-enabled chat tab.
+
+The loop is **instruction → structured request → Steed validation/permissions →
+execution → structured results → next chatbot request**. A proposed envelope is:
+
+```json
+{
+  "version": 1,
+  "exchange_id": "issued-by-Steed-for-this-exchange",
+  "calls": [
+    {
+      "id": "inspect-1",
+      "tool": "steed_page_inspect",
+      "arguments": {"session_id": "previously-returned-session-id"}
+    }
+  ]
+}
+```
+
+Reuse `services/agent_tools.py` tool names/schemas and the task-bound `TaskClient`
+executor. The trusted UI creates the task; a response cannot choose another task,
+approve its own requests or add commands. Raw Python/shell/JavaScript is not a
+relay command; generated code would use existing reviewed worker/package paths.
+Malformed/ambiguous JSON, duplicate keys, oversized inputs, unknown tools/fields,
+stale exchanges and invented references must fail without dispatch. One-use
+exchange/call identities and receipts prevent accidental re-execution. An uncertain
+write/input result remains uncertain and is never automatically retried.
+
+An enable/review popup must identify the chatbot destination, profile, task and
+requested capabilities. Existing task/profile permission rules and explicit Take
+Back/Stop remain authoritative. The user can allow recurring access within the
+displayed scope; permission claims inside a chatbot response have no effect.
+Reading browser/folder/account data and sending those results to a chatbot must
+both be clear. Results should preserve existing tool error/outcome semantics,
+contain only approved task data and never include Steed credentials. Sending them
+to the chat needs explicit review or a clearly scoped automatic-exchange setting.
+
+For later direct-tab exchange, pin the enabled origin/profile/tab/conversation,
+extract only a designated response, and stop on navigation, profile change,
+ambiguous provider markup or access revocation. The website never receives Steed's
+native management bridge. A live relay must report waiting/executing/results-ready
+from actual events and offer structured error feedback, not pretend a chatbot has
+native MCP support. Provider compatibility and live-account acceptance need their
+own checks before direct-tab automation is presented as supported.
+
+##### Current chat interfaces
 
 The agent panel separates connection health, runtime activity and message delivery.
 User messages show waiting/queued/awaiting acceptance/read states from actual

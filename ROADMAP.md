@@ -12,6 +12,42 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Website editor coverage — implemented and accepted.** Inspection now
+reports rich-editor boundaries/labels without returning their contents or nested
+controls. Explicit main-frame document-root editors on live pages support bounded literal
+entry through Chromium editing, with multiline text, trusted input and undo. Read/
+edit grants, individual live fingerprints, focus checks and existing action
+invalidation remain required. Restricted/child-frame/shadow editors stay observation-only;
+partial and zero-action coverage carries explicit fallback guidance. **91 focused
+checks / 46.378 s** passed (`/tmp/steed-live-editors-final-focus.log`). Broader shadow
+actions and frame/accessibility coverage remain.
+The final follow-up restores discovery inside static `contenteditable="false"`
+wrappers while keeping nested private editor islands and references omitted.
+Unsupported-control, readonly/hidden and redirected-focus failures now explain the
+actual problem instead of suggesting that another grant will add missing support.
+Full acceptance: **1,543 regressions / 411.981 s**, plus 93 focused final editor/
+inspection/action/live checks. User Undo is tested after Take Back, activating the
+window and focusing the editor; one engine event turn is not a user-focus contract.
+Real entry-point startup/local render/shutdown and independent SDK/raw stdio plus
+authenticated HTTP smoke passed. Ruff lint/format (270
+Python files), dependencies and whitespace passed. Logs:
+`/tmp/steed-live-editors-{accepted,final,startup,stdio,http}.log`. The initial full
+run's Undo-test failure is retained in `/tmp/steed-live-editors-full.log`; final
+acceptance is the clean serial run. Signed-in desktop/provider checks remain manual.
+
+**Chatbot-to-agent relay — owner-proposed direction; input design pending.** Add a
+structured request/result loop so chatbots can propose Steed tasks using existing
+tool schemas and task-bound execution. The trusted UI owns task identity, approvals,
+stop/revocation and receipts; a parsed response grants no authority. Reject malformed,
+unknown, stale or replayed requests; preserve uncertain outcomes without retrying.
+Make the destination/profile/data sharing clear in a simple enable/review popup,
+with recurring permissions confined to the displayed task/profile scope. Initial
+input choice remains open: paste/review first or directly read a user-enabled chat
+tab. Direct exchange needs source/conversation binding and explicit result-sharing
+consent; it never exposes native UI bridges to websites. The proposed design is in
+DOCUMENTATION.md under **Planned: structured chatbot relay**. No relay execution or
+automatic website response-reading is implemented in this checkpoint.
+
 **Reviewed conversation recovery and handoff — implemented and accepted.**
 **Continue / hand off** previews one new instruction, with optional editable recent
 history (unchecked by default). It can copy for website/personal agents, send to

@@ -205,7 +205,11 @@ class PageInspector(QObject):
                 tuple(data["limitations"]),
             )
             state.snapshot, state.targets = snapshot, targets
-            if not any(t.operations for f in frames for t in f.targets):
+            if not any(
+                t.operations and t.enabled and not t.read_only
+                for f in frames
+                for t in f.targets
+            ):
                 from dataclasses import replace
 
                 guidance = (
@@ -216,6 +220,28 @@ class PageInspector(QObject):
                         "This is a restricted page with website scripts disabled. Request live/read access and open session.open(mode='live') for a normal interactive website.",
                     )
                 snapshot = replace(snapshot, guidance=guidance)
+                state.snapshot = snapshot
+            elif any(
+                not t.operations
+                and any(
+                    c in t.constraints
+                    for c in (
+                        "custom_control_unsupported",
+                        "shadow_control_actions_unavailable",
+                        "editable_control_actions_unavailable",
+                    )
+                )
+                for f in frames
+                for t in f.targets
+            ):
+                from dataclasses import replace
+
+                snapshot = replace(
+                    snapshot,
+                    guidance=(
+                        "Some observed controls have no supported DOM actions. Use their constraints to identify omissions; page.capture and approved computer input can provide a visible-page fallback. Other controls remain available.",
+                    ),
+                )
                 state.snapshot = snapshot
             return snapshot
 
@@ -301,7 +327,7 @@ class PageInspector(QObject):
             or descriptor.read_only
             or arguments["operation"] not in descriptor.operations
             or descriptor.kind
-            not in ("input", "textarea", "select", "checkbox", "radio")
+            not in ("input", "textarea", "select", "checkbox", "radio", "editable")
         ):
             raise PageInspectionError("control_unsupported")
         return {"snapshot_id": snapshot_id, "node_id": node_id, **arguments}

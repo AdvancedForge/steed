@@ -7,6 +7,21 @@ from services.task_store import ACTIVE_STATUSES
 
 _COMMANDS = {tool.command for tool in TOOLS}
 _GUIDANCE = {
+    "control_unsupported": (
+        "Unsupported control action",
+        "Inspect the control's available operations and constraints. A new grant cannot add an unsupported action; approved screenshot/computer input may help.",
+        "receipts",
+    ),
+    "target_not_editable": (
+        "Control is not editable",
+        "The control is disabled, readonly, hidden or changed. Inspect the current page before another attempt.",
+        "receipts",
+    ),
+    "focus_unavailable": (
+        "Input focus changed",
+        "The website refused or redirected focus. Inspect the intended control and current page before retrying.",
+        "receipts",
+    ),
     "approval_required": (
         "Access needs approval",
         "Review Permissions, then let the agent check its approved grant.",
