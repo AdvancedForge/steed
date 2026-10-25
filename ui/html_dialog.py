@@ -108,14 +108,26 @@ def place_popup(widget, owner, anchor=None, size=(780, 640)):
 class HtmlDialog(QDialog):
     """A visual host, not a second settings implementation."""
 
-    def __init__(self, source, owner, *, anchor=None, workspace=None):
+    def __init__(
+        self,
+        source,
+        owner,
+        *,
+        anchor=None,
+        workspace=None,
+        embedded=False,
+        compact=False,
+        on_close=None,
+    ):
         flags = (
             Qt.WindowType.Widget
-            if workspace
+            if workspace or embedded
             else Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
         )
         super().__init__(owner, flags)
         self.workspace = workspace
+        self.compact = compact
+        self.on_close = on_close
         self.source, self.owner = source, owner
         source.hide()
         self._source_close = source.close
@@ -159,7 +171,7 @@ class HtmlDialog(QDialog):
         self.timer.setInterval(200)
         self.timer.timeout.connect(self.poll)
         self.timer.start()
-        if not workspace:
+        if not (workspace or embedded):
             self.setWindowModality(source.windowModality())
             place_popup(self, owner, anchor)
         self.publish()
@@ -449,6 +461,7 @@ class HtmlDialog(QDialog):
                 "children": tree,
                 "error": self.error,
                 "workspace": self.workspace,
+                "compact": self.compact,
                 "profile": self.owner.profile_manager.current_profile_name,
                 "shared": self.workspace in SHARED_PAGES,
                 "dark": self.owner.profile_manager.registry.page_style.dark(
@@ -481,7 +494,10 @@ class HtmlDialog(QDialog):
                 self.owner._new_tab(url="steed:" + command["value"])
                 return
             if action == "close":
-                self.source.reject()
+                if self.on_close is not None:
+                    self.on_close()
+                else:
+                    self.source.reject()
                 return
             obj = self.objects.get(command.get("id"))
             if obj is None or sip.isdeleted(obj):

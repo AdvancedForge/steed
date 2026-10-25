@@ -1,7 +1,8 @@
-"""Profile-bound native draft cards and an inert user-review popup."""
+"""Profile-bound panel models with HTML tab, sidebar and review presentation."""
 
 import json
 import sqlite3
+from functools import wraps
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
@@ -26,7 +27,7 @@ from PyQt6.QtWidgets import (
 from services.app_accounts import AccountError
 from services.task_store import ACTIVE_STATUSES
 from ui.data_panel_form import PanelForm
-from ui.html_dialog import HtmlSettingsDialog
+from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
 from ui.panel_image import PanelImage
 from ui.panel_instruction import PanelInstruction
 from ui.prompts import MessageBox as QMessageBox
@@ -205,9 +206,35 @@ class PanelContent(QWidget):
             self._widgets[key] = widget
 
 
-class DataPanelDock(QDockWidget):
+def refreshed_html(method):
+    """Cover old profile/source pixels before replacing any controller content."""
+
+    @wraps(method)
+    def update(self, *args, **kwargs):
+        if self._closed:
+            return
+        host = self.presentation_host()
+        if host is not None:
+            host.surface.conceal()
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            host = self.presentation_host()
+            if host is not None:
+                host.publish(force=True)
+
+    return update
+
+
+class DataPanelController(HtmlSettingsDialog):
+    """Shared panel actions and source lifecycle for the HTML tab and sidebar."""
+
+    html_sensitive_updates = True
+
     def __init__(self, service, browser):
-        super().__init__("Data Panels", browser)
+        super().__init__(browser)
+        self.setWindowTitle("Data panels")
+        self._closed = False
         self.service, self.browser = service, browser
         self.setObjectName("steedDataPanels")
         self.setMinimumWidth(300)
@@ -240,12 +267,12 @@ class DataPanelDock(QDockWidget):
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         body.addWidget(self.scroll, 1)
-        self.setWidget(content)
+        QVBoxLayout(self).addWidget(content)
         service.changed.connect(self.schedule)
         self.refresh()
 
     def schedule(self):
-        if self.browser._closing:
+        if self._closed or self.browser._closing:
             return
         # Erase revoked linked contents synchronously, before deferred paint/deletion.
         self.refresh_content()
@@ -277,6 +304,7 @@ class DataPanelDock(QDockWidget):
             widget.deleteLater()
         self._signature = None
 
+    @refreshed_html
     def refresh(self):
         self._scheduled = False
         if self.browser._closing:
@@ -312,6 +340,7 @@ class DataPanelDock(QDockWidget):
         self.selector.blockSignals(False)
         self.refresh_content()
 
+    @refreshed_html
     def refresh_content(self, *_):
         if self.browser._closing or self.service._closed or self.service.failure:
             self._clear()
@@ -407,7 +436,7 @@ class DataPanelDock(QDockWidget):
             )
             from ui.layout_panel import apply_chrome_font
 
-            apply_chrome_font(self.widget(), self.browser.layout_preferences.text_size)
+            apply_chrome_font(self, self.browser.layout_preferences.text_size)
             self._signature = signature
         except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
             self._clear()
@@ -497,6 +526,49 @@ class DataPanelDock(QDockWidget):
             except (ValueError, KeyError, AccountError, sqlite3.Error, OSError):
                 self.status.setText("The panel could not be removed.")
             self.refresh()
+
+    def done(self, result):
+        if self._closed:
+            return
+        self._closed = True
+        self.service.changed.disconnect(self.schedule)
+        self._clear()
+        super().done(result)
+
+
+class DataPanelDock(QDockWidget):
+    """Dock geometry around maintained HTML; controller fields stay compatible."""
+
+    def __init__(self, service, browser):
+        super().__init__("Data Panels", browser)
+        self.setObjectName("steedDataPanels")
+        self.setMinimumWidth(300)
+        self.controller = DataPanelController(service, browser)
+        # Preserve the controller interface, including QWidget.scroll's name.
+        self.scroll = self.controller.scroll
+        self.controller.setParent(self)
+        self.open_page = QPushButton("Open full page")
+        self.open_page.clicked.connect(lambda: browser._new_tab(url="steed:panels"))
+        self.controller.layout().insertWidget(0, self.open_page)
+        self.presentation = HtmlDialog(
+            self.controller, browser, embedded=True, compact=True, on_close=self.hide
+        )
+        self.controller._html_host = self.presentation
+        self.setWidget(self.presentation)
+        self.visibilityChanged.connect(self._visibility_changed)
+
+    def __getattr__(self, name):
+        controller = self.__dict__.get("controller")
+        if controller is not None:
+            return getattr(controller, name)
+        raise AttributeError(name)
+
+    def _visibility_changed(self, visible):
+        if visible:
+            self.controller.refresh()
+
+    def dispose(self):
+        self.presentation.dispose()
 
 
 class DataPanelReviewDialog(HtmlSettingsDialog):

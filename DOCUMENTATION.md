@@ -4994,6 +4994,17 @@ remain native UI in private windows; they create no agent access or data grant.
 
 ### Native data panels — implemented (first milestone)
 
+The maintained display is now HTML: open `steed:panels` for a full-page dashboard,
+or **Agents → Data Panels** for the compact HTML sidebar. **Open full page** in the
+sidebar opens the same profile's panels in a tab. Both inherit `steed:style` and
+retain the existing reviewed panel format and backend controls. They have separate
+offline presentation engines; generated text stays literal and cannot execute
+scripts. Closing the sidebar hides it; closing its tab releases that presenter.
+Linked contents are covered immediately on revocation/profile change and removed
+from presentation state. Account reads still require **Refresh linked sources**;
+opening or reloading either interface never fetches them. Form previews still
+require **Send to agent** before any message is delivered.
+
 Open **Agents → Data Panels** to view agent-designed dashboards in the current
 normal profile. The dock starts empty and stays closed until requested or an
 approved panel is enabled in that window. When the agent sidebar already uses the

@@ -22,6 +22,7 @@ PAGES = {
     "library": "File library",
     "connections": "App connections",
     "tasks": "Agent tasks & permissions",
+    "panels": "Data panels",
     "passwords": "Passwords",
     "layout": "Browser layout",
     "newtab-settings": "Customize start pages",
@@ -123,13 +124,17 @@ def controller(window, name, source_tab=None):
             raise ValueError("The display profile changed. Reopen this page.")
         window._new_tab(url=url)
 
-    if profile == "search" and name in ("library", "newtab-settings"):
+    if profile == "search" and name in ("library", "newtab-settings", "panels"):
         result = HtmlSettingsDialog(window)
         result.setWindowTitle(PAGES[name])
         QVBoxLayout(result).addWidget(
             QLabel("Switch to a regular profile to use this page.")
         )
         return result
+    if name == "panels":
+        from ui.data_panels import DataPanelController
+
+        return DataPanelController(registry.tasks, window)
     if name == "history":
         return HistoryDialog(window.history, window, open_url)
     if name == "cookies":

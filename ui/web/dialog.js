@@ -124,6 +124,7 @@ window.steedUI = {render(next) {
   if (context !== next.context) { context = next.context; sequence = 0; nodes.clear(); $('controls').replaceChildren(); }
   state = next; document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
   document.body.classList.toggle('workspace-page', !!next.workspace);
+  document.body.classList.toggle('compact-page', !!next.compact);
   document.body.dataset.page = next.workspace || 'dialog';
   $('workspace-nav').hidden = !next.workspace;
   $('scope').hidden = !next.workspace;
@@ -133,7 +134,7 @@ window.steedUI = {render(next) {
     for (const [heading, entries] of [
       ['Browse', [['history','History'],['bookmarks','Bookmarks'],['downloads','Downloads'],['cookies','Cookies'],['passwords','Passwords'],['library','Files']]],
       ['Customize', [['settings','Settings'],['style','Style'],['layout','Layout'],['newtab-settings','Start pages'],['tab-groups','Tab groups'],['adblock','Ad blocking'],['permissions','Website permissions']]],
-      ['Agents', [['agents','Conversations'],['tasks','Tasks & permissions'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
+      ['Agents', [['agents','Conversations'],['tasks','Tasks & permissions'],['panels','Data panels'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
     ]) {
       const title = document.createElement('h2'); title.textContent = heading; nav.append(title);
       for (const [page, name] of entries) { const button = document.createElement('button'); button.textContent = name; button.setAttribute('aria-current', page === next.workspace ? 'page' : 'false'); button.onclick = () => command('workspace', null, page); nav.append(button); }

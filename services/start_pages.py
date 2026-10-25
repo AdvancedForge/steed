@@ -48,6 +48,7 @@ WORKSPACES = (
     "library",
     "connections",
     "tasks",
+    "panels",
     "passwords",
     "layout",
     "newtab-settings",

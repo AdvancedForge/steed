@@ -12,6 +12,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**HTML data-panel tab and sidebar — implemented.** `steed:panels` and the compact
+sidebar share the existing panel controller, root theme, image previews, forms,
+instruction reviews and manual linked-source refresh. The sidebar can open the
+full page and reopen after dismissal. Source/profile changes conceal stale pixels
+synchronously and scrub disabled linked contents; private pages do not query saved
+panels. Tab and dock disposal release presentation pages before engine profiles.
+Validation: **106 targeted regressions / 35.699 s**, plus dedicated live-HTML
+checks for literal contents, revocation, profile isolation, reopening, form preview
+and explicit delivery. Logs: `/tmp/steed-panels-milestone.log` and
+`/tmp/steed-panels-html-final.log`. Next: website-chat HTML controls and responsive,
+keyboard and loading-state polish; the broader data bridge remains deferred.
+
 **HTML management pages and browser dialogs — owner-requested continuation
 (implemented and accepted).** The owner expanded the restyle to all
 browser management popups. Native menu interactions are retained, with commands

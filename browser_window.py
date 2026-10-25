@@ -2193,6 +2193,7 @@ class BrowserWindow(QMainWindow):
             self.settings_dialog.reject()
         if self.data_panels_dock is not None:
             self.data_panels_dock.refresh()
+            self.data_panels_dock.dispose()
         if self.file_library_dialog is not None:
             self.file_library_dialog.reject()
         if self.agent_sidebar is not None:

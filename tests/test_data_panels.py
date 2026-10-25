@@ -415,7 +415,8 @@ class DataPanelTests(unittest.TestCase):
         dock.selector.setCurrentIndex(1)
         selected = dock.selector.currentData()
         display = dock.scroll.widget().displays["summary"]
-        self.assertTrue(display.isVisible())
+        self.assertFalse(display.isVisible())
+        self.assertTrue(dock.presentation.isVisible())
         cursor = display.textCursor()
         cursor.select(cursor.SelectionType.Document)
         display.setTextCursor(cursor)
@@ -426,7 +427,8 @@ class DataPanelTests(unittest.TestCase):
         self.service.changed.emit()
         self.app.processEvents()
         self.assertEqual(dock.selector.currentData(), selected)
-        self.assertTrue(display.isVisible())
+        self.assertFalse(display.isVisible())
+        self.assertTrue(dock.presentation.isVisible())
 
     def test_panels_share_dock_space_without_disrupting_native_chat_tab_ownership(self):
         window = self.window()

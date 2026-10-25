@@ -2,6 +2,20 @@
 
 ## Start here
 
+**HTML panels — October 25 continuation.** `steed:panels` is now a profile-local
+management tab. `DataPanelController(HtmlSettingsDialog)` holds the former dock's
+panel model/actions; `DataPanelDock` embeds `HtmlDialog(..., embedded=True,
+compact=True)` and forwards the established controller interface. Header close
+hides the dock, while window close disposes it. The full-page button opens the
+singleton tab. Source service updates conceal old pixels before publishing; source
+access, forms, instruction reviews and manual account refresh use unchanged backend
+rules. Closing a tab disconnects its source; another sidebar remains independent.
+`tests/test_html_panels.py` exercises actual DOM controls, source revocation,
+private/profile cleanup, explicit form sends and account refresh. The panel suite
+passed 106 checks in 35.699 s; see `/tmp/steed-panels-milestone.log` and the dedicated
+`/tmp/steed-panels-html-final.log`. Continue with website-chat controls, keeping the
+live website engine separate from offline HTML, then responsive/keyboard polish.
+
 **HTML management pages and browser dialogs — October 25 (current checkpoint).** The owner now requests HTML for all browser management
 popups, superseding the earlier New-Tab-only restriction on editor presentation.
 Desktop menus still behave as native menus; their commands now open HTML tabs.
