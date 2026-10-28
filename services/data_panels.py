@@ -271,16 +271,20 @@ class DataPanels:
         if state not in allowed.get(receipt.state, set()):
             raise ValueError("This panel no longer awaits that decision")
         with self.db:
-            self.db.execute(
-                "UPDATE data_panels SET state=? WHERE task_id=? AND request_id=?",
-                (state, task_id, request_id),
-            )
-            self.service.store._append(
-                task_id,
-                "panel." + state,
-                {"request_id": request_id, "sha256": receipt.sha256},
-            )
+            self._set_state(task_id, receipt, state)
         return self.get(task_id, request_id)
+
+    def _set_state(self, task_id, receipt, state):
+        # Callers own the transaction; a nested `with self.db` would commit early.
+        self.db.execute(
+            "UPDATE data_panels SET state=? WHERE task_id=? AND request_id=?",
+            (state, task_id, receipt.request_id),
+        )
+        self.service.store._append(
+            task_id,
+            "panel." + state,
+            {"request_id": receipt.request_id, "sha256": receipt.sha256},
+        )
 
     def resolve(
         self,
@@ -347,7 +351,7 @@ class DataPanels:
                     "UPDATE data_panels SET profile_key=?,profile_name=? WHERE task_id=? AND request_id=?",
                     (key, profile, task_id, request_id),
                 )
-                result = self._state(task_id, request_id, "applied")
+                self._set_state(task_id, receipt, "applied")
                 if definition.linked_widgets:
                     self.db.execute(
                         "INSERT INTO data_panel_source_access VALUES (?,?,?,?)",
@@ -361,6 +365,7 @@ class DataPanels:
                             "enabled": library_access,
                         },
                     )
+            result = self.get(task_id, request_id)
         self.service.changed.emit()
         return result
 

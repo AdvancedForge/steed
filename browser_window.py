@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from config import Config
+from config import DEFAULT_SEARCH_ENGINE, Config
 from cookie_manager import CookieManager
 from layout_preferences import (
     LayoutConflict,
@@ -1631,7 +1631,7 @@ class BrowserWindow(QMainWindow):
         self._update_zoom()
 
     def _text_to_qurl(self, url_text: str) -> QUrl:
-        search = self.config.get("search_engine", "https://www.google.com/search?q=")
+        search = self.config.get("search_engine", DEFAULT_SEARCH_ENGINE)
         return self.navigation.address_url(url_text, search)
 
     def _go_back(self):

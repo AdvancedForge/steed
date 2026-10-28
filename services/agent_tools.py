@@ -728,7 +728,7 @@ TOOLS = (
     ),
     tool(
         "page.submit",
-        "Submit a supported main-frame native form with read/navigate/submit permission; can change account data. No automatic retry.",
+        "Submit a supported main-frame native form with read/navigate/submit permission; can change account data. No automatic retry. A redirect after POST is reported as redirect_not_followed; the request was sent.",
         TARGET,
         tuple(TARGET),
     ),

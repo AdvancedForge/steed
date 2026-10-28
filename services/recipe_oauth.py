@@ -91,14 +91,18 @@ def token_http(recipe, http=None):
         request_headers=dict(recipe.request_headers)
         if recipe.request_headers
         else None,
+        # Only GET collections page through the query; typed POST reads keep
+        # their cursor in the body and may target a {destination} resource.
         query_parameters={
             tool.path: {
                 t.pagination.parameter
                 for t in recipe.tools
-                if t.path == tool.path and t.pagination
+                if t.path == tool.path
+                and t.pagination
+                and t.pagination.location == "query"
             }
             for tool in recipe.tools
-            if tool.pagination
+            if tool.pagination and tool.pagination.location == "query"
         },
         post_rules=[
             (

@@ -144,6 +144,12 @@ class TaskPage(QWebEnginePage):
             and navigation_type == self.NavigationType.NavigationTypeFormSubmitted
         ):
             reason = self.submission.navigation(url.toString(), is_main_frame)
+        elif (
+            not reason
+            and not self.live
+            and navigation_type == self.NavigationType.NavigationTypeRedirect
+        ):
+            reason = self.submission.redirect(is_main_frame)
         if reason:
             self.report_blocked(reason)
         return not reason
@@ -1306,7 +1312,10 @@ class QtBrowserBackend(QObject):
 
         def finished(ok):
             if dispatched and session.revision > previous_revision:
-                outcome("loaded" if ok and ticket.authorized() else "load_failed")
+                if ticket.redirected:
+                    outcome("redirect_not_followed")
+                else:
+                    outcome("loaded" if ok and ticket.authorized() else "load_failed")
 
         def expire():
             if result.done():

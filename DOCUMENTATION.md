@@ -1220,15 +1220,19 @@ This does not add password-manager integration to tasks.
 
 One per-page ticket binds the destination and method to a dispatch. The interceptor
 checks main-frame resource type, grant lifetime, origin, and request budget; it never
-exports the request body. General POST requests and a second POST through a
-307/308 redirect are denied. GET redirects after submission retain ordinary origin
-and budget checks. Qt retains its form navigation classification on those redirects;
-the separate navigation gate rejects unsolicited second form submissions.
+exports the request body. General POST requests are denied. Main-frame redirects
+after an authorized POST submission are not followed: Qt can apply an interceptor
+block only after a 307/308 redirect has already resent the body, and the
+navigation gate, which runs before the redirect, cannot tell 303 from 307. The
+result reports `redirect_not_followed`; navigate to the destination separately.
+GET form submissions keep ordinary redirect origin and budget checks. Qt retains its
+form navigation classification on those redirects; the separate navigation gate
+rejects unsolicited second form submissions.
 User tabs on the same profile retain their ordinary submission behavior.
 
 `FormSubmissionResult` includes action/session/target IDs, revision, destination
 origin, `request_authorized`, and status: `validation_failed`, `loaded`, `load_failed`,
-or `timed_out`. Authorization means the network gate allowed a request, not that the
+`redirect_not_followed`, or `timed_out`. Authorization means the network gate allowed a request, not that the
 server received it. `site_effects` remains `unknown`: a loaded document does not
 confirm an account change, and a failed/interrupted receipt does not prove nothing
 happened. Stop, expiry, revocation, renderer failure, and journal failure interrupt

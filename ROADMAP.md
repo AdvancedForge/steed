@@ -12,6 +12,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Review fixes — October 28, 2026.** A full-suite failure exposed a real race:
+under load Qt applied the interceptor block only after a 307 redirect had resent
+an uploaded POST body (reproduced 3/20 runs). Restricted task pages now refuse
+main-frame redirects after an authorized POST in the navigation gate, which runs
+before the redirect is followed; results report `redirect_not_followed` (0/30
+under the same load). 303 post-redirect-get is therefore no longer followed in
+restricted mode; live delegation is unchanged. Subresource redirects still rely on
+the interceptor and may share the race (GET only, no body). Also fixed: typed POST
+reads paginating a `{destination}` resource could never connect; the Settings
+search default disagreed with `config.py`; panel approval committed partway through
+its transaction; a recipe test waited on a nonexistent state.
+
 **Website editor coverage — implemented and accepted.** Inspection now
 reports rich-editor boundaries/labels without returning their contents or nested
 controls. Explicit main-frame document-root editors on live pages support bounded literal

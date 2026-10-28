@@ -125,6 +125,41 @@ class LibraryPanelTests(unittest.TestCase):
                 display.count() if kind == "list" else display.rowCount(), 2
             )
 
+    def test_failed_source_access_write_leaves_the_panel_unapproved(self):
+        self.folder = self.service.library.create_folder("Fixture folder")
+        self.service.library.import_files(self.folder, [("notes.txt", b"NOTES")])
+        self.service.library.enable(self.folder, True)
+        self.owner = self.task(grant=False)
+        self.command(
+            "panel.propose",
+            task_id=self.owner.task_id,
+            request_id="linked",
+            source=self.source(),
+        )
+        key = self.service.data_panels.profile_key("work", create=True)
+        append = self.service.store._append
+
+        def failing(task_id, kind, payload):
+            if kind == "panel.source_access":
+                raise sqlite3.OperationalError("synthetic journal failure")
+            return append(task_id, kind, payload)
+
+        with (
+            patch.object(self.service.store, "_append", failing),
+            self.assertRaises(sqlite3.OperationalError),
+        ):
+            self.service.data_panels.resolve(
+                self.owner.task_id,
+                "linked",
+                approve=True,
+                profile="work",
+                profile_key=key,
+                library_access=True,
+            )
+        row = self.service.data_panels._row(self.owner.task_id, "linked")
+        self.assertEqual(row["state"], "awaiting_approval")
+        self.assertNotEqual(row["profile_key"], key)
+
     def test_panel_review_is_separate_from_reusable_source_permission(self):
         self.prepare(allow=False)
         self.assertFalse(self.view()["available"])

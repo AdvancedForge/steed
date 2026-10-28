@@ -186,8 +186,10 @@ class PageFormTests(unittest.TestCase):
                     )
         self.assertEqual(self.posted, [])
 
-    def test_303_redirect_is_observed_and_307_post_replay_is_denied(self):
-        for status, expected in ((303, "loaded"), (307, "load_failed")):
+    def test_post_redirects_are_reported_without_being_followed(self):
+        # Qt's interceptor cannot reliably stop a 307/308 body replay, and the
+        # navigation gate cannot tell those apart from 303, so none are followed.
+        for status in (303, 307, 308):
             with self.subTest(status=status):
                 self.post_responses["/submitted"] = (
                     status,
@@ -196,9 +198,11 @@ class PageFormTests(unittest.TestCase):
                 )
                 task_id, _, session_id, _ = self.opened()
                 outcome = self.submit(task_id, session_id)
-                self.assertEqual(outcome.status, expected)
+                self.assertEqual(outcome.status, "redirect_not_followed")
                 self.assertTrue(outcome.request_authorized)
-        self.assertFalse(any(path == "POST /after" for path, _ in self.requests))
+                events = self.service.store.events(task_id)
+                self.assertIn("submission_redirect_not_followed", repr(events))
+        self.assertFalse(any(path.endswith("/after") for path, _ in self.requests))
 
     def test_unsolicited_native_forms_and_direct_post_remain_blocked(self):
         task_id, _, session_id, page = self.opened()

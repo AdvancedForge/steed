@@ -48,6 +48,9 @@ class ContinuationGrammarTests(unittest.TestCase):
         self.assertEqual(
             recipe.tools[0].pagination.continuation.path, "/notes/search/continue"
         )
+        # Connecting builds the transport; resource paths must not be rejected.
+        http = token_http(recipe)
+        self.assertTrue(http.read_rule("/sources/source-1/query"))
 
     def test_success_rules_use_real_booleans_and_declare_missing_behavior(self):
         for field, value in (

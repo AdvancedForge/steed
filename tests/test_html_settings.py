@@ -11,6 +11,7 @@ from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtWidgets import QDialog
 
 from browser_window import BrowserWindow
+from config import DEFAULT_SEARCH_ENGINE
 from ui.settings_dialog import DEFAULTS, SettingsDialog
 
 
@@ -136,6 +137,14 @@ class HtmlSettingsTests(unittest.TestCase):
         self.assertTrue(window.styleSheet())
         self.assertEqual(window.styleSheet(), second.styleSheet())
         self.assertEqual(self.profile.httpUserAgent(), "SyntheticSteed/1")
+
+    def test_blank_search_engine_restores_the_configured_default(self):
+        window, dialog = self.loaded()
+        self.assertEqual(self.config.get("search_engine"), DEFAULT_SEARCH_ENGINE)
+        dialog.set_preference("search_engine", " ")
+        self.click(dialog, "save")
+        self.wait_for(lambda: window.settings_dialog is None)
+        self.assertEqual(self.config.get("search_engine"), DEFAULT_SEARCH_ENGINE)
 
     def test_failed_disk_write_keeps_saved_values_and_visible_draft(self):
         _, dialog = self.loaded()

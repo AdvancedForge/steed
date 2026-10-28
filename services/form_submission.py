@@ -34,6 +34,7 @@ class SubmissionTicket:
         self.navigation_used = False
         self.request_used = False
         self.request_authorized = False
+        self.redirected = False
 
     @staticmethod
     def route(value, method):
@@ -55,7 +56,7 @@ class SubmissionTicket:
             self.method = method
             self.deadline = self.clock() + 5
             self.navigation_used = self.request_used = False
-            self.request_authorized = False
+            self.request_authorized = self.redirected = False
 
     def clear(self):
         with self.lock:
@@ -78,6 +79,22 @@ class SubmissionTicket:
             ):
                 return "submission_not_authorized"
             self.navigation_used = True
+            return ""
+
+    def redirect(self, main_frame):
+        with self.lock:
+            # Qt applies interceptor blocks to followed redirects asynchronously,
+            # so a 307/308 can resend the body before the block lands. The
+            # navigation gate runs before the redirect is followed but cannot
+            # see its method, so no redirect is followed after a POST.
+            if (
+                main_frame
+                and self.destination is not None
+                and self.method == b"POST"
+                and self.request_used
+            ):
+                self.redirected = True
+                return "submission_redirect_not_followed"
             return ""
 
     def request(self, url, method, main_frame):

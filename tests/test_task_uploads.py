@@ -236,7 +236,7 @@ class TaskUploadTests(unittest.TestCase):
         task, _, session, _ = self.opened()
         type(self).post_responses["/uploaded"] = (307, self.origin + "/replayed", b"")
         self.upload(task, session)
-        self.submit(task, session)
+        self.assertEqual(self.submit(task, session).status, "redirect_not_followed")
         self.assertEqual([path for path, _, _ in self.posted], ["/uploaded"])
 
 

@@ -251,7 +251,7 @@ class RecipeProposalTests(unittest.TestCase):
         self.wait_for(
             lambda: (
                 self.service.connector_store.get(task.task_id, "read-1").state
-                not in {"requested", "running"}
+                not in {"requested", "dispatched"}
             )
         )
         result = self.call("app.status", client=client, request_id="read-1")

@@ -6,14 +6,14 @@ from secrets import token_hex
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDialog, QVBoxLayout
 
-from config import Config
+from config import DEFAULT_SEARCH_ENGINE, Config
 from ui.html_surface import HtmlSurface
 from utils import sanitize_profile_name
 
 DEFAULTS = {
     "home_page": "steed:newtab",
     "new_tab_page": "steed:newtab",
-    "search_engine": "https://www.google.com/search?q=",
+    "search_engine": DEFAULT_SEARCH_ENGINE,
     "restore_tabs_on_startup": True,
     "dark_mode": False,
     "user_agent_override": "",

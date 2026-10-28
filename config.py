@@ -5,6 +5,8 @@ from typing import Any
 
 from utils import load_json, save_json
 
+DEFAULT_SEARCH_ENGINE = "https://www.duckduckgo.com/?q="
+
 
 class Config:
     """Manages browser configuration."""
@@ -30,7 +32,7 @@ class Config:
             "default_profile": "global",
             "home_page": "steed:newtab",
             "new_tab_page": "steed:newtab",
-            "search_engine": "https://www.duckduckgo.com/?q=",
+            "search_engine": DEFAULT_SEARCH_ENGINE,
             "dark_mode": False,
             "restore_tabs_on_startup": True,
             "google_login_compatibility": True,
