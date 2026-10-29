@@ -39,6 +39,13 @@ function tabNode(tab, siteColor) {
   node.dataset.index = tab.index;
   node.title = tab.site ? `${tab.title}\n${tab.site}` : tab.title;
   if (tab.active) node.classList.add("active");
+  if (tab.pinned) {
+    node.classList.add("pinned");
+    node.setAttribute("aria-label", `${tab.title || "Pinned tab"} (pinned)`);
+    node.append(favicon(tab));
+    if (tab.audible || tab.muted) node.classList.add("noisy");
+    return node;
+  }
   if (tab.group && state.appearance.grouping === "manual") {
     node.classList.add("grouped");
     node.style.setProperty("--group", tab.group_color);
@@ -93,9 +100,16 @@ function render(next) {
 
   const nodes = [];
   const grouping = look.grouping;
+  const pinned = next.tabs.filter(tab => tab.pinned);
+  const unpinned = next.tabs.filter(tab => !tab.pinned);
+  if (pinned.length) {
+    const row = element("div", "pinned-row");
+    row.append(...pinned.map(tab => tabNode(tab, null)));
+    nodes.push(row);
+  }
   if (grouping === "site" && vertical()) {
     const order = [], bySite = new Map();
-    for (const tab of next.tabs) {
+    for (const tab of unpinned) {
       const site = tab.site || "Other";
       if (!bySite.has(site)) { bySite.set(site, []); order.push(site); }
       bySite.get(site).push(tab);
@@ -108,7 +122,7 @@ function render(next) {
     }
   } else {
     let previous = null;
-    for (const tab of next.tabs) {
+    for (const tab of unpinned) {
       const group = grouping === "manual" ? tab.group : null;
       if (group && group !== previous) {
         const members = next.tabs.filter(t => t.group === group).length;

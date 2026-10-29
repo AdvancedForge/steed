@@ -177,6 +177,7 @@ class BrowserTab(QWebEngineView):
         self.browser_window = window
         self.group = None
         self.group_id = None
+        self.pinned = False
         self.native_panel = None
         self.workspace_name = None
         self.workspace_controller = None
@@ -1455,7 +1456,8 @@ class BrowserWindow(QMainWindow):
         # Determine insertion index
         if index is None:
             index = self.current_tab_index + 1
-        index = max(0, min(index, len(self.tabs)))
+        # Ordinary tabs never open inside the pinned block at the start.
+        index = max(self._pinned_count(), min(index, len(self.tabs)))
 
         self.tabs.insert(index, tab)
         self.tab_bar.insert_tab(index, title or "New Tab")
@@ -1493,6 +1495,7 @@ class BrowserWindow(QMainWindow):
             tab.group,
             tab.tab_id,
             tab.group_id,
+            tab.pinned,
         )
         profile_name = self.profile_manager.current_profile_name
         self.closed_tabs.push(profile_name, state, index)
@@ -1525,6 +1528,8 @@ class BrowserWindow(QMainWindow):
             tab.group = state.group
             tab.group_id = state.group_id
             tab.tab_id = state.tab_id
+            if state.pinned:
+                self._set_pinned(tab, True)
             # A collapsed group hides all but its first tab; restoring into one
             # would keep the new tab invisible, so expand it deliberately.
             group = self.tab_manager.groups.get(state.group_id)
@@ -2000,6 +2005,7 @@ class BrowserWindow(QMainWindow):
                     group=group,
                     tab_id=tab.tab_id,
                     group_id=tab.group_id,
+                    pinned=tab.pinned,
                 )
             )
 
@@ -2020,6 +2026,9 @@ class BrowserWindow(QMainWindow):
                     self.tabs[-1].group = state.group
                     self.tabs[-1].tab_id = state.tab_id
                     self.tabs[-1].group_id = state.group_id
+                    if state.pinned:
+                        self.tabs[-1].pinned = True
+                        self.tab_bar.set_tab_state(len(self.tabs) - 1, pinned=True)
             else:
                 self._new_tab(url=self._startup_page(), index=len(self.tabs))
         finally:
@@ -2151,6 +2160,10 @@ class BrowserWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction("Reload", lambda: self._reload_tab(tab))
         menu.addAction("Duplicate", lambda: self._duplicate_tab(tab))
+        menu.addAction(
+            "Unpin Tab" if tab.pinned else "Pin Tab",
+            lambda: self._set_pinned(tab, not tab.pinned),
+        )
         muted = tab.page().isAudioMuted()
         menu.addAction(
             "Unmute Tab" if muted else "Mute Tab",
@@ -2163,6 +2176,7 @@ class BrowserWindow(QMainWindow):
         copy.setEnabled(not tab.workspace_name and not tab.url().isEmpty())
         menu.addSeparator()
         groups = menu.addMenu("Add Tab to Group")
+        groups.setEnabled(not tab.pinned)
         groups.addAction("New Group…", lambda: self._handle_group_rename_request(index))
         names = sorted(group.name for group in self.tab_manager.groups.values())
         if names:
@@ -2234,6 +2248,25 @@ class BrowserWindow(QMainWindow):
         if tab is not None and tab in self.tabs:
             self._set_tab_group_existing(self.tabs.index(tab), group.name)
 
+    def _pinned_count(self):
+        return sum(1 for tab in self.tabs if tab.pinned)
+
+    def _set_pinned(self, tab, pinned):
+        """Pinned tabs stay together at the start and never belong to a group."""
+        if tab not in self.tabs or tab.pinned == pinned:
+            return
+        index = self.tabs.index(tab)
+        target = self._pinned_count() - (0 if pinned else 1)
+        tab.pinned = pinned
+        if pinned:
+            tab.group = tab.group_id = None
+        self.tab_bar.set_tab_state(index, pinned=pinned)
+        if target != index:
+            self.tab_bar.move_tab(index, target)
+        else:
+            self._sync_tab_group_labels()
+            self._save_current_tabs()
+
     def _reload_tab(self, tab):
         if tab in self.tabs:
             if tab is self.tabs[self.current_tab_index]:
@@ -2275,6 +2308,9 @@ class BrowserWindow(QMainWindow):
                 self._clear_tab_group(tab_index)
 
     def _set_tab_group_existing(self, tab_index: int, group_name: str):
+        if 0 <= tab_index < len(self.tabs) and self.tabs[tab_index].pinned:
+            self.status_bar.showMessage("Unpin the tab before adding it to a group.")
+            return
         if 0 <= tab_index < len(self.tabs):
             group = self.tab_manager.ensure_group(group_name)
             group.collapsed = False

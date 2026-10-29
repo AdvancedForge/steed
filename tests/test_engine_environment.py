@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import qt_test_support
+
 from webengine import ENGINE_ENVIRONMENT, prepare_engine_environment
 
 

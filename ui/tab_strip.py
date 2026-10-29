@@ -313,6 +313,12 @@ class TabStrip(QWidget):
         elif action == "move" and index >= 0:
             target = command.get("to")
             if type(target) is int and 0 <= target < len(self.records):
+                # Pinned and ordinary tabs each stay within their own block.
+                pinned = sum(1 for record in self.records if record["pinned"])
+                if self.records[index]["pinned"]:
+                    target = min(target, pinned - 1)
+                else:
+                    target = max(target, pinned)
                 self.move_tab(index, target)
         elif action == "context" and index >= 0:
             self.context_requested.emit(index, self._point(command))

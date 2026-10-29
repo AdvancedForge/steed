@@ -243,11 +243,13 @@ The menu bar has six categories, in this order:
   and Manage Bookmarks.
   **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
   that group, and opens Manage Tab Groups. Right-click a tab for New Tab to the
-  Right, Reload, Duplicate, Mute, Copy Link Address, Add to Group / Remove from
+  Right, Reload, Duplicate, Pin/Unpin, Mute, Copy Link Address, Add to Group / Remove from
   Group, Close, Close Other Tabs, Close Tabs to the Right and Reopen Closed Tab.
   Middle-click closes a tab, double-clicking empty strip space opens one, tabs
   drag to reorder, and the strip is keyboard navigable (arrow keys, Enter,
-  Delete, Shift+F10).
+  Delete, Shift+F10). Pinned tabs show only their site icon, stay together at
+  the start of the strip (a row at the top of side tabs), never join a group,
+  and are saved with the session; new tabs never open inside the pinned block.
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
   Zoom Out and Reset Zoom. While you edit the address bar, the page changing its
   URL no longer replaces your text or its undo/redo history (Ctrl+Z, Ctrl+Shift+Z

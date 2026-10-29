@@ -18,6 +18,7 @@ class TabState:
     group: str | None = None
     tab_id: str = field(default_factory=lambda: uuid4().hex, compare=False)
     group_id: str | None = None
+    pinned: bool = False
 
 
 @dataclass
@@ -121,6 +122,7 @@ class TabManager(QObject):
                     group=item.get("group"),
                     tab_id=item.get("tab_id") or uuid4().hex,
                     group_id=item.get("group_id"),
+                    pinned=item.get("pinned") is True,
                 )
             )
         self.tab_states = states

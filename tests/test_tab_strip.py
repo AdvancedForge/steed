@@ -57,8 +57,9 @@ class TabStripTests(unittest.TestCase):
         return json.loads(
             self.js(
                 "JSON.stringify([...document.querySelectorAll('.tab')].map(t => "
-                "({id: t.dataset.id, title: t.querySelector('.title').textContent, "
-                "active: t.classList.contains('active')})))"
+                "({id: t.dataset.id, title: t.querySelector('.title')?.textContent ?? '', "
+                "active: t.classList.contains('active'), "
+                "pinned: t.classList.contains('pinned')})))"
             )
         )
 
@@ -116,6 +117,32 @@ class TabStripTests(unittest.TestCase):
         preferences.set_tabs({"position": "left", "vertical_width": 300})
         self.window.apply_layout(preferences)
         self.assertEqual(self.strip.width(), 300)
+
+    def test_pinned_tabs_stay_first_render_compact_and_persist(self):
+        window = self.window
+        window._new_tab(url="about:blank", title="Second")
+        window._new_tab(url="about:blank", title="Third")
+        third = window.tabs[2]
+        window._set_pinned(third, True)
+        self.assertIs(window.tabs[0], third)
+        self.wait(lambda: self.rendered()[0]["pinned"])
+        self.assertEqual(self.rendered()[0]["title"], "")
+        # New tabs opened from a pinned tab land after the pinned block.
+        window._switch_tab(0)
+        window._new_tab(url="about:blank")
+        self.assertIs(window.tabs[0], third)
+        self.assertFalse(window.tabs[1].pinned)
+        # Drags keep each tab within its own block.
+        ordinary = self.rendered()[2]["id"]
+        self.strip._command({"action": "move", "id": ordinary, "to": 0})
+        self.assertIs(window.tabs[0], third)
+        window._set_tab_group_existing(0, "Work")
+        self.assertIsNone(third.group)
+        saved = window.tab_manager.get_saved_tabs()
+        self.assertTrue(saved[0].pinned)
+        self.assertFalse(any(state.pinned for state in saved[1:]))
+        window._set_pinned(third, False)
+        self.assertFalse(window.tab_manager.get_saved_tabs()[0].pinned)
 
     def test_context_menu_duplicate_and_close_others(self):
         self.window._new_tab(url="about:blank", title="Second")
