@@ -74,6 +74,9 @@ class BrowserConnection:
         self.lock = asyncio.Lock()
         self.waiting = 0
         self.expected_epoch = None
+        # Sessions that end on purpose cancel their task instead of holding
+        # it for task.resume (HTTP sessions survive network drops anyway).
+        self.cancel_on_close = False
 
     async def connect(self):
         config = read_browser_discovery(self.discovery)
@@ -163,6 +166,12 @@ class BrowserConnection:
     async def close(self):
         writer, self.writer = self.writer, None
         if writer is not None:
+            if self.cancel_on_close:
+                try:
+                    writer.write(b'{"release": "cancel"}\n')
+                    await writer.drain()
+                except OSError:
+                    pass
             writer.close()
             try:
                 await writer.wait_closed()
@@ -196,7 +205,9 @@ def tool_result(result, *, images=False):
     )
 
 
-def create_server(discovery, *, expected_epoch=None, binding_file=None):
+def create_server(
+    discovery, *, expected_epoch=None, binding_file=None, cancel_on_close=False
+):
     import anyio
     from mcp import types
     from mcp.server.lowlevel import Server
@@ -206,6 +217,7 @@ def create_server(discovery, *, expected_epoch=None, binding_file=None):
         connection = BrowserConnection(discovery)
         connection.binding_file = binding_file
         connection.expected_epoch = expected_epoch
+        connection.cancel_on_close = cancel_on_close
         try:
             await connection.connect()
             yield connection

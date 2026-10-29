@@ -236,6 +236,11 @@ class AgentConnection(QObject):
                     self.deadline.stop()
                     self._send({"connected": True})
                     continue
+                if request == {"release": "cancel"}:
+                    # The client ended its session on purpose; do not hold
+                    # the task for task.resume when the connection closes.
+                    self.cancel_on_close = True
+                    continue
                 self._request(request)
             except sqlite3.Error:
                 self.gateway.service._fatal()

@@ -292,6 +292,16 @@ class AgentGatewayTests(unittest.TestCase):
         third = self.connect()
         self.assertIn("error", self.call(third, "task.resume", resume_token=token))
 
+    def test_sessions_released_on_purpose_cancel_instead_of_holding(self):
+        socket = self.connect()
+        task = self.start(socket)
+        socket.write(b'{"release": "cancel"}\n')
+        socket.flush()
+        self.app.processEvents()
+        socket.abort()
+        self.wait_for(lambda: self.service.store.get(task).status == "cancelled")
+        self.assertNotIn(task, self.gateway.held)
+
     def test_disconnect_retains_interrupted_reply_and_blocks_sending(self):
         patcher = patch("services.agent_gateway.RESUME_GRACE_MS", 50)
         patcher.start()

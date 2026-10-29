@@ -31,7 +31,7 @@ def create_http_app(discovery, credentials, authority, *, idle_timeout=IDLE_TIME
 
     epoch = read_browser_discovery(discovery)["token"]
     manager = StreamableHTTPSessionManager(
-        create_server(discovery, expected_epoch=epoch),
+        create_server(discovery, expected_epoch=epoch, cancel_on_close=True),
         json_response=True,
         stateless=False,
         event_store=None,

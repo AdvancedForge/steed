@@ -4093,9 +4093,9 @@ restart it after enabling a fresh browser access run.
 
 Each initialized MCP session owns a separate browser connection and task.
 Its ID is bound to the credential that initialized it. Complete tasks with
-`steed_task_finish`; send HTTP DELETE with `MCP-Session-Id` to end a session.
-An unfinished task of an ended session can be resumed for five minutes (below),
-then it is cancelled. Sessions expire after 30 minutes without an HTTP
+`steed_task_finish`; send HTTP DELETE with `MCP-Session-Id` to end a session and
+cancel any unfinished task. HTTP sessions survive network drops, so an ended or
+expired HTTP session cancels its task instead of holding it for `task.resume`. Sessions expire after 30 minutes without an HTTP
 request or open GET stream, which also cancels the task; `--idle-timeout`
 changes this (10–86,400 seconds). The four-session limit bounds abandoned ones.
 Closing a single HTTP connection does not cancel
