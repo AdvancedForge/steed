@@ -253,7 +253,7 @@ class PageInspectionTests(unittest.TestCase):
         self.assertEqual(field.error_message, "")
         self.assertNotIn("SECRET", str(asdict(snapshot)))
 
-    def test_shadow_help_uses_own_root_and_remains_observation_only(self):
+    def test_shadow_help_uses_own_root_and_shadow_fields_accept_text(self):
         task, _, session, page = self.session()
         self.load(session, page, '<p id="hint">Outer hint</p><div id="host"></div>')
         self.script(
@@ -270,7 +270,8 @@ class PageInspectionTests(unittest.TestCase):
         self.assertEqual(field.description, "Component hint")
         self.assertEqual(field.error_message, "Component error")
         self.assertTrue(field.required)
-        self.assertEqual(field.operations, ())
+        self.assertEqual(field.operations, ("enter",))
+        self.assertIn("shadow_control", field.constraints)
         self.assertNotIn("SECRET", str(asdict(snapshot)))
 
     def test_form_metadata_is_bounded_without_removing_snapshot_limit_signals(self):
@@ -369,8 +370,8 @@ class PageInspectionTests(unittest.TestCase):
         field = next(
             t for t in snapshot.frames[0].targets if t.label == "Component name"
         )
-        self.assertEqual(field.operations, ())
-        self.assertIn("shadow_control_actions_unavailable", field.constraints)
+        self.assertEqual(field.operations, ("enter",))
+        self.assertIn("shadow_control", field.constraints)
         self.assertEqual(self.target(task, session, snapshot, field), field)
         self.assertIn("Save report", [t.label for t in snapshot.frames[0].targets])
         self.assertIn("closed_shadow_roots_not_inspected", snapshot.limitations)

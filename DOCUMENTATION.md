@@ -1067,7 +1067,7 @@ enabled, visible, not inert, inside the viewport (after scrolling it into view)
 and the topmost element at that point, including through open shadow roots; a
 covered, off-screen or moving target fails with `target_obscured`,
 `target_outside_viewport` or `target_moved` and nothing is clicked. Agents never
-supply coordinates. Restricted pages, frames and shadow-root controls keep these
+supply coordinates. Restricted pages and frames keep these
 widgets observation-only.
 
 Targets also expose `description`, `required`, `invalid`, and `error_message`.
@@ -3658,7 +3658,10 @@ Compatibility research (October 3, 2026):
 The published page actions do **not** capture everything a human sees. Reads are
 bounded rendered DOM snapshots with opaque references to supported links,
 fields and forms. Bounded open-root text/control-name reads improve component
-coverage; closed roots, shadow-control actions and exact slot ordering remain
+coverage; controls inside open shadow roots of the main document can be typed
+into, selected, checked and activated like other controls (constraint
+`shadow_control`), but form submission and file upload through them stay
+unavailable. Closed roots and exact slot ordering remain
 limited. Snapshot limitations report canvas content, form values/editable text, inaccessible frames,
 out-of-scope frame origins and truncation. Images, PDFs, video/audio, visual
 layout, custom widgets and unloaded/virtualized content can be missed. Restricted task pages disable website JavaScript and can miss modern app content;

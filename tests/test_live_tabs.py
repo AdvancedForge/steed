@@ -302,6 +302,26 @@ class LiveTabsTests(unittest.TestCase):
         self.assertIn("Story 35", after.frames[0].text)
         self.assertGreater(after.frames[0].scroll.y, 0)
 
+    def test_live_buttons_inside_shadow_roots_can_be_activated(self):
+        window, view = self.window()
+        self.value(
+            view.page(),
+            """
+            const root = document.querySelector('#shadow').shadowRoot;
+            root.innerHTML = '<button id="save">Save draft</button>';
+            window.saved = 0;
+            root.querySelector('#save').addEventListener('click', () => window.saved++);
+            true;
+            """,
+        )
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        target = next(t for t in snapshot.frames[0].targets if t.label == "Save draft")
+        self.assertEqual(target.operations, ("activate",))
+        result = self.act(task, session, snapshot, target)
+        self.assertEqual(result.status, "dispatched")
+        self.wait_for(lambda: self.value(view.page(), "window.saved") == 1)
+
     def test_live_shadow_labels_and_host_changes_revalidate_target_references(self):
         window, view = self.window()
         self.value(
@@ -317,7 +337,8 @@ class LiveTabsTests(unittest.TestCase):
         button = next(
             t for t in snapshot.frames[0].targets if t.label == "Live component action"
         )
-        self.assertEqual(button.operations, ())
+        self.assertEqual(button.operations, ("activate",))
+        self.assertIn("shadow_control", button.constraints)
         self.value(
             view.page(),
             "document.querySelector('#shadow').shadowRoot.querySelector('#name').textContent='Changed action'; true",

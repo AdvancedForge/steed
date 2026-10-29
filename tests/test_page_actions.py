@@ -66,6 +66,28 @@ class PageActionTests(unittest.TestCase):
         self.wait_for(lambda: bool(replies))
         return replies[0]
 
+    def test_text_entry_reaches_fields_inside_open_shadow_roots(self):
+        task_id, _, session_id, page = self.opened()
+        self.script(
+            page,
+            """const host = document.createElement('div'); document.body.append(host);
+            host.attachShadow({mode:'open'}).innerHTML =
+              '<label>Component city <input id="city" value="OLD"></label>'; true""",
+        )
+        outcome = self.act(
+            task_id, session_id, "Component city", "enter", text="Lisbon"
+        )
+        self.assertEqual(outcome.status, "applied")
+        self.assertTrue(outcome.text_matches)
+        self.assertEqual(
+            self.evaluate(
+                page,
+                "document.querySelector('div:last-of-type').shadowRoot"
+                ".querySelector('#city').value",
+            ),
+            "Lisbon",
+        )
+
     def test_text_uses_native_editing_events_and_undo_without_leaking_values(self):
         task_id, _, session_id, page = self.opened()
         self.script(

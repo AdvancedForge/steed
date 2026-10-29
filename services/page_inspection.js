@@ -3,6 +3,13 @@
     "use strict";
     const request = /* REQUEST */;
     const fail = code => JSON.stringify({error: code});
+    // The focused control, following focus into open shadow roots.
+    const focused = doc => {
+        let active = doc.activeElement;
+        for (let depth = 0; active?.shadowRoot?.activeElement && depth < 16; depth++)
+            active = active.shadowRoot.activeElement;
+        return active;
+    };
     const POINTER_ROLES = ["button", "link", "tab", "menuitem", "menuitemcheckbox", "menuitemradio",
         "switch", "checkbox", "radio", "option"];
     const liveFingerprint = node => {
@@ -122,12 +129,12 @@
                     node.hasAttribute("readonly") || node.getAttribute("aria-readonly") === "true" ||
                     !node.getClientRects().length || win.getComputedStyle(node).visibility !== "visible")
                     return fail("target_not_editable");
-                if (request.mode !== "input_prepare" && doc.activeElement !== node) return fail("focus_unavailable");
+                if (request.mode !== "input_prepare" && focused(doc) !== node) return fail("focus_unavailable");
                 if (request.mode === "input_check") return JSON.stringify({valid: true});
                 if (request.operation === "activate" && tag === "input" && ["checkbox", "radio"].includes(type)) {
                     if (request.mode === "input_observe") return JSON.stringify({checked: node.checked});
                     node.focus({preventScroll: true});
-                    if (doc.activeElement !== node) return fail("focus_unavailable");
+                    if (focused(doc) !== node) return fail("focus_unavailable");
                     return JSON.stringify({before: node.checked, keys: ["space"], radio: type === "radio"});
                 }
                 if (request.operation === "select" && tag === "select" && !node.multiple) {
@@ -142,7 +149,7 @@
                         for (let i = 0; i < request.index; i++) if (available(node.options[i])) keys.push("down");
                     }
                     node.focus({preventScroll: true});
-                    if (doc.activeElement !== node) return fail("focus_unavailable");
+                    if (focused(doc) !== node) return fail("focus_unavailable");
                     return JSON.stringify({before: node.selectedIndex, keys});
                 }
                 return fail("control_unsupported");
@@ -153,7 +160,7 @@
                 const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
                 const role = (node.getAttribute("role") || "").toLowerCase();
                 const style = win.getComputedStyle(node);
-                if (win !== window || node.getRootNode() !== doc || !POINTER_ROLES.includes(role) ||
+                if (win !== window || !POINTER_ROLES.includes(role) ||
                     node.getAttribute("aria-disabled") === "true" || node.closest("[inert]") ||
                     !node.getClientRects().length || style.visibility !== "visible" ||
                     style.pointerEvents === "none") return fail("control_unsupported");
@@ -184,7 +191,7 @@
                     !node.getClientRects().length || win.getComputedStyle(node).visibility !== "visible")
                     return fail("control_unsupported");
                 node.focus({preventScroll: false});
-                return doc.activeElement === node ? JSON.stringify({prepared:true}) : fail("focus_unavailable");
+                return focused(doc) === node ? JSON.stringify({prepared:true}) : fail("focus_unavailable");
             }
             if (["form", "submit"].includes(request.mode)) {
                 const node = target.node, info = submission(node);
@@ -216,12 +223,12 @@
                     const before = editor ? node.innerText : node.value;
                     node.focus({preventScroll: true});
                     if (editor) {
-                        if (doc.activeElement !== node) return fail("focus_unavailable");
+                        if (focused(doc) !== node) return fail("focus_unavailable");
                         const range = doc.createRange(), selection = doc.getSelection();
                         if (!selection) return fail("focus_unavailable");
                         range.selectNodeContents(node); selection.removeAllRanges(); selection.addRange(range);
                     } else node.select();
-                    if (doc.activeElement !== node) return fail("focus_unavailable");
+                    if (focused(doc) !== node) return fail("focus_unavailable");
                     const accepted = doc.execCommand(request.text ? "insertText" : "delete", false, request.text);
                     const value = editor ? node.innerText : node.value;
                     const changed = value !== before, matches = value === request.text;
@@ -556,8 +563,11 @@
                             constraints.push("control_unsupported");
                         if (kind === "select" && node.multiple) constraints.push("multiple_selection_unsupported");
                         if (node.getRootNode() !== doc) {
-                            operations = [];
-                            constraints.push("shadow_control_actions_unavailable");
+                            // Controls in open shadow roots of the main document act
+                            // like others; forms and uploads stay light-DOM only.
+                            operations = win === window
+                                ? operations.filter(op => !["submit", "upload"].includes(op)) : [];
+                            constraints.push(operations.length ? "shadow_control" : "shadow_control_actions_unavailable");
                         }
                         if (remainingTargets <= 0) limitations.add("targets_truncated");
                         else {
