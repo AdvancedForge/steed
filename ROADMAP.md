@@ -29,6 +29,12 @@ is fixed with a scope-only CSP on restricted pages, enforced by Blink before eac
 redirect hop: 30/30 under the same load. DevTools Fetch was tried first and does
 not hold or rewrite requests on Qt 6.11.2.
 
+**Developer Tools — October 29, 2026.** F12/Ctrl+Shift+I, Ctrl+Shift+J and
+Ctrl+Shift+C open Chromium DevTools per tab, docked right, bottom or in a separate
+window, plus Inspect in the page menu. The address bar now keeps the user's edit
+and its undo/redo history when the page changes URL; in-page redo (Ctrl+Shift+Z,
+Ctrl+Y) was verified working.
+
 **Customizable tab strip — October 29, 2026.** The Qt tab bar is replaced by
 an HTML strip configured in Layout Settings → Tabs: top/bottom/left/right
 placement, five styles, size, accent, close-button and new-tab-button placement,

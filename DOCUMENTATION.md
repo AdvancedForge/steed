@@ -252,6 +252,14 @@ The menu bar has six categories, in this order:
   Zoom Out and Reset Zoom. While you edit the address bar, the page changing its
   URL no longer replaces your text or its undo/redo history (Ctrl+Z, Ctrl+Shift+Z
   or Ctrl+Y); Escape restores the page's address.
+  **View → Developer Tools** opens Chromium's DevTools for the current tab, like
+  Chrome: F12 or Ctrl+Shift+I toggles them, Ctrl+Shift+J opens the Console,
+  Ctrl+Shift+C starts the element picker, and **Inspect** in a page's right-click
+  menu selects that element. Each tab keeps its own panel; dock it to the right,
+  to the bottom or into a separate window (remembered). DevTools settings use a
+  private, unsaved profile. A tab whose DevTools connection is held by an agent
+  task cannot open DevTools until the task releases it, and a tab with DevTools
+  open cannot be delegated to an agent.
 - **Cookies:** Clear Browsing History, View Cookies, Clear All Cookies and Use
   Global Cookies for This Site. Clearing history affects the current profile's
   visits and address suggestions; it does not clear cookies.

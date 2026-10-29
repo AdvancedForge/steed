@@ -651,6 +651,7 @@ class WindowLayoutTests(unittest.TestCase):
         self.window.chrome_row.addWidget(self.window.chrome_column, 1)
         self.window.tab_bar = TabStrip(self.window.chrome_column)
         self.window.tab_container = QWidget(self.window.chrome_column)
+        self.window.content_area = self.window.tab_container
         for widget in (self.window.tab_bar, self.window.tab_container):
             self.window.chrome_layout.addWidget(widget)
         self.window.resize(900, 600)
@@ -677,7 +678,7 @@ class WindowLayoutTests(unittest.TestCase):
                 self.assertEqual(in_column, 0)
             else:
                 self.assertEqual(
-                    in_column, window.chrome_layout.indexOf(window.tab_container) + 1
+                    in_column, window.chrome_layout.indexOf(window.content_area) + 1
                 )
             self.assertTrue((in_row >= 0) != (in_column >= 0))
             self.assertEqual(window.tab_bar.vertical, position in ("left", "right"))

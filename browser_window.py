@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QSplitter,
     QStatusBar,
     QVBoxLayout,
     QWidget,
@@ -52,6 +53,7 @@ from services.start_pages import (
 )
 from tab_manager import TabManager, TabState
 from ui.address_bar import AddressBar
+from ui.devtools import DevToolsHost, DevToolsUnavailable
 from ui.find_bar import FindBar
 from ui.layout_dialog import LayoutDialog
 from ui.media_dialog import DesktopMediaDialog
@@ -202,6 +204,19 @@ class BrowserTab(QWebEngineView):
 
         if initial_qurl is not None and initial_qurl.isValid():
             self.setUrl(initial_qurl)
+
+    def contextMenuEvent(self, event):
+        menu = self.createStandardContextMenu()
+        native = self.page().action(QWebEnginePage.WebAction.InspectElement)
+        if native in menu.actions():
+            menu.removeAction(native)
+        if self.browser_window is not None and not self.workspace_name:
+            menu.addSeparator()
+            menu.addAction("Inspect").triggered.connect(
+                lambda: self.browser_window._inspect_page_element(self)
+            )
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.popup(event.globalPos())
 
     def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> "BrowserTab":
         return self.browser_window._new_tab(return_tab=True)
@@ -537,6 +552,26 @@ class BrowserWindow(QMainWindow):
         web_chats_menu.addAction("Chatbot relay…").triggered.connect(
             lambda: self._open_chatbot_relay()
         )
+        devtools_menu = view_menu.addMenu("Developer Tools")
+        for label, shortcuts, handler in (
+            ("Toggle Developer Tools", ("F12", "Ctrl+Shift+I"), self._toggle_devtools),
+            ("JavaScript Console", ("Ctrl+Shift+J",), self._devtools_console),
+            ("Inspect Element", ("Ctrl+Shift+C",), self._devtools_pick),
+        ):
+            action = QAction(label, self)
+            action.setShortcuts([QKeySequence(key) for key in shortcuts])
+            action.triggered.connect(handler)
+            devtools_menu.addAction(action)
+            self.addAction(action)
+        devtools_menu.addSeparator()
+        for label, side in (
+            ("Dock to Right", "right"),
+            ("Dock to Bottom", "bottom"),
+            ("Separate Window", "window"),
+        ):
+            devtools_menu.addAction(label).triggered.connect(
+                lambda _=False, side=side: self.devtools.set_side(side)
+            )
         view_menu.addSeparator()
         self.zoom_in_action = QAction("Zoom In", self)
         self.zoom_in_action.setShortcuts(
@@ -741,7 +776,12 @@ class BrowserWindow(QMainWindow):
         self.tab_layout = QVBoxLayout(self.tab_container)
         self.tab_layout.setContentsMargins(0, 0, 0, 0)
         self.tab_layout.setSpacing(0)
-        layout.addWidget(self.tab_container, 1)
+        # Pages share a splitter with docked Developer Tools.
+        self.content_area = QSplitter(Qt.Orientation.Horizontal)
+        self.content_area.setChildrenCollapsible(False)
+        self.content_area.addWidget(self.tab_container)
+        layout.addWidget(self.content_area, 1)
+        self.devtools = DevToolsHost(self, self.content_area)
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -870,7 +910,7 @@ class BrowserWindow(QMainWindow):
             index = (
                 0
                 if position == "top"
-                else self.chrome_layout.indexOf(self.tab_container) + 1
+                else self.chrome_layout.indexOf(self.content_area) + 1
             )
             self.chrome_layout.insertWidget(index, self.tab_bar)
         if not getattr(self, "_was_fullscreen", False):
@@ -902,7 +942,7 @@ class BrowserWindow(QMainWindow):
             position = (
                 layout.indexOf(self.address_bar) + 1
                 if placement == "top"
-                else layout.indexOf(self.tab_container) + 1
+                else layout.indexOf(self.content_area) + 1
             )
             for definition in self.layout_preferences.panels:
                 if definition["placement"] != placement:
@@ -1522,6 +1562,7 @@ class BrowserWindow(QMainWindow):
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
         self.tab_bar.set_current_tab(index)
+        self.devtools.show_for(self.tabs[index])
 
         # Hide all tabs
         for i, t in enumerate(self.tabs):
@@ -2074,6 +2115,32 @@ class BrowserWindow(QMainWindow):
             return "steed:" + tab.workspace_name
         return tab.url().toString() or tab.page().requestedUrl().toString()
 
+    def _devtools_tab(self):
+        if not self.tabs or not 0 <= self.current_tab_index < len(self.tabs):
+            return None
+        return self.tabs[self.current_tab_index]
+
+    def _devtools_call(self, method, tab=None):
+        tab = tab or self._devtools_tab()
+        if tab is None:
+            return
+        try:
+            method(tab)
+        except DevToolsUnavailable as error:
+            self.status_bar.showMessage(str(error), 6000)
+
+    def _toggle_devtools(self):
+        self._devtools_call(self.devtools.toggle)
+
+    def _devtools_console(self):
+        self._devtools_call(self.devtools.console)
+
+    def _devtools_pick(self):
+        self._devtools_call(self.devtools.pick_element)
+
+    def _inspect_page_element(self, tab):
+        self._devtools_call(self.devtools.inspect_element, tab)
+
     def _show_tab_menu(self, index, position):
         """Right-click actions for one tab, in Chrome's familiar order."""
         if not 0 <= index < len(self.tabs):
@@ -2348,6 +2415,7 @@ class BrowserWindow(QMainWindow):
         """Stop a tab and detach its callbacks before scheduling deletion."""
         tab.browser_window._take_back_tab(tab)
         window = tab.browser_window
+        window.devtools.close(tab)
         window._detach_workspace(tab)
         window._return_agent_sidebar(tab)
         if window.web_chat_dock and window.web_chat_dock.view is tab:
@@ -2418,6 +2486,7 @@ class BrowserWindow(QMainWindow):
         self.find_bar.close_find(clear_query=True)
         self.find_bar.set_page(None)
         self.tab_bar.dispose()
+        self.devtools.dispose()
         if self._password_dialog is not None:
             self._password_dialog.reject()
         if self.history is not None:
