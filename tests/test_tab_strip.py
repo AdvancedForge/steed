@@ -1,0 +1,135 @@
+"""The HTML tab strip drives real window tabs and follows the saved appearance."""
+
+import json
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from PyQt6.QtCore import QCoreApplication, QEvent
+from qt_test_support import application, keep_directory
+
+from browser_window import BrowserWindow
+from layout_preferences import LayoutPreferences
+from tab_appearance import CHOICES
+
+
+class TabStripTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = application()
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        keep_directory(self.directory)
+        self.home_patch = patch(
+            "pathlib.Path.home", return_value=Path(self.directory.name)
+        )
+        self.home_patch.start()
+        self.window = BrowserWindow()
+        self.window.resize(1000, 700)
+        self.window.show()
+        self.strip = self.window.tab_bar
+        self.wait(lambda: self.strip.surface.ready)
+
+    def tearDown(self):
+        self.window.close()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.home_patch.stop()
+
+    def wait(self, predicate, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        self.fail("Timed out waiting for the tab strip")
+
+    def js(self, code):
+        results = []
+        self.strip.surface.page.runJavaScript(code, results.append)
+        self.wait(lambda: bool(results))
+        return results[0]
+
+    def rendered(self):
+        return json.loads(
+            self.js(
+                "JSON.stringify([...document.querySelectorAll('.tab')].map(t => "
+                "({id: t.dataset.id, title: t.querySelector('.title').textContent, "
+                "active: t.classList.contains('active')})))"
+            )
+        )
+
+    def settle(self, count):
+        self.wait(lambda: len(self.rendered()) == count)
+
+    def test_clicks_select_and_close_real_tabs(self):
+        self.window._new_tab(url="about:blank")
+        self.window._new_tab(url="about:blank")
+        self.settle(len(self.window.tabs))
+        first = self.rendered()[0]["id"]
+        self.js(f"document.querySelector('[data-id=\"{first}\"]').click()")
+        self.wait(lambda: self.window.current_tab_index == 0)
+        self.wait(lambda: self.rendered()[0]["active"])
+        count = len(self.window.tabs)
+        self.js(f"document.querySelector('[data-id=\"{first}\"] .close').click()")
+        self.wait(lambda: len(self.window.tabs) == count - 1)
+        self.settle(count - 1)
+        self.js("document.querySelector('.new-tab').click()")
+        self.wait(lambda: len(self.window.tabs) == count)
+
+    def test_drag_reorder_moves_the_window_tab(self):
+        self.window._new_tab(url="about:blank", title="Second")
+        self.window._new_tab(url="about:blank", title="Third")
+        self.settle(3)
+        moved = self.window.tabs[0]
+        tab_id = self.rendered()[0]["id"]
+        self.strip._command({"action": "move", "id": tab_id, "to": 2})
+        self.assertIs(self.window.tabs[2], moved)
+        self.wait(lambda: self.rendered()[2]["id"] == tab_id)
+
+    def test_titles_icons_and_untrusted_text_render_as_text(self):
+        # A strip-only tab: no page load can later replace this title.
+        self.strip.insert_tab(self.strip.count(), "<img src=x onerror=alert(1)>")
+        self.wait(lambda: self.rendered()[-1]["title"].startswith("<img"))
+        self.assertEqual(self.js("document.querySelectorAll('.tab img').length"), 0)
+
+    def test_every_appearance_renders(self):
+        for key, (choices, _) in CHOICES.items():
+            for choice in choices:
+                with self.subTest(key=key, choice=choice):
+                    preferences = LayoutPreferences()
+                    preferences.set_tabs({key: choice})
+                    self.window.apply_layout(preferences)
+                    if key in ("position", "style", "size", "overflow"):
+                        expected = f"{key if key != 'position' else 'pos'}-{choice}"
+                        self.wait(
+                            lambda expected=expected: (
+                                expected
+                                in self.js("document.getElementById('strip').className")
+                            )
+                        )
+                    self.assertGreaterEqual(len(self.rendered()), 1)
+        preferences = LayoutPreferences()
+        preferences.set_tabs({"position": "left", "vertical_width": 300})
+        self.window.apply_layout(preferences)
+        self.assertEqual(self.strip.width(), 300)
+
+    def test_context_menu_duplicate_and_close_others(self):
+        self.window._new_tab(url="about:blank", title="Second")
+        self.window._new_tab(url="about:blank", title="Third")
+        target = self.window.tabs[1]
+        self.window._duplicate_tab(target)
+        self.assertEqual(len(self.window.tabs), 4)
+        self.window._close_tabs_except(target)
+        self.assertEqual(self.window.tabs, [target])
+        self.window._new_tab(url="about:blank")
+        self.window._new_tab(url="about:blank")
+        self.window._close_tabs_after(target)
+        self.assertEqual(self.window.tabs, [target])
+
+
+if __name__ == "__main__":
+    unittest.main()

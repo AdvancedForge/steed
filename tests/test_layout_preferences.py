@@ -12,7 +12,13 @@ from unittest.mock import patch
 
 import qt_test_support
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QDockWidget, QMainWindow, QWidget
+from PyQt6.QtWidgets import (
+    QDockWidget,
+    QHBoxLayout,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+)
 
 from browser_window import BrowserWindow, reorder_menus
 from config import Config
@@ -30,7 +36,7 @@ from layout_preferences import (
 )
 from ui.address_bar import AddressBar
 from ui.layout_dialog import LayoutDialog
-from ui.tab_bar import TabBar
+from ui.tab_strip import TabStrip
 
 
 def _item_ids(list_widget):
@@ -442,19 +448,20 @@ class AddressBarLayoutTests(unittest.TestCase):
         self.assertEqual(widgets, [self.bar.menu_btn, self.bar.address_input])
 
 
-class TabBarDensityTests(unittest.TestCase):
+class TabStripDensityTests(unittest.TestCase):
     def setUp(self):
         qt_test_support.application()
-        self.bar = TabBar()
+        self.bar = TabStrip()
 
     def tearDown(self):
+        self.bar.dispose()
         self.bar.deleteLater()
 
-    def test_compact_density_shrinks_the_new_tab_button(self):
+    def test_compact_density_shrinks_the_tab_row(self):
         self.bar.apply_density("comfortable")
-        comfortable = self.bar.new_tab_btn.maximumWidth()
+        comfortable = self.bar.height()
         self.bar.apply_density("compact")
-        self.assertLess(self.bar.new_tab_btn.maximumWidth(), comfortable)
+        self.assertLess(self.bar.height(), comfortable)
         self.assertEqual(self.bar.density, "compact")
 
 
@@ -483,6 +490,20 @@ class LayoutDialogTests(unittest.TestCase):
         self.assertEqual(self.dialog.density.currentData(), "comfortable")
         self.assertEqual(self.dialog.named_layouts.currentText(), "Work")
         self.assertEqual(self.published, [])
+
+    def test_tab_controls_preview_and_reset(self):
+        self.assertEqual(self.dialog.tab_choices["position"].currentData(), "top")
+        self.assertFalse(self.dialog.tab_width.isEnabled())
+        box = self.dialog.tab_choices["position"]
+        box.setCurrentIndex(box.findData("left"))
+        self.assertEqual(self._last().tabs["position"], "left")
+        self.assertTrue(self.dialog.tab_width.isEnabled())
+        self.dialog.tab_width.setValue(320)
+        self.dialog.tab_flags["tab_count"].setChecked(True)
+        self.assertEqual(self._last().tabs["vertical_width"], 320)
+        self.assertIs(self._last().tabs["tab_count"], True)
+        self.dialog.reset_layout()
+        self.assertEqual(self.dialog.tab_choices["position"].currentData(), "top")
 
     def test_unchecking_a_button_previews_the_hidden_toolbar(self):
         self.dialog.toolbar_list.item(TOOLBAR_ORDER.index("back")).setCheckState(
@@ -601,6 +622,7 @@ class LayoutWindowHarness(QMainWindow):
     _sidebar_dock_area = BrowserWindow._sidebar_dock_area
     _apply_layout_panels = BrowserWindow._apply_layout_panels
     _apply_layout_text = BrowserWindow._apply_layout_text
+    _place_tab_strip = BrowserWindow._place_tab_strip
 
 
 class WindowLayoutTests(unittest.TestCase):
@@ -612,7 +634,6 @@ class WindowLayoutTests(unittest.TestCase):
         self.window.agent_tab = None
         self.window.agent_sidebar = None
         self.window.address_bar = AddressBar(self.window)
-        self.window.tab_bar = TabBar(self.window)
         self.window._layout_menus = {
             name: self.window.menuBar().addMenu(name) for name in MENU_ITEMS
         }
@@ -624,12 +645,42 @@ class WindowLayoutTests(unittest.TestCase):
         central = QWidget()
         central.setMinimumWidth(400)
         self.window.setCentralWidget(central)
+        self.window.chrome_row = QHBoxLayout(central)
+        self.window.chrome_column = QWidget(central)
+        self.window.chrome_layout = QVBoxLayout(self.window.chrome_column)
+        self.window.chrome_row.addWidget(self.window.chrome_column, 1)
+        self.window.tab_bar = TabStrip(self.window.chrome_column)
+        self.window.tab_container = QWidget(self.window.chrome_column)
+        for widget in (self.window.tab_bar, self.window.tab_container):
+            self.window.chrome_layout.addWidget(widget)
         self.window.resize(900, 600)
         self.window.show()
         qt_test_support.application().processEvents()
 
     def tearDown(self):
+        self.window.tab_bar.dispose()
         self.window.deleteLater()
+
+    def test_tab_strip_moves_to_each_edge(self):
+        window = self.window
+        for position in ("left", "bottom", "right", "top"):
+            preferences = LayoutPreferences()
+            preferences.set_tabs({"position": position})
+            window.apply_layout(preferences)
+            in_row = window.chrome_row.indexOf(window.tab_bar)
+            in_column = window.chrome_layout.indexOf(window.tab_bar)
+            if position == "left":
+                self.assertEqual(in_row, 0)
+            elif position == "right":
+                self.assertEqual(in_row, window.chrome_row.count() - 1)
+            elif position == "top":
+                self.assertEqual(in_column, 0)
+            else:
+                self.assertEqual(
+                    in_column, window.chrome_layout.indexOf(window.tab_container) + 1
+                )
+            self.assertTrue((in_row >= 0) != (in_column >= 0))
+            self.assertEqual(window.tab_bar.vertical, position in ("left", "right"))
 
     def _menu_titles(self):
         return [action.text() for action in self.window.menuBar().actions()]

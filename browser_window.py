@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
 from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, QUrl
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtGui import QAction, QKeySequence, QPalette
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
     QWebEnginePage,
@@ -18,6 +18,7 @@ from PyQt6.QtWebEngineCore import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -59,7 +60,7 @@ from ui.prompts import InputDialog as QInputDialog
 from ui.prompts import MessageBox as QMessageBox
 from ui.settings_dialog import SettingsDialog
 from ui.site_permissions import SitePermissionDialog
-from ui.tab_bar import TabBar
+from ui.tab_strip import TabStrip
 from webengine import (
     SiteCompatibilityInterceptor,
     configure_web_settings,
@@ -673,11 +674,19 @@ class BrowserWindow(QMainWindow):
     def setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
+        # Side tab strips sit beside the whole browser column, so the column
+        # (address bar, bars, page) lives inside a horizontal row.
+        self.chrome_row = QHBoxLayout(central)
+        self.chrome_row.setContentsMargins(0, 0, 0, 0)
+        self.chrome_row.setSpacing(0)
+        self.chrome_column = QWidget(central)
+        layout = QVBoxLayout(self.chrome_column)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        # Tab bar
-        self.tab_bar = TabBar()
+        self.chrome_layout = layout
+        self.chrome_row.addWidget(self.chrome_column, 1)
+        # Tab strip
+        self.tab_bar = TabStrip(self.chrome_column)
         self.tab_bar.new_tab_requested.connect(self._new_tab)
         self.tab_bar.tab_changed.connect(self._switch_tab)
         self.tab_bar.tab_close_requested.connect(self._close_tab)
@@ -686,6 +695,9 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.group_set_requested.connect(self._set_tab_group_existing)
         self.tab_bar.group_clear_requested.connect(self._clear_tab_group)
         self.tab_bar.group_toggle_requested.connect(self._toggle_named_group)
+        self.tab_bar.context_requested.connect(self._show_tab_menu)
+        self.tab_bar.group_context_requested.connect(self._show_group_menu)
+        self.tab_bar.mute_toggled.connect(self._toggle_tab_mute)
         layout.addWidget(self.tab_bar)
         # Address bar
         self.address_bar = AddressBar()
@@ -756,14 +768,6 @@ class BrowserWindow(QMainWindow):
                 + chosen["border"]
                 + ";padding:4px 8px;}"
                 "QPushButton:hover {background:" + chosen["soft"] + ";}"
-                "QTabBar::tab {background:"
-                + chosen["surface"]
-                + ";color:"
-                + chosen["ink"]
-                + ";padding:8px 16px;border:1px solid "
-                + chosen["border"]
-                + ";}"
-                "QTabBar::tab:selected {background:" + chosen["bg"] + ";}"
                 "QMenu::item:selected {background:" + chosen["soft"] + ";}"
             )
         elif self.profile_manager.registry.page_style.dark(
@@ -776,9 +780,6 @@ class BrowserWindow(QMainWindow):
                 QPushButton {background:#2d2d2d;color:#fff;border:1px solid #3d3d3d;padding:4px 8px;}
                 QPushButton:hover {background:#3d3d3d;}
                 QPushButton:pressed {background:#1d1d1d;}
-                QTabBar::tab {background:#2d2d2d;color:#fff;padding:8px 16px;border:1px solid #3d3d3d;}
-                QTabBar::tab:selected {background:#1e1e1e;}
-                QTabBar::tab:hover {background:#3d3d3d;}
                 QMenuBar {background:#1e1e1e;color:#fff;}
                 QMenu {background:#2d2d2d;color:#fff;}
                 QMenu::item:selected {background:#3d3d3d;}
@@ -790,6 +791,16 @@ class BrowserWindow(QMainWindow):
         sidebar = getattr(self, "agent_sidebar", None)
         if sidebar is not None:
             sidebar._apply_style()
+        styles = self.profile_manager.registry.page_style
+        profile = self.profile_manager.current_profile_name
+        dark = styles.dark(profile)
+        if colors:
+            toolbar = chosen["bg"]
+        elif dark:
+            toolbar = "#1e1e1e"
+        else:
+            toolbar = QApplication.palette().color(QPalette.ColorRole.Window).name()
+        self.tab_bar.set_chrome(toolbar, dark)
         if hasattr(self, "layout_preferences"):
             self._apply_layout_text()
 
@@ -839,9 +850,31 @@ class BrowserWindow(QMainWindow):
         )
         self.address_bar.apply_density(preferences.density)
         self.tab_bar.apply_density(preferences.density)
+        self.tab_bar.apply_appearance(preferences.tabs)
+        self._place_tab_strip(preferences.tabs["position"])
         self._apply_sidebar_layout()
         self._apply_layout_panels()
         self._apply_layout_text()
+
+    def _place_tab_strip(self, position):
+        """Move the tab strip to an edge without recreating it."""
+        for layout in (self.chrome_layout, self.chrome_row):
+            if layout.indexOf(self.tab_bar) >= 0:
+                layout.removeWidget(self.tab_bar)
+        if position in ("left", "right"):
+            self.tab_bar.setParent(self.centralWidget())
+            index = 0 if position == "left" else self.chrome_row.count()
+            self.chrome_row.insertWidget(index, self.tab_bar)
+        else:
+            self.tab_bar.setParent(self.chrome_column)
+            index = (
+                0
+                if position == "top"
+                else self.chrome_layout.indexOf(self.tab_container) + 1
+            )
+            self.chrome_layout.insertWidget(index, self.tab_bar)
+        if not getattr(self, "_was_fullscreen", False):
+            self.tab_bar.show()
 
     def _apply_layout_text(self):
         from ui.layout_panel import apply_chrome_font
@@ -859,7 +892,7 @@ class BrowserWindow(QMainWindow):
 
         if not hasattr(self, "tab_container"):
             return
-        layout = self.centralWidget().layout()
+        layout = self.chrome_layout
         for panel in getattr(self, "_layout_panels", []):
             layout.removeWidget(panel)
             panel.hide()
@@ -867,13 +900,15 @@ class BrowserWindow(QMainWindow):
         self._layout_panels = []
         for placement in ("top", "bottom"):
             position = (
-                2 if placement == "top" else layout.indexOf(self.tab_container) + 1
+                layout.indexOf(self.address_bar) + 1
+                if placement == "top"
+                else layout.indexOf(self.tab_container) + 1
             )
             for definition in self.layout_preferences.panels:
                 if definition["placement"] != placement:
                     continue
                 panel = QuickActionsPanel(
-                    definition, self._native_layout_actions, self.centralWidget()
+                    definition, self._native_layout_actions, self.chrome_column
                 )
                 self._layout_panels.append(panel)
                 layout.insertWidget(position, panel)
@@ -1372,6 +1407,9 @@ class BrowserWindow(QMainWindow):
         tab.loadProgress.connect(lambda p: self._on_load_progress(tab, p))
         tab.loadStarted.connect(lambda: self._on_load_started(tab))
         tab.loadFinished.connect(lambda ok: self._on_load_finished(tab, ok))
+        tab.iconChanged.connect(lambda icon: self._on_tab_icon(tab, icon))
+        tab.page().recentlyAudibleChanged.connect(lambda _: self._on_tab_audio(tab))
+        tab.page().audioMutedChanged.connect(lambda _: self._on_tab_audio(tab))
         if hasattr(tab.page(), "zoomFactorChanged"):
             tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
         # Determine insertion index
@@ -1411,7 +1449,7 @@ class BrowserWindow(QMainWindow):
                 if tab.workspace_name
                 else tab.url().toString() or tab.page().requestedUrl().toString()
             ),
-            tab.title() or self.tab_bar.tab_bar.tabText(index),
+            tab.title() or self.tab_bar.tab_text(index),
             tab.group,
             tab.tab_id,
             tab.group_id,
@@ -1797,9 +1835,29 @@ class BrowserWindow(QMainWindow):
         home = self.config.get("home_page", NEW_TAB) or NEW_TAB
         self._navigate_to_url(home)
 
+    def _on_tab_icon(self, tab, icon):
+        if not self._closing and tab in self.tabs:
+            self.tab_bar.set_tab_icon(self.tabs.index(tab), icon)
+
+    def _on_tab_audio(self, tab):
+        if not self._closing and tab in self.tabs:
+            page = tab.page()
+            self.tab_bar.set_tab_state(
+                self.tabs.index(tab),
+                audible=page.recentlyAudible(),
+                muted=page.isAudioMuted(),
+            )
+
+    def _toggle_tab_mute(self, index):
+        if 0 <= index < len(self.tabs):
+            page = self.tabs[index].page()
+            page.setAudioMuted(not page.isAudioMuted())
+
     def _on_tab_url_changed(self, tab: BrowserTab, url: QUrl):
         if self._closing:
             return
+        if tab in self.tabs:
+            self.tab_bar.set_tab_state(self.tabs.index(tab), url=url.toString())
         if not self.tabs or not (0 <= self.current_tab_index < len(self.tabs)):
             return
 
@@ -1829,6 +1887,8 @@ class BrowserWindow(QMainWindow):
     def _on_load_started(self, tab):
         tab.is_loading = True
         tab.load_progress = 0
+        if not self._closing and tab in self.tabs:
+            self.tab_bar.set_tab_state(self.tabs.index(tab), loading=True)
         if not self._closing and self.tabs and tab == self.tabs[self.current_tab_index]:
             self._update_loading_indicator()
 
@@ -1836,6 +1896,7 @@ class BrowserWindow(QMainWindow):
         if self._closing or tab not in self.tabs:
             return
         tab.is_loading = False
+        self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
         if tab == self.tabs[self.current_tab_index]:
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
@@ -2006,6 +2067,137 @@ class BrowserWindow(QMainWindow):
             return False
 
     # ---------- Tab Group UI ----------
+    def _tab_url(self, tab):
+        if getattr(tab, "agent_panel", False):
+            return "steed:agents"
+        if tab.workspace_name:
+            return "steed:" + tab.workspace_name
+        return tab.url().toString() or tab.page().requestedUrl().toString()
+
+    def _show_tab_menu(self, index, position):
+        """Right-click actions for one tab, in Chrome's familiar order."""
+        if not 0 <= index < len(self.tabs):
+            return
+        tab = self.tabs[index]
+        menu = QMenu(self)
+        menu.addAction("New Tab to the Right", lambda: self._new_tab(index=index + 1))
+        menu.addSeparator()
+        menu.addAction("Reload", lambda: self._reload_tab(tab))
+        menu.addAction("Duplicate", lambda: self._duplicate_tab(tab))
+        muted = tab.page().isAudioMuted()
+        menu.addAction(
+            "Unmute Tab" if muted else "Mute Tab",
+            lambda: tab in self.tabs and self._toggle_tab_mute(self.tabs.index(tab)),
+        )
+        copy = menu.addAction(
+            "Copy Link Address",
+            lambda: QApplication.clipboard().setText(tab.url().toString()),
+        )
+        copy.setEnabled(not tab.workspace_name and not tab.url().isEmpty())
+        menu.addSeparator()
+        groups = menu.addMenu("Add Tab to Group")
+        groups.addAction("New Group…", lambda: self._handle_group_rename_request(index))
+        names = sorted(group.name for group in self.tab_manager.groups.values())
+        if names:
+            groups.addSeparator()
+        for name in names:
+            action = groups.addAction(
+                name, lambda n=name: self._set_tab_group_existing(index, n)
+            )
+            action.setCheckable(True)
+            action.setChecked(tab.group == name)
+        if tab.group:
+            menu.addAction("Remove from Group", lambda: self._clear_tab_group(index))
+            menu.addAction(
+                "Collapse / Expand Group",
+                lambda: self._toggle_named_group(tab.group),
+            )
+        menu.addSeparator()
+        single = len(self.tabs) <= 1
+        menu.addAction("Close Tab", lambda: self._close_tab_object(tab)).setEnabled(
+            not single
+        )
+        menu.addAction(
+            "Close Other Tabs", lambda: self._close_tabs_except(tab)
+        ).setEnabled(not single)
+        menu.addAction(
+            "Close Tabs to the Right", lambda: self._close_tabs_after(tab)
+        ).setEnabled(index < len(self.tabs) - 1)
+        reopen = menu.addAction("Reopen Closed Tab", self._restore_closed_tab)
+        reopen.setEnabled(self.restore_tab_action.isEnabled())
+        menu.exec(position)
+
+    def _show_group_menu(self, name, position):
+        group = self.tab_manager.ensure_group(name)
+        members = [tab for tab in self.tabs if tab.group_id == group.group_id]
+        menu = QMenu(self)
+        menu.addAction("Rename Group…", lambda: self._rename_group_prompt(group))
+        menu.addAction(
+            "Expand Group" if group.collapsed else "Collapse Group",
+            lambda: self.toggle_group(group.group_id),
+        )
+        menu.addAction(
+            "New Tab in Group",
+            lambda: self._new_tab_in_group(group, members),
+        )
+        menu.addSeparator()
+        menu.addAction("Ungroup", lambda: self.delete_group(group.group_id))
+        close = menu.addAction(
+            "Close Group", lambda: [self._close_tab_object(t) for t in members]
+        )
+        close.setEnabled(len(members) < len(self.tabs))
+        menu.addSeparator()
+        menu.addAction("Manage Tab Groups…", self._manage_tab_groups)
+        menu.exec(position)
+
+    def _rename_group_prompt(self, group):
+        name, ok = QInputDialog.getText(
+            self, "Tab Group", "Group name:", text=group.name
+        )
+        if ok and name.strip():
+            self.rename_group(group.group_id, name.strip())
+
+    def _new_tab_in_group(self, group, members):
+        index = (
+            self.tabs.index(members[-1]) + 1
+            if members and members[-1] in self.tabs
+            else None
+        )
+        tab = self._new_tab(index=index, return_tab=True)
+        if tab is not None and tab in self.tabs:
+            self._set_tab_group_existing(self.tabs.index(tab), group.name)
+
+    def _reload_tab(self, tab):
+        if tab in self.tabs:
+            if tab is self.tabs[self.current_tab_index]:
+                self._reload()
+            elif not tab.workspace_name:
+                tab.reload()
+
+    def _duplicate_tab(self, tab):
+        if tab not in self.tabs:
+            return
+        index = self.tabs.index(tab)
+        copy = self._new_tab(
+            url=self._tab_url(tab), title=tab.title(), index=index + 1, return_tab=True
+        )
+        if copy is not None and tab.group and copy in self.tabs:
+            self._set_tab_group_existing(self.tabs.index(copy), tab.group)
+
+    def _close_tab_object(self, tab):
+        if tab in self.tabs:
+            self._close_tab(self.tabs.index(tab))
+
+    def _close_tabs_except(self, keep):
+        for tab in list(self.tabs):
+            if tab is not keep:
+                self._close_tab_object(tab)
+
+    def _close_tabs_after(self, anchor):
+        if anchor in self.tabs:
+            for tab in list(self.tabs[self.tabs.index(anchor) + 1 :]):
+                self._close_tab_object(tab)
+
     def _handle_group_rename_request(self, tab_index: int):
         name, ok = QInputDialog.getText(self, "Tab Group", "Group name:")
         if ok:
@@ -2040,17 +2232,18 @@ class BrowserWindow(QMainWindow):
         ]
         seen = set()
         visible_indices = []
-        was_blocked = self.tab_bar.tab_bar.blockSignals(True)
         for i, tab in enumerate(self.tabs):
             self.tab_bar.set_tab_group(i, tab.group)
             group = self.tab_manager.groups.get(tab.group_id)
             visible = not (group and group.collapsed and group.group_id in seen)
-            self.tab_bar.tab_bar.setTabVisible(i, visible)
+            self.tab_bar.set_tab_visible(i, visible)
             if visible:
                 visible_indices.append(i)
             if group:
                 seen.add(group.group_id)
-        self.tab_bar.tab_bar.blockSignals(was_blocked)
+        self.tab_bar.set_collapsed_groups(
+            group.name for group in self.tab_manager.groups.values() if group.collapsed
+        )
         if self.tabs and self.current_tab_index not in visible_indices:
             self._switch_tab(visible_indices[0])
         if dirty:
@@ -2121,9 +2314,7 @@ class BrowserWindow(QMainWindow):
         members = [tab.tab_id for tab in self.tabs if tab.group_id == group_id]
         for offset, tab_id in enumerate(members):
             index = next(i for i, tab in enumerate(self.tabs) if tab.tab_id == tab_id)
-            self.tab_bar.tab_bar.moveTab(
-                index, min(position + offset, len(self.tabs) - 1)
-            )
+            self.tab_bar.move_tab(index, min(position + offset, len(self.tabs) - 1))
         self._sync_tab_group_labels()
         self._save_current_tabs()
 
@@ -2167,6 +2358,7 @@ class BrowserWindow(QMainWindow):
             tab.loadProgress,
             tab.loadStarted,
             tab.loadFinished,
+            tab.iconChanged,
         ):
             signal.disconnect()
         tab.stop()
@@ -2225,6 +2417,7 @@ class BrowserWindow(QMainWindow):
             self.agent_sidebar.detach()
         self.find_bar.close_find(clear_query=True)
         self.find_bar.set_page(None)
+        self.tab_bar.dispose()
         if self._password_dialog is not None:
             self._password_dialog.reject()
         if self.history is not None:

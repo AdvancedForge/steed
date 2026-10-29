@@ -242,8 +242,12 @@ The menu bar has six categories, in this order:
 - **Tabs:** New Tab, Restore Closed Tab, Close Tab, Reload, Bookmark This Page
   and Manage Bookmarks.
   **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
-  that group, and opens Manage Tab Groups. Individual tabs also expose existing
-  group selection and grouping actions from their context menu.
+  that group, and opens Manage Tab Groups. Right-click a tab for New Tab to the
+  Right, Reload, Duplicate, Mute, Copy Link Address, Add to Group / Remove from
+  Group, Close, Close Other Tabs, Close Tabs to the Right and Reopen Closed Tab.
+  Middle-click closes a tab, double-clicking empty strip space opens one, tabs
+  drag to reorder, and the strip is keyboard navigable (arrow keys, Enter,
+  Delete, Shift+F10).
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
   Zoom Out and Reset Zoom.
 - **Cookies:** Clear Browsing History, View Cookies, Clear All Cookies and Use
@@ -718,7 +722,7 @@ Browser/
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
 │   ├── find_bar.py        # Debounced page search and match navigation
-│   ├── tab_bar.py         # Tab bar widget with group context menu
+│   ├── tab_strip.py       # Customizable HTML tab strip (web/tabs.*)
 │   ├── cookie_dialog.py   # Cookie viewer
 │   ├── download_dialog.py # Download list with pause/resume/cancel/open
 │   ├── media_dialog.py    # One-shot screen/window share picker
@@ -5102,6 +5106,14 @@ return to today's defaults. The first milestone covers manual editing:
   Today's order is the default.
 - Place the agent sidebar on the left or right and remember its width.
 - Choose compact or comfortable control spacing.
+- **Tabs:** put the tab strip at the top or bottom, or as a vertical list on the
+  left or right (160–480 px wide). Choose a style (Rounded, Pills, Underline,
+  Boxed or Minimal), tab size, an accent colour, when close buttons show, where
+  the new-tab button sits, and whether tabs that don't fit shrink, scroll or wrap
+  onto more rows (up to four). Grouping shows your tab groups as coloured chips
+  (click to collapse, right-click for Rename, Ungroup, New Tab in Group and Close
+  Group), colour-codes tabs by website (vertical tabs list each site as a
+  section), or turns grouping off. Site icons and a tab count are optional.
 - Save the current appearance under a name, apply a saved layout later, or
   delete one. **Reset Layout** restores today's appearance and keeps the saved
   layouts available.

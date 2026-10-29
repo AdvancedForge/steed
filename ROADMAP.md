@@ -29,6 +29,17 @@ is fixed with a scope-only CSP on restricted pages, enforced by Blink before eac
 redirect hop: 30/30 under the same load. DevTools Fetch was tried first and does
 not hold or rewrite requests on Qt 6.11.2.
 
+**Customizable tab strip — October 29, 2026.** The Qt tab bar is replaced by
+an HTML strip configured in Layout Settings → Tabs: top/bottom/left/right
+placement, five styles, size, accent, close-button and new-tab-button placement,
+shrink/scroll/wrap overflow, manual or per-site grouping, site icons and a tab
+count. Portable layouts gain version 3 with a strict `tabs` section; stored
+layouts stay version 2 and older documents get defaults. Tabs drag to reorder,
+middle-click closes, the strip is keyboard navigable, and the right-click menu
+adds Duplicate, Mute, Copy Link Address, group actions, Close Other Tabs, Close
+Tabs to the Right and Reopen Closed Tab; group chips have their own menu. Not
+yet: pinned tabs, dragging tabs between windows, and resizing side tabs by drag.
+
 **Claude Code chats — October 29, 2026.** Claude Code is a second native chat
 agent beside Codex, chosen per chat in the sidebar. Steed drives `claude -p`
 stream-json with a bound MCP server, streams replies, maps native permission

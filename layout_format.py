@@ -26,9 +26,11 @@ from layout_preferences import (
     clean_name,
     default_appearance,
 )
+from tab_appearance import capabilities as tab_capabilities
+from tab_appearance import describe_tabs, validate_tabs
 
 MAX_LAYOUT_BYTES = 16384
-LAYOUT_EXAMPLE = {"version": 2, "name": "Focus", "layout": default_appearance()}
+LAYOUT_EXAMPLE = {"version": 3, "name": "Focus", "layout": default_appearance()}
 PANEL_EXAMPLE = {
     "kind": "quick_actions",
     "id": "daily-tools",
@@ -103,15 +105,17 @@ def parse_layout(source):
     except (UnicodeError, RecursionError, json.JSONDecodeError):
         raise ValueError("Provide valid bounded UTF-8 JSON") from None
     _fields(document, ("version", "name", "layout"))
-    if type(document["version"]) is not int or document["version"] not in (1, 2):
+    if type(document["version"]) is not int or document["version"] not in (1, 2, 3):
         raise ValueError("Unsupported portable layout version")
     name = clean_name(document["name"])
     if not name:
         raise ValueError("Use a printable layout name of at most 48 characters")
     appearance = document["layout"]
     fields = ["toolbar", "menus", "sidebar", "density"]
-    if document["version"] == 2:
+    if document["version"] >= 2:
         fields.extend(["text_size", "panels"])
+    if document["version"] == 3:
+        fields.append("tabs")
     _fields(appearance, fields)
     _fields(appearance["toolbar"], ("order", "hidden"))
     # Older portable layouts predate the movable, mandatory browser-menu button.
@@ -134,7 +138,9 @@ def parse_layout(source):
         raise ValueError("Use a left/right sidebar and a width from 300 to 800 px")
     if appearance["density"] not in DENSITIES:
         raise ValueError("Choose compact or comfortable spacing")
-    if document["version"] == 2:
+    if document["version"] == 3:
+        validate_tabs(appearance["tabs"])
+    if document["version"] >= 2:
         if appearance["text_size"] not in TEXT_SIZES:
             raise ValueError("Choose normal or large browser text")
         panels = appearance["panels"]
@@ -165,7 +171,7 @@ def parse_layout(source):
 
 def export_layout(preferences, name="Current layout"):
     source = json.dumps(
-        {"version": 2, "name": name, "layout": preferences.to_dict()["layout"]},
+        {"version": 3, "name": name, "layout": preferences.to_dict()["layout"]},
         indent=2,
     )
     parse_layout(source)
@@ -205,13 +211,15 @@ def layout_changes(before, after):
         ]
         if removed:
             changes.append("Remove panels: " + ", ".join(removed))
+    changes.extend(describe_tabs(old["tabs"], new["tabs"]))
     return changes or ["No presentation changes."]
 
 
 def layout_capabilities():
     return {
-        "version": 2,
-        "supported_versions": [1, 2],
+        "version": 3,
+        "supported_versions": [1, 2, 3],
+        "tabs": tab_capabilities(),
         "text_sizes": list(TEXT_SIZES),
         "panel_actions": dict(PANEL_ACTIONS),
         "panel_example": deepcopy(PANEL_EXAMPLE),

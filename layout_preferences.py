@@ -15,6 +15,7 @@ from copy import deepcopy
 from typing import Any
 
 from layout_components import TEXT_SIZES, clean_panels
+from tab_appearance import clean_tabs, default_tabs
 
 LAYOUT_VERSION = 2
 
@@ -60,6 +61,7 @@ def default_appearance() -> dict[str, Any]:
         "density": DEFAULT_DENSITY,
         "text_size": "normal",
         "panels": [],
+        "tabs": default_tabs(),
     }
 
 
@@ -153,6 +155,7 @@ def clean_appearance(raw: Any) -> dict[str, Any]:
         "density": clean_choice(source.get("density"), DENSITIES, DEFAULT_DENSITY),
         "text_size": clean_choice(source.get("text_size"), TEXT_SIZES, "normal"),
         "panels": clean_panels(source.get("panels")),
+        "tabs": clean_tabs(source.get("tabs")),
     }
 
 
@@ -230,6 +233,11 @@ class LayoutPreferences:
     @property
     def panels(self) -> list[dict]:
         return deepcopy(self._layout["panels"])
+
+    @property
+    def tabs(self) -> dict[str, Any]:
+        """Tab strip placement and look."""
+        return deepcopy(self._layout["tabs"])
 
     # ---------- Named layouts ----------
 
@@ -330,6 +338,14 @@ class LayoutPreferences:
 
     def set_panels(self, value) -> None:
         self._layout["panels"] = clean_panels(value)
+        self._sync_active()
+
+    def set_tabs(self, value: Any) -> None:
+        """Record tab strip settings; partial changes keep the other values."""
+        current = self.tabs
+        if isinstance(value, dict):
+            current.update(value)
+        self._layout["tabs"] = clean_tabs(current)
         self._sync_active()
 
     # ---------- Persistence ----------

@@ -30,6 +30,7 @@ class PanelFormatTests(unittest.TestCase):
         old["version"] = 1
         del old["layout"]["panels"]
         del old["layout"]["text_size"]
+        del old["layout"]["tabs"]
         definition = parse_layout(json.dumps(old))
         self.assertEqual(definition.preferences(LayoutPreferences()).panels, [])
         preferences = LayoutPreferences({"version": 1, "layout": old["layout"]})

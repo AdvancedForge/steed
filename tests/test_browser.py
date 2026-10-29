@@ -36,7 +36,7 @@ from ui.cookie_dialog import CookieDialog
 from ui.password_dialog import PasswordDialog, SaveLoginDialog
 from ui.prompts import MessageBox as QMessageBox
 from ui.settings_dialog import SettingsDialog
-from ui.tab_bar import TabBar
+from ui.tab_strip import TabStrip
 from utils import load_json, sanitize_profile_name, save_json
 
 
@@ -321,8 +321,8 @@ class BrowserTests(unittest.TestCase):
         group_id = window.tabs[1].group_id
         window.rename_group(group_id, "Renamed")
         window.toggle_group(group_id)
-        self.assertTrue(window.tab_bar.tab_bar.isTabVisible(1))
-        self.assertFalse(window.tab_bar.tab_bar.isTabVisible(2))
+        self.assertTrue(window.tab_bar.is_tab_visible(1))
+        self.assertFalse(window.tab_bar.is_tab_visible(2))
         window.move_group(group_id)
         self.assertEqual(window.tabs[0].group_id, group_id)
         self.assertEqual(window.tabs[1].group_id, group_id)
@@ -332,7 +332,7 @@ class BrowserTests(unittest.TestCase):
         self.assertTrue(window.tab_manager.groups[group_id].collapsed)
         window.delete_group(group_id)
         self.assertTrue(all(tab.group_id is None for tab in window.tabs))
-        self.assertTrue(all(window.tab_bar.tab_bar.isTabVisible(i) for i in range(3)))
+        self.assertTrue(all(window.tab_bar.is_tab_visible(i) for i in range(3)))
 
     def test_windows_share_profiles_until_last_owner_closes(self):
         second = BrowserWindow("default")
@@ -403,9 +403,7 @@ class BrowserTests(unittest.TestCase):
             "a restored tab must not stay hidden inside a collapsed group",
         )
         restored = next(t for t in window.tabs if t.group_id == group_id)
-        self.assertTrue(
-            window.tab_bar.tab_bar.isTabVisible(window.tabs.index(restored))
-        )
+        self.assertTrue(window.tab_bar.is_tab_visible(window.tabs.index(restored)))
 
     def test_shutdown_confirms_active_downloads_only_for_last_window(self):
         """Closing must ask exactly when this window's close ends the downloads."""
@@ -844,17 +842,24 @@ class BrowserTests(unittest.TestCase):
         self.assertFalse((self.window.config.profiles_dir / "search").exists())
 
     def test_group_order_follows_tab_order(self):
-        bar = TabBar()
+        bar = TabStrip()
+        moves = []
+        bar.tab_moved.connect(lambda a, b: moves.append((a, b)))
         for index, name in enumerate(("A", "B", "C")):
             bar.insert_tab(index, name)
+        bar.set_current_tab(0)
         bar.set_tab_group(0, "First")
         bar.set_tab_group(2, "Last")
-        bar.tab_bar.moveTab(0, 2)
+        bar.move_tab(0, 2)
+        self.assertEqual(moves, [(0, 2)])
+        self.assertEqual(bar.get_current_index(), 2)
         self.assertEqual(bar.groups, {0: None, 1: "Last", 2: "First"})
         bar.insert_tab(1, "Inserted")
         self.assertEqual(bar.groups, {0: None, 1: None, 2: "Last", 3: "First"})
+        self.assertEqual(bar.get_current_index(), 3)
         bar.clear_all_tabs()
         self.assertEqual(bar.groups, {})
+        bar.dispose()
         bar.deleteLater()
 
     @unittest.skipIf(QWebEnginePermission is None, "Requires Qt 6.8 permissions")
