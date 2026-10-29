@@ -20,6 +20,7 @@ PREVIEW_LIMIT = 32 * 1024
 # Steed captures assistant text itself and the chat task is already bound.
 EXCLUDED_TOOLS = (
     "steed_task_start",
+    "steed_task_resume",
     "steed_conversation_reply",
     "steed_conversation_wait",
 )

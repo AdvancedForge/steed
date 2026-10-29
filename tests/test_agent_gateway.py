@@ -11,6 +11,7 @@ from PyQt6.QtNetwork import QLocalSocket
 
 from services.agent_gateway import AgentGateway
 from services.agent_tools import REQUEST_LIMIT
+from services.task_store import ACTIVE_STATUSES
 
 
 class AgentGatewayTests(unittest.TestCase):
@@ -260,7 +261,41 @@ class AgentGatewayTests(unittest.TestCase):
             self.call(first, "session.open")["error"]["code"], "approval_required"
         )
 
+    def test_disconnected_task_is_resumed_with_its_token_and_fresh_access(self):
+        socket = self.connect()
+        started = self.call(socket, "task.start", objective="Synthetic resumable task")
+        task = started["result"]["task_id"]
+        token = started["result"]["resume_token"]
+        self.assertEqual(len(token), 64)
+        self.service.send_message(task, "Before the drop")
+        grant = self.service._request_grant(
+            task, {"origins": ["https://example.org"], "actions": ["navigate"]}
+        )
+        self.service.approve_grant(task, grant.grant_id)
+        socket.abort()
+        self.wait_for(lambda: task not in self.service.external_tasks)
+        self.assertIn(self.service.store.get(task).status, ACTIVE_STATUSES)
+        self.assertNotIn(task, self.service._grants)
+        other = self.connect()
+        refused = self.call(other, "task.resume", resume_token="0" * 64)
+        self.assertIn("error", refused)
+        resumed = self.call(other, "task.resume", resume_token=token)["result"]
+        self.assertEqual(resumed["task_id"], task)
+        self.assertNotEqual(resumed["resume_token"], token)
+        self.assertIn(task, self.service.external_tasks)
+        texts = [
+            m["text"]
+            for m in self.call(other, "conversation.read")["result"]["messages"]
+        ]
+        self.assertEqual(texts, ["Before the drop"])
+        # Tokens are single use.
+        third = self.connect()
+        self.assertIn("error", self.call(third, "task.resume", resume_token=token))
+
     def test_disconnect_retains_interrupted_reply_and_blocks_sending(self):
+        patcher = patch("services.agent_gateway.RESUME_GRACE_MS", 50)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         socket = self.connect()
         task = self.start(socket)
         self.call(
@@ -272,7 +307,8 @@ class AgentGatewayTests(unittest.TestCase):
         )
         socket.abort()
         self.wait_for(lambda: task not in self.service.external_tasks)
-        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        # Nobody resumed it within the grace period.
+        self.wait_for(lambda: self.service.store.get(task).status == "cancelled")
         self.assertEqual(
             self.service.messages.read(task)["messages"][0]["state"], "interrupted"
         )
@@ -405,6 +441,10 @@ class AgentGatewayTests(unittest.TestCase):
         self.assertIn(session_id, self.service._sessions)
 
     def test_disconnect_cancels_only_owned_task_and_disposes_its_page(self):
+        # Disconnected tasks are cancelled once the resume grace period ends.
+        patcher = patch("services.agent_gateway.RESUME_GRACE_MS", 50)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         first, second = self.connect(), self.connect()
         first_task, second_task = self.start(first), self.start(second)
         first_session = self.approved_session(first, first_task)
@@ -447,6 +487,10 @@ class AgentGatewayTests(unittest.TestCase):
         self.assertEqual(self.service.store.list_tasks(), [])
 
     def test_disconnect_discards_queued_operation_before_side_effect(self):
+        # Disconnected tasks are cancelled once the resume grace period ends.
+        patcher = patch("services.agent_gateway.RESUME_GRACE_MS", 50)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         socket = self.connect()
         task_id = self.start(socket)
         self.approved_session(socket, task_id)
@@ -454,7 +498,9 @@ class AgentGatewayTests(unittest.TestCase):
         connection._request({"id": 99, "tool": "steed_task_finish", "arguments": {}})
         connection.close()
         self.app.processEvents()
-        self.assertEqual(self.service.store.get(task_id).status, "cancelled")
+        # The queued finish never ran; the abandoned task is cancelled instead.
+        self.assertNotEqual(self.service.store.get(task_id).status, "completed")
+        self.wait_for(lambda: self.service.store.get(task_id).status == "cancelled")
 
     def test_revocation_denies_further_operations(self):
         socket = self.connect()

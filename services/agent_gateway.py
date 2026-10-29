@@ -1,5 +1,6 @@
 """Opt-in, private local IPC into the running browser's task service."""
 
+import hashlib
 import json
 import secrets
 import sqlite3
@@ -20,6 +21,9 @@ from services.command_broker import require_owner_thread
 from services.task_store import ACTIVE_STATUSES
 from utils import save_json
 
+# A disconnected client may resume its task for five minutes.
+RESUME_GRACE_MS = 5 * 60 * 1000
+
 
 class AgentGateway(QObject):
     def __init__(self, service, config_dir, parent=None):
@@ -31,6 +35,10 @@ class AgentGateway(QObject):
         self.token = secrets.token_urlsafe(32)
         self.connections = set()
         self.bindings = {}
+        # Resumable tasks: task_id -> token digest, and disconnected tasks
+        # held for a grace period before they are cancelled.
+        self.resume_digests = {}
+        self.held = {}
         self.closed = False
         self.server = QLocalServer(self)
         self.server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
@@ -94,6 +102,52 @@ class AgentGateway(QObject):
             connection = AgentConnection(self, socket)
             self.connections.add(connection)
 
+    def issue_resume(self, task_id):
+        """A single-use token that lets a new connection resume this task."""
+        token = secrets.token_hex(32)
+        self.resume_digests[task_id] = hashlib.sha256(token.encode()).hexdigest()
+        return token
+
+    def hold(self, task_id):
+        """Keep a disconnected task alive briefly so its client can resume it."""
+        if self.closed or task_id not in self.resume_digests:
+            return False
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self._abandon(task_id))
+        timer.start(RESUME_GRACE_MS)
+        self.held[task_id] = timer
+        return True
+
+    def _abandon(self, task_id):
+        timer = self.held.pop(task_id, None)
+        if timer is not None:
+            timer.stop()
+            timer.deleteLater()
+        self.resume_digests.pop(task_id, None)
+        service = self.service
+        if service._closed or service.failure:
+            return
+        try:
+            if service.store.get(task_id).status in ACTIVE_STATUSES:
+                service.cancel_task(task_id)
+        except Exception:
+            service._fatal()
+
+    def claim(self, token):
+        """Return the held task this token resumes, consuming the token."""
+        if not isinstance(token, str) or len(token) != 64:
+            return None
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        for task_id, expected in list(self.resume_digests.items()):
+            if task_id in self.held and secrets.compare_digest(digest, expected):
+                timer = self.held.pop(task_id)
+                timer.stop()
+                timer.deleteLater()
+                del self.resume_digests[task_id]
+                return task_id
+        return None
+
     def close(self):
         require_owner_thread(self)
         if self.closed:
@@ -103,6 +157,9 @@ class AgentGateway(QObject):
         self.server.close()
         for connection in tuple(self.connections):
             connection.close()
+        # Without agent access nobody can resume; end every held task.
+        for task_id in list(self.held):
+            self._abandon(task_id)
         self.discovery.unlink(missing_ok=True)
         self.directory.cleanup()
 
@@ -121,9 +178,12 @@ class AgentConnection(QObject):
         self.client = None
         self.managed = False
         self.pending = None
+        # Set when Steed itself drops the connection (a stuck operation):
+        # such a task is cancelled rather than offered for resumption.
+        self.cancel_on_close = False
         self.deadline = QTimer(self)
         self.deadline.setSingleShot(True)
-        self.deadline.timeout.connect(self.close)
+        self.deadline.timeout.connect(self._timed_out)
         self.deadline.start(5000)
         socket.readyRead.connect(self._read)
         socket.disconnected.connect(self.close)
@@ -209,6 +269,7 @@ class AgentConnection(QObject):
             spec.validate(request["arguments"])
             if self.managed and spec.command in (
                 "task.start",
+                "task.resume",
                 "conversation.reply",
                 "conversation.wait",
             ):
@@ -228,7 +289,32 @@ class AgentConnection(QObject):
                     self.gateway.service.external_connection(self.client.task_id, False)
                 self.client = self.gateway.service.client(task.task_id)
                 self.gateway.service.external_connection(task.task_id, True)
-                self._send({"id": request_id, "result": json_value(task)})
+                result = {
+                    **json_value(task),
+                    "resume_token": self.gateway.issue_resume(task.task_id),
+                }
+                self._send({"id": request_id, "result": result})
+                return
+            if spec.command == "task.resume":
+                if (
+                    self.client is not None
+                    and self.gateway.service.store.get(self.client.task_id).status
+                    in ACTIVE_STATUSES
+                ):
+                    raise ValueError("Finish the current task before resuming another")
+                task_id = self.gateway.claim(request["arguments"]["resume_token"])
+                if task_id is None:
+                    raise ValueError("Unknown or expired resume token")
+                task = self.gateway.service.store.get(task_id)
+                if task.status not in ACTIVE_STATUSES:
+                    raise ValueError("Unknown or expired resume token")
+                self.client = self.gateway.service.client(task_id)
+                self.gateway.service.external_connection(task_id, True)
+                result = {
+                    **json_value(task),
+                    "resume_token": self.gateway.issue_resume(task_id),
+                }
+                self._send({"id": request_id, "result": result})
                 return
             if self.client is None:
                 raise ValueError("Start a task first")
@@ -313,6 +399,10 @@ class AgentConnection(QObject):
                     return
             self._error(request_id, code, spec, error)
 
+    def _timed_out(self):
+        self.cancel_on_close = True
+        self.close()
+
     def close(self):
         if self.closed:
             return
@@ -323,10 +413,20 @@ class AgentConnection(QObject):
             self.pending.cancel()
         service = self.gateway.service
         if self.client is not None and not service._closed:
-            service.external_connection(self.client.task_id, False)
+            task_id = self.client.task_id
+            service.external_connection(task_id, False)
             try:
-                if service.store.get(self.client.task_id).status in ACTIVE_STATUSES:
-                    service.cancel_task(self.client.task_id)
+                if service.store.get(task_id).status in ACTIVE_STATUSES:
+                    if (
+                        not self.managed
+                        and not self.cancel_on_close
+                        and self.gateway.hold(task_id)
+                    ):
+                        # Nobody may act for the task while it waits to be
+                        # resumed: end its access, keep its conversation.
+                        service._end_authority(task_id, "disconnected")
+                    else:
+                        service.cancel_task(task_id)
             except Exception:
                 service._fatal()
         self.gateway.connections.discard(self)

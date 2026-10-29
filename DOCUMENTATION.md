@@ -3646,7 +3646,17 @@ Its authenticated HTTP adapter binds to loopback; a cloud agent cannot reach
 that address directly. The browser must be running for either transport.
 Connecting a third-party client grants no page access: it starts its own task,
 requests an exact profile/site scope and uses the published inspection/action
-and conversation tools. Generic MCP cannot start a new turn in an idle client,
+and conversation tools. **Resuming after a disconnect:** `task.start` returns a
+`resume_token`. If the client's connection drops (restart, crash, network), the
+task's access ends at once — its pages close, like an expired grant — but the
+task, conversation and files are kept for five minutes. A new connection calls
+`task.resume` with the token to continue the same task and receives a fresh,
+single-use token; it then requests permissions again. Tokens work only in the
+same browser run and alongside the normal agent-access credential. Tasks not
+resumed in time are cancelled, as are all held tasks when agent access is
+turned off; a connection Steed drops itself (a stuck operation) is cancelled
+immediately. Steed-started Codex and Claude Code chats are not resumable this
+way. Generic MCP cannot start a new turn in an idle client,
 so an agent that is waiting for you calls `conversation.wait`: it blocks for up
 to 25 seconds and returns as soon as you send a message (`waited: "message"`),
 on timeout (`timed_out`, call again) or when the task ends (`task_ended`). The
@@ -4083,8 +4093,9 @@ restart it after enabling a fresh browser access run.
 
 Each initialized MCP session owns a separate browser connection and task.
 Its ID is bound to the credential that initialized it. Complete tasks with
-`steed_task_finish`; send HTTP DELETE with `MCP-Session-Id` to end a session and
-cancel any unfinished task. Sessions expire after 30 minutes without an HTTP
+`steed_task_finish`; send HTTP DELETE with `MCP-Session-Id` to end a session.
+An unfinished task of an ended session can be resumed for five minutes (below),
+then it is cancelled. Sessions expire after 30 minutes without an HTTP
 request or open GET stream, which also cancels the task; `--idle-timeout`
 changes this (10–86,400 seconds). The four-session limit bounds abandoned ones.
 Closing a single HTTP connection does not cancel

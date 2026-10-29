@@ -182,7 +182,12 @@ class CodexProvider(AgentProvider):
                 tool.name
                 for tool in TOOLS
                 if tool.command
-                not in ("task.start", "conversation.reply", "conversation.wait")
+                not in (
+                    "task.start",
+                    "task.resume",
+                    "conversation.reply",
+                    "conversation.wait",
+                )
             ],
         }
         config["mcp_servers"] = servers

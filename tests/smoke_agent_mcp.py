@@ -875,9 +875,10 @@ async def sdk_client(
                 for t in component["frames"][0]["targets"]
                 if t["label"] == "Component input"
             )
+            # Open-shadow fields in the main document accept text entry.
             assert (
-                not field["operations"]
-                and "shadow_control_actions_unavailable" in field["constraints"]
+                field["operations"] == ["enter"]
+                and "shadow_control" in field["constraints"]
             )
             shared["sdk_open_shadow_observation"] = True
             assert field["description"] == "Component help"
@@ -1675,10 +1676,8 @@ def raw_workflow(request, notify, foreign_session, origin, shared):
     field = next(
         t for t in snapshot["frames"][0]["targets"] if t["label"] == "Component input"
     )
-    assert (
-        not field["operations"]
-        and "shadow_control_actions_unavailable" in field["constraints"]
-    )
+    # Open-shadow fields in the main document accept text entry.
+    assert field["operations"] == ["enter"] and "shadow_control" in field["constraints"]
     shared["raw_open_shadow_observation"] = True
     assert field["description"] == "Component help"
     assert field["error_message"] == "Component error"

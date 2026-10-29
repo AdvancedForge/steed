@@ -2752,7 +2752,7 @@ class TaskService(QObject):
         grant.end(reason)
         status = (
             "expired"
-            if reason == "expired"
+            if reason in ("expired", "disconnected")
             else "revoked"
             if reason == "revoked"
             else "exhausted"

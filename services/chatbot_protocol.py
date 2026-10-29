@@ -16,6 +16,7 @@ RESULT_BUDGET = 600 * 1024
 UNAVAILABLE = frozenset(
     {
         "task.start",
+        "task.resume",
         "task.finish",
         "conversation.reply",
         # Steed delivers relay turns itself; a blocking wait has no use there.

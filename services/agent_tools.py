@@ -510,6 +510,12 @@ TOOLS = (
         ("objective",),
     ),
     tool(
+        "task.resume",
+        "After reconnecting, resume the task this client started before it disconnected, using the resume_token from task.start or the last task.resume (valid five minutes after disconnecting, single use, this browser run only). Returns the task and a new resume_token. The conversation and files are kept; earlier access ended at disconnect, so request permissions again.",
+        {"resume_token": string(64)},
+        ("resume_token",),
+    ),
+    tool(
         "worker.run",
         "Execute one owned staged Python package in a local Linux sandbox after exact package and environment approval in trusted UI. Choose stdlib (default) or the optional maintained documents bundle for PDF/XLSX/images; discover installation with worker.capabilities first. No direct network/host files/subprocesses or runtime installation. Typed file/artifact/app operations need separate task permissions and declared app capabilities. Stable request IDs never replay a run, including failure or restart.",
         {

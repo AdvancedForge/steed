@@ -277,7 +277,12 @@ def create_server(discovery, *, expected_epoch=None, binding_file=None):
             for tool in TOOLS
             if binding_file is None
             or tool.command
-            not in ("task.start", "conversation.reply", "conversation.wait")
+            not in (
+                "task.start",
+                "task.resume",
+                "conversation.reply",
+                "conversation.wait",
+            )
         ]
 
     @server.call_tool()

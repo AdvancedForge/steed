@@ -10,9 +10,10 @@ config = json.loads(arguments[arguments.index("--mcp-config") + 1])
 server_name, server = next(iter(config["mcpServers"].items()))
 assert arguments[arguments.index("--permission-prompt-tool") + 1] == "stdio"
 assert arguments[arguments.index("--allowedTools") + 1] == f"mcp__{server_name}"
-disallowed = arguments[arguments.index("--disallowedTools") + 1 :][:3]
+disallowed = arguments[arguments.index("--disallowedTools") + 1 :][:4]
 assert disallowed == [
     f"mcp__{server_name}__steed_task_start",
+    f"mcp__{server_name}__steed_task_resume",
     f"mcp__{server_name}__steed_conversation_reply",
     f"mcp__{server_name}__steed_conversation_wait",
 ], disallowed
