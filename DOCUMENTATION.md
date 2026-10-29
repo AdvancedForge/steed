@@ -1037,8 +1037,20 @@ visible text; field values and editable text are never included. At most 150
 entries and 12,000 characters are returned per snapshot (`outline_truncated`),
 and images without any text alternative add `unlabelled_images_present`.
 Targets report ARIA states as `states`: `expanded`/`collapsed`, `pressed`,
-`selected` and `current`. Custom tab, menu-item and switch roles are now listed
-as observation-only custom controls.
+`selected` and `current`.
+
+In live sessions (shared tabs or live private pages), custom widgets in the main
+document with an ARIA role of button, link, tab, menuitem (including checkbox and
+radio items), switch, checkbox, radio or option report `activate` with the
+`pointer_activation` constraint. Activation needs `submit` permission, like other
+live button activation, and is a single left click at the element's centre.
+Before clicking, the page checks twice, about 60 ms apart, that the element is
+enabled, visible, not inert, inside the viewport (after scrolling it into view)
+and the topmost element at that point, including through open shadow roots; a
+covered, off-screen or moving target fails with `target_obscured`,
+`target_outside_viewport` or `target_moved` and nothing is clicked. Agents never
+supply coordinates. Restricted pages, frames and shadow-root controls keep these
+widgets observation-only.
 
 Targets also expose `description`, `required`, `invalid`, and `error_message`.
 Descriptions prefer visible `aria-describedby` references, then `aria-description`,

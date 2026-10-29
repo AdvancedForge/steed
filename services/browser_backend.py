@@ -891,6 +891,14 @@ class QtBrowserBackend(QObject):
                 return self._action_result(
                     session_id, action_id, "activate", source, target_id=target_id
                 )
+            if descriptor.kind == "custom":
+                session.grant.check("submit")
+                source = self._live_pointer(
+                    session_id, snapshot_id, target_id, validate
+                )
+                return self._action_result(
+                    session_id, action_id, "activate", source, target_id=target_id
+                )
         if arguments["operation"] == "enter":
             source = self.inspector.act(
                 session_id, session.page, snapshot_id, target_id, arguments, validate
@@ -902,6 +910,92 @@ class QtBrowserBackend(QObject):
         return self._action_result(
             session_id, action_id, arguments["operation"], source, target_id=target_id
         )
+
+    def _live_pointer(self, session_id, snapshot_id, target_id, validate):
+        """Click a custom widget only at a verified, stable, unobscured point."""
+        session = self._session(session_id)
+        node_id, descriptor = self.inspector._target_reference(
+            session_id, snapshot_id, target_id
+        )
+        if (
+            not descriptor.enabled
+            or "activate" not in descriptor.operations
+            or "pointer_activation" not in descriptor.constraints
+        ):
+            raise PageInspectionError("control_unsupported")
+        if session.network is None:
+            session.network = TaskNetwork(session.page, self, live=True)
+        network = session.network
+        result = Future()
+        request = {"snapshot_id": snapshot_id, "node_id": node_id}
+        first = None
+
+        def finish(source):
+            if result.done():
+                return
+            try:
+                source.result()
+                result.set_result(
+                    {
+                        "status": "dispatched",
+                        "changed": False,
+                        "input_semantics": "chromium_pointer",
+                    }
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def confirmed(source):
+            if result.done():
+                return
+            try:
+                point = source.result()
+                # The page must not have moved the target between the checks.
+                if point != first:
+                    raise PageInspectionError("target_moved")
+                validate()
+                network.input.click(point["x"], point["y"], validate).add_done_callback(
+                    finish
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def measured(source):
+            nonlocal first
+            if result.done():
+                return
+            try:
+                first = source.result()
+                validate()
+                QTimer.singleShot(
+                    60,
+                    lambda: (
+                        result.done()
+                        or self.inspector.input_phase(
+                            session_id, session.page, request, "live_point", validate
+                        ).add_done_callback(confirmed)
+                    ),
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def ready(source):
+            if result.done():
+                return
+            try:
+                source.result()
+                validate()
+                self.inspector.input_phase(
+                    session_id, session.page, request, "live_point", validate
+                ).add_done_callback(measured)
+            except Exception as error:
+                result.set_exception(error)
+
+        result.add_done_callback(
+            lambda _: self.inspector.invalidate(session_id, "action_completed")
+        )
+        network.ready.add_done_callback(ready)
+        return result
 
     def _live_activate(self, session_id, snapshot_id, target_id, operation, validate):
         """Bounded native activation; website effects require subsequent observation."""

@@ -51,6 +51,32 @@ INPUT_SCRIPT = """
 })();
 """
 
+CLICK_SCRIPT = """
+(() => {
+    const request = /* REQUEST */;
+    window[request.id] = null;
+    (async () => {
+        try {
+            const SDK = await import(new URL('./core/sdk/sdk.js', location.href).href);
+            const manager = SDK.TargetManager.TargetManager.instance();
+            const target = manager.primaryPageTarget() || manager.targets().find(t => t.type() === 'frame');
+            if (!target) throw new Error('Target unavailable');
+            const point = {x: request.x, y: request.y};
+            for (const event of [
+                {type: 'mouseMoved', ...point, button: 'none'},
+                {type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: 1},
+                {type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1},
+            ]) {
+                if (window[request.id] === false) break;
+                const response = await target.inputAgent().invoke_dispatchMouseEvent(event);
+                if (response.getError()) throw new Error('Input unavailable');
+            }
+            if (window[request.id] !== false) window[request.id] = true;
+        } catch (_) { window[request.id] = false; }
+    })();
+})();
+"""
+
 FILE_SCRIPT = """
 (() => {
     const request = /* REQUEST */;
@@ -100,6 +126,12 @@ class TaskInput(QObject):
             },
             validate,
         )
+
+    def click(self, x, y, validate):
+        """One left click at a point the page itself verified as the target."""
+        if any(type(v) is not int or not 0 <= v <= 20000 for v in (x, y)):
+            raise ValueError("Unsupported pointer position")
+        return self._run(CLICK_SCRIPT, {"x": x, "y": y}, validate)
 
     def file(self, path, url, validate):
         """Trusted staged path only; callers cannot choose protocol/selectors."""

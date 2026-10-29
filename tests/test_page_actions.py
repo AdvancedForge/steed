@@ -84,8 +84,12 @@ class PageActionTests(unittest.TestCase):
             self.evaluate(page, "events"), [{"trusted": True, "type": "insertText"}]
         )
         page.triggerAction(QWebEnginePage.WebAction.Undo)
-        self.assertEqual(
-            self.evaluate(page, "document.getElementById('text').value"), "OLD_SECRET"
+        # The engine applies Undo asynchronously.
+        self.wait_for(
+            lambda: (
+                self.evaluate(page, "document.getElementById('text').value")
+                == "OLD_SECRET"
+            )
         )
         self.assertNotIn("SECRET", repr(self.service.store.events(task_id)))
         snapshot = self.inspect(task_id, session_id)

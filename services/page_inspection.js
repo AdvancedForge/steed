@@ -3,6 +3,8 @@
     "use strict";
     const request = /* REQUEST */;
     const fail = code => JSON.stringify({error: code});
+    const POINTER_ROLES = ["button", "link", "tab", "menuitem", "menuitemcheckbox", "menuitemradio",
+        "switch", "checkbox", "radio", "option"];
     const liveFingerprint = node => {
         const attributes = el => Array.from(el.attributes, a => [a.name, a.value]);
         const parent = el => el.parentElement || el.getRootNode()?.host;
@@ -73,7 +75,7 @@
         return {url: action.href, method, file_form:hasFiles, uploads};
     };
     try {
-        if (["target", "act", "scroll", "form", "submit", "live_prepare", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
+        if (["target", "act", "scroll", "form", "submit", "live_prepare", "live_point", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
             const state = globalThis[request.state_key];
             if (!state || state.snapshot_id !== request.snapshot_id) return fail("stale_snapshot");
             for (const frame of state.frames) {
@@ -144,6 +146,35 @@
                     return JSON.stringify({before: node.selectedIndex, keys});
                 }
                 return fail("control_unsupported");
+            }
+            if (request.mode === "live_point") {
+                // Pointer activation for custom widgets: the click lands only on
+                // the target's visible centre, never on whatever covers it.
+                const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
+                const role = (node.getAttribute("role") || "").toLowerCase();
+                const style = win.getComputedStyle(node);
+                if (win !== window || node.getRootNode() !== doc || !POINTER_ROLES.includes(role) ||
+                    node.getAttribute("aria-disabled") === "true" || node.closest("[inert]") ||
+                    !node.getClientRects().length || style.visibility !== "visible" ||
+                    style.pointerEvents === "none") return fail("control_unsupported");
+                node.scrollIntoView({block: "nearest", inline: "nearest"});
+                const box = node.getBoundingClientRect();
+                if (box.width < 2 || box.height < 2) return fail("control_unsupported");
+                const x = box.left + box.width / 2, y = box.top + box.height / 2;
+                if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return fail("target_outside_viewport");
+                let hit = doc.elementFromPoint(x, y);
+                for (let depth = 0; hit?.shadowRoot && depth < 8; depth++) {
+                    const inner = hit.shadowRoot.elementFromPoint(x, y);
+                    if (!inner || inner === hit) break;
+                    hit = inner;
+                }
+                let inside = false;
+                for (let el = hit, depth = 0; el && depth < 256; depth++) {
+                    if (el === node) { inside = true; break; }
+                    el = el.parentElement || el.getRootNode()?.host;
+                }
+                if (!inside) return fail("target_obscured");
+                return JSON.stringify({x: Math.round(x), y: Math.round(y)});
             }
             if (request.mode === "live_prepare") {
                 const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
@@ -487,9 +518,16 @@
                         if (type === "submit" || type === "button") { kind = "button"; operations = ["activate"]; }
                     } else if (tag === "textarea") { kind = "textarea"; operations = ["enter"]; }
                     else if (tag === "select") { kind = "select"; operations = ["select"]; }
-                    else if (["button", "link", "textbox", "combobox", "checkbox", "radio", "tab", "menuitem", "switch"].includes(role)) {
-                        kind = "custom"; constraints.push("custom_control_unsupported");
-                        limitations.add("custom_controls_present");
+                    else if (["button", "link", "textbox", "combobox", "checkbox", "radio", "tab", "menuitem",
+                        "menuitemcheckbox", "menuitemradio", "switch", "option"].includes(role)) {
+                        kind = "custom";
+                        if (request.live && win === window && POINTER_ROLES.includes(role)) {
+                            operations = ["activate"];
+                            constraints.push("pointer_activation", "website_handlers_can_change_data");
+                        } else {
+                            constraints.push("custom_control_unsupported");
+                            limitations.add("custom_controls_present");
+                        }
                     }
                     if (kind) {
                         if (kind === "button") {

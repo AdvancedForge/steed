@@ -717,7 +717,7 @@ TOOLS = (
     ),
     tool(
         "page.act",
-        "Edit a supported control with read/edit permission; references become stale after the attempt.",
+        "Edit a supported control with read/edit permission; references become stale after the attempt. In live sessions, custom widgets (ARIA button/link/tab/menuitem/switch/checkbox/radio/option) with the pointer_activation constraint accept activate, which needs submit permission and clicks only if the element is visible, in view, unobscured and stable; otherwise expect target_obscured, target_outside_viewport or target_moved.",
         {
             **TARGET,
             "operation": {**string(), "enum": ["enter", "select", "activate"]},

@@ -197,7 +197,11 @@ class LiveTabsTests(unittest.TestCase):
         self.assertIn("open_shadow_root_present", snapshot.limitations)
         self.assertIn("canvas_present", snapshot.limitations)
         self.assertIn("visual_content_present", snapshot.limitations)
-        self.assertIn("custom_controls_present", snapshot.limitations)
+        # Live custom widgets are actionable through verified pointer clicks.
+        self.assertNotIn("custom_controls_present", snapshot.limitations)
+        custom = next(t for t in snapshot.frames[0].targets if t.label == "Custom")
+        self.assertEqual(custom.operations, ("activate",))
+        self.assertIn("pointer_activation", custom.constraints)
 
     def test_native_button_activation_runs_website_handler_and_background_post(self):
         window, view = self.window()
@@ -220,6 +224,37 @@ class LiveTabsTests(unittest.TestCase):
         window.take_back_button.click()
         self.assertIsNone(view.page().devToolsPage())
         self.assertEqual(view.title(), "Clicked")
+
+    def test_custom_widgets_are_clicked_only_where_visibly_unobscured(self):
+        window, view = self.window()
+        self.value(
+            view.page(),
+            """
+            const add = html => { const d = document.createElement('div');
+              d.innerHTML = html; document.body.append(d.firstElementChild); };
+            window.tabClicks = 0; window.coverClicks = 0;
+            add('<div role="tab" aria-label="Billing" style="display:inline-block;padding:8px">Billing</div>');
+            document.querySelector('[aria-label=Billing]').addEventListener('click',
+              () => { window.tabClicks++; document.title = 'Billing tab'; });
+            add('<div style="position:relative;height:40px"><div role="switch" aria-label="Alerts" style="padding:8px">Alerts</div>' +
+                '<div id="cover" style="position:absolute;inset:0;background:#fff8"></div></div>');
+            document.querySelector('#cover').addEventListener('click', () => window.coverClicks++);
+            true;
+            """,
+        )
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        targets = {t.label: t for t in snapshot.frames[0].targets}
+        result = self.act(task, session, snapshot, targets["Billing"])
+        self.assertEqual(result.status, "dispatched")
+        self.assertEqual(result.input_semantics, "chromium_pointer")
+        self.wait_for(lambda: self.value(view.page(), "window.tabClicks") == 1)
+        snapshot = self.inspect(task, session)
+        targets = {t.label: t for t in snapshot.frames[0].targets}
+        with self.assertRaises(PageInspectionError) as error:
+            self.act(task, session, snapshot, targets["Alerts"])
+        self.assertEqual(error.exception.code, "target_obscured")
+        self.assertEqual(self.value(view.page(), "window.coverClicks"), 0)
 
     def test_live_shadow_labels_and_host_changes_revalidate_target_references(self):
         window, view = self.window()
