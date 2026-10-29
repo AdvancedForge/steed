@@ -217,6 +217,7 @@
         const allowed = new Set(request.origins);
         let remainingText = 32000, remainingTargets = 200, remainingNodes = 12000;
         let remainingTargetText = 16000;
+        let remainingOutline = 150, remainingOutlineText = 12000;
         let remainingShadowRoots = 32;
         const shadowRoots = new WeakSet();
         const shadowFor = (node, depth) => {
@@ -323,6 +324,93 @@
             remainingTargetText -= result.length;
             return result;
         };
+        // Short labels for the outline must not report the page text as truncated.
+        const brief = (node, win, limit) => {
+            const truncated = limitations.has("text_truncated");
+            const value = clean(readable(node, win, limit), limit);
+            if (!truncated) limitations.delete("text_truncated");
+            return value;
+        };
+        const LANDMARK_ROLES = new Set(["main", "navigation", "banner", "contentinfo",
+            "complementary", "search", "region", "form"]);
+        const LANDMARK_TAGS = {main: "main", nav: "navigation", aside: "complementary", search: "search"};
+        const name = (node, win) => {
+            const ids = (node.getAttribute("aria-labelledby") || "").slice(0, 2048).split(/\s+/)
+                .filter(Boolean).slice(0, 8).map(id => node.getRootNode().getElementById(id)).filter(Boolean);
+            const labelled = clean(ids.map(item => referenceReadable(item, win)).join(" "), 120);
+            return labelled || clean(node.getAttribute("aria-label"), 120);
+        };
+        const outlineEntry = (node, tag, role, win) => {
+            if (/^h[1-6]$/.test(tag) || role === "heading") {
+                const level = role === "heading"
+                    ? Math.min(6, Math.max(1, parseInt(node.getAttribute("aria-level"), 10) || 2))
+                    : Number(tag[1]);
+                const text = name(node, win) || brief(node, win, 200);
+                return text ? {kind: "heading", level, text} : null;
+            }
+            let landmark = LANDMARK_ROLES.has(role) ? role : (role ? "" : LANDMARK_TAGS[tag] || "");
+            const sectioned = () => node.parentElement?.closest("article,aside,main,nav,section");
+            if (!role && tag === "header" && !sectioned()) landmark = "banner";
+            if (!role && tag === "footer" && !sectioned()) landmark = "contentinfo";
+            if (!role && tag === "section") landmark = "region";
+            if (!role && tag === "form") landmark = "form";
+            if (landmark) {
+                const label = name(node, win);
+                // Unnamed regions and forms are not landmarks.
+                if ((landmark === "region" || landmark === "form") && !label) return null;
+                return {kind: "landmark", role: landmark, text: label};
+            }
+            if (tag === "img" || role === "img") {
+                const alt = clean(node.getAttribute("aria-label") || node.getAttribute("alt"), 160);
+                if (alt) return {kind: "image", text: alt};
+                if (!node.hasAttribute("alt") || role === "img") limitations.add("unlabelled_images_present");
+                return null;
+            }
+            if (tag === "table" && !["presentation", "none"].includes(role)) {
+                const head = node.tHead?.rows[0] || node.rows[0];
+                const columns = head ? Array.from(head.cells).slice(0, 12)
+                    .filter(cell => cell.tagName === "TH").map(cell => brief(cell, win, 60)) : [];
+                const caption = name(node, win) || (node.caption ? brief(node.caption, win, 160) : "");
+                return {kind: "table", text: caption, columns, count: Math.min(node.rows.length, 100000)};
+            }
+            if (tag === "ul" || tag === "ol" || role === "list") {
+                const items = Array.from(node.children).filter(child =>
+                    child.tagName === "LI" || child.getAttribute("role") === "listitem").length;
+                return items >= 2 ? {kind: "list", ordered: tag === "ol", count: items, text: name(node, win)} : null;
+            }
+            if ((tag === "dialog" && node.open) || role === "dialog" || role === "alertdialog")
+                return {kind: "dialog", text: name(node, win) || brief(node.querySelector("h1,h2,h3,[role=heading]") || node, win, 120)};
+            const live = (node.getAttribute("aria-live") || "").toLowerCase();
+            if (role === "alert" || role === "status" || live === "assertive" || live === "polite") {
+                const text = brief(node, win, 200);
+                return text ? {kind: role === "alert" || live === "assertive" ? "alert" : "status", text} : null;
+            }
+            if (tag === "details") {
+                const summary = node.querySelector(":scope > summary");
+                return {kind: "disclosure", text: summary ? brief(summary, win, 120) : "", expanded: node.open};
+            }
+            if (role === "tablist") return {kind: "tablist", text: name(node, win)};
+            return null;
+        };
+        const addOutline = (frame, entry) => {
+            if (remainingOutline <= 0) { limitations.add("outline_truncated"); return; }
+            const size = (entry.text || "").length + (entry.columns || []).join("").length;
+            if (size > remainingOutlineText) { limitations.add("outline_truncated"); return; }
+            remainingOutline--;
+            remainingOutlineText -= size;
+            frame.outline.push(entry);
+        };
+        const stateOf = node => {
+            const states = [];
+            const expanded = node.getAttribute("aria-expanded");
+            if (expanded === "true") states.push("expanded");
+            else if (expanded === "false") states.push("collapsed");
+            if (node.getAttribute("aria-pressed") === "true") states.push("pressed");
+            if (node.getAttribute("aria-selected") === "true") states.push("selected");
+            const current = (node.getAttribute("aria-current") || "false").toLowerCase();
+            if (current !== "false" && current !== "") states.push("current");
+            return states;
+        };
         const inspectFrame = (win, parent, path, inheritedOrigin) => {
             if (frames.length >= 16 || path.split("/").length > 8) {
                 limitations.add("frame_limit"); return;
@@ -334,7 +422,7 @@
                 ? inheritedOrigin : new URL(url).origin;
             const frameId = request.snapshot_id + ":frame:" + frames.length;
             const frame = {frame_id: frameId, parent_frame_id: parent, path, url: safeUrl(url),
-                origin, text: "", targets: [], limitations: []};
+                origin, text: "", targets: [], outline: [], limitations: []};
             frames.push(frame);
             if (origin !== "about:blank" && !allowed.has(origin)) {
                 frame.limitations.push("frame_origin_out_of_scope"); return;
@@ -365,6 +453,8 @@
                     if (tag === "canvas") limitations.add("canvas_present");
                     if (["img", "svg", "video"].includes(tag)) limitations.add("visual_content_present");
                     const role = clean(node.getAttribute("role"), 64).toLowerCase();
+                    const entry = outlineEntry(node, tag, role, win);
+                    if (entry) addOutline(frame, entry);
                     let kind = "", operations = [], href = null, formAction = null, formMethod = null;
                     const constraints = [];
                     if (editable && !["input", "textarea", "select", "option"].includes(tag)) {
@@ -397,7 +487,7 @@
                         if (type === "submit" || type === "button") { kind = "button"; operations = ["activate"]; }
                     } else if (tag === "textarea") { kind = "textarea"; operations = ["enter"]; }
                     else if (tag === "select") { kind = "select"; operations = ["select"]; }
-                    else if (["button", "link", "textbox", "combobox", "checkbox", "radio"].includes(role)) {
+                    else if (["button", "link", "textbox", "combobox", "checkbox", "radio", "tab", "menuitem", "switch"].includes(role)) {
                         kind = "custom"; constraints.push("custom_control_unsupported");
                         limitations.add("custom_controls_present");
                     }
@@ -445,7 +535,7 @@
                             frame.targets.push({node_id: nodeId, kind, role: role || (kind === "editable" ? "textbox" : kind),
                                 label, description: boundedTargetText(descriptionFor(node, label, win)), required, invalid,
                                 error_message: invalid ? boundedTargetText(referenceText(node, "aria-errormessage", win)) : "",
-                                enabled, read_only: readOnly, href,
+                                enabled, read_only: readOnly, href, states: stateOf(node),
                                 operations, constraints, form_action: formAction, form_method: formMethod});
                             remainingTargets--;
                         }
@@ -475,7 +565,7 @@
                 catch (_) {
                     frames.push({frame_id: request.snapshot_id + ":frame:" + frames.length,
                         parent_frame_id: frameId, path: childPath, url: safeUrl(element.src), origin: "",
-                        text: "", targets: [], limitations: ["frame_inaccessible_or_not_ready"]});
+                        text: "", targets: [], outline: [], limitations: ["frame_inaccessible_or_not_ready"]});
                 }
             }
         };

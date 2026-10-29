@@ -135,6 +135,76 @@ class PageInspectionTests(unittest.TestCase):
         self.assertIn("accessibility_tree_not_inspected", snapshot.limitations)
         self.assertIn("hidden_accessible_references_omitted", snapshot.limitations)
 
+    def test_outline_reports_structure_in_order_without_values(self):
+        task, _, session, page = self.session()
+        self.load(
+            session,
+            page,
+            """<header><h1>Store</h1></header>
+            <nav aria-label="Primary"><ul><li><a href="/a">A</a></li>
+              <li><a href="/b" aria-current="page">B</a></li></ul></nav>
+            <main>
+              <h2>Orders</h2>
+              <div role="tablist" aria-label="Views">
+                <span role="tab" aria-selected="true">Open</span>
+                <span role="tab" aria-selected="false">Closed</span></div>
+              <table><caption>Recent orders</caption>
+                <tr><th>Order</th><th>Total</th></tr>
+                <tr><td>1</td><td>$5</td></tr><tr><td>2</td><td>$9</td></tr></table>
+              <img src="data:," alt="Delivery map"><img src="data:,">
+              <ol><li>Pick</li><li>Pack</li><li>Ship</li></ol>
+              <details open><summary>Shipping rules</summary>Within 3 days</details>
+              <button aria-expanded="false" aria-label="More">…</button>
+              <div role="alert">Payment failed</div>
+              <section><h3 aria-level="3">Unnamed section</h3></section>
+              <section aria-label="Help"><input aria-label="Note" value="VALUE_SECRET"></section>
+              <div role="heading" aria-level="4">Custom heading</div>
+              <h5 hidden>Hidden heading</h5>
+            </main>
+            <footer>© Store</footer>""",
+        )
+        snapshot = self.inspect(task, session)
+        outline = snapshot.frames[0].outline
+        summary = [
+            (item.kind, item.role or item.level or "", item.text) for item in outline
+        ]
+        self.assertEqual(
+            summary[:4],
+            [
+                ("landmark", "banner", ""),
+                ("heading", 1, "Store"),
+                ("landmark", "navigation", "Primary"),
+                ("list", "", ""),
+            ],
+        )
+        kinds = {item.kind: item for item in outline}
+        self.assertEqual(kinds["table"].text, "Recent orders")
+        self.assertEqual(kinds["table"].columns, ("Order", "Total"))
+        self.assertEqual(kinds["table"].count, 3)
+        self.assertEqual(kinds["image"].text, "Delivery map")
+        self.assertIn("unlabelled_images_present", snapshot.limitations)
+        lists = [item for item in outline if item.kind == "list"]
+        self.assertEqual([(i.ordered, i.count) for i in lists], [(False, 2), (True, 3)])
+        self.assertEqual(kinds["disclosure"].text, "Shipping rules")
+        self.assertIs(kinds["disclosure"].expanded, True)
+        self.assertEqual(kinds["alert"].text, "Payment failed")
+        self.assertEqual(kinds["tablist"].text, "Views")
+        headings = [(i.level, i.text) for i in outline if i.kind == "heading"]
+        self.assertIn((4, "Custom heading"), headings)
+        self.assertNotIn("Hidden heading", str(headings))
+        regions = [
+            i.text for i in outline if i.kind == "landmark" and i.role == "region"
+        ]
+        self.assertEqual(regions, ["Help"])
+        self.assertIn(("landmark", "contentinfo", ""), summary)
+        targets = {t.label: t for t in snapshot.frames[0].targets}
+        self.assertEqual(targets["More"].states, ("collapsed",))
+        self.assertEqual(targets["B"].states, ("current",))
+        self.assertEqual(targets["Open"].states, ("selected",))
+        self.assertIn("custom_control_unsupported", targets["Open"].constraints)
+        self.assertNotIn("SECRET", str(asdict(snapshot)))
+        self.assertNotIn("text_truncated", snapshot.limitations)
+
     def test_description_fallbacks_and_invalid_tokens_do_not_run_validation(self):
         task, _, session, page = self.session()
         self.load(

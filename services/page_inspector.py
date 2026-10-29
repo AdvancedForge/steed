@@ -39,6 +39,73 @@ class TargetDescriptor:
     required: bool = False
     invalid: bool = False
     error_message: str = ""
+    states: tuple[str, ...] = ()
+
+
+OUTLINE_KINDS = frozenset(
+    {
+        "heading",
+        "landmark",
+        "image",
+        "table",
+        "list",
+        "dialog",
+        "alert",
+        "status",
+        "disclosure",
+        "tablist",
+    }
+)
+TARGET_STATES = frozenset({"expanded", "collapsed", "pressed", "selected", "current"})
+
+
+@dataclass(frozen=True)
+class OutlineItem:
+    """Page structure in document order: headings, landmarks, tables, lists."""
+
+    kind: str
+    text: str = ""
+    level: int = 0
+    role: str = ""
+    count: int = 0
+    columns: tuple[str, ...] = ()
+    ordered: bool = False
+    expanded: bool | None = None
+
+
+def outline_item(raw):
+    """Accept only the bounded shapes the trusted script produces."""
+    if not isinstance(raw, dict) or raw.get("kind") not in OUTLINE_KINDS:
+        raise PageInspectionError("inspection_unavailable")
+    text = raw.get("text", "")
+    columns = raw.get("columns", [])
+    level, count = raw.get("level", 0), raw.get("count", 0)
+    if (
+        not isinstance(text, str)
+        or len(text) > 256
+        or not isinstance(columns, list)
+        or len(columns) > 12
+        or any(not isinstance(c, str) or len(c) > 64 for c in columns)
+        or type(level) is not int
+        or not 0 <= level <= 6
+        or type(count) is not int
+        or not 0 <= count <= 100000
+        or not isinstance(raw.get("role", ""), str)
+        or len(raw.get("role", "")) > 32
+        or raw.get("expanded") not in (None, True, False)
+        or raw.get("ordered", False) not in (True, False)
+    ):
+        raise PageInspectionError("inspection_unavailable")
+    return OutlineItem(
+        raw["kind"],
+        text,
+        level,
+        raw.get("role", ""),
+        count,
+        tuple(columns),
+        raw.get("ordered", False),
+        raw.get("expanded"),
+    )
 
 
 @dataclass(frozen=True)
@@ -51,6 +118,7 @@ class FrameSnapshot:
     text: str
     targets: tuple[TargetDescriptor, ...]
     limitations: tuple[str, ...]
+    outline: tuple[OutlineItem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -179,6 +247,11 @@ class PageInspector(QObject):
                         target.get("required", False),
                         target.get("invalid", False),
                         target.get("error_message", ""),
+                        tuple(
+                            state
+                            for state in target.get("states", [])
+                            if state in TARGET_STATES
+                        ),
                     )
                     targets[target_id] = (target["node_id"], descriptor)
                     descriptors.append(descriptor)
@@ -192,6 +265,7 @@ class PageInspector(QObject):
                         frame["text"],
                         tuple(descriptors),
                         tuple(frame["limitations"]),
+                        tuple(outline_item(item) for item in frame.get("outline", [])),
                     )
                 )
             snapshot = PageSnapshot(

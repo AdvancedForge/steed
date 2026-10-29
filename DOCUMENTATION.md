@@ -1013,6 +1013,20 @@ they do not authorize or execute actions. Supported native submit buttons report
 unsupported forms, specialized input types, and multiple selection report constraints.
 Option labels and values remain omitted; current selection uses an index.
 
+Each frame also has an `outline`: visible page structure in document order, so
+an agent can orient without reading all text. Entries are headings (with level),
+landmarks (banner, navigation, main, complementary, contentinfo, search, and
+named regions/forms), images with alt text or labels, tables (caption, up to 12
+header columns and a row count), lists (ordered flag and item count), open
+dialogs, alerts and status/live regions, `<details>` disclosures (summary and
+open state) and tab lists. Labels come from author-provided names or bounded
+visible text; field values and editable text are never included. At most 150
+entries and 12,000 characters are returned per snapshot (`outline_truncated`),
+and images without any text alternative add `unlabelled_images_present`.
+Targets report ARIA states as `states`: `expanded`/`collapsed`, `pressed`,
+`selected` and `current`. Custom tab, menu-item and switch roles are now listed
+as observation-only custom controls.
+
 Targets also expose `description`, `required`, `invalid`, and `error_message`.
 Descriptions prefer visible `aria-describedby` references, then `aria-description`,
 then a title differing from the label. Native form controls' `required` attribute

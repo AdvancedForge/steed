@@ -29,6 +29,13 @@ is fixed with a scope-only CSP on restricted pages, enforced by Blink before eac
 redirect hop: 30/30 under the same load. DevTools Fetch was tried first and does
 not hold or rewrite requests on Qt 6.11.2.
 
+**Page outline for agents — October 29, 2026.** `page.inspect` snapshots now
+include a bounded per-frame outline (headings, landmarks, tables, lists, dialogs,
+alerts/status, disclosures, tab lists, labelled images) and ARIA states on
+targets, under the existing read permission. Still open: actions on custom
+widgets (tabs, menus, switches) and open-shadow controls, virtualized lists,
+cross-origin frames and the browser's native accessibility tree.
+
 **Developer Tools — October 29, 2026.** F12/Ctrl+Shift+I, Ctrl+Shift+J and
 Ctrl+Shift+C open Chromium DevTools per tab, docked right, bottom or in a separate
 window, plus Inspect in the page menu. The address bar now keeps the user's edit
