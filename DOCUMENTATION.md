@@ -249,7 +249,9 @@ The menu bar has six categories, in this order:
   drag to reorder, and the strip is keyboard navigable (arrow keys, Enter,
   Delete, Shift+F10).
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
-  Zoom Out and Reset Zoom.
+  Zoom Out and Reset Zoom. While you edit the address bar, the page changing its
+  URL no longer replaces your text or its undo/redo history (Ctrl+Z, Ctrl+Shift+Z
+  or Ctrl+Y); Escape restores the page's address.
 - **Cookies:** Clear Browsing History, View Cookies, Clear All Cookies and Use
   Global Cookies for This Site. Clearing history affects the current profile's
   visits and address suggestions; it does not clear cookies.

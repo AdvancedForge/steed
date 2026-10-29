@@ -21,6 +21,43 @@ class HistoryCompleter(QCompleter):
         return index.data(Qt.ItemDataRole.UserRole) or ""
 
 
+class AddressInput(QLineEdit):
+    """Keep the user's typing, and its undo/redo history, while pages update."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.page_url = ""
+        self.committed = False
+        self.textEdited.connect(lambda _: setattr(self, "committed", False))
+
+    def show_page_url(self, url: str) -> None:
+        self.page_url = url
+        # setText clears undo/redo; a page changing its URL (redirects, SPAs)
+        # must not replace what the user is editing.
+        if self.hasFocus() and self.editing():
+            return
+        if self.text() != url:
+            self.setText(url)
+
+    def editing(self) -> bool:
+        # Undoing back to the original text clears isModified() but keeps redo.
+        return not self.committed and (
+            self.isModified() or self.isUndoAvailable() or self.isRedoAvailable()
+        )
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape and self.editing():
+            self.setText(self.page_url)
+            self.selectAll()
+            return
+        super().keyPressEvent(event)
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        if not self.editing() and self.text() != self.page_url:
+            self.setText(self.page_url)
+
+
 class AddressBar(QWidget):
     """Address bar with navigation buttons."""
 
@@ -64,7 +101,7 @@ class AddressBar(QWidget):
         self.home_btn.clicked.connect(self.home_requested.emit)
 
         # Address bar
-        self.address_input = QLineEdit()
+        self.address_input = AddressInput()
         self.address_input.setPlaceholderText("Enter URL or search...")
         self.address_input.returnPressed.connect(self._on_return_pressed)
         self.history_model = QStandardItemModel(self)
@@ -74,7 +111,7 @@ class AddressBar(QWidget):
         self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
         self.completer.setMaxVisibleItems(10)
         self.address_input.setCompleter(self.completer)
-        self.completer.activated[str].connect(self.url_changed.emit)
+        self.completer.activated[str].connect(self._on_completion)
         self.passwords_btn = QPushButton("Passwords")
         self.passwords_btn.setToolTip("KeePassXC passwords (Ctrl+Shift+L to fill)")
         self.passwords_btn.clicked.connect(self.passwords_requested.emit)
@@ -145,11 +182,17 @@ class AddressBar(QWidget):
         """Handle return key press."""
         text = self.address_input.text().strip()
         if text:
+            # The edit is committed; later page URLs may replace it again.
+            self.address_input.committed = True
             self.url_changed.emit(text)
 
+    def _on_completion(self, text: str) -> None:
+        self.address_input.committed = True
+        self.url_changed.emit(text)
+
     def set_url(self, url: str) -> None:
-        """Set the URL in the address bar."""
-        self.address_input.setText(url)
+        """Show the current page URL unless the user is editing the field."""
+        self.address_input.show_page_url(url)
 
     def set_history(self, entries: list[HistoryEntry]) -> None:
         self.completer.popup().hide()
