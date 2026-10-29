@@ -411,6 +411,19 @@ class TaskProfileTests(unittest.TestCase):
         )
         self.assertEqual(self.registry.task_profiles, {"work": {task_id}})
 
+    def test_closed_popout_window_is_freed_before_its_opener_closes(self):
+        window = BrowserWindow()
+        self.windows.append(window)
+        window._pop_out_profile_named("work")
+        child = window._child_windows[0]
+        child.close()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.assertTrue(sip.isdeleted(child))
+        window._pop_out_profile_named("work")
+        self.assertEqual(len(window._child_windows), 1)
+        window.close()
+        self.assertTrue(window._child_windows[0].isHidden())
+
     def test_unknown_profiles_paths_and_other_profile_sessions_are_denied(self):
         task = self.command("task.create", objective="Invalid profile")
         for selector in ("existing:missing", "existing:search", "existing:../work"):

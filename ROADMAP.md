@@ -28,6 +28,19 @@ is confirmed: under CPU load an in-scope image redirect reached an out-of-scope
 origin with a GET in 5/30 runs. Fixing it needs request pausing below Qt's
 interceptor (for example DevTools Fetch on the task frontend).
 
+**Review findings, second pass — October 28, 2026.** Fixed: a failed automatic
+approval (saved rule, account access or YOLO) disabled every task instead of
+leaving the request pending; Codex chat messages sent between the gateway
+connection and the Codex handshake were dropped; a profile named
+`global_profile` disappeared from the profile list; closed pop-out windows
+stayed allocated until their opener closed; recipe docs listed versions 1–7.
+Verified as intended and kept: global saved approvals apply to every profile;
+Clear All Cookies blocks inherited global cookies until re-enabled per site; a
+corrupt `retired_profiles.json` stops startup; live-tab delegation validates
+before retiring the old grant. Open: HTTP MCP sessions expire after 60 s idle
+(cancelling their task) and a second launch shows a warning instead of opening
+a window in the running browser.
+
 **Website editor coverage — implemented and accepted.** Inspection now
 reports rich-editor boundaries/labels without returning their contents or nested
 controls. Explicit main-frame document-root editors on live pages support bounded literal

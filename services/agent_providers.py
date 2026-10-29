@@ -253,8 +253,10 @@ class AgentProviders(QObject):
     @provider_callback
     def _send(self, task_id, message):
         chat = self.chats.get(task_id)
-        if chat is None or not chat["ready"] or message["message_id"] in chat["seen"]:
+        if chat is None or message["message_id"] in chat["seen"]:
             return
+        # Messages can arrive between the gateway connection and Codex's
+        # handshake; _ready drains them in order.
         chat["seen"].add(message["message_id"])
         chat["queue"].append(message)
         self._next(task_id)

@@ -68,6 +68,15 @@ class StartPageTests(unittest.TestCase):
                 f"Page did not finish: {tab.page().requestedUrl().toString()} / {self.js('location.href', tab)} / {self.js('document.title', tab)}"
             )
 
+    def test_profile_named_like_global_storage_stays_listed(self):
+        manager = self.window.profile_manager
+        self.assertTrue(manager.create_profile("global_profile"))
+        self.assertEqual(manager.list_profiles(), ["global", "global_profile"])
+        self.assertNotEqual(
+            manager.get_profile_path("global_profile"),
+            manager.get_profile_path("global"),
+        )
+
     def test_fresh_global_welcome_newtab_and_separate_home(self):
         self.assertEqual(self.window.profile_manager.current_profile_name, "global")
         self.assertEqual(self.window.profile_manager.list_profiles(), ["global"])

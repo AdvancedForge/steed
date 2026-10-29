@@ -194,6 +194,21 @@ class AgentProviderTests(unittest.TestCase):
             ],
         )
 
+    def test_message_sent_while_codex_finishes_connecting_is_delivered(self):
+        ready = []
+        with patch.object(self.manager, "_ready", ready.append):
+            task = self.manager.new_chat()
+            self.wait_for(lambda: ready and task in self.service.external_tasks)
+        self.assertFalse(self.manager.can_send(task))
+        # Panel instructions reach a connected conversation without the UI gate.
+        self.service.send_message(task, "Early instruction")
+        self.manager._ready(task)
+        self.complete(task)
+        self.assertEqual(
+            [m["text"] for m in self.messages(task)],
+            ["Early instruction", "Synthetic reply: Early instruction"],
+        )
+
     def test_events_before_turn_response_are_retained(self):
         task = self.chat("early-events")
         self.send("Early")

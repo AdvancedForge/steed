@@ -598,8 +598,7 @@ class ProfileManager(QObject):
         names.update(
             p.name
             for p in self.config.profiles_dir.iterdir()
-            if p.name not in ("search", "global_profile")
-            and self.registry.storage.active(p.name, p)
+            if p.name != "search" and self.registry.storage.active(p.name, p)
         )
         return sorted(names)
 

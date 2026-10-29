@@ -299,6 +299,29 @@ class ApprovalRuleTests(unittest.TestCase):
         with self.assertRaises(TaskPermissionError):
             live.check("read")
 
+    def test_failed_automatic_approval_leaves_request_for_review(self):
+        self.remember("profile", profile="existing:work")
+        unavailable = ValueError("Profile could not be opened")
+        for automatic in (False, True):
+            self.service.auto_approve_requests = automatic
+            with (
+                self.subTest(automatic=automatic),
+                patch.object(
+                    self.profiles, "reserve_task_profile", side_effect=unavailable
+                ),
+            ):
+                task, grant = self.request(profile="existing:work")
+                self.assertEqual(grant.status, "requested")
+                self.assertFalse(self.service.failure)
+                self.assertNotIn(task.task_id, self.service._grants)
+                self.assertIn(
+                    "permission.auto_approval_failed",
+                    str(self.service.store.events(task.task_id)),
+                )
+        self.service.auto_approve_requests = False
+        task, grant = self.request(profile="existing:work")
+        self.assertEqual(grant.status, "approved")
+
     def test_popup_default_and_saved_approval_management(self):
         task, grant = self.request(profile="existing:work")
         popup = TaskApprovalDialog(self.service, task, grant)

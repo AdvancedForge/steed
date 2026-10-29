@@ -1305,7 +1305,10 @@ class BrowserWindow(QMainWindow):
             QMessageBox.warning(self, "Profile in use", str(error))
             return
         win = BrowserWindow(profile_name=profile)
+        # Free a closed pop-out now instead of when its opener closes.
+        win.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         win.show()
+        self._child_windows = [w for w in self._child_windows if not sip.isdeleted(w)]
         self._child_windows.append(win)
 
     def _update_profile_shortcuts(self):
@@ -2181,9 +2184,12 @@ class BrowserWindow(QMainWindow):
         # when every owner is being closed; otherwise the remaining window keeps
         # them running and there is nothing to confirm.
         closing_owners = {self.profile_manager}
+        self._child_windows = [w for w in self._child_windows if not sip.isdeleted(w)]
         pending_windows = list(self._child_windows)
         while pending_windows:
             child = pending_windows.pop()
+            if sip.isdeleted(child):
+                continue
             closing_owners.add(child.profile_manager)
             pending_windows.extend(child._child_windows)
         if (
@@ -2229,8 +2235,9 @@ class BrowserWindow(QMainWindow):
             {"window_width": self.width(), "window_height": self.height()}
         )
 
-        for win in self._child_windows:
-            win.close()
+        for win in list(self._child_windows):
+            if not sip.isdeleted(win):
+                win.close()
 
         from ui.task_watch import TaskWatchDialog
 

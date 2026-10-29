@@ -822,6 +822,9 @@ destination must be subsets; duration and budgets cannot increase, and private
 network access cannot be added. Separate rules are never combined. Each matching
 task gets a fresh bounded grant and its own duration/budgets; rules are not an
 aggregate lifetime spending limit. Expanded requests still show a popup.
+If an automatic approval fails, for example because the profile cannot be
+reserved, the request stays pending for review and the journal records
+`permission.auto_approval_failed`; other tasks keep running.
 
 Manage rules in **Agents → Task Permissions → Saved Approvals**. **Forget and Revoke
 Access** removes the rule and revokes all active tasks approved through it.
@@ -2014,7 +2017,7 @@ permissions and reviews cannot authorize the changed source.
 Version 6 retains nested requests and sequential plans. Its `request_headers`
 field is optional; if present it has the same strict v5 allowlist and limits.
 Versions 1–5 keep their own strict grammar and do not accept label alternatives.
-`steed_recipe_capabilities` exposes versions 1–7, the alternative limit/policy and
+`steed_recipe_capabilities` exposes versions 1–8, the alternative limit/policy and
 `identity_example`; [notes-identity.json](examples/connector_recipes/notes-identity.json)
 is the corresponding synthetic plan, not a live provider integration.
 

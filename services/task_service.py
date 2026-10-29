@@ -1655,18 +1655,35 @@ class TaskService(QObject):
             )
             rule = next((r for r in rules if r.covers(scope, profile_key)), None)
             if self.auto_approve_requests:
-                result = self.approve_grant(task_id, result.grant_id)
-                self.store.record_event(
-                    task_id,
-                    "permission.auto_approved",
-                    {"grant_id": result.grant_id, "mode": "yolo"},
-                )
+                automatic = {}
             elif rule is not None:
-                result = self.approve_grant(task_id, result.grant_id, _rule=rule)
+                automatic = {"_rule": rule}
             elif recovery["status"] != "approved" and self.account_access.covers(scope):
-                result = self.approve_grant(
-                    task_id, result.grant_id, _account_access=True
-                )
+                automatic = {"_account_access": True}
+            else:
+                automatic = None
+            if automatic is not None:
+                try:
+                    approved = self.approve_grant(task_id, result.grant_id, **automatic)
+                except ValueError:
+                    # An unavailable profile is not journal damage. The request
+                    # stays pending for review; approve_grant itself freezes
+                    # authority when a failure leaves unsafe state behind.
+                    if self.failure:
+                        raise
+                    self.store.record_event(
+                        task_id,
+                        "permission.auto_approval_failed",
+                        {"grant_id": result.grant_id},
+                    )
+                else:
+                    result = approved
+                    if self.auto_approve_requests:
+                        self.store.record_event(
+                            task_id,
+                            "permission.auto_approved",
+                            {"grant_id": result.grant_id, "mode": "yolo"},
+                        )
         except (OSError, sqlite3.Error, ValueError):
             self._fatal()
             raise
