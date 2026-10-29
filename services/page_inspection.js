@@ -462,6 +462,14 @@
             tracked.observer = new win.MutationObserver(() => { tracked.dirty = true; });
             tracked.observer.observe(doc, {subtree: true, childList: true, characterData: true, attributes: true});
             state.frames.push(tracked);
+            const scroller = doc.scrollingElement || doc.documentElement;
+            const bound = value => Math.max(0, Math.min(10000000, Math.round(value || 0)));
+            frame.scroll = {x: bound(win.scrollX), y: bound(win.scrollY),
+                width: bound(scroller.scrollWidth), height: bound(scroller.scrollHeight),
+                viewport_width: bound(win.innerWidth), viewport_height: bound(win.innerHeight)};
+            // Lazy and virtualized content often appears only after scrolling down.
+            if (frame.scroll.height - (frame.scroll.y + frame.scroll.viewport_height) > 8)
+                limitations.add("more_content_below");
             frame.text = readable(doc.body || doc.documentElement, win, remainingText);
             remainingText = Math.max(0, remainingText - frame.text.length);
 

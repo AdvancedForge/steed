@@ -256,6 +256,52 @@ class LiveTabsTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "target_obscured")
         self.assertEqual(self.value(view.page(), "window.coverClicks"), 0)
 
+    def test_scroll_then_settled_wait_reads_lazily_loaded_content(self):
+        window, view = self.window()
+        self.value(
+            view.page(),
+            """
+            document.body.innerHTML = '<ul id="feed"></ul>';
+            const feed = document.getElementById('feed');
+            const add = (from, count) => { for (let i = from; i < from + count; i++) {
+              const li = document.createElement('li'); li.textContent = 'Story ' + i;
+              li.style.height = '60px'; feed.append(li); } };
+            add(0, 30); let loading = false;
+            addEventListener('scroll', () => {
+              if (loading || innerHeight + scrollY < document.body.scrollHeight - 100) return;
+              loading = true;
+              setTimeout(() => { add(feed.children.length, 20); loading = false; }, 600);
+            });
+            true;
+            """,
+        )
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        frame = snapshot.frames[0]
+        self.assertIn("more_content_below", snapshot.limitations)
+        self.assertGreater(frame.scroll.height, frame.scroll.viewport_height)
+        self.assertNotIn("Story 35", frame.text)
+        self.command(
+            "page.scroll",
+            task_id=task,
+            session_id=session,
+            snapshot_id=snapshot.snapshot_id,
+            frame_id=frame.frame_id,
+            dx=0,
+            dy=10000,
+        )
+        waited = self.command(
+            "page.wait",
+            task_id=task,
+            session_id=session,
+            condition="settled",
+            timeout_ms=5000,
+        )
+        self.assertEqual(waited.status, "matched")
+        after = self.inspect(task, session)
+        self.assertIn("Story 35", after.frames[0].text)
+        self.assertGreater(after.frames[0].scroll.y, 0)
+
     def test_live_shadow_labels_and_host_changes_revalidate_target_references(self):
         window, view = self.window()
         self.value(

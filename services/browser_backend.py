@@ -114,6 +114,11 @@ def navigation_url(url: str) -> QUrl:
     return qurl
 
 
+# Lazy content usually arrives within a request round trip; require this long
+# without change before reporting a page as settled.
+SETTLE_MS = 750
+
+
 class TaskPage(QWebEnginePage):
     """Suppress dialogs, uploads, and unsupported main-document schemes."""
 
@@ -1632,7 +1637,7 @@ class QtBrowserBackend(QObject):
         session.grant.check("read")
         if session.pending_action is not None or session.waits:
             raise PageInspectionError("action_in_progress")
-        if condition == "text" and (
+        if condition in ("text", "settled") and (
             session.loading or session.load_success is not True
         ):
             raise PageInspectionError("page_not_ready")
@@ -1643,8 +1648,13 @@ class QtBrowserBackend(QObject):
         deadline = QTimer(self)
         deadline.setSingleShot(True)
         revision = session.revision
-        limitations = ("inspection_not_completed",) if condition == "text" else ()
+        limitations = (
+            ("inspection_not_completed",) if condition in ("text", "settled") else ()
+        )
         reading = None
+        # "settled": text, controls and size unchanged for SETTLE_MS of reads.
+        signature = None
+        changed_at = time.monotonic()
 
         def cleanup(_):
             session.waits.discard(result)
@@ -1671,13 +1681,29 @@ class QtBrowserBackend(QObject):
             )
 
         def inspected(source):
-            nonlocal limitations
+            nonlocal limitations, signature, changed_at
             if result.done():
                 return
             try:
                 snapshot = source.result()
                 limitations = snapshot.limitations
-                if any(text in frame.text for frame in snapshot.frames):
+                if condition == "settled":
+                    current = tuple(
+                        (
+                            len(frame.text),
+                            len(frame.targets),
+                            frame.scroll.height if frame.scroll else 0,
+                        )
+                        for frame in snapshot.frames
+                    )
+                    now = time.monotonic()
+                    if current != signature:
+                        signature, changed_at = current, now
+                    elif now - changed_at >= SETTLE_MS / 1000:
+                        finish("matched")
+                        return
+                    poll.start(250)
+                elif any(text in frame.text for frame in snapshot.frames):
                     finish("matched")
                 else:
                     poll.start(100)

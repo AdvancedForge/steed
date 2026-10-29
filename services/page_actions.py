@@ -36,7 +36,11 @@ def wait_arguments(condition, text, timeout_ms):
         return
     if condition == "text" and isinstance(text, str) and 0 < len(text) <= 256:
         return
-    raise ValueError("Wait for ready, or provide 1 to 256 characters for text")
+    if condition == "settled" and text is None:
+        return
+    raise ValueError(
+        "Wait for ready or settled, or provide 1 to 256 characters for text"
+    )
 
 
 @dataclass(frozen=True)

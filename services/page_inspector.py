@@ -109,6 +109,35 @@ def outline_item(raw):
 
 
 @dataclass(frozen=True)
+class FrameScroll:
+    """Scroll position and scrollable size in CSS pixels."""
+
+    x: int = 0
+    y: int = 0
+    width: int = 0
+    height: int = 0
+    viewport_width: int = 0
+    viewport_height: int = 0
+
+
+def frame_scroll(raw):
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) != {
+        "x",
+        "y",
+        "width",
+        "height",
+        "viewport_width",
+        "viewport_height",
+    }:
+        raise PageInspectionError("inspection_unavailable")
+    if any(type(v) is not int or not 0 <= v <= 10_000_000 for v in raw.values()):
+        raise PageInspectionError("inspection_unavailable")
+    return FrameScroll(**raw)
+
+
+@dataclass(frozen=True)
 class FrameSnapshot:
     frame_id: str
     parent_frame_id: str | None
@@ -119,6 +148,7 @@ class FrameSnapshot:
     targets: tuple[TargetDescriptor, ...]
     limitations: tuple[str, ...]
     outline: tuple[OutlineItem, ...] = ()
+    scroll: FrameScroll | None = None
 
 
 @dataclass(frozen=True)
@@ -266,6 +296,7 @@ class PageInspector(QObject):
                         tuple(descriptors),
                         tuple(frame["limitations"]),
                         tuple(outline_item(item) for item in frame.get("outline", [])),
+                        frame_scroll(frame.get("scroll")),
                     )
                 )
             snapshot = PageSnapshot(

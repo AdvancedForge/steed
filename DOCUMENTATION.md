@@ -1039,6 +1039,15 @@ and images without any text alternative add `unlabelled_images_present`.
 Targets report ARIA states as `states`: `expanded`/`collapsed`, `pressed`,
 `selected` and `current`.
 
+Each frame also reports `scroll`: its scroll position, scrollable width/height
+and viewport size in CSS pixels. When content continues below the viewport the
+snapshot adds `more_content_below`. To read infinite feeds and lazily loaded or
+virtualized lists, scroll the frame (`page.scroll`), call `page.wait` with
+`condition: "settled"` — it reads the page every 250 ms and reports `matched`
+once text length, controls and scrollable height stay unchanged for 750 ms (or
+`timed_out`) — and inspect again. Restricted pages run no website scripts, so
+script-driven lazy loading needs a live session.
+
 In live sessions (shared tabs or live private pages), custom widgets in the main
 document with an ARIA role of button, link, tab, menuitem (including checkbox and
 radio items), switch, checkbox, radio or option report `activate` with the
