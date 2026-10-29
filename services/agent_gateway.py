@@ -207,7 +207,11 @@ class AgentConnection(QObject):
             if spec is None:
                 raise ValueError("Unknown tool")
             spec.validate(request["arguments"])
-            if self.managed and spec.command in ("task.start", "conversation.reply"):
+            if self.managed and spec.command in (
+                "task.start",
+                "conversation.reply",
+                "conversation.wait",
+            ):
                 raise ValueError("Managed conversation is bound by the browser")
             self.gateway.service._usable()
             if spec.command == "task.start":

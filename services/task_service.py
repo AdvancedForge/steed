@@ -51,6 +51,9 @@ from services.task_store import ACTIVE_STATUSES, TERMINAL_STATUSES, TaskStore
 from services.task_workspace import MAX_FILE_BYTES, TaskWorkspace
 from services.worker_manager import WorkerManager
 
+# A waiting call must answer within the adapter's 35 s reply limit.
+MESSAGE_WAIT_MS = 25000
+
 
 class TaskService(QObject):
     """Trusted UI approves immutable scopes; broker mutations check live grants."""
@@ -80,6 +83,7 @@ class TaskService(QObject):
         self.store = TaskStore(path)
         self.messages = TaskMessages(self.store)
         self.external_tasks = set()
+        self._message_waits = set()
         self.connectors = connectors if connectors is not None else ConnectorRegistry()
         self.connector_store = ConnectorStore(self.store)
         self.account_access = ConnectorAccess(self.store, self.connectors)
@@ -172,6 +176,7 @@ class TaskService(QObject):
                 "task.list": self.store.list_tasks,
                 "task.events": self.store.events,
                 "conversation.read": self._read_messages,
+                "conversation.wait": self._wait_messages,
                 "conversation.reply": self._reply_message,
                 "task.finish": self._finish_task,
                 "task.recover": self._request_recovery,
@@ -1475,6 +1480,58 @@ class TaskService(QObject):
         if self.messages.acknowledge(task_id, page):
             self.changed.emit()
         return page
+
+    def _wait_messages(self, task_id, after=0, timeout_ms=25000):
+        """Long-poll for the user's next message; replaces busy polling."""
+        self._usable()
+        if type(timeout_ms) is not int or not 1 <= timeout_ms <= MESSAGE_WAIT_MS:
+            raise ValueError(f"Wait from 1 to {MESSAGE_WAIT_MS} milliseconds")
+        if task_id in self._message_waits:
+            raise ValueError("This task is already waiting for a message")
+
+        def pending():
+            page = self.messages.read(task_id, after, 16)
+            return any(message["role"] == "user" for message in page["messages"])
+
+        if pending():
+            return {**self._read_messages(task_id, after, 16), "waited": "message"}
+        result = Future()
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+
+        def finish(reason):
+            if result.done():
+                return
+            try:
+                page = self._read_messages(task_id, after, 16)
+                result.set_result({**page, "waited": reason})
+            except Exception as error:
+                result.set_exception(error)
+
+        def sent(sent_task, _message):
+            if sent_task == task_id:
+                finish("message")
+
+        def changed():
+            if self._closed or self.failure:
+                finish("unavailable")
+            elif self.store.get(task_id).status not in ACTIVE_STATUSES:
+                finish("task_ended")
+
+        def cleanup(_):
+            self._message_waits.discard(task_id)
+            timer.stop()
+            timer.deleteLater()
+            self.user_message_sent.disconnect(sent)
+            self.changed.disconnect(changed)
+
+        self._message_waits.add(task_id)
+        self.user_message_sent.connect(sent)
+        self.changed.connect(changed)
+        timer.timeout.connect(lambda: finish("timed_out"))
+        result.add_done_callback(cleanup)
+        timer.start(timeout_ms)
+        return result
 
     def _reply_message(self, task_id, message_id, text, revision=0, state="complete"):
         self._usable()

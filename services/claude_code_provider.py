@@ -18,7 +18,11 @@ from services.command_broker import require_owner_thread
 LINE_LIMIT = 1024 * 1024
 PREVIEW_LIMIT = 32 * 1024
 # Steed captures assistant text itself and the chat task is already bound.
-EXCLUDED_TOOLS = ("steed_task_start", "steed_conversation_reply")
+EXCLUDED_TOOLS = (
+    "steed_task_start",
+    "steed_conversation_reply",
+    "steed_conversation_wait",
+)
 FILE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 INSTRUCTIONS = (
     "You are an external agent chatting through Steed. Keep your normal tools "

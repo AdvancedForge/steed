@@ -3629,8 +3629,13 @@ Its authenticated HTTP adapter binds to loopback; a cloud agent cannot reach
 that address directly. The browser must be running for either transport.
 Connecting a third-party client grants no page access: it starts its own task,
 requests an exact profile/site scope and uses the published inspection/action
-and conversation tools. Its host must actively poll the mailbox; generic MCP
-alone does not wake an idle agent or deliver a user message to its chat UI.
+and conversation tools. Generic MCP cannot start a new turn in an idle client,
+so an agent that is waiting for you calls `conversation.wait`: it blocks for up
+to 25 seconds and returns as soon as you send a message (`waited: "message"`),
+on timeout (`timed_out`, call again) or when the task ends (`task_ended`). The
+agent's own replies do not end a wait, one wait per task runs at a time, and
+calls the agent makes during a wait queue behind it. Steed-started Codex and
+Claude Code chats get messages as new turns and do not have this tool.
 
 Compatibility research (October 3, 2026):
 
@@ -3764,8 +3769,9 @@ Suggested instruction for a connected external agent:
 
 An ordinary MCP client may only run its agent after a prompt in that client's
 own UI. **Send** queues a message for the task; it cannot wake such an idle
-client. The agent must participate in the mailbox protocol. Automatic turn
-delivery currently applies to Steed-started Codex chats only. Reconnect and
+client. The agent must participate in the mailbox protocol, ideally by keeping
+a `conversation.wait` call open while idle. Automatic turn delivery applies to
+Steed-started Codex and Claude Code chats. Reconnect and
 conversation replay into another task remain unavailable. Each new task needs
 fresh permissions.
 

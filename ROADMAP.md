@@ -29,6 +29,16 @@ is fixed with a scope-only CSP on restricted pages, enforced by Blink before eac
 redirect hop: 30/30 under the same load. DevTools Fetch was tried first and does
 not hold or rewrite requests on Qt 6.11.2.
 
+**Tabs and agents, round 2 — October 29, 2026.** Pinned tabs; per-window
+sessions (restart reopens every window, a second window of an open profile
+starts fresh) with Move Tab to New Window/Window, drag between strips and
+tear-off; side tabs resize by dragging. Agents can click ARIA custom widgets on
+live pages after a twice-checked visible, unobscured, stable hit test; snapshots
+report scroll extent and `more_content_below`, and `page.wait` gains `settled`
+for lazily loaded feeds; external MCP agents can block in `conversation.wait`
+until the user's next message instead of polling. Moving a tab reopens its
+address (history does not move).
+
 **Startup crash fix — October 29, 2026.** An intermittent segmentation fault
 (seen in tests on main) was Chromium adding `LIBVA_MESSAGING_LEVEL` to the
 process environment from a worker thread while another engine thread read the
