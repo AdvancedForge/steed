@@ -6,6 +6,8 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from PyQt6.QtWidgets import QApplication
 
+from webengine import prepare_engine_environment
+
 _application = None
 _directories = []
 
@@ -13,6 +15,7 @@ _directories = []
 def application():
     global _application
     if _application is None:
+        prepare_engine_environment()
         QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         _application = QApplication.instance() or QApplication(["steed-tests"])
         _application.setQuitOnLastWindowClosed(False)

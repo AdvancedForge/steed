@@ -29,6 +29,14 @@ is fixed with a scope-only CSP on restricted pages, enforced by Blink before eac
 redirect hop: 30/30 under the same load. DevTools Fetch was tried first and does
 not hold or rewrite requests on Qt 6.11.2.
 
+**Startup crash fix — October 29, 2026.** An intermittent segmentation fault
+(seen in tests on main) was Chromium adding `LIBVA_MESSAGING_LEVEL` to the
+process environment from a worker thread while another engine thread read the
+environment for fontconfig. Steed now defines that variable and Qt's
+`force_s3tc_enable` before creating QApplication, so engine threads never grow
+the environment. Before: crashes in roughly 1 of 7–37 runs of one window test;
+after: 0 of 60.
+
 **Page outline for agents — October 29, 2026.** `page.inspect` snapshots now
 include a bounded per-frame outline (headings, landmarks, tables, lists, dialogs,
 alerts/status, disclosures, tab lists, labelled images) and ARIA states on

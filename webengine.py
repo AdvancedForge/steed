@@ -1,5 +1,7 @@
 """Shared Qt WebEngine settings and site compatibility helpers."""
 
+import os
+
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import (
     QWebEngineSettings,
@@ -14,6 +16,20 @@ from PyQt6.QtWebEngineCore import (
 GOOGLE_LOGIN_USER_AGENT = (
     b"Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0"
 )
+
+
+# Chromium and Qt WebEngine add these variables from engine threads when they
+# are missing (Chromium's VA-API setup on a worker thread). Adding a variable can
+# reallocate the process environment while another engine thread is reading it
+# in getenv() (fontconfig startup), which crashes the browser. Defining them
+# before Qt starts any thread leaves later writes nothing to add.
+ENGINE_ENVIRONMENT = {"LIBVA_MESSAGING_LEVEL": "1", "force_s3tc_enable": "true"}
+
+
+def prepare_engine_environment() -> None:
+    """Call before creating QApplication; keeps any value the user set."""
+    for name, value in ENGINE_ENVIRONMENT.items():
+        os.environ.setdefault(name, value)
 
 
 def google_login_user_agent(url: QUrl) -> bytes | None:

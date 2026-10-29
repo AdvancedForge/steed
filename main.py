@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from browser_window import BrowserWindow
 from config import Config
 from single_instance import InstanceServer, launch_urls, request_existing
+from webengine import prepare_engine_environment
 
 
 def configure_chromium_flags() -> None:
@@ -59,6 +60,7 @@ def main() -> int:
     """Create the browser and return the Qt event loop's exit code."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     configure_chromium_flags()
+    prepare_engine_environment()
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 
     # Enable high DPI scaling for Framework 12's high-resolution display
