@@ -78,6 +78,13 @@ Keep the checkout and `.venv` in place; if you move them, run the installer agai
 from the new location. To remove the menu entry, delete `steed.desktop` from
 `${XDG_DATA_HOME:-$HOME/.local/share}/applications/`.
 
+Launching Steed again while it is running opens a new window in the running
+browser instead of a second copy; `./steed https://example.org` opens the link
+as a tab in the most recently used window. Only HTTP/HTTPS addresses are passed
+on, through a private socket in your runtime directory. Run the installer again
+to add link arguments (`%U`) to an existing menu entry. If the running browser
+does not answer within two seconds, a warning is shown instead.
+
 ### Graphics troubleshooting
 
 The browser lets Qt select its graphics backend. Older versions forced `--use-gl=desktop`, which can abort with `--use-gl=desktop is not supported with the current configuration`.

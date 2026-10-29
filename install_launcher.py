@@ -24,7 +24,7 @@ def desktop_entry(project: Path) -> str:
         "Version=1.0\n"
         "Name=Steed\n"
         "Comment=Browse the web with separate profiles and KeePassXC passwords\n"
-        f'Exec="{argument}"\n'
+        f'Exec="{argument}" %U\n'
         "Icon=web-browser\n"
         "Terminal=false\n"
         "Categories=Network;WebBrowser;\n"

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from browser_window import BrowserWindow
 from config import Config
+from single_instance import InstanceServer, launch_urls, request_existing
 
 
 def configure_chromium_flags() -> None:
@@ -27,6 +28,31 @@ def configure_chromium_flags() -> None:
     else:
         flags.append(feature_prefix + "WebRTCPipeWireCapturer")
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = shlex.join(flags)
+
+
+def open_launch_request(urls) -> None:
+    """Open a second launch's request in the most recently used window."""
+    windows = [
+        widget
+        for widget in QApplication.topLevelWidgets()
+        if isinstance(widget, BrowserWindow)
+        and widget.isVisible()
+        and not widget._closing
+    ]
+    if not windows:
+        return
+    active = QApplication.activeWindow()
+    target = active if active in windows else windows[-1]
+    if urls:
+        for url in urls:
+            target._new_tab(url)
+    else:
+        before = len(target._child_windows)
+        target._pop_out_profile_named(target.profile_manager.current_profile_name)
+        if len(target._child_windows) > before:
+            target = target._child_windows[-1]
+    target.raise_()
+    target.activateWindow()
 
 
 def main() -> int:
@@ -47,16 +73,24 @@ def main() -> int:
     # Prevent separate processes from corrupting the same Chromium stores.
     config = Config()
     app._profile_lock = QLockFile(str(config.config_dir / "browser.lock"))
+    urls = launch_urls(sys.argv[1:])
     if not app._profile_lock.tryLock(0):
+        if request_existing(config.config_dir, urls):
+            return 0
         QMessageBox.warning(
             None,
             "Browser Already Running",
-            "This browser data directory is already in use. Use the running browser to open another window.",
+            "This browser data directory is in use by a browser that is not "
+            "responding. Wait for it to finish starting, or close it and try again.",
         )
         return 1
+    app._instance_server = InstanceServer(config.config_dir)
+    app._instance_server.open_requested.connect(open_launch_request)
 
     window = BrowserWindow()
     window.show()
+    for url in urls:
+        window._new_tab(url)
 
     return app.exec()
 
