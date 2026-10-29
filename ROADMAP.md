@@ -37,7 +37,7 @@ live pages after a twice-checked visible, unobscured, stable hit test; snapshots
 report scroll extent and `more_content_below`, and `page.wait` gains `settled`
 for lazily loaded feeds; external MCP agents can block in `conversation.wait`
 until the user's next message instead of polling. Moving a tab reopens its
-address (history does not move).
+address (since October 29: the live page moves, except Steed pages, agent-shared tabs and tabs with DevTools).
 
 **Startup crash fix — October 29, 2026.** An intermittent segmentation fault
 (seen in tests on main) was Chromium adding `LIBVA_MESSAGING_LEVEL` to the

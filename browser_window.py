@@ -1472,18 +1472,7 @@ class BrowserWindow(QMainWindow):
         tab = BrowserTab(profile, self.tab_container, self)
         tab.agent_source = source_tab if workspace else None
         self.tab_layout.addWidget(tab)
-        self._connect_page_signals(tab.page())
-
-        tab.urlChanged.connect(lambda u: self._on_tab_url_changed(tab, u))
-        tab.titleChanged.connect(lambda t: self._on_tab_title_changed(tab, t))
-        tab.loadProgress.connect(lambda p: self._on_load_progress(tab, p))
-        tab.loadStarted.connect(lambda: self._on_load_started(tab))
-        tab.loadFinished.connect(lambda ok: self._on_load_finished(tab, ok))
-        tab.iconChanged.connect(lambda icon: self._on_tab_icon(tab, icon))
-        tab.page().recentlyAudibleChanged.connect(lambda _: self._on_tab_audio(tab))
-        tab.page().audioMutedChanged.connect(lambda _: self._on_tab_audio(tab))
-        if hasattr(tab.page(), "zoomFactorChanged"):
-            tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
+        self._connect_tab(tab)
         # Determine insertion index
         if index is None:
             index = self.current_tab_index + 1
@@ -2324,6 +2313,103 @@ class BrowserWindow(QMainWindow):
         except LayoutConflict:
             self.apply_layout(preferences_from_config(self.config))
 
+    # Signals one window owns on each of its tabs; moved tabs are rewired.
+    TAB_SIGNALS = (
+        "urlChanged",
+        "titleChanged",
+        "loadProgress",
+        "loadStarted",
+        "loadFinished",
+        "iconChanged",
+    )
+    PAGE_SIGNALS = (
+        "recentlyAudibleChanged",
+        "audioMutedChanged",
+        "zoomFactorChanged",
+        "permissionRequested",
+        "featurePermissionRequested",
+        "desktopMediaRequested",
+        "fullScreenRequested",
+    )
+
+    def _connect_tab(self, tab):
+        self._connect_page_signals(tab.page())
+        tab.urlChanged.connect(lambda u: self._on_tab_url_changed(tab, u))
+        tab.titleChanged.connect(lambda t: self._on_tab_title_changed(tab, t))
+        tab.loadProgress.connect(lambda p: self._on_load_progress(tab, p))
+        tab.loadStarted.connect(lambda: self._on_load_started(tab))
+        tab.loadFinished.connect(lambda ok: self._on_load_finished(tab, ok))
+        tab.iconChanged.connect(lambda icon: self._on_tab_icon(tab, icon))
+        tab.page().recentlyAudibleChanged.connect(lambda _: self._on_tab_audio(tab))
+        tab.page().audioMutedChanged.connect(lambda _: self._on_tab_audio(tab))
+        if hasattr(tab.page(), "zoomFactorChanged"):
+            tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
+
+    def _disconnect_tab(self, tab):
+        for owner, names in ((tab, self.TAB_SIGNALS), (tab.page(), self.PAGE_SIGNALS)):
+            for name in names:
+                signal = getattr(owner, name, None)
+                if signal is None:
+                    continue
+                try:
+                    signal.disconnect()
+                except TypeError:
+                    pass
+
+    def _live_movable(self, tab):
+        """Whether the page itself, with its history and state, can move."""
+        delegated = self._live_tasks is not None and (
+            tab.agent_tab_id in self._live_tasks.live_tabs.offers
+        )
+        return (
+            not tab.workspace_name
+            and not getattr(tab, "agent_panel", False)
+            and tab.native_panel is None
+            and tab.page().devToolsPage() is None
+            and not delegated
+            and not (self.web_chat_dock and self.web_chat_dock.view is tab)
+        )
+
+    def _release_tab(self, tab):
+        """Take a tab out of this window without destroying its page."""
+        index = self.tabs.index(tab)
+        active = self.tabs[self.current_tab_index]
+        self._disconnect_tab(tab)
+        self.tabs.pop(index)
+        self.tab_bar.remove_tab(index)
+        self.tab_layout.removeWidget(tab)
+        if active is tab:
+            self.current_tab_index = min(index, len(self.tabs) - 1)
+            self._switch_tab(self.current_tab_index)
+        else:
+            self.current_tab_index = self.tabs.index(active)
+            self.tab_bar.set_current_tab(self.current_tab_index)
+        self._sync_tab_group_labels()
+        self._save_current_tabs()
+
+    def _adopt_tab(self, tab, state, index=None):
+        """Show a live tab released by another window of this profile."""
+        tab.setParent(self.tab_container)
+        tab.browser_window = self
+        self.tab_layout.addWidget(tab)
+        self._connect_tab(tab)
+        if index is None:
+            index = len(self.tabs)
+        index = max(self._pinned_count(), min(index, len(self.tabs)))
+        self.tabs.insert(index, tab)
+        self.tab_bar.insert_tab(index, tab.title() or state.title)
+        self.tab_bar.set_tab_icon(index, tab.icon())
+        self.tab_bar.set_tab_state(index, url=tab.url().toString())
+        tab.group = tab.group_id = None
+        tab.pinned = False
+        if state.pinned:
+            self._set_pinned(tab, True)
+        elif state.group:
+            self._set_tab_group_existing(self.tabs.index(tab), state.group)
+        self._switch_tab(self.tabs.index(tab))
+        tab.show()
+        self._save_current_tabs()
+
     def _same_profile_windows(self):
         profile = self.profile_manager.current_profile_name
         return [
@@ -2358,14 +2444,28 @@ class BrowserWindow(QMainWindow):
         ):
             return None
         state = self._tab_state(tab)
-        if target is None:
-            target = self._open_window(
-                self.profile_manager.current_profile_name, [state]
-            )
+        if self._live_movable(tab):
+            # Move the page itself, keeping its history, scroll and form state.
+            self._release_tab(tab)
+            if target is None:
+                target = self._open_window(
+                    self.profile_manager.current_profile_name, []
+                )
+                placeholder = target.tabs[0] if target.tabs else None
+                target._adopt_tab(tab, state)
+                if placeholder is not None and placeholder is not tab:
+                    target._close_tab(target.tabs.index(placeholder), remember=False)
+            else:
+                target._adopt_tab(tab, state, index)
         else:
-            target._receive_tab(state, index)
-        # A move is not a close: it never enters Reopen Closed Tab.
-        self._close_tab(self.tabs.index(tab), remember=False)
+            if target is None:
+                target = self._open_window(
+                    self.profile_manager.current_profile_name, [state]
+                )
+            else:
+                target._receive_tab(state, index)
+            # A move is not a close: it never enters Reopen Closed Tab.
+            self._close_tab(self.tabs.index(tab), remember=False)
         target.raise_()
         target.activateWindow()
         return target

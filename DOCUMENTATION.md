@@ -257,9 +257,11 @@ The menu bar has six categories, in this order:
   Reopen Closed Tab only when closed individually); quitting keeps all windows.
   Move a tab with **Move Tab to New Window** or **Move Tab to Window**, by
   dragging it onto another window's tab strip, or by dropping it outside every
-  window to tear it off. Tabs move only between windows of the same profile, a
-  window's last tab stays, and a moved tab reopens its address in the new window
-  (its back/forward history does not move). A drag between windows is accepted
+  window to tear it off. Tabs move only between windows of the same profile and
+  a window's last tab stays. The page itself moves, keeping its back/forward
+  history, scroll position, form input and running scripts. Steed's own pages,
+  tabs shared with an agent, and tabs with Developer Tools open instead reopen
+  their address in the new window. A drag between windows is accepted
   only with a one-time token issued by the source strip.
 - **Toolbar look:** the toolbar, menu bar and status bar share the tab strip's
   colours in light and dark mode. Buttons use Steed's own line icons, the address

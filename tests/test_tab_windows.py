@@ -125,6 +125,55 @@ class TabWindowTests(unittest.TestCase):
         self.assertIsNone(root._move_tab(root.tabs[0], target))
         self.assertEqual(len(root.tabs), 1)
 
+    def wait(self, predicate, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        self.fail("Timed out")
+
+    def js(self, tab, code):
+        results = []
+        tab.page().runJavaScript(code, results.append)
+        self.wait(lambda: bool(results))
+        return results[0]
+
+    def test_moved_pages_keep_history_and_live_state(self):
+        root = self.root()
+        page = (Path(__file__).resolve().parents[1] / "codec_test.html").as_uri()
+        tab = root._new_tab(url=page + "#first", return_tab=True)
+        self.wait(
+            lambda: (
+                self.js(tab, "location.protocol === 'file:' && document.readyState")
+                == "complete"
+            )
+        )
+        self.js(tab, "window.kept = 42; location.hash = 'second'; true")
+        self.wait(lambda: tab.url().fragment() == "second")
+        target = root._move_tab(tab)
+        self.assertIn(tab, target.tabs)
+        self.assertNotIn(tab, root.tabs)
+        self.assertIs(tab.browser_window, target)
+        self.assertTrue(tab.history().canGoBack())
+        self.assertEqual(self.js(tab, "window.kept"), 42)
+        self.assertEqual(len(target.tabs), 1)
+        # The new window now drives the page; the old one no longer reacts.
+        self.js(tab, "document.title = 'Third'; true")
+        self.wait(lambda: target.tab_bar.tab_text(target.tabs.index(tab)) == "Third")
+        self.assertNotIn(
+            "Third", [root.tab_bar.tab_text(i) for i in range(len(root.tabs))]
+        )
+
+    def test_tabs_with_agents_or_devtools_fall_back_to_reopening(self):
+        root = self.root()
+        tab = root._new_tab(url="about:blank#tools", return_tab=True)
+        root.devtools.open(tab)
+        target = root._move_tab(tab)
+        self.assertNotIn(tab, target.tabs)
+        self.assertEqual(self.urls(target), ["about:blank#tools"])
+
     def test_drag_tokens_move_tabs_and_forged_tokens_do_nothing(self):
         root = self.root()
         root._new_tab(url="about:blank#dragged")
