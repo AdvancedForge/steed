@@ -2685,7 +2685,13 @@ class TaskService(QObject):
         )
         try:
             self.store.resolve_grant(task_id, grant_id, status, reason=reason)
-            self._finish_task(task_id, "cancelled")
+            if status == "revoked":
+                self._finish_task(task_id, "cancelled")
+            else:
+                # Expiry and spent budgets end only this grant; the task (and a
+                # bound conversation) may request fresh access.
+                self.workers.cancel_task(task_id, reason="grant_" + status)
+                self._cancel_app_jobs(task_id)
         except Exception:
             self._fatal()
             raise

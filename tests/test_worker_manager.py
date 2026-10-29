@@ -21,6 +21,7 @@ from services import worker_bundle
 from services.connectors import ConnectorOutcome, ConnectorRegistry, ConnectorTool
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
+from services.task_store import ACTIVE_STATUSES
 from ui.task_dialog import TaskDialog
 from ui.worker_approval import WorkerApprovalDialog
 
@@ -367,8 +368,13 @@ for command, args in [
                     self.service.delete_workspace_file(
                         self.client.task_id, source.file_id
                     )
-                self.assertEqual(self.settle().state, "cancelled")
+                receipt = self.settle()
+                self.assertEqual(receipt.state, "cancelled")
                 self.assertFalse(job.thread.is_alive())
+                if action == "expire":
+                    self.assertEqual(receipt.reason, "grant_expired")
+                    status = self.service.store.get(self.client.task_id).status
+                    self.assertIn(status, ACTIVE_STATUSES)
 
     def test_restart_interrupts_requests_clears_remembered_packages_and_never_replays(
         self,

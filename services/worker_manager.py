@@ -313,10 +313,10 @@ class WorkerManager(QObject):
         self.service.changed.emit()
         return receipt
 
-    def cancel_task(self, task_id):
+    def cancel_task(self, task_id, *, reason="task_ended"):
         for record in self.store.list(task_id):
             if record.state in {"awaiting_approval", "running", "cancelling"}:
-                self.cancel(task_id, record.request_id, reason="task_ended")
+                self.cancel(task_id, record.request_id, reason=reason)
 
     def deleting(self, task_id, file_id):
         for record in self.store.list(task_id):

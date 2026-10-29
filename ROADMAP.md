@@ -18,11 +18,15 @@ an uploaded POST body (reproduced 3/20 runs). Restricted task pages now refuse
 main-frame redirects after an authorized POST in the navigation gate, which runs
 before the redirect is followed; results report `redirect_not_followed` (0/30
 under the same load). 303 post-redirect-get is therefore no longer followed in
-restricted mode; live delegation is unchanged. Subresource redirects still rely on
-the interceptor and may share the race (GET only, no body). Also fixed: typed POST
+restricted mode; live delegation is unchanged. Also fixed: typed POST
 reads paginating a `{destination}` resource could never connect; the Settings
 search default disagreed with `config.py`; panel approval committed partway through
-its transaction; a recipe test waited on a nonexistent state.
+its transaction; a recipe test waited on a nonexistent state. Grant expiry and
+exhausted budgets now end only the grant, not the task, so long agent chats can
+request fresh access; user revocation still cancels the task. The subresource race
+is confirmed: under CPU load an in-scope image redirect reached an out-of-scope
+origin with a GET in 5/30 runs. Fixing it needs request pausing below Qt's
+interceptor (for example DevTools Fetch on the task frontend).
 
 **Website editor coverage — implemented and accepted.** Inspection now
 reports rich-editor boundaries/labels without returning their contents or nested

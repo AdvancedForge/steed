@@ -295,7 +295,7 @@ class TaskServiceTests(unittest.TestCase):
             dialog.reject()
             sip.delete(dialog)
 
-    def test_expiry_cancels_task_and_closes_page_without_another_command(self):
+    def test_expiry_ends_grant_and_closes_page_without_another_command(self):
         now = [100.0]
         self.service._clock = lambda: now[0]
         task = self.command("task.create", objective="Expires")
@@ -305,10 +305,17 @@ class TaskServiceTests(unittest.TestCase):
         page = self.service.backend._sessions[opened.session_id].page
         now[0] = 101.0
         self.wait_for(lambda: sip.isdeleted(page))
-        self.assertEqual(self.service.store.get(task.task_id).status, "cancelled")
         self.assertEqual(
             self.service.store.grant(task.task_id, requested.grant_id).status, "expired"
         )
+        # The task survives so a bound conversation can request fresh access.
+        self.assertEqual(self.service.store.get(task.task_id).status, "running")
+        with self.assertRaises(TaskPermissionError) as denied:
+            self.command("session.open", task_id=task.task_id)
+        self.assertEqual(denied.exception.code, "approval_required")
+        renewed = self.request(task.task_id)
+        self.service.approve_grant(task.task_id, renewed.grant_id)
+        self.command("session.open", task_id=task.task_id)
 
     def test_operation_and_session_budgets_deny_before_execution(self):
         task = self.command("task.create", objective="Bounded task")
@@ -328,7 +335,7 @@ class TaskServiceTests(unittest.TestCase):
                     url=self.origin,
                 )
             navigate.assert_not_called()
-        self.assertEqual(self.service.store.get(task.task_id).status, "cancelled")
+        self.assertEqual(self.service.store.get(task.task_id).status, "running")
         self.assertEqual(
             self.service.store.grant(task.task_id, requested.grant_id).status,
             "exhausted",
@@ -437,7 +444,7 @@ class TaskServiceTests(unittest.TestCase):
             future.result()
         self.assertEqual(error.exception.code, "task_inactive")
 
-    def test_network_request_budget_closes_page_and_cancels_task(self):
+    def test_network_request_budget_closes_page_and_ends_grant(self):
         task = self.command("task.create", objective="Network budget")
         requested = self.request(task.task_id, max_requests=1)
         self.service.approve_grant(task.task_id, requested.grant_id)
@@ -450,7 +457,7 @@ class TaskServiceTests(unittest.TestCase):
             url=self.origin + "/scope-page",
         )
         self.wait_for(lambda: sip.isdeleted(page))
-        self.assertEqual(self.service.store.get(task.task_id).status, "cancelled")
+        self.assertEqual(self.service.store.get(task.task_id).status, "running")
         self.assertEqual(
             self.service.store.grant(task.task_id, requested.grant_id).status,
             "exhausted",

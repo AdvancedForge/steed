@@ -2949,7 +2949,10 @@ prior authority and closes prior task pages; repeating an unchanged request is
 idempotent. Stop, close, and terminal task transitions remain
 available for cleanup without spending operation budget.
 
-Revocation, expiry, and exhausted budgets cancel the task and dispose its pages.
+Revocation cancels the task and disposes its pages. Expiry and exhausted budgets
+end only that grant: its pages close, running workers and queued app calls are
+cancelled, and the task stays active so the agent (or a bound conversation) can
+request fresh access. Pending reviews remain and recheck authority on approval.
 Expiry uses a monotonic deadline, checked on requests/commands and by a Qt timer.
 Queued mutations then fail their authority checks. Cancellation cannot undo a
 request already sent to a website. Controller approval/denial/revocation methods
@@ -5248,8 +5251,8 @@ Eight decoded previews are cached, after integrity checks on every read. Normal
 workspace file/task limits also apply. Mixed sources require both authorities but
 one proposal/publication consumes one operation; metadata and retries do not.
 Publication requires the corresponding artifact/workspace authority and the original active
-task. Task end, revocation or expiry stops updates; pending requests are cancelled
-or interrupted. Saved drafts remain visible to the user after task end/restart
+task. Task end, revocation or expiry stops updates; task end cancels or interrupts
+pending requests, while after expiry their approval needs fresh authority. Saved drafts remain visible to the user after task end/restart
 until removed or their source is deleted. Recovered/new tasks get no automatic
 publication authority over historical panels.
 
