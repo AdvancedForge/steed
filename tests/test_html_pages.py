@@ -316,6 +316,8 @@ class HtmlPageTests(unittest.TestCase):
         self.assertEqual(self.value(controller, "$('theme').value"), "dark")
         window.config.set("restore_tabs_on_startup", True)
         window._save_current_tabs()
+        # Restore on a fresh start; a second window of an open profile starts empty.
+        window.close()
         restored = BrowserWindow()
         self.windows.append(restored)
         self.assertIn("style", [t.workspace_name for t in restored.tabs])

@@ -237,18 +237,28 @@ document.addEventListener("keydown", event => {
 });
 document.addEventListener("focusout", event => { if (!event.relatedTarget?.closest?.(".tab")) focusedId = null; });
 
+const TAB_TYPE = "application/x-steed-tab";
+const token = () => [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, "0")).join("");
+const foreign = event => !dragged && event.dataTransfer.types.includes(TAB_TYPE);
+
 document.addEventListener("dragstart", event => {
   const tab = tabOf(event);
   if (!tab) return;
   dragged = tab.dataset.id;
+  // Another window's strip accepts the drop only with this one-time token.
+  const ticket = token();
+  command("drag_start", {id: dragged, token: ticket});
   event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData(TAB_TYPE, ticket);
   event.dataTransfer.setData("text/plain", "");
   tab.classList.add("dragging");
 });
 document.addEventListener("dragover", event => {
+  if (foreign(event) && !tabOf(event)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; }
   const tab = tabOf(event);
-  if (!dragged || !tab) return;
+  if (!(dragged || foreign(event)) || !tab) return;
   event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
   document.querySelectorAll(".drop-before, .drop-after").forEach(n => n.classList.remove("drop-before", "drop-after"));
   const box = tab.getBoundingClientRect();
   const after = vertical() ? event.clientY > box.top + box.height / 2 : event.clientX > box.left + box.width / 2;
@@ -256,6 +266,15 @@ document.addEventListener("dragover", event => {
 });
 document.addEventListener("drop", event => {
   const tab = tabOf(event);
+  if (foreign(event)) {
+    event.preventDefault();
+    const ticket = event.dataTransfer.getData(TAB_TYPE);
+    let to = state.tabs.length;
+    if (tab) to = Number(tab.dataset.index) + (tab.classList.contains("drop-after") ? 1 : 0);
+    document.querySelectorAll(".drop-before, .drop-after").forEach(n => n.classList.remove("drop-before", "drop-after"));
+    if (/^[0-9a-f]{32}$/.test(ticket)) command("receive", {token: ticket, to});
+    return;
+  }
   if (!dragged || !tab) return;
   event.preventDefault();
   const from = state.tabs.findIndex(t => t.id === dragged);
@@ -265,7 +284,10 @@ document.addEventListener("drop", event => {
   if (to > from) to -= 1;
   if (from >= 0 && to !== from) command("move", {id: dragged, to});
 });
-document.addEventListener("dragend", () => {
+document.addEventListener("dragend", event => {
+  // Dropped outside every tab strip: tear the tab off into a new window.
+  if (dragged && event.dataTransfer.dropEffect === "none")
+    command("detach", {id: dragged});
   dragged = null;
   document.querySelectorAll(".dragging, .drop-before, .drop-after").forEach(n => n.classList.remove("dragging", "drop-before", "drop-after"));
 });

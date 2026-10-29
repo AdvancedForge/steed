@@ -69,6 +69,9 @@ class TabStrip(QWidget):
     context_requested = pyqtSignal(int, QPoint)
     group_context_requested = pyqtSignal(str, QPoint)
     mute_toggled = pyqtSignal(int)
+    drag_started = pyqtSignal(str, int)
+    tab_received = pyqtSignal(str, int)
+    detach_requested = pyqtSignal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -297,6 +300,15 @@ class TabStrip(QWidget):
             return self.mapToGlobal(QPoint(0, self.height()))
         return self.surface.view.mapToGlobal(QPoint(int(x), int(y)))
 
+    @staticmethod
+    def _token(command):
+        token = command.get("token")
+        return (
+            isinstance(token, str)
+            and len(token) == 32
+            and all(c in "0123456789abcdef" for c in token)
+        )
+
     def _command(self, command):
         action = command.get("action")
         tab_id = command.get("id")
@@ -322,6 +334,14 @@ class TabStrip(QWidget):
                 self.move_tab(index, target)
         elif action == "context" and index >= 0:
             self.context_requested.emit(index, self._point(command))
+        elif action == "drag_start" and index >= 0 and self._token(command):
+            self.drag_started.emit(command["token"], index)
+        elif action == "receive" and self._token(command):
+            target = command.get("to")
+            if type(target) is int and 0 <= target <= len(self.records):
+                self.tab_received.emit(command["token"], target)
+        elif action == "detach" and index >= 0:
+            self.detach_requested.emit(index)
         elif action == "mute" and index >= 0:
             self.mute_toggled.emit(index)
         elif action == "toggle_group" and isinstance(command.get("group"), str):

@@ -250,6 +250,17 @@ The menu bar has six categories, in this order:
   Delete, Shift+F10). Pinned tabs show only their site icon, stay together at
   the start of the strip (a row at the top of side tabs), never join a group,
   and are saved with the session; new tabs never open inside the pinned block.
+  **Windows:** each window's tabs are saved separately, and reopening Steed
+  restores every window. A second window of a profile that is already open starts
+  with a new tab instead of copying the session. Closing one window while another
+  of the same profile stays open forgets that window's tabs (they remain in
+  Reopen Closed Tab only when closed individually); quitting keeps all windows.
+  Move a tab with **Move Tab to New Window** or **Move Tab to Window**, by
+  dragging it onto another window's tab strip, or by dropping it outside every
+  window to tear it off. Tabs move only between windows of the same profile, a
+  window's last tab stays, and a moved tab reopens its address in the new window
+  (its back/forward history does not move). A drag between windows is accepted
+  only with a one-time token issued by the source strip.
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
   Zoom Out and Reset Zoom. While you edit the address bar, the page changing its
   URL no longer replaces your text or its undo/redo history (Ctrl+Z, Ctrl+Shift+Z

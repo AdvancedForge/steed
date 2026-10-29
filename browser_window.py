@@ -228,12 +228,23 @@ class BrowserTab(QWebEngineView):
             self.native_panel.setGeometry(self.rect())
 
 
+# One-time tokens for tabs being dragged out of a strip: token -> (window, tab).
+# Another window's strip can only claim a tab through a token issued here.
+_TAB_DRAGS: dict = {}
+
+
 class BrowserWindow(QMainWindow):
     """Main browser window."""
 
-    def __init__(self, profile_name: str | None = None):
+    def __init__(
+        self, profile_name: str | None = None, restore_states: list | None = None
+    ):
         super().__init__()
         self.browser_window_id = uuid4().hex
+        # The window that opened this one; None for the application's root window.
+        self._opener = None
+        # Closing as part of quitting keeps this window in the saved session.
+        self._keep_session = False
         self.config = Config()
         self.profile_manager = ProfileManager(self.config, profile_name, self)
         self.config = self.profile_manager.config
@@ -304,8 +315,10 @@ class BrowserWindow(QMainWindow):
         # Initialize profile and managers
         self._initialize_profile(self.profile_manager.current_profile_name)
         # Restore or create initial tab
-        if self.config.get("restore_tabs_on_startup", True):
-            self._restore_tabs()
+        if restore_states is not None:
+            self._restore_states(restore_states)
+        elif self.config.get("restore_tabs_on_startup", True):
+            self._restore_tabs(reopen_windows=True)
         else:
             self._new_tab(url=self._startup_page())
         self._newtab_hover_timer.start()
@@ -321,7 +334,9 @@ class BrowserWindow(QMainWindow):
         if self.tab_manager is not None:
             self.tab_manager.deleteLater()
         profile_path = self.profile_manager.get_profile_path(profile_name)
-        self.tab_manager = TabManager(profile_path, self)
+        self.tab_manager = TabManager(
+            profile_path, self, window_id=self.browser_window_id
+        )
         profile = self.profile_manager.get_profile(profile_name)
 
         snapshot = self.profile_manager.registry.snapshots.get(profile_name)
@@ -734,6 +749,9 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.context_requested.connect(self._show_tab_menu)
         self.tab_bar.group_context_requested.connect(self._show_group_menu)
         self.tab_bar.mute_toggled.connect(self._toggle_tab_mute)
+        self.tab_bar.drag_started.connect(self._tab_drag_started)
+        self.tab_bar.tab_received.connect(self._tab_dropped_here)
+        self.tab_bar.detach_requested.connect(self._tear_off_tab)
         layout.addWidget(self.tab_bar)
         # Address bar
         self.address_bar = AddressBar()
@@ -1346,9 +1364,10 @@ class BrowserWindow(QMainWindow):
             return
         self.find_bar.close_find(clear_query=True)
         self.find_bar.set_page(None)
-        # Save current tabs
+        # Save current tabs, then leave that profile's session.
         if self.tab_manager:
             self._save_current_tabs()
+            self.tab_manager.release()
         # Switch profile
         self.profile_manager.switch_to_profile(profile_name)
         # Reinitialize managers for new profile
@@ -1380,12 +1399,18 @@ class BrowserWindow(QMainWindow):
         except ValueError as error:
             QMessageBox.warning(self, "Profile in use", str(error))
             return
-        win = BrowserWindow(profile_name=profile)
+        self._open_window(profile)
+
+    def _open_window(self, profile, states=None):
+        """Open a window this one owns; states restores specific tabs."""
+        win = BrowserWindow(profile_name=profile, restore_states=states)
+        win._opener = self
         # Free a closed pop-out now instead of when its opener closes.
         win.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         win.show()
         self._child_windows = [w for w in self._child_windows if not sip.isdeleted(w)]
         self._child_windows.append(win)
+        return win
 
     def _update_profile_shortcuts(self):
         for action in self.profile_shortcuts_menu.actions():
@@ -1476,7 +1501,7 @@ class BrowserWindow(QMainWindow):
         if return_tab:
             return tab
 
-    def _close_tab(self, index: int):
+    def _close_tab(self, index: int, remember: bool = True):
         # The final tab is never closed: this window always keeps one page and
         # the application cannot lose its last tab bar.
         if len(self.tabs) <= 1 or not 0 <= index < len(self.tabs):
@@ -1498,8 +1523,9 @@ class BrowserWindow(QMainWindow):
             tab.pinned,
         )
         profile_name = self.profile_manager.current_profile_name
-        self.closed_tabs.push(profile_name, state, index)
-        self._start_page_changed(profile_name)
+        if remember:
+            self.closed_tabs.push(profile_name, state, index)
+            self._start_page_changed(profile_name)
         self.tab_bar.remove_tab(index)
         self._dispose_tab(tab)
         self.current_tab_index = (
@@ -2011,11 +2037,25 @@ class BrowserWindow(QMainWindow):
 
         self.tab_manager.save_tabs(states)
 
-    def _restore_tabs(self):
+    def _restore_tabs(self, reopen_windows=False):
         if self.profile_manager.is_search_profile():
             self._new_tab()
             return
-        saved = self.tab_manager.get_saved_tabs()
+        if self.tab_manager.others_open():
+            # Another window already shows this profile's session; a second
+            # window starts fresh instead of duplicating every saved tab.
+            self._new_tab()
+            self._save_current_tabs()
+            return
+        windows = self.tab_manager.claim_saved()
+        self._restore_states(windows[0] if windows else None)
+        if reopen_windows:
+            profile = self.profile_manager.current_profile_name
+            for index, states in enumerate(windows[1:], 1):
+                self.tab_manager.drop_saved(index)
+                self._open_window(profile, states)
+
+    def _restore_states(self, saved):
         self._restoring_tabs = True
         try:
             if saved:
@@ -2035,6 +2075,8 @@ class BrowserWindow(QMainWindow):
             self._restoring_tabs = False
         self._switch_tab(0)
         self._sync_tab_group_labels()
+        # Register this window's entry in the session right away.
+        self._save_current_tabs()
 
     # ---------- Permission & Download ----------
     def _connect_page_signals(self, page):
@@ -2174,6 +2216,21 @@ class BrowserWindow(QMainWindow):
             lambda: QApplication.clipboard().setText(tab.url().toString()),
         )
         copy.setEnabled(not tab.workspace_name and not tab.url().isEmpty())
+        movable = len(self.tabs) > 1
+        menu.addAction(
+            "Move Tab to New Window", lambda: self._move_tab(tab)
+        ).setEnabled(movable)
+        others = self._same_profile_windows()
+        if others:
+            destinations = menu.addMenu("Move Tab to Window")
+            destinations.setEnabled(movable)
+            for other in others:
+                current = other.tabs[other.current_tab_index] if other.tabs else None
+                label = (current.title() if current else "") or "Window"
+                destinations.addAction(
+                    f"{label[:40]} ({len(other.tabs)} tabs)",
+                    lambda other=other: self._move_tab(tab, other),
+                )
         menu.addSeparator()
         groups = menu.addMenu("Add Tab to Group")
         groups.setEnabled(not tab.pinned)
@@ -2247,6 +2304,90 @@ class BrowserWindow(QMainWindow):
         tab = self._new_tab(index=index, return_tab=True)
         if tab is not None and tab in self.tabs:
             self._set_tab_group_existing(self.tabs.index(tab), group.name)
+
+    def _same_profile_windows(self):
+        profile = self.profile_manager.current_profile_name
+        return [
+            widget
+            for widget in QApplication.topLevelWidgets()
+            if isinstance(widget, BrowserWindow)
+            and widget is not self
+            and not sip.isdeleted(widget)
+            and not widget._closing
+            and widget.isVisible()
+            and widget.profile_manager.current_profile_name == profile
+        ]
+
+    def _tab_state(self, tab):
+        return TabState(
+            self._tab_url(tab),
+            tab.title() or "New Tab",
+            tab.group,
+            tab.tab_id,
+            tab.group_id,
+            tab.pinned,
+        )
+
+    def _move_tab(self, tab, target=None, index=None):
+        """Reopen a tab in another window of this profile, then remove it here."""
+        if tab not in self.tabs or len(self.tabs) <= 1:
+            return None
+        if target is not None and (
+            target is self
+            or target.profile_manager.current_profile_name
+            != self.profile_manager.current_profile_name
+        ):
+            return None
+        state = self._tab_state(tab)
+        if target is None:
+            target = self._open_window(
+                self.profile_manager.current_profile_name, [state]
+            )
+        else:
+            target._receive_tab(state, index)
+        # A move is not a close: it never enters Reopen Closed Tab.
+        self._close_tab(self.tabs.index(tab), remember=False)
+        target.raise_()
+        target.activateWindow()
+        return target
+
+    def _receive_tab(self, state, index=None):
+        if index is None:
+            index = len(self.tabs)
+        tab = self._new_tab(
+            url=state.url, title=state.title, index=index, return_tab=True
+        )
+        if tab is None or tab not in self.tabs:
+            return
+        tab.tab_id = state.tab_id
+        if state.pinned:
+            self._set_pinned(tab, True)
+        elif state.group:
+            self._set_tab_group_existing(self.tabs.index(tab), state.group)
+        self._save_current_tabs()
+
+    def _tab_drag_started(self, token, index):
+        if 0 <= index < len(self.tabs):
+            while len(_TAB_DRAGS) >= 8:
+                _TAB_DRAGS.pop(next(iter(_TAB_DRAGS)))
+            _TAB_DRAGS[token] = (self, self.tabs[index])
+
+    def _tab_dropped_here(self, token, index):
+        source, tab = _TAB_DRAGS.pop(token, (None, None))
+        if source is None or sip.isdeleted(source) or source is self:
+            return
+        source._move_tab(tab, self, index)
+
+    def _tear_off_tab(self, index):
+        from PyQt6.QtGui import QCursor
+
+        # Released over this window (or a cancelled drag): nothing to do.
+        if self.frameGeometry().contains(QCursor.pos()):
+            return
+        if 0 <= index < len(self.tabs):
+            window = self._move_tab(self.tabs[index])
+            if window is not None:
+                window.move(QCursor.pos())
 
     def _pinned_count(self):
         return sum(1 for tab in self.tabs if tab.pinned)
@@ -2535,7 +2676,14 @@ class BrowserWindow(QMainWindow):
 
         for win in list(self._child_windows):
             if not sip.isdeleted(win):
+                # Closing with their opener is quitting, not discarding them.
+                win._keep_session = True
                 win.close()
+        if (
+            self.tab_manager is not None
+            and not self.profile_manager.is_search_profile()
+        ):
+            self.tab_manager.release(keep=self._keep_session or self._opener is None)
 
         from ui.task_watch import TaskWatchDialog
 

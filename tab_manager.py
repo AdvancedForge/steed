@@ -64,13 +64,42 @@ class ClosedTabHistory:
         return None
 
 
+# Open windows per session file, shared by every window in this process. Keys are
+# window IDs; "saved:N" keys hold saved windows nobody has reopened yet.
+_OPEN: dict[str, dict[str, list[TabState]]] = {}
+
+
+def _parse_states(raw) -> list[TabState]:
+    states: list[TabState] = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        states.append(
+            TabState(
+                url=item.get("url", "https://www.google.com"),
+                title=item.get("title", "New Tab"),
+                group=item.get("group"),
+                tab_id=item.get("tab_id") or uuid4().hex,
+                group_id=item.get("group_id"),
+                pinned=item.get("pinned") is True,
+            )
+        )
+    return states
+
+
 class TabManager(QObject):
-    """Saves/restores tabs to <profile_dir>/tabs.json"""
+    """Saves/restores each open window's tabs in <profile_dir>/tabs.json."""
 
     group_data_updated = pyqtSignal()
 
-    def __init__(self, profile_dir: Path, parent: QObject | None = None) -> None:
+    def __init__(
+        self,
+        profile_dir: Path,
+        parent: QObject | None = None,
+        window_id: str | None = None,
+    ) -> None:
         super().__init__(parent)
+        self.window_id = window_id or uuid4().hex
         self.profile_dir = profile_dir
         self.tabs_file = self.profile_dir / "tabs.json"
         self.tab_states: list[TabState] = []
@@ -103,27 +132,70 @@ class TabManager(QObject):
         self.save_groups()
         return group
 
+    def _windows(self) -> dict[str, list[TabState]]:
+        return _OPEN.setdefault(str(self.tabs_file), {})
+
+    def _write(self) -> None:
+        windows = [w for w in self._windows().values() if w]
+        save_json(
+            self.tabs_file,
+            {"version": 2, "windows": [[asdict(s) for s in w] for w in windows]},
+        )
+
+    def others_open(self) -> bool:
+        """Whether another live window already shows this profile."""
+        return any(
+            key != self.window_id and not key.startswith("saved:")
+            for key in self._windows()
+        )
+
     def save_tabs(self, states: list[TabState]) -> None:
         self.tab_states = list(states)
-        data = [asdict(s) for s in self.tab_states]
-        save_json(self.tabs_file, data)
+        self._windows()[self.window_id] = list(states)
+        self._write()
         self.group_data_updated.emit()
 
-    def get_saved_tabs(self) -> list[TabState]:
+    def get_saved_windows(self) -> list[list[TabState]]:
         raw = load_json(self.tabs_file, default=[])
-        states: list[TabState] = []
-        for item in raw if isinstance(raw, list) else []:
-            if not isinstance(item, dict):
-                continue
-            states.append(
-                TabState(
-                    url=item.get("url", "https://www.google.com"),
-                    title=item.get("title", "New Tab"),
-                    group=item.get("group"),
-                    tab_id=item.get("tab_id") or uuid4().hex,
-                    group_id=item.get("group_id"),
-                    pinned=item.get("pinned") is True,
-                )
-            )
-        self.tab_states = states
-        return states
+        if isinstance(raw, dict) and raw.get("version") == 2:
+            windows = raw.get("windows")
+            return [
+                states for states in (_parse_states(w) for w in windows or []) if states
+            ][:16]
+        states = _parse_states(raw)
+        return [states] if states else []
+
+    def claim_saved(self) -> list[list[TabState]]:
+        """First window of a profile: own the first saved window, hold the rest."""
+        windows = self.get_saved_windows()
+        open_windows = self._windows()
+        for key in [k for k in open_windows if k.startswith("saved:")]:
+            del open_windows[key]
+        for index, states in enumerate(windows[1:], 1):
+            open_windows[f"saved:{index}"] = states
+        if windows:
+            open_windows[self.window_id] = windows[0]
+            self.tab_states = list(windows[0])
+        return windows
+
+    def drop_saved(self, index: int) -> None:
+        """A reopened window now saves its own entry instead."""
+        self._windows().pop(f"saved:{index}", None)
+
+    def release(self, keep: bool = False) -> None:
+        """Leave the session when the window closes or switches profile.
+
+        A window closed while another window of this profile stays open loses
+        its saved entry. When quitting (keep) or closing the profile's last
+        window, the file keeps the tabs as the session to restore.
+        """
+        windows = self._windows()
+        drop = not keep and self.others_open()
+        windows.pop(self.window_id, None)
+        if drop:
+            self._write()
+
+    def get_saved_tabs(self) -> list[TabState]:
+        windows = self.get_saved_windows()
+        self.tab_states = windows[0] if windows else []
+        return list(self.tab_states)

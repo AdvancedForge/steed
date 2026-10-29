@@ -1587,7 +1587,8 @@ class BrowserTests(unittest.TestCase):
         saved = load_json(tabs_file)
         self.window.close()
         self.assertEqual(load_json(tabs_file), saved)
-        self.assertEqual(len(saved), 1)
+        self.assertEqual(len(saved["windows"]), 1)
+        self.assertEqual(len(saved["windows"][0]), 1)
 
 
 if __name__ == "__main__":
