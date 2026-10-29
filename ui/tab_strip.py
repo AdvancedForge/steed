@@ -10,12 +10,13 @@ from PyQt6.QtCore import (
     QIODevice,
     QPoint,
     QSize,
+    Qt,
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QWidget
 
-from tab_appearance import default_tabs
+from tab_appearance import TAB_WIDTH_RANGE, default_tabs
 from ui.html_surface import HtmlSurface
 
 GROUP_COLORS = ("#4f7cff", "#9b5de5", "#1b998b", "#f08a24", "#e0457b", "#5c6f84")
@@ -55,6 +56,37 @@ def icon_data(icon, size=32):
     return "data:image/png;base64," + base64.b64encode(bytes(raw)).decode()
 
 
+class ResizeGrip(QWidget):
+    """Drag the inner edge of side tabs to change their width."""
+
+    def __init__(self, strip):
+        super().__init__(strip)
+        self.strip = strip
+        self.start = None
+        self.setFixedWidth(5)
+        self.setCursor(Qt.CursorShape.SizeHorCursor)
+        self.setToolTip("Drag to resize tabs")
+        self.setAccessibleName("Resize side tabs")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.start = (event.globalPosition().x(), self.strip.width())
+
+    def mouseMoveEvent(self, event):
+        if self.start is not None:
+            x, width = self.start
+            delta = event.globalPosition().x() - x
+            if self.strip.appearance["position"] == "right":
+                delta = -delta
+            low, high = TAB_WIDTH_RANGE
+            self.strip.setFixedWidth(int(max(low, min(high, width + delta))))
+
+    def mouseReleaseEvent(self, event):
+        if self.start is not None:
+            self.start = None
+            self.strip.width_chosen.emit(self.strip.width())
+
+
 class TabStrip(QWidget):
     """Owns presentation only; the window still owns tabs and their order."""
 
@@ -69,6 +101,7 @@ class TabStrip(QWidget):
     context_requested = pyqtSignal(int, QPoint)
     group_context_requested = pyqtSignal(str, QPoint)
     mute_toggled = pyqtSignal(int)
+    width_chosen = pyqtSignal(int)
     drag_started = pyqtSignal(str, int)
     tab_received = pyqtSignal(str, int)
     detach_requested = pyqtSignal(int)
@@ -84,13 +117,16 @@ class TabStrip(QWidget):
         self.collapsed = set()
         self.content_height = 0
         self.chrome = {"toolbar": "", "dark": False}
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.grip = ResizeGrip(self)
         self.surface = HtmlSurface("tabs", self, label="tab strip", command_limit=2000)
         # A loading notice cannot fit in a single tab row; keep the space quiet.
         self.surface.notice.hide()
         self.surface.command.connect(self._command)
         layout.addWidget(self.surface)
+        layout.addWidget(self.grip)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(0)
@@ -251,6 +287,14 @@ class TabStrip(QWidget):
         return height - 4 if self.density == "compact" else height
 
     def _resize(self):
+        layout = self.layout()
+        if layout is not None:
+            # The grip sits on the edge facing the page.
+            layout.removeWidget(self.grip)
+            layout.insertWidget(
+                0 if self.appearance["position"] == "right" else 1, self.grip
+            )
+            self.grip.setVisible(self.vertical)
         if self.vertical:
             self.setMinimumHeight(0)
             self.setMaximumHeight(16777215)

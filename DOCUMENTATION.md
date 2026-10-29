@@ -5144,7 +5144,8 @@ return to today's defaults. The first milestone covers manual editing:
 - Place the agent sidebar on the left or right and remember its width.
 - Choose compact or comfortable control spacing.
 - **Tabs:** put the tab strip at the top or bottom, or as a vertical list on the
-  left or right (160–480 px wide). Choose a style (Rounded, Pills, Underline,
+  left or right (160–480 px wide; drag the inner edge to resize, saved for every
+  window). Choose a style (Rounded, Pills, Underline,
   Boxed or Minimal), tab size, an accent colour, when close buttons show, where
   the new-tab button sits, and whether tabs that don't fit shrink, scroll or wrap
   onto more rows (up to four). Grouping shows your tab groups as coloured chips

@@ -144,6 +144,46 @@ class TabStripTests(unittest.TestCase):
         window._set_pinned(third, False)
         self.assertFalse(window.tab_manager.get_saved_tabs()[0].pinned)
 
+    def test_dragging_the_side_grip_resizes_and_saves_the_width(self):
+        from PyQt6.QtCore import QEvent, QPointF, Qt
+        from PyQt6.QtGui import QMouseEvent
+
+        from layout_preferences import preferences_from_config
+
+        preferences = LayoutPreferences()
+        preferences.set_tabs({"position": "right", "vertical_width": 240})
+        self.window.profile_manager.registry.commit_layout(preferences)
+        grip = self.strip.grip
+        self.assertTrue(grip.isVisibleTo(self.strip))
+
+        def mouse(kind, x, buttons):
+            point = QPointF(x, 10)
+            return QMouseEvent(
+                kind,
+                point,
+                point,
+                Qt.MouseButton.LeftButton,
+                buttons,
+                Qt.KeyboardModifier.NoModifier,
+            )
+
+        held = Qt.MouseButton.LeftButton
+        grip.mousePressEvent(mouse(QEvent.Type.MouseButtonPress, 500, held))
+        # On the right edge, dragging left widens the tabs.
+        grip.mouseMoveEvent(mouse(QEvent.Type.MouseMove, 440, held))
+        self.assertEqual(self.strip.width(), 300)
+        grip.mouseMoveEvent(mouse(QEvent.Type.MouseMove, -2000, held))
+        self.assertEqual(self.strip.width(), 480)
+        grip.mouseReleaseEvent(
+            mouse(QEvent.Type.MouseButtonRelease, -2000, Qt.MouseButton.NoButton)
+        )
+        saved = preferences_from_config(self.window.config)
+        self.assertEqual(saved.tabs["vertical_width"], 480)
+        self.assertEqual(saved.tabs["position"], "right")
+        top = LayoutPreferences()
+        self.window.profile_manager.registry.commit_layout(top)
+        self.assertFalse(grip.isVisibleTo(self.strip))
+
     def test_context_menu_duplicate_and_close_others(self):
         self.window._new_tab(url="about:blank", title="Second")
         self.window._new_tab(url="about:blank", title="Third")

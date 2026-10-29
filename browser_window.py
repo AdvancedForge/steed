@@ -752,6 +752,7 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.drag_started.connect(self._tab_drag_started)
         self.tab_bar.tab_received.connect(self._tab_dropped_here)
         self.tab_bar.detach_requested.connect(self._tear_off_tab)
+        self.tab_bar.width_chosen.connect(self._commit_tab_width)
         layout.addWidget(self.tab_bar)
         # Address bar
         self.address_bar = AddressBar()
@@ -2304,6 +2305,19 @@ class BrowserWindow(QMainWindow):
         tab = self._new_tab(index=index, return_tab=True)
         if tab is not None and tab in self.tabs:
             self._set_tab_group_existing(self.tabs.index(tab), group.name)
+
+    def _commit_tab_width(self, width):
+        """Save a dragged side-tab width for every window."""
+        if self._layout_editing:
+            # The open Layout Settings editor owns the next commit.
+            return
+        saved = preferences_from_config(self.config)
+        edited = saved.copy()
+        edited.set_tabs({"vertical_width": width})
+        try:
+            self.profile_manager.registry.commit_layout(edited, base=saved)
+        except LayoutConflict:
+            self.apply_layout(preferences_from_config(self.config))
 
     def _same_profile_windows(self):
         profile = self.profile_manager.current_profile_name
