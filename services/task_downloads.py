@@ -100,9 +100,23 @@ class DownloadDestination:
             os.close(source)
 
     def close(self):
-        if self.stage is not None:
-            self.stage.cleanup()
-            self.stage = None
+        stage, self.stage = self.stage, None
+        self._release(stage, 5)
+
+    def _release(self, stage, attempts):
+        """Remove the staging folder, then its descriptors; never raise.
+
+        A cancelled download can still be writing its payload, so removal may
+        briefly fail with a non-empty folder. Retry while the descriptors that
+        the folder's path depends on stay open.
+        """
+        if stage is not None:
+            try:
+                stage.cleanup()
+            except OSError:
+                if attempts > 0:
+                    QTimer.singleShot(200, lambda: self._release(stage, attempts - 1))
+                    return
         if self.stage_fd is not None:
             os.close(self.stage_fd)
             self.stage_fd = None

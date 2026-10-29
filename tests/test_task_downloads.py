@@ -26,6 +26,41 @@ class DownloadDestinationTests(unittest.TestCase):
         self.addCleanup(output.close)
         return output
 
+    def test_cleanup_retries_while_a_cancelled_payload_is_still_written(self):
+        import os
+        import time
+
+        from qt_test_support import application
+
+        app = application()
+        output = self.output()
+        stage = output.stage
+        real_cleanup = stage.cleanup
+        attempts = []
+
+        def busy_then_clean():
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise OSError(39, "Directory not empty")
+            real_cleanup()
+
+        stage.cleanup = busy_then_clean
+        stage_fd = output.stage_fd
+        output.close()  # Must not raise into the Qt slot that cancelled it.
+        self.assertIsNotNone(output.stage_fd)
+        deadline = time.monotonic() + 3
+        while output.stage_fd is not None and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.02)
+        self.assertEqual(len(attempts), 2)
+        self.assertIsNone(output.stage_fd)
+        self.assertIsNone(output.parent_fd)
+        with self.assertRaises(OSError):
+            os.fstat(stage_fd)
+        self.assertEqual(
+            [p.name for p in self.root.iterdir() if p.name.startswith(".steed")], []
+        )
+
     def test_explicit_destinations_and_size_limit_are_required(self):
         for values in (
             {"actions": ["download"]},
