@@ -261,6 +261,13 @@ The menu bar has six categories, in this order:
   window's last tab stays, and a moved tab reopens its address in the new window
   (its back/forward history does not move). A drag between windows is accepted
   only with a one-time token issued by the source strip.
+- **Toolbar look:** the toolbar, menu bar and status bar share the tab strip's
+  colours in light and dark mode. Buttons use Steed's own line icons, the address
+  field is a rounded field with an accent focus ring, and an icon at its left
+  shows whether the page is encrypted (lock), not encrypted (open lock, orange),
+  a Steed page, or a search. History suggestions show the page title above its
+  address. The toolbar stays a native text field, so typing, input methods and
+  undo work like any other field.
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
   Zoom Out and Reset Zoom. While you edit the address bar, the page changing its
   URL no longer replaces your text or its undo/redo history (Ctrl+Z, Ctrl+Shift+Z

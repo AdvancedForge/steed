@@ -8,6 +8,7 @@ from PyQt6.QtTest import QTest
 from qt_test_support import application
 
 from ui.address_bar import AddressBar
+from ui.chrome_style import chrome_colors
 
 
 class AddressBarEditingTests(unittest.TestCase):
@@ -74,6 +75,56 @@ class AddressBarEditingTests(unittest.TestCase):
         self.assertEqual(emitted, ["example.com"])
         self.bar.set_url("https://example.com/")
         self.assertEqual(self.field.text(), "https://example.com/")
+
+
+class ToolbarStyleTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = application()
+
+    def setUp(self):
+        self.bar = AddressBar()
+
+    def tearDown(self):
+        self.bar.deleteLater()
+
+    def test_site_indicator_follows_the_page_scheme(self):
+        for url, kind in (
+            ("https://example.org/", "lock"),
+            ("http://example.org/", "unlocked"),
+            ("steed:welcome", "internal"),
+            ("about:blank", "search"),
+        ):
+            self.bar.set_url(url)
+            self.assertEqual(self.bar.site_kind, kind)
+        self.bar.set_url("http://x.test/")
+        self.assertIn("not encrypted", self.bar.site_action.toolTip())
+
+    def test_buttons_use_icons_with_accessible_names_and_a_menu_badge(self):
+        for name in ("back", "forward", "reload", "home", "passwords", "menu"):
+            button = self.bar.buttons[name]
+            self.assertFalse(button.icon().isNull(), name)
+            self.assertTrue(button.accessibleName(), name)
+            self.assertEqual(button.text(), "")
+        self.bar.set_menu_badge("YOLO")
+        self.assertEqual(self.bar.menu_btn.text(), "YOLO")
+        self.assertEqual(self.bar.menu_btn.objectName(), "TextButton")
+        self.bar.set_menu_badge("")
+        self.assertEqual(self.bar.menu_btn.objectName(), "")
+
+    def test_suggestions_keep_title_and_address(self):
+        from browsing_history import HistoryEntry
+        from ui.address_bar import TITLE_ROLE
+
+        self.bar.set_history([HistoryEntry("https://docs.example/a", "Docs")])
+        item = self.bar.history_model.item(0)
+        self.assertEqual(item.data(TITLE_ROLE), "Docs")
+        self.assertEqual(
+            self.bar.completer.pathFromIndex(item.index()), "https://docs.example/a"
+        )
+        dark = chrome_colors("#1e1e1e", True)
+        self.bar.apply_style(dark)
+        self.assertIn(dark["accent"], self.bar.styleSheet())
 
 
 if __name__ == "__main__":

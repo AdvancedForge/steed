@@ -1,16 +1,40 @@
 """Address bar widget."""
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QStandardItem, QStandardItemModel
-from PyQt6.QtWidgets import QCompleter, QHBoxLayout, QLineEdit, QPushButton, QWidget
+from PyQt6.QtCore import QRect, QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QColor, QStandardItem, QStandardItemModel
+from PyQt6.QtWidgets import (
+    QCompleter,
+    QHBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QWidget,
+)
 
 from browsing_history import HistoryEntry
 from layout_preferences import TOOLBAR_ORDER, clean_toolbar_order
+from ui.chrome_style import (
+    chrome_colors,
+    icon,
+    popup_stylesheet,
+    toolbar_stylesheet,
+)
+
+TITLE_ROLE = Qt.ItemDataRole.UserRole + 1
+BUTTON_ICONS = {
+    "back": "back",
+    "forward": "forward",
+    "reload": "reload",
+    "home": "home",
+    "passwords": "key",
+    "menu": "menu",
+}
 
 # Spacing per density; the address input always keeps its width.
 DENSITY_METRICS = {
-    "compact": {"margin": 2, "spacing": 2},
-    "comfortable": {"margin": 4, "spacing": 4},
+    "compact": {"margin": 3, "spacing": 2},
+    "comfortable": {"margin": 6, "spacing": 4},
 }
 
 
@@ -19,6 +43,49 @@ class HistoryCompleter(QCompleter):
 
     def pathFromIndex(self, index):
         return index.data(Qt.ItemDataRole.UserRole) or ""
+
+
+class SuggestionDelegate(QStyledItemDelegate):
+    """Two-line history suggestions: page title above its address."""
+
+    def __init__(self, bar):
+        super().__init__(bar)
+        self.bar = bar
+
+    def sizeHint(self, option, index):
+        height = option.fontMetrics.height()
+        return QSize(option.rect.width(), height * 2 + 14)
+
+    def paint(self, painter, option, index):
+        colors = self.bar.colors
+        painter.save()
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(colors["hover"]))
+            painter.drawRoundedRect(option.rect.adjusted(2, 1, -2, -1), 8, 8)
+        metrics = option.fontMetrics
+        line = metrics.height()
+        left = option.rect.left() + 34
+        width = option.rect.width() - 44
+        icon("history", colors["muted"], 16).paint(
+            painter,
+            QRect(option.rect.left() + 10, option.rect.top() + line - 1, 16, 16),
+        )
+        title = index.data(TITLE_ROLE) or index.data(Qt.ItemDataRole.UserRole) or ""
+        url = index.data(Qt.ItemDataRole.UserRole) or ""
+        painter.setPen(QColor(colors["ink"]))
+        painter.drawText(
+            QRect(left, option.rect.top() + 6, width, line),
+            Qt.AlignmentFlag.AlignVCenter,
+            metrics.elidedText(title, Qt.TextElideMode.ElideRight, width),
+        )
+        painter.setPen(QColor(colors["accent"]))
+        painter.drawText(
+            QRect(left, option.rect.top() + 6 + line, width, line),
+            Qt.AlignmentFlag.AlignVCenter,
+            metrics.elidedText(url, Qt.TextElideMode.ElideMiddle, width),
+        )
+        painter.restore()
 
 
 class AddressInput(QLineEdit):
@@ -71,7 +138,11 @@ class AddressBar(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("SteedToolbar")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.colors = chrome_colors("#eef1f6", False)
         self.setup_ui()
+        self.apply_style(self.colors)
 
     def setup_ui(self) -> None:
         """Set up the UI."""
@@ -80,24 +151,24 @@ class AddressBar(QWidget):
         layout.setSpacing(4)
 
         # Navigation buttons
-        self.back_btn = QPushButton("←")
+        self.back_btn = QPushButton()
+        self.back_btn.setAccessibleName("Back")
         self.back_btn.setToolTip("Back")
-        self.back_btn.setMaximumWidth(40)
         self.back_btn.clicked.connect(self.back_requested.emit)
 
-        self.forward_btn = QPushButton("→")
+        self.forward_btn = QPushButton()
+        self.forward_btn.setAccessibleName("Forward")
         self.forward_btn.setToolTip("Forward")
-        self.forward_btn.setMaximumWidth(40)
         self.forward_btn.clicked.connect(self.forward_requested.emit)
 
-        self.reload_btn = QPushButton("↻")
+        self.reload_btn = QPushButton()
+        self.reload_btn.setAccessibleName("Reload")
         self.reload_btn.setToolTip("Reload (Ctrl+R / F5)")
-        self.reload_btn.setMaximumWidth(40)
         self.reload_btn.clicked.connect(self.reload_requested.emit)
 
-        self.home_btn = QPushButton("⌂")
+        self.home_btn = QPushButton()
+        self.home_btn.setAccessibleName("Home")
         self.home_btn.setToolTip("Home")
-        self.home_btn.setMaximumWidth(40)
         self.home_btn.clicked.connect(self.home_requested.emit)
 
         # Address bar
@@ -112,12 +183,19 @@ class AddressBar(QWidget):
         self.completer.setMaxVisibleItems(10)
         self.address_input.setCompleter(self.completer)
         self.completer.activated[str].connect(self._on_completion)
-        self.passwords_btn = QPushButton("Passwords")
+        self.completer.popup().setItemDelegate(SuggestionDelegate(self))
+        self.site_action = self.address_input.addAction(
+            icon("search", "#5d6c83", 16), QLineEdit.ActionPosition.LeadingPosition
+        )
+        self.site_action.setToolTip("Search or enter an address")
+        self.site_kind = "search"
+        self.passwords_btn = QPushButton()
+        self.passwords_btn.setAccessibleName("Passwords")
         self.passwords_btn.setToolTip("KeePassXC passwords (Ctrl+Shift+L to fill)")
         self.passwords_btn.clicked.connect(self.passwords_requested.emit)
         self.zoom_btn = QPushButton("100%")
+        self.zoom_btn.setObjectName("TextButton")
         self.zoom_btn.setToolTip("Reset page zoom (Ctrl+0)")
-        self.zoom_btn.setMaximumWidth(70)
         self.zoom_btn.clicked.connect(self.reset_zoom_requested.emit)
 
         # Stable identifiers let a saved layout reorder or hide individual
@@ -130,10 +208,9 @@ class AddressBar(QWidget):
             "zoom": self.zoom_btn,
             "passwords": self.passwords_btn,
         }
-        self.menu_btn = QPushButton("☰")
+        self.menu_btn = QPushButton()
         self.menu_btn.setToolTip("Browser menu")
         self.menu_btn.setAccessibleName("Browser menu")
-        self.menu_btn.setMaximumWidth(42)
         self.buttons["menu"] = self.menu_btn
         self.toolbar_order = list(TOOLBAR_ORDER)
         self.hidden_toolbar: list[str] = []
@@ -175,8 +252,9 @@ class AddressBar(QWidget):
         self.density = density if density in DENSITY_METRICS else "comfortable"
         layout = self.layout()
         margin = metrics["margin"]
-        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setContentsMargins(margin * 2, margin, margin * 2, margin)
         layout.setSpacing(metrics["spacing"])
+        self.setStyleSheet(toolbar_stylesheet(self.colors, self.density))
 
     def _on_return_pressed(self) -> None:
         """Handle return key press."""
@@ -193,6 +271,42 @@ class AddressBar(QWidget):
     def set_url(self, url: str) -> None:
         """Show the current page URL unless the user is editing the field."""
         self.address_input.show_page_url(url)
+        scheme = QUrl(url).scheme()
+        kind = {"https": "lock", "http": "unlocked", "steed": "internal"}.get(
+            scheme, "search"
+        )
+        if kind != self.site_kind:
+            self.site_kind = kind
+            self._update_site_icon()
+
+    def _update_site_icon(self):
+        tips = {
+            "lock": "Connection is encrypted (HTTPS)",
+            "unlocked": "Connection is not encrypted",
+            "internal": "Steed page",
+            "search": "Search or enter an address",
+        }
+        color = "#c4683c" if self.site_kind == "unlocked" else self.colors["muted"]
+        self.site_action.setIcon(icon(self.site_kind, color, 16))
+        self.site_action.setToolTip(tips[self.site_kind])
+
+    def apply_style(self, colors) -> None:
+        """Repaint the toolbar to match the tab strip's colours."""
+        self.colors = colors
+        self.setStyleSheet(toolbar_stylesheet(colors, self.density))
+        self.completer.popup().setStyleSheet(popup_stylesheet(colors))
+        for name, button in self.buttons.items():
+            if name in BUTTON_ICONS:
+                button.setIcon(icon(BUTTON_ICONS[name], colors["ink"]))
+                button.setIconSize(QSize(18, 18))
+        self._update_site_icon()
+
+    def set_menu_badge(self, text: str) -> None:
+        """Show a short label beside the menu icon (for example YOLO mode)."""
+        self.menu_btn.setText(text)
+        self.menu_btn.setObjectName("TextButton" if text else "")
+        self.menu_btn.style().unpolish(self.menu_btn)
+        self.menu_btn.style().polish(self.menu_btn)
 
     def set_history(self, entries: list[HistoryEntry]) -> None:
         self.completer.popup().hide()
@@ -200,6 +314,7 @@ class AddressBar(QWidget):
         for entry in entries:
             item = QStandardItem(f"{entry.title} — {entry.url}")
             item.setData(entry.url, Qt.ItemDataRole.UserRole)
+            item.setData(entry.title, TITLE_ROLE)
             self.history_model.appendRow(item)
 
     def focus_address(self) -> None:

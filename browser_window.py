@@ -53,6 +53,7 @@ from services.start_pages import (
 )
 from tab_manager import TabManager, TabState
 from ui.address_bar import AddressBar
+from ui.chrome_style import bar_stylesheet, chrome_colors
 from ui.devtools import DevToolsHost, DevToolsUnavailable
 from ui.find_bar import FindBar
 from ui.layout_dialog import LayoutDialog
@@ -861,6 +862,11 @@ class BrowserWindow(QMainWindow):
         else:
             toolbar = QApplication.palette().color(QPalette.ColorRole.Window).name()
         self.tab_bar.set_chrome(toolbar, dark)
+        colors = chrome_colors(toolbar, dark)
+        self.address_bar.apply_style(colors)
+        bars = bar_stylesheet(colors)
+        self.menuBar().setStyleSheet(bars)
+        self.status_bar.setStyleSheet(bars)
         if hasattr(self, "layout_preferences"):
             self._apply_layout_text()
 
@@ -1179,8 +1185,7 @@ class BrowserWindow(QMainWindow):
         self.auto_approval_action.blockSignals(False)
         self.auto_approval_notice.setVisible(enabled)
         if hasattr(self, "address_bar"):
-            self.address_bar.menu_btn.setText("☰ YOLO" if enabled else "☰")
-            self.address_bar.menu_btn.setMaximumWidth(100 if enabled else 42)
+            self.address_bar.set_menu_badge("YOLO" if enabled else "")
             self.address_bar.menu_btn.setToolTip(
                 "Browser menu · unsafe agent auto-approval is enabled"
                 if enabled
