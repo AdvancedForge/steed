@@ -330,9 +330,20 @@ def main():
         action="append",
         help="Separate HTTP credential name (up to four; default: default)",
     )
+    parser.add_argument(
+        "--idle-timeout",
+        type=int,
+        default=1800,
+        help="Seconds an HTTP session may stay silent before it ends and its "
+        "task is cancelled (10-86400; default: 1800)",
+    )
     args = parser.parse_args()
     if not 0 <= args.port <= 65535:
         parser.error("Port must be between 0 and 65535")
+    if not 10 <= args.idle_timeout <= 86400:
+        parser.error("Idle timeout must be between 10 and 86400 seconds")
+    if args.idle_timeout != 1800 and args.transport != "http":
+        parser.error("Idle timeout applies to HTTP sessions only")
     if args.task_binding_file is not None and args.transport != "stdio":
         parser.error("Managed task bindings require stdio")
     try:
@@ -341,7 +352,11 @@ def main():
 
             asyncio.run(
                 serve_http(
-                    args.discovery, args.port, args.http_discovery, args.http_client
+                    args.discovery,
+                    args.port,
+                    args.http_discovery,
+                    args.http_client,
+                    args.idle_timeout,
                 )
             )
         else:

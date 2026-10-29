@@ -13,8 +13,12 @@ from pathlib import Path
 from agent_mcp import create_server, read_browser_discovery
 from services.agent_tools import REQUEST_LIMIT
 
+# Agents often think for minutes between calls; an expired session cancels
+# its task, so only long silence ends one. Four sessions bound abandoned ones.
+IDLE_TIMEOUT = 1800
 
-def create_http_app(discovery, credentials, authority, *, idle_timeout=60):
+
+def create_http_app(discovery, credentials, authority, *, idle_timeout=IDLE_TIMEOUT):
     """Give every HTTP session its own browser connection and credential owner."""
     from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
     from mcp.server.auth.provider import AccessToken
@@ -122,7 +126,9 @@ def publish_endpoint(path, payload):
             temporary.unlink(missing_ok=True)
 
 
-async def serve_http(discovery, port=0, endpoint_file=None, client_names=None):
+async def serve_http(
+    discovery, port=0, endpoint_file=None, client_names=None, idle_timeout=IDLE_TIMEOUT
+):
     import sys
 
     import uvicorn
@@ -148,7 +154,9 @@ async def serve_http(discovery, port=0, endpoint_file=None, client_names=None):
         listener.listen(16)
         actual_port = listener.getsockname()[1]
         authority = f"127.0.0.1:{actual_port}"
-        app = create_http_app(discovery, credentials, authority)
+        app = create_http_app(
+            discovery, credentials, authority, idle_timeout=idle_timeout
+        )
         server = uvicorn.Server(
             uvicorn.Config(
                 app,

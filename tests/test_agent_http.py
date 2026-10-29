@@ -292,3 +292,38 @@ class AgentHTTPTests(unittest.IsolatedAsyncioTestCase):
         self.assertCountEqual(
             list(Path(self.directory.name).iterdir()), [self.discovery, path]
         )
+
+    def test_sessions_survive_long_agent_thinking_and_timeout_is_bounded(self):
+        import inspect
+
+        import agent_mcp
+        from services.agent_http import IDLE_TIMEOUT, serve_http
+
+        self.assertEqual(IDLE_TIMEOUT, 1800)
+        for function in (create_http_app, serve_http):
+            default = inspect.signature(function).parameters["idle_timeout"].default
+            self.assertEqual(default, IDLE_TIMEOUT)
+        for arguments in (
+            ["--transport", "http", "--idle-timeout", "5"],
+            ["--transport", "http", "--idle-timeout", "86401"],
+            ["--idle-timeout", "600"],
+        ):
+            with (
+                self.subTest(arguments=arguments),
+                patch("sys.argv", ["agent_mcp.py", *arguments]),
+                patch("sys.stderr"),
+                self.assertRaises(SystemExit),
+            ):
+                agent_mcp.main()
+        with (
+            patch(
+                "sys.argv",
+                ["agent_mcp.py", "--transport", "http", "--idle-timeout", "600"],
+            ),
+            patch(
+                "services.agent_http.serve_http", new=Mock(return_value=None)
+            ) as served,
+            patch("asyncio.run"),
+        ):
+            agent_mcp.main()
+        self.assertEqual(served.call_args.args[-1], 600)
