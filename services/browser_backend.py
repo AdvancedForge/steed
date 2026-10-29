@@ -13,6 +13,7 @@ from PyQt6.QtCore import QObject, Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
+    QWebEngineScript,
     QWebEngineSettings,
     QWebEngineUrlRequestInfo,
     QWebEngineUrlRequestInterceptor,
@@ -165,6 +166,50 @@ class TaskPage(QWebEnginePage):
 
     def javaScriptPrompt(self, origin, message, default_value):
         return False, ""
+
+
+REDIRECT_GUARD_SCRIPT = """
+(() => {
+  const add = () => {
+    const meta = document.createElement('meta');
+    meta.httpEquiv = 'Content-Security-Policy';
+    meta.content = %s;
+    document.head.prepend(meta);
+  };
+  if (document.head) { add(); return; }
+  const observer = new MutationObserver(() => {
+    if (document.head) { observer.disconnect(); add(); }
+  });
+  observer.observe(document, {childList: true, subtree: true});
+})();
+"""
+
+
+def redirect_guard(grant):
+    """Renderer-enforced scope for subresource and frame redirect hops.
+
+    Qt 6.11 can follow a redirect before an interceptor block lands, and
+    DevTools Fetch cannot hold or rewrite these requests. Blink checks the
+    document's CSP before following each hop, so this backs up the
+    interceptor. Restricted pages run no page script that could remove it.
+    """
+    origins = sorted(grant.scope.origins)
+    if not origins or any("[" in origin for origin in origins):
+        # CSP host sources cannot express IPv6 literals; keep the interceptor.
+        return None
+    sources = " ".join(origins)
+    policy = (
+        f"default-src {sources}; style-src {sources} 'unsafe-inline'; "
+        f"img-src {sources} data: blob:; font-src {sources} data:; "
+        f"media-src {sources} data: blob:; script-src 'none'; object-src 'none'"
+    )
+    script = QWebEngineScript()
+    script.setName("steed-redirect-guard")
+    script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+    script.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
+    script.setRunsOnSubFrames(True)
+    script.setSourceCode(REDIRECT_GUARD_SCRIPT % json.dumps(policy))
+    return script
 
 
 class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
@@ -336,6 +381,10 @@ class QtBrowserBackend(QObject):
             settings.setAttribute(
                 QWebEngineSettings.WebAttribute.JavascriptEnabled, True
             )
+        else:
+            guard = redirect_guard(grant)
+            if guard is not None:
+                page.scripts().insert(guard)
         if owns_profile and mode == "live":
             profile.downloadRequested.connect(
                 lambda request: page.task_download_handler(request)

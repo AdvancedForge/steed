@@ -215,6 +215,30 @@ class TaskServiceTests(unittest.TestCase):
         self.assertNotIn("secret", repr(events))
         self.assertFalse((Path(self.directory.name) / "forbidden").exists())
 
+    def test_page_policy_alone_stops_out_of_scope_redirect_hops(self):
+        # Qt can follow a redirect before its interceptor block lands. With the
+        # interceptor removed, the renderer policy must still refuse the hop.
+        task_id, session_id = self.task_session()
+        session = self.service.backend._session(session_id)
+        session.profile.setUrlRequestInterceptor(None)
+        before = len(self.requests)
+        self.command(
+            "session.navigate",
+            task_id=task_id,
+            session_id=session_id,
+            url=self.origin + "/scope-page",
+        )
+        self.wait_for(
+            lambda: any(
+                path == "/redirect-resource" for path, _ in self.requests[before:]
+            )
+        )
+        settle = time.monotonic() + 0.5
+        self.wait_for(lambda: time.monotonic() > settle)
+        self.assertFalse(
+            any(path == "/forbidden-redirect" for path, _ in self.requests[before:])
+        )
+
     def test_engine_blocks_redirects_frames_resources_and_post_from_attached_view(self):
         task_id, session_id = self.task_session()
         before = len(self.requests)

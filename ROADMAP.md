@@ -24,9 +24,10 @@ search default disagreed with `config.py`; panel approval committed partway thro
 its transaction; a recipe test waited on a nonexistent state. Grant expiry and
 exhausted budgets now end only the grant, not the task, so long agent chats can
 request fresh access; user revocation still cancels the task. The subresource race
-is confirmed: under CPU load an in-scope image redirect reached an out-of-scope
-origin with a GET in 5/30 runs. Fixing it needs request pausing below Qt's
-interceptor (for example DevTools Fetch on the task frontend).
+(an in-scope image redirect reached an out-of-scope origin in 5/30 loaded runs)
+is fixed with a scope-only CSP on restricted pages, enforced by Blink before each
+redirect hop: 30/30 under the same load. DevTools Fetch was tried first and does
+not hold or rewrite requests on Qt 6.11.2.
 
 **Review findings, second pass — October 28, 2026.** Fixed: a failed automatic
 approval (saved rule, account access or YOLO) disabled every task instead of

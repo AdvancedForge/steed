@@ -953,7 +953,15 @@ that a site is read-only. POST is allowed only through a bound, one-use form tic
 
 Scopes match exact HTTP/HTTPS origins, including scheme and port; subdomains and
 redirect destinations need their own entries. Credentials, wildcards, and origin
-paths are rejected. `about:blank` is allowed without adding an origin. Exact file
+paths are rejected. `about:blank` is allowed without adding an origin.
+Qt 6.11 can follow a subresource or frame redirect before its request
+interceptor's block takes effect, and DevTools Fetch can neither hold nor
+rewrite those requests. Restricted pages therefore also get a Content Security
+Policy listing only the scope origins, added from an application-world script
+as each document's head is created; Blink checks it before following every
+redirect hop. Restricted pages run no page JavaScript that could remove it.
+Scopes containing an IPv6 literal cannot be expressed in CSP and rely on the
+interceptor alone. Live delegated tabs are unchanged. Exact file
 destinations and upload sources/sites have separate permissions. Supported actions are
 `navigate`, metadata `inspect`, content `read`, view `attach`, control `edit`,
 `scroll`, form `submit`, `download`, `upload`, retained-text `artifact` and scoped
