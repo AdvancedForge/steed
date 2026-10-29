@@ -47,7 +47,9 @@ class ManagementPageTests(unittest.TestCase):
     def test_narrow_page_uses_compact_navigation_and_keeps_content_width(self):
         window, tab, host = self.opened("history")
         window.resize(560, 600)
-        self.wait_for(lambda: self.value(host, "innerWidth < 620"))
+        # A view still being laid out reports a tiny placeholder width (100 px);
+        # wait for the real narrow width rather than any width below the limit.
+        self.wait_for(lambda: self.value(host, "innerWidth > 300 && innerWidth < 620"))
         self.assertEqual(
             self.value(
                 host,
