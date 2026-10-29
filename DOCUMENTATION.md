@@ -3980,7 +3980,8 @@ Its ID is bound to the credential that initialized it. Complete tasks with
 `steed_task_finish`; send HTTP DELETE with `MCP-Session-Id` to end a session and
 cancel any unfinished task. Sessions expire after 30 minutes without an HTTP
 request or open GET stream, which also cancels the task; `--idle-timeout`
-changes this (10–86,400 seconds). The four-session limit bounds abandoned ones. Closing a single HTTP connection does not cancel
+changes this (10–86,400 seconds). The four-session limit bounds abandoned ones.
+Closing a single HTTP connection does not cancel
 its task. A cancellation notification during an operation closes its browser
 connection, cancels its task, and prevents further operations on that connection.
 There is no automatic reconnection, operation retry, event replay or restoration
