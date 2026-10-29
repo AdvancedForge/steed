@@ -16,7 +16,11 @@ from ui.html_surface import HtmlSurface
 from ui.task_dialog import TaskDialog
 
 _ERRORS = (sqlite3.Error, OSError, RuntimeError, ValueError)
-_MODELS = (None, "gpt-5.4")
+# Model choices per native agent; None keeps the agent's own default.
+_AGENT_MODELS = {
+    "codex": (None, "gpt-5.4"),
+    "claude": (None, "opus", "sonnet", "haiku"),
+}
 
 
 class AgentSidebar(QDockWidget):
@@ -49,6 +53,7 @@ class AgentSidebar(QDockWidget):
         self._request_dialogs = {}
         self._recovery_dialog = None
         self._new_model = None
+        self._new_agent = "codex"
         self._send_result = {"context": -1, "version": -1}
         self._error = ""
         self._load_failed = False
@@ -113,8 +118,14 @@ class AgentSidebar(QDockWidget):
         self.refresh()
 
     def set_model(self, model):
-        if model in _MODELS:
+        if model in _AGENT_MODELS[self._new_agent]:
             self._new_model = model
+            self._publish()
+
+    def set_agent(self, agent):
+        if agent in _AGENT_MODELS and agent != self._new_agent:
+            self._new_agent = agent
+            self._new_model = None
             self._publish()
 
     def _reload_context(self):
@@ -131,6 +142,7 @@ class AgentSidebar(QDockWidget):
             "send": {"value", "version"},
             "select": {"value"},
             "model": {"value"},
+            "agent": {"value"},
         }
         operations = {
             "new_chat": self.start_chat,
@@ -168,6 +180,8 @@ class AgentSidebar(QDockWidget):
             self.select_task(command["value"] or None)
         elif action == "model" and isinstance(command["value"], str):
             self.set_model(command["value"] or None)
+        elif action == "agent" and isinstance(command["value"], str):
+            self.set_agent(command["value"])
         elif action in operations:
             operations[action]()
 
@@ -212,6 +226,7 @@ class AgentSidebar(QDockWidget):
             draft=self.draft,
             draft_version=self._draft_versions.get(self._task_id, 0),
             new_model=self._new_model,
+            new_agent=self._new_agent,
             send_result=dict(self._send_result),
             error=self._error,
             dark=bool(
@@ -417,9 +432,10 @@ class AgentSidebar(QDockWidget):
             text = "Model: " + model["model"]
             if model.get("provider"):
                 text += " · " + model["provider"]
-            text += " (reported by Codex)" if model["live"] else " (last reported)"
+            agent = model.get("agent", "the agent")
+            text += f" (reported by {agent})" if model["live"] else " (last reported)"
             if model["source"] == "rerouted":
-                text += "\nCodex rerouted this turn from " + model["from_model"] + "."
+                text += f"\n{agent} rerouted this turn from {model['from_model']}."
         else:
             text = "Model: not reported by the agent"
         report = (
@@ -428,30 +444,39 @@ class AgentSidebar(QDockWidget):
             else None
         )
         state = report["state"] if report else "external" if active else "history"
+        name = (
+            (report or {}).get("agent")
+            or (
+                self.providers.agent_name(self._task_id)
+                if self.providers is not None and hasattr(self.providers, "agent_name")
+                else None
+            )
+            or "The agent"
+        )
         title, hint = {
             "connecting": (
-                "Connecting to Codex…",
+                f"Connecting to {name}…",
                 "Starting the agent and its Steed connection.",
             ),
-            "sending": ("Sending…", "Waiting for Codex to accept your message."),
+            "sending": ("Sending…", f"Waiting for {name} to accept your message."),
             "thinking": (
-                "Codex is thinking…",
+                f"{name} is thinking…",
                 "Your message was accepted; the agent is preparing its next step.",
             ),
             "working": (
-                "Codex is working…",
+                f"{name} is working…",
                 "The agent is using tools. You can browse or queue a follow-up.",
             ),
             "replying": (
-                "Codex is replying…",
+                f"{name} is replying…",
                 "The reply is arriving below. Work continues until the agent finishes.",
             ),
             "waiting": (
-                "Codex needs your input",
+                f"{name} needs your input",
                 "Use Answer agent to answer a question or review a request.",
             ),
             "ready": (
-                "Codex is ready",
+                f"{name} is ready",
                 "Send a message to continue this conversation.",
             ),
             "external": (
@@ -484,7 +509,7 @@ class AgentSidebar(QDockWidget):
             and self.providers.status(self._task_id)
             and not active
         ):
-            title = "Codex chat stopped"
+            title = f"{name} chat stopped"
             hint = self.providers.status(self._task_id)
         return {
             "title": title,
@@ -548,7 +573,8 @@ class AgentSidebar(QDockWidget):
             self._error = "This agent request could not be displayed. Cancel the task."
             self._publish()
             return
-        dialog.setWindowTitle(f"Codex request · {task_id[:8]}")
+        agent = payload.get("agent", "Codex")
+        dialog.setWindowTitle(f"{agent} request · {task_id[:8]}")
         self._request_dialogs[(task_id, request_id)] = dialog
         dialog.finished.connect(
             lambda: self._request_dialogs.pop((task_id, request_id), None)
@@ -559,7 +585,9 @@ class AgentSidebar(QDockWidget):
         if self._private or self.providers is None or not self.state.get("available"):
             return
         try:
-            task_id = self.providers.new_chat(model=self._new_model)
+            task_id = self.providers.new_chat(
+                model=self._new_model, agent=self._new_agent
+            )
             self.refresh()
             self.select_task(task_id)
         except _ERRORS as error:

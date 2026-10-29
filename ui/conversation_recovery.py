@@ -175,7 +175,7 @@ class ConversationRecoveryDialog(HtmlSettingsDialog):
         self.recipient.addItem("Copy for another agent or website chatbot", None)
         if self.providers is not None:
             self.recipient.addItem(
-                "Start a fresh Codex chat (new task; new permissions)", "new_codex"
+                "Start a fresh agent chat (new task; new permissions)", "new_codex"
             )
         for task in self.service.store.list_tasks():
             if (
@@ -267,11 +267,14 @@ class ConversationRecoveryDialog(HtmlSettingsDialog):
         if target == "new_codex":
             if len(self.providers.chats) >= 2:
                 self.feedback(
-                    "Two Codex chats are already running. Choose a connected recipient or stop an existing chat before starting another."
+                    "Two agent chats are already running. Choose a connected recipient or stop an existing chat before starting another."
                 )
                 return
             try:
-                target = self.providers.new_chat(model=self.sidebar._new_model)
+                target = self.providers.new_chat(
+                    model=self.sidebar._new_model,
+                    agent=getattr(self.sidebar, "_new_agent", "codex"),
+                )
             except _ERRORS:
                 self.feedback(
                     "The new chat could not start. Original history and draft are unchanged; check Connection setup."

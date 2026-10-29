@@ -68,7 +68,9 @@ class AgentSetupDialog(HtmlSettingsDialog):
             "For Codex: install a current Codex CLI (tested with 0.160.0), sign in "
             "once using codex login, then choose New Codex Chat in the sidebar. "
             "No client configuration or starter prompt is needed for that option. "
-            "Steed sends messages automatically and never stores model credentials."
+            "Steed sends messages automatically and never stores model credentials. "
+            "For Claude Code: install it and run claude once to sign in, then choose "
+            "Claude Code under Agent for new chats."
         )
         codex.setWordWrap(True)
         layout.addWidget(codex)

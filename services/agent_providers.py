@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
+from services.claude_code_provider import ClaudeCodeProvider
 from services.codex_provider import CodexProvider
 from services.command_broker import require_owner_thread
 from services.task_messages import MESSAGE_BYTES, TASK_BYTES
@@ -36,18 +37,23 @@ def provider_callback(method):
     return guarded
 
 
+AGENT_NAMES = {"codex": "Codex", "claude": "Claude Code"}
+
+
 class AgentProviders(QObject):
     changed = pyqtSignal()
     requested = pyqtSignal(str, str, object)
 
-    def __init__(self, registry, parent=None, *, factory=CodexProvider):
+    def __init__(self, registry, parent=None, *, factory=CodexProvider, factories=None):
         super().__init__(parent)
         self.registry = registry
         self.service = registry.tasks
-        self.factory = factory
+        self.factories = {"codex": factory, "claude": ClaudeCodeProvider}
+        self.factories.update(factories or {})
         self.chats = {}
         self.states = {}
         self.model_reports = {}
+        self.agent_names = {}
         self.service.user_message_sent.connect(self._send)
         self.service.conversation_cleared.connect(self._clear)
         self.service.changed.connect(self._check_tasks)
@@ -55,24 +61,36 @@ class AgentProviders(QObject):
         self.flush_timer.setInterval(100)
         self.flush_timer.timeout.connect(self._flush)
 
-    def new_chat(self, model=None):
+    @property
+    def factory(self):
+        """The Codex runtime factory, kept for callers that replace it."""
+        return self.factories["codex"]
+
+    @factory.setter
+    def factory(self, value):
+        self.factories["codex"] = value
+
+    def new_chat(self, model=None, agent="codex"):
         require_owner_thread(self)
         self.service._usable()
+        if agent not in self.factories:
+            raise ValueError("Choose a supported agent")
+        name = AGENT_NAMES.get(agent, agent)
         if model is not None and (
             not isinstance(model, str)
-            or re.fullmatch(r"[A-Za-z0-9._-]{1,100}", model) is None
+            or re.fullmatch(r"[A-Za-z0-9._\[\]-]{1,100}", model) is None
         ):
-            raise ValueError("Choose a valid Codex model")
+            raise ValueError(f"Choose a valid {name} model")
         if importlib.util.find_spec("mcp") is None:
             raise RuntimeError(
                 "Install requirements-mcp.txt in Steed's environment first."
             )
         if len(self.chats) >= 2:
             raise ValueError(
-                "Cancel an existing Codex chat before starting another (limit: two)."
+                "Cancel an existing agent chat before starting another (limit: two)."
             )
         self.registry.set_agent_access(True)
-        task = self.service._create("Codex conversation")
+        task = self.service._create(f"{name} conversation")
         directory = tempfile.TemporaryDirectory(prefix="steed-codex-")
         gateway = self.registry.agent_gateway
         token = None
@@ -88,8 +106,9 @@ class AgentProviders(QObject):
                     "task_binding": token,
                 },
             )
-            driver = self.factory(self)
+            driver = self.factories[agent](self)
             driver.model = model
+            driver.expected_task_id = task.task_id
             chat = {
                 "driver": driver,
                 "directory": directory,
@@ -105,9 +124,11 @@ class AgentProviders(QObject):
                 "discard_reply": False,
                 "requests": {},
                 "activity": "connecting",
+                "agent": name,
             }
             self.chats[task.task_id] = chat
-            self.states[task.task_id] = "Starting Codex…"
+            self.agent_names[task.task_id] = name
+            self.states[task.task_id] = f"Starting {name}…"
             driver.request_resolved.connect(
                 lambda request: self._resolve_request(task.task_id, request)
             )
@@ -131,7 +152,7 @@ class AgentProviders(QObject):
             driver.start(gateway.discovery, binding)
         except Exception:
             if task.task_id in self.chats:
-                self._failed(task.task_id, "Codex could not be started.")
+                self._failed(task.task_id, f"{name} could not be started.")
             else:
                 if token is not None:
                     gateway.revoke_binding(token)
@@ -146,7 +167,7 @@ class AgentProviders(QObject):
         if chat is None:
             return
         chat["requests"][request_id] = {"payload": payload, "claimed": False}
-        self.states[task_id] = "Codex needs your input"
+        self.states[task_id] = f"{chat['agent']} needs your input"
         self.requested.emit(task_id, request_id, payload)
         self.changed.emit()
 
@@ -170,7 +191,10 @@ class AgentProviders(QObject):
             raise ValueError("Agent request is no longer active")
         chat["driver"].respond(request_id, result)
         chat["requests"].pop(request_id)
-        self.states[task_id] = "Codex replying…" if chat["current"] else "Codex ready"
+        name = chat["agent"]
+        self.states[task_id] = (
+            f"{name} replying…" if chat["current"] else f"{name} ready"
+        )
         self.changed.emit()
 
     def status(self, task_id):
@@ -187,14 +211,21 @@ class AgentProviders(QObject):
         if chat is None:
             return None
         state = "waiting" if chat["requests"] else chat["activity"]
-        return {"state": state, "queued": len(chat["queue"])}
+        return {"state": state, "queued": len(chat["queue"]), "agent": chat["agent"]}
 
     def model_info(self, task_id):
         """Only runtime reports count; the requested/default selection is no proof."""
         report = self.model_reports.get(task_id)
         if report is None:
             return None
-        return {**report, "live": task_id in self.chats}
+        return {
+            **report,
+            "live": task_id in self.chats,
+            "agent": self.agent_names.get(task_id, "the agent"),
+        }
+
+    def agent_name(self, task_id):
+        return self.agent_names.get(task_id)
 
     def delivery(self, task_id, message_id):
         chat = self.chats.get(task_id)
@@ -233,20 +264,23 @@ class AgentProviders(QObject):
             self.changed.emit()
 
     @provider_callback
-    def _ready(self, task_id):
+    def _ready(self, task_id, attempt=0):
         chat = self.chats.get(task_id)
         if chat is None:
             return
-        if (
-            getattr(chat["driver"], "bound_task_id", None) != task_id
-            or task_id not in self.service.external_tasks
-        ):
-            self._failed(task_id, "Codex connected to an unexpected task.")
+        bound = getattr(chat["driver"], "bound_task_id", None) == task_id
+        if bound and task_id not in self.service.external_tasks and attempt < 20:
+            # The runtime can report its MCP server before the gateway's Qt
+            # callback records the connection; wait briefly, never assume it.
+            QTimer.singleShot(100, lambda: self._ready(task_id, attempt + 1))
+            return
+        if not bound or task_id not in self.service.external_tasks:
+            self._failed(task_id, f"{chat['agent']} connected to an unexpected task.")
             return
         chat["ready"] = True
         chat["activity"] = "ready"
         chat["binding_file"].unlink(missing_ok=True)
-        self.states[task_id] = "Codex ready"
+        self.states[task_id] = f"{chat['agent']} ready"
         self.changed.emit()
         self._next(task_id)
 
@@ -255,7 +289,7 @@ class AgentProviders(QObject):
         chat = self.chats.get(task_id)
         if chat is None or message["message_id"] in chat["seen"]:
             return
-        # Messages can arrive between the gateway connection and Codex's
+        # Messages can arrive between the gateway connection and the agent's
         # handshake; _ready drains them in order.
         chat["seen"].add(message["message_id"])
         chat["queue"].append(message)
@@ -278,13 +312,14 @@ class AgentProviders(QObject):
             return
         chat["current"] = message
         chat["activity"] = "sending"
-        self.states[task_id] = "Codex replying… (follow-up messages queue)"
+        self.states[task_id] = f"{chat['agent']} replying… (follow-up messages queue)"
         self.changed.emit()
         try:
             chat["driver"].send(message["message_id"], message["text"])
         except (RuntimeError, ValueError, OSError):
             self._failed(
-                task_id, "Codex could not accept this message; it will not be retried."
+                task_id,
+                f"{chat['agent']} could not accept this message; it will not be retried.",
             )
 
     @provider_callback
@@ -294,7 +329,7 @@ class AgentProviders(QObject):
             return
         if chat["current"] is None or chat["current"]["message_id"] != message_id:
             self._failed(
-                task_id, "Unexpected Codex turn; messages will not be retried."
+                task_id, "Unexpected agent turn; messages will not be retried."
             )
             return
         chat["activity"] = "thinking"
@@ -381,7 +416,7 @@ class AgentProviders(QObject):
                 if index == len(item["chunks"]):
                     item["chunks"].append(
                         {
-                            "id": "codex_" + uuid4().hex,
+                            "id": "agent_" + uuid4().hex,
                             "revision": -1,
                             "text": "",
                             "state": "streaming",
@@ -411,7 +446,7 @@ class AgentProviders(QObject):
             chat["activity"] = "ready"
             chat["discard_reply"] = False
             chat["items"].clear()
-            self.states[task_id] = "Codex ready"
+            self.states[task_id] = f"{chat['agent']} ready"
             self.changed.emit()
             # Let the provider consume the rest of its notification batch first.
             QTimer.singleShot(0, lambda: self._next(task_id))
@@ -452,7 +487,7 @@ class AgentProviders(QObject):
                     or self.service.failure
                     or self.service.store.get(task_id).status not in ACTIVE_STATUSES
                 ):
-                    self.states[task_id] = "Codex chat ended"
+                    self.states[task_id] = f"{self.chats[task_id]['agent']} chat ended"
                     self._stop(task_id)
                     self.changed.emit()
         except sqlite3.Error:
@@ -461,7 +496,7 @@ class AgentProviders(QObject):
     def close(self):
         require_owner_thread(self)
         for task_id in tuple(self.chats):
-            self.states[task_id] = "Codex disconnected"
+            self.states[task_id] = f"{self.chats[task_id]['agent']} disconnected"
             self._stop(task_id)
             if not self.service._closed and not self.service.failure:
                 if self.service.store.get(task_id).status in ACTIVE_STATUSES:

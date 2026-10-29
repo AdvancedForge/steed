@@ -1,6 +1,10 @@
 const $ = id => document.getElementById(id);
 let bridge = null, state = null, context = null, draftVersion = 0, messagesKey = null, pendingSend = null;
 const composer = $("composer");
+const AGENTS = {
+  codex: {name: "Codex", models: [["", "Codex default"], ["gpt-5.4", "GPT-5.4 (tested direct Steed tools)"]]},
+  claude: {name: "Claude Code", models: [["", "Claude Code default"], ["opus", "Opus"], ["sonnet", "Sonnet"], ["haiku", "Haiku"]]},
+};
 
 function command(action, values = {}) {
   if (!bridge || !state) return;
@@ -104,6 +108,17 @@ window.steedUI = {render(next) {
   visible("options", next.available);
   if (!next.available) $("options").open = false;
   visible("model-control", next.has_provider);
+  const agent = next.new_agent || "codex";
+  $("agent").value = agent;
+  text("welcome-agent", AGENTS[agent].name);
+  if ($("model").dataset.agent !== agent) {
+    $("model").replaceChildren(...AGENTS[agent].models.map(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value; option.textContent = label;
+      return option;
+    }));
+    $("model").dataset.agent = agent;
+  }
   $("model").value = next.new_model || "";
   $("library").disabled = !next.can_library;
   for (const id of ["permissions", "files", "receipts", "clear"]) $(id).disabled = !next.usable;
@@ -117,6 +132,7 @@ composer.addEventListener("keydown", event => {
 });
 $("tasks").addEventListener("change", () => command("select", {value: $("tasks").value}));
 $("model").addEventListener("change", () => command("model", {value: $("model").value}));
+$("agent").addEventListener("change", () => command("agent", {value: $("agent").value}));
 document.addEventListener("click", event => {
   const button = event.target.closest("button[data-action]");
   if (!button || button.disabled) return;

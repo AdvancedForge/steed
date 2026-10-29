@@ -3505,6 +3505,24 @@ Restart/disconnect retains Steed history but does not reconnect, retry turns,
 replay queued text or resume external writes. Start a new chat with fresh task
 permissions; historical conversation is not automatically sent to it.
 
+#### Claude Code chats from Steed
+
+Install [Claude Code](https://docs.claude.com/en/docs/claude-code) and sign in by
+running `claude` once. In **Conversation & settings**, set **Agent for new chats**
+to **Claude Code**, optionally choose Opus, Sonnet or Haiku, then start a chat.
+Steed runs `claude -p` with the stream-json protocol in a private temporary folder
+and adds only a bound Steed MCP server; your Claude Code settings, other MCP
+servers, tools and permission rules stay in effect, and sessions are not saved to
+Claude Code's history. Steed's own tools are pre-allowed in Claude Code because
+Steed authorizes each capability itself; starting another task and the
+conversation-reply tool are disabled. When Claude Code asks permission for one of
+its own tools (for example Bash or a file edit), Steed shows the request: **Allow
+once**, **Allow for this chat** (applies Claude Code's suggested session rule) or
+**Deny**. Claude Code's questions appear as answerable prompts. Replies stream into
+the sidebar; text from subagents is not shown as the reply. A failed turn, an exit
+or an MCP connection failure stops the chat and cancels its task without retrying.
+Checked with Claude Code 2.1.312 and a synthetic offline runtime.
+
 #### Codex connection troubleshooting
 
 Restart Steed after updating this checkout and start a **new** Codex chat. Ended

@@ -20,7 +20,8 @@ class AgentRequestDialog(HtmlSettingsDialog):
     def __init__(self, payload, respond, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setWindowTitle("Codex request")
+        agent = payload.get("agent", "Codex")
+        self.setWindowTitle(f"{agent} request")
         self.resize(620, 430)
         self.respond = respond
         self.method, self.params = payload["method"], payload["params"]
@@ -29,10 +30,10 @@ class AgentRequestDialog(HtmlSettingsDialog):
         layout = QVBoxLayout(self)
         title = QLabel(
             {
-                "item/commandExecution/requestApproval": "Allow Codex to run this command?",
-                "item/fileChange/requestApproval": "Allow Codex to make these file changes?",
-                "item/permissions/requestApproval": "Allow Codex this additional access?",
-            }.get(self.method, "Codex needs your input.")
+                "item/commandExecution/requestApproval": f"Allow {agent} to run this command?",
+                "item/fileChange/requestApproval": f"Allow {agent} to make these file changes?",
+                "item/permissions/requestApproval": f"Allow {agent} this additional access?",
+            }.get(self.method, f"{agent} needs your input.")
         )
         title.setWordWrap(True)
         layout.addWidget(title)
@@ -74,7 +75,7 @@ class AgentRequestDialog(HtmlSettingsDialog):
                     self.params.get("command") or "Not provided"
                 )
                 preview += "\n\nFolder: " + str(
-                    self.params.get("cwd") or "Codex workspace"
+                    self.params.get("cwd") or f"{agent} workspace"
                 )
             elif self.method == "item/fileChange/requestApproval":
                 changes = payload.get("item", {}).get("changes", [])
@@ -83,7 +84,7 @@ class AgentRequestDialog(HtmlSettingsDialog):
                         str(change.get("path", "")) + "\n" + str(change.get("diff", ""))
                         for change in changes
                     )
-                    or "Codex has not supplied a file change preview."
+                    or f"{agent} has not supplied a file change preview."
                 )
                 if self.params.get("grantRoot"):
                     preview += "\n\nWrite access requested: " + self.params["grantRoot"]

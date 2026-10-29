@@ -29,6 +29,14 @@ is fixed with a scope-only CSP on restricted pages, enforced by Blink before eac
 redirect hop: 30/30 under the same load. DevTools Fetch was tried first and does
 not hold or rewrite requests on Qt 6.11.2.
 
+**Claude Code chats — October 29, 2026.** Claude Code is a second native chat
+agent beside Codex, chosen per chat in the sidebar. Steed drives `claude -p`
+stream-json with a bound MCP server, streams replies, maps native permission
+prompts and questions to Steed's request popup, and verifies the MCP connection
+before the first message. Offline fixture tests plus one live Haiku check passed.
+HTTP agent sessions now idle out after 30 minutes (configurable) instead of 60 s,
+and a second launch opens a window or links in the running browser.
+
 **Review findings, second pass — October 28, 2026.** Fixed: a failed automatic
 approval (saved rule, account access or YOLO) disabled every task instead of
 leaving the request pending; Codex chat messages sent between the gateway

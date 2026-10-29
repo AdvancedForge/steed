@@ -11,7 +11,7 @@
   <div class="workspace">
     <header class="header">
       <div class="brand"><span class="brand-mark" aria-hidden="true">s</span><div><h1>Agents</h1><p>Your work, with a little help.</p></div></div>
-      <button id="new-chat" class="icon-button" data-action="new_chat" aria-label="Start a new Codex chat" title="New Codex chat">＋</button>
+      <button id="new-chat" class="icon-button" data-action="new_chat" aria-label="Start a new agent chat" title="New agent chat">＋</button>
     </header>
     <div id="unsafe" class="notice warning" role="status" hidden><strong>YOLO mode is on</strong><span>Steed automatically approves agent requests for all profiles this run.</span></div>
     <div class="task-picker" id="task-picker" hidden><label for="tasks">Conversation</label><select id="tasks"></select></div>
@@ -20,7 +20,7 @@
       <span class="eyebrow">A space to collaborate</span>
       <h2>Your agent,<br>beside your work.</h2>
       <p id="welcome-copy">Start a conversation, delegate a task, and keep browsing while your agent works.</p>
-      <button id="welcome-start" class="primary" data-action="new_chat">Start a Codex chat <span aria-hidden="true">↗</span></button>
+      <button id="welcome-start" class="primary" data-action="new_chat">Start a <span id="welcome-agent">Codex</span> chat <span aria-hidden="true">↗</span></button>
       <button id="setup" data-action="setup">Connect another agent</button>
       <div id="welcome-note" class="welcome-note">Only messages you send are shared. You choose when an agent can access your browser.</div>
     </main>
@@ -52,7 +52,7 @@
       <summary>Conversation &amp; settings <span aria-hidden="true">⌄</span></summary>
       <div class="options-content">
         <p id="status" class="status"></p>
-        <div id="model-control"><label for="model">Model for new chats</label><select id="model"><option value="">Codex default</option><option value="gpt-5.4">GPT-5.4 (tested direct Steed tools)</option></select><p class="caption">Existing conversations keep their running model.</p></div>
+        <div id="model-control"><label for="agent">Agent for new chats</label><select id="agent"><option value="codex">Codex</option><option value="claude">Claude Code</option></select><label for="model">Model for new chats</label><select id="model"></select><p class="caption">Existing conversations keep their running model.</p></div>
         <div class="button-grid"><button data-action="setup">Connection setup</button><button id="library" data-action="library">File library</button><button id="open-tab" data-action="open_tab">Open as tab</button><button id="show-sidebar" data-action="show_sidebar">Show sidebar</button></div>
         <div class="button-grid task-tools"><button id="permissions" data-action="permissions">Permissions</button><button id="files" data-action="files">Task files</button><button id="receipts" data-action="receipts">Receipts</button><button id="clear" data-action="clear">Clear chat</button></div>
         <p id="summary" class="caption"></p><p class="caption">Closing this panel keeps the task running.</p>
