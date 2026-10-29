@@ -27,6 +27,7 @@ CLIENT_COMMANDS = frozenset(
         "task.events",
         "conversation.read",
         "conversation.reply",
+        "conversation.wait",
         "task.finish",
         "task.recover",
         "task.recovery",

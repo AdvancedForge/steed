@@ -21,9 +21,8 @@ class ConversationWaitTests(unittest.TestCase):
         return task_id
 
     def wait(self, task_id, **arguments):
-        return self.service.broker.submit(
-            "conversation.wait", task_id=task_id, **arguments
-        )
+        # Go through the task-bound client, as the gateway does for agents.
+        return self.service.client(task_id).submit("conversation.wait", **arguments)
 
     def test_returns_when_the_user_sends_a_message(self):
         task_id = self.task()

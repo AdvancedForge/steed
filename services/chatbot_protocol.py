@@ -18,6 +18,8 @@ UNAVAILABLE = frozenset(
         "task.start",
         "task.finish",
         "conversation.reply",
+        # Steed delivers relay turns itself; a blocking wait has no use there.
+        "conversation.wait",
         "page.capture",
         "page.click",
         "page.type",
