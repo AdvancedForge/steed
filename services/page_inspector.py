@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
-from PyQt6.QtCore import QObject, QTimer
+from PyQt6.QtCore import QObject, QTimer, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineScript
 
 from services.command_broker import require_owner_thread
@@ -350,7 +350,7 @@ class PageInspector(QObject):
                 state.snapshot = snapshot
             return snapshot
 
-        return self._run(
+        main = self._run(
             session_id,
             page,
             {
@@ -363,6 +363,139 @@ class PageInspector(QObject):
             validate,
             consume,
         )
+        result = Future()
+
+        def inspected(source):
+            try:
+                snapshot = source.result()
+            except Exception as error:
+                result.set_exception(error)
+                return
+            self._read_cross_origin_frames(
+                session_id, page, grant, metadata, snapshot, validate, result
+            )
+
+        main.add_done_callback(inspected)
+        return result
+
+    def _read_cross_origin_frames(
+        self, session_id, page, grant, metadata, snapshot, validate, result
+    ):
+        """Read approved frames from other origins through their own frame.
+
+        Page scripts cannot reach into a cross-origin frame, so the read script
+        runs inside each in-scope frame separately. These frames are read-only:
+        action references belong to the main document's inspection state.
+        """
+        from dataclasses import replace
+
+        pending = []
+        for index, frame in enumerate(snapshot.frames):
+            if "frame_inaccessible_or_not_ready" not in frame.limitations:
+                continue
+            try:
+                grant.check("read", url=frame.url)
+            except Exception:
+                continue
+            pending.append(index)
+        if not pending:
+            result.set_result(snapshot)
+            return
+        engine_frames = []
+
+        def walk(frame):
+            for child in frame.children():
+                engine_frames.append(child)
+                walk(child)
+
+        walk(page.mainFrame())
+        frames = list(snapshot.frames)
+        remaining = set(pending)
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+
+        def finish():
+            if result.done():
+                return
+            timer.stop()
+            timer.deleteLater()
+            merged = replace(snapshot, frames=tuple(frames))
+            state = self._states.get(session_id)
+            if state is not None and state.snapshot is snapshot:
+                state.snapshot = merged
+            result.set_result(merged)
+
+        def received(index, raw):
+            if result.done():
+                return
+            remaining.discard(index)
+            try:
+                validate()
+                data = (
+                    json.loads(raw)
+                    if isinstance(raw, str) and len(raw) < 2_000_000
+                    else {}
+                )
+                inner = (data.get("frames") or [None])[0]
+                if (
+                    isinstance(inner, dict)
+                    and not inner.get("limitations")
+                    and isinstance(inner.get("text"), str)
+                ):
+                    grant.check("read", url=inner.get("url") or frames[index].url)
+                    frames[index] = replace(
+                        frames[index],
+                        origin=str(inner.get("origin", ""))[:256],
+                        text=inner["text"][:32000],
+                        targets=(),
+                        outline=tuple(
+                            outline_item(item)
+                            for item in inner.get("outline", [])[:150]
+                        ),
+                        scroll=frame_scroll(inner.get("scroll")),
+                        limitations=("cross_origin_frame_read_only",),
+                    )
+            except Exception:
+                pass
+            if not remaining:
+                finish()
+
+        used = set()
+        for index in pending:
+            url = snapshot.frames[index].url
+            candidates = [
+                f
+                for f in engine_frames
+                if id(f) not in used and f.url().toString() == url
+            ] or [
+                f
+                for f in engine_frames
+                if id(f) not in used
+                and f.url().scheme() in ("http", "https")
+                and f.url().host() == QUrl(url).host()
+            ]
+            if not candidates:
+                remaining.discard(index)
+                continue
+            engine_frame = candidates[0]
+            used.add(id(engine_frame))
+            request = {
+                "mode": "inspect",
+                "snapshot_id": uuid4().hex,
+                "origins": grant.scope.origins,
+                "upload_available": False,
+                "live": metadata.mode == "live",
+                "state_key": "__steed_frame_read_" + uuid4().hex,
+            }
+            script = INSPECTION_SCRIPT.replace("/* REQUEST */", json.dumps(request))
+            engine_frame.runJavaScript(
+                script, INSPECTION_WORLD, lambda raw, index=index: received(index, raw)
+            )
+        if not remaining:
+            finish()
+            return
+        timer.timeout.connect(finish)
+        timer.start(5000)
 
     def target(self, session_id, page, snapshot_id, target_id, validate):
         require_owner_thread(self)

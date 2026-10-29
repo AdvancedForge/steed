@@ -801,12 +801,14 @@ class PageInspectionTests(unittest.TestCase):
         for code in ("text_truncated", "targets_truncated", "frame_limit"):
             self.assertIn(code, snapshot.limitations)
 
-    def test_accessible_frames_are_read_and_cross_origin_or_sandboxed_frames_report_limits(
+    def test_approved_cross_origin_frames_are_read_only_and_sandboxes_stay_closed(
         self,
     ):
         other = f"http://localhost:{self.server.server_port}"
         task_id, _, session_id, page = self.session(origins=[self.origin, other])
-        type(self).page_fixtures["/cross"] = b"<p>CROSS_ORIGIN_SECRET</p>"
+        type(self).page_fixtures["/cross"] = (
+            b"<h2>Payment</h2><p>Cross-origin frame text</p><button>Pay</button>"
+        )
         type(self).page_fixtures["/same"] = b"<p>Same-origin child text</p>"
         self.load(
             session_id,
@@ -818,11 +820,26 @@ class PageInspectionTests(unittest.TestCase):
         snapshot = self.inspect(task_id, session_id)
         self.assertEqual(len(snapshot.frames), 4)
         self.assertIn("Same-origin child text", snapshot.frames[3].text)
-        for frame in snapshot.frames[1:3]:
-            self.assertEqual(frame.text, "")
-            self.assertIn("frame_inaccessible_or_not_ready", frame.limitations)
+        cross = snapshot.frames[1]
+        self.assertIn("Cross-origin frame text", cross.text)
+        self.assertEqual(cross.limitations, ("cross_origin_frame_read_only",))
+        self.assertEqual(cross.targets, ())
+        self.assertIn(("heading", "Payment"), [(i.kind, i.text) for i in cross.outline])
+        self.assertEqual(snapshot.frames[2].text, "")
+        self.assertIn("frame_inaccessible_or_not_ready", snapshot.frames[2].limitations)
         self.assertNotIn("SECRET", repr(snapshot))
-        self.assertTrue(any(path == "/cross" for path, _ in self.requests))
+
+    def test_cross_origin_frames_outside_the_grant_stay_unread(self):
+        other = f"http://localhost:{self.server.server_port}"
+        task_id, _, session_id, page = self.session()
+        type(self).page_fixtures["/cross"] = b"<p>OUT_OF_SCOPE_SECRET</p>"
+        self.load(session_id, page, f'<p>Main</p><iframe src="{other}/cross"></iframe>')
+        snapshot = self.inspect(task_id, session_id)
+        self.assertNotIn("OUT_OF_SCOPE_SECRET", repr(snapshot))
+        self.assertNotIn(
+            "cross_origin_frame_read_only",
+            [code for frame in snapshot.frames for code in frame.limitations],
+        )
 
     def test_inspection_preserves_dom_and_keeps_site_scripts_disabled(self):
         task_id, _, session_id, page = self.session()

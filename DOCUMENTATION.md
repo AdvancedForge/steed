@@ -1048,6 +1048,14 @@ and images without any text alternative add `unlabelled_images_present`.
 Targets report ARIA states as `states`: `expanded`/`collapsed`, `pressed`,
 `selected` and `current`.
 
+Frames from another origin cannot be read by the main document's script. When
+such a frame's origin is in the task's scope, Steed runs the same read inside
+that frame and returns its text, outline and scroll position with the
+limitation `cross_origin_frame_read_only` and no targets: its controls cannot
+be acted on through `page.act`. Frames outside the scope, sandboxed frames and
+frames that do not answer within five seconds stay unread
+(`frame_inaccessible_or_not_ready`).
+
 Each frame also reports `scroll`: its scroll position, scrollable width/height
 and viewport size in CSS pixels. When content continues below the viewport the
 snapshot adds `more_content_below`. To read infinite feeds and lazily loaded or
