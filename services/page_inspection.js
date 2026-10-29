@@ -565,7 +565,8 @@
                         if (node.getRootNode() !== doc) {
                             // Controls in open shadow roots of the main document act
                             // like others; forms and uploads stay light-DOM only.
-                            operations = win === window
+                            // Rich editors stay light-DOM only, matching the editing path.
+                            operations = win === window && kind !== "editable"
                                 ? operations.filter(op => !["submit", "upload"].includes(op)) : [];
                             constraints.push(operations.length ? "shadow_control" : "shadow_control_actions_unavailable");
                         }
