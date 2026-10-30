@@ -1130,6 +1130,15 @@ mouse-over; inspect again to see what appeared. Hover uses the same
 visible/in-view/unobscured/stable checks as pointer activation and needs edit
 permission. Restricted sessions return `live_session_required`.
 
+`operation: "drag"` with `to_target_id` presses on the target, moves to the
+other target in ten steps and releases there — for reordering lists, moving
+cards between board columns or dragging handles. Both must be visible,
+unobscured main-page targets from the same snapshot; each point is measured
+twice about 60 ms apart and must not move. Pointer-event drag libraries and
+native HTML5 drag-and-drop between page elements both work. Dropping files from
+the computer is not supported. Drag needs submit permission, since moving items
+can change data; inspect again to confirm the result.
+
 For effects that arrive after an action — search results, validation messages,
 a list that loads — call `page.wait` with `condition: "changed"`. It compares
 reads every 150 ms with the agent's last `page.inspect` of the same page (or,

@@ -221,7 +221,8 @@
                 const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
                 const role = (node.getAttribute("role") || "").toLowerCase();
                 const style = win.getComputedStyle(node);
-                const hover = request.operation === "hover";
+                // Hover and drag ends may be any visible target, not only widgets.
+                const hover = ["hover", "drag"].includes(request.operation);
                 if (win !== window || (!hover && !POINTER_ROLES.includes(role)) ||
                     (!hover && node.getAttribute("aria-disabled") === "true") || node.closest("[inert]") ||
                     !node.getClientRects().length || style.visibility !== "visible" ||

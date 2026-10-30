@@ -241,6 +241,78 @@ class AgentFrameTests(unittest.TestCase):
                 target_id=inside.target_id,
             )
 
+    def test_drag_reorders_pointer_and_native_drag_lists(self):
+        task, session, page = self.session()
+        self.value(
+            page,
+            """
+            const list = document.createElement('ul'); list.id = 'cards';
+            list.innerHTML = '<li role="button" style="padding:8px">First card</li>' +
+              '<li role="button" style="padding:8px">Second card</li>' +
+              '<li draggable="true" role="button" style="padding:8px">Native card</li>' +
+              '<li role="button" id="bin" style="padding:8px">Drop bin</li>';
+            document.body.prepend(list);
+            let held = null;
+            list.addEventListener('mousedown', e => { held = e.target.closest('li'); });
+            document.addEventListener('mouseup', e => {
+              const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('li');
+              if (held && over && over !== held && !held.draggable)
+                list.insertBefore(held, over.nextSibling);
+              held = null; });
+            const native = list.children[2];
+            native.addEventListener('dragstart', e => e.dataTransfer.setData('text', 'x'));
+            bin.addEventListener('dragover', e => e.preventDefault());
+            bin.addEventListener('drop', e => { e.preventDefault(); window.dropped = true; });
+            true""",
+        )
+        snapshot = self.inspect(task, session)
+        result = self.act(
+            task,
+            session,
+            snapshot,
+            self.find(snapshot, "First card"),
+            "drag",
+            to_target_id=self.find(snapshot, "Second card").target_id,
+        )
+        self.assertEqual(result.input_semantics, "chromium_pointer")
+        self.wait_for(
+            lambda: self.value(page, "cards.children[0].textContent") == "Second card"
+        )
+        snapshot = self.inspect(task, session)
+        self.act(
+            task,
+            session,
+            snapshot,
+            self.find(snapshot, "Native card"),
+            "drag",
+            to_target_id=self.find(snapshot, "Drop bin").target_id,
+        )
+        self.wait_for(lambda: self.value(page, "window.dropped === true"))
+
+    def test_drag_needs_two_targets_and_a_live_session(self):
+        task, session, _ = self.session()
+        snapshot = self.inspect(task, session)
+        account = self.find(snapshot, "Account")
+        with self.assertRaises(ValueError):
+            self.act(task, session, snapshot, account, "drag")
+        with self.assertRaises(PageInspectionError):
+            self.act(
+                task, session, snapshot, account, "drag", to_target_id=account.target_id
+            )
+        task, session, _ = self.session(live=False)
+        snapshot = self.inspect(task, session)
+        account = self.find(snapshot, "Account")
+        with self.assertRaises(PageInspectionError) as error:
+            self.act(
+                task,
+                session,
+                snapshot,
+                account,
+                "drag",
+                to_target_id=self.find(snapshot, "Inside panel").target_id,
+            )
+        self.assertEqual(error.exception.code, "live_session_required")
+
 
 if __name__ == "__main__":
     unittest.main()

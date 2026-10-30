@@ -3,7 +3,21 @@
 from dataclasses import dataclass
 
 
-def action_arguments(operation, *, text=None, index=None, steps=None):
+def action_arguments(
+    operation, *, text=None, index=None, steps=None, to_target_id=None
+):
+    if operation == "drag":
+        if (
+            text is not None
+            or index is not None
+            or steps is not None
+            or not isinstance(to_target_id, str)
+            or not 1 <= len(to_target_id) <= 128
+        ):
+            raise ValueError("Drag requires to_target_id only")
+        return {"operation": operation, "to_target_id": to_target_id}
+    if to_target_id is not None:
+        raise ValueError("Only drag accepts to_target_id")
     if operation == "adjust":
         if (
             text is not None
@@ -32,7 +46,7 @@ def action_arguments(operation, *, text=None, index=None, steps=None):
     if operation in ("activate", "hover") and text is None and index is None:
         return {"operation": operation}
     raise ValueError(
-        "Use enter, select, activate, hover or adjust with the appropriate arguments"
+        "Use enter, select, activate, hover, drag or adjust with the appropriate arguments"
     )
 
 

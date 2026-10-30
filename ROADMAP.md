@@ -12,6 +12,20 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Agent page coverage completed — October 30, 2026.** Live sessions act inside
+approved cross-origin frames (checks and actions run in the frame; pointer
+actions are mapped through the frame element and limited to frames directly in
+the page; submission and uploads stay main-document only). `page.act` gains
+`hover` and `drag` (pointer libraries and native HTML5 drag-and-drop), and
+`page.scroll` scrolls the container around a target. This closes the native
+pointer-gesture and frame items in A3. Deliberately not done: reading the
+engine's accessibility tree (inspection runs in an isolated script world whose
+nodes have no DevTools node ids to join on; the DOM-derived roles and names
+cover the common cases), file drops, and script-handled or child-frame form
+submission in restricted mode (blocked on engine support, see A3). Still the
+user's decision: A5 search/classification providers, cloud-agent pairing and
+live host-folder mounting.
+
 **Harder controls and library discovery — October 30, 2026.** Focusable custom
 sliders and spin buttons accept `adjust` (arrow keys through the native keyboard
 path, reporting the resulting value); custom comboboxes join pointer activation.

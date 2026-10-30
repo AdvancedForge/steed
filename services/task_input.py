@@ -80,6 +80,35 @@ CLICK_SCRIPT = """
 })();
 """
 
+DRAG_SCRIPT = """
+(() => {
+    const request = /* REQUEST */;
+    window[request.id] = null;
+    (async () => {
+        try {
+            const SDK = await import(new URL('./core/sdk/sdk.js', location.href).href);
+            const manager = SDK.TargetManager.TargetManager.instance();
+            const target = manager.primaryPageTarget() || manager.targets().find(t => t.type() === 'frame');
+            if (!target) throw new Error('Target unavailable');
+            const [x1, y1] = request.start, [x2, y2] = request.end;
+            const events = [{type: 'mouseMoved', x: x1, y: y1, button: 'none'},
+                {type: 'mousePressed', x: x1, y: y1, button: 'left', buttons: 1, clickCount: 1}];
+            // Intermediate moves let pointer-based drag libraries pass their thresholds.
+            for (let step = 1; step <= 10; step++)
+                events.push({type: 'mouseMoved', x: Math.round(x1 + (x2 - x1) * step / 10),
+                    y: Math.round(y1 + (y2 - y1) * step / 10), button: 'left', buttons: 1});
+            events.push({type: 'mouseReleased', x: x2, y: y2, button: 'left', buttons: 0, clickCount: 1});
+            for (const event of events) {
+                if (window[request.id] === false) break;
+                const response = await target.inputAgent().invoke_dispatchMouseEvent(event);
+                if (response.getError()) throw new Error('Input unavailable');
+            }
+            if (window[request.id] !== false) window[request.id] = true;
+        } catch (_) { window[request.id] = false; }
+    })();
+})();
+"""
+
 FILE_SCRIPT = """
 (() => {
     const request = /* REQUEST */;
@@ -135,6 +164,13 @@ class TaskInput(QObject):
         if any(type(v) is not int or not 0 <= v <= 20000 for v in (x, y)):
             raise ValueError("Unsupported pointer position")
         return self._run(CLICK_SCRIPT, {"x": x, "y": y}, validate)
+
+    def drag(self, start, end, validate):
+        """Press at one verified point, move in steps to another and release."""
+        points = (*start, *end)
+        if any(type(v) is not int or not 0 <= v <= 20000 for v in points):
+            raise ValueError("Unsupported pointer position")
+        return self._run(DRAG_SCRIPT, {"start": start, "end": end}, validate)
 
     def hover(self, x, y, validate):
         """Move the pointer to a verified point without pressing a button."""

@@ -890,6 +890,16 @@ class QtBrowserBackend(QObject):
     def act(self, session_id, action_id, snapshot_id, target_id, arguments):
         arguments = action_arguments(**arguments)
         session, validate = self._edit_context(session_id, "edit")
+        if arguments["operation"] == "drag":
+            if session.mode != "live":
+                raise PageInspectionError("live_session_required")
+            session.grant.check("submit")
+            source = self._live_drag(
+                session_id, snapshot_id, target_id, arguments["to_target_id"], validate
+            )
+            return self._action_result(
+                session_id, action_id, "drag", source, target_id=target_id
+            )
         if arguments["operation"] == "hover":
             if session.mode != "live":
                 raise PageInspectionError("live_session_required")
@@ -930,6 +940,106 @@ class QtBrowserBackend(QObject):
         return self._action_result(
             session_id, action_id, arguments["operation"], source, target_id=target_id
         )
+
+    def _live_drag(self, session_id, snapshot_id, target_id, to_target_id, validate):
+        """Drag between two main-page targets measured twice at stable points."""
+        session = self._session(session_id)
+        if target_id == to_target_id:
+            raise PageInspectionError("control_unsupported")
+        requests = []
+        for reference in (target_id, to_target_id):
+            node_id, _ = self.inspector._target_reference(
+                session_id, snapshot_id, reference
+            )
+            if self.inspector.route(session_id, reference) is not None:
+                raise PageInspectionError("control_unsupported")
+            requests.append(
+                {"snapshot_id": snapshot_id, "node_id": node_id, "operation": "drag"}
+            )
+        if session.network is None:
+            session.network = TaskNetwork(session.page, self, live=True)
+        network = session.network
+        result = Future()
+
+        def measure(then):
+            points = []
+
+            def measured(source):
+                if result.done():
+                    return
+                try:
+                    points.append(source.result())
+                    validate()
+                    if len(points) < len(requests):
+                        self.inspector.input_phase(
+                            session_id,
+                            session.page,
+                            requests[len(points)],
+                            "live_point",
+                            validate,
+                        ).add_done_callback(measured)
+                    else:
+                        then(points)
+                except Exception as error:
+                    result.set_exception(error)
+
+            self.inspector.input_phase(
+                session_id, session.page, requests[0], "live_point", validate
+            ).add_done_callback(measured)
+
+        def finish(source):
+            if result.done():
+                return
+            try:
+                source.result()
+                result.set_result(
+                    {
+                        "status": "dispatched",
+                        "changed": False,
+                        "input_semantics": "chromium_pointer",
+                    }
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def confirmed(first, second):
+            if first != second:
+                raise PageInspectionError("target_moved")
+            validate()
+            start, end = ((p["x"], p["y"]) for p in second)
+            network.input.drag(start, end, validate).add_done_callback(finish)
+
+        def first_measure(first):
+            QTimer.singleShot(
+                60,
+                lambda: (
+                    result.done()
+                    or measure(lambda second: guarded(confirmed, first, second))
+                ),
+            )
+
+        def guarded(callback, *args):
+            try:
+                callback(*args)
+            except Exception as error:
+                if not result.done():
+                    result.set_exception(error)
+
+        def ready(source):
+            if result.done():
+                return
+            try:
+                source.result()
+                validate()
+                measure(first_measure)
+            except Exception as error:
+                result.set_exception(error)
+
+        result.add_done_callback(
+            lambda _: self.inspector.invalidate(session_id, "action_completed")
+        )
+        network.ready.add_done_callback(ready)
+        return result
 
     def _live_pointer(self, session_id, snapshot_id, target_id, validate, hover=False):
         """Click (or hover) a target only at a verified, stable, unobscured point.
