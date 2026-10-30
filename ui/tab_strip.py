@@ -121,11 +121,7 @@ class TabStrip(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         self.grip = ResizeGrip(self)
-        self.surface = HtmlSurface("tabs", self, label="tab strip", command_limit=2000)
-        # A loading notice cannot fit in a single tab row; keep the space quiet.
-        self.surface.notice.hide()
-        self.surface.command.connect(self._command)
-        layout.addWidget(self.surface)
+        layout.addWidget(self._build_view())
         layout.addWidget(self.grip)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -270,6 +266,13 @@ class TabStrip(QWidget):
         self.surface.dispose()
 
     # ---------- Internals ----------
+
+    def _build_view(self):
+        self.surface = HtmlSurface("tabs", self, label="tab strip", command_limit=2000)
+        # A loading notice cannot fit in a single tab row; keep the space quiet.
+        self.surface.notice.hide()
+        self.surface.command.connect(self._command)
+        return self.surface
 
     def _update(self, index, **values):
         if 0 <= index < len(self.records):

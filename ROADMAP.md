@@ -12,6 +12,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Security and memory review — October 30, 2026.** An independent review of the
+recent agent work found no high-severity issues; all four findings are fixed:
+mapped frame clicks refuse transformed/zoomed frames and size mismatches, a
+cross-origin frame is routed only when exactly one engine frame has its URL,
+keys to frame controls require the frame to hold page focus, and incognito
+downloads cannot be added to the library. Memory: each HTML interface surface is
+its own ~12 MB renderer; the palette now frees its renderer after a minute
+hidden, and a new **Lighter native interface** setting swaps the tab strip,
+right-click menus, palette and dialogs for Qt widgets (two windows: 5 → 2
+renderers, ~390 → ~350 MB). Lighter DevTools entry points for cookie inspection
+were tried and rejected: only the full frontend keeps its connection. Open: the
+cookie inspectors still cost ~60 MB per profile while awake during browsing.
+
 **Agent page coverage completed — October 30, 2026.** Live sessions act inside
 approved cross-origin frames (checks and actions run in the frame; pointer
 actions are mapped through the frame element and limited to frames directly in

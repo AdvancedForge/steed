@@ -22,6 +22,7 @@ DEFAULTS = {
     "global_cookie_sharing_apply_on_startup": True,
     "default_profile": "global",
     "devtools_side": "right",
+    "native_interface": False,
 }
 SECTIONS = ("general", "profile", "tabs", "view", "cookies", "agents")
 

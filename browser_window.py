@@ -785,8 +785,17 @@ class BrowserWindow(QMainWindow):
         layout.setSpacing(0)
         self.chrome_layout = layout
         self.chrome_row.addWidget(self.chrome_column, 1)
-        # Tab strip
-        self.tab_bar = TabStrip(self.chrome_column)
+        # Tab strip. The native one needs no renderer process; switching applies
+        # to windows opened afterwards.
+        from ui.interface_mode import native, set_native
+
+        set_native(self.config.get("native_interface", False))
+        strip = TabStrip
+        if native():
+            from ui.native_tab_strip import NativeTabStrip
+
+            strip = NativeTabStrip
+        self.tab_bar = strip(self.chrome_column)
         self.tab_bar.new_tab_requested.connect(self._new_tab)
         self.tab_bar.tab_changed.connect(self._switch_tab)
         self.tab_bar.tab_close_requested.connect(self._close_tab)
@@ -2258,9 +2267,24 @@ class BrowserWindow(QMainWindow):
 
         if self._closing:
             return
+        from ui.interface_mode import native
+
         if self._palette is None:
-            self._palette = CommandPalette(self)
+            if native():
+                from ui.command_palette import NativeCommandPalette
+
+                self._palette = NativeCommandPalette(self)
+            else:
+                self._palette = CommandPalette(self)
+            self._palette.released.connect(self._release_palette)
         self._palette.present(mode)
+
+    def _release_palette(self):
+        """Free an idle palette's renderer; the next open builds a new one."""
+        palette, self._palette = self._palette, None
+        if palette is not None:
+            palette.dispose()
+            palette.deleteLater()
 
     def _visible_tab_indexes(self):
         return [i for i in range(len(self.tabs)) if self.tab_bar.is_tab_visible(i)]
@@ -3081,6 +3105,16 @@ class BrowserWindow(QMainWindow):
             return
         if self._html_menu is not None:
             self._html_menu.close()
+        from ui.interface_mode import native
+
+        if native():
+            # Plain Qt menu; a one-off right-click menu is freed once it closes.
+            if context:
+                menu.aboutToHide.connect(
+                    menu.deleteLater, Qt.ConnectionType.QueuedConnection
+                )
+            menu.popup(anchor)
+            return menu
         popup = HtmlMenu(menu, self, anchor, context=context)
         if context:
             # One-off right-click menus live only as long as their popup.
@@ -3148,7 +3182,9 @@ class BrowserWindow(QMainWindow):
 
         def opened(point):
             if (
-                not sip.isdeleted(tab)
+                not sip.isdeleted(self)
+                and not self._closing
+                and not sip.isdeleted(tab)
                 and self._builtin_menu_page(tab)
                 and self.profile_manager.current_profile is profile
                 and tab.page() is page
@@ -3195,6 +3231,9 @@ class BrowserWindow(QMainWindow):
         self._newtab_hover_pending = True
 
         def hovered(value):
+            # The page answers asynchronously; the window may have closed since.
+            if sip.isdeleted(self) or self._closing:
+                return
             self._newtab_hover_pending = False
             if (
                 sip.isdeleted(tab)
@@ -3445,6 +3484,13 @@ class BrowserWindow(QMainWindow):
 
     def _settings_changed(self):
         if not self._closing:
+            from ui.interface_mode import native, set_native
+
+            set_native(self.config.get("native_interface", False))
+            if self._palette is not None and self._palette.native != native():
+                self._palette.dispose()
+                self._palette.deleteLater()
+                self._palette = None
             self._refresh_address_sources()
             side = self.config.get("devtools_side", "right")
             if side != self.devtools.side:

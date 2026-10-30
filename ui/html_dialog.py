@@ -36,6 +36,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.html_surface import HtmlSurface
+from ui.interface_mode import native
 
 
 class HtmlPresentation:
@@ -57,12 +58,13 @@ class HtmlPresentation:
 
     def exec(self):
         owner = self.presentation_owner()
-        if owner is not None:
+        if owner is not None and not native():
             return owner._present_dialog(self, force_html=True)
         return super().exec()
 
     def show(self):
-        if owner := self.presentation_owner():
+        owner = self.presentation_owner()
+        if owner is not None and not native():
             return owner._present_dialog(self, modal=False, force_html=True)
         return super().show()
 
