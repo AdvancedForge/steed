@@ -23,7 +23,9 @@ hidden, and a new **Lighter native interface** setting swaps the tab strip,
 right-click menus, palette and dialogs for Qt widgets (two windows: 5 → 2
 renderers, ~390 → ~350 MB). Lighter DevTools entry points for cookie inspection
 were tried and rejected: only the full frontend keeps its connection. Open: the
-cookie inspectors still cost ~60 MB per profile while awake during browsing.
+cookie inspectors still cost ~60 MB per profile while awake during browsing. A tab/window churn test showed no
+leak (stable page/profile/view counts, flat after the first round); freed heap kept by
+glibc is now returned five seconds after closes (~320 → ~230 MB).
 
 **Agent page coverage completed — October 30, 2026.** Live sessions act inside
 approved cross-origin frames (checks and actions run in the frame; pointer

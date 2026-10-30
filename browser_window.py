@@ -1560,6 +1560,9 @@ class BrowserWindow(QMainWindow):
         # the application cannot lose its last tab bar.
         if len(self.tabs) <= 1 or not 0 <= index < len(self.tabs):
             return
+        import memory_trim
+
+        memory_trim.schedule()
         active = self.tabs[self.current_tab_index]
         tab = self.tabs.pop(index)
         state = TabState(
@@ -2883,6 +2886,9 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             event.accept()
             return
+        import memory_trim
+
+        memory_trim.schedule()
         # Downloads are shared by every window on this registry, so the decision is
         # "will closing this window cancel live downloads?" That is true exactly
         # when every owner is being closed; otherwise the remaining window keeps
