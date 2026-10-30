@@ -21,8 +21,10 @@ returning freed memory, plus live usage and Free memory now. Cookie inspection:
 the window's cookie manager no longer forces an immediate inspection on every
 change (the inspector already coalesces them), and saver mode keeps inspectors
 asleep between 20-second wake-ups (0 awake after activity vs 2). Measured session:
-~350 / ~520 / ~575 MB. Open: a desktop check of tab freezing/unloading on real
-sites (media, chat, forms).
+~350 / ~520 / ~575 MB. Follow-up: frozen/unloaded tabs are dimmed in both tab strips,
+**Keep This Tab Loaded** exempts a tab, and an automatic switch to Memory saver
+runs below 10% available system memory (back above 20%). Open: a desktop check of
+tab freezing/unloading on real sites (media, chat, forms).
 
 **Security and memory review — October 30, 2026.** An independent review of the
 recent agent work found no high-severity issues; all four findings are fixed:

@@ -203,6 +203,81 @@ class MemoryModeTests(unittest.TestCase):
         )
         self.assertEqual(memory_modes.values(self.config), before)
 
+    def test_tab_strip_marks_dormant_tabs_and_keep_loaded_exempts_one(self):
+        memory_modes.set_value(self.config, "tab_freeze_minutes", 2)
+        self.changed()
+        kept = self.window._new_tab(url="about:blank#kept", return_tab=True)
+        other = self.window._new_tab(url="about:blank#other", return_tab=True)
+        self.window._switch_tab(0)
+        self.window._set_keep_loaded(kept, True)
+        for tab in (kept, other):
+            self.wait(lambda tab=tab: tab.page().recommendedState() != State.Active)
+            tab.last_active = time.monotonic() - 3600
+        self.window._apply_tab_lifecycle()
+        self.assertEqual(kept.page().lifecycleState(), State.Active)
+        self.assertEqual(other.page().lifecycleState(), State.Frozen)
+        records = self.window.tab_bar.records
+        self.wait(
+            lambda: records[self.window.tabs.index(other)]["lifecycle"] == "frozen"
+        )
+        self.assertEqual(records[self.window.tabs.index(kept)]["lifecycle"], "active")
+        self.assertTrue(records[self.window.tabs.index(kept)]["keep_loaded"])
+        self.window._switch_tab(self.window.tabs.index(other))
+        self.wait(
+            lambda: records[self.window.tabs.index(other)]["lifecycle"] == "active"
+        )
+        # Keeping a frozen tab loaded wakes it.
+        self.window._switch_tab(0)
+        other.page().setLifecycleState(State.Frozen)
+        self.window._set_keep_loaded(other, True)
+        self.assertEqual(other.page().lifecycleState(), State.Active)
+
+
+class PressureTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = application()
+
+    def test_low_memory_starts_below_ten_percent_and_ends_above_twenty(self):
+        share = [0.5]
+        monitor = memory_modes.PressureMonitor(lambda: (share[0] * 100, 100))
+        events = []
+        monitor.changed.connect(events.append)
+        for value, low in ((0.5, False), (0.09, True), (0.15, True), (0.21, False)):
+            share[0] = value
+            monitor.check()
+            self.assertEqual(monitor.low, low)
+        self.assertEqual(events, [True, False])
+        unreadable = memory_modes.PressureMonitor(lambda: None)
+        unreadable.check()
+        self.assertFalse(unreadable.low)
+
+    def test_auto_saver_uses_saver_values_without_changing_settings(self):
+        from config import Config
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("pathlib.Path.home", return_value=Path(directory)),
+        ):
+            config = Config()
+            memory_modes.apply_mode(config, "balanced")
+            config.set("native_interface", False)
+            low = memory_modes.monitor()
+            previous = low.low
+            try:
+                low.low = True
+                current = memory_modes.effective(config)
+                self.assertEqual(current["tab_discard_minutes"], 15)
+                self.assertEqual(current["cookie_wake_interval_seconds"], 20)
+                self.assertFalse(current["native_interface"])
+                self.assertEqual(memory_modes.mode(config), "balanced")
+                memory_modes.set_value(config, "auto_saver", False)
+                self.assertEqual(
+                    memory_modes.effective(config)["tab_discard_minutes"], 240
+                )
+            finally:
+                low.low = previous
+
 
 if __name__ == "__main__":
     unittest.main()

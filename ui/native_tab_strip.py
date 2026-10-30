@@ -107,7 +107,20 @@ class NativeTabStrip(TabStrip):
                 )
                 bar.setTabIcon(index, self.icons.get(record["id"], QIcon()))
                 color = groups.get(record["group"], "")
+                dormant = record["lifecycle"] != "active"
+                if dormant and not color:
+                    color = "#8a94a6"  # Dimmed while frozen or unloaded.
                 bar.setTabTextColor(index, QColor(color) if color else QColor())
+                if dormant:
+                    bar.setTabToolTip(
+                        index,
+                        bar.tabToolTip(index)
+                        + (
+                            " · unloaded, reloads when selected"
+                            if record["lifecycle"] == "unloaded"
+                            else " · frozen, resumes when selected"
+                        ),
+                    )
                 visible = record["visible"] and record["group"] not in self.collapsed
                 bar.setTabVisible(index, visible or index == self.current)
                 button = bar.tabButton(index, QTabBar.ButtonPosition.RightSide)

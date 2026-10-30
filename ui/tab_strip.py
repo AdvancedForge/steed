@@ -149,6 +149,9 @@ class TabStrip(QWidget):
                 "muted": False,
                 "site": "",
                 "pinned": False,
+                # "active", "frozen" or "unloaded" (memory modes).
+                "lifecycle": "active",
+                "keep_loaded": False,
             },
         )
         if self.current >= index:
@@ -186,8 +189,10 @@ class TabStrip(QWidget):
         self._update(index, icon=icon_data(icon))
 
     def set_tab_state(self, index: int, **values) -> None:
-        allowed = {"loading", "audible", "muted", "pinned"}
+        allowed = {"loading", "audible", "muted", "pinned", "keep_loaded"}
         update = {k: bool(v) for k, v in values.items() if k in allowed}
+        if values.get("lifecycle") in ("active", "frozen", "unloaded"):
+            update["lifecycle"] = values["lifecycle"]
         if "url" in values:
             update["site"] = site_of(values["url"])
         self._update(index, **update)
