@@ -136,6 +136,45 @@ class AgentFrameTests(unittest.TestCase):
         self.act(task, session, snapshot, pay, "activate")
         self.wait_for(lambda: self.frame_value(page, "window.pays") == 1)
 
+    def test_transformed_frames_refuse_mapped_clicks(self):
+        task, session, page = self.session()
+        self.value(page, "frame.style.transform = 'scale(0.5)'; true")
+        snapshot = self.inspect(task, session)
+        with self.assertRaises(PageInspectionError) as error:
+            self.act(
+                task, session, snapshot, self.find(snapshot, "Pay now"), "activate"
+            )
+        self.assertEqual(error.exception.code, "frame_transformed")
+        self.value(
+            page,
+            "frame.style.transform = ''; document.body.style.zoom = '1.5'; true",
+        )
+        snapshot = self.inspect(task, session)
+        with self.assertRaises(PageInspectionError) as error:
+            self.act(task, session, snapshot, self.find(snapshot, "Pay now"), "hover")
+        self.assertEqual(error.exception.code, "frame_transformed")
+        self.assertEqual(self.frame_value(page, "window.pays"), 0)
+
+    def test_frames_sharing_a_url_stay_read_only(self):
+        task, session, page = self.session()
+        self.value(
+            page,
+            """const copy = frame.cloneNode(); copy.id = 'copy';
+            frame.after(copy); true""",
+        )
+        self.wait_for(lambda: len(page.mainFrame().children()) >= 3)
+        frames = []
+
+        def read():
+            frames[:] = self.inspect(task, session).frames
+            return sum("Embedded checkout" in f.text for f in frames) == 2
+
+        self.wait_for(read)
+        for frame in frames:
+            if "Embedded checkout" in frame.text:
+                self.assertEqual(frame.limitations, ("cross_origin_frame_read_only",))
+                self.assertEqual(frame.targets, ())
+
     def test_frame_forms_stay_main_document_only(self):
         task, session, _ = self.session()
         snapshot = self.inspect(task, session)

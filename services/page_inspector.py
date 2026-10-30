@@ -524,7 +524,7 @@ class PageInspector(QObject):
                 described.append(item)
             return tuple(described)
 
-        def received(index, raw, engine_frame, request):
+        def received(index, raw, engine_frame, request, routable):
             if result.done():
                 return
             remaining.discard(index)
@@ -543,8 +543,10 @@ class PageInspector(QObject):
                 ):
                     grant.check("read", url=inner.get("url") or frames[index].url)
                     route_key = f"f{index}"
-                    described = frame_targets(index, inner, route_key) if live else ()
-                    if live:
+                    described = (
+                        frame_targets(index, inner, route_key) if routable else ()
+                    )
+                    if routable:
                         routes[route_key] = {
                             "frame": engine_frame,
                             "state_key": request["state_key"],
@@ -564,7 +566,7 @@ class PageInspector(QObject):
                         scroll=frame_scroll(inner.get("scroll")),
                         limitations=(
                             ("cross_origin_frame",)
-                            if live
+                            if routable
                             else ("cross_origin_frame_read_only",)
                         ),
                     )
@@ -576,11 +578,8 @@ class PageInspector(QObject):
         used = set()
         for index in pending:
             url = snapshot.frames[index].url
-            candidates = [
-                f
-                for f in engine_frames
-                if id(f) not in used and f.url().toString() == url
-            ] or [
+            exact = [f for f in engine_frames if f.url().toString() == url]
+            candidates = [f for f in exact if id(f) not in used] or [
                 f
                 for f in engine_frames
                 if id(f) not in used
@@ -592,20 +591,24 @@ class PageInspector(QObject):
                 continue
             engine_frame = candidates[0]
             used.add(id(engine_frame))
+            # Engine frames have no DOM position. Only a frame whose URL matches
+            # exactly one engine frame is surely the one at this path; others
+            # are read but never routed for actions.
+            routable = live and len(exact) == 1
             request = {
                 "mode": "inspect",
                 "snapshot_id": uuid4().hex,
                 "origins": grant.scope.origins,
                 "upload_available": False,
-                "live": live,
+                "live": routable,
                 "state_key": "__steed_frame_read_" + uuid4().hex,
             }
             script = INSPECTION_SCRIPT.replace("/* REQUEST */", json.dumps(request))
             engine_frame.runJavaScript(
                 script,
                 INSPECTION_WORLD,
-                lambda raw, index=index, frame=engine_frame, request=request: received(
-                    index, raw, frame, request
+                lambda raw, index=index, frame=engine_frame, request=request, routable=routable: (
+                    received(index, raw, frame, request, routable)
                 ),
             )
         if not remaining:
