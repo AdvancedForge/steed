@@ -2317,8 +2317,11 @@ class TaskService(QObject):
         text=None,
         index=None,
         steps=None,
+        to_target_id=None,
     ):
-        arguments = action_arguments(operation, text=text, index=index, steps=steps)
+        arguments = action_arguments(
+            operation, text=text, index=index, steps=steps, to_target_id=to_target_id
+        )
         grant = self._action_authority(task_id, session_id, "edit")
         action_id = uuid4().hex
         # Record identifiers/operation only: entered text and option values are
@@ -2340,8 +2343,19 @@ class TaskService(QObject):
             ),
         )
 
-    def _scroll(self, task_id, session_id, snapshot_id, frame_id=None, dx=0, dy=0):
+    def _scroll(
+        self,
+        task_id,
+        session_id,
+        snapshot_id,
+        frame_id=None,
+        dx=0,
+        dy=0,
+        target_id=None,
+    ):
         arguments = scroll_arguments(dx, dy)
+        if frame_id is not None and target_id is not None:
+            raise ValueError("Scroll a frame or a target's container, not both")
         grant = self._action_authority(task_id, session_id, "scroll")
         action_id = uuid4().hex
         return self._start_action(
@@ -2354,10 +2368,16 @@ class TaskService(QObject):
                 "session_id": session_id,
                 "snapshot_id": snapshot_id,
                 "frame_id": frame_id,
+                "target_id": target_id,
                 "operation": "scroll",
             },
             lambda: self.backend.scroll(
-                session_id, action_id, snapshot_id, frame_id, arguments
+                session_id,
+                action_id,
+                snapshot_id,
+                frame_id,
+                arguments,
+                target_id=target_id,
             ),
         )
 
