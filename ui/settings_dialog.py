@@ -21,6 +21,7 @@ DEFAULTS = {
     "global_cookie_sharing_mode": "on_switch",
     "global_cookie_sharing_apply_on_startup": True,
     "default_profile": "global",
+    "devtools_side": "right",
 }
 SECTIONS = ("general", "profile", "tabs", "view", "cookies", "agents")
 
@@ -225,6 +226,8 @@ class SettingsDialog(QDialog):
                 )
         if values["global_cookie_sharing_mode"] not in ("on_switch", "all_profiles"):
             raise ValueError("Choose one of the supported cookie sharing modes.")
+        if values["devtools_side"] not in ("right", "bottom", "window"):
+            raise ValueError("Choose where Developer Tools open.")
 
     def set_preference(self, key, value, *, version=None):
         if not isinstance(key, str) or key not in DEFAULTS:

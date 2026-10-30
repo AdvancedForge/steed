@@ -146,6 +146,16 @@ class HtmlSettingsTests(unittest.TestCase):
         self.wait_for(lambda: window.settings_dialog is None)
         self.assertEqual(self.config.get("search_engine"), DEFAULT_SEARCH_ENGINE)
 
+    def test_developer_tools_dock_side_is_a_saved_preference(self):
+        window, dialog = self.loaded()
+        with self.assertRaises(ValueError):
+            dialog.set_preference("devtools_side", "floating")
+        dialog.set_preference("devtools_side", "bottom")
+        self.click(dialog, "save")
+        self.wait_for(lambda: window.settings_dialog is None)
+        self.assertEqual(self.config.get("devtools_side"), "bottom")
+        self.wait_for(lambda: window.devtools.side == "bottom")
+
     def test_failed_disk_write_keeps_saved_values_and_visible_draft(self):
         _, dialog = self.loaded()
         before = self.config.config_file.read_bytes()

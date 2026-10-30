@@ -278,7 +278,8 @@ The menu bar has six categories, in this order:
   Chrome: F12 or Ctrl+Shift+I toggles them, Ctrl+Shift+J opens the Console,
   Ctrl+Shift+C starts the element picker, and **Inspect** in a page's right-click
   menu selects that element. Each tab keeps its own panel; dock it to the right,
-  to the bottom or into a separate window (remembered). DevTools settings use a
+  to the bottom or into a separate window (remembered, and also set in
+  `steed:settings` → View). DevTools settings use a
   private, unsaved profile. A tab whose DevTools connection is held by an agent
   task cannot open DevTools until the task releases it, and a tab with DevTools
   open cannot be delegated to an agent.

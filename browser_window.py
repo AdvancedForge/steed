@@ -3316,6 +3316,9 @@ class BrowserWindow(QMainWindow):
 
     def _settings_changed(self):
         if not self._closing:
+            side = self.config.get("devtools_side", "right")
+            if side != self.devtools.side:
+                self.devtools.set_side(side)
             self.apply_dark_mode()
             self._start_page_changed(self.profile_manager.current_profile_name)
 

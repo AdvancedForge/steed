@@ -49,8 +49,9 @@
         <section data-panel="view" hidden>
           <div class="section-heading"><span class="eyebrow">Room for your work</span><h2>View</h2><p>Choose an appearance and arrange your browser.</p></div>
           <div class="settings-card"><label class="toggle-row" for="dark_mode"><span><strong>Dark appearance</strong><small>Previewed here. The rest of Steed changes when you save.</small></span><input id="dark_mode" data-pref="dark_mode" type="checkbox" role="switch"></label></div>
-          <div class="settings-card link-card"><div><h3>Layout &amp; toolbar</h3><p class="help">Adjust density, navigation controls, menu order and sidebar position.</p></div><button data-action="open" data-destination="layout">Layout settings</button></div>
-          <div class="settings-card link-card"><div><h3>Pages &amp; browser bars</h3><p class="help">Shared CSS, profile themes, menu visibility and the loading indicator.</p></div><button data-action="open" data-destination="style">Page style</button></div>
+          <div class="settings-card"><label for="devtools_side">Developer Tools</label><select id="devtools_side" data-pref="devtools_side"><option value="right">Docked to the right</option><option value="bottom">Docked to the bottom</option><option value="window">In a separate window</option></select><p class="help">Where F12 / Ctrl+Shift+I opens DevTools. View → Developer Tools can also move them.</p></div>
+          <div class="settings-card link-card"><div><h3>Layout</h3><p class="help">Toolbar buttons and their order, menu order and sidebar position.</p></div><button data-action="open" data-destination="layout">Layout settings</button></div>
+          <div class="settings-card link-card"><div><h3>Style</h3><p class="help">Tabs, toolbar spacing, browser text, page themes and CSS, menu and status bars, and the loading indicator.</p></div><button data-action="open" data-destination="style">Page style</button></div>
         </section>
         <section data-panel="cookies" hidden>
           <div class="section-heading"><span class="eyebrow">Accounts across your spaces</span><h2>Cookies</h2><p>Control how Global's cookie baseline reaches regular profiles.</p></div>
