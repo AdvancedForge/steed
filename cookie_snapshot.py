@@ -7,6 +7,7 @@ version-specific adapter. Never expose its privileged frontend as a browser tab.
 Bumping Qt means re-verifying every private name used below.
 """
 
+from PyQt6 import sip
 from PyQt6.QtCore import QDateTime, QObject, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWebEngineCore import QWebEnginePage
@@ -135,7 +136,7 @@ class CookieSnapshot(QObject):
             return
         self.ready = False
         self.inspected.setDevToolsPage(None)
-        self.frontend.deleteLater()
+        sip.delete(self.frontend)
         self.frontend = None
         self.sleeping = True
         self.inspected.setLifecycleState(QWebEnginePage.LifecycleState.Discarded)
@@ -327,3 +328,10 @@ class CookieSnapshot(QObject):
         self.pending = False
         if self.frontend is not None:
             self.inspected.setDevToolsPage(None)
+
+    def dispose(self):
+        """Close and delete the frontend page now, before its profile goes."""
+        self.close()
+        if self.frontend is not None:
+            sip.delete(self.frontend)
+            self.frontend = None

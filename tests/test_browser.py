@@ -1593,6 +1593,12 @@ class BrowserTests(unittest.TestCase):
         )
         snapshot.refresh()
         self.wait_for(lambda: any(c.name == "wake_probe" for c in manager.cookies))
+        # Releasing a profile whose snapshot sleeps must not touch a missing page.
+        snapshot.idle.setInterval(100)
+        snapshot.refresh()
+        self.wait_for(lambda: snapshot.sleeping)
+        snapshot.dispose()
+        self.assertIsNone(snapshot.frontend)
 
     def test_cookie_viewer_opens_with_stored_cookies(self):
         """Opening the viewer must list existing cookies, not only live ones."""
