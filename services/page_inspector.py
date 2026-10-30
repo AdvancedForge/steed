@@ -40,6 +40,7 @@ class TargetDescriptor:
     invalid: bool = False
     error_message: str = ""
     states: tuple[str, ...] = ()
+    value_text: str = ""
 
 
 OUTLINE_KINDS = frozenset(
@@ -56,7 +57,20 @@ OUTLINE_KINDS = frozenset(
         "tablist",
     }
 )
-TARGET_STATES = frozenset({"expanded", "collapsed", "pressed", "selected", "current"})
+TARGET_STATES = frozenset(
+    {
+        "expanded",
+        "collapsed",
+        "pressed",
+        "selected",
+        "current",
+        "checked",
+        "unchecked",
+        "mixed",
+        "has_popup",
+        "busy",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -173,12 +187,29 @@ class InspectionState:
     pending: set[Future] = field(default_factory=set)
 
 
+def content_signature(snapshot):
+    """What a reader would notice changing: text, controls, states, outline."""
+    return tuple(
+        (
+            frame.text,
+            tuple(
+                (t.role, t.label, t.enabled, t.states, t.invalid, t.value_text)
+                for t in frame.targets
+            ),
+            frame.outline,
+        )
+        for frame in snapshot.frames
+    )
+
+
 class PageInspector(QObject):
     """No public script/selector input; policy is rechecked on every callback."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._states: dict[str, InspectionState] = {}
+        # session_id -> (revision, content_signature) of the last full read.
+        self.observed: dict[str, tuple] = {}
         self.timeout_ms = 5000
 
     def invalidate(self, session_id, reason="stale_snapshot", *, discard=False):
@@ -193,6 +224,7 @@ class PageInspector(QObject):
                 future.set_exception(PageInspectionError(reason))
         if discard:
             self._states.pop(session_id, None)
+            self.observed.pop(session_id, None)
 
     def _run(self, session_id, page, request, validate, consume):
         state = self._states.setdefault(session_id, InspectionState())
@@ -282,6 +314,7 @@ class PageInspector(QObject):
                             for state in target.get("states", [])
                             if state in TARGET_STATES
                         ),
+                        str(target.get("value_text", ""))[:64],
                     )
                     targets[target_id] = (target["node_id"], descriptor)
                     descriptors.append(descriptor)
@@ -376,6 +409,15 @@ class PageInspector(QObject):
             )
 
         main.add_done_callback(inspected)
+
+        def observed(source):
+            if not source.cancelled() and source.exception() is None:
+                self.observed[session_id] = (
+                    metadata.revision,
+                    content_signature(source.result()),
+                )
+
+        result.add_done_callback(observed)
         return result
 
     def _read_cross_origin_frames(

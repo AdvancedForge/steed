@@ -763,10 +763,10 @@ TOOLS = (
     ),
     tool(
         "page.wait",
-        "Wait for readiness, bounded text, or settled content with read permission. 'settled' returns matched once text length, controls and scroll height stay unchanged for 750 ms — use it after page.scroll to let lazy or infinite-scroll content load, then page.inspect again. Snapshots report each frame's scroll position/size and the more_content_below limitation.",
+        "Wait for readiness, bounded text, or settled content with read permission. 'settled' returns matched once text length, controls and scroll height stay unchanged for 750 ms — use it after page.scroll to let lazy or infinite-scroll content load, then page.inspect again. 'changed' returns matched once the visible text, controls, their states or the page outline differ from the first read, or the page navigates — use it after an action whose effect arrives later (search results, validation messages, a loading list). Snapshots report each frame's scroll position/size and the more_content_below limitation.",
         {
             **SESSION,
-            "condition": {**string(), "enum": ["ready", "text", "settled"]},
+            "condition": {**string(), "enum": ["ready", "text", "settled", "changed"]},
             "text": string(256),
             "timeout_ms": integer(1, 10000),
         },

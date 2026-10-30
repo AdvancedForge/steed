@@ -12,6 +12,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Website understanding and agent reconnects — October 30, 2026.** Targets
+report the role their native element exposes (searchbox, combobox, listbox,
+spinbutton, slider, …), `aria-checked`, popup and busy states, and custom slider
+positions; tree items join pointer activation. `page.wait` gains `changed`,
+compared with the agent's last inspection so an effect that landed before the
+wait still matches. The MCP adapter now reconnects on the next call after a
+lost connection and resumes the task with its stored token, never replaying the
+failed call or calls queued behind it; a stdio client can start before Steed.
+The sidebar shows a disconnected task's reconnect deadline. Open: reading the
+engine's own accessibility tree (still `accessibility_tree_not_inspected`),
+actions for custom sliders/comboboxes, actionable cross-origin frames, and a
+desktop check with a real Claude Code/Codex client across a Steed restart.
+
 **Memory and startup cost — October 29, 2026.** Measured one window (PSS over
 the process tree): 316 MB with 6 renderers at startup. The window itself uses only
 two web views; four renderers were the hidden cookie-inspection page and DevTools

@@ -36,10 +36,10 @@ def wait_arguments(condition, text, timeout_ms):
         return
     if condition == "text" and isinstance(text, str) and 0 < len(text) <= 256:
         return
-    if condition == "settled" and text is None:
+    if condition in ("settled", "changed") and text is None:
         return
     raise ValueError(
-        "Wait for ready or settled, or provide 1 to 256 characters for text"
+        "Wait for ready, settled or changed, or provide 1 to 256 characters for text"
     )
 
 

@@ -11,7 +11,9 @@
         return active;
     };
     const POINTER_ROLES = ["button", "link", "tab", "menuitem", "menuitemcheckbox", "menuitemradio",
-        "switch", "checkbox", "radio", "option"];
+        "switch", "checkbox", "radio", "option", "treeitem"];
+    // Roles that are observed and described but have no supported action.
+    const OBSERVED_ROLES = ["textbox", "searchbox", "combobox", "slider", "spinbutton", "listbox", "gridcell"];
     const liveFingerprint = node => {
         const attributes = el => Array.from(el.attributes, a => [a.name, a.value]);
         const parent = el => el.parentElement || el.getRootNode()?.host;
@@ -438,8 +440,33 @@
             remainingOutlineText -= size;
             frame.outline.push(entry);
         };
+        // The ARIA role a native control exposes when it has no explicit role.
+        const implicitRole = (node, tag, type, kind) => {
+            if (kind === "editable") return "textbox";
+            if (tag === "a") return "link";
+            if (tag === "textarea") return "textbox";
+            if (tag === "select") return node.multiple || node.size > 1 ? "listbox" : "combobox";
+            if (tag === "button") return "button";
+            if (tag !== "input") return kind;
+            if (["submit", "button", "reset", "image"].includes(type)) return "button";
+            if (type === "checkbox" || type === "radio") return type;
+            if (type === "search") return node.hasAttribute("list") ? "combobox" : "searchbox";
+            if (type === "number") return "spinbutton";
+            if (type === "range") return "slider";
+            if (type === "file") return "file";
+            if (["", "text", "email", "tel", "url", "password"].includes(type))
+                return node.hasAttribute("list") ? "combobox" : "textbox";
+            return kind;
+        };
         const stateOf = node => {
             const states = [];
+            const checked = (node.getAttribute("aria-checked") || "").toLowerCase();
+            if (checked === "true") states.push("checked");
+            else if (checked === "false") states.push("unchecked");
+            else if (checked === "mixed") states.push("mixed");
+            const popup = (node.getAttribute("aria-haspopup") || "false").toLowerCase();
+            if (popup !== "false" && popup !== "") states.push("has_popup");
+            if (node.getAttribute("aria-busy") === "true" || node.closest?.("[aria-busy=true]")) states.push("busy");
             const expanded = node.getAttribute("aria-expanded");
             if (expanded === "true") states.push("expanded");
             else if (expanded === "false") states.push("collapsed");
@@ -533,8 +560,7 @@
                         if (type === "submit" || type === "button") { kind = "button"; operations = ["activate"]; }
                     } else if (tag === "textarea") { kind = "textarea"; operations = ["enter"]; }
                     else if (tag === "select") { kind = "select"; operations = ["select"]; }
-                    else if (["button", "link", "textbox", "combobox", "checkbox", "radio", "tab", "menuitem",
-                        "menuitemcheckbox", "menuitemradio", "switch", "option"].includes(role)) {
+                    else if (POINTER_ROLES.includes(role) || OBSERVED_ROLES.includes(role)) {
                         kind = "custom";
                         if (request.live && win === window && POINTER_ROLES.includes(role)) {
                             operations = ["activate"];
@@ -587,12 +613,16 @@
                             const label = boundedTargetText(labelFor(node, doc, win));
                             const invalidState = (node.getAttribute("aria-invalid") || "false").trim().toLowerCase();
                             const invalid = invalidState !== "false" && invalidState !== "";
+                            // Custom sliders and meters report their position; native
+                            // control values stay omitted.
+                            const valueText = kind === "custom" && ["slider", "spinbutton"].includes(role)
+                                ? clean(node.getAttribute("aria-valuetext") || node.getAttribute("aria-valuenow"), 64) : "";
                             const required = (["input", "textarea", "select", "checkbox", "radio"].includes(kind) && node.hasAttribute("required")) ||
                                 (node.getAttribute("aria-required") || "").trim().toLowerCase() === "true";
-                            frame.targets.push({node_id: nodeId, kind, role: role || (kind === "editable" ? "textbox" : kind),
+                            frame.targets.push({node_id: nodeId, kind, role: role || implicitRole(node, tag, type, kind),
                                 label, description: boundedTargetText(descriptionFor(node, label, win)), required, invalid,
                                 error_message: invalid ? boundedTargetText(referenceText(node, "aria-errormessage", win)) : "",
-                                enabled, read_only: readOnly, href, states: stateOf(node),
+                                enabled, read_only: readOnly, href, states: stateOf(node), value_text: valueText,
                                 operations, constraints, form_action: formAction, form_method: formMethod});
                             remainingTargets--;
                         }

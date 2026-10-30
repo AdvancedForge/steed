@@ -3,6 +3,7 @@
 import json
 import os
 import stat
+import time
 import unittest
 from unittest.mock import patch
 
@@ -11,6 +12,7 @@ from PyQt6.QtNetwork import QLocalSocket
 
 from services.agent_gateway import AgentGateway
 from services.agent_tools import REQUEST_LIMIT
+from services.conversation_health import connection_state
 from services.task_store import ACTIVE_STATUSES
 
 
@@ -276,6 +278,13 @@ class AgentGatewayTests(unittest.TestCase):
         self.wait_for(lambda: task not in self.service.external_tasks)
         self.assertIn(self.service.store.get(task).status, ACTIVE_STATUSES)
         self.assertNotIn(task, self.service._grants)
+        # The sidebar can say how long the task waits for its agent.
+        until = self.service.resumable[task]
+        self.assertAlmostEqual(until - time.time(), 300, delta=5)
+        state = connection_state(
+            self.service.store.get(task).status, False, None, until
+        )
+        self.assertEqual(state["state"], "reconnecting")
         other = self.connect()
         refused = self.call(other, "task.resume", resume_token="0" * 64)
         self.assertIn("error", refused)
@@ -283,6 +292,7 @@ class AgentGatewayTests(unittest.TestCase):
         self.assertEqual(resumed["task_id"], task)
         self.assertNotEqual(resumed["resume_token"], token)
         self.assertIn(task, self.service.external_tasks)
+        self.assertNotIn(task, self.service.resumable)
         texts = [
             m["text"]
             for m in self.call(other, "conversation.read")["result"]["messages"]
@@ -301,6 +311,16 @@ class AgentGatewayTests(unittest.TestCase):
         socket.abort()
         self.wait_for(lambda: self.service.store.get(task).status == "cancelled")
         self.assertNotIn(task, self.gateway.held)
+        self.assertNotIn(task, self.service.resumable)
+
+    def test_abandoned_task_stops_waiting_to_reconnect(self):
+        socket = self.connect()
+        task = self.start(socket)
+        socket.abort()
+        self.wait_for(lambda: task in self.service.resumable)
+        self.gateway._abandon(task)
+        self.assertNotIn(task, self.service.resumable)
+        self.assertEqual(self.service.store.get(task).status, "cancelled")
 
     def test_disconnect_retains_interrupted_reply_and_blocks_sending(self):
         patcher = patch("services.agent_gateway.RESUME_GRACE_MS", 50)
