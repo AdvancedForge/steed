@@ -12,6 +12,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Memory modes and cookie inspection — October 30, 2026.** `steed:memory`
+offers Memory saver, Balanced and Performance presets over seven individual
+settings: cookie inspector sleep and wake-up spacing, freezing and unloading
+background tabs (respecting Qt's recommended state and keeping audible, agent,
+DevTools, loading and `steed:` tabs), native interface, palette keep/preload and
+returning freed memory, plus live usage and Free memory now. Cookie inspection:
+the window's cookie manager no longer forces an immediate inspection on every
+change (the inspector already coalesces them), and saver mode keeps inspectors
+asleep between 20-second wake-ups (0 awake after activity vs 2). Measured session:
+~350 / ~520 / ~575 MB. Open: a desktop check of tab freezing/unloading on real
+sites (media, chat, forms).
+
 **Security and memory review — October 30, 2026.** An independent review of the
 recent agent work found no high-severity issues; all four findings are fixed:
 mapped frame clicks refuse transformed/zoomed frames and size mismatches, a

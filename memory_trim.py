@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import QApplication
 logger = logging.getLogger(__name__)
 
 DELAY_MS = 5000
+ENABLED = True
 _timer = None
 _trim = None
 
@@ -38,11 +39,18 @@ def release_now():
         trim(0)
 
 
+def set_enabled(enabled):
+    global ENABLED
+    ENABLED = bool(enabled)
+    if not ENABLED and _timer is not None:
+        _timer.stop()
+
+
 def schedule():
     """Trim once, DELAY_MS after the last close in a burst."""
     global _timer
     app = QApplication.instance()
-    if app is None or not _load():
+    if app is None or not ENABLED or not _load():
         return
     if _timer is None:
         _timer = QTimer(app)

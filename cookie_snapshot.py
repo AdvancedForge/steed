@@ -7,6 +7,9 @@ version-specific adapter. Never expose its privileged frontend as a browser tab.
 Bumping Qt means re-verifying every private name used below.
 """
 
+import time
+import weakref
+
 from PyQt6 import sip
 from PyQt6.QtCore import QDateTime, QObject, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkCookie
@@ -41,6 +44,21 @@ REFRESH_DEBOUNCE_MS = 120
 # After this long without cookie activity they are released, and rebuilt by the
 # next refresh; a write therefore reaches sharing a moment later than when warm.
 IDLE_MS = 30000
+# Minimum time between automatic wake-ups from cookie changes (0: none). A busy
+# site changes cookies constantly; waiting keeps the inspector asleep most of
+# the time at the cost of later sharing. Explicit refreshes are never delayed.
+WAKE_INTERVAL_MS = 0
+_SNAPSHOTS = weakref.WeakSet()
+
+
+def set_policy(idle_ms, wake_interval_ms):
+    """Memory mode: idle_ms 0 keeps inspectors awake."""
+    global IDLE_MS, WAKE_INTERVAL_MS
+    IDLE_MS, WAKE_INTERVAL_MS = int(idle_ms), int(wake_interval_ms)
+    for snapshot in list(_SNAPSHOTS):
+        if not snapshot.closed:
+            snapshot.apply_policy()
+
 
 # Runs on the hidden DevTools frontend page. The SDK import and target manager
 # are memoized on the page so a second inspection costs one protocol call rather
@@ -118,9 +136,24 @@ class CookieSnapshot(QObject):
         self.timer.timeout.connect(self.poll)
         self.idle = QTimer(self)
         self.idle.setSingleShot(True)
-        self.idle.setInterval(IDLE_MS)
+        self.idle.setInterval(IDLE_MS or 1)
         self.idle.timeout.connect(self._sleep)
+        self.last_wake = time.monotonic()
+        self.deferred = QTimer(self)
+        self.deferred.setSingleShot(True)
+        self.deferred.timeout.connect(self.refresh)
+        _SNAPSHOTS.add(self)
         self._attach()
+
+    def apply_policy(self):
+        if IDLE_MS > 0:
+            self.idle.setInterval(IDLE_MS)
+            if not self.sleeping and not self.idle.isActive():
+                self.idle.start()
+        else:
+            self.idle.stop()
+            if self.sleeping:
+                self.refresh()  # Stay-awake mode starts warm.
 
     def _attach(self):
         self.frontend = QWebEnginePage(self.inspected.profile(), self)
@@ -143,6 +176,7 @@ class CookieSnapshot(QObject):
 
     def _wake(self):
         self.sleeping = False
+        self.last_wake = time.monotonic()
         self.inspected.setLifecycleState(QWebEnginePage.LifecycleState.Active)
         # on_ready runs the refresh once the rebuilt frontend has loaded.
         self._attach()
@@ -154,6 +188,12 @@ class CookieSnapshot(QObject):
         self.timeouts = 0
         # Coalesce: one page load writes several cookies, and each snapshot is a
         # full DevTools round trip. Debouncing collapses a burst into one.
+        if self.sleeping and WAKE_INTERVAL_MS > 0:
+            wait = WAKE_INTERVAL_MS - (time.monotonic() - self.last_wake) * 1000
+            if wait > REFRESH_DEBOUNCE_MS:
+                if not self.deferred.isActive():
+                    self.deferred.start(int(wait))
+                return
         QTimer.singleShot(REFRESH_DEBOUNCE_MS, self.refresh)
 
     def on_ready(self, ok):
@@ -168,7 +208,9 @@ class CookieSnapshot(QObject):
     def refresh(self):
         if self.closed:
             return
-        self.idle.start()
+        self.deferred.stop()
+        if IDLE_MS > 0:
+            self.idle.start()
         if self.sleeping:
             self._wake()
             return
@@ -325,6 +367,7 @@ class CookieSnapshot(QObject):
         self.closed = True
         self.timer.stop()
         self.idle.stop()
+        self.deferred.stop()
         self.pending = False
         if self.frontend is not None:
             self.inspected.setDevToolsPage(None)

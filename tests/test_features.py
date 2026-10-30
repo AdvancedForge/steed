@@ -61,6 +61,8 @@ class CookieSnapshotPolicyTests(unittest.TestCase):
         snapshot.frontend = Mock()
         snapshot.sleeping = False
         snapshot.idle = Mock()
+        snapshot.deferred = Mock()
+        snapshot.last_wake = 0
         snapshot.timer = Mock()
         snapshot.loaded = Mock()
         snapshot.failed = Mock()

@@ -77,8 +77,10 @@ class CookieManager(QObject):
     def _on_cookie_added(self, cookie: QNetworkCookie) -> None:
         """Handle when a cookie is added."""
         if self.snapshot is not None:
-            self.snapshot.refresh()
-            return  # Native signals omit partition identity; use confirmed data.
+            # Native signals omit partition identity; use confirmed data. The
+            # snapshot watches the same store and schedules its own refresh,
+            # honouring the memory mode's wake-up interval.
+            return
         cookie_info = CookieInfo(cookie)
         # Update or add to list
         existing = next(
@@ -99,8 +101,7 @@ class CookieManager(QObject):
     def _on_cookie_removed(self, cookie: QNetworkCookie) -> None:
         """Handle when a cookie is removed."""
         if self.snapshot is not None:
-            self.snapshot.refresh()
-            return
+            return  # The snapshot schedules its own refresh, as above.
         cookie_info = CookieInfo(cookie)
         self.cookies = [
             c

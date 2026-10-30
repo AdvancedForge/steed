@@ -456,6 +456,11 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        memory_action = QAction("Memory && Performance…", self)
+        memory_action.triggered.connect(
+            lambda: self._new_tab(url="steed:memory", return_tab=True)
+        )
+        view_menu.addAction(memory_action)
         reset_style = QAction("Reset Page Style…", self)
         reset_style.setShortcut(QKeySequence("Ctrl+Alt+Shift+R"))
         reset_style.triggered.connect(self._reset_page_style)
@@ -787,9 +792,11 @@ class BrowserWindow(QMainWindow):
         self.chrome_row.addWidget(self.chrome_column, 1)
         # Tab strip. The native one needs no renderer process; switching applies
         # to windows opened afterwards.
-        from ui.interface_mode import native, set_native
+        import memory_modes
+        from ui.interface_mode import native
 
-        set_native(self.config.get("native_interface", False))
+        self._memory = memory_modes.apply_process_policies(self.config)
+        QTimer.singleShot(0, self._apply_memory_policies)
         strip = TabStrip
         if native():
             from ui.native_tab_strip import NativeTabStrip
@@ -1647,6 +1654,20 @@ class BrowserWindow(QMainWindow):
         ):
             self.tabs[index].agent_source = previous
         self.current_tab_index = index
+        from time import monotonic
+
+        from PyQt6.QtWebEngineCore import QWebEnginePage
+
+        for touched in (previous, self.tabs[index]):
+            if touched is not None:
+                touched.last_active = monotonic()
+        page = self.tabs[index].page()
+        if (
+            page is not None
+            and page.lifecycleState() != QWebEnginePage.LifecycleState.Active
+        ):
+            # A frozen tab resumes; an unloaded one reloads its page.
+            page.setLifecycleState(QWebEnginePage.LifecycleState.Active)
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
         self.tab_bar.set_current_tab(index)
@@ -2266,10 +2287,15 @@ class BrowserWindow(QMainWindow):
         return tab.url().toString() or tab.page().requestedUrl().toString()
 
     def _open_palette(self, mode=""):
-        from ui.command_palette import CommandPalette
 
         if self._closing:
             return
+
+        self._ensure_palette()
+        self._palette.present(mode)
+
+    def _ensure_palette(self):
+        from ui.command_palette import CommandPalette
         from ui.interface_mode import native
 
         if self._palette is None:
@@ -2280,7 +2306,72 @@ class BrowserWindow(QMainWindow):
             else:
                 self._palette = CommandPalette(self)
             self._palette.released.connect(self._release_palette)
-        self._palette.present(mode)
+        self._palette.keep_ms = self._memory["palette_keep_seconds"] * 1000
+        return self._palette
+
+    def _apply_memory_policies(self):
+        """Window parts of the memory mode: palette and background tabs."""
+        if self._closing:
+            return
+        keep = self._memory["palette_keep_seconds"]
+        if self._palette is not None:
+            self._palette.keep_ms = keep * 1000
+        elif keep < 0:
+            # Preload so the first Ctrl+K is instant.
+            QTimer.singleShot(1500, lambda: self._closing or self._ensure_palette())
+        if not hasattr(self, "_lifecycle_timer"):
+            self._lifecycle_timer = QTimer(self)
+            self._lifecycle_timer.setInterval(30000)
+            self._lifecycle_timer.timeout.connect(self._apply_tab_lifecycle)
+        if self._memory["tab_freeze_minutes"] or self._memory["tab_discard_minutes"]:
+            self._lifecycle_timer.start()
+        else:
+            self._lifecycle_timer.stop()
+        self._apply_tab_lifecycle()
+
+    def _tab_keeps_running(self, tab):
+        """Tabs that must stay active whatever the memory mode says."""
+        if getattr(tab, "workspace_name", None) or getattr(tab, "agent_panel", False):
+            return True
+        page = tab.page()
+        if page is None or page.recentlyAudible() or page.devToolsPage() is not None:
+            return True
+        if page.isLoading():
+            return True
+        tasks = self.profile_manager.registry._tasks
+        if tasks is not None and tasks.backend.live_session(tab) is not None:
+            return True
+        return False
+
+    def _apply_tab_lifecycle(self):
+        """Freeze, then unload, tabs left in the background."""
+        if self._closing:
+            return
+        from time import monotonic
+
+        from PyQt6.QtWebEngineCore import QWebEnginePage
+
+        State = QWebEnginePage.LifecycleState
+        order = {State.Active: 0, State.Frozen: 1, State.Discarded: 2}
+        freeze = self._memory["tab_freeze_minutes"] * 60
+        discard = self._memory["tab_discard_minutes"] * 60
+        now = monotonic()
+        for index, tab in enumerate(self.tabs):
+            if index == self.current_tab_index or self._tab_keeps_running(tab):
+                continue
+            page = tab.page()
+            idle = now - getattr(tab, "last_active", now)
+            wanted = State.Active
+            if discard and idle >= discard:
+                wanted = State.Discarded
+            elif freeze and idle >= freeze:
+                wanted = State.Frozen
+            # Never go further than the engine recommends for this page.
+            recommended = page.recommendedState()
+            if order[wanted] > order[recommended]:
+                wanted = recommended
+            if order[wanted] > order[page.lifecycleState()]:
+                page.setLifecycleState(wanted)
 
     def _release_palette(self):
         """Free an idle palette's renderer; the next open builds a new one."""
@@ -3301,6 +3392,10 @@ class BrowserWindow(QMainWindow):
             from ui.style_page import StylePage
 
             controller = panel = StylePage(self)
+        elif name == "memory":
+            from ui.memory_page import MemoryPage
+
+            controller = panel = MemoryPage(self)
         else:
             from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
             from ui.management_pages import controller as create_controller
@@ -3490,13 +3585,15 @@ class BrowserWindow(QMainWindow):
 
     def _settings_changed(self):
         if not self._closing:
-            from ui.interface_mode import native, set_native
+            import memory_modes
+            from ui.interface_mode import native
 
-            set_native(self.config.get("native_interface", False))
+            self._memory = memory_modes.apply_process_policies(self.config)
             if self._palette is not None and self._palette.native != native():
                 self._palette.dispose()
                 self._palette.deleteLater()
                 self._palette = None
+            self._apply_memory_policies()
             self._refresh_address_sources()
             side = self.config.get("devtools_side", "right")
             if side != self.devtools.side:
