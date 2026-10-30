@@ -1076,9 +1076,20 @@ Targets report ARIA states as `states`: `expanded`/`collapsed`, `pressed`,
 with a suggestion list), `listbox` (multiple selects), `spinbutton`, `slider`,
 `checkbox` or `radio`. Custom sliders and spin buttons report their
 `aria-valuetext` or `aria-valuenow` as `value_text`; native control values stay
-omitted. Custom textboxes, comboboxes, listboxes, sliders, spin buttons and grid
-cells are described but have no DOM action (`custom_control_unsupported`); tree
-items join the pointer-activated roles below.
+omitted. Custom textboxes, listboxes and grid cells are described but have no
+DOM action (`custom_control_unsupported`); tree items and comboboxes join the
+pointer-activated roles below (activate a combobox to open it, inspect again,
+then activate its option).
+
+In live sessions, a focusable custom slider or spin button reports `adjust`
+with the `keyboard_adjustment` constraint. `page.act` with `operation: "adjust"`
+and `steps` (−100 to 100, not 0; positive increases) focuses it and presses
+ArrowRight/ArrowLeft (sliders) or ArrowUp/ArrowDown (spin buttons) that many
+times through the same native keyboard path as checkboxes, checking focus
+between batches. The receipt reports the widget's resulting `value_text` and
+`applied` or `no_change`; the website decides the step size and limits. It needs
+edit permission. During the adjustment the control's own markup may change, so
+only its identity and focus are rechecked.
 
 Frames from another origin cannot be read by the main document's script. When
 such a frame's origin is in the task's scope, Steed runs the same read inside

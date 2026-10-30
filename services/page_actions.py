@@ -3,7 +3,18 @@
 from dataclasses import dataclass
 
 
-def action_arguments(operation, *, text=None, index=None):
+def action_arguments(operation, *, text=None, index=None, steps=None):
+    if operation == "adjust":
+        if (
+            text is not None
+            or index is not None
+            or type(steps) is not int
+            or not 1 <= abs(steps) <= 100
+        ):
+            raise ValueError("Adjust requires steps from -100 to 100, not 0")
+        return {"operation": operation, "steps": steps}
+    if steps is not None:
+        raise ValueError("Only adjust accepts steps")
     if operation == "enter":
         if not isinstance(text, str) or index is not None:
             raise ValueError("Enter requires text only")
@@ -20,7 +31,9 @@ def action_arguments(operation, *, text=None, index=None):
         return {"operation": operation, "index": index}
     if operation == "activate" and text is None and index is None:
         return {"operation": operation}
-    raise ValueError("Use enter, select, or activate with the appropriate arguments")
+    raise ValueError(
+        "Use enter, select, activate or adjust with the appropriate arguments"
+    )
 
 
 def scroll_arguments(dx, dy):
@@ -58,6 +71,7 @@ class PageActionResult:
     selected_index: int | None = None
     text_matches: bool | None = None
     scroll_position: tuple[int, int] | None = None
+    value_text: str | None = None
 
 
 @dataclass(frozen=True)

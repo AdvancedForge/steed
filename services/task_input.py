@@ -12,6 +12,9 @@ KEYS = {
     "space": {"key": " ", "code": "Space", "windowsVirtualKeyCode": 32, "text": " "},
     "home": {"key": "Home", "code": "Home", "windowsVirtualKeyCode": 36},
     "down": {"key": "ArrowDown", "code": "ArrowDown", "windowsVirtualKeyCode": 40},
+    "up": {"key": "ArrowUp", "code": "ArrowUp", "windowsVirtualKeyCode": 38},
+    "left": {"key": "ArrowLeft", "code": "ArrowLeft", "windowsVirtualKeyCode": 37},
+    "right": {"key": "ArrowRight", "code": "ArrowRight", "windowsVirtualKeyCode": 39},
 }
 
 INPUT_SCRIPT = """

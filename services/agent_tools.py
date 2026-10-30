@@ -728,12 +728,16 @@ TOOLS = (
     ),
     tool(
         "page.act",
-        "Edit a supported control with read/edit permission; references become stale after the attempt. In live sessions, custom widgets (ARIA button/link/tab/menuitem/switch/checkbox/radio/option) with the pointer_activation constraint accept activate, which needs submit permission and clicks only if the element is visible, in view, unobscured and stable; otherwise expect target_obscured, target_outside_viewport or target_moved.",
+        "Edit a supported control with read/edit permission; references become stale after the attempt. In live sessions, custom widgets (ARIA button/link/tab/menuitem/switch/checkbox/radio/option/treeitem/combobox) with the pointer_activation constraint accept activate, which needs submit permission and clicks only if the element is visible, in view, unobscured and stable; otherwise expect target_obscured, target_outside_viewport or target_moved. Open a custom combobox with activate, inspect again, then activate the option. Custom sliders and spin buttons with keyboard_adjustment accept adjust with steps (-100 to 100, positive increases): Steed focuses the control, presses the arrow key that many times and reports the resulting value_text.",
         {
             **TARGET,
-            "operation": {**string(), "enum": ["enter", "select", "activate"]},
+            "operation": {
+                **string(),
+                "enum": ["enter", "select", "activate", "adjust"],
+            },
             "text": {"type": "string", "maxLength": 4096},
             "index": integer(0, 999),
+            "steps": integer(-100, 100),
         },
         (*TARGET, "operation"),
     ),

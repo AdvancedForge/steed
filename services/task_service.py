@@ -2316,8 +2316,9 @@ class TaskService(QObject):
         operation,
         text=None,
         index=None,
+        steps=None,
     ):
-        arguments = action_arguments(operation, text=text, index=index)
+        arguments = action_arguments(operation, text=text, index=index, steps=steps)
         grant = self._action_authority(task_id, session_id, "edit")
         action_id = uuid4().hex
         # Record identifiers/operation only: entered text and option values are

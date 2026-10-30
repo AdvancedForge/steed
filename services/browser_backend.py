@@ -1110,6 +1110,21 @@ class QtBrowserBackend(QObject):
                 return
             try:
                 data = source.result()
+                if request.get("adjust"):
+                    # Custom widgets set their own value; report what it became.
+                    changed = data["value_text"] != before
+                    if not changed and time.monotonic() < observe_deadline:
+                        settle.start(20)
+                        return
+                    result.set_result(
+                        {
+                            "value_text": data["value_text"],
+                            "status": "applied" if changed else "no_change",
+                            "changed": changed,
+                            "input_semantics": "chromium_keyboard",
+                        }
+                    )
+                    return
                 key = (
                     "checked"
                     if arguments["operation"] == "activate"
@@ -1194,6 +1209,7 @@ class QtBrowserBackend(QObject):
                 data = source.result()
                 before, keys = data["before"], data["keys"]
                 request["radio"] = data.get("radio", False)
+                request["adjust"] = data.get("adjust", False)
                 batch(0)
             except Exception as error:
                 result.set_exception(error)
