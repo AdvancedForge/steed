@@ -491,20 +491,6 @@ class LayoutDialogTests(unittest.TestCase):
         self.assertEqual(self.dialog.named_layouts.currentText(), "Work")
         self.assertEqual(self.published, [])
 
-    def test_tab_controls_preview_and_reset(self):
-        self.assertEqual(self.dialog.tab_choices["position"].currentData(), "top")
-        self.assertFalse(self.dialog.tab_width.isEnabled())
-        box = self.dialog.tab_choices["position"]
-        box.setCurrentIndex(box.findData("left"))
-        self.assertEqual(self._last().tabs["position"], "left")
-        self.assertTrue(self.dialog.tab_width.isEnabled())
-        self.dialog.tab_width.setValue(320)
-        self.dialog.tab_flags["tab_count"].setChecked(True)
-        self.assertEqual(self._last().tabs["vertical_width"], 320)
-        self.assertIs(self._last().tabs["tab_count"], True)
-        self.dialog.reset_layout()
-        self.assertEqual(self.dialog.tab_choices["position"].currentData(), "top")
-
     def test_unchecking_a_button_previews_the_hidden_toolbar(self):
         self.dialog.toolbar_list.item(TOOLBAR_ORDER.index("back")).setCheckState(
             Qt.CheckState.Unchecked

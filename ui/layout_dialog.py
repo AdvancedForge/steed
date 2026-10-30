@@ -11,7 +11,6 @@ profile, folder, file or account authority.
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QComboBox,
     QDialogButtonBox,
     QFormLayout,
@@ -34,10 +33,6 @@ from layout_preferences import (
     SIDEBAR_WIDTH_RANGE,
     LayoutPreferences,
 )
-from tab_appearance import CHOICES as TAB_CHOICES
-from tab_appearance import FLAGS as TAB_FLAGS
-from tab_appearance import LABELS as TAB_LABELS
-from tab_appearance import TAB_WIDTH_RANGE
 from ui.html_dialog import HtmlSettingsDialog
 from ui.layout_panel_editor import PanelEditor
 from ui.prompts import InputDialog as QInputDialog
@@ -95,34 +90,6 @@ def _fill_ordered(list_widget: QListWidget, order, labels: dict) -> None:
         list_widget.addItem(item)
 
 
-TAB_VALUE_LABELS = {
-    "top": "Top",
-    "bottom": "Bottom",
-    "left": "Left side (vertical)",
-    "right": "Right side (vertical)",
-    "rounded": "Rounded (Chrome-like)",
-    "pill": "Pills",
-    "underline": "Underline",
-    "boxed": "Boxed (classic)",
-    "minimal": "Minimal",
-    "hover": "On hover and active tab",
-    "always": "Always",
-    "active": "Active tab only",
-    "never": "Never (middle-click closes)",
-    "after_tabs": "After the last tab",
-    "end": "At the end of the strip",
-    "hidden": "Hidden (Ctrl+T)",
-    "manual": "My tab groups",
-    "site": "By website",
-    "none": "No grouping",
-    "shrink": "Shrink tabs",
-    "scroll": "Scroll",
-    "wrap": "Wrap to more rows",
-    "theme": "Theme accent",
-}
-TAB_FLAG_LABELS = {"favicons": "Show site icons", "tab_count": "Show tab count"}
-
-
 class LayoutDialog(HtmlSettingsDialog):
     """Edit toolbar, menu, sidebar and density settings by hand."""
 
@@ -148,7 +115,12 @@ class LayoutDialog(HtmlSettingsDialog):
 
         controls = QWidget()
         body = QVBoxLayout(controls)
-        body.addWidget(self._build_tabs_group())
+        moved = QLabel(
+            "Tab position and style, control spacing and browser text are also on "
+            "the steed:style page, with the rest of Steed's styling."
+        )
+        moved.setWordWrap(True)
+        body.addWidget(moved)
         body.addWidget(self._build_toolbar_group())
         body.addWidget(self._build_menu_group())
         body.addWidget(self._build_sidebar_group())
@@ -175,30 +147,6 @@ class LayoutDialog(HtmlSettingsDialog):
         layout.addWidget(buttons)
 
     # ---------- Construction ----------
-
-    def _build_tabs_group(self) -> QGroupBox:
-        group = QGroupBox("Tabs")
-        form = QFormLayout(group)
-        self.tab_choices = {}
-        for key, (choices, _) in TAB_CHOICES.items():
-            box = QComboBox()
-            for value in choices:
-                box.addItem(TAB_VALUE_LABELS.get(value, value.title()), value)
-            box.currentIndexChanged.connect(self._on_density_changed)
-            form.addRow(TAB_LABELS[key] + ":", box)
-            self.tab_choices[key] = box
-        self.tab_width = QSpinBox()
-        self.tab_width.setRange(*TAB_WIDTH_RANGE)
-        self.tab_width.setSuffix(" px")
-        self.tab_width.valueChanged.connect(self._on_density_changed)
-        form.addRow(TAB_LABELS["vertical_width"] + ":", self.tab_width)
-        self.tab_flags = {}
-        for key in TAB_FLAGS:
-            box = QCheckBox(TAB_FLAG_LABELS[key])
-            box.toggled.connect(self._on_density_changed)
-            form.addRow("", box)
-            self.tab_flags[key] = box
-        return group
 
     def _build_toolbar_group(self) -> QGroupBox:
         group = QGroupBox("Address bar buttons")
@@ -339,13 +287,6 @@ class LayoutDialog(HtmlSettingsDialog):
         self._working.set_density(self.density.currentData())
         self._working.set_text_size(self.text_size.currentData())
         self._working.set_panels(self.panel_editor.panels)
-        self._working.set_tabs(
-            {
-                **{key: box.currentData() for key, box in self.tab_choices.items()},
-                **{key: box.isChecked() for key, box in self.tab_flags.items()},
-                "vertical_width": self.tab_width.value(),
-            }
-        )
 
     def _publish(self) -> None:
         """Report the edited layout so the window can preview it."""
@@ -373,9 +314,6 @@ class LayoutDialog(HtmlSettingsDialog):
     def _on_density_changed(self, _index: int = 0) -> None:
         if not self._updating:
             self._publish()
-            self.tab_width.setEnabled(
-                self.tab_choices["position"].currentData() in ("left", "right")
-            )
 
     def _reload_controls(self) -> None:
         """Show the working layout in the controls without reporting it."""
@@ -400,13 +338,6 @@ class LayoutDialog(HtmlSettingsDialog):
         self.density.setCurrentIndex(DENSITIES.index(self._working.density))
         self.text_size.setCurrentIndex(TEXT_SIZES.index(self._working.text_size))
         self.panel_editor.set_panels(self._working.panels)
-        tabs = self._working.tabs
-        for key, box in self.tab_choices.items():
-            box.setCurrentIndex(box.findData(tabs[key]))
-        for key, box in self.tab_flags.items():
-            box.setChecked(tabs[key])
-        self.tab_width.setValue(tabs["vertical_width"])
-        self.tab_width.setEnabled(tabs["position"] in ("left", "right"))
         self._updating = False
 
     # ---------- Commands ----------

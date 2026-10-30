@@ -36,6 +36,47 @@ class HtmlPageTests(unittest.TestCase):
         self.wait_for(lambda: self.value(controller, "!!state"))
         return window, tab, controller
 
+    def test_style_page_sets_tab_and_toolbar_style_for_every_window(self):
+        from layout_preferences import preferences_from_config
+
+        window, _, controller = self.loaded("style")
+        other = BrowserWindow()
+        self.windows.append(other)
+        self.wait_for(
+            lambda: self.value(controller, "!!document.getElementById('tab-position')")
+        )
+        self.assertEqual(self.value(controller, "$('tab-position').value"), "top")
+        self.assertTrue(self.value(controller, "$('tab-vertical_width').disabled"))
+        self.value(
+            controller,
+            """$('tab-position').value = 'left';
+            $('tab-position').dispatchEvent(new Event('input'));
+            $('tab-style').value = 'pill'; $('tab-vertical_width').value = '300';
+            $('tab-tab_count').checked = true; $('layout-density').value = 'compact';
+            $('save-layout').click(); true""",
+        )
+        self.wait_for(
+            lambda: preferences_from_config(window.config).tabs["position"] == "left"
+        )
+        saved = preferences_from_config(window.config)
+        self.assertEqual(saved.tabs["style"], "pill")
+        self.assertEqual(saved.tabs["vertical_width"], 300)
+        self.assertIs(saved.tabs["tab_count"], True)
+        self.assertEqual(saved.density, "compact")
+        for each in (window, other):
+            self.wait_for(lambda each=each: each.tab_bar.vertical)
+            self.assertEqual(each.tab_bar.width(), 300)
+        self.wait_for(
+            lambda: "every window" in self.value(controller, "$('notice').textContent")
+        )
+        # Other appearance settings were not touched.
+        self.assertEqual(
+            window.profile_manager.registry.page_style.get(
+                window.profile_manager.current_profile_name
+            ),
+            controller.base,
+        )
+
     def test_routes_reuse_workspace_and_keep_canonical_saved_addresses(self):
         window, tab, controller = self.loaded("settings")
         count = len(window.tabs)

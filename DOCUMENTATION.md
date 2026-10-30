@@ -5201,7 +5201,8 @@ return to today's defaults. The first milestone covers manual editing:
   Today's order is the default.
 - Place the agent sidebar on the left or right and remember its width.
 - Choose compact or comfortable control spacing.
-- **Tabs:** put the tab strip at the top or bottom, or as a vertical list on the
+- **Tabs** (on the `steed:style` page, **Tabs & toolbar**, with control spacing
+  and browser text; Layout Settings keeps button and menu order): put the tab strip at the top or bottom, or as a vertical list on the
   left or right (160–480 px wide; drag the inner edge to resize, saved for every
   window). Choose a style (Rounded, Pills, Underline,
   Boxed or Minimal), tab size, an accent colour, when close buttons show, where

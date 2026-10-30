@@ -40,6 +40,33 @@ LABELS = {
     "vertical_width": "Side tab width",
 }
 
+VALUE_LABELS = {
+    "top": "Top",
+    "bottom": "Bottom",
+    "left": "Left side (vertical)",
+    "right": "Right side (vertical)",
+    "rounded": "Rounded (Chrome-like)",
+    "pill": "Pills",
+    "underline": "Underline",
+    "boxed": "Boxed (classic)",
+    "minimal": "Minimal",
+    "hover": "On hover and active tab",
+    "always": "Always",
+    "active": "Active tab only",
+    "never": "Never (middle-click closes)",
+    "after_tabs": "After the last tab",
+    "end": "At the end of the strip",
+    "hidden": "Hidden (Ctrl+T)",
+    "manual": "My tab groups",
+    "site": "By website",
+    "none": "No grouping",
+    "shrink": "Shrink tabs",
+    "scroll": "Scroll",
+    "wrap": "Wrap to more rows",
+    "theme": "Theme accent",
+}
+FLAG_LABELS = {"favicons": "Show site icons", "tab_count": "Show tab count"}
+
 
 def default_tabs() -> dict[str, Any]:
     return {
