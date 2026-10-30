@@ -121,6 +121,45 @@ class DownloadDialogTests(unittest.TestCase):
             self.dialog.perform("copy_path")
             clipboard.assert_not_called()
 
+    def test_completed_download_is_copied_into_a_chosen_library_folder(self):
+        from services.file_library import FileLibrary
+
+        library = FileLibrary(self.root / "library.sqlite")
+        self.addCleanup(library.close)
+        folder = library.create_folder("Inbox")
+        library.import_files(folder, [("Notes.txt", b"older")])
+        (self.root / "Notes.txt").write_bytes(b"downloaded notes")
+        self.manager.records["notes"].state = "DownloadCompleted"
+        tasks = SimpleNamespace(library=library)
+        dialog = DownloadDialog(self.manager, tasks=lambda: tasks)
+        self.addCleanup(dialog.deleteLater)
+        labels = [b.text() for b in dialog.findChildren(QPushButton) if b.text()]
+        self.assertIn("Add to Library…", labels)
+        with (
+            patch(
+                "ui.download_dialog.QInputDialog.getItem",
+                return_value=("Inbox (agent access off)", True),
+            ),
+            patch("ui.download_dialog.QMessageBox.information") as told,
+        ):
+            dialog.add_to_library(self.manager.records["notes"])
+        self.assertIn("Notes (2).txt", told.call_args.args[2])
+        self.assertIn("access is turned on", told.call_args.args[2])
+        entries = {e["path"]: e for e in library.list(folder)["entries"]}
+        self.assertEqual(set(entries), {"Notes.txt", "Notes (2).txt"})
+        self.assertEqual(
+            entries["Notes (2).txt"]["byte_count"], len(b"downloaded notes")
+        )
+
+    def test_unfinished_download_is_not_added_and_button_needs_a_library(self):
+        labels = [b.text() for b in self.dialog.findChildren(QPushButton)]
+        self.assertNotIn("Add to Library…", labels)
+        dialog = DownloadDialog(self.manager, tasks=lambda: self.fail("not needed"))
+        self.addCleanup(dialog.deleteLater)
+        with patch("ui.download_dialog.QMessageBox.warning") as warned:
+            dialog.add_to_library(self.manager.records["budget"])
+        warned.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,9 +11,12 @@
         return active;
     };
     const POINTER_ROLES = ["button", "link", "tab", "menuitem", "menuitemcheckbox", "menuitemradio",
-        "switch", "checkbox", "radio", "option", "treeitem"];
+        "switch", "checkbox", "radio", "option", "treeitem", "combobox"];
+    // Custom controls moved by arrow keys while focused.
+    const ADJUST_ROLES = ["slider", "spinbutton"];
     // Roles that are observed and described but have no supported action.
-    const OBSERVED_ROLES = ["textbox", "searchbox", "combobox", "slider", "spinbutton", "listbox", "gridcell"];
+    const OBSERVED_ROLES = ["textbox", "searchbox", "listbox", "gridcell", ...ADJUST_ROLES];
+    const ariaValue = node => String(node.getAttribute("aria-valuetext") || node.getAttribute("aria-valuenow") || "").slice(0, 64);
     const liveFingerprint = node => {
         const attributes = el => Array.from(el.attributes, a => [a.name, a.value]);
         const parent = el => el.parentElement || el.getRootNode()?.host;
@@ -104,7 +107,10 @@
             }
             const target = state.targets.get(request.node_id);
             if (!target || !target.node.isConnected) return fail("stale_snapshot");
-            if (state.live && (!target.fingerprint || liveFingerprint(target.node) !== target.fingerprint))
+            // Adjusting changes the control's own markup (its value, a moving
+            // thumb); after the first key it must stay the same focused element.
+            const adjusting = request.operation === "adjust" && ["input_check", "input_observe"].includes(request.mode);
+            if (state.live && !adjusting && (!target.fingerprint || liveFingerprint(target.node) !== target.fingerprint))
                 return fail("stale_snapshot");
             if (["upload_prepare", "upload_observe"].includes(request.mode)) {
                 const node = target.node, doc = node.ownerDocument;
@@ -133,6 +139,17 @@
                     return fail("target_not_editable");
                 if (request.mode !== "input_prepare" && focused(doc) !== node) return fail("focus_unavailable");
                 if (request.mode === "input_check") return JSON.stringify({valid: true});
+                if (request.operation === "adjust") {
+                    const role = (node.getAttribute("role") || "").toLowerCase();
+                    if (!state.live || win !== window || !ADJUST_ROLES.includes(role) || node.tabIndex < 0)
+                        return fail("control_unsupported");
+                    if (request.mode === "input_observe") return JSON.stringify({value_text: ariaValue(node)});
+                    node.focus({preventScroll: true});
+                    if (focused(doc) !== node) return fail("focus_unavailable");
+                    const [more, less] = role === "slider" ? ["right", "left"] : ["up", "down"];
+                    const keys = Array(Math.abs(request.steps)).fill(request.steps > 0 ? more : less);
+                    return JSON.stringify({before: ariaValue(node), keys, adjust: true});
+                }
                 if (request.operation === "activate" && tag === "input" && ["checkbox", "radio"].includes(type)) {
                     if (request.mode === "input_observe") return JSON.stringify({checked: node.checked});
                     node.focus({preventScroll: true});
@@ -565,6 +582,9 @@
                         if (request.live && win === window && POINTER_ROLES.includes(role)) {
                             operations = ["activate"];
                             constraints.push("pointer_activation", "website_handlers_can_change_data");
+                        } else if (request.live && win === window && ADJUST_ROLES.includes(role) && node.tabIndex >= 0) {
+                            operations = ["adjust"];
+                            constraints.push("keyboard_adjustment", "website_handlers_can_change_data");
                         } else {
                             constraints.push("custom_control_unsupported");
                             limitations.add("custom_controls_present");
@@ -616,7 +636,7 @@
                             // Custom sliders and meters report their position; native
                             // control values stay omitted.
                             const valueText = kind === "custom" && ["slider", "spinbutton"].includes(role)
-                                ? clean(node.getAttribute("aria-valuetext") || node.getAttribute("aria-valuenow"), 64) : "";
+                                ? clean(ariaValue(node), 64) : "";
                             const required = (["input", "textarea", "select", "checkbox", "radio"].includes(kind) && node.hasAttribute("required")) ||
                                 (node.getAttribute("aria-required") || "").trim().toLowerCase() === "true";
                             frame.targets.push({node_id: nodeId, kind, role: role || implicitRole(node, tag, type, kind),

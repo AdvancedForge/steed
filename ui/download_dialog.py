@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.html_dialog import HtmlSettingsDialog
+from ui.prompts import InputDialog as QInputDialog
 from ui.prompts import MessageBox as QMessageBox
 
 
@@ -32,9 +33,11 @@ def choose_download_destination(suggested, parent=None):
 
 
 class DownloadDialog(HtmlSettingsDialog):
-    def __init__(self, manager, parent=None):
+    def __init__(self, manager, parent=None, *, tasks=None):
         super().__init__(parent)
         self.manager = manager
+        # Returns the task service that owns the agent file library, if any.
+        self.tasks = tasks
         self.setWindowTitle("Downloads")
         self.resize(850, 420)
         layout = QVBoxLayout(self)
@@ -58,6 +61,7 @@ class DownloadDialog(HtmlSettingsDialog):
             ("Open", "open"),
             ("Show Folder", "reveal"),
             ("Copy Path", "copy_path"),
+            *((("Add to Library…", "library"),) if tasks is not None else ()),
         ):
             button = QPushButton(label)
             button.setAutoDefault(False)
@@ -117,6 +121,9 @@ class DownloadDialog(HtmlSettingsDialog):
         if action == "copy_path":
             QApplication.clipboard().setText(record.path)
             return
+        if action == "library":
+            self.add_to_library(record)
+            return
         if action in ("open", "reveal"):
             if not Path(record.path).exists() or (
                 action == "open" and record.state != "DownloadCompleted"
@@ -128,3 +135,50 @@ class DownloadDialog(HtmlSettingsDialog):
             QDesktopServices.openUrl(self.manager.file_url(record, action == "reveal"))
         else:
             self.manager.control(key, action)
+
+    def add_to_library(self, record):
+        """Copy a finished download into a chosen agent file library folder."""
+        from services.file_library import read_import
+
+        path = Path(record.path)
+        if record.state != "DownloadCompleted" or not path.is_file():
+            QMessageBox.warning(
+                self, "Add to Library", "The completed file is not available."
+            )
+            return
+        library = self.tasks().library
+        folders = library.folders()
+        if not folders:
+            QMessageBox.information(
+                self,
+                "Add to Library",
+                "Create a folder in the agent File Library first.",
+            )
+            return
+        labels = [
+            folder["name"] + ("" if folder["enabled"] else " (agent access off)")
+            for folder in folders
+        ]
+        label, accepted = QInputDialog.getItem(
+            self, "Add to Library", "Copy into library folder:", labels, 0, False
+        )
+        if not accepted or label not in labels:
+            return
+        folder = folders[labels.index(label)]
+        try:
+            ((name, data),) = read_import([path])
+            name = library.available_path(folder["id"], name)
+            library.import_files(folder["id"], [(name, data)])
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, "Add to Library", str(error))
+            return
+        QMessageBox.information(
+            self,
+            "Add to Library",
+            f"Copied to {folder['name']}/{name}."
+            + (
+                ""
+                if folder["enabled"]
+                else " Agents can use it once that folder's access is turned on."
+            ),
+        )

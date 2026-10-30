@@ -607,7 +607,15 @@ class PageInspector(QObject):
             or descriptor.read_only
             or arguments["operation"] not in descriptor.operations
             or descriptor.kind
-            not in ("input", "textarea", "select", "checkbox", "radio", "editable")
+            not in (
+                "input",
+                "textarea",
+                "select",
+                "checkbox",
+                "radio",
+                "editable",
+                "custom",
+            )
         ):
             raise PageInspectionError("control_unsupported")
         return {"snapshot_id": snapshot_id, "node_id": node_id, **arguments}

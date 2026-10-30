@@ -12,6 +12,16 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Harder controls and library discovery — October 30, 2026.** Focusable custom
+sliders and spin buttons accept `adjust` (arrow keys through the native keyboard
+path, reporting the resulting value); custom comboboxes join pointer activation.
+`library.search` can match text inside text files with snippets and order by
+most recent change (library schema v2 adds modification times, migrated in
+place). Downloads offer **Add to Library…**. Open: actionable cross-origin
+frames (their controls live in a separate frame context, and pointer clicks
+would need frame-to-page coordinates), and reading the engine's own
+accessibility tree (needs mapping its nodes back to inspected targets).
+
 **Website understanding and agent reconnects — October 30, 2026.** Targets
 report the role their native element exposes (searchbox, combobox, listbox,
 spinbutton, slider, …), `aria-checked`, popup and busy states, and custom slider

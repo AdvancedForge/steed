@@ -148,7 +148,13 @@ def controller(window, name, source_tab=None):
     if name == "downloads":
         from ui.download_dialog import DownloadDialog
 
-        return DownloadDialog(window.download_manager, window)
+        # The agent library is unavailable from incognito windows.
+        private = window.profile_manager.is_search_profile()
+        return DownloadDialog(
+            window.download_manager,
+            window,
+            tasks=None if private else lambda: registry.tasks,
+        )
     if name == "bookmarks":
         from ui.bookmarks_dialog import BookmarksDialog
 

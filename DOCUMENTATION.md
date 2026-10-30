@@ -1076,9 +1076,20 @@ Targets report ARIA states as `states`: `expanded`/`collapsed`, `pressed`,
 with a suggestion list), `listbox` (multiple selects), `spinbutton`, `slider`,
 `checkbox` or `radio`. Custom sliders and spin buttons report their
 `aria-valuetext` or `aria-valuenow` as `value_text`; native control values stay
-omitted. Custom textboxes, comboboxes, listboxes, sliders, spin buttons and grid
-cells are described but have no DOM action (`custom_control_unsupported`); tree
-items join the pointer-activated roles below.
+omitted. Custom textboxes, listboxes and grid cells are described but have no
+DOM action (`custom_control_unsupported`); tree items and comboboxes join the
+pointer-activated roles below (activate a combobox to open it, inspect again,
+then activate its option).
+
+In live sessions, a focusable custom slider or spin button reports `adjust`
+with the `keyboard_adjustment` constraint. `page.act` with `operation: "adjust"`
+and `steps` (−100 to 100, not 0; positive increases) focuses it and presses
+ArrowRight/ArrowLeft (sliders) or ArrowUp/ArrowDown (spin buttons) that many
+times through the same native keyboard path as checkboxes, checking focus
+between batches. The receipt reports the widget's resulting `value_text` and
+`applied` or `no_change`; the website decides the step size and limits. It needs
+edit permission. During the adjustment the control's own markup may change, so
+only its identity and focus are rechecked.
 
 Frames from another origin cannot be read by the main document's script. When
 such a frame's origin is in the task's scope, Steed runs the same read inside
@@ -1520,9 +1531,17 @@ agent sidebar, to keep reusable files outside individual tasks:
    No repeated per-file or task-grant popup is needed for library operations.
    Folders start disabled. Enable only folders whose contents you intend agents
    and their model/process providers to receive.
+   To keep something you downloaded, select it in **Downloads** and choose
+   **Add to Library…**, then the library folder; a taken name becomes
+   `name (2).ext`. The button is not offered in incognito windows.
 4. Ask your agent: “Use my Research library folder, read the project notes and
    save your revised report back into it.” The agent discovers enabled folders
-   through MCP; it does not need a local host path or another upload.
+   through MCP; it does not need a local host path or another upload. Agents can
+   also search inside text files (`library.search` with `content: true`, files up
+   to 4 MiB, returning a short snippet) and list the newest additions first
+   (`order: "recent"`), so “use the PDF I just added” or “find my notes about the
+   budget” work without browsing every folder. Each result reports `modified`;
+   files saved before this version report 0 until they next change.
 5. Disable the same switch to stop further access immediately. Unfinished writes
    are cancelled and cannot resume simply because you re-enable the folder.
    Copies an agent has already read cannot be retracted.

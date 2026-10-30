@@ -7,6 +7,7 @@ import test_task_profiles as fixtures
 from PyQt6.QtCore import QUrl
 
 from browser_window import BrowserWindow
+from services.page_inspector import PageInspectionError
 
 HTML = """<html><title>Semantics fixture</title><body>
 <h1>Semantics</h1>
@@ -22,6 +23,25 @@ HTML = """<html><title>Semantics fixture</title><body>
 <button type="button" aria-haspopup="menu" aria-expanded="false">Options</button>
 <ul role="tree"><li role="treeitem" aria-selected="true">Inbox</li></ul>
 <div id="results" aria-busy="true"><button type="button">Load</button></div>
+<div role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0"
+  aria-valuemax="10" aria-valuenow="5"></div>
+<div role="spinbutton" tabindex="0" aria-label="Guests" aria-valuenow="2"></div>
+<div role="combobox" tabindex="0" aria-label="Country" aria-expanded="false"
+  aria-controls="countries" style="padding:6px">Choose</div>
+<ul role="listbox" id="countries" hidden>
+  <li role="option" style="padding:6px">Norway</li></ul>
+<script>
+const step = (node, keys, min, max) => node.addEventListener('keydown', event => {
+  const delta = keys[event.key]; if (delta === undefined) return;
+  const value = Math.min(max, Math.max(min, +node.getAttribute('aria-valuenow') + delta));
+  node.setAttribute('aria-valuenow', value); event.preventDefault(); });
+step(document.querySelector('[aria-label=Brightness]'), {ArrowRight: 1, ArrowLeft: -1}, 0, 10);
+step(document.querySelector('[aria-label=Guests]'), {ArrowUp: 1, ArrowDown: -1}, 1, 8);
+const box = document.querySelector('[role=combobox]'), list = document.getElementById('countries');
+box.addEventListener('click', () => { list.hidden = false; box.setAttribute('aria-expanded', 'true'); });
+list.querySelector('li').addEventListener('click', () => {
+  box.textContent = 'Norway'; list.hidden = true; box.setAttribute('aria-expanded', 'false'); });
+</script>
 </body></html>"""
 
 
@@ -87,6 +107,92 @@ class PageSemanticsTests(unittest.TestCase):
         # Native control values stay omitted.
         self.assertEqual(targets["Volume"].value_text, "")
         self.assertEqual(targets["Count"].value_text, "")
+
+    def act(self, task, session, snapshot, target, operation, **extra):
+        return self.command(
+            "page.act",
+            task_id=task,
+            session_id=session,
+            snapshot_id=snapshot.snapshot_id,
+            target_id=target.target_id,
+            operation=operation,
+            **extra,
+        )
+
+    def adjust(self, task, session, label, steps):
+        snapshot = self.inspect(task, session)
+        target = self.targets(snapshot)[label]
+        self.assertEqual(target.operations, ("adjust",))
+        self.assertIn("keyboard_adjustment", target.constraints)
+        return self.act(task, session, snapshot, target, "adjust", steps=steps)
+
+    def test_custom_sliders_and_spin_buttons_move_by_arrow_keys(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        result = self.adjust(task, session, "Brightness", 3)
+        self.assertEqual((result.status, result.value_text), ("applied", "8"))
+        self.assertEqual(result.input_semantics, "chromium_keyboard")
+        # The widget clamps; Steed reports what it became.
+        result = self.adjust(task, session, "Brightness", -40)
+        self.assertEqual(result.value_text, "0")
+        result = self.adjust(task, session, "Brightness", -1)
+        self.assertEqual((result.status, result.changed), ("no_change", False))
+        result = self.adjust(task, session, "Guests", 2)
+        self.assertEqual(result.value_text, "4")
+        self.assertEqual(
+            self.value(
+                view.page(),
+                "document.querySelector('[aria-label=Guests]').getAttribute('aria-valuenow')",
+            ),
+            "4",
+        )
+
+    def test_adjust_is_refused_for_other_controls_and_bad_steps(self):
+        window, _ = self.window()
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        targets = self.targets(snapshot)
+        with self.assertRaises(PageInspectionError) as refused:
+            self.act(task, session, snapshot, targets["Find"], "adjust", steps=1)
+        self.assertEqual(refused.exception.code, "control_unsupported")
+        for steps in (0, 101, None):
+            with self.assertRaises(ValueError):
+                self.act(
+                    task,
+                    session,
+                    snapshot,
+                    targets["Brightness"],
+                    "adjust",
+                    steps=steps,
+                )
+        with self.assertRaises(ValueError):
+            self.act(task, session, snapshot, targets["Load"], "activate", steps=1)
+
+    def test_custom_combobox_opens_and_its_option_is_chosen(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        box = self.targets(snapshot)["Country"]
+        self.assertEqual(box.operations, ("activate",))
+        self.assertIn("collapsed", box.states)
+        self.act(task, session, snapshot, box, "activate")
+        self.wait_for(
+            lambda: self.value(
+                view.page(), "!document.getElementById('countries').hidden"
+            )
+        )
+        snapshot = self.inspect(task, session)
+        option = next(t for t in snapshot.frames[0].targets if t.role == "option")
+        self.assertIn("expanded", self.targets(snapshot)["Country"].states)
+        self.act(task, session, snapshot, option, "activate")
+        self.wait_for(
+            lambda: (
+                self.value(
+                    view.page(), "document.querySelector('[role=combobox]').textContent"
+                )
+                == "Norway"
+            )
+        )
 
     def wait(self, task, session, timeout_ms=3000):
         return self.command(
