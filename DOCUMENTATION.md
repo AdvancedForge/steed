@@ -1531,9 +1531,17 @@ agent sidebar, to keep reusable files outside individual tasks:
    No repeated per-file or task-grant popup is needed for library operations.
    Folders start disabled. Enable only folders whose contents you intend agents
    and their model/process providers to receive.
+   To keep something you downloaded, select it in **Downloads** and choose
+   **Add to Library…**, then the library folder; a taken name becomes
+   `name (2).ext`. The button is not offered in incognito windows.
 4. Ask your agent: “Use my Research library folder, read the project notes and
    save your revised report back into it.” The agent discovers enabled folders
-   through MCP; it does not need a local host path or another upload.
+   through MCP; it does not need a local host path or another upload. Agents can
+   also search inside text files (`library.search` with `content: true`, files up
+   to 4 MiB, returning a short snippet) and list the newest additions first
+   (`order: "recent"`), so “use the PDF I just added” or “find my notes about the
+   budget” work without browsing every folder. Each result reports `modified`;
+   files saved before this version report 0 until they next change.
 5. Disable the same switch to stop further access immediately. Unfinished writes
    are cancelled and cannot resume simply because you re-enable the folder.
    Copies an agent has already read cannot be retracted.

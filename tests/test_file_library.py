@@ -312,6 +312,91 @@ class FileLibraryTests(unittest.TestCase):
         self.assertTrue(self.library.row(self.folder, "project")["deleted"])
         self.assertTrue(self.library.row(self.folder, "project/file")["deleted"])
 
+    def test_content_search_finds_text_inside_files_with_snippets(self):
+        self.library.enable(self.folder, True)
+        self.library.import_files(
+            self.folder,
+            [
+                (
+                    "notes/meeting.txt",
+                    b"Agenda\n\nThe Quarterly budget is\n  due Friday.",
+                ),
+                ("budget.csv", b"item,amount"),
+                ("image.bin", b"\x00\x01quarterly budget"),
+                ("other.txt", b"nothing relevant"),
+            ],
+        )
+        found = self.library.search("quarterly BUDGET", content=True)["entries"]
+        self.assertEqual([e["path"] for e in found], ["notes/meeting.txt"])
+        self.assertEqual(found[0]["match"], "content")
+        self.assertIn("Quarterly budget is due Friday.", found[0]["snippet"])
+        # Path matches are still reported, without a snippet.
+        both = self.library.search("budget", content=True)["entries"]
+        self.assertEqual(
+            {(e["path"], e["match"]) for e in both},
+            {("budget.csv", "path"), ("notes/meeting.txt", "content")},
+        )
+        self.assertNotIn("snippet", next(e for e in both if e["match"] == "path"))
+        # Without content=true only names match.
+        names = self.library.search("Friday")["entries"]
+        self.assertEqual(names, [])
+        with self.assertRaises(ValueError):
+            self.library.search("", content=True)
+        with self.assertRaises(ValueError):
+            self.library.search("x", content=1)
+        from services.agent_tools import TOOLS_BY_NAME
+
+        tool = TOOLS_BY_NAME["steed_library_search"]
+        tool.validate({"query": "x", "content": True, "order": "recent"})
+        for bad in ({"content": 1}, {"content": "yes"}, {"order": "size"}):
+            with self.assertRaises(ValueError):
+                tool.validate(bad)
+
+    def test_recent_order_lists_newest_changes_first(self):
+        self.library.enable(self.folder, True)
+        for name in ("a.txt", "b.txt", "c.txt"):
+            self.library.import_files(self.folder, [(name, name.encode())])
+            time.sleep(0.01)
+        self.write("a.txt", b"edited", expected=1)
+        found = self.library.search(order="recent", limit=2)
+        self.assertEqual([e["path"] for e in found["entries"]], ["a.txt", "c.txt"])
+        self.assertTrue(found["has_more"])
+        self.assertGreater(found["entries"][0]["modified"], 1_700_000_000)
+        with self.assertRaises(ValueError):
+            self.library.search(order="newest")
+        cursor = self.library.search(limit=1)["cursor"]
+        with self.assertRaises(ValueError):
+            self.library.search(order="recent", after=cursor)
+
+    def test_version_one_library_gains_modification_times(self):
+        self.library.import_files(self.folder, [("old.txt", b"before upgrade")])
+        self.library.close()
+        db = sqlite3.connect(self.path)
+        db.executescript(
+            "CREATE TABLE copy AS SELECT folder,path,kind,revision,data,sha256,"
+            "deleted,trash_id FROM entries; DROP TABLE entries;"
+            "ALTER TABLE copy RENAME TO entries; PRAGMA user_version=1;"
+        )
+        db.close()
+        self.library = FileLibrary(self.path)
+        self.library.enable(self.folder, True)
+        (old,) = self.library.search("old")["entries"]
+        self.assertEqual(old["modified"], 0)
+        self.library.import_files(self.folder, [("new.txt", b"after upgrade")])
+        newest = self.library.search(order="recent")["entries"][0]
+        self.assertEqual(newest["path"], "new.txt")
+
+    def test_available_path_numbers_taken_names(self):
+        self.library.import_files(self.folder, [("report.pdf", b"one")])
+        self.assertEqual(
+            self.library.available_path(self.folder, "report.pdf"), "report (2).pdf"
+        )
+        self.library.import_files(self.folder, [("report (2).pdf", b"two")])
+        self.assertEqual(
+            self.library.available_path(self.folder, "report.pdf"), "report (3).pdf"
+        )
+        self.assertEqual(self.library.available_path(self.folder, "new.pdf"), "new.pdf")
+
     def test_search_returns_metadata_across_roots_with_literal_queries(self):
         other = self.library.create_folder("Other")
         hidden = self.library.create_folder("Hidden")

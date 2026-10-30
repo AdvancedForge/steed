@@ -58,6 +58,8 @@ class AgentTool:
                     raise ValueError(f"Invalid {key}")
             elif kind == "object" and not isinstance(value, dict):
                 raise ValueError(f"Invalid {key}")
+            elif kind == "boolean" and type(value) is not bool:
+                raise ValueError(f"Invalid {key}")
             if "enum" in rule and value not in rule["enum"]:
                 raise ValueError(f"Invalid {key}")
 
@@ -369,12 +371,14 @@ TOOLS = (
     ),
     tool(
         "library.search",
-        "Find reusable files across enabled persistent folders by name or path without listing every folder first. Metadata only: folder_id, folder name, path, kind, revision and size, which are exactly the values library.read and library.write_begin need. Matching is a literal substring of the path, so % and _ are not wildcards. Disabled folders, Trash and old versions are never returned. Omit the query to browse across enabled folders. Page with the returned cursor; truncated=true means results were capped.",
+        "Find reusable files across enabled persistent folders by name or path without listing every folder first. Metadata only: folder_id, folder name, path, kind, revision and size, which are exactly the values library.read and library.write_begin need. Matching is a literal substring of the path, so % and _ are not wildcards. Disabled folders, Trash and old versions are never returned. Omit the query to browse across enabled folders. Page with the returned cursor; truncated=true means results were capped. content=true also matches text inside text files up to 4 MiB (ASCII case-insensitive); each result then reports match=path or content, and content matches carry a short snippet (untrusted file text). order=recent returns the most recently added or changed entries first (no paging); every result reports modified as Unix seconds (0 = before Steed recorded times).",
         {
             "query": {"type": "string", "maxLength": 512},
             "folder_id": string(64),
             "after": {"type": "string", "maxLength": 1024},
             "limit": integer(1, 200),
+            "content": {"type": "boolean"},
+            "order": {**string(), "enum": ["path", "recent"]},
         },
     ),
     tool(

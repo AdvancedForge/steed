@@ -7,12 +7,16 @@ import os
 import sqlite3
 import stat
 import threading
+import time
 from pathlib import PurePosixPath
 from uuid import uuid4
 
 FILE_BYTES = 64 * 1024 * 1024
 LIBRARY_BYTES = 512 * 1024 * 1024
 CHUNK_BYTES = 32768
+# Content search reads text files up to this size and returns short snippets.
+CONTENT_SEARCH_BYTES = 4 * 1024 * 1024
+SNIPPET_CHARS = 200
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS folders (
@@ -22,6 +26,7 @@ CREATE TABLE IF NOT EXISTS entries (
  folder TEXT NOT NULL REFERENCES folders(id), path TEXT NOT NULL, kind TEXT NOT NULL,
  revision INTEGER NOT NULL, data BLOB NOT NULL, sha256 TEXT NOT NULL,
  deleted INTEGER NOT NULL DEFAULT 0, trash_id TEXT NOT NULL DEFAULT '',
+ modified REAL NOT NULL DEFAULT 0,
  PRIMARY KEY(folder,path)
 );
 CREATE TABLE IF NOT EXISTS versions (
@@ -44,7 +49,7 @@ CREATE TABLE IF NOT EXISTS activity (
  sequence INTEGER PRIMARY KEY AUTOINCREMENT, task TEXT NOT NULL,
  folder TEXT NOT NULL, kind TEXT NOT NULL, reference TEXT NOT NULL
 );
-PRAGMA user_version=1;
+PRAGMA user_version=2;
 """
 
 
@@ -79,10 +84,17 @@ class FileLibrary:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
-        if self.db.execute("PRAGMA user_version").fetchone()[0] not in (0, 1):
+        if self.db.execute("PRAGMA user_version").fetchone()[0] not in (0, 1, 2):
             self.db.close()
             raise ValueError("Unsupported library database")
         self.db.executescript(SCHEMA)
+        # Version 2 records when each entry last changed; older entries read as 0.
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(entries)")}
+        if "modified" not in columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE entries ADD COLUMN modified REAL NOT NULL DEFAULT 0"
+                )
         # Never resume an unfinished mutation for an interrupted task on restart.
         with self.db:
             self.db.execute(
@@ -233,37 +245,75 @@ class FileLibrary:
             raise ValueError("Search text must be at most 512 printable characters")
         return query
 
-    def search(self, query="", after="", limit=200, *, folder_id=None):
-        """Find entry metadata across enabled roots without reading file contents.
+    def search(
+        self,
+        query="",
+        after="",
+        limit=200,
+        *,
+        folder_id=None,
+        content=False,
+        order="path",
+    ):
+        """Find entry metadata across enabled roots.
 
         This is the agent-facing discovery surface, so only enabled roots are
-        ever considered. Results are ordered by folder name then path so paging
-        is deterministic and groups each root together, and each row carries its
+        ever considered. Path order is by folder name then path so paging is
+        deterministic and groups each root together, and each row carries its
         folder id and name so identical file names in different roots stay
         distinguishable. ``instr`` gives literal substring matching, so ``%`` and
-        ``_`` in a query are never wildcards.
+        ``_`` in a query are never wildcards. With ``content``, text files up to
+        CONTENT_SEARCH_BYTES also match on their contents (ASCII case-insensitive)
+        and return a short snippet. ``order="recent"`` returns the most recently
+        changed entries first, without paging.
         """
         self.check()
         query = self._search_query(query)
         position = self._search_cursor(after)
         if type(limit) is not int or not 1 <= limit <= 200:
             raise ValueError("List between 1 and 200 entries")
+        if order not in ("path", "recent"):
+            raise ValueError("Order by path or recent")
+        if type(content) is not bool:
+            raise ValueError("content must be true or false")
+        if content and not query:
+            raise ValueError("Give search text to look for inside files")
+        if order == "recent" and position is not None:
+            raise ValueError("Recent results are not paged; raise the limit instead")
         if folder_id is not None:
             # Re-checked on every call so a root disabled since discovery hides.
             self.folder(folder_id, agent=True)
+        # Text files only: a NUL byte near the start marks binary content.
+        text_match = (
+            " OR (? AND e.kind='file' AND length(e.data)<=?"
+            " AND instr(substr(e.data,1,1024),X'00')=0"
+            " AND instr(lower(CAST(e.data AS TEXT)),lower(?))>0)"
+        )
+        ordering = (
+            " ORDER BY e.modified DESC, f.name, e.folder, e.path"
+            if order == "recent"
+            else " ORDER BY f.name, e.folder, e.path"
+        )
         # Fetch one extra match for paging; do not materialize thousands of rows.
         rows = self.db.execute(
             "SELECT e.folder AS folder_id, f.name AS folder, e.path, e.kind,"
-            " e.revision, e.sha256, length(e.data) AS byte_count"
+            " e.revision, e.sha256, length(e.data) AS byte_count,"
+            " CAST(e.modified AS INTEGER) AS modified,"
+            " instr(e.path, ?)>0 AS path_match"
             " FROM entries e JOIN folders f ON f.id=e.folder"
             " WHERE e.deleted=0 AND f.enabled=1"
             " AND (? IS NULL OR e.folder=?)"
-            " AND instr(e.path, ?)>0"
+            " AND (instr(e.path, ?)>0" + text_match + ")"
             " AND (? IS NULL OR (f.name, e.folder, e.path) > (?, ?, ?))"
-            " ORDER BY f.name, e.folder, e.path LIMIT ?",
+            + ordering
+            + " LIMIT ?",
             (
+                query,
                 folder_id,
                 folder_id,
+                query,
+                int(content),
+                CONTENT_SEARCH_BYTES,
                 query,
                 position[0] if position else None,
                 position[0] if position else None,
@@ -272,24 +322,42 @@ class FileLibrary:
                 limit + 1,
             ),
         ).fetchall()
-        entries = [dict(row) for row in rows[:limit]]
+        entries = []
+        for row in rows[:limit]:
+            entry = dict(row)
+            path_match = entry.pop("path_match")
+            if content:
+                entry["match"] = "path" if path_match else "content"
+                if not path_match:
+                    entry["snippet"] = self._snippet(
+                        entry["folder_id"], entry["path"], query
+                    )
+            entries.append(entry)
+        cursor = after
+        if entries and order == "path":
+            cursor = json.dumps(
+                [entries[-1]["folder"], entries[-1]["folder_id"], entries[-1]["path"]],
+                ensure_ascii=False,
+            )
         return {
             "entries": entries,
-            "cursor": (
-                json.dumps(
-                    [
-                        entries[-1]["folder"],
-                        entries[-1]["folder_id"],
-                        entries[-1]["path"],
-                    ],
-                    ensure_ascii=False,
-                )
-                if entries
-                else after
-            ),
+            "cursor": cursor,
             "has_more": len(rows) > limit,
             "truncated": len(rows) > limit,
         }
+
+    def _snippet(self, folder_id, path, query):
+        """Up to SNIPPET_CHARS of text around the first match, whitespace folded."""
+        data = self.db.execute(
+            "SELECT data FROM entries WHERE folder=? AND path=?", (folder_id, path)
+        ).fetchone()[0]
+        text = bytes(data).decode("utf-8", errors="replace")
+        at = text.lower().find(query.lower())
+        if at < 0:
+            return ""
+        start = max(0, at - SNIPPET_CHARS // 2)
+        piece = " ".join(text[start : start + SNIPPET_CHARS * 2].split())
+        return ("…" if start else "") + piece[:SNIPPET_CHARS]
 
     def capacity(self, incoming=0):
         used = self.db.execute(
@@ -350,8 +418,10 @@ class FileLibrary:
         revision = row["revision"] + 1 if row else 1
         digest = hashlib.sha256(data).hexdigest() if kind == "file" else ""
         self.db.execute(
-            "INSERT OR REPLACE INTO entries VALUES (?,?,?,?,?,?,0,'')",
-            (folder_id, path, kind, revision, data, digest),
+            "INSERT OR REPLACE INTO entries"
+            " (folder,path,kind,revision,data,sha256,deleted,trash_id,modified)"
+            " VALUES (?,?,?,?,?,?,0,'',?)",
+            (folder_id, path, kind, revision, data, digest, time.time()),
         )
         self.touch_parents(folder_id, path)
         return self.metadata(self.row(folder_id, path))
@@ -613,8 +683,8 @@ class FileLibrary:
             for item, old in recovery:
                 self.parents(folder_id, item["path"])
                 self.db.execute(
-                    "UPDATE entries SET revision=revision+1,data=?,sha256=?,deleted=0,trash_id='' WHERE folder=? AND path=?",
-                    (old["data"], old["sha256"], folder_id, item["path"]),
+                    "UPDATE entries SET revision=revision+1,data=?,sha256=?,deleted=0,trash_id='',modified=? WHERE folder=? AND path=?",
+                    (old["data"], old["sha256"], time.time(), folder_id, item["path"]),
                 )
                 self.touch_parents(folder_id, item["path"])
         return self.metadata(self.row(folder_id, path))
@@ -637,6 +707,22 @@ class FileLibrary:
                     raise ValueError("Each library file must be at most 64 MiB")
                 self.put(folder_id, path, "file", data, 0)
         return {"added": len(files)}
+
+    def available_path(self, folder_id, path):
+        """``path``, or ``name (2).ext`` and so on if an entry already uses it."""
+        self.folder(folder_id)
+        relative_path(path)
+        pure = PurePosixPath(path)
+        for number in range(1, 1000):
+            candidate = (
+                path
+                if number == 1
+                else str(pure.with_name(f"{pure.stem} ({number}){pure.suffix}"))
+            )
+            row = self.row(folder_id, candidate)
+            if row is None or row["deleted"]:
+                return candidate
+        raise ValueError("Too many files with this name; rename it first")
 
     def clear_recovery(self, folder_id):
         self.folder(folder_id)
