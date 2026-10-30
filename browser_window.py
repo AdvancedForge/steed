@@ -797,6 +797,8 @@ class BrowserWindow(QMainWindow):
 
         self._memory = memory_modes.apply_process_policies(self.config)
         QTimer.singleShot(0, self._apply_memory_policies)
+        memory_modes.monitor().changed.connect(self._memory_pressure_changed)
+        memory_modes.monitor().start()
         strip = TabStrip
         if native():
             from ui.native_tab_strip import NativeTabStrip
@@ -2040,6 +2042,26 @@ class BrowserWindow(QMainWindow):
                 muted=page.isAudioMuted(),
             )
 
+    def _on_tab_lifecycle(self, tab):
+        if not self._closing and tab in self.tabs:
+            state = tab.page().lifecycleState()
+            names = {
+                QWebEnginePage.LifecycleState.Frozen: "frozen",
+                QWebEnginePage.LifecycleState.Discarded: "unloaded",
+            }
+            self.tab_bar.set_tab_state(
+                self.tabs.index(tab), lifecycle=names.get(state, "active")
+            )
+
+    def _set_keep_loaded(self, tab, keep):
+        """Exempt one tab from freezing and unloading, and wake it if needed."""
+        if tab not in self.tabs:
+            return
+        tab.keep_loaded = bool(keep)
+        self.tab_bar.set_tab_state(self.tabs.index(tab), keep_loaded=tab.keep_loaded)
+        if keep and tab.page().lifecycleState() != QWebEnginePage.LifecycleState.Active:
+            tab.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
+
     def _toggle_tab_mute(self, index):
         if 0 <= index < len(self.tabs):
             page = self.tabs[index].page()
@@ -2329,9 +2351,24 @@ class BrowserWindow(QMainWindow):
             self._lifecycle_timer.stop()
         self._apply_tab_lifecycle()
 
+    def _memory_pressure_changed(self, low):
+        """Low system memory: follow Memory saver now, then restore settings."""
+        import memory_modes
+
+        if self._closing:
+            return
+        self._memory = memory_modes.apply_process_policies(self.config)
+        self._apply_memory_policies()
+        if low and self._memory["auto_saver"]:
+            memory_modes.free_now([self])
+
     def _tab_keeps_running(self, tab):
         """Tabs that must stay active whatever the memory mode says."""
-        if getattr(tab, "workspace_name", None) or getattr(tab, "agent_panel", False):
+        if (
+            getattr(tab, "workspace_name", None)
+            or getattr(tab, "agent_panel", False)
+            or getattr(tab, "keep_loaded", False)
+        ):
             return True
         page = tab.page()
         if page is None or page.recentlyAudible() or page.devToolsPage() is not None:
@@ -2448,6 +2485,12 @@ class BrowserWindow(QMainWindow):
             "Unmute Tab" if muted else "Mute Tab",
             lambda: tab in self.tabs and self._toggle_tab_mute(self.tabs.index(tab)),
         )
+        keep = menu.addAction(
+            "Keep This Tab Loaded",
+            lambda checked=False: self._set_keep_loaded(tab, checked),
+        )
+        keep.setCheckable(True)
+        keep.setChecked(getattr(tab, "keep_loaded", False))
         copy = menu.addAction(
             "Copy Link Address",
             lambda: QApplication.clipboard().setText(tab.url().toString()),
@@ -2565,6 +2608,7 @@ class BrowserWindow(QMainWindow):
         "iconChanged",
     )
     PAGE_SIGNALS = (
+        "lifecycleStateChanged",
         "recentlyAudibleChanged",
         "audioMutedChanged",
         "zoomFactorChanged",
@@ -2583,6 +2627,7 @@ class BrowserWindow(QMainWindow):
         tab.loadFinished.connect(lambda ok: self._on_load_finished(tab, ok))
         tab.iconChanged.connect(lambda icon: self._on_tab_icon(tab, icon))
         tab.page().recentlyAudibleChanged.connect(lambda _: self._on_tab_audio(tab))
+        tab.page().lifecycleStateChanged.connect(lambda _: self._on_tab_lifecycle(tab))
         tab.page().audioMutedChanged.connect(lambda _: self._on_tab_audio(tab))
         if hasattr(tab.page(), "zoomFactorChanged"):
             tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())

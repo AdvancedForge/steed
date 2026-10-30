@@ -8,6 +8,8 @@ leaves the mode reported as "custom".
 import os
 import re
 
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+
 MODES = ("saver", "balanced", "performance")
 MODE_LABELS = {
     "saver": "Memory saver",
@@ -85,6 +87,15 @@ OPTIMIZATIONS = {
         ],
         "presets": {"saver": 0, "balanced": 60, "performance": -1},
     },
+    "auto_saver": {
+        "label": "When the computer runs low on memory",
+        "help": "Switch Steed to Memory saver while available system memory is "
+        "below 10%, unloading background tabs that can safely reload, and return "
+        "to your settings once it is above 20% again. Your saved choices are not "
+        "changed.",
+        "choices": [(True, "Switch to Memory saver"), (False, "Keep my settings")],
+        "presets": {"saver": True, "balanced": True, "performance": False},
+    },
     "trim_freed_memory": {
         "label": "Return freed memory",
         "help": "After tabs or windows close, hand memory Steed no longer uses back "
@@ -141,13 +152,24 @@ def set_value(config, key, value):
     config.set(key, value)
 
 
+def effective(config):
+    """Values in force now: Memory saver's while the system is short of memory."""
+    current = values(config)
+    if current["auto_saver"] and monitor().low:
+        saver = preset("saver")
+        # The interface stays as chosen: rebuilding it mid-session is disruptive.
+        saver["native_interface"] = current["native_interface"]
+        return {**saver, "auto_saver": True}
+    return current
+
+
 def apply_process_policies(config):
     """Apply the app-wide parts; windows apply tab and palette behaviour."""
     import cookie_snapshot
     import memory_trim
     from ui.interface_mode import set_native
 
-    current = values(config)
+    current = effective(config)
     cookie_snapshot.set_policy(
         current["cookie_idle_seconds"] * 1000,
         current["cookie_wake_interval_seconds"] * 1000,
@@ -270,3 +292,67 @@ def free_now(windows):
             slept += snapshot.sleeping
     memory_trim.release_now()
     return {"unloaded": unloaded, "inspectors": slept}
+
+
+# Below this share of system memory available, auto saver switches on; it
+# switches off again above RECOVER_SHARE, so it does not flap.
+LOW_SHARE = 0.10
+RECOVER_SHARE = 0.20
+PRESSURE_POLL_MS = 10000
+
+
+def system_memory():
+    """(available, total) bytes from /proc/meminfo, or None."""
+    fields = {}
+    try:
+        with open("/proc/meminfo") as stream:
+            for line in stream:
+                name, _, rest = line.partition(":")
+                if name in ("MemAvailable", "MemTotal"):
+                    fields[name] = int(rest.split()[0]) * 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    if "MemAvailable" not in fields or not fields.get("MemTotal"):
+        return None
+    return fields["MemAvailable"], fields["MemTotal"]
+
+
+_monitor = None
+
+
+def monitor():
+    global _monitor
+    if _monitor is None:
+        _monitor = PressureMonitor()
+    return _monitor
+
+
+class PressureMonitor(QObject):
+    """Polls system memory; `changed` fires when low memory starts or ends."""
+
+    changed = pyqtSignal(bool)
+
+    def __init__(self, reader=system_memory):
+        super().__init__()
+        self.reader = reader
+        self.low = False
+        self.share = None
+        self.timer = QTimer(self)
+        self.timer.setInterval(PRESSURE_POLL_MS)
+        self.timer.timeout.connect(self.check)
+
+    def start(self):
+        if not self.timer.isActive():
+            self.timer.start()
+            self.check()
+
+    def check(self):
+        reading = self.reader()
+        if reading is None:
+            return
+        available, total = reading
+        self.share = available / total
+        low = self.share < (RECOVER_SHARE if self.low else LOW_SHARE)
+        if low != self.low:
+            self.low = low
+            self.changed.emit(low)

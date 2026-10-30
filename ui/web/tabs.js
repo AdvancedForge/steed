@@ -37,7 +37,9 @@ function tabNode(tab, siteColor) {
   node.tabIndex = tab.id === focusedId || (!focusedId && tab.active) ? 0 : -1;
   node.dataset.id = tab.id;
   node.dataset.index = tab.index;
-  node.title = tab.site ? `${tab.title}\n${tab.site}` : tab.title;
+  const rest = {frozen: "Frozen to save resources; resumes when selected", unloaded: "Unloaded to save memory; reloads when selected"}[tab.lifecycle];
+  node.title = (tab.site ? `${tab.title}\n${tab.site}` : tab.title) + (rest ? `\n${rest}` : "") + (tab.keep_loaded ? "\nKept loaded" : "");
+  if (rest) node.classList.add("dormant", tab.lifecycle);
   if (tab.active) node.classList.add("active");
   if (tab.pinned) {
     node.classList.add("pinned");

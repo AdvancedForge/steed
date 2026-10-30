@@ -818,23 +818,34 @@ then change any setting on its own (the mode then shows as Custom):
 | Unload background tabs | after 15 min | after 4 h | never |
 | Interface | native Qt widgets | customizable HTML | customizable HTML |
 | Command palette | freed on close | kept 1 min | preloaded and kept |
+| When the computer runs low on memory | switch to Memory saver | switch to Memory saver | keep settings |
 | Return freed memory | on | on | off |
 
 A frozen tab keeps its page but stops scripts and timers (chat and mail tabs stop
 updating until you return). An unloaded tab frees its renderer and reloads when
 selected; unsaved form text can be lost. Tabs playing audio, shared with an agent,
-with DevTools open or still loading, and `steed:` pages are never frozen or
-unloaded, and Steed never goes further than Qt WebEngine recommends for a page
+with DevTools open or still loading, `steed:` pages and tabs you mark with
+**Keep This Tab Loaded** (tab right-click menu; a marked frozen tab wakes at
+once) are never frozen or unloaded, and Steed never goes further than Qt WebEngine recommends for a page
 (a hidden page is frozen first and unloaded on a later check). Background tabs
 are checked every 30 seconds. With delayed cookie wake-ups, cookies shared from
 the global profile reach other profiles up to that much later; opening or
 refreshing the cookie viewer always inspects immediately. The page also shows
 live usage — Steed's total, the browser core, renderers, tabs active/frozen/
-unloaded and awake cookie inspectors — and **Free memory now**, which unloads
+unloaded, awake cookie inspectors and available system memory — and **Free memory now**, which unloads
 background tabs that can safely reload, puts idle cookie inspectors to sleep,
 frees a closed palette and returns freed memory. In one measured session (one
 window, four background tabs, some cookie activity) Memory saver used about
 350 MB, Balanced about 520 MB and Performance about 575 MB.
+
+Frozen tabs are dimmed in the tab strip and unloaded tabs are dimmed and
+italic; hovering one says it resumes or reloads when selected. With **When the
+computer runs low on memory** set to switch, Steed checks available system
+memory every 10 seconds (Linux `/proc/meminfo`). Below 10% it follows Memory
+saver — except the interface, which is not rebuilt mid-session — and unloads
+background tabs that can safely reload; above 20% it returns to your settings.
+Your saved choices are not changed, and `steed:memory` shows a notice while
+this is active.
 
 **Memory: idle cookie inspection.** Qt 6.11 cannot list stored cookies directly,
 so each open profile keeps a hidden page with a private DevTools frontend to

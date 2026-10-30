@@ -17,7 +17,8 @@ function usage(data) {
     stat((data.processes.browser || {mb: 0}).mb + ' MB', 'Browser core'),
     stat(renderers.count + ' · ' + renderers.mb + ' MB', 'Page and interface renderers'),
     stat(data.tabs.active + ' / ' + data.tabs.frozen + ' / ' + data.tabs.unloaded, 'Tabs active / frozen / unloaded'),
-    stat(data.inspectors.awake + ' of ' + data.inspectors.total, 'Cookie inspectors awake'));
+    stat(data.inspectors.awake + ' of ' + data.inspectors.total, 'Cookie inspectors awake'),
+    stat(state.pressure.available === null ? '—' : state.pressure.available + '%', 'System memory available'));
 }
 function label(option, value) {
   const choice = option.choices.find(c => JSON.stringify(c.value) === JSON.stringify(value));
@@ -61,6 +62,11 @@ window.steedUI = {render(next) {
   document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
   for (const key of ['error', 'notice']) { $(key).textContent = next[key]; $(key).hidden = !next[key]; }
   if (next.ack >= sequence) busy = false;
+  const pressure = next.pressure;
+  $('pressure').hidden = !pressure.low;
+  $('pressure').textContent = pressure.saver_active
+    ? `This computer is low on memory (${pressure.available}% available). Steed is using Memory saver until it recovers; your settings are unchanged.`
+    : `This computer is low on memory (${pressure.available}% available). Automatic Memory saver is off.`;
   modes(); usage(next.usage); options();
   $('free').disabled = busy;
   return true;

@@ -128,3 +128,7 @@ button:hover:enabled { background: none; border-color: transparent; }
 .density-compact { --tab-min: 38px; }
 .density-compact .strip { padding-top: 3px; }
 @media (prefers-reduced-motion: reduce) { .tab { transition: none; } .favicon.loading { animation-duration: 2s; } }
+
+/* Frozen or unloaded by the memory mode: dimmed until selected. */
+.tab.dormant .title, .tab.dormant .favicon { opacity: .55; }
+.tab.unloaded .title { font-style: italic; }

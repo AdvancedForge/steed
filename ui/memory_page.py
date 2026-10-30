@@ -27,6 +27,7 @@ class MemoryPage(QWidget):
         layout.addWidget(self.surface)
         self.surface.command.connect(self.command)
         self.registry.settings_changed.connect(self.publish)
+        memory_modes.monitor().changed.connect(self.publish)
         self.timer = QTimer(self)
         self.timer.setInterval(REFRESH_MS)
         self.timer.timeout.connect(self.publish)
@@ -72,6 +73,13 @@ class MemoryPage(QWidget):
                     for key, spec in memory_modes.OPTIMIZATIONS.items()
                 ],
                 "usage": memory_modes.usage(self.windows()),
+                "pressure": {
+                    "low": memory_modes.monitor().low,
+                    "available": None
+                    if memory_modes.monitor().share is None
+                    else round(memory_modes.monitor().share * 100),
+                    "saver_active": memory_modes.monitor().low and values["auto_saver"],
+                },
                 "dark": self.window.profile_manager.registry.page_style.dark(
                     self.window.profile_manager.current_profile_name
                 ),
@@ -126,4 +134,5 @@ class MemoryPage(QWidget):
         self.disposed = True
         self.timer.stop()
         self.registry.settings_changed.disconnect(self.publish)
+        memory_modes.monitor().changed.disconnect(self.publish)
         self.surface.dispose()
