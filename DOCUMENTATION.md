@@ -276,6 +276,12 @@ The menu bar has six categories, in this order:
   title or address, and each address appears once. Suggestions are computed
   locally; nothing is sent to the search engine before you press Enter. The toolbar stays a native text field, so typing, input methods and
   undo work like any other field.
+- **Command palette and tab keys:** Ctrl+Shift+P opens a palette that runs any
+  menu command or jumps to any open tab of this profile, in any window, by
+  typing part of its name (fuzzy matching; `>` shows only commands, `@` only
+  tabs). Ctrl+Shift+E opens it on tabs. Ctrl+Tab / Ctrl+Shift+Tab and
+  Ctrl+PgDn / Ctrl+PgUp move to the next or previous tab, Ctrl+1–8 open that tab
+  and Ctrl+9 the last one; tabs hidden in a collapsed group are skipped.
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
   Zoom Out and Reset Zoom. While you edit the address bar, the page changing its
   URL no longer replaces your text or its undo/redo history (Ctrl+Z, Ctrl+Shift+Z

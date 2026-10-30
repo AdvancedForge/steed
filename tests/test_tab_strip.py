@@ -218,7 +218,10 @@ class TabStripTests(unittest.TestCase):
         from PyQt6.QtTest import QTest
         from PyQt6.QtWidgets import QApplication
 
-        tab = self.window.tabs[self.window.current_tab_index]
+        # A fresh tab, so a still-loading welcome page cannot replace the fixture.
+        tab = self.window._new_tab(url="about:blank", return_tab=True)
+        loaded = []
+        tab.loadFinished.connect(loaded.append)
         tab.setHtml(
             '<input id=f value="menu copy" style="position:absolute;left:20px;'
             'top:20px;width:300px;height:30px"><input id=g style="position:absolute;'
@@ -231,6 +234,7 @@ class TabStripTests(unittest.TestCase):
             self.wait(lambda: bool(results))
             return results[0]
 
+        self.wait(lambda: bool(loaded))
         self.wait(lambda: page("!!document.getElementById('g')"))
         target = tab.focusProxy() or tab
 

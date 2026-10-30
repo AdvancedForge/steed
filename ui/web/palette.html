@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Steed palette</title><style nonce="{{NONCE}}">{{STYLE}}{{EXTRA_STYLE}}</style></head><body>
+<div class="palette"><input id="query" type="text" autocomplete="off" spellcheck="false" aria-label="Search commands and tabs" placeholder="Search commands and tabs   ·   > commands   @ tabs">
+<ul id="results" role="listbox" aria-label="Results"></ul><p id="empty" class="empty" hidden>No matching commands or tabs</p>
+<footer><span>↑↓ choose</span><span>Enter run</span><span>Esc close</span><span>&gt; commands · @ tabs</span></footer></div>
+<script nonce="{{NONCE}}">{{CHANNEL}}</script><script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script></body></html>

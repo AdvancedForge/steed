@@ -287,6 +287,7 @@ class BrowserWindow(QMainWindow):
         self._restoring_tabs = False
         self.closed_tabs = self.profile_manager.registry.closed_tabs
         self._child_windows: list[BrowserWindow] = []
+        self._palette = None
         self._password_dialog = None
         self.agent_sidebar = None
         self.data_panels_dock = None
@@ -592,6 +593,30 @@ class BrowserWindow(QMainWindow):
         web_chats_menu.addAction("Chatbot relay…").triggered.connect(
             lambda: self._open_chatbot_relay()
         )
+        for label, key, mode in (
+            ("Command Palette…", "Ctrl+Shift+P", ""),
+            ("Search Tabs…", "Ctrl+Shift+E", "@"),
+        ):
+            action = QAction(label, self)
+            action.setShortcut(QKeySequence(key))
+            action.triggered.connect(
+                lambda _=False, mode=mode: self._open_palette(mode)
+            )
+            view_menu.addAction(action)
+        for label, keys, step in (
+            ("Next Tab", ("Ctrl+Tab", "Ctrl+PgDown"), 1),
+            ("Previous Tab", ("Ctrl+Shift+Tab", "Ctrl+PgUp"), -1),
+        ):
+            action = QAction(label, self)
+            action.setShortcuts([QKeySequence(key) for key in keys])
+            action.triggered.connect(lambda _=False, step=step: self._cycle_tab(step))
+            tabs_menu.addAction(action)
+        # Ctrl+1–8 open that tab and Ctrl+9 the last one, as in Chrome.
+        for number in range(1, 10):
+            action = QAction(f"Go to Tab {number}", self)
+            action.setShortcut(QKeySequence(f"Ctrl+{number}"))
+            action.triggered.connect(lambda _=False, n=number: self._jump_to_tab(n))
+            self.addAction(action)
         devtools_menu = view_menu.addMenu("Developer Tools")
         for label, shortcuts, handler in (
             ("Toggle Developer Tools", ("F12", "Ctrl+Shift+I"), self._toggle_devtools),
@@ -2228,6 +2253,38 @@ class BrowserWindow(QMainWindow):
             return "steed:" + tab.workspace_name
         return tab.url().toString() or tab.page().requestedUrl().toString()
 
+    def _open_palette(self, mode=""):
+        from ui.command_palette import CommandPalette
+
+        if self._closing:
+            return
+        if self._palette is None:
+            self._palette = CommandPalette(self)
+        self._palette.present(mode)
+
+    def _visible_tab_indexes(self):
+        return [i for i in range(len(self.tabs)) if self.tab_bar.is_tab_visible(i)]
+
+    def _cycle_tab(self, step):
+        indexes = self._visible_tab_indexes()
+        if len(indexes) < 2:
+            return
+        position = (
+            indexes.index(self.current_tab_index)
+            if self.current_tab_index in indexes
+            else 0
+        )
+        self._switch_tab(indexes[(position + step) % len(indexes)])
+
+    def _jump_to_tab(self, number):
+        indexes = self._visible_tab_indexes()
+        if not indexes:
+            return
+        if number == 9:
+            self._switch_tab(indexes[-1])
+        elif number <= len(indexes):
+            self._switch_tab(indexes[number - 1])
+
     def _devtools_tab(self):
         if not self.tabs or not 0 <= self.current_tab_index < len(self.tabs):
             return None
@@ -2850,6 +2907,8 @@ class BrowserWindow(QMainWindow):
         self.find_bar.set_page(None)
         self.tab_bar.dispose()
         self.devtools.dispose()
+        if self._palette is not None:
+            self._palette.dispose()
         if self._password_dialog is not None:
             self._password_dialog.reject()
         if self.history is not None:

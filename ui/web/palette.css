@@ -1,0 +1,18 @@
+/* Command palette: a search field over a ranked list. */
+html, body { height: 100%; overflow: hidden; }
+body { margin: 0; background: var(--surface); }
+.palette { display: flex; flex-direction: column; height: 100vh; }
+#query { margin: 10px; padding: 11px 14px; font: inherit; font-size: 15px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--ink); outline: none; }
+#query:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+#results { list-style: none; margin: 0; padding: 0 6px; flex: 1; overflow-y: auto; }
+#results li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; cursor: default; }
+#results li.selected { background: var(--soft); }
+.badge { flex: none; width: 66px; font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+.tab .badge { color: var(--accent); }
+.text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.title { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.current .title::after { content: " · current"; color: var(--muted); font-size: 12px; }
+.detail { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+kbd { flex: none; font: 11px ui-monospace, monospace; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); color: var(--muted); }
+.empty { padding: 14px 20px; color: var(--muted); }
+footer { display: flex; gap: 16px; padding: 8px 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
