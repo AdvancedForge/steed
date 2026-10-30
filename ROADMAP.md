@@ -2217,7 +2217,8 @@ enable website scripts. The existing shared-profile model and user networking
 must remain available. See the
 [engine decision](DOCUMENTATION.md#active-script-engine-decision).
 Keep scripted forms denied until their body/handler authority is enforceable.
-Native pointer gestures/custom controls remain pending. Exact upload-source/site
+Native pointer gestures (click, hover, drag) and custom controls are implemented for
+live sessions, including approved cross-origin frames. Exact upload-source/site
 and download-destination grants accompany implemented file operations. Full form/SPA/file
 acceptance remains pending.
 
