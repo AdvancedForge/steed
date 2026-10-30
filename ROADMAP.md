@@ -12,6 +12,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Memory and startup cost — October 29, 2026.** Measured one window (PSS over
+the process tree): 316 MB with 6 renderers at startup. The window itself uses only
+two web views; four renderers were the hidden cookie-inspection page and DevTools
+frontend for the global and current profiles. These now sleep after 30 s without
+cookie activity and wake on the next write or viewer refresh: idle drops to
+198 MB with 2 renderers (−37%); a write wakes only its profile (267 MB, 4).
+Menus already show content in about 40–50 ms and the palette is instant after
+its first open, so preloading was not added; sharing one engine profile across
+Steed's HTML surfaces would save only small main-process overhead and is
+deferred. Open: desktop check that cookie sharing still feels immediate after
+an idle period.
+
 **Review fixes — October 28, 2026.** A full-suite failure exposed a real race:
 under load Qt applied the interceptor block only after a 307 redirect had resent
 an uploaded POST body (reproduced 3/20 runs). Restricted task pages now refuse
