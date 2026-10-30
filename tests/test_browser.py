@@ -1565,6 +1565,41 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(reported.value, "stored")
         self.assertEqual(reported.path, "/")
 
+    def test_idle_cookie_snapshot_releases_renderers_and_wakes_on_writes(self):
+        from PyQt6.QtWebEngineCore import QWebEnginePage
+
+        registry = self.window.profile_manager.registry
+        name = self.window.profile_manager.current_profile_name
+        snapshot = registry.snapshots[name]
+        manager = self.window.cookie_manager
+        self.wait_for(lambda: snapshot.ready)
+        snapshot.idle.setInterval(100)
+        snapshot.refresh()
+        self.wait_for(lambda: snapshot.sleeping)
+        self.assertIsNone(snapshot.frontend)
+        self.assertIsNone(snapshot.inspected.devToolsPage())
+        self.assertEqual(
+            snapshot.inspected.lifecycleState(),
+            QWebEnginePage.LifecycleState.Discarded,
+        )
+        snapshot.idle.setInterval(60000)
+        cookie = QNetworkCookie(b"wake_probe", b"after_sleep")
+        cookie.setDomain(".wake-fixture.example")
+        cookie.setPath("/")
+        manager.cookie_store.setCookie(cookie, QUrl("http://wake-fixture.example"))
+        self.wait_for(lambda: not snapshot.sleeping and snapshot.ready)
+        self.assertEqual(
+            snapshot.inspected.lifecycleState(), QWebEnginePage.LifecycleState.Active
+        )
+        snapshot.refresh()
+        self.wait_for(lambda: any(c.name == "wake_probe" for c in manager.cookies))
+        # Releasing a profile whose snapshot sleeps must not touch a missing page.
+        snapshot.idle.setInterval(100)
+        snapshot.refresh()
+        self.wait_for(lambda: snapshot.sleeping)
+        snapshot.dispose()
+        self.assertIsNone(snapshot.frontend)
+
     def test_cookie_viewer_opens_with_stored_cookies(self):
         """Opening the viewer must list existing cookies, not only live ones."""
         store = self.window.cookie_manager.cookie_store

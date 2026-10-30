@@ -495,8 +495,7 @@ class ProfileRegistry(QObject):
         self.histories.clear()
         self.downloads.cancel_active()
         for snapshot in self.snapshots.values():
-            snapshot.close()
-            sip.delete(snapshot.frontend)
+            snapshot.dispose()
         self.snapshots.clear()
         for page in self.bootstrap_pages.values():
             sip.delete(page)
@@ -620,8 +619,7 @@ class ProfileManager(QObject):
                 return False
             snapshot = self.registry.snapshots.pop(name, None)
             if snapshot is not None:
-                snapshot.close()
-                sip.delete(snapshot.frontend)
+                snapshot.dispose()
             page = self.registry.bootstrap_pages.pop(name, None)
             if page is not None:
                 sip.delete(page)

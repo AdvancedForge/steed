@@ -7,6 +7,7 @@ version-specific adapter. Never expose its privileged frontend as a browser tab.
 Bumping Qt means re-verifying every private name used below.
 """
 
+from PyQt6 import sip
 from PyQt6.QtCore import QDateTime, QObject, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWebEngineCore import QWebEnginePage
@@ -35,6 +36,11 @@ MAX_TIMEOUT_RETRIES = 2
 
 # Window used to merge a burst of cookie writes into a single inspection.
 REFRESH_DEBOUNCE_MS = 120
+
+# The hidden page and DevTools frontend cost two renderer processes per profile.
+# After this long without cookie activity they are released, and rebuilt by the
+# next refresh; a write therefore reaches sharing a moment later than when warm.
+IDLE_MS = 30000
 
 # Runs on the hidden DevTools frontend page. The SDK import and target manager
 # are memoized on the page so a second inspection costs one protocol call rather
@@ -88,7 +94,8 @@ class CookieSnapshot(QObject):
     def __init__(self, inspected, parent=None):
         super().__init__(parent)
         self.inspected = inspected
-        self.frontend = QWebEnginePage(inspected.profile(), self)
+        self.frontend = None
+        self.sleeping = False
         self.ready = False
         self.pending = False
         self.attempts = 0
@@ -109,8 +116,36 @@ class CookieSnapshot(QObject):
         self.timer = QTimer(self)
         self.timer.setInterval(POLL_MS)
         self.timer.timeout.connect(self.poll)
+        self.idle = QTimer(self)
+        self.idle.setSingleShot(True)
+        self.idle.setInterval(IDLE_MS)
+        self.idle.timeout.connect(self._sleep)
+        self._attach()
+
+    def _attach(self):
+        self.frontend = QWebEnginePage(self.inspected.profile(), self)
         self.frontend.loadFinished.connect(self.on_ready)
-        inspected.setDevToolsPage(self.frontend)
+        self.inspected.setDevToolsPage(self.frontend)
+
+    def _sleep(self):
+        """Release both renderers while nothing needs inspecting."""
+        if self.closed or self.frontend is None:
+            return
+        if self.pending:
+            self.idle.start()
+            return
+        self.ready = False
+        self.inspected.setDevToolsPage(None)
+        sip.delete(self.frontend)
+        self.frontend = None
+        self.sleeping = True
+        self.inspected.setLifecycleState(QWebEnginePage.LifecycleState.Discarded)
+
+    def _wake(self):
+        self.sleeping = False
+        self.inspected.setLifecycleState(QWebEnginePage.LifecycleState.Active)
+        # on_ready runs the refresh once the rebuilt frontend has loaded.
+        self._attach()
 
     def store_changed(self, cookie):
         self.revision += 1
@@ -131,7 +166,13 @@ class CookieSnapshot(QObject):
             self.failed.emit("Cookie inspection frontend failed to initialize.")
 
     def refresh(self):
-        if self.closed or not self.ready:
+        if self.closed:
+            return
+        self.idle.start()
+        if self.sleeping:
+            self._wake()
+            return
+        if not self.ready:
             return
         if self.pending:
             # Dropping this request would lose the update entirely: Qt signals
@@ -283,5 +324,14 @@ class CookieSnapshot(QObject):
     def close(self):
         self.closed = True
         self.timer.stop()
+        self.idle.stop()
         self.pending = False
-        self.inspected.setDevToolsPage(None)
+        if self.frontend is not None:
+            self.inspected.setDevToolsPage(None)
+
+    def dispose(self):
+        """Close and delete the frontend page now, before its profile goes."""
+        self.close()
+        if self.frontend is not None:
+            sip.delete(self.frontend)
+            self.frontend = None
