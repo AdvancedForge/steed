@@ -1093,10 +1093,19 @@ only its identity and focus are rechecked.
 
 Frames from another origin cannot be read by the main document's script. When
 such a frame's origin is in the task's scope, Steed runs the same read inside
-that frame and returns its text, outline and scroll position with the
-limitation `cross_origin_frame_read_only` and no targets: its controls cannot
-be acted on through `page.act`. Frames outside the scope, sandboxed frames and
-frames that do not answer within five seconds stay unread
+that frame and returns its text, outline and scroll position. In restricted
+sessions the frame is read-only (`cross_origin_frame_read_only`, no targets).
+In live sessions it reports `cross_origin_frame` and its controls, each with the
+`cross_origin_frame` constraint, and they work like main-page controls: text
+entry, checkboxes, selects, buttons, custom widgets, sliders, hover and frame
+scrolling (`page.scroll` with the frame's `frame_id`). Checks and actions run
+inside that frame. Form submission and uploads stay main-document only
+(`frame_form_unsupported`). Pointer actions (custom widgets, hover) are measured
+inside the frame and mapped through its frame element, which must itself be the
+topmost element at that point on the page; they are available only for frames
+directly inside the page (`nested_frame_pointer_unavailable` otherwise).
+Keyboard-based actions work at any depth. Frames outside the scope, sandboxed
+frames and frames that do not answer within five seconds stay unread
 (`frame_inaccessible_or_not_ready`).
 
 Each frame also reports `scroll`: its scroll position, scrollable width/height
@@ -1107,6 +1116,19 @@ virtualized lists, scroll the frame (`page.scroll`), call `page.wait` with
 once text length, controls and scrollable height stay unchanged for 750 ms (or
 `timed_out`) — and inspect again. Restricted pages run no website scripts, so
 script-driven lazy loading needs a live session.
+
+Many web apps scroll an inner panel — a message list, sidebar or dialog body —
+rather than the page. Give `page.scroll` a `target_id` (any control inside that
+panel) instead of a `frame_id`: Steed scrolls the nearest scrollable container
+around the target and reports its `scroll_position` and `container_size`
+(scroll width and height, visible width and height). When only the page itself
+scrolls, the result is `scroll_container_unavailable`; scroll the frame instead.
+
+In live sessions, `page.act` with `operation: "hover"` moves the pointer over any
+visible target without clicking, to open menus and tooltips that appear on
+mouse-over; inspect again to see what appeared. Hover uses the same
+visible/in-view/unobscured/stable checks as pointer activation and needs edit
+permission. Restricted sessions return `live_session_required`.
 
 For effects that arrive after an action — search results, validation messages,
 a list that loads — call `page.wait` with `condition: "changed"`. It compares

@@ -185,6 +185,39 @@ class InspectionState:
     snapshot: PageSnapshot | None = None
     targets: dict = field(default_factory=dict)
     pending: set[Future] = field(default_factory=set)
+    # Live cross-origin frames whose controls are actionable: route key ->
+    # {frame, state_key, snapshot_id, frame_id, path}. Target node ids for
+    # them read "<route key>|<node id>".
+    routes: dict = field(default_factory=dict)
+
+
+# Operations that stay main-document only: their tickets and upload bindings
+# belong to the top-level page.
+FRAME_EXCLUDED_OPERATIONS = ("submit", "upload")
+
+
+def descriptor(target_id, frame_id, target, operations=None, constraints=None):
+    """A TargetDescriptor from the trusted script's bounded target shape."""
+    return TargetDescriptor(
+        target_id,
+        frame_id,
+        target["kind"],
+        target["role"],
+        target["label"],
+        target["enabled"],
+        target["read_only"],
+        target["href"],
+        tuple(target["operations"] if operations is None else operations),
+        tuple(target["constraints"] if constraints is None else constraints),
+        target.get("form_action"),
+        target.get("form_method"),
+        target.get("description", ""),
+        target.get("required", False),
+        target.get("invalid", False),
+        target.get("error_message", ""),
+        tuple(state for state in target.get("states", []) if state in TARGET_STATES),
+        str(target.get("value_text", ""))[:64],
+    )
 
 
 def content_signature(snapshot):
@@ -219,6 +252,7 @@ class PageInspector(QObject):
             return
         state.snapshot = None
         state.targets.clear()
+        state.routes.clear()
         for future in tuple(state.pending):
             if not future.done():
                 future.set_exception(PageInspectionError(reason))
@@ -246,6 +280,21 @@ class PageInspector(QObject):
 
         timer.timeout.connect(expire)
         request["state_key"] = state.state_key
+        runner = page
+        route_key = request.pop("route", None)
+        node = request.get("node_id")
+        if isinstance(node, str) and "|" in node:
+            route_key, request["node_id"] = node.split("|", 1)
+        if route_key is not None:
+            route = state.routes.get(route_key)
+            if route is None:
+                result.set_exception(PageInspectionError("stale_snapshot"))
+                return result
+            runner = route["frame"]
+            request["state_key"] = route["state_key"]
+            request["snapshot_id"] = route["snapshot_id"]
+            if "frame_id" in request:
+                request["frame_id"] = route["frame_id"]
         script = INSPECTION_SCRIPT.replace("/* REQUEST */", json.dumps(request))
 
         def received(raw):
@@ -272,7 +321,7 @@ class PageInspector(QObject):
 
         timer.start(self.timeout_ms)
         try:
-            page.runJavaScript(script, INSPECTION_WORLD, received)
+            runner.runJavaScript(script, INSPECTION_WORLD, received)
         except Exception as error:
             result.set_exception(error)
         return result
@@ -292,32 +341,9 @@ class PageInspector(QObject):
                 descriptors = []
                 for target in frame["targets"]:
                     target_id = uuid4().hex
-                    descriptor = TargetDescriptor(
-                        target_id,
-                        frame["frame_id"],
-                        target["kind"],
-                        target["role"],
-                        target["label"],
-                        target["enabled"],
-                        target["read_only"],
-                        target["href"],
-                        tuple(target["operations"]),
-                        tuple(target["constraints"]),
-                        target.get("form_action"),
-                        target.get("form_method"),
-                        target.get("description", ""),
-                        target.get("required", False),
-                        target.get("invalid", False),
-                        target.get("error_message", ""),
-                        tuple(
-                            state
-                            for state in target.get("states", [])
-                            if state in TARGET_STATES
-                        ),
-                        str(target.get("value_text", ""))[:64],
-                    )
-                    targets[target_id] = (target["node_id"], descriptor)
-                    descriptors.append(descriptor)
+                    described = descriptor(target_id, frame["frame_id"], target)
+                    targets[target_id] = (target["node_id"], described)
+                    descriptors.append(described)
                 frames.append(
                     FrameSnapshot(
                         frame["frame_id"],
@@ -426,11 +452,13 @@ class PageInspector(QObject):
         """Read approved frames from other origins through their own frame.
 
         Page scripts cannot reach into a cross-origin frame, so the read script
-        runs inside each in-scope frame separately. These frames are read-only:
-        action references belong to the main document's inspection state.
+        runs inside each in-scope frame separately. In live sessions the frame's
+        controls are actionable through a route to that frame; form submission
+        and uploads stay main-document only. Restricted sessions read them only.
         """
         from dataclasses import replace
 
+        live = metadata.mode == "live"
         pending = []
         for index, frame in enumerate(snapshot.frames):
             if "frame_inaccessible_or_not_ready" not in frame.limitations:
@@ -453,6 +481,7 @@ class PageInspector(QObject):
         walk(page.mainFrame())
         frames = list(snapshot.frames)
         remaining = set(pending)
+        targets, routes = {}, {}
         timer = QTimer(self)
         timer.setSingleShot(True)
 
@@ -465,9 +494,37 @@ class PageInspector(QObject):
             state = self._states.get(session_id)
             if state is not None and state.snapshot is snapshot:
                 state.snapshot = merged
+                state.targets.update(targets)
+                state.routes.update(routes)
             result.set_result(merged)
 
-        def received(index, raw):
+        def frame_targets(index, inner, route_key):
+            outer = frames[index]
+            # Pointer clicks are mapped through the frame element in the main
+            # document, so only frames directly inside it can be clicked.
+            pointer = outer.path.count("/") == 1
+            described = []
+            for target in inner.get("targets", [])[:200]:
+                operations = [
+                    op
+                    for op in target["operations"]
+                    if op not in FRAME_EXCLUDED_OPERATIONS
+                ]
+                constraints = [*target["constraints"], "cross_origin_frame"]
+                if len(operations) < len(target["operations"]):
+                    constraints.append("frame_form_unsupported")
+                if "pointer_activation" in constraints and not pointer:
+                    operations = [op for op in operations if op != "activate"]
+                    constraints.append("nested_frame_pointer_unavailable")
+                target_id = uuid4().hex
+                item = descriptor(
+                    target_id, outer.frame_id, target, operations, constraints
+                )
+                targets[target_id] = (f"{route_key}|{target['node_id']}", item)
+                described.append(item)
+            return tuple(described)
+
+        def received(index, raw, engine_frame, request):
             if result.done():
                 return
             remaining.discard(index)
@@ -485,17 +542,31 @@ class PageInspector(QObject):
                     and isinstance(inner.get("text"), str)
                 ):
                     grant.check("read", url=inner.get("url") or frames[index].url)
+                    route_key = f"f{index}"
+                    described = frame_targets(index, inner, route_key) if live else ()
+                    if live:
+                        routes[route_key] = {
+                            "frame": engine_frame,
+                            "state_key": request["state_key"],
+                            "snapshot_id": request["snapshot_id"],
+                            "frame_id": inner["frame_id"],
+                            "path": frames[index].path,
+                        }
                     frames[index] = replace(
                         frames[index],
                         origin=str(inner.get("origin", ""))[:256],
                         text=inner["text"][:32000],
-                        targets=(),
+                        targets=described,
                         outline=tuple(
                             outline_item(item)
                             for item in inner.get("outline", [])[:150]
                         ),
                         scroll=frame_scroll(inner.get("scroll")),
-                        limitations=("cross_origin_frame_read_only",),
+                        limitations=(
+                            ("cross_origin_frame",)
+                            if live
+                            else ("cross_origin_frame_read_only",)
+                        ),
                     )
             except Exception:
                 pass
@@ -526,18 +597,32 @@ class PageInspector(QObject):
                 "snapshot_id": uuid4().hex,
                 "origins": grant.scope.origins,
                 "upload_available": False,
-                "live": metadata.mode == "live",
+                "live": live,
                 "state_key": "__steed_frame_read_" + uuid4().hex,
             }
             script = INSPECTION_SCRIPT.replace("/* REQUEST */", json.dumps(request))
             engine_frame.runJavaScript(
-                script, INSPECTION_WORLD, lambda raw, index=index: received(index, raw)
+                script,
+                INSPECTION_WORLD,
+                lambda raw, index=index, frame=engine_frame, request=request: received(
+                    index, raw, frame, request
+                ),
             )
         if not remaining:
             finish()
             return
         timer.timeout.connect(finish)
         timer.start(5000)
+
+    def route(self, session_id, target_id):
+        """The frame route of a cross-origin frame target, or None."""
+        state = self._states.get(session_id)
+        if state is None or target_id not in state.targets:
+            return None
+        node_id = state.targets[target_id][0]
+        if "|" not in node_id:
+            return None
+        return state.routes.get(node_id.split("|", 1)[0])
 
     def target(self, session_id, page, snapshot_id, target_id, validate):
         require_owner_thread(self)
@@ -625,24 +710,44 @@ class PageInspector(QObject):
             session_id, page, {**request, "mode": mode}, validate, lambda data: data
         )
 
-    def scroll(self, session_id, page, snapshot_id, frame_id, arguments, validate):
+    def scroll(
+        self,
+        session_id,
+        page,
+        snapshot_id,
+        frame_id,
+        arguments,
+        validate,
+        target_id=None,
+    ):
         state = self._snapshot_state(session_id, snapshot_id)
-        if frame_id is None:
-            frame_id = state.snapshot.frames[0].frame_id
-        frame = next((f for f in state.snapshot.frames if f.frame_id == frame_id), None)
-        if frame is None or frame.limitations:
-            raise PageInspectionError("frame_unavailable")
-        result = self._mutation(
-            session_id,
-            page,
-            {
-                "mode": "scroll",
-                "snapshot_id": snapshot_id,
-                "frame_id": frame_id,
-                **arguments,
-            },
-            validate,
-        )
+        request = {"mode": "scroll", "snapshot_id": snapshot_id, **arguments}
+        if target_id is not None:
+            node_id, described = self._target_reference(
+                session_id, snapshot_id, target_id
+            )
+            request["node_id"] = node_id
+            frame_id = described.frame_id
+        else:
+            if frame_id is None:
+                frame_id = state.snapshot.frames[0].frame_id
+            frame = next(
+                (f for f in state.snapshot.frames if f.frame_id == frame_id), None
+            )
+            if frame is None:
+                raise PageInspectionError("frame_unavailable")
+            if frame.limitations == ("cross_origin_frame",):
+                route_key = next(
+                    (k for k, r in state.routes.items() if r["path"] == frame.path),
+                    None,
+                )
+                if route_key is None:
+                    raise PageInspectionError("frame_unavailable")
+                request["route"] = route_key
+            elif frame.limitations:
+                raise PageInspectionError("frame_unavailable")
+            request["frame_id"] = frame_id
+        result = self._mutation(session_id, page, request, validate)
         return frame_id, result
 
     def _mutation(self, session_id, page, request, validate):

@@ -87,13 +87,55 @@
         return {url: action.href, method, file_form:hasFiles, uploads};
     };
     try {
-        if (["target", "act", "scroll", "form", "submit", "live_prepare", "live_point", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
+        if (["target", "act", "scroll", "form", "submit", "live_prepare", "live_point", "frame_point", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
             const state = globalThis[request.state_key];
             if (!state || state.snapshot_id !== request.snapshot_id) return fail("stale_snapshot");
             for (const frame of state.frames) {
                 frame.dirty ||= frame.observer.takeRecords().length > 0;
                 if ((!state.live && frame.dirty) || frame.window.document !== frame.document ||
                     frame.document.URL !== frame.url) return fail("stale_snapshot");
+            }
+            if (request.mode === "frame_point") {
+                // Map a point inside a child frame to this page and require the
+                // frame element itself to be topmost there.
+                const element = state.frameElements?.get(request.path);
+                if (!element || !element.isConnected) return fail("stale_snapshot");
+                const box = element.getBoundingClientRect(), style = getComputedStyle(element);
+                const x = box.left + element.clientLeft + parseFloat(style.paddingLeft) + request.x;
+                const y = box.top + element.clientTop + parseFloat(style.paddingTop) + request.y;
+                if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return fail("target_outside_viewport");
+                let hit = document.elementFromPoint(x, y);
+                for (let depth = 0; hit?.shadowRoot && depth < 8; depth++) {
+                    const inner = hit.shadowRoot.elementFromPoint(x, y);
+                    if (!inner || inner === hit) break;
+                    hit = inner;
+                }
+                if (hit !== element) return fail("target_obscured");
+                return JSON.stringify({x: Math.round(x), y: Math.round(y)});
+            }
+            if (request.mode === "scroll" && request.node_id) {
+                // Scroll the nearest scrollable container of a target, such as
+                // a message list or side panel that scrolls inside the page.
+                const target = state.targets.get(request.node_id);
+                if (!target || !target.node.isConnected) return fail("stale_snapshot");
+                let box = target.node;
+                for (let depth = 0; box && depth < 256; depth++) {
+                    const style = box.ownerDocument.defaultView.getComputedStyle(box);
+                    const scrollable = /(auto|scroll|overlay)/.test(style.overflowY + style.overflowX) &&
+                        (box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1);
+                    if (scrollable) break;
+                    box = box.parentElement || box.getRootNode()?.host;
+                }
+                if (!box || box === box.ownerDocument.documentElement || box === box.ownerDocument.body)
+                    return fail("scroll_container_unavailable");
+                const before = [box.scrollLeft, box.scrollTop];
+                box.scrollBy({left: request.dx, top: request.dy, behavior: "instant"});
+                const position = [Math.round(box.scrollLeft), Math.round(box.scrollTop)];
+                const changed = before[0] !== position[0] || before[1] !== position[1];
+                return JSON.stringify({status: changed ? "applied" : "no_change", changed,
+                    input_semantics: "cssom_scroll", scroll_position: position,
+                    container_size: [Math.round(box.scrollWidth), Math.round(box.scrollHeight),
+                        Math.round(box.clientWidth), Math.round(box.clientHeight)]});
             }
             if (request.mode === "scroll") {
                 const frame = state.frames.find(f => f.frame_id === request.frame_id);
@@ -179,8 +221,9 @@
                 const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
                 const role = (node.getAttribute("role") || "").toLowerCase();
                 const style = win.getComputedStyle(node);
-                if (win !== window || !POINTER_ROLES.includes(role) ||
-                    node.getAttribute("aria-disabled") === "true" || node.closest("[inert]") ||
+                const hover = request.operation === "hover";
+                if (win !== window || (!hover && !POINTER_ROLES.includes(role)) ||
+                    (!hover && node.getAttribute("aria-disabled") === "true") || node.closest("[inert]") ||
                     !node.getClientRects().length || style.visibility !== "visible" ||
                     style.pointerEvents === "none") return fail("control_unsupported");
                 node.scrollIntoView({block: "nearest", inline: "nearest"});
@@ -262,7 +305,8 @@
 
         const previous = globalThis[request.state_key];
         if (previous) for (const frame of previous.frames) frame.observer.disconnect();
-        const state = {snapshot_id: request.snapshot_id, live: !!request.live, frames: [], targets: new Map()};
+        const state = {snapshot_id: request.snapshot_id, live: !!request.live, frames: [], targets: new Map(),
+            frameElements: new Map()};
         globalThis[request.state_key] = state;
         const frames = [], limitations = new Set([
             request.live ? "normal_website_scripts_and_network" : "document_scripts_disabled",
@@ -667,6 +711,7 @@
             for (const element of frameElements) {
                 if (index >= 16 || frames.length >= 16) { limitations.add("frame_limit"); break; }
                 const childPath = path + "/" + index++;
+                state.frameElements.set(childPath, element);
                 if (hidden(element, win)) continue;
                 try { inspectFrame(element.contentWindow, frameId, childPath, origin); }
                 catch (_) {

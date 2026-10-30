@@ -29,10 +29,10 @@ def action_arguments(operation, *, text=None, index=None, steps=None):
         if text is not None or type(index) is not int or not 0 <= index < 1000:
             raise ValueError("Select requires an option index from 0 to 999")
         return {"operation": operation, "index": index}
-    if operation == "activate" and text is None and index is None:
+    if operation in ("activate", "hover") and text is None and index is None:
         return {"operation": operation}
     raise ValueError(
-        "Use enter, select, activate or adjust with the appropriate arguments"
+        "Use enter, select, activate, hover or adjust with the appropriate arguments"
     )
 
 
@@ -72,6 +72,8 @@ class PageActionResult:
     text_matches: bool | None = None
     scroll_position: tuple[int, int] | None = None
     value_text: str | None = None
+    # Scrolled container: scroll width, scroll height, client width, client height.
+    container_size: tuple[int, int, int, int] | None = None
 
 
 @dataclass(frozen=True)

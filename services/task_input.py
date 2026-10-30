@@ -65,11 +65,11 @@ CLICK_SCRIPT = """
             const target = manager.primaryPageTarget() || manager.targets().find(t => t.type() === 'frame');
             if (!target) throw new Error('Target unavailable');
             const point = {x: request.x, y: request.y};
-            for (const event of [
-                {type: 'mouseMoved', ...point, button: 'none'},
+            const events = [{type: 'mouseMoved', ...point, button: 'none'}];
+            if (!request.hover) events.push(
                 {type: 'mousePressed', ...point, button: 'left', buttons: 1, clickCount: 1},
-                {type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1},
-            ]) {
+                {type: 'mouseReleased', ...point, button: 'left', buttons: 0, clickCount: 1});
+            for (const event of events) {
                 if (window[request.id] === false) break;
                 const response = await target.inputAgent().invoke_dispatchMouseEvent(event);
                 if (response.getError()) throw new Error('Input unavailable');
@@ -135,6 +135,12 @@ class TaskInput(QObject):
         if any(type(v) is not int or not 0 <= v <= 20000 for v in (x, y)):
             raise ValueError("Unsupported pointer position")
         return self._run(CLICK_SCRIPT, {"x": x, "y": y}, validate)
+
+    def hover(self, x, y, validate):
+        """Move the pointer to a verified point without pressing a button."""
+        if any(type(v) is not int or not 0 <= v <= 20000 for v in (x, y)):
+            raise ValueError("Unsupported pointer position")
+        return self._run(CLICK_SCRIPT, {"x": x, "y": y, "hover": True}, validate)
 
     def file(self, path, url, validate):
         """Trusted staged path only; callers cannot choose protocol/selectors."""

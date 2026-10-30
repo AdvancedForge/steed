@@ -732,12 +732,12 @@ TOOLS = (
     ),
     tool(
         "page.act",
-        "Edit a supported control with read/edit permission; references become stale after the attempt. In live sessions, custom widgets (ARIA button/link/tab/menuitem/switch/checkbox/radio/option/treeitem/combobox) with the pointer_activation constraint accept activate, which needs submit permission and clicks only if the element is visible, in view, unobscured and stable; otherwise expect target_obscured, target_outside_viewport or target_moved. Open a custom combobox with activate, inspect again, then activate the option. Custom sliders and spin buttons with keyboard_adjustment accept adjust with steps (-100 to 100, positive increases): Steed focuses the control, presses the arrow key that many times and reports the resulting value_text.",
+        "Edit a supported control with read/edit permission; references become stale after the attempt. In live sessions, custom widgets (ARIA button/link/tab/menuitem/switch/checkbox/radio/option/treeitem/combobox) with the pointer_activation constraint accept activate, which needs submit permission and clicks only if the element is visible, in view, unobscured and stable; otherwise expect target_obscured, target_outside_viewport or target_moved. Open a custom combobox with activate, inspect again, then activate the option. Custom sliders and spin buttons with keyboard_adjustment accept adjust with steps (-100 to 100, positive increases): Steed focuses the control, presses the arrow key that many times and reports the resulting value_text. In live sessions, hover moves the pointer over any visible, unobscured target without clicking (needs edit permission) to reveal hover menus and tooltips; inspect again afterwards. In live sessions, approved cross-origin frames (constraint cross_origin_frame) are actionable like the main page except page.submit and page.upload; pointer actions work only in frames directly inside the page.",
         {
             **TARGET,
             "operation": {
                 **string(),
-                "enum": ["enter", "select", "activate", "adjust"],
+                "enum": ["enter", "select", "activate", "adjust", "hover"],
             },
             "text": {"type": "string", "maxLength": 4096},
             "index": integer(0, 999),
@@ -759,11 +759,12 @@ TOOLS = (
     ),
     tool(
         "page.scroll",
-        "Scroll an observed frame with read/scroll permission.",
+        "Scroll an observed frame with read/scroll permission. Give target_id instead of frame_id to scroll the nearest scrollable container around that target — a message list, side panel or dialog body that scrolls inside the page; the result reports its scroll_position and container_size (scroll width/height, visible width/height), or scroll_container_unavailable when only the page itself scrolls.",
         {
             **SESSION,
             "snapshot_id": string(),
             "frame_id": string(),
+            "target_id": string(),
             "dx": integer(-10000, 10000),
             "dy": integer(-10000, 10000),
         },

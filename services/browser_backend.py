@@ -83,7 +83,9 @@ class BrowserBackend(Protocol):
     def navigate_observed(self, session_id: str, url: str): ...
     def act(self, session_id, action_id, snapshot_id, target_id, arguments): ...
     def submit_form(self, session_id, action_id, snapshot_id, target_id): ...
-    def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments): ...
+    def scroll(
+        self, session_id, action_id, snapshot_id, frame_id, arguments, target_id=None
+    ): ...
     def wait(self, session_id, condition, text, timeout_ms): ...
     def start_download(self, session_id, download_id, url, destination, publish): ...
     def upload(self, session_id, action_id, snapshot_id, target_id, source): ...
@@ -888,6 +890,15 @@ class QtBrowserBackend(QObject):
     def act(self, session_id, action_id, snapshot_id, target_id, arguments):
         arguments = action_arguments(**arguments)
         session, validate = self._edit_context(session_id, "edit")
+        if arguments["operation"] == "hover":
+            if session.mode != "live":
+                raise PageInspectionError("live_session_required")
+            source = self._live_pointer(
+                session_id, snapshot_id, target_id, validate, hover=True
+            )
+            return self._action_result(
+                session_id, action_id, "hover", source, target_id=target_id
+            )
         if session.mode == "live" and arguments["operation"] == "activate":
             _, descriptor = self.inspector._target_reference(
                 session_id, snapshot_id, target_id
@@ -920,13 +931,21 @@ class QtBrowserBackend(QObject):
             session_id, action_id, arguments["operation"], source, target_id=target_id
         )
 
-    def _live_pointer(self, session_id, snapshot_id, target_id, validate):
-        """Click a custom widget only at a verified, stable, unobscured point."""
+    def _live_pointer(self, session_id, snapshot_id, target_id, validate, hover=False):
+        """Click (or hover) a target only at a verified, stable, unobscured point.
+
+        A target inside a cross-origin frame is measured in its frame, then
+        mapped through the frame element, which must be topmost on the page.
+        """
         session = self._session(session_id)
         node_id, descriptor = self.inspector._target_reference(
             session_id, snapshot_id, target_id
         )
-        if (
+        route = self.inspector.route(session_id, target_id)
+        if hover:
+            if route is not None and route["path"].count("/") != 1:
+                raise PageInspectionError("control_unsupported")
+        elif (
             not descriptor.enabled
             or "activate" not in descriptor.operations
             or "pointer_activation" not in descriptor.constraints
@@ -937,6 +956,8 @@ class QtBrowserBackend(QObject):
         network = session.network
         result = Future()
         request = {"snapshot_id": snapshot_id, "node_id": node_id}
+        if hover:
+            request["operation"] = "hover"
         first = None
 
         def finish(source):
@@ -954,6 +975,35 @@ class QtBrowserBackend(QObject):
             except Exception as error:
                 result.set_exception(error)
 
+        def located(future):
+            """The target's point on the page, mapped through its frame."""
+            if route is None:
+                return future
+            mapped = Future()
+
+            def framed(source):
+                try:
+                    point = source.result()
+                    validate()
+                    self.inspector.input_phase(
+                        session_id,
+                        session.page,
+                        {"snapshot_id": snapshot_id, "path": route["path"], **point},
+                        "frame_point",
+                        validate,
+                    ).add_done_callback(
+                        lambda page_point: (
+                            mapped.set_exception(page_point.exception())
+                            if page_point.exception()
+                            else mapped.set_result(page_point.result())
+                        )
+                    )
+                except Exception as error:
+                    mapped.set_exception(error)
+
+            future.add_done_callback(framed)
+            return mapped
+
         def confirmed(source):
             if result.done():
                 return
@@ -963,9 +1013,8 @@ class QtBrowserBackend(QObject):
                 if point != first:
                     raise PageInspectionError("target_moved")
                 validate()
-                network.input.click(point["x"], point["y"], validate).add_done_callback(
-                    finish
-                )
+                pointer = network.input.hover if hover else network.input.click
+                pointer(point["x"], point["y"], validate).add_done_callback(finish)
             except Exception as error:
                 result.set_exception(error)
 
@@ -980,8 +1029,14 @@ class QtBrowserBackend(QObject):
                     60,
                     lambda: (
                         result.done()
-                        or self.inspector.input_phase(
-                            session_id, session.page, request, "live_point", validate
+                        or located(
+                            self.inspector.input_phase(
+                                session_id,
+                                session.page,
+                                request,
+                                "live_point",
+                                validate,
+                            )
                         ).add_done_callback(confirmed)
                     ),
                 )
@@ -994,8 +1049,10 @@ class QtBrowserBackend(QObject):
             try:
                 source.result()
                 validate()
-                self.inspector.input_phase(
-                    session_id, session.page, request, "live_point", validate
+                located(
+                    self.inspector.input_phase(
+                        session_id, session.page, request, "live_point", validate
+                    )
                 ).add_done_callback(measured)
             except Exception as error:
                 result.set_exception(error)
@@ -1413,15 +1470,24 @@ class QtBrowserBackend(QObject):
         copy.ready.add_done_callback(copied)
         return result
 
-    def scroll(self, session_id, action_id, snapshot_id, frame_id, arguments):
+    def scroll(
+        self, session_id, action_id, snapshot_id, frame_id, arguments, target_id=None
+    ):
         arguments = scroll_arguments(**arguments)
         session, validate = self._edit_context(session_id, "scroll")
         frame_id, source = self.inspector.scroll(
-            session_id, session.page, snapshot_id, frame_id, arguments, validate
+            session_id,
+            session.page,
+            snapshot_id,
+            frame_id,
+            arguments,
+            validate,
+            target_id=target_id,
         )
-        return self._action_result(
-            session_id, action_id, "scroll", source, frame_id=frame_id
-        )
+        reference = {"frame_id": frame_id}
+        if target_id is not None:
+            reference["target_id"] = target_id
+        return self._action_result(session_id, action_id, "scroll", source, **reference)
 
     def submit_form(self, session_id, action_id, snapshot_id, target_id):
         """Authorize one native submission and observe its document load."""
@@ -1625,9 +1691,9 @@ class QtBrowserBackend(QObject):
                 return
             try:
                 data = source.result()
-                position = data.get("scroll_position")
-                if position is not None:
-                    data["scroll_position"] = tuple(position)
+                for key in ("scroll_position", "container_size"):
+                    if data.get(key) is not None:
+                        data[key] = tuple(data[key])
                 result.set_result(
                     PageActionResult(
                         session_id,
