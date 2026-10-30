@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
 from qt_test_support import application
 
-from ui.address_bar import AddressBar
+from ui.address_bar import KIND_ROLE, TITLE_ROLE, AddressBar
 from ui.chrome_style import chrome_colors
 
 
@@ -112,16 +112,67 @@ class ToolbarStyleTests(unittest.TestCase):
         self.bar.set_menu_badge("")
         self.assertEqual(self.bar.menu_btn.objectName(), "")
 
-    def test_suggestions_keep_title_and_address(self):
-        from browsing_history import HistoryEntry
-        from ui.address_bar import TITLE_ROLE
+    def rows(self, text):
+        self.bar.address_input.setText(text)
+        self.bar._suggest(text)
+        model = self.bar.history_model
+        return [
+            (
+                model.item(i).data(KIND_ROLE),
+                model.item(i).data(TITLE_ROLE),
+                model.item(i).data(Qt.ItemDataRole.UserRole),
+            )
+            for i in range(model.rowCount())
+        ]
 
-        self.bar.set_history([HistoryEntry("https://docs.example/a", "Docs")])
-        item = self.bar.history_model.item(0)
-        self.assertEqual(item.data(TITLE_ROLE), "Docs")
-        self.assertEqual(
-            self.bar.completer.pathFromIndex(item.index()), "https://docs.example/a"
+    def test_suggestions_rank_action_tabs_bookmarks_then_history(self):
+        from browsing_history import HistoryEntry
+
+        self.bar.set_search_name("DuckDuckGo")
+        self.bar.set_history(
+            [
+                HistoryEntry("https://docs.example/a", "Docs history"),
+                HistoryEntry("https://docs.example/b", "Docs bookmarked"),
+                HistoryEntry("https://other.example/", "Unrelated"),
+            ]
         )
+        self.bar.set_bookmarks([("Docs bookmarked", "https://docs.example/b")])
+        self.bar.tab_source = lambda: [("Docs tab", "https://docs.example/t", "w:1")]
+        rows = self.rows("docs")
+        self.assertEqual(
+            [kind for kind, _, _ in rows], ["search", "tab", "bookmark", "history"]
+        )
+        self.assertEqual(rows[0][1], "Search DuckDuckGo for “docs”")
+        self.assertEqual(rows[0][2], "docs")
+        # The bookmarked page is not repeated from history.
+        self.assertEqual([r[2] for r in rows].count("https://docs.example/b"), 1)
+        self.assertEqual(self.rows("docs.example")[0][0], "go")
+        self.assertEqual(self.rows("docs tab")[1][0], "tab")
+
+    def test_choosing_a_tab_switches_instead_of_navigating(self):
+        self.bar.tab_source = lambda: [("Mail", "https://mail.example/", "w:7")]
+        switched, navigated = [], []
+        self.bar.tab_switch_requested.connect(switched.append)
+        self.bar.url_changed.connect(navigated.append)
+        self.rows("mail")
+        self.bar._on_suggestion(self.bar.history_model.index(1, 0))
+        self.assertEqual((switched, navigated), (["w:7"], []))
+        self.bar._on_suggestion(self.bar.history_model.index(0, 0))
+        self.assertEqual(navigated, ["mail"])
+
+    def test_suggestions_are_bounded_and_keep_the_active_page_out(self):
+        from browsing_history import HistoryEntry
+
+        self.bar.set_history(
+            [HistoryEntry(f"https://site{i}.example/", f"Site {i}") for i in range(30)]
+        )
+        self.bar.set_url("https://current.example/")
+        self.bar.tab_source = lambda: [
+            ("Site current", "https://current.example/", "w:1")
+        ]
+        rows = self.rows("site")
+        self.assertLessEqual(len(rows), 10)
+        self.assertNotIn("tab", [kind for kind, _, _ in rows])
         dark = chrome_colors("#1e1e1e", True)
         self.bar.apply_style(dark)
         self.assertIn(dark["accent"], self.bar.styleSheet())

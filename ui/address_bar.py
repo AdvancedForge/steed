@@ -1,6 +1,6 @@
 """Address bar widget."""
 
-from PyQt6.QtCore import QRect, QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import QModelIndex, QRect, QSize, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import (
     QCompleter,
@@ -22,6 +22,34 @@ from ui.chrome_style import (
 )
 
 TITLE_ROLE = Qt.ItemDataRole.UserRole + 1
+KIND_ROLE = Qt.ItemDataRole.UserRole + 2
+KEY_ROLE = Qt.ItemDataRole.UserRole + 3
+KIND_ICONS = {
+    "search": "search",
+    "go": "go",
+    "tab": "tab",
+    "bookmark": "star",
+    "history": "history",
+}
+LIMITS = {"tab": 3, "bookmark": 4, "history": 8}
+MAX_SUGGESTIONS = 10
+
+
+def looks_like_address(text):
+    text = text.strip()
+    if not text or " " in text:
+        return False
+    if "://" in text or text.startswith(("steed:", "about:", "localhost")):
+        return True
+    host = text.split("/", 1)[0]
+    return "." in host and not host.startswith(".") and not host.endswith(".")
+
+
+def matches(words, *fields):
+    haystack = " ".join(fields).lower()
+    return all(word in haystack for word in words)
+
+
 BUTTON_ICONS = {
     "back": "back",
     "forward": "forward",
@@ -67,12 +95,17 @@ class SuggestionDelegate(QStyledItemDelegate):
         line = metrics.height()
         left = option.rect.left() + 34
         width = option.rect.width() - 44
-        icon("history", colors["muted"], 16).paint(
+        kind = index.data(KIND_ROLE) or "history"
+        icon(KIND_ICONS.get(kind, "history"), colors["muted"], 16).paint(
             painter,
             QRect(option.rect.left() + 10, option.rect.top() + line - 1, 16, 16),
         )
         title = index.data(TITLE_ROLE) or index.data(Qt.ItemDataRole.UserRole) or ""
         url = index.data(Qt.ItemDataRole.UserRole) or ""
+        if kind == "tab":
+            url = "Switch to tab · " + url
+        elif kind in ("search", "go"):
+            url = index.data(Qt.ItemDataRole.ToolTipRole) or ""
         painter.setPen(QColor(colors["ink"]))
         painter.drawText(
             QRect(left, option.rect.top() + 6, width, line),
@@ -135,6 +168,7 @@ class AddressBar(QWidget):
     home_requested = pyqtSignal()
     passwords_requested = pyqtSignal()
     reset_zoom_requested = pyqtSignal()
+    tab_switch_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -177,12 +211,18 @@ class AddressBar(QWidget):
         self.address_input.returnPressed.connect(self._on_return_pressed)
         self.history_model = QStandardItemModel(self)
         self.completer = HistoryCompleter(self.history_model, self)
-        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.completer.setFilterMode(Qt.MatchFlag.MatchContains)
-        self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        self.completer.setMaxVisibleItems(10)
+        # Suggestions are ranked here, so the completer shows them unfiltered.
+        self.completer.setCompletionMode(
+            QCompleter.CompletionMode.UnfilteredPopupCompletion
+        )
+        self.completer.setMaxVisibleItems(MAX_SUGGESTIONS)
         self.address_input.setCompleter(self.completer)
-        self.completer.activated[str].connect(self._on_completion)
+        self.completer.activated[QModelIndex].connect(self._on_suggestion)
+        self.address_input.textEdited.connect(self._suggest)
+        self.history_entries = []
+        self.bookmark_entries = []
+        self.tab_source = lambda: []
+        self.search_name = "the web"
         self.completer.popup().setItemDelegate(SuggestionDelegate(self))
         self.site_action = self.address_input.addAction(
             icon("search", "#5d6c83", 16), QLineEdit.ActionPosition.LeadingPosition
@@ -264,9 +304,62 @@ class AddressBar(QWidget):
             self.address_input.committed = True
             self.url_changed.emit(text)
 
-    def _on_completion(self, text: str) -> None:
+    def _on_suggestion(self, index) -> None:
         self.address_input.committed = True
-        self.url_changed.emit(text)
+        kind = index.data(KIND_ROLE)
+        if kind == "tab":
+            self.address_input.setText(self.address_input.page_url)
+            self.tab_switch_requested.emit(index.data(KEY_ROLE))
+            return
+        self.url_changed.emit(index.data(Qt.ItemDataRole.UserRole) or "")
+
+    def set_bookmarks(self, entries) -> None:
+        """(title, url) pairs from the current profile's bookmarks."""
+        self.bookmark_entries = list(entries)
+
+    def set_search_name(self, name: str) -> None:
+        self.search_name = name or "the web"
+
+    def _suggest(self, text: str) -> None:
+        """Rank the typed action, open tabs, bookmarks and history."""
+        text = text.strip()
+        self.history_model.clear()
+        if not text:
+            self.completer.popup().hide()
+            return
+        words = text.lower().split()
+        rows, seen = [], set()
+
+        def add(kind, title, url, key="", hint=""):
+            if kind in LIMITS:
+                if url in seen or sum(r[0] == kind for r in rows) >= LIMITS[kind]:
+                    return
+                seen.add(url)
+            rows.append((kind, title, url, key, hint))
+
+        if looks_like_address(text):
+            add("go", text, text, hint="Go to this address")
+        else:
+            add("search", f"Search {self.search_name} for “{text}”", text)
+        for title, url, key in self.tab_source():
+            if url != self.address_input.page_url and matches(words, title, url):
+                add("tab", title or url, url, key)
+        for title, url in self.bookmark_entries:
+            if matches(words, title, url):
+                add("bookmark", title or url, url)
+        for entry in self.history_entries:
+            if matches(words, entry.title, entry.url):
+                add("history", entry.title or entry.url, entry.url)
+        for kind, title, url, key, hint in rows[:MAX_SUGGESTIONS]:
+            item = QStandardItem(title)
+            item.setData(url, Qt.ItemDataRole.UserRole)
+            item.setData(title, TITLE_ROLE)
+            item.setData(kind, KIND_ROLE)
+            item.setData(key, KEY_ROLE)
+            item.setData(hint, Qt.ItemDataRole.ToolTipRole)
+            self.history_model.appendRow(item)
+        self.completer.setCompletionPrefix("")
+        self.completer.complete()
 
     def set_url(self, url: str) -> None:
         """Show the current page URL unless the user is editing the field."""
@@ -309,13 +402,7 @@ class AddressBar(QWidget):
         self.menu_btn.style().polish(self.menu_btn)
 
     def set_history(self, entries: list[HistoryEntry]) -> None:
-        self.completer.popup().hide()
-        self.history_model.clear()
-        for entry in entries:
-            item = QStandardItem(f"{entry.title} — {entry.url}")
-            item.setData(entry.url, Qt.ItemDataRole.UserRole)
-            item.setData(entry.title, TITLE_ROLE)
-            self.history_model.appendRow(item)
+        self.history_entries = list(entries)
 
     def focus_address(self) -> None:
         self.address_input.setFocus()

@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from PyQt6 import sip
-from PyQt6.QtCore import QCoreApplication, QEvent
+from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from qt_test_support import application, keep_directory
 
 import tab_manager
@@ -173,6 +173,29 @@ class TabWindowTests(unittest.TestCase):
         target = root._move_tab(tab)
         self.assertNotIn(tab, target.tabs)
         self.assertEqual(self.urls(target), ["about:blank#tools"])
+
+    def test_address_suggestions_find_bookmarks_and_tabs_in_other_windows(self):
+        root = self.root()
+        profile = root.profile_manager.current_profile_name
+        root.profile_manager.registry.start_pages.add_bookmark(
+            profile, "https://bookmarked.example/", "Bookmarked reading"
+        )
+        root._pop_out_profile_named(profile)
+        other = root._child_windows[-1]
+        page = (Path(__file__).resolve().parents[1] / "codec_test.html").as_uri()
+        target = other._new_tab(url=page + "#reading-tab", return_tab=True)
+        self.wait(lambda: target.url().fragment() == "reading-tab")
+        other._switch_tab(0)
+        root.address_bar._suggest("reading")
+        model = root.address_bar.history_model
+        kinds = {
+            model.item(i).data(Qt.ItemDataRole.UserRole + 2): i
+            for i in range(model.rowCount())
+        }
+        self.assertIn("bookmark", kinds)
+        self.assertIn("tab", kinds)
+        root.address_bar._on_suggestion(model.index(kinds["tab"], 0))
+        self.assertIs(other.tabs[other.current_tab_index], target)
 
     def test_drag_tokens_move_tabs_and_forged_tokens_do_nothing(self):
         root = self.root()

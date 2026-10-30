@@ -1253,8 +1253,9 @@ class BrowserTests(unittest.TestCase):
         self.app.processEvents()
         QTest.keyClicks(address.address_input, "Fixture Doc")
         self.wait_for(lambda: address.completer.popup().isVisible())
+        # Row 0 is the typed "Search … for" action; the history page follows.
         address.completer.popup().setCurrentIndex(
-            address.completer.completionModel().index(0, 0)
+            address.completer.completionModel().index(1, 0)
         )
         QTest.keyClick(address.address_input, Qt.Key.Key_Return)
         self.assertEqual(list(chosen), [[target]])
@@ -1267,15 +1268,15 @@ class BrowserTests(unittest.TestCase):
         second = BrowserWindow("default")
         try:
             self.assertIs(second.history, history)
-            self.assertEqual(second.address_bar.history_model.rowCount(), 1)
+            self.assertEqual(len(second.address_bar.history_entries), 1)
             self.window._switch_to_profile("search")
             self.assertIsNone(self.window.history.path)
-            self.assertEqual(self.window.address_bar.history_model.rowCount(), 0)
+            self.assertEqual(len(self.window.address_bar.history_entries), 0)
             self.window.history.record("https://private-fixture.example/", "Private")
-            self.assertEqual(second.address_bar.history_model.rowCount(), 1)
+            self.assertEqual(len(second.address_bar.history_entries), 1)
             self.window._switch_to_profile("default")
             self.assertIs(self.window.history, history)
-            self.assertEqual(self.window.address_bar.history_model.rowCount(), 1)
+            self.assertEqual(len(self.window.address_bar.history_entries), 1)
         finally:
             second.close()
 

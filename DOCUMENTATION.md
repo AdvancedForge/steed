@@ -268,8 +268,13 @@ The menu bar has six categories, in this order:
   colours in light and dark mode. Buttons use Steed's own line icons, the address
   field is a rounded field with an accent focus ring, and an icon at its left
   shows whether the page is encrypted (lock), not encrypted (open lock, orange),
-  a Steed page, or a search. History suggestions show the page title above its
-  address. The toolbar stays a native text field, so typing, input methods and
+  a Steed page, or a search. Typing shows up to ten suggestions: first the
+  action for what you typed (“Search DuckDuckGo for …”, using your search
+  engine's name, or “Go to …” for an address), then up to three open tabs of
+  this profile in any window (“Switch to tab” jumps to it instead of opening it
+  again), up to four bookmarks, and history. Every typed word must appear in the
+  title or address, and each address appears once. Suggestions are computed
+  locally; nothing is sent to the search engine before you press Enter. The toolbar stays a native text field, so typing, input methods and
   undo work like any other field.
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
   Zoom Out and Reset Zoom. While you edit the address bar, the page changing its

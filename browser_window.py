@@ -237,6 +237,26 @@ class BrowserTab(QWebEngineView):
 _TAB_DRAGS: dict = {}
 
 
+SEARCH_NAMES = {
+    "duckduckgo": "DuckDuckGo",
+    "google": "Google",
+    "bing": "Bing",
+    "startpage": "Startpage",
+    "kagi": "Kagi",
+    "search.brave": "Brave Search",
+    "ecosia": "Ecosia",
+}
+
+
+def search_engine_name(config):
+    host = QUrl(config.get("search_engine", DEFAULT_SEARCH_ENGINE)).host().lower()
+    host = host.removeprefix("www.")
+    for key, name in SEARCH_NAMES.items():
+        if host.startswith(key + "."):
+            return name
+    return host or "the web"
+
+
 class BrowserWindow(QMainWindow):
     """Main browser window."""
 
@@ -761,6 +781,8 @@ class BrowserWindow(QMainWindow):
         # Address bar
         self.address_bar = AddressBar()
         self.address_bar.url_changed.connect(self._navigate_to_url)
+        self.address_bar.tab_switch_requested.connect(self._switch_to_tab_key)
+        self.address_bar.tab_source = self._suggestion_tabs
         self.address_bar.back_requested.connect(self._go_back)
         self.address_bar.forward_requested.connect(self._go_forward)
         self.address_bar.reload_requested.connect(self._reload)
@@ -1847,6 +1869,48 @@ class BrowserWindow(QMainWindow):
 
     def _refresh_address_history(self):
         self.address_bar.set_history(self.history.entries())
+        self._refresh_address_sources()
+
+    def _refresh_address_sources(self):
+        """Bookmarks and the search engine's name for address suggestions."""
+        try:
+            state = self.profile_manager.registry.start_pages.state(
+                self.profile_manager.current_profile_name
+            )
+            bookmarks = [(b["title"], b["url"]) for b in state.get("bookmarks", [])]
+        except (OSError, ValueError, KeyError, TypeError):
+            bookmarks = []
+        self.address_bar.set_bookmarks(bookmarks)
+        self.address_bar.set_search_name(search_engine_name(self.config))
+
+    def _suggestion_tabs(self):
+        """Open tabs of this profile in every window: (title, url, key)."""
+        rows = []
+        for window in [self, *self._same_profile_windows()]:
+            for tab in window.tabs:
+                if getattr(tab, "agent_panel", False):
+                    continue
+                rows.append(
+                    (
+                        tab.title(),
+                        window._tab_url(tab),
+                        window.browser_window_id + ":" + tab.tab_id,
+                    )
+                )
+        return rows
+
+    def _switch_to_tab_key(self, key):
+        window_id, _, tab_id = key.partition(":")
+        for window in [self, *self._same_profile_windows()]:
+            if window.browser_window_id != window_id:
+                continue
+            for index, tab in enumerate(window.tabs):
+                if tab.tab_id == tab_id:
+                    window._switch_tab(index)
+                    window.raise_()
+                    window.activateWindow()
+                    tab.setFocus()
+                    return
 
     def _clear_browsing_history(self):
         if (
@@ -3322,6 +3386,7 @@ class BrowserWindow(QMainWindow):
 
     def _settings_changed(self):
         if not self._closing:
+            self._refresh_address_sources()
             side = self.config.get("devtools_side", "right")
             if side != self.devtools.side:
                 self.devtools.set_side(side)
@@ -3341,6 +3406,7 @@ class BrowserWindow(QMainWindow):
     def _start_page_changed(self, profile):
         if self._closing or profile != self.profile_manager.current_profile_name:
             return
+        self._refresh_address_sources()
         for tab in self.tabs:
             if page_name(tab.url()) is not None:
                 tab.reload()
