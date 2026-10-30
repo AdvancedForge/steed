@@ -217,8 +217,11 @@ class BrowserTab(QWebEngineView):
             menu.addAction("Inspect").triggered.connect(
                 lambda: self.browser_window._inspect_page_element(self)
             )
-        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        menu.popup(event.globalPos())
+        if self.browser_window is not None:
+            self.browser_window._show_html_menu(menu, event.globalPos(), context=True)
+        else:
+            menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            menu.popup(event.globalPos())
 
     def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> "BrowserTab":
         return self.browser_window._new_tab(return_tab=True)
@@ -2258,7 +2261,7 @@ class BrowserWindow(QMainWindow):
         ).setEnabled(index < len(self.tabs) - 1)
         reopen = menu.addAction("Reopen Closed Tab", self._restore_closed_tab)
         reopen.setEnabled(self.restore_tab_action.isEnabled())
-        menu.exec(position)
+        self._show_html_menu(menu, position, context=True)
 
     def _show_group_menu(self, name, position):
         group = self.tab_manager.ensure_group(name)
@@ -2281,7 +2284,7 @@ class BrowserWindow(QMainWindow):
         close.setEnabled(len(members) < len(self.tabs))
         menu.addSeparator()
         menu.addAction("Manage Tab Groups…", self._manage_tab_groups)
-        menu.exec(position)
+        self._show_html_menu(menu, position, context=True)
 
     def _rename_group_prompt(self, group):
         name, ok = QInputDialog.getText(
@@ -2948,14 +2951,17 @@ class BrowserWindow(QMainWindow):
             return dialog
         return self._new_tab(url="steed:style", return_tab=True)
 
-    def _show_html_menu(self, menu, anchor):
+    def _show_html_menu(self, menu, anchor, *, context=False):
         from ui.html_menu import HtmlMenu
 
         if self._closing:
             return
         if self._html_menu is not None:
             self._html_menu.close()
-        popup = HtmlMenu(menu, self, anchor)
+        popup = HtmlMenu(menu, self, anchor, context=context)
+        if context:
+            # One-off right-click menus live only as long as their popup.
+            popup.finished.connect(lambda _: menu.deleteLater())
         self._html_menu = popup
         popup.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         popup.finished.connect(

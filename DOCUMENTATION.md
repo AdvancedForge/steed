@@ -245,6 +245,7 @@ The menu bar has six categories, in this order:
   that group, and opens Manage Tab Groups. Right-click a tab for New Tab to the
   Right, Reload, Duplicate, Pin/Unpin, Mute, Copy Link Address, Add to Group / Remove from
   Group, Close, Close Other Tabs, Close Tabs to the Right and Reopen Closed Tab.
+  Tab, group and page right-click menus use Steed's own menu style.
   Middle-click closes a tab, double-clicking empty strip space opens one, tabs
   drag to reorder, and the strip is keyboard navigable (arrow keys, Enter,
   Delete, Shift+F10). Pinned tabs show only their site icon, stay together at

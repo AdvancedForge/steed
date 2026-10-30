@@ -11,7 +11,7 @@ from ui.html_surface import HtmlSurface
 
 
 class HtmlMenu(QDialog):
-    def __init__(self, menu, owner, anchor):
+    def __init__(self, menu, owner, anchor, *, context=False):
         super().__init__(owner, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.owner = owner
         self.section = next(
@@ -23,6 +23,8 @@ class HtmlMenu(QDialog):
         self.sequence = 0
         self.stack = [menu]
         self.closed = False
+        # Right-click menus have no settings section and open at the cursor.
+        self.context_menu = context
         self.surface = HtmlSurface("menu", self, label="browser menu")
         self.surface.command.connect(self.command)
         self.surface.reloading.connect(self.reload)
@@ -34,8 +36,15 @@ class HtmlMenu(QDialog):
         self.timer.timeout.connect(self.publish)
         menu.aboutToShow.emit()
         self.anchor = anchor
+        visible = [a for a in menu.actions() if a.isVisible()]
+        height = sum(11 if a.isSeparator() else 35 for a in visible)
         place_popup(
-            self, owner, anchor, (350, min(660, 100 + len(menu.actions()) * 39))
+            self,
+            owner,
+            anchor,
+            (290, min(660, height + 40))
+            if context
+            else (350, min(660, 100 + len(menu.actions()) * 39)),
         )
         self.timer.start()
         self.publish()
@@ -82,6 +91,7 @@ class HtmlMenu(QDialog):
                 "context": self.context,
                 "title": menu.title() or "Browser menu",
                 "back": len(self.stack) > 1,
+                "context_menu": self.context_menu,
                 "rows": rows,
                 "dark": self.owner.profile_manager.registry.page_style.dark(
                     self.owner.profile_manager.current_profile_name

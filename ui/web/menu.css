@@ -6,3 +6,5 @@ nav button { display: flex; align-items: center; width: 100%; text-align: left; 
 footer { border-top: 1px solid var(--border); margin-top: 8px; padding: 10px 0 2px; } footer button { width: 100%; color: var(--accent); text-align: left; }
 
 body { height: 100vh; display: flex; flex-direction: column; } header, footer { flex: none; } nav { flex: 1; min-height: 0; overflow-y: auto; }
+
+body.context-menu header { display: none; } body.context-menu { padding: 5px; } body.context-menu nav button { padding: 7px 10px; font-weight: 400; min-height: 32px; }

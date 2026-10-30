@@ -184,6 +184,95 @@ class TabStripTests(unittest.TestCase):
         self.window.profile_manager.registry.commit_layout(top)
         self.assertFalse(grip.isVisibleTo(self.strip))
 
+    def test_tab_right_click_menu_is_an_html_popup(self):
+        from PyQt6.QtCore import QPoint
+
+        window = self.window
+        before = len(window.tabs)
+        window._show_tab_menu(0, window.mapToGlobal(QPoint(40, 40)))
+        popup = window._html_menu
+        self.assertIsNotNone(popup)
+        self.assertTrue(popup.context_menu)
+        self.wait(lambda: popup.surface.ready and popup.actions)
+        labels = {action.text(): token for token, action in popup.actions.items()}
+        self.assertIn("Duplicate", labels)
+        self.assertIn("Pin Tab", labels)
+        self.assertTrue(
+            self.js_in(popup.surface, "document.querySelector('footer').hidden")
+        )
+        popup.command(
+            {
+                "context": popup.context,
+                "sequence": 1,
+                "action": "activate",
+                "id": labels["Duplicate"],
+                "x": 10,
+                "y": 10,
+            }
+        )
+        self.assertEqual(len(window.tabs), before + 1)
+        self.wait(lambda: window._html_menu is None)
+
+    def test_page_right_click_menu_copies_and_pastes_through_html(self):
+        from PyQt6.QtCore import QPoint, Qt
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QApplication
+
+        tab = self.window.tabs[self.window.current_tab_index]
+        tab.setHtml(
+            '<input id=f value="menu copy" style="position:absolute;left:20px;'
+            'top:20px;width:300px;height:30px"><input id=g style="position:absolute;'
+            'left:20px;top:80px;width:300px;height:30px">'
+        )
+
+        def page(code):
+            results = []
+            tab.page().runJavaScript(code, results.append)
+            self.wait(lambda: bool(results))
+            return results[0]
+
+        self.wait(lambda: page("!!document.getElementById('g')"))
+        target = tab.focusProxy() or tab
+
+        def choose(point, label):
+            QTest.mouseClick(
+                target,
+                Qt.MouseButton.RightButton,
+                Qt.KeyboardModifier.NoModifier,
+                point,
+            )
+            self.wait(lambda: self.window._html_menu is not None)
+            popup = self.window._html_menu
+            self.wait(lambda: popup.surface.ready and popup.actions)
+            names = {a.text().replace("&", ""): t for t, a in popup.actions.items()}
+            self.assertIn("Inspect", names)
+            popup.command(
+                {
+                    "context": popup.context,
+                    "sequence": 1,
+                    "action": "activate",
+                    "id": names[label],
+                    "x": 10,
+                    "y": 10,
+                }
+            )
+            self.wait(lambda: self.window._html_menu is None)
+
+        page(
+            "document.getElementById('f').focus(); document.getElementById('f').select(); true"
+        )
+        choose(QPoint(60, 35), "Copy")
+        self.wait(lambda: QApplication.clipboard().text() == "menu copy")
+        page("document.getElementById('g').focus(); true")
+        choose(QPoint(60, 95), "Paste")
+        self.wait(lambda: page("document.getElementById('g').value") == "menu copy")
+
+    def js_in(self, surface, code):
+        results = []
+        surface.page.runJavaScript(code, results.append)
+        self.wait(lambda: bool(results))
+        return results[0]
+
     def test_context_menu_duplicate_and_close_others(self):
         self.window._new_tab(url="about:blank", title="Second")
         self.window._new_tab(url="about:blank", title="Third")
