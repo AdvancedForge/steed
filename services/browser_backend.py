@@ -34,7 +34,11 @@ from services.page_actions import (
     scroll_arguments,
     wait_arguments,
 )
-from services.page_inspector import PageInspectionError, PageInspector
+from services.page_inspector import (
+    PageInspectionError,
+    PageInspector,
+    content_signature,
+)
 from services.permission_service import PermissionService
 from services.task_downloads import TaskDownload
 from services.task_network import TaskNetwork
@@ -1637,7 +1641,7 @@ class QtBrowserBackend(QObject):
         session.grant.check("read")
         if session.pending_action is not None or session.waits:
             raise PageInspectionError("action_in_progress")
-        if condition in ("text", "settled") and (
+        if condition in ("text", "settled", "changed") and (
             session.loading or session.load_success is not True
         ):
             raise PageInspectionError("page_not_ready")
@@ -1649,11 +1653,19 @@ class QtBrowserBackend(QObject):
         deadline.setSingleShot(True)
         revision = session.revision
         limitations = (
-            ("inspection_not_completed",) if condition in ("text", "settled") else ()
+            ("inspection_not_completed",)
+            if condition in ("text", "settled", "changed")
+            else ()
         )
         reading = None
         # "settled": text, controls and size unchanged for SETTLE_MS of reads.
+        # "changed": the baseline is the agent's last inspection of this page
+        # revision, or else the first read; any later difference matches.
         signature = None
+        if condition == "changed":
+            observed = self.inspector.observed.get(session_id)
+            if observed is not None and observed[0] == revision:
+                signature = observed[1]
         changed_at = time.monotonic()
 
         def cleanup(_):
@@ -1703,6 +1715,14 @@ class QtBrowserBackend(QObject):
                         finish("matched")
                         return
                     poll.start(250)
+                elif condition == "changed":
+                    current = content_signature(snapshot)
+                    if signature is None:
+                        signature = current
+                    elif current != signature:
+                        finish("matched")
+                        return
+                    poll.start(150)
                 elif any(text in frame.text for frame in snapshot.frames):
                     finish("matched")
                 else:
@@ -1726,6 +1746,9 @@ class QtBrowserBackend(QObject):
                         poll.start(50)
                 else:
                     if session.revision != revision:
+                        if condition == "changed":
+                            finish("matched")
+                            return
                         raise PageInspectionError("stale_snapshot")
                     reading = self.inspect_page(session_id)
                     reading.add_done_callback(inspected)

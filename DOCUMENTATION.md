@@ -1069,7 +1069,16 @@ visible text; field values and editable text are never included. At most 150
 entries and 12,000 characters are returned per snapshot (`outline_truncated`),
 and images without any text alternative add `unlabelled_images_present`.
 Targets report ARIA states as `states`: `expanded`/`collapsed`, `pressed`,
-`selected` and `current`.
+`selected`, `current`, `checked`/`unchecked`/`mixed` (from `aria-checked`),
+`has_popup` and `busy` (the control or a container is `aria-busy`). A target's
+`role` is its explicit ARIA role, or else the role its native element exposes:
+`link`, `button`, `textbox`, `searchbox`, `combobox` (single selects and inputs
+with a suggestion list), `listbox` (multiple selects), `spinbutton`, `slider`,
+`checkbox` or `radio`. Custom sliders and spin buttons report their
+`aria-valuetext` or `aria-valuenow` as `value_text`; native control values stay
+omitted. Custom textboxes, comboboxes, listboxes, sliders, spin buttons and grid
+cells are described but have no DOM action (`custom_control_unsupported`); tree
+items join the pointer-activated roles below.
 
 Frames from another origin cannot be read by the main document's script. When
 such a frame's origin is in the task's scope, Steed runs the same read inside
@@ -1088,9 +1097,17 @@ once text length, controls and scrollable height stay unchanged for 750 ms (or
 `timed_out`) — and inspect again. Restricted pages run no website scripts, so
 script-driven lazy loading needs a live session.
 
+For effects that arrive after an action — search results, validation messages,
+a list that loads — call `page.wait` with `condition: "changed"`. It compares
+reads every 150 ms with the agent's last `page.inspect` of the same page (or,
+without one, with its own first read) and reports `matched` once the visible
+text, any control's role, label, enabled state, states or value text, or the
+outline differs, or once the page navigates. A change that landed before the
+wait started therefore still matches.
+
 In live sessions (shared tabs or live private pages), custom widgets in the main
 document with an ARIA role of button, link, tab, menuitem (including checkbox and
-radio items), switch, checkbox, radio or option report `activate` with the
+radio items), switch, checkbox, radio, option or treeitem report `activate` with the
 `pointer_activation` constraint. Activation needs `submit` permission, like other
 live button activation, and is a single left click at the element's centre.
 Before clicking, the page checks twice, about 60 ms apart, that the element is
