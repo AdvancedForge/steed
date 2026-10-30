@@ -10,6 +10,9 @@
             active = active.shadowRoot.activeElement;
         return active;
     };
+    // Keys go to whichever document holds page focus. Inside a child frame,
+    // its own activeElement survives the page moving focus elsewhere.
+    const holdsFocus = (doc, node) => focused(doc) === node && (doc.defaultView === doc.defaultView.top || doc.hasFocus());
     const POINTER_ROLES = ["button", "link", "tab", "menuitem", "menuitemcheckbox", "menuitemradio",
         "switch", "checkbox", "radio", "option", "treeitem", "combobox"];
     // Custom controls moved by arrow keys while focused.
@@ -100,7 +103,23 @@
                 // frame element itself to be topmost there.
                 const element = state.frameElements?.get(request.path);
                 if (!element || !element.isConnected) return fail("stale_snapshot");
+                // The offset is added unscaled, so any transform or zoom on the
+                // frame or its ancestors would move the click to other content.
+                for (let el = element, depth = 0; el && depth < 256; depth++) {
+                    const css = getComputedStyle(el);
+                    if (css.transform !== "none" || (css.zoom && css.zoom !== "1") ||
+                        (css.scale && css.scale !== "none") || (css.rotate && css.rotate !== "none") ||
+                        (css.translate && css.translate !== "none")) return fail("frame_transformed");
+                    el = el.parentElement || el.getRootNode()?.host;
+                }
                 const box = element.getBoundingClientRect(), style = getComputedStyle(element);
+                if (Math.abs(box.width - element.offsetWidth) > 1 || Math.abs(box.height - element.offsetHeight) > 1)
+                    return fail("frame_transformed");
+                // The frame's viewport must be the element's content box.
+                const contentWidth = element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+                const contentHeight = element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+                if (Math.abs(contentWidth - request.width) > 1 || Math.abs(contentHeight - request.height) > 1)
+                    return fail("frame_transformed");
                 const x = box.left + element.clientLeft + parseFloat(style.paddingLeft) + request.x;
                 const y = box.top + element.clientTop + parseFloat(style.paddingTop) + request.y;
                 if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return fail("target_outside_viewport");
@@ -179,7 +198,7 @@
                     node.hasAttribute("readonly") || node.getAttribute("aria-readonly") === "true" ||
                     !node.getClientRects().length || win.getComputedStyle(node).visibility !== "visible")
                     return fail("target_not_editable");
-                if (request.mode !== "input_prepare" && focused(doc) !== node) return fail("focus_unavailable");
+                if (request.mode !== "input_prepare" && !holdsFocus(doc, node)) return fail("focus_unavailable");
                 if (request.mode === "input_check") return JSON.stringify({valid: true});
                 if (request.operation === "adjust") {
                     const role = (node.getAttribute("role") || "").toLowerCase();
@@ -244,7 +263,7 @@
                     el = el.parentElement || el.getRootNode()?.host;
                 }
                 if (!inside) return fail("target_obscured");
-                return JSON.stringify({x: Math.round(x), y: Math.round(y)});
+                return JSON.stringify({x: Math.round(x), y: Math.round(y), width: innerWidth, height: innerHeight});
             }
             if (request.mode === "live_prepare") {
                 const node = target.node, doc = node.ownerDocument, win = doc.defaultView;
@@ -254,7 +273,7 @@
                     !node.getClientRects().length || win.getComputedStyle(node).visibility !== "visible")
                     return fail("control_unsupported");
                 node.focus({preventScroll: false});
-                return focused(doc) === node ? JSON.stringify({prepared:true}) : fail("focus_unavailable");
+                return holdsFocus(doc, node) ? JSON.stringify({prepared:true}) : fail("focus_unavailable");
             }
             if (["form", "submit"].includes(request.mode)) {
                 const node = target.node, info = submission(node);

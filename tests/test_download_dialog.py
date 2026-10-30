@@ -151,6 +151,19 @@ class DownloadDialogTests(unittest.TestCase):
             entries["Notes (2).txt"]["byte_count"], len(b"downloaded notes")
         )
 
+    def test_incognito_downloads_are_never_added_to_the_library(self):
+        (self.root / "Notes.txt").write_bytes(b"private")
+        record = self.manager.records["notes"]
+        record.state = "DownloadCompleted"
+        dialog = DownloadDialog(self.manager, tasks=lambda: self.fail("not needed"))
+        self.addCleanup(dialog.deleteLater)
+        for profile, private in (("search", set()), ("work", {"notes"})):
+            record.profile = profile
+            self.manager.private = private
+            with patch("ui.download_dialog.QMessageBox.warning") as warned:
+                dialog.add_to_library(record)
+            self.assertIn("incognito", warned.call_args.args[2])
+
     def test_unfinished_download_is_not_added_and_button_needs_a_library(self):
         labels = [b.text() for b in self.dialog.findChildren(QPushButton)]
         self.assertNotIn("Add to Library…", labels)

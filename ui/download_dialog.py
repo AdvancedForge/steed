@@ -141,6 +141,16 @@ class DownloadDialog(HtmlSettingsDialog):
         from services.file_library import read_import
 
         path = Path(record.path)
+        private = record.profile == "search" or any(
+            self.manager.records.get(key) is record for key in self.manager.private
+        )
+        if private:
+            QMessageBox.warning(
+                self,
+                "Add to Library",
+                "Downloads from incognito windows are not added to the library.",
+            )
+            return
         if record.state != "DownloadCompleted" or not path.is_file():
             QMessageBox.warning(
                 self, "Add to Library", "The completed file is not available."

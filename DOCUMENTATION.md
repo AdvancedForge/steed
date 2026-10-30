@@ -816,6 +816,30 @@ refresh. Measured with one window: about 316 MB at startup, 198 MB once idle;
 a cookie write wakes only that profile. A change made while asleep reaches
 global sharing a second or two later than when awake.
 
+**Memory: interface surfaces.** Steed's HTML interface parts (the tab strip, right-click
+menus, command palette, agent sidebar and dialogs) each run in their own renderer
+process, about 12 MB apiece. Menus and dialogs free theirs when they close; the
+command palette now frees its renderer after a minute hidden and rebuilds on the
+next open. **Settings → View → Lighter native interface** switches the tab strip,
+right-click menus, palette and dialogs to plain Qt widgets that need no renderer:
+in a measured two-window session that was 2 renderers and about 350 MB instead
+of 5 and about 390 MB. The native tab strip keeps tab placement, groups (shown
+as colours), pinning, collapsed groups, reordering, closing and the tab menu,
+but not tab-strip styling or dragging tabs between windows (use **Move to new
+window** in the tab menu). Menus, the palette and dialogs switch immediately; the
+tab strip changes in new windows and after a restart. The `steed:` pages and
+the agent sidebar stay HTML. The largest remaining costs are the browser core
+in the main process (about 185 MB) and the cookie inspectors described above
+while they are awake (about 60 MB per profile).
+
+**Memory: returning freed memory.** Closing tabs and windows frees their memory
+inside Steed, but the C allocator keeps it reserved, so the process looked about
+100 MB larger after closing 15 tabs although object counts were back to normal
+(a repeated open/close test shows no growth per round). Five seconds after the
+last tab or window closes in a burst, Steed asks glibc to return free memory to
+the system (`malloc_trim`); in the same test the main process went back from
+about 320 MB to about 230 MB. On non-glibc systems this does nothing.
+
 - **GUI Framework**: PyQt6
 - **Browser Engine**: PyQtWebEngine (Chromium-based)
 - **Storage**: JSON files for configuration, SQLite for cookies (via Qt)

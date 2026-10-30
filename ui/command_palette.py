@@ -3,13 +3,21 @@
 from secrets import token_hex
 
 from PyQt6 import sip
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtWidgets import QDialog, QVBoxLayout
+from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtWidgets import (
+    QDialog,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+)
 
 from ui.html_dialog import place_popup
 from ui.html_surface import HtmlSurface
 
 MAX_ITEMS = 400
+# A hidden palette keeps its renderer this long for a quick reopen, then frees it.
+RELEASE_MS = 60000
 
 
 def menu_commands(menus):
@@ -39,6 +47,9 @@ def menu_commands(menus):
 class CommandPalette(QDialog):
     """One reusable popup per window; filtering happens in the page."""
 
+    released = pyqtSignal()
+    native = False
+
     def __init__(self, window):
         super().__init__(
             window, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
@@ -47,15 +58,29 @@ class CommandPalette(QDialog):
         self.context = token_hex(16)
         self.items = {}
         self.mode = ""
-        self.surface = HtmlSurface("palette", self, label="command palette")
-        self.surface.command.connect(self.command)
+        self.idle = QTimer(self)
+        self.idle.setSingleShot(True)
+        self.idle.setInterval(RELEASE_MS)
+        self.idle.timeout.connect(self.released.emit)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(1, 1, 1, 1)
+        self._build(layout)
+
+    def _build(self, layout):
+        self.surface = HtmlSurface("palette", self, label="command palette")
+        self.surface.command.connect(self.command)
         layout.addWidget(self.surface)
 
-    def present(self, mode=""):
-        """Show commands and tabs; mode "@" starts on tabs, ">" on commands."""
-        self.mode = mode
+    def showEvent(self, event):
+        self.idle.stop()
+        super().showEvent(event)
+
+    def hideEvent(self, event):
+        self.idle.start()
+        super().hideEvent(event)
+
+    def _rows(self):
+        """Fresh tokens for every open tab and enabled menu command."""
         self.context = token_hex(16)
         self.items = {}
         rows = []
@@ -89,12 +114,22 @@ class CommandPalette(QDialog):
                     "shortcut": action.shortcut().toString(),
                 }
             )
-        rows = rows[:MAX_ITEMS]
+        return rows[:MAX_ITEMS]
+
+    def _place(self):
+        window = self.browser
         width = min(640, max(420, window.width() - 120))
         anchor = window.mapToGlobal(
             QPoint((window.width() - width) // 2, max(40, window.height() // 9))
         )
         place_popup(self, window, anchor, (width, 440))
+
+    def present(self, mode=""):
+        """Show commands and tabs; mode "@" starts on tabs, ">" on commands."""
+        self.mode = mode
+        window = self.browser
+        rows = self._rows()
+        self._place()
         self.surface.publish(
             {
                 "context": self.context,
@@ -143,4 +178,102 @@ class CommandPalette(QDialog):
             target.trigger()
 
     def dispose(self):
-        self.surface.dispose()
+        self.idle.stop()
+        if self.surface is not None:
+            self.surface.dispose()
+
+
+class NativeCommandPalette(CommandPalette):
+    """The same commands and tabs in a plain Qt list, with no renderer."""
+
+    native = True
+
+    def _build(self, layout):
+        self.surface = None
+        self.query = QLineEdit(self)
+        self.query.setPlaceholderText("Search tabs and commands  (> commands, @ tabs)")
+        self.query.setAccessibleName("Search tabs and commands")
+        self.query.textChanged.connect(self._filter)
+        self.query.returnPressed.connect(self._choose_current)
+        self.results = QListWidget(self)
+        self.results.setAccessibleName("Matching tabs and commands")
+        self.results.itemActivated.connect(self._choose)
+        self.query.installEventFilter(self)
+        layout.addWidget(self.query)
+        layout.addWidget(self.results)
+
+    def present(self, mode=""):
+        self.mode = mode
+        self.rows = self._rows()
+        self._place()
+        self.query.setText(mode)
+        self._filter()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self.query.setFocus()
+
+    def eventFilter(self, source, event):
+        from PyQt6.QtCore import QEvent
+
+        if source is self.query and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+                row = self.results.currentRow() + (1 if key == Qt.Key.Key_Down else -1)
+                if 0 <= row < self.results.count():
+                    self.results.setCurrentRow(row)
+                return True
+            if key == Qt.Key.Key_Escape:
+                self.hide()
+                return True
+        return super().eventFilter(source, event)
+
+    def _filter(self):
+        text = self.query.text()
+        kind = None
+        if text.startswith(">"):
+            kind, text = "command", text[1:]
+        elif text.startswith("@"):
+            kind, text = "tab", text[1:]
+        words = text.casefold().split()
+        phrase = " ".join(words)
+
+        def rank(row):
+            # Exact titles first, then titles starting with the query, then the rest.
+            title = row["title"].casefold()
+            return (title != phrase, not title.startswith(phrase), phrase not in title)
+
+        self.results.clear()
+        rows = [
+            row
+            for row in self.rows
+            if (not kind or row["kind"] == kind)
+            and all(
+                word in (row["title"] + " " + row["detail"]).casefold()
+                for word in words
+            )
+        ]
+        for row in sorted(rows, key=rank) if phrase else rows:
+            label = row["title"]
+            if row.get("shortcut"):
+                label += f"    {row['shortcut']}"
+            item = QListWidgetItem(("Tab · " if row["kind"] == "tab" else "") + label)
+            item.setToolTip(row["detail"])
+            item.setData(Qt.ItemDataRole.UserRole, row["id"])
+            self.results.addItem(item)
+        if self.results.count():
+            self.results.setCurrentRow(0)
+
+    def _choose_current(self):
+        item = self.results.currentItem()
+        if item is not None:
+            self._choose(item)
+
+    def _choose(self, item):
+        self.command(
+            {
+                "context": self.context,
+                "action": "choose",
+                "id": item.data(Qt.ItemDataRole.UserRole),
+            }
+        )

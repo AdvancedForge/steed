@@ -170,7 +170,7 @@ class BrowserConnection:
                 }
             try:
                 notice = None
-                if self.writer is None and generation != self.generation:
+                if generation != self.generation:
                     raise RuntimeError("Browser connection was lost")
                 if self.writer is None and self.can_reconnect:
                     try:
