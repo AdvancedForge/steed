@@ -59,6 +59,8 @@ class CookieSnapshotPolicyTests(unittest.TestCase):
         snapshot.retryable_error = False
         snapshot.skipped_partitioned = 0
         snapshot.frontend = Mock()
+        snapshot.sleeping = False
+        snapshot.idle = Mock()
         snapshot.timer = Mock()
         snapshot.loaded = Mock()
         snapshot.failed = Mock()

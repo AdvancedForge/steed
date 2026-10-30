@@ -806,6 +806,16 @@ The smoke and profile-restart files are runnable scripts rather than unittest mo
 
 ## Engine and storage internals
 
+**Memory: idle cookie inspection.** Qt 6.11 cannot list stored cookies directly,
+so each open profile keeps a hidden page with a private DevTools frontend to
+enumerate them for the cookie viewer and global cookie sharing. Those two
+renderer processes per profile were about a third of Steed's memory. After 30
+seconds without cookie activity they are now released (the frontend is deleted
+and the hidden page discarded) and rebuilt by the next cookie change or viewer
+refresh. Measured with one window: about 316 MB at startup, 198 MB once idle;
+a cookie write wakes only that profile. A change made while asleep reaches
+global sharing a second or two later than when awake.
+
 - **GUI Framework**: PyQt6
 - **Browser Engine**: PyQtWebEngine (Chromium-based)
 - **Storage**: JSON files for configuration, SQLite for cookies (via Qt)
