@@ -75,8 +75,12 @@ class CommandPalette(QDialog):
         self.idle.stop()
         super().showEvent(event)
 
+    # Set by the window from the memory mode; negative keeps the palette loaded.
+    keep_ms = RELEASE_MS
+
     def hideEvent(self, event):
-        self.idle.start()
+        if self.keep_ms >= 0:
+            self.idle.start(self.keep_ms)
         super().hideEvent(event)
 
     def _rows(self):

@@ -806,6 +806,36 @@ The smoke and profile-restart files are runnable scripts rather than unittest mo
 
 ## Engine and storage internals
 
+**Memory & performance (`steed:memory`).** Open **View → Memory & Performance…**
+or type `steed:memory`. Choose a mode on the axis from least memory to smoothest,
+then change any setting on its own (the mode then shows as Custom):
+
+| Setting | Memory saver | Balanced (default) | Performance |
+| --- | --- | --- | --- |
+| Cookie inspection sleeps after activity | 5 s | 30 s | stays awake |
+| Cookie inspection wake-ups | at most every 20 s | every change | every change |
+| Freeze background tabs | after 2 min | never | never |
+| Unload background tabs | after 15 min | after 4 h | never |
+| Interface | native Qt widgets | customizable HTML | customizable HTML |
+| Command palette | freed on close | kept 1 min | preloaded and kept |
+| Return freed memory | on | on | off |
+
+A frozen tab keeps its page but stops scripts and timers (chat and mail tabs stop
+updating until you return). An unloaded tab frees its renderer and reloads when
+selected; unsaved form text can be lost. Tabs playing audio, shared with an agent,
+with DevTools open or still loading, and `steed:` pages are never frozen or
+unloaded, and Steed never goes further than Qt WebEngine recommends for a page
+(a hidden page is frozen first and unloaded on a later check). Background tabs
+are checked every 30 seconds. With delayed cookie wake-ups, cookies shared from
+the global profile reach other profiles up to that much later; opening or
+refreshing the cookie viewer always inspects immediately. The page also shows
+live usage — Steed's total, the browser core, renderers, tabs active/frozen/
+unloaded and awake cookie inspectors — and **Free memory now**, which unloads
+background tabs that can safely reload, puts idle cookie inspectors to sleep,
+frees a closed palette and returns freed memory. In one measured session (one
+window, four background tabs, some cookie activity) Memory saver used about
+350 MB, Balanced about 520 MB and Performance about 575 MB.
+
 **Memory: idle cookie inspection.** Qt 6.11 cannot list stored cookies directly,
 so each open profile keeps a hidden page with a private DevTools frontend to
 enumerate them for the cookie viewer and global cookie sharing. Those two

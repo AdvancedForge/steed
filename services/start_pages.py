@@ -41,6 +41,7 @@ WORKSPACES = (
     "settings",
     "agents",
     "style",
+    "memory",
     "cookies",
     "downloads",
     "bookmarks",

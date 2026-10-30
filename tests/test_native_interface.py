@@ -169,7 +169,7 @@ class PaletteReleaseTests(unittest.TestCase):
         self.window._open_palette()
         palette = self.window._palette
         self.assertFalse(palette.native)
-        palette.idle.setInterval(50)
+        palette.keep_ms = 50
         palette.hide()
         self.wait(lambda: self.window._palette is None)
         self.assertTrue(palette.surface.disposed)
