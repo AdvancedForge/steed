@@ -3683,7 +3683,9 @@ Logs: `/tmp/steed-codex-activity-full.log`,
 
 Steed's stdio MCP adapter works with local clients that can launch a process.
 Its authenticated HTTP adapter binds to loopback; a cloud agent cannot reach
-that address directly. The browser must be running for either transport.
+that address directly. The browser must be running for the HTTP transport;
+the stdio adapter may start first and connects on its first call (until then
+calls return `browser_unavailable`, meaning nothing was sent).
 Connecting a third-party client grants no page access: it starts its own task,
 requests an exact profile/site scope and uses the published inspection/action
 and conversation tools. **Resuming after a disconnect:** `task.start` returns a
@@ -3696,7 +3698,13 @@ same browser run and alongside the normal agent-access credential. Tasks not
 resumed in time are cancelled, as are all held tasks when agent access is
 turned off; a connection Steed drops itself (a stuck operation) is cancelled
 immediately. Steed-started Codex and Claude Code chats are not resumable this
-way. Generic MCP cannot start a new turn in an idle client,
+way. The MCP adapter does this itself: it keeps the latest token, and after a
+lost connection the agent's next call reconnects, resumes the task and then
+runs, with `connection.task_resumed` (or, after a browser restart or more than
+five minutes, `task_resumed: false`) added to its result. The call that failed
+is never sent again, and calls already queued behind it fail instead of
+running on the new connection. While a task waits, its sidebar shows
+"Waiting to reconnect until HH:MM". Generic MCP cannot start a new turn in an idle client,
 so an agent that is waiting for you calls `conversation.wait`: it blocks for up
 to 25 seconds and returns as soon as you send a message (`waited: "message"`),
 on timeout (`timed_out`, call again) or when the task ends (`task_ended`). The

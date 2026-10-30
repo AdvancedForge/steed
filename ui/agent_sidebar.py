@@ -1,6 +1,7 @@
 """HTML agent conversations backed by the existing Python task authority."""
 
 import sqlite3
+import time
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QDockWidget
@@ -381,6 +382,7 @@ class AgentSidebar(QDockWidget):
                 self.providers.activity(task_id)
                 if self.providers and hasattr(self.providers, "activity")
                 else None,
+                self.service.resumable.get(task_id),
             ),
             delivery=(
                 f"{waiting} message(s) waiting to be read"
@@ -500,9 +502,17 @@ class AgentSidebar(QDockWidget):
             title = "Approval requested"
             hint = "Review the pending access or action request. The agent may continue other work."
             state = "approval"
+        resume_until = self.service.resumable.get(self._task_id)
         if not report and not active and task_status in ACTIVE_STATUSES:
             title = "Agent disconnected"
             hint = "Your conversation and draft are kept. Use Connection setup to reconnect your client; messages are not resent automatically."
+            if resume_until is not None:
+                title = "Agent disconnected · waiting for it to return"
+                hint = (
+                    "Its access ended at the disconnect. The agent's next call reconnects and resumes this task until "
+                    + time.strftime("%H:%M", time.localtime(resume_until))
+                    + "; after that Steed cancels it. Your conversation is kept."
+                )
         if (
             not report
             and self.providers

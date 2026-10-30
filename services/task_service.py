@@ -83,6 +83,8 @@ class TaskService(QObject):
         self.store = TaskStore(path)
         self.messages = TaskMessages(self.store)
         self.external_tasks = set()
+        # Disconnected tasks the agent can still resume: task_id -> epoch seconds.
+        self.resumable = {}
         self._message_waits = set()
         self.connectors = connectors if connectors is not None else ConnectorRegistry()
         self.connector_store = ConnectorStore(self.store)

@@ -141,3 +141,129 @@ class AgentMcpTransportTests(unittest.IsolatedAsyncioTestCase):
             await queued
         self.assertTrue(wire.closed)
         self.assertEqual(len(wire.calls), 1)
+
+
+class ReconnectTests(unittest.IsolatedAsyncioTestCase):
+    """A dropped connection comes back on the next call, never replaying one."""
+
+    def connection(self):
+        connection = BrowserConnection(Path("/tmp/synthetic-unused-discovery"))
+        self.wires = []
+        self.replies = {}
+
+        async def connect():
+            connection.reader = asyncio.StreamReader()
+            wire = Wire(connection.reader)
+            wire.reply = lambda request=None: connection.reader.feed_data(
+                (
+                    json.dumps(
+                        {
+                            "id": (request or wire.calls[-1])["id"],
+                            **self.replies.get(
+                                (request or wire.calls[-1])["tool"],
+                                {"result": (request or wire.calls[-1])["tool"]},
+                            ),
+                        }
+                    )
+                    + "\n"
+                ).encode()
+            )
+            wire.automatic = True
+            connection.writer = wire
+            self.wires.append(wire)
+
+        connection.connect = connect
+        return connection
+
+    async def started(self, connection):
+        token = "a" * 64
+        self.replies["steed_task_start"] = {
+            "result": {"task_id": "task-1", "resume_token": token}
+        }
+        await connection.connect()
+        await connection.call("steed_task_start", {})
+        self.assertEqual(connection.resume_token, token)
+        return token
+
+    async def lose(self, connection):
+        wire = self.wires[-1]
+        wire.automatic = False
+        call = asyncio.create_task(connection.call("steed_page_act", {}))
+        while not wire.calls or wire.calls[-1]["tool"] != "steed_page_act":
+            await asyncio.sleep(0)
+        connection.reader.feed_eof()
+        with self.assertRaises(RuntimeError):
+            await call
+
+    async def test_next_call_reconnects_and_resumes_the_task(self):
+        connection = self.connection()
+        token = await self.started(connection)
+        await self.lose(connection)
+        self.replies["steed_task_resume"] = {
+            "result": {"task_id": "task-1", "resume_token": "b" * 64}
+        }
+        reply = await connection.call("steed_task_status", {})
+        fresh = self.wires[-1]
+        self.assertEqual(len(self.wires), 2)
+        self.assertEqual(
+            [c["tool"] for c in fresh.calls],
+            ["steed_task_resume", "steed_task_status"],
+        )
+        self.assertEqual(fresh.calls[0]["arguments"], {"resume_token": token})
+        self.assertEqual(reply["result"], "steed_task_status")
+        self.assertTrue(reply["connection"]["task_resumed"])
+        self.assertEqual(reply["connection"]["task_id"], "task-1")
+        self.assertEqual(connection.resume_token, "b" * 64)
+        # The failed call is never sent again.
+        self.assertNotIn("steed_page_act", [c["tool"] for c in fresh.calls])
+
+    async def test_expired_task_reconnects_without_resuming(self):
+        connection = self.connection()
+        await self.started(connection)
+        await self.lose(connection)
+        self.replies["steed_task_resume"] = {"error": {"code": "invalid_request"}}
+        reply = await connection.call("steed_task_status", {})
+        self.assertFalse(reply["connection"]["task_resumed"])
+        self.assertIn("Start a new task", reply["connection"]["message"])
+        self.assertIsNone(connection.resume_token)
+
+    async def test_calls_queued_before_the_loss_are_not_sent(self):
+        connection = self.connection()
+        await self.started(connection)
+        wire = self.wires[-1]
+        wire.automatic = False
+        first = asyncio.create_task(connection.call("steed_page_act", {}))
+        while not wire.calls or wire.calls[-1]["tool"] != "steed_page_act":
+            await asyncio.sleep(0)
+        queued = asyncio.create_task(connection.call("steed_page_submit", {}))
+        while connection.waiting < 2:
+            await asyncio.sleep(0)
+        connection.reader.feed_eof()
+        with self.assertRaises(RuntimeError):
+            await first
+        with self.assertRaises(RuntimeError):
+            await queued
+        self.assertEqual(len(self.wires), 1)
+
+    async def test_unreachable_browser_reports_an_unsent_call(self):
+        connection = self.connection()
+        await self.started(connection)
+        await self.lose(connection)
+
+        async def unreachable():
+            raise FileNotFoundError("no socket")
+
+        connection.connect = unreachable
+        reply = await connection.call("steed_task_status", {})
+        self.assertEqual(reply["error"]["code"], "browser_unavailable")
+        # The token is spent only by an actual resume attempt.
+        self.assertEqual(connection.resume_token, "a" * 64)
+
+    async def test_bound_chat_connection_does_not_reconnect(self):
+        connection = self.connection()
+        connection.binding_file = Path("/tmp/synthetic-binding")
+        await self.started(connection)
+        await self.lose(connection)
+        with self.assertRaises(RuntimeError):
+            await connection.call("steed_task_status", {})
+        self.assertEqual(len(self.wires), 1)

@@ -103,3 +103,31 @@ class AgentAdapterTests(unittest.IsolatedAsyncioTestCase):
                 writer.write.assert_called_once()
                 writer.close.assert_called_once()
                 self.assertIsNone(connection.writer)
+
+
+class LateBrowserStartTests(unittest.IsolatedAsyncioTestCase):
+    """A plain client may start before Steed; a pinned one may not."""
+
+    async def test_plain_client_starts_without_steed_and_reports_unsent_calls(self):
+        from agent_mcp import create_server
+
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "agent-access.json"
+            server = create_server(missing)
+            async with server.lifespan(server) as connection:
+                self.assertIsNone(connection.writer)
+                reply = await connection.call("steed_task_status", {})
+                self.assertEqual(reply["error"]["code"], "browser_unavailable")
+
+    async def test_run_pinned_or_bound_client_fails_to_start_without_steed(self):
+        from agent_mcp import create_server
+
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "agent-access.json"
+            for server in (
+                create_server(missing, expected_epoch="run"),
+                create_server(missing, binding_file=Path(directory) / "binding"),
+            ):
+                with self.assertRaises((OSError, ValueError, RuntimeError)):
+                    async with server.lifespan(server):
+                        pass

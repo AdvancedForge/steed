@@ -117,6 +117,8 @@ class AgentGateway(QObject):
         timer.timeout.connect(lambda: self._abandon(task_id))
         timer.start(RESUME_GRACE_MS)
         self.held[task_id] = timer
+        self.service.resumable[task_id] = time.time() + RESUME_GRACE_MS / 1000
+        self.service.changed.emit()
         return True
 
     def _abandon(self, task_id):
@@ -126,6 +128,8 @@ class AgentGateway(QObject):
             timer.deleteLater()
         self.resume_digests.pop(task_id, None)
         service = self.service
+        if service.resumable.pop(task_id, None) is not None:
+            service.changed.emit()
         if service._closed or service.failure:
             return
         try:
@@ -145,6 +149,7 @@ class AgentGateway(QObject):
                 timer.stop()
                 timer.deleteLater()
                 del self.resume_digests[task_id]
+                self.service.resumable.pop(task_id, None)
                 return task_id
         return None
 

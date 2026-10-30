@@ -1,6 +1,7 @@
 """Presentation-only connection facts and maintained, value-free diagnostics."""
 
 import json
+import time
 
 from services.agent_tools import TOOLS
 from services.task_store import ACTIVE_STATUSES
@@ -168,11 +169,18 @@ def latest_failure(store, task_id, dismissed=0):
     }
 
 
-def connection_state(status, connected, report):
+def connection_state(status, connected, report, resume_until=None):
     if report and report["state"] == "connecting":
         return {"state": "connecting", "label": "Connecting", "tone": "neutral"}
     if connected and status in ACTIVE_STATUSES:
         return {"state": "connected", "label": "Connected", "tone": "success"}
+    if status in ACTIVE_STATUSES and resume_until is not None:
+        return {
+            "state": "reconnecting",
+            "label": "Waiting to reconnect until "
+            + time.strftime("%H:%M", time.localtime(resume_until)),
+            "tone": "warning",
+        }
     if status in ACTIVE_STATUSES:
         return {"state": "disconnected", "label": "Disconnected", "tone": "warning"}
     return {"state": "ended", "label": "Task ended", "tone": "neutral"}
