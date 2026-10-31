@@ -43,7 +43,8 @@
         <section data-panel="tabs" hidden>
           <div class="section-heading"><span class="eyebrow">A fresh place to begin</span><h2>Tabs</h2><p>Set up new tabs and pick up where you left off.</p></div>
           <div class="settings-card"><label for="new_tab_page">New tab page</label><input id="new_tab_page" data-pref="new_tab_page" type="text" maxlength="4096" autocomplete="off" spellcheck="false"><p class="help">Use steed:newtab for the built-in page, or enter another address.</p>
-          <label class="toggle-row" for="restore_tabs_on_startup"><span><strong>Restore tabs on startup</strong><small>Reopen the saved tabs for your profile.</small></span><input id="restore_tabs_on_startup" data-pref="restore_tabs_on_startup" type="checkbox" role="switch"></label></div>
+          <label class="toggle-row" for="restore_tabs_on_startup"><span><strong>Restore tabs on startup</strong><small>Reopen the saved tabs for your profile.</small></span><input id="restore_tabs_on_startup" data-pref="restore_tabs_on_startup" type="checkbox" role="switch"></label>
+          <label class="toggle-row" for="save_before_closing"><span><strong>Let sites save before closing</strong><small>When a tab closes, sleeps or leaves with a profile switch, let the site run its closing handlers first (up to 1.5 seconds), as other browsers do. Some sites, such as Discord, sign you out if this is off. Turning it off makes closing instant.</small></span><input id="save_before_closing" data-pref="save_before_closing" type="checkbox" role="switch"></label></div>
           <div class="settings-card link-card"><div><h3>Make your new tab yours</h3><p class="help">Search, bookmarks, a background, news, or your own HTML.</p></div><button id="customize-newtab" data-action="open" data-destination="newtab">Customize page</button></div>
         </section>
         <section data-panel="view" hidden>

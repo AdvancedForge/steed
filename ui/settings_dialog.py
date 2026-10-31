@@ -24,6 +24,7 @@ DEFAULTS = {
     "default_profile": "global",
     "devtools_side": "right",
     "native_interface": False,
+    "save_before_closing": True,
 }
 SECTIONS = ("general", "profile", "tabs", "view", "cookies", "agents")
 

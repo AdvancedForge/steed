@@ -24,7 +24,9 @@ verified to persist across restarts and profile switches. Follow-up: Discord sti
 after profile switches and tab sleep. Steed deleted or discarded pages without
 running unload handlers, and Discord restores its token to local storage only on
 beforeunload; pages now run beforeunload/pagehide/unload (1.5 s limit) before tab
-close, window close, profile switch and unloading. Open: confirm on real Discord.
+close, window close, profile switch and unloading. A setting (Let sites save
+before closing, on by default) can turn this off. Closing a window's last tab now
+closes the window instead of being refused. Open: confirm on real Discord.
 
 **Memory modes and cookie inspection — October 30, 2026.** `steed:memory`
 offers Memory saver, Balanced and Performance presets over seven individual

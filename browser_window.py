@@ -826,6 +826,9 @@ class BrowserWindow(QMainWindow):
 
         self._memory = memory_modes.apply_process_policies(self.config)
         QTimer.singleShot(0, self._apply_memory_policies)
+        import page_unload
+
+        page_unload.ENABLED = bool(self.config.get("save_before_closing", True))
         # Mouse back/forward side buttons over any part of this window.
         QApplication.instance().installEventFilter(self)
         memory_modes.monitor().changed.connect(self._memory_pressure_changed)
@@ -1596,9 +1599,12 @@ class BrowserWindow(QMainWindow):
             return tab
 
     def _close_tab(self, index: int, remember: bool = True):
-        # The final tab is never closed: this window always keeps one page and
-        # the application cannot lose its last tab bar.
-        if len(self.tabs) <= 1 or not 0 <= index < len(self.tabs):
+        if not 0 <= index < len(self.tabs):
+            return
+        if len(self.tabs) == 1:
+            # Closing the last tab closes the window and its profile session,
+            # as in other browsers; the last window closing quits Steed.
+            QTimer.singleShot(0, self.close)
             return
         import memory_trim
 
@@ -2636,8 +2642,9 @@ class BrowserWindow(QMainWindow):
             )
         menu.addSeparator()
         single = len(self.tabs) <= 1
-        menu.addAction("Close Tab", lambda: self._close_tab_object(tab)).setEnabled(
-            not single
+        menu.addAction(
+            "Close Window" if single else "Close Tab",
+            lambda: self._close_tab_object(tab),
         )
         menu.addAction(
             "Close Other Tabs", lambda: self._close_tabs_except(tab)
@@ -3757,6 +3764,9 @@ class BrowserWindow(QMainWindow):
             from ui.interface_mode import native
 
             self._memory = memory_modes.apply_process_policies(self.config)
+            import page_unload
+
+            page_unload.ENABLED = bool(self.config.get("save_before_closing", True))
             if self._palette is not None and self._palette.native != native():
                 self._palette.dispose()
                 self._palette.deleteLater()

@@ -159,7 +159,10 @@ class PageUnloadTests(unittest.TestCase):
         window = BrowserWindow()
         self.addCleanup(lambda: sip.isdeleted(window) or window.close())
         self.window = window
-        self.assertEqual(self.stored(), "TOKEN")
+        # The restored tab reloads the site, which must find its sign-in.
+        self.wait(lambda: any(t.title() == "app" for t in window.tabs))
+        app = next(t for t in window.tabs if t.title() == "app")
+        self.wait(lambda: self.js(app, "window.token") == "TOKEN")
 
     def test_a_stuck_handler_delays_closing_only_briefly(self):
         tab = self.window._new_tab(url=self.origin + "/stuck", return_tab=True)
@@ -168,6 +171,23 @@ class PageUnloadTests(unittest.TestCase):
         self.window._close_tab(self.window.tabs.index(tab))
         self.wait(lambda: sip.isdeleted(tab), timeout=6)
         self.assertLess(time.monotonic() - started, 4)
+
+    def test_the_setting_can_turn_waiting_off(self):
+        import page_unload
+
+        self.window.config.set("save_before_closing", False)
+        self.window.profile_manager.registry.settings_changed.emit()
+        self.addCleanup(setattr, page_unload, "ENABLED", True)
+        self.assertFalse(page_unload.ENABLED)
+        tab = self.open_app()
+        self.window._close_tab(self.window.tabs.index(tab))
+        self.spin(0.05)
+        # Closed at once, without the site saving its sign-in.
+        self.assertTrue(sip.isdeleted(tab))
+        self.assertIsNone(self.stored())
+        self.window.config.set("save_before_closing", True)
+        self.window.profile_manager.registry.settings_changed.emit()
+        self.assertTrue(page_unload.ENABLED)
 
     def test_steed_pages_close_without_waiting(self):
         tab = self.window._new_tab(url="about:blank", return_tab=True)

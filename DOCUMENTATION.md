@@ -210,7 +210,8 @@ There is no general-purpose HTML app capability bridge in this milestone.
 ### Keyboard Shortcuts
 
 - `Ctrl+T`: New tab
-- `Ctrl+W`: Close current tab (the window always keeps one tab)
+- `Ctrl+W`: Close current tab; closing a window's last tab closes the window (and
+  quits Steed if it was the last one, keeping its tabs for next start)
 - `Alt+Left` / `Alt+Right`, or the mouse's back/forward side buttons: Back / Forward
 - `Ctrl+Shift+T`: Restore the most recently closed tab for this profile
 - `Ctrl+Shift+N`: Open search profile in a separate window (incognito)
@@ -707,7 +708,8 @@ Some sites save their sign-in there: Discord takes its login token out of local
 storage while it is open and writes it back on unload, so without this it was
 signed out after each profile switch or unloaded tab. A handler gets at most
 1.5 seconds; a site that hangs cannot hold up closing. `steed:` and other
-internal pages close at once.
+internal pages close at once. **Settings → Let sites save before closing** turns
+this off for instant closing, at the cost of such sign-outs.
 - `google_login_compatibility`: Account-host User-Agent workaround (enabled by default)
 - `global_cookie_sharing_mode`: `on_switch` or `all_profiles`
 - `global_cookie_sharing_apply_on_startup`: Whether global cookies are reconciled automatically

@@ -11,6 +11,8 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
 
 # Handlers that hang never block closing for longer than this.
 UNLOAD_TIMEOUT_MS = 1500
+# Settings → "Let sites save before closing"; windows keep this in step.
+ENABLED = True
 
 UNLOAD_SCRIPT = """(() => {
     for (const type of ["beforeunload", "pagehide", "unload"]) {
@@ -23,7 +25,8 @@ UNLOAD_SCRIPT = """(() => {
 def needs_unload(page):
     """Only ordinary web pages run site handlers worth waiting for."""
     return (
-        page is not None
+        ENABLED
+        and page is not None
         and page.url().scheme() in ("http", "https")
         and page.lifecycleState() != QWebEnginePage.LifecycleState.Discarded
         and page.settings().testAttribute(
