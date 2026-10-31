@@ -63,6 +63,7 @@ window.steedUI = {render(next) {
   show('notice', !!next.notice); text('notice', next.notice);
   show('external', next.external_changes); show('private', next.private);
   text('effective-ua', next.effective_ua || 'The engine default is used when no override is set.');
+  text('ua-warning', next.ua_warning); $('ua-warning').hidden = !next.ua_warning;
   text('save-state', next.dirty ? 'You have unsaved preferences' : 'Preferences are up to date');
   text('profile-intent', {rename: 'Choose an inactive profile below, then select Rename.', archive: 'Choose an inactive profile below, then select Archive.', open_window: 'Choose New window beside a profile to browse it separately.', switch: 'Switch here or use the Profile quick-switch shortcuts.'}[next.intent] || '');
   for (const b of document.querySelectorAll('[data-destination]')) b.dataset.unavailable = String(!next.window_links);

@@ -28,7 +28,7 @@
           </div>
           <details class="settings-card advanced"><summary>Website compatibility</summary><div>
             <label for="user_agent_override">User-Agent override</label><input id="user_agent_override" data-pref="user_agent_override" type="text" maxlength="4096" placeholder="Leave blank to use the engine default" spellcheck="false" autocomplete="off">
-            <p class="help">Current effective User-Agent</p><p id="effective-ua" class="technical"></p>
+            <p id="ua-warning" class="help warning" role="status" hidden></p><p class="help">Current effective User-Agent</p><p id="effective-ua" class="technical"></p>
             <label class="toggle-row" for="google_login_compatibility"><span><strong>Google sign-in compatibility</strong><small>Use the existing sign-in-host workaround. Reload the sign-in page after changing it.</small></span><input id="google_login_compatibility" data-pref="google_login_compatibility" type="checkbox" role="switch"></label>
           </div></details>
         </section>

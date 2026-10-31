@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout
 from config import DEFAULT_SEARCH_ENGINE, Config
 from ui.html_surface import HtmlSurface
 from utils import sanitize_profile_name
+from webengine import user_agent_mismatch
 
 DEFAULTS = {
     "home_page": "steed:newtab",
@@ -108,6 +109,7 @@ class SettingsDialog(QDialog):
             "effective_ua": self.manager.current_profile.httpUserAgent()
             if self.manager
             else self.effective_ua,
+            "ua_warning": user_agent_mismatch(self._draft["user_agent_override"]),
             "profiles": list(self._profiles),
             "profiles_available": self.manager is not None,
             "current_profile": self.manager.current_profile_name
