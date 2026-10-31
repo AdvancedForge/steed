@@ -380,12 +380,15 @@ class BrowserTests(unittest.TestCase):
         self.assertFalse(service.host_excluded("notfixture.example"))
         self.assertFalse(service.applies("https://fixture.example/page"))
 
-    def test_last_tab_is_not_closable(self):
-        window = self.window
+    def test_closing_the_last_tab_closes_the_window(self):
+        window = BrowserWindow()
+        window.show()
         self.assertEqual(len(window.tabs), 1)
         window._close_tab(0)
-        self.assertEqual(len(window.tabs), 1)
-        self.assertFalse(window.restore_tab_action.isEnabled())
+        self.wait_for(lambda: sip.isdeleted(window) or window._closing)
+        self.assertTrue(window._closing)
+        # Other windows stay open.
+        self.assertFalse(self.window._closing)
 
     def test_restoring_into_collapsed_group_expands_it_deliberately(self):
         window = self.window
