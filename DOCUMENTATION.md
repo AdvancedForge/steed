@@ -699,6 +699,15 @@ them. While **Restore tabs on startup** is on, session cookies are kept across
 restarts too (as Chrome does when continuing where you left off), so sites that
 sign in with session cookies stay signed in; turning it off applies from the
 next start.
+
+Before a page goes away — closing its tab or window, switching the window's
+profile, or unloading a sleeping tab — Steed lets it run its `beforeunload`,
+`pagehide` and `unload` handlers, as a normal browser does when leaving a page.
+Some sites save their sign-in there: Discord takes its login token out of local
+storage while it is open and writes it back on unload, so without this it was
+signed out after each profile switch or unloaded tab. A handler gets at most
+1.5 seconds; a site that hangs cannot hold up closing. `steed:` and other
+internal pages close at once.
 - `google_login_compatibility`: Account-host User-Agent workaround (enabled by default)
 - `global_cookie_sharing_mode`: `on_switch` or `all_profiles`
 - `global_cookie_sharing_apply_on_startup`: Whether global cookies are reconciled automatically

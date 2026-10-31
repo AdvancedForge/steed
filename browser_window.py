@@ -2482,7 +2482,37 @@ class BrowserWindow(QMainWindow):
             if order[wanted] > order[recommended]:
                 wanted = recommended
             if order[wanted] > order[page.lifecycleState()]:
-                page.setLifecycleState(wanted)
+                if wanted == State.Discarded:
+                    self._discard_tab(tab)
+                else:
+                    page.setLifecycleState(wanted)
+
+    def _discard_tab(self, tab):
+        """Unload a background tab after letting the site save its state."""
+        from PyQt6.QtWebEngineCore import QWebEnginePage
+
+        from page_unload import run_unload_handlers
+
+        if getattr(tab, "unloading", False):
+            return
+        tab.unloading = True
+        page = tab.page()
+
+        def discard():
+            tab.unloading = False
+            if (
+                self._closing
+                or sip.isdeleted(tab)
+                or tab not in self.tabs
+                or self.tabs.index(tab) == self.current_tab_index
+            ):
+                return
+            if page.recommendedState() == QWebEnginePage.LifecycleState.Active:
+                # Waking it for the handlers made it active; unload next check.
+                page.setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
+            page.setLifecycleState(QWebEnginePage.LifecycleState.Discarded)
+
+        run_unload_handlers([page], discard)
 
     def _release_palette(self):
         """Free an idle palette's renderer; the next open builds a new one."""
@@ -3068,7 +3098,7 @@ class BrowserWindow(QMainWindow):
         self._sync_tab_group_labels()
 
     @staticmethod
-    def _dispose_tab(tab: BrowserTab) -> None:
+    def _dispose_tab(tab: BrowserTab, unload: bool = True) -> None:
         """Stop a tab and detach its callbacks before scheduling deletion."""
         tab.browser_window._take_back_tab(tab)
         window = tab.browser_window
@@ -3086,10 +3116,20 @@ class BrowserWindow(QMainWindow):
             tab.iconChanged,
         ):
             signal.disconnect()
-        tab.stop()
         tab.hide()
-        # BrowserPage is parented to the view and is destroyed with it.
-        tab.deleteLater()
+        from page_unload import run_unload_handlers
+
+        def delete():
+            if not sip.isdeleted(tab):
+                tab.stop()
+                # BrowserPage is parented to the view and is destroyed with it.
+                tab.deleteLater()
+
+        # Sites save state on unload (Discord keeps its sign-in there).
+        if unload:
+            run_unload_handlers([tab.page()], delete)
+        else:
+            delete()
 
     # ---------- Close handling ----------
     def closeEvent(self, event):
@@ -3126,6 +3166,13 @@ class BrowserWindow(QMainWindow):
             if reply != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+        # Let sites save state before their pages are destroyed below.
+        from page_unload import run_unload_handlers_now
+
+        run_unload_handlers_now([tab.page() for tab in self.tabs])
+        if self._closing or sip.isdeleted(self):
+            event.accept()
+            return
         self._closing = True
         self._newtab_hover_timer.stop()
         if self._html_menu is not None:
@@ -3179,7 +3226,8 @@ class BrowserWindow(QMainWindow):
             self.cookie_manager.close()
             self.cookie_manager = None
         for tab in list(self.tabs):
-            self._dispose_tab(tab)
+            # Their unload handlers already ran above.
+            self._dispose_tab(tab, unload=False)
 
         self.tabs.clear()
         self.current_tab_index = 0

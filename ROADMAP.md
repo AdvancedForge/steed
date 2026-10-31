@@ -20,8 +20,11 @@ drops the QtWebEngine token so it matches the engine's client hints, and Setting
 warns about overrides claiming another Chrome version (the reporter's override
 claimed Chrome 137 on a Chromium 140 engine). Incognito was one in-memory profile
 for the whole run; it is now discarded once no window uses it. Local storage was
-verified to persist across restarts and profile switches. Open: confirm Discord
-stays signed in after clearing the mismatched override.
+verified to persist across restarts and profile switches. Follow-up: Discord still signed out
+after profile switches and tab sleep. Steed deleted or discarded pages without
+running unload handlers, and Discord restores its token to local storage only on
+beforeunload; pages now run beforeunload/pagehide/unload (1.5 s limit) before tab
+close, window close, profile switch and unloading. Open: confirm on real Discord.
 
 **Memory modes and cookie inspection — October 30, 2026.** `steed:memory`
 offers Memory saver, Balanced and Performance presets over seven individual

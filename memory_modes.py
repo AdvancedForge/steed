@@ -277,10 +277,11 @@ def free_now(windows):
             if index == window.current_tab_index or window._tab_keeps_running(tab):
                 continue
             page = tab.page()
-            if page.recommendedState() == State.Discarded and (
+            if page.recommendedState() != State.Active and (
                 page.lifecycleState() != State.Discarded
             ):
-                page.setLifecycleState(State.Discarded)
+                # The window lets the site save its state first.
+                window._discard_tab(tab)
                 unloaded += 1
         palette = window._palette
         if palette is not None and not palette.isVisible():
