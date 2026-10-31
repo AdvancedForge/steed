@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
-from qt_test_support import application, keep_directory
+from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser_window import BrowserWindow
 from config import Config
@@ -37,7 +37,7 @@ class StartPageTests(unittest.TestCase):
         self.home_patch.stop()
 
     def wait(self, predicate):
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + WAIT_SECONDS
         result = predicate()
         while not result and time.monotonic() < deadline:
             self.app.processEvents()

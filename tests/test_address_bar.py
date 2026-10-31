@@ -5,7 +5,7 @@ import unittest
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
 from ui.address_bar import KIND_ROLE, TITLE_ROLE, AddressBar
 from ui.chrome_style import chrome_colors
@@ -23,7 +23,7 @@ class AddressBarEditingTests(unittest.TestCase):
         self.field = self.bar.address_input
         self.bar.set_url("https://example.org/start")
         self.field.setFocus()
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + WAIT_SECONDS
         while not self.field.hasFocus() and time.monotonic() < deadline:
             self.app.processEvents()
             time.sleep(0.01)

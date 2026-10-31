@@ -1,6 +1,7 @@
 """One QApplication per test process; join engine cleanup before removing data."""
 
 import atexit
+import os
 
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt
@@ -10,6 +11,12 @@ from webengine import prepare_engine_environment
 
 _application = None
 _directories = []
+
+# How long tests wait for asynchronous engine work. Waits return as soon as
+# their condition holds, so this only bounds failures; it is generous because
+# a heavily loaded machine can take many seconds to start renderers and
+# helper processes. STEED_TEST_WAIT overrides it (seconds).
+WAIT_SECONDS = float(os.environ.get("STEED_TEST_WAIT", "30"))
 
 
 def application():

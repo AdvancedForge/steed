@@ -4,7 +4,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
 import memory_trim
 
@@ -24,7 +24,7 @@ class MemoryTrimTests(unittest.TestCase):
             for _ in range(5):
                 memory_trim.schedule()
             trim.assert_not_called()
-            end = time.monotonic() + 2
+            end = time.monotonic() + WAIT_SECONDS
             while time.monotonic() < end and not trim.called:
                 self.app.processEvents()
                 time.sleep(0.01)

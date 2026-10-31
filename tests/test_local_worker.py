@@ -110,7 +110,9 @@ else:
     def test_cpu_budget_terminates_busy_loop(self):
         result = self.execute(
             "import resource; resource.setrlimit(resource.RLIMIT_CPU, (1, 1))\nwhile True: pass",
-            timeout=3,
+            # A second of CPU can take many wall seconds on a busy machine; the
+            # wall limit only has to be longer so the CPU budget acts first.
+            timeout=30,
         )
         self.assertEqual(result.state, "failed")
         self.assertEqual(result.reason, "worker_script_failed")

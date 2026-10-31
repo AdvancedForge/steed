@@ -50,12 +50,15 @@ class ManagementPageTests(unittest.TestCase):
         # A view still being laid out reports a tiny placeholder width (100 px);
         # wait for the real narrow width rather than any width below the limit.
         self.wait_for(lambda: self.value(host, "innerWidth > 300 && innerWidth < 620"))
-        self.assertEqual(
-            self.value(
-                host,
-                "getComputedStyle(document.getElementById('workspace-nav')).display",
-            ),
-            "none",
+        # The narrow rule applies once the page has rendered its workspace class.
+        self.wait_for(
+            lambda: (
+                self.value(
+                    host,
+                    "getComputedStyle(document.getElementById('workspace-nav')).display",
+                )
+                == "none"
+            )
         )
         self.assertNotEqual(
             self.value(

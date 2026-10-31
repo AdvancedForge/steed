@@ -10,7 +10,7 @@ from unittest.mock import patch
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from PyQt6.QtWidgets import QLabel, QPushButton
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
 from services.agent_tools import TOOLS_BY_NAME
 from services.connectors import ConnectorOutcome, ConnectorRegistry, ConnectorTool
@@ -59,7 +59,7 @@ class TaskRecoveryTests(unittest.TestCase):
         self.directory.cleanup()
 
     def wait_for(self, predicate):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + WAIT_SECONDS
         while time.monotonic() < deadline:
             self.app.processEvents()
             if predicate():

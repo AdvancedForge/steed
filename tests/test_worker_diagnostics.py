@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
 from services.agent_tools import TOOLS_BY_NAME
 from services.local_worker import WorkerOutcome
@@ -42,7 +42,7 @@ class WorkerDiagnosticsTests(unittest.TestCase):
         self.directory.cleanup()
 
     def result(self, future):
-        end = time.monotonic() + 5
+        end = time.monotonic() + WAIT_SECONDS
         while not future.done() and time.monotonic() < end:
             self.app.processEvents()
             time.sleep(0.002)
