@@ -34,7 +34,7 @@ from tab_manager import ClosedTabHistory
 from ui.download_dialog import choose_download_destination
 from ui.task_approval import TaskApprovalQueue
 from utils import get_profile_path, sanitize_profile_name
-from webengine import configure_web_settings
+from webengine import browser_user_agent, configure_web_settings
 
 logger = logging.getLogger(__name__)
 
@@ -91,25 +91,79 @@ class ProfileRegistry(QObject):
         self.global_profile = self.create(
             "global", config.config_dir / "global_profile"
         )
-        self.search_profile = QWebEngineProfile(self)
-        self.search_profile.installUrlSchemeHandler(
-            b"steed", StartPageHandler(self.start_pages, "search", self.search_profile)
-        )
-        configure_permission_policy(self.search_profile)
-        self.defaults["search"] = self.search_profile.httpUserAgent()
-        self.search_profile.setHttpCacheType(
-            QWebEngineProfile.HttpCacheType.MemoryHttpCache
-        )
-        configure_web_settings(self.search_profile.settings())
-        self.downloads.attach(self.search_profile, "search")
-        self.adblock.attach(self.search_profile)
-        self.prepare_inspection("search", self.search_profile)
+        self._create_search_profile()
         # Confirm source identities through a full snapshot: live Qt signals
         # cannot distinguish partitioned cookies and overwrite notifications.
         self.sharing = CookieSharing(
             config, self.global_profile, self, observe_global=False
         )
         self.refresh_settings()
+
+    def _create_search_profile(self):
+        """A fresh off-the-record profile for incognito windows."""
+        profile = QWebEngineProfile(self)
+        profile.installUrlSchemeHandler(
+            b"steed", StartPageHandler(self.start_pages, "search", profile)
+        )
+        configure_permission_policy(profile)
+        self.defaults["search"] = browser_user_agent(profile.httpUserAgent())
+        profile.setHttpUserAgent(
+            self.config.get("user_agent_override", "").strip()
+            or self.defaults["search"]
+        )
+        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+        configure_web_settings(profile.settings())
+        self.downloads.attach(profile, "search")
+        self.adblock.attach(profile)
+        self.search_profile = profile
+        self.prepare_inspection("search", profile)
+
+    def reset_search_profile(self):
+        """Forget incognito cookies, storage and cache once nothing uses them.
+
+        Like closing the last incognito window in other browsers: the next
+        incognito window starts empty. Returns False while anything still
+        shows or downloads through the current incognito profile.
+        """
+        require_owner_thread(self)
+        old = self.search_profile
+        if any(owner.current_profile_name == "search" for owner in self.owners):
+            return False
+        if any(
+            isinstance(widget, QWebEngineView)
+            and not sip.isdeleted(widget)
+            and widget.page() is not None
+            and widget.page().profile() is old
+            for widget in QApplication.allWidgets()
+        ):
+            return False
+        if any(
+            record.profile == "search" and record.state == "DownloadInProgress"
+            for record in self.downloads.records.values()
+        ):
+            return False
+        snapshot = self.snapshots.pop("search", None)
+        if snapshot is not None:
+            snapshot.dispose()
+        page = self.bootstrap_pages.pop("search", None)
+        if page is not None:
+            sip.delete(page)
+        self._create_search_profile()
+        for owner in self.owners:
+            owner.search_profile = self.search_profile
+        # Pages first, then their profile.
+        sip.delete(old)
+        return True
+
+    def schedule_search_reset(self, attempts=10):
+        """Retry shortly: tabs of the incognito window are deleted later."""
+
+        def attempt(remaining):
+            if self.sharing.closed or self.reset_search_profile() or remaining <= 1:
+                return
+            QTimer.singleShot(500, lambda: attempt(remaining - 1))
+
+        QTimer.singleShot(200, lambda: attempt(attempts))
 
     @property
     def app_connections(self):
@@ -350,14 +404,13 @@ class ProfileRegistry(QObject):
         profile.setPersistentStoragePath(str(storage))
         profile.setCachePath(str(cache))
         profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
-        profile.setPersistentCookiesPolicy(
-            QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies
-        )
+        profile.setPersistentCookiesPolicy(self._cookie_policy())
         configure_web_settings(profile.settings())
         profile.installUrlSchemeHandler(
             b"steed", StartPageHandler(self.start_pages, name, profile)
         )
-        self.defaults[name] = profile.httpUserAgent()
+        self.defaults[name] = browser_user_agent(profile.httpUserAgent())
+        profile.setHttpUserAgent(self.defaults[name])
         override = self.config.get("user_agent_override", "").strip()
         if override:
             profile.setHttpUserAgent(override)
@@ -438,10 +491,24 @@ class ProfileRegistry(QObject):
             self.create(name, get_profile_path(self.config.profiles_dir, name))
         return self.profiles[name]
 
+    def _cookie_policy(self):
+        """Keep session cookies when tabs are restored, as Chrome does.
+
+        Otherwise sites relying on session cookies sign you out at every
+        restart even though their tabs come back.
+        """
+        policy = QWebEngineProfile.PersistentCookiesPolicy
+        if self.config.get("restore_tabs_on_startup", True):
+            return policy.ForcePersistentCookies
+        return policy.AllowPersistentCookies
+
     def refresh_settings(self):
         override = self.config.get("user_agent_override", "").strip()
         for name, profile in {**self.profiles, "search": self.search_profile}.items():
             profile.setHttpUserAgent(override or self.defaults[name])
+        for profile in self.profiles.values():
+            # Takes effect for this profile's cookie store at the next start.
+            profile.setPersistentCookiesPolicy(self._cookie_policy())
         self.adblock.refresh_settings()
         if self.sharing_applies_to_all():
             for name in self.sharing.profiles:
@@ -479,6 +546,8 @@ class ProfileRegistry(QObject):
         if self.last_active_owner is owner:
             self.last_active_owner = None
         if self.owners:
+            if owner.current_profile_name == "search":
+                self.schedule_search_reset()
             return
         self.set_agent_access(False)
         self.sharing.closed = True
@@ -572,6 +641,7 @@ class ProfileManager(QObject):
 
     def switch_to_profile(self, name, startup=False):
         name = sanitize_profile_name(name)
+        leaving_private = self.current_profile_name == "search" and name != "search"
         profile = self.registry.activate_user_profile(name)
         self.current_profile_name = name
         self.current_profile = profile
@@ -591,6 +661,8 @@ class ProfileManager(QObject):
                 sharing.enable(name)
         self.profile_changed.emit(name)
         self.registry.profile_usage_changed.emit()
+        if leaving_private:
+            self.registry.schedule_search_reset()
 
     def list_profiles(self):
         names = {"global"}

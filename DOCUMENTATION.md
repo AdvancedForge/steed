@@ -211,6 +211,7 @@ There is no general-purpose HTML app capability bridge in this milestone.
 
 - `Ctrl+T`: New tab
 - `Ctrl+W`: Close current tab (the window always keeps one tab)
+- `Alt+Left` / `Alt+Right`, or the mouse's back/forward side buttons: Back / Forward
 - `Ctrl+Shift+T`: Restore the most recently closed tab for this profile
 - `Ctrl+Shift+N`: Open search profile in a separate window (incognito)
 - `Ctrl+Shift+0`: Switch the current window to search profile
@@ -436,7 +437,12 @@ The search profile is a special profile that:
 - Doesn't save cookies
 - Doesn't save browsing history
 - Doesn't save tabs
-- Keeps browsing data in memory for the application registry's lifetime; switching away or closing one of several windows does not reset that shared in-memory profile
+- Keeps cookies, site storage and cache in memory only while an incognito window
+  is open. Once no window uses it — you switch the last one away or close it —
+  Steed discards that private profile, and the next incognito window starts
+  empty, as when closing the last incognito window in other browsers. Downloads
+  still running in incognito delay this until they finish. Sites can still
+  recognize you by your network address.
 
 Access it via **Profile → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
 
@@ -681,7 +687,18 @@ override. A complete backup retains this configuration and the profile identity.
 - `restore_tabs_on_startup`: Restore tabs when opening a profile
 - `window_width`: Default window width
 - `window_height`: Default window height
-- `user_agent_override`: Replacement user agent; empty restores the engine default
+- `user_agent_override`: Replacement user agent; empty restores the engine default.
+  The default is the engine's own Chrome user agent without the `QtWebEngine/…`
+  token, so its Chrome version matches the client-hint headers the engine also
+  sends. Settings warns when an override claims a different Chrome version:
+  sites that compare the two (such as Discord and Google) may keep signing you out.
+
+Regular profiles keep cookies, local storage, IndexedDB, service workers and
+cache on disk, separately per profile, and switching profiles does not clear
+them. While **Restore tabs on startup** is on, session cookies are kept across
+restarts too (as Chrome does when continuing where you left off), so sites that
+sign in with session cookies stay signed in; turning it off applies from the
+next start.
 - `google_login_compatibility`: Account-host User-Agent workaround (enabled by default)
 - `global_cookie_sharing_mode`: `on_switch` or `all_profiles`
 - `global_cookie_sharing_apply_on_startup`: Whether global cookies are reconciled automatically

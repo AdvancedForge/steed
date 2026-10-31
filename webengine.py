@@ -1,6 +1,7 @@
 """Shared Qt WebEngine settings and site compatibility helpers."""
 
 import os
+import re
 
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import (
@@ -81,3 +82,29 @@ def configure_web_settings(settings: QWebEngineSettings) -> None:
     ):
         settings.setAttribute(attribute, True)
     settings.setAttribute(attributes.PlaybackRequiresUserGesture, False)
+
+
+def browser_user_agent(engine_default: str) -> str:
+    """The engine's user agent without the "QtWebEngine/x" token.
+
+    Sites see that token as an embedded or unsupported browser, and some then
+    distrust or drop sign-ins. Removing only the token keeps the Chrome version
+    in step with the client-hint headers the engine sends.
+    """
+    return re.sub(r" QtWebEngine/[\w.]+", "", engine_default)
+
+
+def user_agent_mismatch(user_agent: str) -> str:
+    """A warning when an override claims a different Chrome than the engine."""
+    from PyQt6.QtWebEngineCore import qWebEngineChromiumVersion
+
+    claimed = re.search(r"Chrome/(\d+)", user_agent or "")
+    engine = qWebEngineChromiumVersion().split(".")[0]
+    if claimed and claimed.group(1) != engine:
+        return (
+            f"This override claims Chrome {claimed.group(1)}, but Steed's engine is "
+            f"Chrome {engine} and reports that version to sites in its other "
+            "headers. Sites that compare them (such as Discord and Google) may keep "
+            "signing you out. Clear the override unless a site needs it."
+        )
+    return ""

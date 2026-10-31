@@ -257,6 +257,21 @@ def search_engine_name(config):
     return host or "the web"
 
 
+def unique_keys(*keys):
+    """Distinct key sequences from text and platform standard keys."""
+    sequences = []
+    for key in keys:
+        found = (
+            QKeySequence.keyBindings(key)
+            if isinstance(key, QKeySequence.StandardKey)
+            else [QKeySequence(key)]
+        )
+        for sequence in found:
+            if not sequence.isEmpty() and sequence not in sequences:
+                sequences.append(sequence)
+    return sequences
+
+
 class BrowserWindow(QMainWindow):
     """Main browser window."""
 
@@ -412,6 +427,20 @@ class BrowserWindow(QMainWindow):
         close_tab_action.setShortcut(QKeySequence("Ctrl+W"))
         close_tab_action.triggered.connect(self._close_current_tab)
         tabs_menu.addAction(close_tab_action)
+        self.back_action = QAction("Back", self)
+        # A key registered twice is ambiguous and fires nothing, and the
+        # platform's Back key is often Alt+Left itself.
+        self.back_action.setShortcuts(
+            unique_keys("Alt+Left", QKeySequence.StandardKey.Back)
+        )
+        self.back_action.triggered.connect(self._go_back)
+        tabs_menu.addAction(self.back_action)
+        self.forward_action = QAction("Forward", self)
+        self.forward_action.setShortcuts(
+            unique_keys("Alt+Right", QKeySequence.StandardKey.Forward)
+        )
+        self.forward_action.triggered.connect(self._go_forward)
+        tabs_menu.addAction(self.forward_action)
         self.reload_action = QAction("Reload", self)
         self.reload_action.setShortcuts([QKeySequence("Ctrl+R"), QKeySequence("F5")])
         self.reload_action.triggered.connect(self._reload)
@@ -797,6 +826,8 @@ class BrowserWindow(QMainWindow):
 
         self._memory = memory_modes.apply_process_policies(self.config)
         QTimer.singleShot(0, self._apply_memory_policies)
+        # Mouse back/forward side buttons over any part of this window.
+        QApplication.instance().installEventFilter(self)
         memory_modes.monitor().changed.connect(self._memory_pressure_changed)
         memory_modes.monitor().start()
         strip = TabStrip
@@ -1693,12 +1724,46 @@ class BrowserWindow(QMainWindow):
                 else display_url(cur.url())
             )
         )
-        self.address_bar.set_back_enabled(cur.history().canGoBack())
-        self.address_bar.set_forward_enabled(cur.history().canGoForward())
+        self._update_history_buttons()
         self._update_window_title(cur.url())
         self.status_bar.showMessage(f"Tab {index + 1} of {len(self.tabs)}")
         self._refresh_live_control()
         self._update_loading_indicator()
+
+    def eventFilter(self, watched, event):
+        kind = event.type()
+        if (
+            kind in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease)
+            and event.button()
+            in (Qt.MouseButton.BackButton, Qt.MouseButton.ForwardButton)
+            and isinstance(watched, QWidget)
+            and not sip.isdeleted(self)
+            and not self._closing
+            and watched.window() is self
+        ):
+            if kind == QEvent.Type.MouseButtonRelease:
+                if event.button() == Qt.MouseButton.BackButton:
+                    self._go_back()
+                else:
+                    self._go_forward()
+            return True
+        return super().eventFilter(watched, event)
+
+    def _update_history_buttons(self):
+        """Back/forward follow the current tab's history after every navigation."""
+        if self._closing or not (0 <= self.current_tab_index < len(self.tabs)):
+            return
+        tab = self.tabs[self.current_tab_index]
+        # A steed: page or the agent panel always has somewhere to go back to:
+        # Back leaves it for the page underneath.
+        overlay = bool(tab.workspace_name or getattr(tab, "agent_panel", False))
+        history = tab.history()
+        back = overlay or history.canGoBack()
+        forward = not overlay and history.canGoForward()
+        # Only the buttons show availability. The shortcuts stay enabled: a
+        # disabled one would swallow a key press made before history updates.
+        self.address_bar.set_back_enabled(back)
+        self.address_bar.set_forward_enabled(forward)
 
     def _update_page_actions(self):
         tab = (
@@ -1838,6 +1903,7 @@ class BrowserWindow(QMainWindow):
             self.navigation.action(tab, "back")
             self._update_page_actions()
             self._update_zoom()
+            self._update_history_buttons()
 
     def _go_forward(self):
         if self.tabs:
@@ -1850,6 +1916,7 @@ class BrowserWindow(QMainWindow):
             self.navigation.action(tab, "forward")
             self._update_page_actions()
             self._update_zoom()
+            self._update_history_buttons()
 
     def _reload(self):
         if self.tabs:
@@ -2082,6 +2149,10 @@ class BrowserWindow(QMainWindow):
         ):
             self.address_bar.set_url(display_url(url))
             self._update_window_title(url)
+        if tab == self.tabs[self.current_tab_index]:
+            self._update_history_buttons()
+            # History can commit just after the address changes.
+            QTimer.singleShot(0, self._update_history_buttons)
 
     def _on_tab_title_changed(self, tab: BrowserTab, title: str):
         if getattr(tab, "agent_panel", False) or tab.workspace_name:
@@ -2091,6 +2162,8 @@ class BrowserWindow(QMainWindow):
             if len(title) > 30:
                 title = title[:27] + "..."
             self.tab_bar.set_tab_title(idx, title)
+            if idx == self.current_tab_index:
+                self._update_history_buttons()
 
     def _on_load_progress(self, tab: BrowserTab, progress: int):
         tab.load_progress = max(0, min(100, progress))
@@ -2113,6 +2186,7 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
         if tab == self.tabs[self.current_tab_index]:
+            self._update_history_buttons()
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
             self.find_bar.page_loaded()
             self._update_loading_indicator()
@@ -3473,6 +3547,7 @@ class BrowserWindow(QMainWindow):
         self._update_page_actions()
         self._update_zoom()
         self._update_loading_indicator()
+        self._update_history_buttons()
 
     def _detach_workspace(self, tab):
         controller = tab.workspace_controller

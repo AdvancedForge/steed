@@ -12,6 +12,17 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Navigation and sign-in fixes — October 31, 2026.** Back/forward buttons were
+only refreshed on tab switches, so they stayed disabled after following links;
+they now follow every navigation, and Alt+Left/Right and mouse side buttons work.
+Sign-ins: session cookies persist while tabs are restored; the default user agent
+drops the QtWebEngine token so it matches the engine's client hints, and Settings
+warns about overrides claiming another Chrome version (the reporter's override
+claimed Chrome 137 on a Chromium 140 engine). Incognito was one in-memory profile
+for the whole run; it is now discarded once no window uses it. Local storage was
+verified to persist across restarts and profile switches. Open: confirm Discord
+stays signed in after clearing the mismatched override.
+
 **Memory modes and cookie inspection — October 30, 2026.** `steed:memory`
 offers Memory saver, Balanced and Performance presets over seven individual
 settings: cookie inspector sleep and wake-up spacing, freezing and unloading
