@@ -20,7 +20,7 @@ from config import Config
 from cookie_sharing import CookieSharing, cookie_key, fingerprint
 from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
-from password_manager import PasswordManager
+from password_service import PasswordService
 from services.agent_gateway import AgentGateway
 from services.app_connections import AppConnections
 from services.command_broker import require_owner_thread
@@ -86,7 +86,8 @@ class ProfileRegistry(QObject):
         self.downloads = DownloadManager(
             config, self, destination_picker=choose_download_destination
         )
-        self.passwords = PasswordManager(config, self)
+        self.passwords = PasswordService(config, self)
+        self.password_service = self.passwords
         self.adblock = AdBlocker(config, self)
         self.global_profile = self.create(
             "global", config.config_dir / "global_profile"
@@ -415,6 +416,7 @@ class ProfileRegistry(QObject):
         if override:
             profile.setHttpUserAgent(override)
         self.profiles[name] = profile
+        self.passwords.install(profile)
         self.downloads.attach(profile, name)
         self.adblock.attach(profile)
         if hasattr(self, "sharing"):

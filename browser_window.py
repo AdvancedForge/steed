@@ -110,6 +110,12 @@ class BrowserPage(QWebEnginePage):
         self.setUrlRequestInterceptor(self.site_compatibility)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        if is_main_frame:
+            window = getattr(self.parent(), "browser_window", None)
+            assistant = getattr(window, "password_assistant", None)
+            if assistant is not None:
+                # Collect a login its form is submitting before the page goes.
+                assistant.navigating(self.parent())
         if is_main_frame and workspace_name(url.toString()):
             tab = self.parent()
             window = getattr(tab, "browser_window", None)
@@ -462,12 +468,14 @@ class BrowserWindow(QMainWindow):
         cookies_menu.addAction(clear_history_action)
         cookies_menu.addSeparator()
         passwords_action = QAction("Passwords...", self)
-        passwords_action.triggered.connect(lambda: self._open_passwords())
+        passwords_action.triggered.connect(
+            lambda: self._new_tab(url="steed:passwords", return_tab=True)
+        )
         general_menu.addAction(passwords_action)
         fill_login_action = QAction("Fill Login", self)
         fill_login_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
         fill_login_action.triggered.connect(
-            lambda: self._open_passwords(auto_fill=True)
+            lambda: self.password_assistant.fill_current()
         )
         general_menu.addAction(fill_login_action)
         downloads_action = QAction("Downloads...", self)
@@ -864,7 +872,9 @@ class BrowserWindow(QMainWindow):
         self.address_bar.forward_requested.connect(self._go_forward)
         self.address_bar.reload_requested.connect(self._reload)
         self.address_bar.home_requested.connect(self._go_home)
-        self.address_bar.passwords_requested.connect(lambda: self._open_passwords())
+        self.address_bar.passwords_requested.connect(
+            lambda: self.password_assistant.show_menu()
+        )
         self.address_bar.reset_zoom_requested.connect(lambda: self._zoom())
         self.browser_menu = QMenu(self)
         for menu in self._layout_menus.values():
@@ -900,6 +910,10 @@ class BrowserWindow(QMainWindow):
         self.tab_layout.setContentsMargins(0, 0, 0, 0)
         self.tab_layout.setSpacing(0)
         # Pages share a splitter with docked Developer Tools.
+        from ui.password_assistant import PasswordAssistant
+
+        self.password_assistant = PasswordAssistant(self)
+        layout.addWidget(self.password_assistant.bar)
         self.content_area = QSplitter(Qt.Orientation.Horizontal)
         self.content_area.setChildrenCollapsible(False)
         self.content_area.addWidget(self.tab_container)
@@ -1709,6 +1723,7 @@ class BrowserWindow(QMainWindow):
             page.setLifecycleState(QWebEnginePage.LifecycleState.Active)
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
+        self.password_assistant.tab_changed()
         self.tab_bar.set_current_tab(index)
         self.devtools.show_for(self.tabs[index])
 
@@ -2191,6 +2206,7 @@ class BrowserWindow(QMainWindow):
         tab.is_loading = False
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
+        self.password_assistant.page_loaded(tab, ok)
         if tab == self.tabs[self.current_tab_index]:
             self._update_history_buttons()
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
