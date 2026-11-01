@@ -110,7 +110,8 @@ class ManagementPageTests(unittest.TestCase):
 
     def test_every_management_route_renders_html_without_native_controller_window(self):
         window = self.window()
-        for name in PAGES:
+        # Passwords is a full page of its own (see test_password_assistant).
+        for name in (name for name in PAGES if name != "passwords"):
             with self.subTest(page=name):
                 tab = window._new_tab(url="steed:" + name, return_tab=True)
                 host = tab.workspace_controller
@@ -228,18 +229,12 @@ class ManagementPageTests(unittest.TestCase):
         self.assertEqual(window.layout_preferences.density, before)
         self.assertTrue(host.closed)
 
-    def test_password_page_rebinds_and_returns_to_the_selected_website(self):
+    def test_password_menu_opens_the_built_in_password_page(self):
         window = self.window()
-        first = window.tabs[0]
-        second = window._new_tab(url="about:blank", return_tab=True)
-        tab = window._open_passwords()
-        self.ready(tab.workspace_controller)
-        self.assertIs(tab.workspace_controller.source.page, second.page())
-        window._switch_tab(window.tabs.index(first))
-        self.assertIs(window._open_passwords(), tab)
-        self.assertIs(tab.workspace_controller.source.page, first.page())
-        tab.workspace_controller.source.accept()
-        self.assertIs(window.tabs[window.current_tab_index], first)
+        window._open_management("passwords")
+        tab = window.tabs[window.current_tab_index]
+        self.assertEqual(tab.workspace_name, "passwords")
+        self.assertEqual(type(tab.workspace_controller).__name__, "PasswordsPage")
 
     def test_hidden_page_refreshes_live_data_when_reopened(self):
         window, tab, host = self.opened("history")

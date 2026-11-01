@@ -2,7 +2,7 @@
 
 A Python desktop browser built with PyQt6 and Qt WebEngine. Originally developed
 for a Framework 12 laptop, Steed currently targets Linux desktop use with separate
-browsing profiles and direct KeePassXC password management.
+browsing profiles and a built-in password manager.
 
 ## Highlights
 
@@ -14,7 +14,7 @@ browsing profiles and direct KeePassXC password management.
 - Address suggestions from per-profile browsing history.
 - Find in page with match counts and per-tab page zoom.
 - Cookie controls, a global-cookie baseline, downloads, and ad blocking.
-- In-browser KeePassXC login selection, filling, and explicit saving.
+- A built-in password manager: save prompts, autofill (including embedded frames), one-time codes, a generator and CSV import.
 - A desktop launcher, HTML settings/profile workspace, dark mode, and familiar shortcuts.
 - `steed:style` for shared page CSS, profile themes, hidden bars and loading progress.
 - HTML agent chats in a sidebar or tab, private live browsing, takeover and Take Back.
@@ -40,8 +40,8 @@ To launch from your Linux applications menu without keeping a terminal open:
 .venv/bin/python install_launcher.py
 ```
 
-Then open **Steed** from the applications menu. Password features require
-KeePassXC; see the [setup guide](DOCUMENTATION.md#third-party-password-managers).
+Then open **Steed** from the applications menu. Passwords are kept in Steed's own
+encrypted vault; see [Passwords](DOCUMENTATION.md#passwords).
 
 ## Project status and documentation
 

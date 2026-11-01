@@ -15,7 +15,7 @@ for current progress and remaining work.
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Find in page and zoom](#find-in-page-and-zoom)
 - [Website permissions](#website-permissions)
-- [KeePassXC setup](#third-party-password-managers)
+- [Passwords](#passwords)
 - [Profiles and stored data](#profiles-and-stored-data)
 - [Tabs and groups](#tabs-and-groups)
 - [Cookies and global sharing](#cookies-and-global-sharing)
@@ -229,7 +229,7 @@ There is no general-purpose HTML app capability bridge in this milestone.
 - `Ctrl++` or `Ctrl+=`: Zoom in
 - `Ctrl+-`: Zoom out
 - `Ctrl+0`: Reset zoom to 100%
-- `Ctrl+Shift+L`: Fill a matching KeePassXC login (choose an entry if several match)
+- `Ctrl+Shift+L`: Fill the current site's saved login
 - `Ctrl+,`: Settings
 - `Ctrl+Q`: Close the window
 
@@ -362,46 +362,45 @@ usernames/passwords are excluded.
 Use **Cookies → Clear Browsing History...** to clear the current profile's saved
 visits and suggestions. Subsequent visits start a new history.
 
-### Third-Party Password Managers
+### Passwords
 
-The **Passwords** button beside the address bar connects directly to KeePassXC
-on Linux. Login selection, filling, and saving happen inside this browser;
-KeePassXC owns the encrypted vault and handles unlocking and access approval.
-No browser extension or Auto-Type configuration is required.
+Steed has a built-in password manager. Each regular profile keeps its own logins
+in `passwords.vault` (in the profile folder), encrypted with XSalsa20-Poly1305
+under a random key stored in your system keyring (GNOME Keyring or KWallet,
+through the Secret Service). Without a keyring Steed asks you to create a
+master password instead, stretched with Argon2id; that vault then always asks
+for it once per session. Incognito never saves or fills passwords.
 
-1. Install [KeePassXC](https://keepassxc.org/download/), create or open a vault,
-   and enable **Tools → Settings → Browser Integration → Enable browser integration**.
-2. Install this project's updated requirements (`.venv/bin/python -m pip install
-   -r requirements.txt`) and restart the browser.
-3. Click **Passwords → Connect KeePassXC**, approve the connection in KeePassXC,
-   and give it a name such as `Steed default`. Pairing is remembered per ordinary
-   profile; incognito pairing lasts only for this application's session.
-4. Open an HTTPS login page. Press **Ctrl+Shift+L** to fill the sole matching
-   entry, or choose an entry when several match. You can also use
-   **Passwords → Fill Login**. KeePassXC may ask you to approve site access once.
-5. To store a login, type it into the form and choose
-   **Passwords → Save This Login...**. Review the website, username, and masked
-   password, then Save. This creates a new entry in the open KeePassXC vault.
+- **Saving:** sign in as usual. When the form submits — the page navigates, or
+  an app-style form disappears — a bar above the page offers **Save** (or
+  **Update password** when the site and username are saved with another
+  password), **Never for this site** and **Not now**. Typing without submitting
+  offers nothing.
+- **Filling:** when a page or an embedded sign-in frame loads, the most recently
+  used login for that exact site (scheme, host and port) is filled into empty
+  fields, and a one-time code is filled when the page asks for one. Frames are
+  filled with their own site's logins, never the page's. `Ctrl+Shift+L` fills
+  the current site's login; the key button beside the address bar lists the
+  site's logins to fill or copy, copies a current one-time code, and
+  **Generate strong password** fills a sign-up or change-password form and
+  copies the password.
+- **steed:passwords** (General → Passwords…): search; show a password (hidden
+  again after 30 seconds); copy username, password or code; edit, add and delete
+  logins; add a one-time-code secret (`otpauth://` link or base32); the
+  never-save list; and the two settings above (offer to save, fill
+  automatically).
+- **Import:** **Import CSV…** reads exports from KeePassXC (Database → Export →
+  CSV), Chrome, Firefox and Bitwarden; matching site+username entries are
+  updated. **Export…** writes a Chrome-style CSV in plain text after a warning.
 
-For separate username/password screens, such as Google, use the fill shortcut
-on each step. Filling sends input/change events and never submits the form.
-Automatic save prompts, updating existing entries, iframe/shadow-root forms,
-TOTP, and passkeys are not implemented. Cross-site form actions and non-HTTPS
-pages are excluded (loopback HTTP is allowed for local fixtures).
+Logins are offered only on HTTPS sites and local development servers. Page
+scripts cannot see the capture or fill code, which runs in an isolated world;
+the site a login belongs to always comes from the engine, never from the page.
+Passkeys are not supported.
 
-The connection follows the published
-[KeePassXC browser protocol](https://github.com/keepassxreboot/keepassxc-browser/blob/develop/keepassxc-protocol.md).
-It uses PyNaCl authenticated encryption, verifies the local socket peer belongs
-to this user, and checks response nonces. Passwords are used transiently for
-the requested fill/save and are not written to browser JSON or logs.
-Only private pairing metadata is stored in per-profile `password_manager.json`
-with owner-only permissions. Navigation or document replacement invalidates a
-pending fill. The picker retains only entry names/usernames/identifiers and
-fetches credentials again when you fill, so locking the vault invalidates the
-listed login's access. Closing the password dialog cancels pending requests.
-
-[KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type)
-remains an optional alternative. Window titles include the active hostname,
+Desktop password managers' auto-type (for example
+[KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type))
+also works: window titles include the active hostname,
 so a window association such as `Custom Browser - * - accounts.google.com`
 can match the site. General extension support remains pending. Loading the
 unmodified official Bitwarden 2026.9.2 package crashed the tested Qt WebEngine
@@ -527,7 +526,7 @@ session restore:
 | `steed:services` | Browse packaged connectors and open an exact recipe review |
 | `steed:tasks` | Agent tasks, requests, grants, results, packages and reviews |
 | `steed:panels` | Profile dashboards, linked-source refresh, reviewed forms and agent instructions |
-| `steed:passwords` | KeePassXC connection, login selection, filling and saving |
+| `steed:passwords` | Built-in password manager: search, edit, import and export logins |
 | `steed:layout` | Preview/save/cancel browser placement and named layouts |
 | `steed:newtab-settings` | Built-in start-page sections and custom New Tab/Welcome HTML |
 | `steed:tab-groups` | Create, rename, reorder, collapse and remove groups |
@@ -747,7 +746,8 @@ Browser/
 ├── profile_manager.py      # Profiles plus the application-owned engine registry
 ├── tab_manager.py          # Tab save/restore, closed-tab history, tab groups
 ├── browsing_history.py     # Bounded per-profile visits for address completion
-├── password_manager.py     # Encrypted local KeePassXC connection and pairing
+├── password_vault.py       # Encrypted per-profile login vault, TOTP, CSV import
+├── password_service.py     # Vaults per profile; capture and fill page scripts
 ├── password_forms.py       # Isolated-world form inspection and explicit filling
 ├── cookie_manager.py       # Cookie viewing and deletion for one profile
 ├── cookie_sharing.py       # Global-cookie baseline, provenance, re-inheritance guards
@@ -801,7 +801,8 @@ Browser/
 │   ├── media_dialog.py    # One-shot screen/window share picker
 │   ├── task_dialog.py     # Trusted task-grant review and cancellation
 │   ├── task_approval.py   # Automatic queued approval popups
-│   ├── password_dialog.py # KeePassXC connection, login picker, fill/save actions
+│   ├── password_assistant.py # Save bar, autofill and key menu
+│   ├── passwords_page.py  # steed:passwords
 │   ├── adblock_dialog.py  # Filtering toggle, exceptions, list updates
 │   ├── group_dialog.py    # Tab group management
 │   └── settings_dialog.py # Preferences dialog
@@ -822,7 +823,6 @@ Browser/
 │   ├── test_password_manager.py # Encrypted protocol and pairing regressions
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
 │   ├── smoke_google_login.py # Local HTTPS login-compatibility check (manual)
-│   ├── smoke_password_manager.py # Real KeePassXC synthetic-vault check (optional)
 │   └── profile_restart.py # Two-process cookie persistence check (manual)
 ├── pyproject.toml         # Ruff lint/format configuration
 ├── requirements-dev.txt
@@ -2888,7 +2888,7 @@ To configure Google:
    `.venv/bin/python -m pip install -r requirements-apps.txt`.
    Your Linux desktop needs a working Secret Service keyring, such as GNOME
    Keyring or a Secret Service provider you already use. Steed has no plaintext
-   credential fallback. This is separate from KeePassXC website-password pairing.
+   credential fallback. This is separate from the website password vault.
 2. In your Google Cloud project, enable **Google Drive API** and **Google Docs API**
    for documents and/or
    **Gmail API** for sending. Configure the OAuth consent screen; for an external
@@ -4583,13 +4583,6 @@ document retrieval/completion, and DELETE cancellation of an owned task/page.
 It starts the real HTTP adapter process and verifies shutdown and endpoint-file
 removal when browser access is disabled. HTTP unit tests skip when the optional
 SDK is absent.
-
-The optional password-manager smoke check needs `keepassxc` and `keepassxc-cli`.
-It runs offscreen with isolated configuration and a synthetic temporary vault,
-seeds a fixture pairing, and checks encrypted saving/retrieval and vault locking.
-It does not exercise the interactive pairing dialog or access an existing vault.
-The check passed with KeePassXC 2.7.6; normal desktop pairing and real-site
-filling still need user verification.
 
 The Google connector smoke uses synthetic desktop-client credentials, an in-memory
 secret store and a local HTTP fixture. It exercises the real OAuth callback/PKCE

@@ -231,7 +231,7 @@ class AddressBar(QWidget):
         self.site_kind = "search"
         self.passwords_btn = QPushButton()
         self.passwords_btn.setAccessibleName("Passwords")
-        self.passwords_btn.setToolTip("KeePassXC passwords (Ctrl+Shift+L to fill)")
+        self.passwords_btn.setToolTip("Passwords for this site (Ctrl+Shift+L to fill)")
         self.passwords_btn.clicked.connect(self.passwords_requested.emit)
         self.zoom_btn = QPushButton("100%")
         self.zoom_btn.setObjectName("TextButton")

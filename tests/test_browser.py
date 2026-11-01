@@ -9,7 +9,6 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -21,7 +20,6 @@ from PyQt6.QtTest import QSignalSpy, QTest
 from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest
 from PyQt6.QtWidgets import QDialog, QFileDialog
 from qt_test_support import application, keep_directory
-from test_password_manager import KeePassXCProtocolFixture
 
 from ad_blocker import FilterEngine
 from browser_window import BrowserWindow, QWebEnginePermission
@@ -29,11 +27,8 @@ from config import Config
 from cookie_manager import CookieInfo
 from cookie_sharing import cookie_site, delete_exact
 from main import configure_chromium_flags
-from password_forms import PASSWORD_WORLD, fill_form_script, inspect_form_script
-from password_manager import KeePassXCClient
 from tab_manager import TabManager, TabState
 from ui.cookie_dialog import CookieDialog
-from ui.password_dialog import PasswordDialog, SaveLoginDialog
 from ui.prompts import MessageBox as QMessageBox
 from ui.settings_dialog import SettingsDialog
 from ui.tab_strip import TabStrip
@@ -1325,219 +1320,6 @@ class BrowserTests(unittest.TestCase):
         restored = manager.registry.get_history("renamed")
         self.assertEqual(restored.entries()[0].title, "Work")
         self.assertEqual(len(restored.entries()), 1)
-
-    def password_script(self, script):
-        result = []
-        self.window.tabs[self.window.current_tab_index].page().runJavaScript(
-            script, PASSWORD_WORLD, result.append
-        )
-        self.wait_for(lambda: bool(result))
-        return result[0]
-
-    def password_page(self, html):
-        page = self.window.tabs[self.window.current_tab_index].page()
-        loaded = QSignalSpy(page.loadFinished)
-        page.setHtml(html, QUrl(self.origin + "/login"))
-        self.wait_for(lambda: len(loaded) > 0)
-        self.assertTrue(loaded[-1][0])
-        return page
-
-    def password_fixture(self):
-        fixture = KeePassXCProtocolFixture(self.directory.name)
-        manager = self.window.profile_manager.registry.passwords
-        manager.paths = [fixture.path]
-        with KeePassXCClient(
-            manager.path("default"), {}, manager.paths, timeout=3
-        ) as client:
-            client.execute("connect", {})
-        fixture.entries = [
-            {"name": "Fixture", "login": "test-user", "password": "test-secret"}
-        ]
-        return fixture
-
-    def test_password_fill_isolated_world_sets_values_events_without_submitting(self):
-        self.password_page("""<form><input id="user" autocomplete="username">
-            <input id="pass" type="password" autocomplete="current-password"></form>
-            <script>window.events=[]; document.addEventListener('input',e=>events.push(e.target.id));
-            window.submits=0; document.querySelector('form').onsubmit=()=>{submits++;return false;};</script>""")
-        context = self.password_script(inspect_form_script("fixture-token"))
-        password = 'quote"; window.injected=true; \\ end'
-        result = self.password_script(
-            fill_form_script("fixture-token", context["url"], "test-user", password)
-        )
-        self.assertEqual(result["filled"], 2)
-        state = self.javascript(
-            "({user:document.querySelector('#user').value,password:document.querySelector('#pass').value,events,submits,isolated:typeof window.__steedPasswordForm==='undefined',injected:!!window.injected})"
-        )
-        self.assertEqual(state["password"], password)
-        self.assertEqual(state["user"], "test-user")
-        self.assertEqual(state["events"], ["user", "pass"])
-        self.assertEqual(state["submits"], 0)
-        self.assertTrue(state["isolated"])
-        self.assertFalse(state["injected"])
-
-    def test_password_fill_supports_username_and_password_steps_and_ignores_hidden_fields(
-        self,
-    ):
-        for html, expected in (
-            (
-                '<input id="field" type="email"><input type="password" style="display:none">',
-                "test-user",
-            ),
-            (
-                '<input id="field" type="password" autocomplete="current-password"><input type="password" autocomplete="new-password">',
-                "test-secret",
-            ),
-        ):
-            with self.subTest(html=html):
-                self.password_page(html)
-                context = self.password_script(inspect_form_script("step"))
-                result = self.password_script(
-                    fill_form_script("step", context["url"], "test-user", "test-secret")
-                )
-                self.assertEqual(result["filled"], 1)
-                self.assertEqual(
-                    self.javascript("document.querySelector('#field').value"), expected
-                )
-                self.assertEqual(
-                    self.javascript("document.querySelectorAll('input')[1].value"), ""
-                )
-
-    def test_password_fill_rejects_cross_site_forms_and_changed_document(self):
-        self.password_page(
-            '<form action="https://other.example/login"><input type="password"></form>'
-        )
-        self.assertIn(
-            "Cross-site", self.password_script(inspect_form_script("cross"))["error"]
-        )
-        self.password_page('<form><input id="pass" type="password"></form>')
-        context = self.password_script(inspect_form_script("old-document"))
-        self.password_page('<form><input id="pass" type="password"></form>')
-        result = self.password_script(
-            fill_form_script("old-document", context["url"], "user", "secret")
-        )
-        self.assertIn("changed", result["error"])
-        self.assertEqual(self.javascript("document.querySelector('#pass').value"), "")
-        context = self.password_script(inspect_form_script("changed-form"))
-        self.javascript(
-            "document.querySelector('form').action='https://other.example/login'"
-        )
-        result = self.password_script(
-            fill_form_script("changed-form", context["url"], "user", "secret")
-        )
-        self.assertIn("changed", result["error"])
-
-    def test_password_shortcut_fetches_encrypted_login_and_fills_inside_browser(self):
-        page = self.password_page(
-            '<form><input id="user" autocomplete="username"><input id="pass" type="password"></form>'
-        )
-        with closing(self.password_fixture()) as fixture:
-            self.window.show()
-            self.window.activateWindow()
-            self.app.processEvents()
-            self.window.tabs[0].setFocus()
-            QTest.keyClick(
-                self.window.tabs[0],
-                Qt.Key.Key_L,
-                Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
-            )
-            self.assertIsNone(self.window._password_dialog)
-            self.assertEqual(
-                self.javascript("document.querySelector('#pass').value"), "test-secret"
-            )
-            request = next(x for x in fixture.requests if x["action"] == "get-logins")
-            self.assertEqual(request["url"], page.url().toString())
-
-    def test_password_picker_does_not_fill_cached_credentials_after_vault_lock(self):
-        page = self.password_page('<form><input id="pass" type="password"></form>')
-        manager = self.window.profile_manager.registry.passwords
-        with closing(self.password_fixture()) as fixture:
-            dialog = PasswordDialog(manager, "default", page, self.window)
-            try:
-                self.wait_for(lambda: dialog.logins.count() == 1)
-                self.assertNotIn("password", dialog.entries[0])
-                fixture.locked = True
-                dialog.fill()
-                self.wait_for(lambda: "Unlock" in dialog.status.text())
-                self.assertEqual(
-                    self.javascript("document.querySelector('#pass').value"), ""
-                )
-            finally:
-                dialog.reject()
-                dialog.deleteLater()
-
-    def test_password_dialog_close_cancels_pending_request(self):
-        page = self.password_page('<form><input id="pass" type="password"></form>')
-        manager = self.window.profile_manager.registry.passwords
-        with closing(self.password_fixture()) as fixture:
-            fixture.delay_logins = True
-            dialog = PasswordDialog(manager, "default", page, self.window)
-            self.wait_for(fixture.started.is_set)
-            dialog.reject()
-            self.assertEqual(dialog.entries, [])
-            self.wait_for(lambda: not manager.busy("default"))
-            fixture.release.set()
-            self.assertEqual(
-                self.javascript("document.querySelector('#pass').value"), ""
-            )
-            dialog.deleteLater()
-
-    def test_password_input_handler_cannot_redirect_the_password_to_cross_site_form(
-        self,
-    ):
-        self.password_page("""<form><input id="user" autocomplete="username"><input id="pass" type="password"></form>
-            <script>document.querySelector('#user').oninput=()=>document.querySelector('form').action='https://other.example/';</script>""")
-        context = self.password_script(inspect_form_script("handler"))
-        result = self.password_script(
-            fill_form_script("handler", context["url"], "user", "secret")
-        )
-        self.assertIn("changed", result["error"])
-        self.assertEqual(self.javascript("document.querySelector('#pass').value"), "")
-
-    def test_password_dialog_rejects_delayed_fill_after_navigation(self):
-        page = self.password_page('<form><input id="pass" type="password"></form>')
-        manager = self.window.profile_manager.registry.passwords
-        with closing(self.password_fixture()) as fixture:
-            fixture.delay_logins = True
-            dialog = PasswordDialog(manager, "default", page, self.window)
-            try:
-                self.wait_for(fixture.started.is_set)
-                self.password_page('<form><input id="pass" type="password"></form>')
-                fixture.release.set()
-                self.wait_for(lambda: dialog.logins.count() == 1)
-                dialog.fill()
-                self.wait_for(lambda: "changed" in dialog.status.text())
-                self.assertEqual(
-                    self.javascript("document.querySelector('#pass').value"), ""
-                )
-            finally:
-                dialog.reject()
-                dialog.deleteLater()
-
-    def test_password_dialog_saves_to_external_manager_without_local_password_storage(
-        self,
-    ):
-        page = self.password_page(
-            '<form><input autocomplete="username" value="saved-user"><input type="password" value="saved-secret"></form>'
-        )
-        manager = self.window.profile_manager.registry.passwords
-        with closing(self.password_fixture()) as fixture:
-            dialog = PasswordDialog(manager, "default", page, self.window)
-            try:
-                self.wait_for(lambda: dialog.logins.count() == 1)
-                with patch.object(
-                    SaveLoginDialog, "exec", return_value=QDialog.DialogCode.Accepted
-                ):
-                    dialog.save_login()
-                    self.wait_for(lambda: "Login saved" in dialog.status.text())
-                saved = next(x for x in fixture.requests if x["action"] == "set-login")
-                self.assertEqual(saved["login"], "saved-user")
-                self.assertEqual(saved["password"], "saved-secret")
-                self.assertNotIn("saved-secret", manager.path("default").read_text())
-            finally:
-                dialog.reject()
-                self.assertEqual(dialog.entries, [])
-                dialog.deleteLater()
 
     def test_shutdown_destroys_pages_before_profiles(self):
         pages = [self.window.tabs[0].page()]

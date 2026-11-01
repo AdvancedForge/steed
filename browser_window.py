@@ -58,7 +58,6 @@ from ui.devtools import DevToolsHost, DevToolsUnavailable
 from ui.find_bar import FindBar
 from ui.layout_dialog import LayoutDialog
 from ui.media_dialog import DesktopMediaDialog
-from ui.password_dialog import PasswordDialog
 from ui.prompts import InputDialog as QInputDialog
 from ui.prompts import MessageBox as QMessageBox
 from ui.settings_dialog import SettingsDialog
@@ -309,7 +308,6 @@ class BrowserWindow(QMainWindow):
         self.closed_tabs = self.profile_manager.registry.closed_tabs
         self._child_windows: list[BrowserWindow] = []
         self._palette = None
-        self._password_dialog = None
         self.agent_sidebar = None
         self.data_panels_dock = None
         self.agent_setup_dialog = None
@@ -1469,7 +1467,7 @@ class BrowserWindow(QMainWindow):
         title = f"Custom Browser - {label}"
         if url is None and 0 <= self.current_tab_index < len(self.tabs):
             url = self.tabs[self.current_tab_index].url()
-        # KeePassXC Auto-Type can match this host. Page-provided titles must not
+        # Desktop password managers' auto-type can match this host. Page titles must not
         # be able to masquerade as another site's window-title association.
         if url is not None and url.scheme() in ("http", "https") and url.host():
             title += f" - {url.host()}"
@@ -2072,46 +2070,6 @@ class BrowserWindow(QMainWindow):
             == QMessageBox.StandardButton.Yes
         ):
             self.history.clear()
-
-    def _open_passwords(self, auto_fill=False):
-        if self._closing or not self.tabs:
-            return
-        if not auto_fill and self._menu_anchor is None:
-            current = self.tabs[self.current_tab_index]
-            existing = next(
-                (tab for tab in self.tabs if tab.workspace_name == "passwords"), None
-            )
-            if (
-                existing is not None
-                and not current.workspace_name
-                and not getattr(current, "agent_panel", False)
-            ):
-                existing.agent_source = current
-                source = existing.workspace_controller.source
-                source.manager.cancel(source)
-                source.entries.clear()
-                source.context = None
-                source.page = current.page()
-                source._set_busy(False)
-                source.refresh()
-            return self._open_management("passwords")
-        if self._password_dialog is not None:
-            self._password_dialog.raise_()
-            return
-        dialog = PasswordDialog(
-            self.profile_manager.registry.passwords,
-            self.profile_manager.current_profile_name,
-            self.tabs[self.current_tab_index].page(),
-            self,
-            auto_fill=auto_fill,
-        )
-        self._password_dialog = dialog
-        try:
-            dialog.exec()
-        finally:
-            dialog.reject()
-            dialog.deleteLater()
-            self._password_dialog = None
 
     def _go_home(self):
         home = self.config.get("home_page", NEW_TAB) or NEW_TAB
@@ -3219,8 +3177,6 @@ class BrowserWindow(QMainWindow):
         self.devtools.dispose()
         if self._palette is not None:
             self._palette.dispose()
-        if self._password_dialog is not None:
-            self._password_dialog.reject()
         if self.history is not None:
             self.history.changed.disconnect(self._refresh_address_history)
 
@@ -3560,7 +3516,8 @@ class BrowserWindow(QMainWindow):
 
         if self._closing or name not in PAGES:
             return
-        if self._menu_anchor is not None:
+        # Passwords is a full page with no dialog form.
+        if self._menu_anchor is not None and name != "passwords":
             source = self.tabs[self.current_tab_index] if self.tabs else None
             try:
                 dialog = controller(self, name, source)
@@ -3586,6 +3543,10 @@ class BrowserWindow(QMainWindow):
             from ui.memory_page import MemoryPage
 
             controller = panel = MemoryPage(self)
+        elif name == "passwords":
+            from ui.passwords_page import PasswordsPage
+
+            controller = panel = PasswordsPage(self)
         else:
             from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
             from ui.management_pages import controller as create_controller

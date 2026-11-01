@@ -62,5 +62,5 @@ screenshots for visible UI changes.
 
 Keep engine operations on the Qt thread and destroy pages before profiles.
 Preserve shared-window ownership and incognito isolation. User state lives in
-`~/.custom_browser/`; never commit real profiles, vaults, or credentials. KeePassXC
-owns password storage; browser JSON stores pairing metadata only.
+`~/.custom_browser/`; never commit real profiles, vaults, or credentials. Passwords live only in each
+profile's encrypted `passwords.vault`; never write them to JSON, logs or tests.

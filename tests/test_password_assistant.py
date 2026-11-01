@@ -13,6 +13,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser_window import BrowserWindow
+from password_vault import VaultError
 
 LOGIN = b"""<title>Sign in</title><form method=post action=/home>
 <input id=user name=username autocomplete=username>
@@ -220,6 +221,78 @@ class PasswordAssistantTests(unittest.TestCase):
         self.assertFalse(self.assistant.bar.isVisible())
         labels = [a.text() for a in self.assistant.menu().actions()]
         self.assertEqual(labels, ["Passwords are not saved in incognito"])
+
+    def test_passwords_page_manages_logins(self):
+        from ui.prompts import MessageBox
+
+        login = self.vault.save(
+            self.origin, "ada", "page-password", totp="GEZDGNBVGY3TQOJQ"
+        )
+        tab = self.window._new_tab(url="steed:passwords", return_tab=True)
+        page = tab.workspace_controller
+        self.wait(lambda: page.surface.ready)
+
+        def send(**command):
+            page.command(
+                {"context": page.context, "sequence": page.sequence + 1, **command}
+            )
+
+        self.assertNotIn("page-password", repr(page.surface._state))
+        send(action="reveal", id=login.id)
+        self.assertEqual(page.revealed[login.id][0], "page-password")
+        send(action="hide", id=login.id)
+        self.assertNotIn(login.id, page.revealed)
+        send(action="copy", id=login.id, field="password")
+        from PyQt6.QtGui import QGuiApplication
+
+        self.assertEqual(QGuiApplication.clipboard().text(), "page-password")
+        send(action="copy", id=login.id, field="code")
+        self.assertEqual(len(QGuiApplication.clipboard().text()), 6)
+        send(
+            action="save",
+            id=login.id,
+            origin=self.origin,
+            username="ada2",
+            password="",
+            title="Fixture",
+            totp="",
+            notes="",
+        )
+        self.assertEqual(self.vault.get(login.id).username, "ada2")
+        self.assertEqual(self.vault.get(login.id).password, "page-password")
+        send(
+            action="save",
+            id="",
+            origin="new.example",
+            username="u",
+            password="pw-new-site",
+            title="",
+            totp="",
+            notes="",
+        )
+        self.assertEqual(
+            self.vault.logins("https://new.example")[0].password, "pw-new-site"
+        )
+        csv_path = Path(self.directory.name) / "export.csv"
+        csv_path.write_text(
+            "name,url,username,password\nX,https://csv.example,c,csv-pw\n"
+        )
+        with patch(
+            "ui.passwords_page.QFileDialog.getOpenFileName",
+            return_value=(str(csv_path), ""),
+        ):
+            send(action="import")
+        self.assertIn("Imported 1 new", page.notice)
+        with patch.object(
+            MessageBox, "question", return_value=MessageBox.StandardButton.Yes
+        ):
+            send(action="delete", id=login.id)
+        with self.assertRaises(VaultError):
+            self.vault.get(login.id)
+        send(action="setting", key="password_autofill", value=False)
+        self.assertFalse(self.window.config.get("password_autofill"))
+        send(action="setting", key="anything", value=True)
+        self.assertTrue(page.error)
 
 
 if __name__ == "__main__":
