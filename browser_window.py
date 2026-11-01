@@ -540,6 +540,11 @@ class BrowserWindow(QMainWindow):
         exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.triggered.connect(self.close)
+        access_action = QAction("Access && Permissions…", self)
+        access_action.triggered.connect(
+            lambda: self._new_tab(url="steed:access", return_tab=True)
+        )
+        agents_menu.addAction(access_action)
         task_action = QAction("Task Permissions...", self)
         task_action.triggered.connect(self._open_tasks)
         agents_menu.addAction(task_action)
@@ -3570,6 +3575,10 @@ class BrowserWindow(QMainWindow):
             from ui.memory_page import MemoryPage
 
             controller = panel = MemoryPage(self)
+        elif name == "access":
+            from ui.access_page import AccessPage
+
+            controller = panel = AccessPage(self)
         else:
             from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
             from ui.management_pages import controller as create_controller

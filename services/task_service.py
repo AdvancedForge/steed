@@ -1687,6 +1687,28 @@ class TaskService(QObject):
                     "The selected profile is unavailable. Read browser.context for its exact selector, or use profile='private'.",
                     "profile",
                 ) from None
+        decision = self._access_decision(scope)
+        if decision == "deny":
+            import access_levels
+
+            blocked = access_levels.blocked_capabilities(
+                self.profiles.config,
+                scope.actions,
+                named_profile=scope.profile != "private",
+            )
+            self.store.record_event(
+                task_id,
+                "permission.denied",
+                {"reason": "access_settings", "capabilities": blocked},
+            )
+            self.changed.emit()
+            raise AgentRequestError(
+                "access_blocked",
+                "The user turned off these capabilities for agents in Steed's "
+                f"access settings: {', '.join(blocked)}. Steed will not ask them; "
+                "request a scope without them, or ask the user to allow them.",
+                "actions",
+            )
         current = self.store.grants(task_id)
         for existing in current:
             if (
@@ -1713,7 +1735,7 @@ class TaskService(QObject):
                 else ""
             )
             rule = next((r for r in rules if r.covers(scope, profile_key)), None)
-            if self.auto_approve_requests:
+            if self.auto_approve_requests or decision == "approve":
                 automatic = {}
             elif rule is not None:
                 automatic = {"_rule": rule}
@@ -1737,17 +1759,33 @@ class TaskService(QObject):
                     )
                 else:
                     result = approved
-                    if self.auto_approve_requests:
+                    if self.auto_approve_requests or decision == "approve":
                         self.store.record_event(
                             task_id,
                             "permission.auto_approved",
-                            {"grant_id": result.grant_id, "mode": "yolo"},
+                            {
+                                "grant_id": result.grant_id,
+                                "mode": "yolo"
+                                if self.auto_approve_requests
+                                else "access_settings",
+                            },
                         )
         except (OSError, sqlite3.Error, ValueError):
             self._fatal()
             raise
         self.changed.emit()
         return result
+
+    def _access_decision(self, scope):
+        """The user's access settings: "deny", "approve" or "ask"."""
+        config = getattr(self.profiles, "config", None)
+        if config is None:
+            return "ask"
+        import access_levels
+
+        return access_levels.agent_decision(
+            config, scope.actions, named_profile=scope.profile != "private"
+        )
 
     def _approval_profile_key(self, scope, *, create=False):
         if scope.profile == "private" or self.profiles is None:
