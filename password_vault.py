@@ -109,8 +109,11 @@ def totp_parameters(value):
             raise VaultError("Only time-based (TOTP) codes are supported.")
         query = {k.lower(): v[0] for k, v in parse_qs(parts.query).items()}
         value = query.get("secret", "")
-        digits = int(query.get("digits", 6))
-        period = int(query.get("period", 30))
+        try:
+            digits = int(query.get("digits", 6))
+            period = int(query.get("period", 30))
+        except ValueError:
+            raise VaultError("Unsupported one-time code settings.") from None
         algorithm = query.get("algorithm", "sha1").lower()
     if digits not in (6, 7, 8) or not 10 <= period <= 300:
         raise VaultError("Unsupported one-time code settings.")
@@ -250,13 +253,20 @@ class KeyStore:
         return key
 
 
-def master_key(password, salt):
+# Argon2id cost for new master-password vaults; stored in each vault's header
+# so it can be raised later without breaking existing vaults.
+OPSLIMIT = nacl.pwhash.argon2id.OPSLIMIT_MODERATE
+MEMLIMIT = nacl.pwhash.argon2id.MEMLIMIT_MODERATE
+MIN_MASTER_LENGTH = 8
+
+
+def master_key(password, salt, opslimit=OPSLIMIT, memlimit=MEMLIMIT):
     return nacl.pwhash.argon2id.kdf(
         nacl.secret.SecretBox.KEY_SIZE,
         password.encode(),
         salt,
-        opslimit=nacl.pwhash.argon2id.OPSLIMIT_MODERATE,
-        memlimit=nacl.pwhash.argon2id.MEMLIMIT_MODERATE,
+        opslimit=opslimit,
+        memlimit=memlimit,
     )
 
 
@@ -290,6 +300,10 @@ class PasswordVault:
                 self._header = {}
         return self._header
 
+    def is_new(self):
+        """No vault file yet: unlocking creates one."""
+        return not self._read_header()
+
     def needs_master_password(self):
         """True when this vault is (or must be) sealed with a master password."""
         header = self._read_header()
@@ -306,13 +320,31 @@ class PasswordVault:
         if self.needs_master_password():
             if not master_password:
                 raise VaultLocked("Enter your master password.")
-            salt = (
-                base64.b64decode(header["salt"])
-                if header
-                else nacl.utils.random(nacl.pwhash.argon2id.SALTBYTES)
+            if not header and len(master_password) < MIN_MASTER_LENGTH:
+                raise VaultLocked(
+                    f"Choose a master password of at least {MIN_MASTER_LENGTH} characters."
+                )
+            try:
+                salt = (
+                    base64.b64decode(header["salt"])
+                    if header
+                    else nacl.utils.random(nacl.pwhash.argon2id.SALTBYTES)
+                )
+                opslimit = int(header.get("opslimit", OPSLIMIT)) if header else OPSLIMIT
+                memlimit = int(header.get("memlimit", MEMLIMIT)) if header else MEMLIMIT
+            except (KeyError, ValueError, TypeError):
+                raise VaultError("The password vault file is damaged.") from None
+            if not (OPSLIMIT <= opslimit <= 64 and MEMLIMIT <= memlimit <= 4 << 30):
+                raise VaultError("The password vault file is damaged.")
+            box = nacl.secret.SecretBox(
+                master_key(master_password, salt, opslimit, memlimit)
             )
-            box = nacl.secret.SecretBox(master_key(master_password, salt))
-            kdf = {"kdf": "argon2id", "salt": base64.b64encode(salt).decode()}
+            kdf = {
+                "kdf": "argon2id",
+                "salt": base64.b64encode(salt).decode(),
+                "opslimit": opslimit,
+                "memlimit": memlimit,
+            }
         else:
             key = self.keys.key()
             if key is None:
@@ -328,11 +360,14 @@ class PasswordVault:
                     if kdf["kdf"] == "argon2id"
                     else "The keyring key does not open this vault."
                 ) from None
-            data = json.loads(raw)
-            contents = Contents(
-                [Login(**entry) for entry in data.get("logins", [])],
-                list(data.get("never", [])),
-            )
+            try:
+                data = json.loads(raw)
+                contents = Contents(
+                    [Login(**entry) for entry in data.get("logins", [])],
+                    [str(origin) for origin in data.get("never", [])],
+                )
+            except (ValueError, TypeError, AttributeError):
+                raise VaultError("The password vault file is damaged.") from None
         else:
             contents = Contents()
         self._box, self._kdf, self._contents = box, kdf, contents

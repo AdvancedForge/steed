@@ -6,14 +6,37 @@ from anything a page reports.
 """
 
 import json
+import time
 from urllib.parse import urlsplit
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QMimeData, QObject, QTimer, pyqtSignal
+from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWebEngineCore import QWebEngineScript
 
 from password_vault import KeyStore, PasswordVault, VaultError, origin_of
 
 WORLD = QWebEngineScript.ScriptWorldId.ApplicationWorld.value
+# Unused vaults are locked (and their logins dropped from memory) after this.
+IDLE_LOCK_SECONDS = 30 * 60
+# Copied passwords and codes are cleared from the clipboard after this.
+CLIPBOARD_SECONDS = 30
+
+
+def copy_secret(text):
+    """Copy a password or code, hidden from clipboard managers, then clear it."""
+    data = QMimeData()
+    data.setText(text)
+    # KDE Klipper and similar managers skip entries carrying this hint.
+    data.setData("x-kde-passwordManagerHint", b"secret")
+    clipboard = QGuiApplication.clipboard()
+    clipboard.setMimeData(data)
+
+    def clear():
+        if clipboard.text() == text:
+            clipboard.clear()
+
+    QTimer.singleShot(CLIPBOARD_SECONDS * 1000, clear)
+
 
 # Remembers the login a form is about to submit; values stay in the isolated
 # world until Steed collects them.
@@ -43,39 +66,70 @@ CAPTURE_SCRIPT = """
             fresh: fresh.length > 0,
         };
     };
-    document.addEventListener('submit', e => record(e.target), true);
+    // Only the user's own actions count: pages can fire synthetic events.
+    // A submit event is trusted even when a script clicked the button, so it
+    // also needs the user's own recent input.
+    document.addEventListener('submit', e => {
+        if (e.isTrusted && navigator.userActivation && navigator.userActivation.isActive)
+            record(e.target);
+    }, true);
     document.addEventListener('click', e => {
+        if (!e.isTrusted) return;
         const button = e.target.closest &&
             e.target.closest('button, input[type=submit], input[type=button], [role=button]');
         if (button) record(button.form || document);
     }, true);
     document.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && e.target instanceof HTMLInputElement)
+        if (e.isTrusted && e.key === 'Enter' && e.target instanceof HTMLInputElement)
             record(e.target.form || document);
     }, true);
 })();
 """
 
 
-def take_script(force):
+def _script(body, **arguments):
+    """A script with its arguments as one JSON object, run only on expected.
+
+    Arguments are never spliced into code, and the isolated world's own
+    location (not page-controlled) must still be the site the engine reported
+    when Steed chose what to fill.
+    """
+    return (
+        "(() => { const ARGS = "
+        + json.dumps(arguments)
+        + "; if (location.origin !== ARGS.expected) return null;"
+        + body
+        + "})()"
+    )
+
+
+def take_script(expected, force):
     """Hand over a captured login once its form is gone (or on navigation)."""
-    return """
-(() => {
+    return _script(
+        """
     const capture = window.__steedLoginCapture;
     if (!capture) return null;
     const present = Array.from(document.querySelectorAll('input[type=password]'))
         .some(el => el.value === capture.password && el.getClientRects().length > 0);
-    if (present && !FORCE) return {pending: true};
+    if (present && !ARGS.force) return {pending: true};
     window.__steedLoginCapture = null;
     return {username: capture.username, password: capture.password, fresh: capture.fresh};
-})()
-""".replace("FORCE", "true" if force else "false")
+""",
+        expected=expected,
+        force=bool(force),
+    )
 
 
 _FIELDS = """
-    const visible = el => el instanceof HTMLInputElement && !el.disabled &&
-        !el.readOnly && el.getClientRects().length > 0 &&
-        getComputedStyle(el).visibility !== 'hidden';
+    // Genuinely visible: not transparent, tiny or placed off the page.
+    const visible = el => {
+        if (!(el instanceof HTMLInputElement) || el.disabled || el.readOnly) return false;
+        const box = el.getBoundingClientRect(), style = getComputedStyle(el);
+        return box.width >= 8 && box.height >= 8 && style.visibility !== 'hidden' &&
+            Number(style.opacity) > 0.1 && box.right > 0 && box.bottom > 0 &&
+            box.left < document.documentElement.scrollWidth &&
+            box.top < document.documentElement.scrollHeight;
+    };
     const inputs = Array.from(document.querySelectorAll('input')).filter(visible);
     const set = (el, value) => {
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -84,17 +138,18 @@ _FIELDS = """
         el.dispatchEvent(new Event('input', {bubbles: true}));
         el.dispatchEvent(new Event('change', {bubbles: true}));
     };
+    // A form that would send its fields to another site is never filled.
+    const sameSite = el => !el.form ||
+        new URL(el.form.action || location.href, location.href).origin === location.origin;
 """
 
 
-def fill_script(username, password, *, only_empty=True):
-    """Fill the sign-in form of a frame; returns whether anything was filled."""
-    return (
-        (
-            "(() => {"
-            + _FIELDS
-            + """
-    const passwords = inputs.filter(el => el.type === 'password' &&
+def fill_script(expected, username, password, *, only_empty=True):
+    """Fill a sign-in form; returns whether anything was filled."""
+    return _script(
+        _FIELDS
+        + """
+    const passwords = inputs.filter(el => el.type === 'password' && sameSite(el) &&
         !(el.autocomplete || '').includes('new-password'));
     const password = passwords.find(el => (el.autocomplete || '').includes('current-password')) ||
         passwords[0];
@@ -102,7 +157,8 @@ def fill_script(username, password, *, only_empty=True):
     const code = el => (el.autocomplete || '').includes('one-time-code') ||
         /otp|totp|2fa|mfa|one.?time|verification|auth.?code|security.?code/i.test(
             el.name + ' ' + el.id + ' ' + (el.placeholder || ''));
-    const text = scope.filter(el => ['text', 'email', 'tel', ''].includes(el.type) && !code(el));
+    const text = scope.filter(el => ['text', 'email', 'tel', ''].includes(el.type) &&
+        !code(el) && sameSite(el));
     const explicit = text.find(el => (el.autocomplete || '').includes('username')) ||
         text.find(el => el.type === 'email');
     // Without a password field (a username-first step) only a field marked as
@@ -111,49 +167,51 @@ def fill_script(username, password, *, only_empty=True):
         text.find(el => /user|mail|login|name|account/i.test(el.name + ' ' + el.id)) ||
         (text.length === 1 ? text[0] : null)) : null);
     let filled = false;
-    if (user && USERNAME && (!ONLY_EMPTY || !user.value)) { set(user, USERNAME); filled = true; }
-    if (password && (!ONLY_EMPTY || !password.value)) { set(password, PASSWORD); filled = true; }
+    if (user && ARGS.username && (!ARGS.onlyEmpty || !user.value)) { set(user, ARGS.username); filled = true; }
+    if (password && (!ARGS.onlyEmpty || !password.value)) { set(password, ARGS.password); filled = true; }
     return {filled, hasPassword: !!password, hasUser: !!user};
-})()"""
-        )
-        .replace("USERNAME", json.dumps(username))
-        .replace("PASSWORD", json.dumps(password))
-        .replace("ONLY_EMPTY", "true" if only_empty else "false")
+""",
+        expected=expected,
+        username=username,
+        password=password,
+        onlyEmpty=bool(only_empty),
     )
 
 
-def code_script(code):
+def code_script(expected, code):
     """Fill a one-time-code field that is still empty."""
-    return (
-        "(() => {"
-        + _FIELDS
+    return _script(
+        _FIELDS
         + """
     const field = inputs.find(el => (el.autocomplete || '').includes('one-time-code')) ||
         inputs.find(el => ['text', 'tel', 'number', ''].includes(el.type) &&
             /otp|totp|2fa|mfa|one.?time|verification|auth.?code|security.?code/i.test(
                 el.name + ' ' + el.id + ' ' + (el.placeholder || '') + ' ' +
                 (el.getAttribute('aria-label') || '')));
-    if (!field || field.value) return {filled: false};
-    set(field, CODE);
+    if (!field || field.value || !sameSite(field)) return {filled: false};
+    set(field, ARGS.code);
     return {filled: true};
-})()"""
-    ).replace("CODE", json.dumps(code))
+""",
+        expected=expected,
+        code=code,
+    )
 
 
-def new_password_script(password):
+def new_password_script(expected, password):
     """Put a generated password into a sign-up or change-password form."""
-    return (
-        "(() => {"
-        + _FIELDS
+    return _script(
+        _FIELDS
         + """
-    const passwords = inputs.filter(el => el.type === 'password');
+    const passwords = inputs.filter(el => el.type === 'password' && sameSite(el));
     let targets = passwords.filter(el => (el.autocomplete || '').includes('new-password') ||
         /new|confirm|repeat|again/i.test(el.name + ' ' + el.id));
     if (!targets.length && passwords.length === 1) targets = passwords;
-    for (const el of targets) set(el, PASSWORD);
+    for (const el of targets) set(el, ARGS.password);
     return {filled: targets.length};
-})()"""
-    ).replace("PASSWORD", json.dumps(password))
+""",
+        expected=expected,
+        password=password,
+    )
 
 
 def frames(page):
@@ -176,6 +234,17 @@ class PasswordService(QObject):
         self.config = config
         self.keys = keys or KeyStore()
         self.vaults = {}
+        self.used = {}
+        self.idle = QTimer(self)
+        self.idle.setInterval(60 * 1000)
+        self.idle.timeout.connect(self._lock_idle)
+        self.idle.start()
+
+    def _lock_idle(self):
+        now = time.monotonic()
+        for profile, vault in self.vaults.items():
+            if vault.unlocked and now - self.used.get(profile, now) > IDLE_LOCK_SECONDS:
+                vault.lock()
 
     def path(self, profile):
         if profile == "search":
@@ -192,6 +261,7 @@ class PasswordService(QObject):
         vault = self.vaults.get(profile)
         if vault is None:
             vault = self.vaults[profile] = PasswordVault(path, self.keys)
+        self.used[profile] = time.monotonic()
         if unlock and not vault.unlocked and not vault.needs_master_password():
             try:
                 vault.unlock()

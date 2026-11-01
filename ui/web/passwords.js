@@ -70,8 +70,8 @@ window.steedUI = {render(next) {
   $('unlocked').hidden = next.state !== 'unlocked';
   $('scope').textContent = next.state === 'private' ? 'Incognito' : `Saved logins for the ${next.profile} profile, encrypted on this computer.`;
   if (next.state === 'unlocked') { list(); settings(); }
-  if (next.notice && next.notice.startsWith('Generated a strong password: ') && !$('editor').hidden) {
-    $('f-password').value = next.notice.slice('Generated a strong password: '.length);
+  if (next.generated && !$('editor').hidden) {
+    $('f-password').value = next.generated;
     $('f-password').type = 'text';
   }
   return true;

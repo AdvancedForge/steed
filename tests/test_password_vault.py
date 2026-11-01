@@ -161,6 +161,29 @@ class VaultTests(unittest.TestCase):
         fresh.unlock()
         self.assertEqual(fresh.import_csv(exported)[0], 3)
 
+    def test_damaged_inputs_raise_vault_errors_not_crashes(self):
+        for bad in (
+            "otpauth://totp/x?secret=GEZDGNBV&digits=x",
+            "otpauth://totp/x?secret=GEZDGNBV&period=1e3",
+        ):
+            with self.assertRaises(pv.VaultError):
+                pv.totp_code(bad)
+        vault = pv.PasswordVault(self.path, NoKeyring())
+        with self.assertRaises(pv.VaultLocked):
+            vault.unlock("short")
+        vault.unlock("long enough master")
+        header = json.loads(self.path.read_text())
+        self.assertEqual(header["opslimit"], pv.OPSLIMIT)
+        del header["salt"]
+        self.path.write_text(json.dumps(header))
+        with self.assertRaises(pv.VaultError):
+            pv.PasswordVault(self.path, NoKeyring()).unlock("long enough master")
+        header["salt"] = "AAAA"
+        header["opslimit"] = 1
+        self.path.write_text(json.dumps(header))
+        with self.assertRaises(pv.VaultError):
+            pv.PasswordVault(self.path, NoKeyring()).unlock("long enough master")
+
     def test_locked_vault_refuses_access(self):
         vault = pv.PasswordVault(self.path, self.keys)
         with self.assertRaises(pv.VaultLocked):

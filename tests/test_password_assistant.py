@@ -9,7 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import nacl.utils
-from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
+from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
+from PyQt6.QtTest import QTest
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser_window import BrowserWindow
@@ -21,7 +22,8 @@ LOGIN = b"""<title>Sign in</title><form method=post action=/home>
 <button id=go>Sign in</button></form>"""
 APP = b"""<title>App sign in</title><div id=box><input id=user name=email type=email>
 <input id=pass type=password><button id=go type=button>Continue</button></div>
-<script>go.onclick = () => setTimeout(() => box.remove(), 50);</script>"""
+<script>go.onclick = () => setTimeout(() => box.remove(), 50);
+pass.onkeydown = e => { if (e.key === 'Enter') go.onclick(); };</script>"""
 CODE = b"""<title>Code</title><input id=code autocomplete=one-time-code>"""
 HOME = b"<title>Home</title>Signed in"
 
@@ -121,10 +123,15 @@ class PasswordAssistantTests(unittest.TestCase):
         return tab
 
     def sign_in(self, tab, user, password):
+        """Type the values, then press a real Enter key in the password field."""
         self.js(
             tab,
-            f"user.value = {user!r}; pass.value = {password!r}; go.click(); true",
+            f"user.value = {user!r}; pass.value = {password!r}; pass.focus(); true",
         )
+        target = tab.focusProxy() or tab
+        target.setFocus()
+        self.app.processEvents()
+        QTest.keyClick(target, Qt.Key.Key_Return)
 
     def test_form_login_offers_to_save_then_fills_next_time(self):
         self.assertTrue(self.vault.unlocked)
@@ -177,6 +184,44 @@ class PasswordAssistantTests(unittest.TestCase):
         self.assistant.bar.save.click()
         self.assertEqual(self.vault.logins(self.origin)[0].username, "ada@example.org")
 
+    def test_scripted_clicks_and_cross_site_forms_are_ignored(self):
+        tab = self.open("/login")
+        self.js(tab, "user.value = 'ada'; pass.value = 'fake'; go.click(); true")
+        self.spin(3)
+        self.assertFalse(self.assistant.bar.isVisible())
+        self.vault.save(self.origin, "ada", "cross-site-password")
+        self.open("/home")
+        tab = self.open("/login")
+        self.wait(lambda: self.js(tab, "pass.value") == "cross-site-password")
+        # The same form posting elsewhere is never filled.
+        self.js(
+            tab,
+            "pass.value = ''; user.value = '';"
+            "document.forms[0].action = 'https://evil.example/steal'; true",
+        )
+        self.assistant._fill_top(tab, self.vault)
+        self.spin(0.5)
+        self.assertEqual(self.js(tab, "pass.value"), "")
+
+    def test_fill_values_are_data_and_wrong_sites_are_refused(self):
+        from password_service import WORLD, fill_script
+
+        self.vault.save(self.origin, "PASSWORD", ",globalThis.pwned=1,")
+        tab = self.open("/login")
+        self.wait(lambda: self.js(tab, "pass.value") == ",globalThis.pwned=1,")
+        self.assertEqual(self.js(tab, "user.value"), "PASSWORD")
+        out = []
+        tab.page().runJavaScript("typeof globalThis.pwned", WORLD, out.append)
+        self.wait(lambda: bool(out))
+        self.assertEqual(out[0], "undefined")
+        self.js(tab, "pass.value = ''; true")
+        out = []
+        tab.page().runJavaScript(
+            fill_script("https://other.example", "x", "y"), WORLD, out.append
+        )
+        self.spin(0.5)
+        self.assertEqual(self.js(tab, "pass.value"), "")
+
     def test_typing_without_submitting_offers_nothing(self):
         tab = self.open("/login")
         self.js(tab, "user.value = 'ada'; pass.value = 'typed-only'; true")
@@ -188,7 +233,18 @@ class PasswordAssistantTests(unittest.TestCase):
         self.vault.save(frame_origin, "ada", "frame-password")
         self.vault.save(self.origin, "main", "main-password")
         tab = self.open("/frame")
+        self.wait(lambda: bool(tab.page().mainFrame().children()))
+        # Not filled on load: an embedding page must not get it silently.
+        self.spin(1.5)
         frame = []
+        tab.page().mainFrame().children()[0].runJavaScript(
+            "document.getElementById('pass') && pass.value", 0, frame.append
+        )
+        self.wait(lambda: bool(frame))
+        self.assertEqual(frame[-1], "")
+        labels = [a.text() for a in self.assistant.menu().actions()]
+        self.assertIn("Fill ada in the localhost frame", labels)
+        self.assistant.fill_current()
 
         def filled():
             children = tab.page().mainFrame().children()
@@ -206,6 +262,9 @@ class PasswordAssistantTests(unittest.TestCase):
         secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
         login = self.vault.save(self.origin, "ada", "pw-code", totp=secret)
         tab = self.open("/code")
+        self.spin(1.5)
+        self.assertEqual(self.js(tab, "code.value"), "")
+        self.assistant.fill_current()
         self.wait(lambda: len(self.js(tab, "code.value") or "") == 6)
         labels = [a.text() for a in self.assistant.menu().actions()]
         self.assertIn("Fill ada", labels)
@@ -238,14 +297,24 @@ class PasswordAssistantTests(unittest.TestCase):
             )
 
         self.assertNotIn("page-password", repr(page.surface._state))
+        with patch("ui.passwords_page.REVEAL_SECONDS", 0.3):
+            send(action="reveal", id=login.id)
+            self.assertEqual(page.revealed[login.id][0], "page-password")
+            # Hidden again on time, without any further action.
+            self.wait(lambda: login.id not in page.revealed)
         send(action="reveal", id=login.id)
-        self.assertEqual(page.revealed[login.id][0], "page-password")
         send(action="hide", id=login.id)
         self.assertNotIn(login.id, page.revealed)
+        send(action="generate")
+        self.assertNotIn("Generated", page.notice)
         send(action="copy", id=login.id, field="password")
         from PyQt6.QtGui import QGuiApplication
 
-        self.assertEqual(QGuiApplication.clipboard().text(), "page-password")
+        clipboard = QGuiApplication.clipboard()
+        self.assertEqual(clipboard.text(), "page-password")
+        self.assertEqual(
+            bytes(clipboard.mimeData().data("x-kde-passwordManagerHint")), b"secret"
+        )
         send(action="copy", id=login.id, field="code")
         self.assertEqual(len(QGuiApplication.clipboard().text()), 6)
         send(

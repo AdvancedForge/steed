@@ -3,9 +3,10 @@
 import time
 from secrets import token_hex
 
-from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 
+from password_service import copy_secret
 from password_vault import VaultError, VaultLocked, generate_password, totp_code
 from ui.html_surface import HtmlSurface
 from ui.prompts import MessageBox
@@ -26,7 +27,12 @@ class PasswordsPage(QWidget):
         self.context = token_hex(16)
         self.sequence = 0
         self.revealed = {}
+        self.generated = ""
         self.notice = self.error = ""
+        # Hide revealed passwords on time, not only at the next action.
+        self.expiry = QTimer(self)
+        self.expiry.setSingleShot(True)
+        self.expiry.timeout.connect(self.publish)
         self.disposed = False
         self.surface = HtmlSurface("passwords", self, label="passwords")
         layout = QVBoxLayout(self)
@@ -51,6 +57,9 @@ class PasswordsPage(QWidget):
         vault = self.service.vault(self.profile)
         now = time.time()
         self.revealed = {k: v for k, v in self.revealed.items() if v[1] > now}
+        if self.revealed:
+            soonest = min(until for _, until in self.revealed.values())
+            self.expiry.start(max(100, int((soonest - now) * 1000) + 50))
         logins, never = [], []
         state = (
             "private" if vault is None else "unlocked" if vault.unlocked else "locked"
@@ -91,9 +100,11 @@ class PasswordsPage(QWidget):
                 ),
                 "notice": self.notice,
                 "error": self.error,
+                "generated": self.generated,
             },
             force=True,
         )
+        self.generated = ""
 
     def command(self, command):
         if self.disposed or command.get("context") != self.context:
@@ -156,8 +167,8 @@ class PasswordsPage(QWidget):
                 text, message = totp_code(login.totp)[0], "One-time code copied."
             else:
                 raise VaultError("Nothing to copy.")
-            QGuiApplication.clipboard().setText(text)
-            self.notice = message
+            copy_secret(text)
+            self.notice = message + " It is cleared from the clipboard in 30 seconds."
         elif action == "save":
             fields = {
                 name: str(command.get(name, ""))
@@ -190,7 +201,7 @@ class PasswordsPage(QWidget):
                 self.notice = "Login deleted."
                 self.service.notify(self.profile)
         elif action == "generate":
-            self.notice = "Generated a strong password: " + generate_password()
+            self.generated = generate_password()
         elif action == "never_remove":
             vault.never_save(str(command.get("origin", "")), never=False)
             self.notice = "That site can offer to save passwords again."
@@ -225,7 +236,12 @@ class PasswordsPage(QWidget):
             if path:
                 import os
 
-                descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                # Never through a symlink, and owner-only even when replacing
+                # an existing file.
+                descriptor = os.open(
+                    path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600
+                )
+                os.fchmod(descriptor, 0o600)
                 with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                     stream.write(vault.export_csv())
                 self.notice = "Exported. Delete the file once you no longer need it."
@@ -236,6 +252,7 @@ class PasswordsPage(QWidget):
         if self.disposed:
             return
         self.disposed = True
+        self.expiry.stop()
         self.revealed.clear()
         self.service.changed.disconnect(self._changed)
         self.window.profile_manager.profile_changed.disconnect(self._changed)

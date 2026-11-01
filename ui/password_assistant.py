@@ -7,7 +7,7 @@ above the page, and fills saved logins and one-time codes after pages load.
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtGui import QAction, QGuiApplication
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from password_service import (
     WORLD,
     code_script,
+    copy_secret,
     fill_script,
     frames,
     login_origin,
@@ -91,19 +92,39 @@ class PasswordAssistant(QObject):
 
             from ui.prompts import InputDialog
 
+            creating = vault.is_new()
             for _ in range(3):
                 text, accepted = InputDialog.getText(
                     self.window,
-                    "Unlock passwords",
-                    "Master password for this profile's passwords:",
+                    "Create a master password" if creating else "Unlock passwords",
+                    "No system keyring is available, so a master password protects "
+                    "this profile's passwords (at least 8 characters). It cannot be "
+                    "recovered if you forget it:"
+                    if creating
+                    else "Master password for this profile's passwords:",
                     QLineEdit.EchoMode.Password,
                 )
                 if not accepted:
                     return None
+                if creating:
+                    again, accepted = InputDialog.getText(
+                        self.window,
+                        "Create a master password",
+                        "Type the master password again:",
+                        QLineEdit.EchoMode.Password,
+                    )
+                    if not accepted:
+                        return None
+                    if again != text:
+                        self.window.status_bar.showMessage(
+                            "The master passwords did not match.", 5000
+                        )
+                        continue
                 try:
                     vault.unlock(text)
                     break
-                except VaultLocked:
+                except VaultLocked as error:
+                    self.window.status_bar.showMessage(str(error), 5000)
                     continue
         return vault if vault.unlocked else None
 
@@ -133,7 +154,7 @@ class PasswordAssistant(QObject):
             if origin is None:
                 continue
             frame.runJavaScript(
-                take_script(force),
+                take_script(origin, force),
                 WORLD,
                 lambda result, origin=origin, tab=tab: self._captured(
                     tab, origin, result
@@ -166,8 +187,18 @@ class PasswordAssistant(QObject):
                 existing = same_user[0]
             elif not username and len(logins) == 1:
                 existing = logins[0]
+        replacing = self.offer is not None and self.bar.isVisible()
         self.offer = (tab, origin, username, password, existing)
         self._show_offer()
+        if replacing:
+            # A page swapping the offer just before a click cannot steer it.
+            for button in (self.bar.save, self.bar.never):
+                button.setEnabled(False)
+            QTimer.singleShot(1000, self._enable_bar)
+
+    def _enable_bar(self):
+        for button in (self.bar.save, self.bar.never):
+            button.setEnabled(True)
 
     def _show_offer(self):
         if self.offer is None:
@@ -234,40 +265,35 @@ class PasswordAssistant(QObject):
     # --------------------------------------------------------------- fill
 
     def page_loaded(self, tab, ok):
-        """Fill the most recently used login and any one-time code."""
+        """Fill the top page's most recently used login after it loads.
+
+        Embedded frames and one-time codes are filled only when asked
+        (Ctrl+Shift+L or the key menu): an embedding page must not get them
+        filled silently.
+        """
         if not ok or sip.isdeleted(tab) or not self._enabled("password_autofill"):
             return
         vault = self.service.vault(self.profile)
         if vault is None or not vault.unlocked:
             return
-        page = tab.page()
-        if page is None:
-            return
-        # Frames such as embedded sign-in boxes may finish loading later.
+        # Sign-in forms rendered by scripts may appear a little later.
         for delay in (0, 1200, 3500):
-            QTimer.singleShot(delay, lambda tab=tab: self._fill_frames(tab, vault))
+            QTimer.singleShot(delay, lambda tab=tab: self._fill_top(tab, vault))
 
-    def _fill_frames(self, tab, vault):
+    def _fill_top(self, tab, vault):
         if sip.isdeleted(tab) or self.window._closing or not vault.unlocked:
             return
         page = tab.page()
         if page is None:
             return
-        for frame in frames(page):
-            origin = login_origin(frame.url())
-            if origin is None:
-                continue
-            logins = vault.logins(origin)
-            if not logins:
-                continue
+        frame = page.mainFrame()
+        origin = login_origin(frame.url())
+        logins = vault.logins(origin) if origin else []
+        if logins:
             login = logins[0]
-            frame.runJavaScript(fill_script(login.username, login.password), WORLD)
-            if login.totp:
-                try:
-                    code, _ = totp_code(login.totp)
-                except VaultError:
-                    continue
-                frame.runJavaScript(code_script(code), WORLD)
+            frame.runJavaScript(
+                fill_script(origin, login.username, login.password), WORLD
+            )
 
     # ---------------------------------------------------------- key menu
 
@@ -276,7 +302,7 @@ class PasswordAssistant(QObject):
         menu = QMenu(self.window)
         tab = self.window.tabs[self.window.current_tab_index]
         page = tab.page()
-        origin = login_origin(page.url()) if page is not None else None
+        origin = login_origin(page.mainFrame().url()) if page is not None else None
         if self.profile == "search":
             menu.addAction("Passwords are not saved in incognito").setEnabled(False)
             return menu
@@ -310,6 +336,15 @@ class PasswordAssistant(QObject):
                         f"Copy code {code[:3]} {code[3:]}  ({left}s)",
                         lambda code=code: self._copy(code, "One-time code copied"),
                     )
+        if vault is not None and origin is not None:
+            # Embedded sign-in frames of other sites, filled only on request.
+            for frame_origin in self._frame_origins(tab, origin):
+                for other in vault.logins(frame_origin)[:3]:
+                    menu.addAction(
+                        f"Fill {other.username or '(no username)'} in the "
+                        f"{site_of(frame_origin)} frame",
+                        lambda other=other: self._fill_now(tab, vault, other),
+                    )
         menu.addSeparator()
         generate = QAction("Generate strong password", menu)
         generate.triggered.connect(lambda: self._generate(tab))
@@ -320,45 +355,64 @@ class PasswordAssistant(QObject):
         )
         return menu
 
+    def _frame_origins(self, tab, top):
+        found = []
+        for frame in frames(tab.page())[1:]:
+            origin = login_origin(frame.url())
+            if origin and origin != top and origin not in found:
+                found.append(origin)
+        return found
+
     def fill_current(self):
-        """Fill the current site's most recently used login (Ctrl+Shift+L)."""
+        """Fill saved logins and codes in the page and its frames (Ctrl+Shift+L)."""
         tab = self.window.tabs[self.window.current_tab_index]
-        origin = login_origin(tab.page().url())
         vault = self._vault(ask=True)
-        if origin is None or vault is None or not vault.logins(origin):
+        filled = False
+        if vault is not None:
+            seen = set()
+            for frame in frames(tab.page()):
+                origin = login_origin(frame.url())
+                if origin and origin not in seen and vault.logins(origin):
+                    seen.add(origin)
+                    self._fill_now(tab, vault, vault.logins(origin)[0])
+                    filled = True
+        if not filled:
             self.window.status_bar.showMessage("No saved login for this site", 4000)
-            return
-        self._fill_now(tab, vault, vault.logins(origin)[0])
 
     def _fill_now(self, tab, vault, login):
         if sip.isdeleted(tab):
             return
         vault.touch(login.id)
         for frame in frames(tab.page()):
-            if login_origin(frame.url()) == login.origin:
-                frame.runJavaScript(
-                    fill_script(login.username, login.password, only_empty=False),
-                    WORLD,
-                )
-                if login.totp:
-                    try:
-                        frame.runJavaScript(
-                            code_script(totp_code(login.totp)[0]), WORLD
-                        )
-                    except VaultError:
-                        pass
+            if login_origin(frame.url()) != login.origin:
+                continue
+            frame.runJavaScript(
+                fill_script(
+                    login.origin, login.username, login.password, only_empty=False
+                ),
+                WORLD,
+            )
+            if login.totp:
+                try:
+                    code = totp_code(login.totp)[0]
+                except VaultError:
+                    continue
+                frame.runJavaScript(code_script(login.origin, code), WORLD)
 
     def _generate(self, tab):
         password = generate_password()
         if not sip.isdeleted(tab) and tab.page() is not None:
             for frame in frames(tab.page()):
-                if login_origin(frame.url()) is not None:
-                    frame.runJavaScript(new_password_script(password), WORLD)
+                origin = login_origin(frame.url())
+                if origin is not None:
+                    frame.runJavaScript(new_password_script(origin, password), WORLD)
         self._copy(password, "Strong password filled and copied")
 
     def _copy(self, text, message):
-        QGuiApplication.clipboard().setText(text)
-        self.window.status_bar.showMessage(message, 4000)
+        copy_secret(text)
+        self.window.status_bar.showMessage(
+            message + " (cleared from the clipboard in 30 seconds)", 4000
+        )
 
     def show_menu(self):
         button = self.window.address_bar.passwords_btn

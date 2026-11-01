@@ -368,22 +368,28 @@ Steed has a built-in password manager. Each regular profile keeps its own logins
 in `passwords.vault` (in the profile folder), encrypted with XSalsa20-Poly1305
 under a random key stored in your system keyring (GNOME Keyring or KWallet,
 through the Secret Service). Without a keyring Steed asks you to create a
-master password instead, stretched with Argon2id; that vault then always asks
-for it once per session. Incognito never saves or fills passwords.
+master password instead (at least 8 characters, typed twice; it cannot be
+recovered), stretched with Argon2id; that vault then asks for it once per
+session. A vault unused for 30 minutes is locked and its logins dropped from
+memory. Incognito never saves or fills passwords.
 
-- **Saving:** sign in as usual. When the form submits — the page navigates, or
-  an app-style form disappears — a bar above the page offers **Save** (or
+- **Saving:** sign in as usual. When you submit the form yourself (clicks and
+  key presses made by page scripts do not count) and the page navigates or an
+  app-style form disappears, a bar above the page offers **Save** (or
   **Update password** when the site and username are saved with another
   password), **Never for this site** and **Not now**. Typing without submitting
   offers nothing.
-- **Filling:** when a page or an embedded sign-in frame loads, the most recently
-  used login for that exact site (scheme, host and port) is filled into empty
-  fields, and a one-time code is filled when the page asks for one. Frames are
-  filled with their own site's logins, never the page's. `Ctrl+Shift+L` fills
-  the current site's login; the key button beside the address bar lists the
-  site's logins to fill or copy, copies a current one-time code, and
-  **Generate strong password** fills a sign-up or change-password form and
-  copies the password.
+- **Filling:** when a page loads, the most recently used login for that exact
+  site (scheme, host and port) is filled into its empty, visible sign-in
+  fields. Embedded sign-in frames and one-time codes are filled only when you
+  ask — `Ctrl+Shift+L`, or the key button beside the address bar — so a page
+  that embeds another site cannot get it filled silently; frames always get
+  their own site's logins. Forms that would send to another site are never
+  filled. The key button lists the site's logins (and embedded frames') to fill
+  or copy, copies a current one-time code, and **Generate strong password**
+  fills a sign-up or change-password form and copies the password. Copied
+  passwords and codes are marked as secret for clipboard managers and cleared
+  from the clipboard after 30 seconds.
 - **steed:passwords** (General → Passwords…): search; show a password (hidden
   again after 30 seconds); copy username, password or code; edit, add and delete
   logins; add a one-time-code secret (`otpauth://` link or base32); the
