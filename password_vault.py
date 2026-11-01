@@ -1,0 +1,550 @@
+"""Steed's built-in password manager: an encrypted vault per profile.
+
+Each profile's logins live in one file, sealed with XSalsa20-Poly1305
+(PyNaCl SecretBox). The 256-bit key is kept in the system keyring through the
+Secret Service (GNOME Keyring, KWallet); without one, a master password is
+stretched with Argon2id instead. Nothing is written in plain text, and the
+incognito profile has no vault.
+"""
+
+import base64
+import csv
+import hmac
+import io
+import json
+import os
+import secrets
+import string
+import struct
+import time
+from dataclasses import asdict, dataclass, field, replace
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlsplit
+from uuid import uuid4
+
+import nacl.exceptions
+import nacl.pwhash
+import nacl.secret
+import nacl.utils
+
+VERSION = 1
+MAX_ENTRIES = 5000
+MAX_FIELD = 4096
+KEYRING_LABEL = "Steed password vault"
+KEYRING_ATTRIBUTES = {"application": "steed", "purpose": "password-vault"}
+
+
+class VaultError(Exception):
+    """A problem the user can act on; the message is safe to show."""
+
+
+class VaultLocked(VaultError):
+    pass
+
+
+def origin_of(url):
+    """scheme://host[:port] for http(s) addresses, else None."""
+    try:
+        parts = urlsplit(url.strip())
+    except (AttributeError, ValueError):
+        return None
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    if parts.username or parts.password:
+        return None
+    host = parts.hostname.lower()
+    default = {"http": 80, "https": 443}[parts.scheme]
+    port = parts.port if parts.port not in (None, default) else None
+    return f"{parts.scheme}://{host}" + (f":{port}" if port else "")
+
+
+def site_of(origin):
+    return urlsplit(origin).hostname or origin
+
+
+def _text(value, name, *, empty=True):
+    if value is None:
+        value = ""
+    if not isinstance(value, str) or len(value) > MAX_FIELD or "\x00" in value:
+        raise VaultError(f"The {name} is too long or invalid.")
+    if not empty and not value:
+        raise VaultError(f"Enter a {name}.")
+    return value
+
+
+@dataclass(frozen=True)
+class Login:
+    id: str
+    origin: str
+    username: str
+    password: str
+    title: str = ""
+    totp: str = ""
+    notes: str = ""
+    created: float = 0.0
+    updated: float = 0.0
+    last_used: float = 0.0
+
+    @property
+    def site(self):
+        return site_of(self.origin)
+
+
+@dataclass
+class Contents:
+    logins: list = field(default_factory=list)
+    never: list = field(default_factory=list)
+
+
+# ---------------------------------------------------------------- one-time codes
+
+
+def totp_parameters(value):
+    """(secret bytes, digits, period, hash name) from an otpauth URI or secret."""
+    value = (value or "").strip()
+    digits, period, algorithm = 6, 30, "sha1"
+    if value.lower().startswith("otpauth://"):
+        parts = urlsplit(value)
+        if parts.netloc.lower() != "totp":
+            raise VaultError("Only time-based (TOTP) codes are supported.")
+        query = {k.lower(): v[0] for k, v in parse_qs(parts.query).items()}
+        value = query.get("secret", "")
+        digits = int(query.get("digits", 6))
+        period = int(query.get("period", 30))
+        algorithm = query.get("algorithm", "sha1").lower()
+    if digits not in (6, 7, 8) or not 10 <= period <= 300:
+        raise VaultError("Unsupported one-time code settings.")
+    if algorithm not in ("sha1", "sha256", "sha512"):
+        raise VaultError("Unsupported one-time code algorithm.")
+    cleaned = unquote(value).replace(" ", "").replace("-", "").upper()
+    try:
+        secret = base64.b32decode(cleaned + "=" * (-len(cleaned) % 8))
+    except (ValueError, TypeError):
+        raise VaultError("The one-time code secret is not valid base32.") from None
+    if not secret:
+        raise VaultError("Enter the one-time code secret.")
+    return secret, digits, period, algorithm
+
+
+def totp_code(value, now=None):
+    """(code, seconds left) for an otpauth URI or base32 secret (RFC 6238)."""
+    secret, digits, period, algorithm = totp_parameters(value)
+    now = time.time() if now is None else now
+    counter = int(now // period)
+    digest = hmac.new(secret, struct.pack(">Q", counter), algorithm).digest()
+    offset = digest[-1] & 0x0F
+    number = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
+    code = str(number % 10**digits).zfill(digits)
+    return code, int(period - now % period)
+
+
+# ------------------------------------------------------------------ generator
+
+
+def generate_password(length=20):
+    """A random password with upper, lower, digits and symbols."""
+    if not 12 <= length <= 128:
+        raise VaultError("Choose a length from 12 to 128.")
+    symbols = "!@#$%^&*()-_=+[]{};:,.?"
+    pools = (string.ascii_lowercase, string.ascii_uppercase, string.digits, symbols)
+    alphabet = "".join(pools)
+    while True:
+        password = "".join(secrets.choice(alphabet) for _ in range(length))
+        if all(any(c in pool for c in password) for pool in pools):
+            return password
+
+
+# ---------------------------------------------------------------- import
+
+
+COLUMNS = {
+    "url": ("url", "login_uri", "origin", "website", "web site", "hostname"),
+    "username": ("username", "login_username", "login", "user name", "user", "email"),
+    "password": ("password", "login_password"),
+    "title": ("title", "name"),
+    "totp": ("totp", "login_totp", "otpauth", "otp"),
+    "notes": ("notes", "note", "comments"),
+}
+
+
+def parse_csv(text):
+    """Logins from a KeePassXC, Chrome, Firefox or Bitwarden CSV export."""
+    if not isinstance(text, str) or len(text) > 16 * 1024 * 1024:
+        raise VaultError("Choose a CSV export of at most 16 MB.")
+    reader = csv.reader(io.StringIO(text.lstrip("﻿")))
+    try:
+        header = [cell.strip().lower() for cell in next(reader)]
+    except StopIteration:
+        raise VaultError("The file is empty.") from None
+    where = {}
+    for name, options in COLUMNS.items():
+        for option in options:
+            if option in header:
+                where[name] = header.index(option)
+                break
+    if "password" not in where or "url" not in where:
+        raise VaultError(
+            "This does not look like a password export: it needs URL and "
+            "password columns."
+        )
+    rows, skipped = [], 0
+    for cells in reader:
+        values = {
+            name: cells[index] if index < len(cells) else ""
+            for name, index in where.items()
+        }
+        url = values["url"].strip()
+        origin = origin_of(url if "://" in url else "https://" + url) if url else None
+        if not origin or not values["password"]:
+            skipped += 1
+            continue
+        rows.append(
+            {
+                "origin": origin,
+                "username": values.get("username", ""),
+                "password": values["password"],
+                "title": values.get("title", ""),
+                "totp": values.get("totp", ""),
+                "notes": values.get("notes", ""),
+            }
+        )
+    return rows, skipped
+
+
+# ----------------------------------------------------------------- key store
+
+
+class KeyStore:
+    """The vault key in the Secret Service, or None when there is none."""
+
+    def __init__(self):
+        self._key = None
+
+    def key(self, create=True):
+        if self._key is not None:
+            return self._key
+        try:
+            import secretstorage
+
+            connection = secretstorage.dbus_init()
+            collection = secretstorage.get_default_collection(connection)
+            if collection.is_locked():
+                collection.unlock()
+            items = list(collection.search_items(KEYRING_ATTRIBUTES))
+            if items:
+                if items[0].is_locked():
+                    items[0].unlock()
+                key = base64.b64decode(items[0].get_secret())
+            elif create:
+                key = nacl.utils.random(nacl.secret.SecretBox.KEY_SIZE)
+                collection.create_item(
+                    KEYRING_LABEL, KEYRING_ATTRIBUTES, base64.b64encode(key)
+                )
+            else:
+                return None
+        except Exception:
+            return None
+        if len(key) != nacl.secret.SecretBox.KEY_SIZE:
+            return None
+        self._key = key
+        return key
+
+
+def master_key(password, salt):
+    return nacl.pwhash.argon2id.kdf(
+        nacl.secret.SecretBox.KEY_SIZE,
+        password.encode(),
+        salt,
+        opslimit=nacl.pwhash.argon2id.OPSLIMIT_MODERATE,
+        memlimit=nacl.pwhash.argon2id.MEMLIMIT_MODERATE,
+    )
+
+
+# --------------------------------------------------------------------- vault
+
+
+class PasswordVault:
+    """One profile's logins. Not thread-safe: use from the Qt thread."""
+
+    def __init__(self, path, keys=None):
+        self.path = Path(path)
+        self.keys = keys or KeyStore()
+        self._box = None
+        self._header = None
+        self._contents = None
+        self._batch = False
+
+    # -- unlocking
+
+    def _read_header(self):
+        if self._header is None:
+            if self.path.exists():
+                try:
+                    header = json.loads(self.path.read_text("utf-8"))
+                except (OSError, ValueError):
+                    raise VaultError("The password vault file is damaged.") from None
+                if not isinstance(header, dict) or header.get("version") != VERSION:
+                    raise VaultError("The password vault file is not supported.")
+                self._header = header
+            else:
+                self._header = {}
+        return self._header
+
+    def needs_master_password(self):
+        """True when this vault is (or must be) sealed with a master password."""
+        header = self._read_header()
+        if header:
+            return header.get("kdf") == "argon2id"
+        return self.keys.key() is None
+
+    @property
+    def unlocked(self):
+        return self._box is not None
+
+    def unlock(self, master_password=None):
+        header = self._read_header()
+        if self.needs_master_password():
+            if not master_password:
+                raise VaultLocked("Enter your master password.")
+            salt = (
+                base64.b64decode(header["salt"])
+                if header
+                else nacl.utils.random(nacl.pwhash.argon2id.SALTBYTES)
+            )
+            box = nacl.secret.SecretBox(master_key(master_password, salt))
+            kdf = {"kdf": "argon2id", "salt": base64.b64encode(salt).decode()}
+        else:
+            key = self.keys.key()
+            if key is None:
+                raise VaultLocked("The system keyring is locked or unavailable.")
+            box = nacl.secret.SecretBox(key)
+            kdf = {"kdf": "keyring"}
+        if header:
+            try:
+                raw = box.decrypt(base64.b64decode(header["data"]))
+            except (nacl.exceptions.CryptoError, KeyError, ValueError):
+                raise VaultLocked(
+                    "Wrong master password."
+                    if kdf["kdf"] == "argon2id"
+                    else "The keyring key does not open this vault."
+                ) from None
+            data = json.loads(raw)
+            contents = Contents(
+                [Login(**entry) for entry in data.get("logins", [])],
+                list(data.get("never", [])),
+            )
+        else:
+            contents = Contents()
+        self._box, self._kdf, self._contents = box, kdf, contents
+        if not header:
+            self._write()
+
+    def lock(self):
+        self._box = self._contents = None
+
+    def _need(self):
+        if self._box is None:
+            raise VaultLocked("Unlock the password vault first.")
+        return self._contents
+
+    def _write(self):
+        if self._batch:
+            return  # import_csv writes once at the end.
+        contents = self._need()
+        raw = json.dumps(
+            {
+                "logins": [asdict(login) for login in contents.logins],
+                "never": contents.never,
+            }
+        ).encode()
+        sealed = self._box.encrypt(raw)
+        header = {
+            "version": VERSION,
+            **self._kdf,
+            "data": base64.b64encode(bytes(sealed)).decode(),
+        }
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(self.path.name + ".tmp")
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(header, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, self.path)
+        self._header = header
+
+    # -- reading
+
+    def logins(self, origin=None, query=""):
+        logins = self._need().logins
+        if origin is not None:
+            logins = [login for login in logins if login.origin == origin]
+        if query:
+            words = query.lower().split()
+            logins = [
+                login
+                for login in logins
+                if all(
+                    word in f"{login.origin} {login.username} {login.title}".lower()
+                    for word in words
+                )
+            ]
+        return sorted(logins, key=lambda login: (-login.last_used, login.site))
+
+    def get(self, login_id):
+        for login in self._need().logins:
+            if login.id == login_id:
+                return login
+        raise VaultError("That login no longer exists.")
+
+    def never_saves(self, origin):
+        return origin in self._need().never
+
+    # -- changing
+
+    def save(self, origin, username, password, *, title="", totp="", notes=""):
+        """Add a login, or update the password of the same site and username."""
+        origin = origin_of(origin) or ""
+        if not origin:
+            raise VaultError("Logins are saved for http and https sites only.")
+        username = _text(username, "username")
+        password = _text(password, "password", empty=False)
+        contents = self._need()
+        now = time.time()
+        for index, login in enumerate(contents.logins):
+            if login.origin == origin and login.username == username:
+                updated = replace(login, password=password, updated=now)
+                contents.logins[index] = updated
+                self._write()
+                return updated
+        if len(contents.logins) >= MAX_ENTRIES:
+            raise VaultError("The vault is full.")
+        if totp:
+            totp_parameters(totp)
+        login = Login(
+            uuid4().hex,
+            origin,
+            username,
+            password,
+            _text(title, "title"),
+            _text(totp, "one-time code secret"),
+            _text(notes, "notes"),
+            now,
+            now,
+            0.0,
+        )
+        contents.logins.append(login)
+        self._write()
+        return login
+
+    def update(self, login_id, **fields):
+        allowed = {"username", "password", "title", "totp", "notes", "origin"}
+        if set(fields) - allowed:
+            raise VaultError("Unknown login field.")
+        current = self.get(login_id)
+        if "origin" in fields:
+            fields["origin"] = origin_of(fields["origin"]) or ""
+            if not fields["origin"]:
+                raise VaultError("Enter an http or https address.")
+        if fields.get("totp"):
+            totp_parameters(fields["totp"])
+        for name in ("username", "title", "totp", "notes"):
+            if name in fields:
+                fields[name] = _text(fields[name], name)
+        if "password" in fields:
+            fields["password"] = _text(fields["password"], "password", empty=False)
+        updated = replace(current, **fields, updated=time.time())
+        contents = self._need()
+        contents.logins = [
+            updated if login.id == login_id else login for login in contents.logins
+        ]
+        self._write()
+        return updated
+
+    def touch(self, login_id):
+        """Remember when a login was last filled (for ordering)."""
+        current = self.get(login_id)
+        contents = self._need()
+        contents.logins = [
+            replace(login, last_used=time.time()) if login.id == login_id else login
+            for login in contents.logins
+        ]
+        self._write()
+        return current
+
+    def delete(self, login_id):
+        self.get(login_id)
+        contents = self._need()
+        contents.logins = [login for login in contents.logins if login.id != login_id]
+        self._write()
+
+    def never_save(self, origin, never=True):
+        origin = origin_of(origin)
+        if not origin:
+            return
+        contents = self._need()
+        if never and origin not in contents.never:
+            contents.never.append(origin)
+        elif not never and origin in contents.never:
+            contents.never.remove(origin)
+        self._write()
+
+    def import_csv(self, text):
+        """(added, updated, skipped) from a password manager CSV export."""
+        rows, skipped = parse_csv(text)
+        added = updated = 0
+        self._batch = True
+        try:
+            added, updated = self._import_rows(rows)
+        finally:
+            self._batch = False
+        self._write()
+        return added, updated, skipped
+
+    def _import_rows(self, rows):
+        added = updated = 0
+        for row in rows:
+            existing = [
+                login
+                for login in self.logins(row["origin"])
+                if login.username == row["username"]
+            ]
+            try:
+                totp = row["totp"]
+                if totp:
+                    totp_parameters(totp)
+            except VaultError:
+                totp = ""
+            if existing:
+                if existing[0].password != row["password"]:
+                    self.update(existing[0].id, password=row["password"])
+                    updated += 1
+                continue
+            self.save(
+                row["origin"],
+                row["username"],
+                row["password"],
+                title=row["title"],
+                totp=totp,
+                notes=row["notes"],
+            )
+            added += 1
+        return added, updated
+
+    def export_csv(self):
+        """A Chrome-style CSV of every login (plain text: handle with care)."""
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow(["name", "url", "username", "password", "totp", "note"])
+        for login in self.logins():
+            writer.writerow(
+                [
+                    login.title or login.site,
+                    login.origin,
+                    login.username,
+                    login.password,
+                    login.totp,
+                    login.notes,
+                ]
+            )
+        return out.getvalue()
