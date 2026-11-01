@@ -2015,6 +2015,13 @@ class BrowserWindow(QMainWindow):
             bookmarks = []
         self.address_bar.set_bookmarks(bookmarks)
         self.address_bar.set_search_name(search_engine_name(self.config))
+        # Typed text goes to the search engine only when allowed, never from
+        # incognito.
+        self.address_bar.set_search_suggestions(
+            self.config.get("search_engine", DEFAULT_SEARCH_ENGINE),
+            bool(self.config.get("search_suggestions", True))
+            and not self.profile_manager.is_search_profile(),
+        )
 
     def _suggestion_tabs(self):
         """Open tabs of this profile in every window: (title, url, key)."""
