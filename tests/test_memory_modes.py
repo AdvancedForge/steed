@@ -9,7 +9,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWebEngineCore import QWebEnginePage
-from qt_test_support import application, keep_directory
+from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 import cookie_snapshot
 import memory_modes
@@ -52,7 +52,7 @@ class MemoryModeTests(unittest.TestCase):
             self.app.processEvents()
             time.sleep(0.01)
 
-    def wait(self, predicate, timeout=15):
+    def wait(self, predicate, timeout=WAIT_SECONDS):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             self.app.processEvents()

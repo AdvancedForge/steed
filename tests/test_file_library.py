@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import test_task_profiles as profile_fixtures
 from PyQt6 import sip
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
 from browser_window import BrowserWindow
 from services.file_library import CHUNK_BYTES, FileLibrary, read_import
@@ -542,7 +542,7 @@ class FileLibraryServiceTests(unittest.TestCase):
 
     def call(self, name, *, client=None, **args):
         future = (client or self.client).submit(name, **args)
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + WAIT_SECONDS
         while not future.done() and time.monotonic() < deadline:
             self.app.processEvents()
         return future.result(timeout=0)
@@ -747,7 +747,7 @@ class FileLibraryServiceTests(unittest.TestCase):
         source = Path(self.temp.name) / "picked.txt"
         source.write_text("Reuse this input")
         dialog.import_selection([str(source)])
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + WAIT_SECONDS
         while dialog._job and time.monotonic() < deadline:
             self.app.processEvents()
             time.sleep(0.005)

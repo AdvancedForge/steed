@@ -12,7 +12,7 @@ from unittest.mock import patch
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QThread, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineHttpRequest
-from qt_test_support import application, keep_directory
+from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser_window import BrowserWindow
 from config import Config
@@ -135,7 +135,7 @@ class TaskServiceTests(unittest.TestCase):
         sip.delete(self.service)
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
-    def wait_for(self, predicate, timeout=15):
+    def wait_for(self, predicate, timeout=WAIT_SECONDS):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.app.processEvents()

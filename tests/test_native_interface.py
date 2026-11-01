@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QPoint
 from PyQt6.QtWidgets import QMenu
-from qt_test_support import application, keep_directory
+from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser_window import BrowserWindow
 from ui.html_surface import HtmlSurface
@@ -49,7 +49,7 @@ class NativeInterfaceTests(unittest.TestCase):
             self.app.processEvents()
             time.sleep(0.01)
 
-    def wait(self, predicate, timeout=10):
+    def wait(self, predicate, timeout=WAIT_SECONDS):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             self.app.processEvents()

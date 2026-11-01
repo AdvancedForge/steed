@@ -12,6 +12,14 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Load-tolerant tests — October 31, 2026.** Intermittent full-suite failures all
+came from short waits (2–15 s) on a heavily loaded machine. Test waits now share
+`STEED_TEST_WAIT` (30 s, returns early when the condition holds); worker waits
+cover the worker's own 20 s limit; the CPU-budget test's wall limit no longer
+races the CPU limit; the narrow-layout test waits for the rendered state; and
+native file selection retries its focused-control lookup across protocol round
+trips. Verified: the full suite passes with all cores saturated (load ~27).
+
 **Navigation and sign-in fixes — October 31, 2026.** Back/forward buttons were
 only refreshed on tab switches, so they stayed disabled after following links;
 they now follow every navigation, and Alt+Left/Right and mouse side buttons work.

@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt
-from qt_test_support import application, keep_directory
+from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 import tab_manager
 from browser_window import _TAB_DRAGS, BrowserWindow
@@ -125,7 +125,7 @@ class TabWindowTests(unittest.TestCase):
         self.assertIsNone(root._move_tab(root.tabs[0], target))
         self.assertEqual(len(root.tabs), 1)
 
-    def wait(self, predicate, timeout=10):
+    def wait(self, predicate, timeout=WAIT_SECONDS):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.app.processEvents()

@@ -123,11 +123,17 @@ FILE_SCRIPT = """
             const focus = await target.emulationAgent().invoke_setFocusEmulationEnabled({enabled:true});
             if (focus.getError()) throw new Error('Focus unavailable');
             const agent = target.domAgent();
-            const doc = await agent.invoke_getDocument({depth:1});
-            if (doc.getError() || doc.root.documentURL !== request.url || window[request.id] === false)
-                throw new Error('Document changed');
-            const node = await agent.invoke_querySelector({nodeId:doc.root.nodeId, selector:'input[type=file]:focus'});
-            if (node.getError() || !node.nodeId || window[request.id] === false) throw new Error('File control unavailable');
+            // Focus emulation can take effect a moment later on a busy page;
+            // each attempt is one protocol round trip, not a timer.
+            let node = null;
+            for (let attempt = 0; attempt < 10 && !(node && node.nodeId); attempt++) {
+                const doc = await agent.invoke_getDocument({depth:1});
+                if (doc.getError() || doc.root.documentURL !== request.url || window[request.id] === false)
+                    throw new Error('Document changed');
+                node = await agent.invoke_querySelector({nodeId:doc.root.nodeId, selector:'input[type=file]:focus'});
+                if (node.getError()) node = null;
+            }
+            if (!node || !node.nodeId || window[request.id] === false) throw new Error('File control unavailable');
             const reply = await agent.invoke_setFileInputFiles({nodeId:node.nodeId, files:[request.file]});
             if (reply.getError()) throw new Error('File selection unavailable');
             if (window[request.id] !== false) window[request.id] = true;

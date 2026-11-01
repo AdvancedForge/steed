@@ -9,7 +9,7 @@ from pathlib import Path
 from app_connector_support import MemorySecrets, SyntheticGoogle, install_account
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
 from services.app_accounts import AccountError, AccountStore
 from services.app_connections import AppConnections, AppProvider
@@ -109,7 +109,7 @@ class AppConnectionTests(unittest.TestCase):
         self.directory.cleanup()
 
     def wait_for(self, predicate):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + WAIT_SECONDS
         while time.monotonic() < deadline:
             self.app.processEvents()
             if predicate():

@@ -15,9 +15,9 @@ from unittest.mock import patch
 
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
-from services import worker_bundle
+from services import local_worker, worker_bundle
 from services.connectors import ConnectorOutcome, ConnectorRegistry, ConnectorTool
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
@@ -59,7 +59,10 @@ class WorkerManagerTests(unittest.TestCase):
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.directory.cleanup()
 
-    def wait_for(self, predicate, timeout=5):
+    def wait_for(self, predicate, timeout=None):
+        # A worker is bounded by its own wall limit; waiting a little longer
+        # lets a slow but healthy run finish and a stuck one report itself.
+        timeout = timeout or max(WAIT_SECONDS, local_worker.WALL_SECONDS + 10)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.app.processEvents()

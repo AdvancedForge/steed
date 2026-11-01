@@ -4521,6 +4521,13 @@ python -m ruff format --check .
 python -m unittest discover -s tests -v
 ```
 
+Tests that wait for engine work (renderers, helper processes, workers) give up
+after `STEED_TEST_WAIT` seconds (default 30). Waits return as soon as their
+condition holds, so passing runs are no slower; the limit only decides how long a
+real failure takes to report. Raise it on a very busy machine. The full suite
+passes with the default while every core is saturated (load average about 27 on
+8 cores).
+
 For headless Linux checks:
 
 ```bash

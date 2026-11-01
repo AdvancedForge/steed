@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
 from services.agent_tools import TOOLS_BY_NAME
 from services.task_policy import TaskPermissionError
@@ -90,7 +90,7 @@ class WorkspaceRecoveryTests(unittest.TestCase):
 
     def call(self, command, **args):
         future = self.service.client(self.target.task_id).submit(command, **args)
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + WAIT_SECONDS
         while not future.done() and time.monotonic() < deadline:
             self.app.processEvents()
         return future.result(timeout=0)

@@ -12,7 +12,7 @@ from unittest.mock import patch
 from app_connector_support import MemorySecrets
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 from recipe_support import TOKEN, SyntheticRecipeHttp, recipe
 from test_recipe_oauth import OAuthHttp, oauth_recipe
 
@@ -69,7 +69,7 @@ class RecipeProposalTests(unittest.TestCase):
         self.directory.cleanup()
 
     def wait_for(self, condition):
-        deadline = time.monotonic() + 6
+        deadline = time.monotonic() + WAIT_SECONDS
         while time.monotonic() < deadline:
             self.app.processEvents()
             if condition():

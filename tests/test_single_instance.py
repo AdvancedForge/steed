@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from PyQt6.QtCore import QCoreApplication, QEvent
 from PyQt6.QtNetwork import QLocalSocket
-from qt_test_support import application, keep_directory
+from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 import main
 from browser_window import BrowserWindow
@@ -76,7 +76,7 @@ class SingleInstanceTests(unittest.TestCase):
             self.assertTrue(socket.waitForConnected(1000))
             socket.write(payload)
             socket.flush()
-            deadline = time.monotonic() + 2
+            deadline = time.monotonic() + WAIT_SECONDS
             while (
                 socket.state() == QLocalSocket.LocalSocketState.ConnectedState
                 and time.monotonic() < deadline

@@ -15,7 +15,7 @@ from unittest.mock import patch
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from PyQt6.QtWebEngineCore import QWebEnginePage
-from qt_test_support import application, keep_directory
+from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 import memory_modes
 from browser_window import BrowserWindow
@@ -88,7 +88,7 @@ class PageUnloadTests(unittest.TestCase):
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             time.sleep(0.01)
 
-    def wait(self, predicate, timeout=10):
+    def wait(self, predicate, timeout=WAIT_SECONDS):
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             self.app.processEvents()

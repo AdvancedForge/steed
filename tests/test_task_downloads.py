@@ -30,7 +30,7 @@ class DownloadDestinationTests(unittest.TestCase):
         import os
         import time
 
-        from qt_test_support import application
+        from qt_test_support import WAIT_SECONDS, application
 
         app = application()
         output = self.output()
@@ -48,7 +48,7 @@ class DownloadDestinationTests(unittest.TestCase):
         stage_fd = output.stage_fd
         output.close()  # Must not raise into the Qt slot that cancelled it.
         self.assertIsNotNone(output.stage_fd)
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + WAIT_SECONDS
         while output.stage_fd is not None and time.monotonic() < deadline:
             app.processEvents()
             time.sleep(0.02)

@@ -13,7 +13,7 @@ from app_connector_support import MemorySecrets, SyntheticGoogle, install_accoun
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QObject
 from PyQt6.QtWidgets import QWidget
-from qt_test_support import application
+from qt_test_support import WAIT_SECONDS, application
 
 from services.app_accounts import AccountStore
 from services.connectors import ConnectorRegistry, ConnectorRequest
@@ -62,7 +62,7 @@ class AppReviewTests(unittest.TestCase):
         self.directory.cleanup()
 
     def wait(self, predicate):
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + WAIT_SECONDS
         while time.monotonic() < deadline:
             self.app.processEvents()
             if predicate():

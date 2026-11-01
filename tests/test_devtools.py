@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from PyQt6.QtWebEngineCore import QWebEnginePage
-from qt_test_support import application, keep_directory
+from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser_window import BrowserWindow
 
@@ -35,7 +35,7 @@ class DevToolsTests(unittest.TestCase):
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.home_patch.stop()
 
-    def wait(self, predicate, timeout=15):
+    def wait(self, predicate, timeout=WAIT_SECONDS):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.app.processEvents()
