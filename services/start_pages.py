@@ -43,6 +43,7 @@ WORKSPACES = (
     "agents",
     "style",
     "memory",
+    "features",
     "access",
     "apps",
     "cookies",

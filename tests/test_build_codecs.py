@@ -66,12 +66,18 @@ class SwapTests(unittest.TestCase):
         self.assertEqual(after_restore, before)
         self.assertFalse((self.wheel / codecs.BACKUP).exists())
         self.assertFalse(codecs.using_build(self.wheel))
+        # Never installed (or restored): nothing to warn about.
+        self.assertFalse(codecs.replaced_by_pip(self.wheel))
 
     def test_pip_reinstall_is_detected_and_reinstall_keeps_new_pypi_files(self):
         codecs.install(self.stage, self.wheel)
         # pip puts its own files back but leaves Steed's marker and backup.
+        self.assertFalse(codecs.replaced_by_pip(self.wheel))
+        self.assertTrue(codecs.using_build(self.wheel, thorough=False))
         write(self.wheel / "lib" / codecs.LIBRARIES[0], "pypi again")
         self.assertFalse(codecs.using_build(self.wheel))
+        self.assertFalse(codecs.using_build(self.wheel, thorough=False))
+        self.assertTrue(codecs.replaced_by_pip(self.wheel))
         codecs.install(self.stage, self.wheel)
         saved = self.wheel / codecs.BACKUP / "lib" / codecs.LIBRARIES[0]
         self.assertEqual(saved.read_text(), "pypi again")

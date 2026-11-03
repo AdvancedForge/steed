@@ -278,7 +278,9 @@ def install(stage: Path, target: Path) -> None:
         temporary = wheel.with_name(wheel.name + ".new")
         shutil.copy2(built.resolve(), temporary)
         os.replace(temporary, wheel)
-    shutil.copy2(stage / MARKER, target / MARKER)
+    marker = json.loads((stage / MARKER).read_text())
+    marker["installed"] = _stamp(target / "lib" / LIBRARIES[0])
+    (target / MARKER).write_text(json.dumps(marker))
     print("Installed the engine with video codecs. Restart Steed to use it.")
 
 
@@ -331,13 +333,31 @@ def probe_codecs() -> dict:
     return {}
 
 
-def using_build(target: Path) -> bool:
-    """True when the wheel's engine is the codec build (pip may undo it)."""
+def _stamp(path: Path) -> list[int]:
+    info = path.stat()
+    return [info.st_size, info.st_mtime_ns]
+
+
+def using_build(target: Path, *, thorough: bool = True) -> bool:
+    """True when the wheel's engine is the codec build (pip may undo it).
+
+    thorough=False compares only size and modification time, which pip always
+    changes when it writes its own file; it is cheap enough for every startup.
+    """
     marker = target / MARKER
-    if not marker.exists():
-        return False
     core = target / "lib" / LIBRARIES[0]
-    return json.loads(marker.read_text()).get("core") == _digest(core)
+    try:
+        recorded = json.loads(marker.read_text())
+        if not thorough:
+            return recorded.get("installed") == _stamp(core)
+        return recorded.get("core") == _digest(core)
+    except (OSError, ValueError):
+        return False
+
+
+def replaced_by_pip(target: Path) -> bool:
+    """The codec build was installed here, and the PyPI engine is back."""
+    return (target / BACKUP).is_dir() and not using_build(target, thorough=False)
 
 
 def status(target: Path) -> None:

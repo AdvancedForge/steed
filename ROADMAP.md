@@ -12,6 +12,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Engine & features page and codec warning — November 3, 2026.**
+`steed:features` (View → Engine & Features…) shows the engine and Chromium
+versions, the codec build state, and 44 web features tested in a real https
+page, each missing one explained (newer engine needed, absent from Qt
+WebEngine, or the codec build). A non-modal startup warning appears when pip
+has replaced the codec build, with a per-version "don't remind me".
+
 **Video codecs, timing check and engine boundary — November 3, 2026.**
 `build_codecs.py` builds Qt WebEngine 6.11.2 with H.264/AAC and swaps it into
 `.venv` (backup, version and exported-function checks, `restore`, pip-undo

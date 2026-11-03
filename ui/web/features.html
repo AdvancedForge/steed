@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Steed · Features</title><style nonce="{{NONCE}}">{{STYLE}}{{EXTRA_STYLE}}</style></head>
+<body><main class="features-shell">
+<header><span class="eyebrow">STEED:FEATURES</span><h1>Engine &amp; features</h1><p>What Steed's web engine supports, tested in a real web page.</p></header>
+<section aria-labelledby="engine-heading"><h2 id="engine-heading">Engine</h2>
+<div id="engine" class="usage"></div>
+<p id="codecs" class="codecs" role="status" hidden></p></section>
+<section aria-labelledby="features-heading"><div class="heading-row"><h2 id="features-heading">Web features</h2><button id="check">Check again</button></div>
+<p id="summary" class="hint" role="status"></p>
+<div id="features"></div></section>
+</main><script nonce="{{NONCE}}">{{CHANNEL}}</script><script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script></body></html>

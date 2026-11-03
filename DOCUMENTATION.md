@@ -132,6 +132,24 @@ with pip puts the PyPI engine back; `status` says so, and `install` (or a new
 `build` for a new version) restores codecs. `requirements.txt` pins the exact
 version for this reason.
 
+If that happens, Steed says so a few seconds after it starts (once per Qt
+version if you choose **Don't remind me for this version**), with a button to
+`steed:features`. The check compares the engine library's size and modification
+time with the ones recorded at install, so it costs nothing measurable at
+startup; `build_codecs.py status` compares the full checksum.
+
+### Engine & features (`steed:features`)
+
+**View → Engine & Features…** or `steed:features` shows the Qt WebEngine
+version, the Chromium version its web features come from, the Chromium version
+of its security fixes, and whether the video-codec build is installed. Below,
+44 web features are tested in a real https page in a private throwaway profile
+(video and audio formats, JavaScript, page features, CSS, devices, sign-in and
+storage, built-in AI). Each missing one says why: newer than this engine (a Qt
+WebEngine upgrade brings it), left out of Qt WebEngine on Linux (an upgrade will
+not), or missing from the PyPI engine (`build_codecs.py`). **Check again**
+repeats the test, for example after swapping the engine and restarting.
+
 ### Google sign-in
 
 Google sign-in compatibility is enabled by default in **General → Settings**. It sends a Firefox User-Agent to `https://accounts.google.com/`, following [qutebrowser's account-host workaround](https://github.com/qutebrowser/qutebrowser/issues/5182). Other sites use your configured/default User-Agent. Main-page GET redirects into or out of the account host are restarted to avoid Qt losing the per-site header; POST requests are never replayed.
