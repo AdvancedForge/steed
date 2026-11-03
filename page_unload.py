@@ -64,6 +64,7 @@ def run_unload_handlers(pages, done, timeout_ms=UNLOAD_TIMEOUT_MS):
             page,
             UNLOAD_SCRIPT,
             lambda _, key=key: answered(key),
+            world=webengine.PAGE_WORLD,
         )
     QTimer.singleShot(timeout_ms, finish)
 

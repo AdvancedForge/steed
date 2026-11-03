@@ -180,8 +180,12 @@ _INJECTION = {
 }
 
 
-def run_script(target, source: str, callback=None, *, world: int = PAGE_WORLD):
-    """Run JavaScript in a page or one of its frames; callback gets the result."""
+def run_script(target, source: str, callback=None, *, world: int):
+    """Run JavaScript in a page or one of its frames; callback gets the result.
+
+    The world is required: running Steed's code where the page can reach it, or
+    the page's code where it cannot, is a choice to make each time.
+    """
     if callback is None:
         target.runJavaScript(source, world)
     else:

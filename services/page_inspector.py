@@ -610,6 +610,7 @@ class PageInspector(QObject):
                 lambda raw, index=index, frame=engine_frame, request=request, routable=routable: (
                     received(index, raw, frame, request, routable)
                 ),
+                world=INSPECTION_WORLD,
             )
         if not remaining:
             finish()

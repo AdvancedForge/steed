@@ -192,7 +192,9 @@ class ScriptAndActionTests(unittest.TestCase):
         self.assertEqual(self.result("window.mark", webengine.STEED_WORLD), "steed")
         # Both worlds see the same document.
         self.assertEqual(self.result("document.querySelector('p') !== null"), True)
-        webengine.run_script(self.page, "document.title = 'no callback'")
+        webengine.run_script(
+            self.page, "document.title = 'no callback'", world=webengine.PAGE_WORLD
+        )
         self.wait(lambda: self.page.title() == "no callback")
 
     def test_profile_scripts_find_and_view(self):
