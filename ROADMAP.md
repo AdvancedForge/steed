@@ -12,6 +12,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Site permission prompts no longer hang — November 3, 2026.** Asking about a
+website permission (clipboard, camera, notifications, screen sharing) froze
+Steed: the HTML question opened inside the engine's own callback, which waits
+until it returns, so the dialog could never load. Questions are now asked just
+after the callback, with a copy of the request. A live regression clicks a
+clipboard copy button and answers both ways.
+
 **Password follow-ups — November 3, 2026.** Security-key sign-ins (WebAuthn
 via Qt's webAuthUxRequested: account choice, PIN entry/setting, touch prompt,
 failure reasons with retry); platform and synced passkeys remain unavailable

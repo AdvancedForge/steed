@@ -57,7 +57,7 @@ class PermissionTests(unittest.TestCase):
                 page.reset_mock()
                 self.window._ask_permission.return_value = allowed
                 with patch("browser_window.sip.isdeleted", return_value=False):
-                    BrowserWindow._on_feature_permission_requested(
+                    BrowserWindow._resolve_feature_permission(
                         self.window, page, self.origin, feature
                     )
                 page.setFeaturePermission.assert_called_once_with(
@@ -69,14 +69,14 @@ class PermissionTests(unittest.TestCase):
             with self.subTest(allowed=allowed):
                 permission = Mock()
                 self.window._ask_permission.return_value = allowed
-                BrowserWindow._on_permission_requested(self.window, permission)
+                BrowserWindow._resolve_permission(self.window, permission)
                 self.assertEqual(permission.grant.call_count, int(allowed))
                 self.assertEqual(permission.deny.call_count, int(not allowed))
 
     def test_invalid_request_is_ignored(self):
         permission = Mock()
         permission.isValid.return_value = False
-        BrowserWindow._on_permission_requested(self.window, permission)
+        BrowserWindow._resolve_permission(self.window, permission)
         self.window._ask_permission.assert_not_called()
         permission.grant.assert_not_called()
         permission.deny.assert_not_called()
@@ -84,7 +84,7 @@ class PermissionTests(unittest.TestCase):
     def test_request_invalidated_during_prompt_receives_no_response(self):
         permission = Mock()
         permission.isValid.side_effect = [True, False]
-        BrowserWindow._on_permission_requested(self.window, permission)
+        BrowserWindow._resolve_permission(self.window, permission)
         self.window._ask_permission.assert_called_once()
         permission.grant.assert_not_called()
         permission.deny.assert_not_called()
@@ -111,14 +111,14 @@ class PermissionTests(unittest.TestCase):
             return True
 
         self.window._ask_permission.side_effect = decide
-        BrowserWindow._on_permission_requested(self.window, permission)
+        BrowserWindow._resolve_permission(self.window, permission)
         permission.grant.assert_not_called()
         permission.deny.assert_not_called()
 
     def test_page_deleted_during_prompt_receives_no_response(self):
         page = Mock()
         with patch("browser_window.sip.isdeleted", side_effect=[False, True]):
-            BrowserWindow._on_feature_permission_requested(
+            BrowserWindow._resolve_feature_permission(
                 self.window, page, self.origin, QWebEnginePage.Feature.Notifications
             )
         page.setFeaturePermission.assert_not_called()

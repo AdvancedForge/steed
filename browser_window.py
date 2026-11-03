@@ -2371,7 +2371,17 @@ class BrowserWindow(QMainWindow):
         )
         page.fullScreenRequested.connect(self._on_fullscreen_requested)
 
+    # The engine waits inside these callbacks and cannot load any page until
+    # they return, including Steed's own HTML dialogs. A question asked here
+    # would never appear (the window hung on "Opening settings interface…"),
+    # so each answer is worked out a moment later; requests stay valid until
+    # answered.
     def _on_permission_requested(self, permission: QWebEnginePermission, page=None):
+        # The signal's object is only valid during the call; keep a copy.
+        permission = QWebEnginePermission(permission)
+        QTimer.singleShot(0, lambda: self._resolve_permission(permission, page))
+
+    def _resolve_permission(self, permission, page=None):
         PermissionService.respond(
             permission,
             lambda origin, feature: self._ask_permission(origin, feature, page),
@@ -2379,6 +2389,11 @@ class BrowserWindow(QMainWindow):
         )
 
     def _on_feature_permission_requested(self, page, origin, feature):
+        QTimer.singleShot(
+            0, lambda: self._resolve_feature_permission(page, origin, feature)
+        )
+
+    def _resolve_feature_permission(self, page, origin, feature):
         PermissionService.respond_legacy(
             page,
             origin,
@@ -3986,6 +4001,18 @@ class BrowserWindow(QMainWindow):
             logger.warning("Declining overlapping desktop media request")
             request.cancel()
             return
+        self._pending_desktop_request = request
+        # As with permissions, the picker must open outside this callback.
+        QTimer.singleShot(0, lambda: self._show_desktop_picker(request))
+
+    def _show_desktop_picker(self, request):
+        try:
+            self._pick_desktop_media(request)
+        except Exception:
+            # Never let an error escape into the event loop.
+            logger.exception("Screen share picker failed")
+
+    def _pick_desktop_media(self, request):
         self._pending_desktop_request = request
         dialog = None
         try:
