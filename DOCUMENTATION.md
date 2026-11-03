@@ -452,7 +452,17 @@ memory. Incognito never saves or fills passwords.
 Logins are offered only on HTTPS sites and local development servers. Page
 scripts cannot see the capture or fill code, which runs in an isolated world;
 the site a login belongs to always comes from the engine, never from the page.
-Passkeys are not supported.
+
+**Security keys (WebAuthn):** sites that sign in or register with a USB or NFC
+security key (FIDO2/U2F, such as a YubiKey) work: Steed asks you to choose an
+account when the key holds several, to enter (or set, twice) the key's PIN, and
+to touch the key, and explains failures with **Try again**. Passkeys stored on
+this computer or synced from a phone are not available in Qt WebEngine on
+Linux, so sites offering only those need another sign-in method.
+
+Steed versions before the built-in vault left KeePassXC connection files
+(`password_manager.json`) in profile folders. On first start Steed offers once
+to remove them; your KeePassXC database is never touched.
 
 Desktop password managers' auto-type (for example
 [KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type))
@@ -910,7 +920,7 @@ updating until you return). An unloaded tab frees its renderer and reloads when
 selected; unsaved form text can be lost. Tabs playing audio, shared with an agent,
 with DevTools open or still loading, `steed:` pages and tabs you mark with
 **Keep This Tab Loaded** (tab right-click menu; a marked frozen tab wakes at
-once) are never frozen or unloaded, and Steed never goes further than Qt WebEngine recommends for a page
+once; the mark is saved with the session) are never frozen or unloaded, and Steed never goes further than Qt WebEngine recommends for a page
 (a hidden page is frozen first and unloaded on a later check). Background tabs
 are checked every 30 seconds. With delayed cookie wake-ups, cookies shared from
 the global profile reach other profiles up to that much later; opening or

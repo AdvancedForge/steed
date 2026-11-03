@@ -847,6 +847,8 @@ class BrowserWindow(QMainWindow):
         page_unload.ENABLED = bool(self.config.get("save_before_closing", True))
         # Mouse back/forward side buttons over any part of this window.
         QApplication.instance().installEventFilter(self)
+        if len(self.profile_manager.registry.owners) == 1:
+            QTimer.singleShot(1500, self._offer_old_pairing_cleanup)
         memory_modes.monitor().changed.connect(self._memory_pressure_changed)
         memory_modes.monitor().start()
         strip = TabStrip
@@ -1671,6 +1673,7 @@ class BrowserWindow(QMainWindow):
             tab.tab_id,
             tab.group_id,
             tab.pinned,
+            getattr(tab, "keep_loaded", False),
         )
         profile_name = self.profile_manager.current_profile_name
         if remember:
@@ -1706,6 +1709,8 @@ class BrowserWindow(QMainWindow):
             tab.tab_id = state.tab_id
             if state.pinned:
                 self._set_pinned(tab, True)
+            if state.keep_loaded:
+                self._set_keep_loaded(tab, True)
             # A collapsed group hides all but its first tab; restoring into one
             # would keep the new tab invisible, so expand it deliberately.
             group = self.tab_manager.groups.get(state.group_id)
@@ -2130,6 +2135,42 @@ class BrowserWindow(QMainWindow):
                 muted=page.isAudioMuted(),
             )
 
+    def _offer_old_pairing_cleanup(self):
+        """Once: remove KeePassXC pairing files the built-in vault replaced."""
+        from password_service import old_pairings
+
+        if self._closing or self.config.get("keepassxc_cleanup_asked", False):
+            return
+        files = old_pairings(self.config)
+        if not files:
+            return
+        self.config.set("keepassxc_cleanup_asked", True)
+        reply = QMessageBox.question(
+            self,
+            "Old KeePassXC connection",
+            "Steed now keeps passwords in its own encrypted vault. Remove the old "
+            f"KeePassXC connection files ({len(files)})? Your KeePassXC database "
+            "is not touched. To bring its passwords over, export a CSV from "
+            "KeePassXC and use Import on steed:passwords.",
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            for path in files:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+
+    def _security_key(self, request):
+        """A site asks to use a security key (WebAuthn)."""
+        if self._closing:
+            request.cancel()
+            return
+        if getattr(self, "web_auth", None) is None:
+            from ui.web_auth import WebAuthPrompts
+
+            self.web_auth = WebAuthPrompts(self)
+        self.web_auth.handle(request)
+
     def _on_tab_lifecycle(self, tab):
         if not self._closing and tab in self.tabs:
             state = tab.page().lifecycleState()
@@ -2270,6 +2311,7 @@ class BrowserWindow(QMainWindow):
                     tab_id=tab.tab_id,
                     group_id=tab.group_id,
                     pinned=tab.pinned,
+                    keep_loaded=getattr(tab, "keep_loaded", False),
                 )
             )
 
@@ -2307,6 +2349,8 @@ class BrowserWindow(QMainWindow):
                     if state.pinned:
                         self.tabs[-1].pinned = True
                         self.tab_bar.set_tab_state(len(self.tabs) - 1, pinned=True)
+                    if state.keep_loaded:
+                        self._set_keep_loaded(self.tabs[-1], True)
             else:
                 self._new_tab(url=self._startup_page(), index=len(self.tabs))
         finally:
@@ -2735,6 +2779,7 @@ class BrowserWindow(QMainWindow):
         "iconChanged",
     )
     PAGE_SIGNALS = (
+        "webAuthUxRequested",
         "lifecycleStateChanged",
         "recentlyAudibleChanged",
         "audioMutedChanged",
@@ -2755,6 +2800,7 @@ class BrowserWindow(QMainWindow):
         tab.iconChanged.connect(lambda icon: self._on_tab_icon(tab, icon))
         tab.page().recentlyAudibleChanged.connect(lambda _: self._on_tab_audio(tab))
         tab.page().lifecycleStateChanged.connect(lambda _: self._on_tab_lifecycle(tab))
+        tab.page().webAuthUxRequested.connect(self._security_key)
         tab.page().audioMutedChanged.connect(lambda _: self._on_tab_audio(tab))
         if hasattr(tab.page(), "zoomFactorChanged"):
             tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
@@ -2818,6 +2864,8 @@ class BrowserWindow(QMainWindow):
         tab.pinned = False
         if state.pinned:
             self._set_pinned(tab, True)
+        if state.keep_loaded:
+            self._set_keep_loaded(tab, True)
         elif state.group:
             self._set_tab_group_existing(self.tabs.index(tab), state.group)
         self._switch_tab(self.tabs.index(tab))
@@ -2845,6 +2893,7 @@ class BrowserWindow(QMainWindow):
             tab.tab_id,
             tab.group_id,
             tab.pinned,
+            getattr(tab, "keep_loaded", False),
         )
 
     def _move_tab(self, tab, target=None, index=None):
@@ -2893,6 +2942,8 @@ class BrowserWindow(QMainWindow):
         if tab is None or tab not in self.tabs:
             return
         tab.tab_id = state.tab_id
+        if state.keep_loaded:
+            self._set_keep_loaded(tab, True)
         if state.pinned:
             self._set_pinned(tab, True)
         elif state.group:

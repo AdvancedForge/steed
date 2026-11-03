@@ -12,6 +12,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Password follow-ups — November 3, 2026.** Security-key sign-ins (WebAuthn
+via Qt's webAuthUxRequested: account choice, PIN entry/setting, touch prompt,
+failure reasons with retry); platform and synced passkeys remain unavailable
+in Qt WebEngine on Linux. Keep This Tab Loaded is saved with sessions and
+closed tabs. A one-time prompt removes old KeePassXC pairing files. Open: a
+desktop check with a real security key.
+
 **Panel apps — November 3, 2026.** `steed:apps` creates, edits and imports
 per-profile HTML/JavaScript apps shown in a new App Panel dock. Each runs at its
 own `steed://app-<id>/` origin (separate storage), uses the same data API as the
