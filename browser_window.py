@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import webengine
 from config import DEFAULT_SEARCH_ENGINE, Config
 from cookie_manager import CookieManager
 from layout_preferences import (
@@ -1747,18 +1748,11 @@ class BrowserWindow(QMainWindow):
         self.current_tab_index = index
         from time import monotonic
 
-        from PyQt6.QtWebEngineCore import QWebEnginePage
-
         for touched in (previous, self.tabs[index]):
             if touched is not None:
                 touched.last_active = monotonic()
-        page = self.tabs[index].page()
-        if (
-            page is not None
-            and page.lifecycleState() != QWebEnginePage.LifecycleState.Active
-        ):
-            # A frozen tab resumes; an unloaded one reloads its page.
-            page.setLifecycleState(QWebEnginePage.LifecycleState.Active)
+        # A frozen tab resumes; an unloaded one reloads its page.
+        webengine.wake(self.tabs[index].page())
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
@@ -2173,13 +2167,8 @@ class BrowserWindow(QMainWindow):
 
     def _on_tab_lifecycle(self, tab):
         if not self._closing and tab in self.tabs:
-            state = tab.page().lifecycleState()
-            names = {
-                QWebEnginePage.LifecycleState.Frozen: "frozen",
-                QWebEnginePage.LifecycleState.Discarded: "unloaded",
-            }
             self.tab_bar.set_tab_state(
-                self.tabs.index(tab), lifecycle=names.get(state, "active")
+                self.tabs.index(tab), lifecycle=webengine.tab_state(tab.page())
             )
 
     def _set_keep_loaded(self, tab, keep):
@@ -2188,8 +2177,8 @@ class BrowserWindow(QMainWindow):
             return
         tab.keep_loaded = bool(keep)
         self.tab_bar.set_tab_state(self.tabs.index(tab), keep_loaded=tab.keep_loaded)
-        if keep and tab.page().lifecycleState() != QWebEnginePage.LifecycleState.Active:
-            tab.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
+        if keep:
+            webengine.wake(tab.page())
 
     def _toggle_tab_mute(self, index):
         if 0 <= index < len(self.tabs):
@@ -2541,10 +2530,6 @@ class BrowserWindow(QMainWindow):
             return
         from time import monotonic
 
-        from PyQt6.QtWebEngineCore import QWebEnginePage
-
-        State = QWebEnginePage.LifecycleState
-        order = {State.Active: 0, State.Frozen: 1, State.Discarded: 2}
         freeze = self._memory["tab_freeze_minutes"] * 60
         discard = self._memory["tab_discard_minutes"] * 60
         now = monotonic()
@@ -2553,25 +2538,23 @@ class BrowserWindow(QMainWindow):
                 continue
             page = tab.page()
             idle = now - getattr(tab, "last_active", now)
-            wanted = State.Active
+            wanted = webengine.ACTIVE
             if discard and idle >= discard:
-                wanted = State.Discarded
+                wanted = webengine.UNLOADED
             elif freeze and idle >= freeze:
-                wanted = State.Frozen
+                wanted = webengine.FROZEN
             # Never go further than the engine recommends for this page.
-            recommended = page.recommendedState()
-            if order[wanted] > order[recommended]:
-                wanted = recommended
-            if order[wanted] > order[page.lifecycleState()]:
-                if wanted == State.Discarded:
+            lightest = webengine.lightest_state(page)
+            if webengine.deeper(wanted, lightest):
+                wanted = lightest
+            if webengine.deeper(wanted, webengine.tab_state(page)):
+                if wanted == webengine.UNLOADED:
                     self._discard_tab(tab)
                 else:
-                    page.setLifecycleState(wanted)
+                    webengine.set_tab_state(page, wanted)
 
     def _discard_tab(self, tab):
         """Unload a background tab after letting the site save its state."""
-        from PyQt6.QtWebEngineCore import QWebEnginePage
-
         from page_unload import run_unload_handlers
 
         if getattr(tab, "unloading", False):
@@ -2588,10 +2571,10 @@ class BrowserWindow(QMainWindow):
                 or self.tabs.index(tab) == self.current_tab_index
             ):
                 return
-            if page.recommendedState() == QWebEnginePage.LifecycleState.Active:
+            if webengine.lightest_state(page) == webengine.ACTIVE:
                 # Waking it for the handlers made it active; unload next check.
-                page.setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
-            page.setLifecycleState(QWebEnginePage.LifecycleState.Discarded)
+                webengine.set_tab_state(page, webengine.FROZEN)
+            webengine.set_tab_state(page, webengine.UNLOADED)
 
         run_unload_handlers([page], discard)
 

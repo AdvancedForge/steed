@@ -7,7 +7,9 @@ closed, unloaded to save memory or left on a profile switch signed it out.
 """
 
 from PyQt6.QtCore import QEventLoop, QTimer
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
+from PyQt6.QtWebEngineCore import QWebEngineScript
+
+import webengine
 
 # Handlers that hang never block closing for longer than this.
 UNLOAD_TIMEOUT_MS = 1500
@@ -28,7 +30,7 @@ def needs_unload(page):
         ENABLED
         and page is not None
         and page.url().scheme() in ("http", "https")
-        and page.lifecycleState() != QWebEnginePage.LifecycleState.Discarded
+        and webengine.tab_state(page) != webengine.UNLOADED
         and page.settings().testAttribute(
             page.settings().WebAttribute.JavascriptEnabled
         )
@@ -56,9 +58,9 @@ def run_unload_handlers(pages, done, timeout_ms=UNLOAD_TIMEOUT_MS):
             finish()
 
     for key, page in list(pending.items()):
-        if page.lifecycleState() == QWebEnginePage.LifecycleState.Frozen:
+        if webengine.tab_state(page) == webengine.FROZEN:
             # A frozen page runs no script; wake it so the handlers can run.
-            page.setLifecycleState(QWebEnginePage.LifecycleState.Active)
+            webengine.wake(page)
         page.runJavaScript(
             UNLOAD_SCRIPT,
             QWebEngineScript.ScriptWorldId.MainWorld.value,

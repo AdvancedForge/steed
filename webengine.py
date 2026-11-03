@@ -1,10 +1,17 @@
-"""Shared Qt WebEngine settings and site compatibility helpers."""
+"""Shared Qt WebEngine settings, tab lifecycle and site compatibility helpers.
+
+This module is Steed's boundary with the engine. Code elsewhere asks for
+things in Steed's terms (a tab is "active", "frozen" or "unloaded") so that
+engine details stay here; tests/test_engine_boundary.py lists the files that
+still use Qt WebEngine directly and keeps new ones from appearing.
+"""
 
 import os
 import re
 
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import (
+    QWebEnginePage,
     QWebEngineSettings,
     QWebEngineUrlRequestInfo,
     QWebEngineUrlRequestInterceptor,
@@ -108,3 +115,46 @@ def user_agent_mismatch(user_agent: str) -> str:
             "signing you out. Clear the override unless a site needs it."
         )
     return ""
+
+
+# Tab lifecycle. A frozen tab keeps its page but runs nothing; an unloaded tab
+# keeps only its address and history, and loads again when shown.
+ACTIVE, FROZEN, UNLOADED = "active", "frozen", "unloaded"
+TAB_STATES = (ACTIVE, FROZEN, UNLOADED)
+_LIFECYCLE = QWebEnginePage.LifecycleState
+_TO_ENGINE = {
+    ACTIVE: _LIFECYCLE.Active,
+    FROZEN: _LIFECYCLE.Frozen,
+    UNLOADED: _LIFECYCLE.Discarded,
+}
+_FROM_ENGINE = {engine: name for name, engine in _TO_ENGINE.items()}
+
+
+def tab_state(page) -> str:
+    """ACTIVE, FROZEN or UNLOADED; a missing page counts as active."""
+    if page is None:
+        return ACTIVE
+    return _FROM_ENGINE.get(page.lifecycleState(), ACTIVE)
+
+
+def lightest_state(page) -> str:
+    """The furthest the engine allows this page to sleep right now.
+
+    Pages playing media, holding locks or similar stay ACTIVE or FROZEN.
+    """
+    return _FROM_ENGINE.get(page.recommendedState(), ACTIVE)
+
+
+def set_tab_state(page, state: str) -> None:
+    page.setLifecycleState(_TO_ENGINE[state])
+
+
+def wake(page) -> None:
+    """Resume a frozen page, or reload an unloaded one."""
+    if page is not None and tab_state(page) != ACTIVE:
+        set_tab_state(page, ACTIVE)
+
+
+def deeper(state: str, than: str) -> bool:
+    """True when state sleeps more than the other (unloaded > frozen > active)."""
+    return TAB_STATES.index(state) > TAB_STATES.index(than)

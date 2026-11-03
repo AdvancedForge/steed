@@ -15,6 +15,8 @@ from PyQt6.QtCore import QDateTime, QObject, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWebEngineCore import QWebEnginePage
 
+import webengine
+
 # The last Qt release these private Chromium internals were confirmed against.
 VERIFIED_AGAINST_QT = "6.11.2"
 
@@ -172,12 +174,12 @@ class CookieSnapshot(QObject):
         sip.delete(self.frontend)
         self.frontend = None
         self.sleeping = True
-        self.inspected.setLifecycleState(QWebEnginePage.LifecycleState.Discarded)
+        webengine.set_tab_state(self.inspected, webengine.UNLOADED)
 
     def _wake(self):
         self.sleeping = False
         self.last_wake = time.monotonic()
-        self.inspected.setLifecycleState(QWebEnginePage.LifecycleState.Active)
+        webengine.set_tab_state(self.inspected, webengine.ACTIVE)
         # on_ready runs the refresh once the rebuilt frontend has loaded.
         self._attach()
 

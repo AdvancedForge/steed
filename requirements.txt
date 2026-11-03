@@ -1,7 +1,8 @@
 PyQt6==6.11.0
 PyQt6-WebEngine==6.11.0
 PyQt6-Qt6>=6.11,<6.12
-PyQt6-WebEngine-Qt6>=6.11,<6.12
+# Exact: build_codecs.py builds this version; another one replaces the build.
+PyQt6-WebEngine-Qt6==6.11.2
 adblock==0.6.0
 PyNaCl==1.6.2
 graphql-core==3.2.8

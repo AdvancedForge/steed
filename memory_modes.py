@@ -227,9 +227,8 @@ def _process_tree(root):
 
 def usage(windows):
     """Live memory figures for steed:memory; None where /proc is unavailable."""
-    from PyQt6.QtWebEngineCore import QWebEnginePage
-
     import cookie_snapshot
+    import webengine
 
     processes = _process_tree(os.getpid())
     by_kind = {}
@@ -237,16 +236,10 @@ def usage(windows):
         by_kind.setdefault(kind, [0, 0])
         by_kind[kind][0] += 1
         by_kind[kind][1] += _pss_kb(pid)
-    State = QWebEnginePage.LifecycleState
-    tabs = {"active": 0, "frozen": 0, "unloaded": 0}
+    tabs = dict.fromkeys(webengine.TAB_STATES, 0)
     for window in windows:
         for tab in window.tabs:
-            page = tab.page()
-            state = page.lifecycleState() if page is not None else State.Active
-            key = {State.Frozen: "frozen", State.Discarded: "unloaded"}.get(
-                state, "active"
-            )
-            tabs[key] += 1
+            tabs[webengine.tab_state(tab.page())] += 1
     snapshots = [s for s in list(cookie_snapshot._SNAPSHOTS) if not s.closed]
     return {
         "available": len(processes) > 1 or by_kind.get("browser", [0, 0])[1] > 0,
@@ -265,20 +258,18 @@ def usage(windows):
 
 def free_now(windows):
     """Release what can be released immediately, whatever the mode."""
-    from PyQt6.QtWebEngineCore import QWebEnginePage
-
     import cookie_snapshot
     import memory_trim
+    import webengine
 
-    State = QWebEnginePage.LifecycleState
     unloaded = 0
     for window in windows:
         for index, tab in enumerate(window.tabs):
             if index == window.current_tab_index or window._tab_keeps_running(tab):
                 continue
             page = tab.page()
-            if page.recommendedState() != State.Active and (
-                page.lifecycleState() != State.Discarded
+            if webengine.lightest_state(page) != webengine.ACTIVE and (
+                webengine.tab_state(page) != webengine.UNLOADED
             ):
                 # The window lets the site save its state first.
                 window._discard_tab(tab)
