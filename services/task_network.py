@@ -27,7 +27,7 @@ window.__steedTaskNetwork = null;
         const SDK = await import(new URL('./core/sdk/sdk.js', location.href).href);
         const manager = SDK.TargetManager.TargetManager.instance();
         let target;
-        for (let attempt = 0; attempt < 50; attempt++) {
+        for (let attempt = 0; attempt < 300; attempt++) {
             target = manager.primaryPageTarget()
                 || manager.targets().find(t => t.type() === 'frame');
             if (target) break;
@@ -40,6 +40,12 @@ window.__steedTaskNetwork = null;
     } catch (_) { window.__steedTaskNetwork = false; }
 })();
 """
+
+
+# Loading the bundled DevTools frontend and attaching to the page can take many
+# seconds on a busy machine. Waiting longer only delays a genuine failure.
+READY_TIMEOUT_MS = 30000
+POLL_MS = 100
 
 
 class TaskNetwork(QObject):
@@ -60,7 +66,7 @@ class TaskNetwork(QObject):
         self.frontend.loadFinished.connect(self._loaded)
         self.frontend.renderProcessTerminated.connect(lambda *_: self._fail())
         self.timer = QTimer(self)
-        self.timer.setInterval(100)
+        self.timer.setInterval(POLL_MS)
         self.timer.timeout.connect(self._poll)
         self.timer.start()
         page.setDevToolsPage(self.frontend)
@@ -89,7 +95,7 @@ class TaskNetwork(QObject):
 
     def _poll(self):
         self.attempts += 1
-        if self.attempts >= 100:
+        if self.attempts >= READY_TIMEOUT_MS // POLL_MS:
             self._fail()
         elif self.started:
             self.frontend.runJavaScript("window.__steedTaskNetwork", self._received)

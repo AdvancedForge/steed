@@ -58,7 +58,6 @@ from ui.devtools import DevToolsHost, DevToolsUnavailable
 from ui.find_bar import FindBar
 from ui.layout_dialog import LayoutDialog
 from ui.media_dialog import DesktopMediaDialog
-from ui.password_dialog import PasswordDialog
 from ui.prompts import InputDialog as QInputDialog
 from ui.prompts import MessageBox as QMessageBox
 from ui.settings_dialog import SettingsDialog
@@ -110,6 +109,12 @@ class BrowserPage(QWebEnginePage):
         self.setUrlRequestInterceptor(self.site_compatibility)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        if is_main_frame:
+            window = getattr(self.parent(), "browser_window", None)
+            assistant = getattr(window, "password_assistant", None)
+            if assistant is not None:
+                # Collect a login its form is submitting before the page goes.
+                assistant.navigating(self.parent())
         if is_main_frame and workspace_name(url.toString()):
             tab = self.parent()
             window = getattr(tab, "browser_window", None)
@@ -303,7 +308,6 @@ class BrowserWindow(QMainWindow):
         self.closed_tabs = self.profile_manager.registry.closed_tabs
         self._child_windows: list[BrowserWindow] = []
         self._palette = None
-        self._password_dialog = None
         self.agent_sidebar = None
         self.data_panels_dock = None
         self.agent_setup_dialog = None
@@ -462,12 +466,14 @@ class BrowserWindow(QMainWindow):
         cookies_menu.addAction(clear_history_action)
         cookies_menu.addSeparator()
         passwords_action = QAction("Passwords...", self)
-        passwords_action.triggered.connect(lambda: self._open_passwords())
+        passwords_action.triggered.connect(
+            lambda: self._new_tab(url="steed:passwords", return_tab=True)
+        )
         general_menu.addAction(passwords_action)
         fill_login_action = QAction("Fill Login", self)
         fill_login_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
         fill_login_action.triggered.connect(
-            lambda: self._open_passwords(auto_fill=True)
+            lambda: self.password_assistant.fill_current()
         )
         general_menu.addAction(fill_login_action)
         downloads_action = QAction("Downloads...", self)
@@ -869,7 +875,9 @@ class BrowserWindow(QMainWindow):
         self.address_bar.forward_requested.connect(self._go_forward)
         self.address_bar.reload_requested.connect(self._reload)
         self.address_bar.home_requested.connect(self._go_home)
-        self.address_bar.passwords_requested.connect(lambda: self._open_passwords())
+        self.address_bar.passwords_requested.connect(
+            lambda: self.password_assistant.show_menu()
+        )
         self.address_bar.reset_zoom_requested.connect(lambda: self._zoom())
         self.browser_menu = QMenu(self)
         for menu in self._layout_menus.values():
@@ -905,6 +913,10 @@ class BrowserWindow(QMainWindow):
         self.tab_layout.setContentsMargins(0, 0, 0, 0)
         self.tab_layout.setSpacing(0)
         # Pages share a splitter with docked Developer Tools.
+        from ui.password_assistant import PasswordAssistant
+
+        self.password_assistant = PasswordAssistant(self)
+        layout.addWidget(self.password_assistant.bar)
         self.content_area = QSplitter(Qt.Orientation.Horizontal)
         self.content_area.setChildrenCollapsible(False)
         self.content_area.addWidget(self.tab_container)
@@ -1460,7 +1472,7 @@ class BrowserWindow(QMainWindow):
         title = f"Custom Browser - {label}"
         if url is None and 0 <= self.current_tab_index < len(self.tabs):
             url = self.tabs[self.current_tab_index].url()
-        # KeePassXC Auto-Type can match this host. Page-provided titles must not
+        # Desktop password managers' auto-type can match this host. Page titles must not
         # be able to masquerade as another site's window-title association.
         if url is not None and url.scheme() in ("http", "https") and url.host():
             title += f" - {url.host()}"
@@ -1714,6 +1726,7 @@ class BrowserWindow(QMainWindow):
             page.setLifecycleState(QWebEnginePage.LifecycleState.Active)
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
+        self.password_assistant.tab_changed()
         self.tab_bar.set_current_tab(index)
         self.devtools.show_for(self.tabs[index])
 
@@ -2070,46 +2083,6 @@ class BrowserWindow(QMainWindow):
         ):
             self.history.clear()
 
-    def _open_passwords(self, auto_fill=False):
-        if self._closing or not self.tabs:
-            return
-        if not auto_fill and self._menu_anchor is None:
-            current = self.tabs[self.current_tab_index]
-            existing = next(
-                (tab for tab in self.tabs if tab.workspace_name == "passwords"), None
-            )
-            if (
-                existing is not None
-                and not current.workspace_name
-                and not getattr(current, "agent_panel", False)
-            ):
-                existing.agent_source = current
-                source = existing.workspace_controller.source
-                source.manager.cancel(source)
-                source.entries.clear()
-                source.context = None
-                source.page = current.page()
-                source._set_busy(False)
-                source.refresh()
-            return self._open_management("passwords")
-        if self._password_dialog is not None:
-            self._password_dialog.raise_()
-            return
-        dialog = PasswordDialog(
-            self.profile_manager.registry.passwords,
-            self.profile_manager.current_profile_name,
-            self.tabs[self.current_tab_index].page(),
-            self,
-            auto_fill=auto_fill,
-        )
-        self._password_dialog = dialog
-        try:
-            dialog.exec()
-        finally:
-            dialog.reject()
-            dialog.deleteLater()
-            self._password_dialog = None
-
     def _go_home(self):
         home = self.config.get("home_page", NEW_TAB) or NEW_TAB
         self._navigate_to_url(home)
@@ -2203,6 +2176,7 @@ class BrowserWindow(QMainWindow):
         tab.is_loading = False
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
+        self.password_assistant.page_loaded(tab, ok)
         if tab == self.tabs[self.current_tab_index]:
             self._update_history_buttons()
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
@@ -3215,8 +3189,6 @@ class BrowserWindow(QMainWindow):
         self.devtools.dispose()
         if self._palette is not None:
             self._palette.dispose()
-        if self._password_dialog is not None:
-            self._password_dialog.reject()
         if self.history is not None:
             self.history.changed.disconnect(self._refresh_address_history)
 
@@ -3556,7 +3528,8 @@ class BrowserWindow(QMainWindow):
 
         if self._closing or name not in PAGES:
             return
-        if self._menu_anchor is not None:
+        # Passwords is a full page with no dialog form.
+        if self._menu_anchor is not None and name != "passwords":
             source = self.tabs[self.current_tab_index] if self.tabs else None
             try:
                 dialog = controller(self, name, source)
@@ -3586,6 +3559,10 @@ class BrowserWindow(QMainWindow):
             from ui.access_page import AccessPage
 
             controller = panel = AccessPage(self)
+        elif name == "passwords":
+            from ui.passwords_page import PasswordsPage
+
+            controller = panel = PasswordsPage(self)
         else:
             from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
             from ui.management_pages import controller as create_controller

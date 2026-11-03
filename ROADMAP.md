@@ -12,6 +12,17 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Built-in password manager — November 1, 2026.** KeePassXC is replaced by a
+per-profile encrypted vault (SecretBox; key in the Secret Service keyring, or an
+Argon2id master password without one). Steed offers to save or update logins
+after a user-initiated submit (navigation or the form disappearing), fills the
+top page's most recent login on load, and fills embedded frames (by their own
+site) and one-time codes on request; the key menu fills, copies, shows codes and
+generates passwords. `steed:passwords` manages logins, the never-save list, CSV
+import (KeePassXC, Chrome, Firefox, Bitwarden) and export. A security review's
+eight findings are fixed. Open: a desktop check on real sign-ins (multi-step
+logins, sites that block autofill); passkeys.
+
 **Access levels — October 31, 2026.** `steed:access` sets per-capability
 Never/Ask/Always policies with Nothing/Ask/Everything presets for agents (seven
 capabilities mapped onto grant actions; Never refuses with `access_blocked`,
@@ -2081,7 +2092,7 @@ any browser blocker found during continued use alongside A1 work.
 - [ ] Check filtered cookie deletion and tab-group operations during normal use.
 - [ ] Try history suggestions, Ctrl+R/F5, and Ctrl+L.
 - [ ] Try Ctrl+F, next/previous matches, Ctrl++/Ctrl+-, and Ctrl+0 on real sites.
-- [ ] Pair KeePassXC, fill with Ctrl+Shift+L, and save a login on the desktop.
+- [ ] Save a login on a real site, see it filled next time, and import a KeePassXC CSV export.
 
 Use the pinned project virtual environment for the login checks. The older
 system Qt 6.4.2 runtime stalled in the local Google HTTPS fixture. Interactive

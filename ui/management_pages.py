@@ -180,15 +180,6 @@ def controller(window, name, source_tab=None):
         from ui.task_dialog import TaskDialog
 
         return TaskDialog(registry.tasks, window)
-    if name == "passwords":
-        from ui.password_dialog import PasswordDialog
-
-        page = (
-            source_tab.page()
-            if source_tab is not None
-            else window.tabs[window.current_tab_index].page()
-        )
-        return PasswordDialog(registry.passwords, profile, page, window)
     if name == "layout":
         return window._layout_controller()
     if name == "newtab-settings":
