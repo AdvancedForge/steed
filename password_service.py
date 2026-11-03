@@ -11,11 +11,11 @@ from urllib.parse import urlsplit
 
 from PyQt6.QtCore import QMimeData, QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWebEngineCore import QWebEngineScript
 
+import webengine
 from password_vault import KeyStore, PasswordVault, VaultError, origin_of
 
-WORLD = QWebEngineScript.ScriptWorldId.ApplicationWorld.value
+WORLD = webengine.STEED_WORLD
 # Unused vaults are locked (and their logins dropped from memory) after this.
 IDLE_LOCK_SECONDS = 30 * 60
 # Copied passwords and codes are cleared from the clipboard after this.
@@ -271,13 +271,9 @@ class PasswordService(QObject):
 
     def install(self, profile):
         """Watch for submitted logins in every page and frame of a profile."""
-        script = QWebEngineScript()
-        script.setName("steed-password-capture")
-        script.setSourceCode(CAPTURE_SCRIPT)
-        script.setWorldId(WORLD)
-        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
-        script.setRunsOnSubFrames(True)
-        profile.scripts().insert(script)
+        webengine.add_profile_script(
+            profile, "steed-password-capture", CAPTURE_SCRIPT, frames=True
+        )
 
     def busy(self, profile):
         """Vault work is synchronous; nothing is ever left running."""

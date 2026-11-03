@@ -4,7 +4,6 @@ import sqlite3
 
 from PyQt6 import sip
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -18,6 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import webengine
 from services.chatbot_protocol import RelayError, encode
 from services.chatbot_relay import ChatbotRelay
 from ui.html_dialog import HtmlSettingsDialog
@@ -308,10 +308,11 @@ class ChatbotRelayDialog(HtmlSettingsDialog):
             self._pasting = True
             self.hide()
             self.target.setFocus()
-            self.target_page.runJavaScript(
+            webengine.run_script(
+                self.target_page,
                 FOCUS_COMPOSER,
-                QWebEngineScript.ScriptWorldId.ApplicationWorld,
                 self._focused,
+                world=webengine.STEED_WORLD,
             )
 
         self._attempt(paste)
@@ -329,7 +330,7 @@ class ChatbotRelayDialog(HtmlSettingsDialog):
                     "Couldn't identify one visible composer. Copy the reviewed message and paste into your chosen field.",
                 )
             QApplication.clipboard().setText(self.outbound.toPlainText())
-            self.target_page.triggerAction(QWebEnginePage.WebAction.Paste)
+            webengine.trigger(self.target_page, "paste")
             self.runner.exported(self._outbound_exchange)
             self.status.setText(
                 "JSON pasted. Review and send it in the website; Steed does not press Send."

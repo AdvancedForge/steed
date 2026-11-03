@@ -13,7 +13,6 @@ from PyQt6.QtCore import QObject, Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
-    QWebEngineScript,
     QWebEngineSettings,
     QWebEngineUrlRequestInfo,
     QWebEngineUrlRequestInterceptor,
@@ -21,6 +20,7 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QWidget
 
+import webengine
 from services.command_broker import require_owner_thread
 from services.engine_capabilities import qt_engine_capabilities
 from services.form_submission import SubmissionTicket, journal_origin
@@ -214,13 +214,12 @@ def redirect_guard(grant):
         f"img-src {sources} data: blob:; font-src {sources} data:; "
         f"media-src {sources} data: blob:; script-src 'none'; object-src 'none'"
     )
-    script = QWebEngineScript()
-    script.setName("steed-redirect-guard")
-    script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-    script.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
-    script.setRunsOnSubFrames(True)
-    script.setSourceCode(REDIRECT_GUARD_SCRIPT % json.dumps(policy))
-    return script
+    return webengine.page_script(
+        "steed-redirect-guard",
+        REDIRECT_GUARD_SCRIPT % json.dumps(policy),
+        when="start",
+        frames=True,
+    )
 
 
 class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):

@@ -7,12 +7,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from PyQt6.QtCore import QObject, QTimer, QUrl
-from PyQt6.QtWebEngineCore import QWebEngineScript
 
+import webengine
 from services.command_broker import require_owner_thread
 
 INSPECTION_SCRIPT = Path(__file__).with_name("page_inspection.js").read_text()
-INSPECTION_WORLD = QWebEngineScript.ScriptWorldId.ApplicationWorld.value
+INSPECTION_WORLD = webengine.STEED_WORLD
 
 
 class PageInspectionError(RuntimeError):
@@ -321,7 +321,7 @@ class PageInspector(QObject):
 
         timer.start(self.timeout_ms)
         try:
-            runner.runJavaScript(script, INSPECTION_WORLD, received)
+            webengine.run_script(runner, script, received, world=INSPECTION_WORLD)
         except Exception as error:
             result.set_exception(error)
         return result
@@ -604,12 +604,13 @@ class PageInspector(QObject):
                 "state_key": "__steed_frame_read_" + uuid4().hex,
             }
             script = INSPECTION_SCRIPT.replace("/* REQUEST */", json.dumps(request))
-            engine_frame.runJavaScript(
+            webengine.run_script(
+                engine_frame,
                 script,
-                INSPECTION_WORLD,
                 lambda raw, index=index, frame=engine_frame, request=request, routable=routable: (
                     received(index, raw, frame, request, routable)
                 ),
+                world=INSPECTION_WORLD,
             )
         if not remaining:
             finish()
@@ -682,7 +683,7 @@ class PageInspector(QObject):
             "/* REQUEST */",
             json.dumps({**request, "mode": "submit", "expected": expected}),
         )
-        page.runJavaScript(script, INSPECTION_WORLD, received)
+        webengine.run_script(page, script, received, world=INSPECTION_WORLD)
 
     def act(self, session_id, page, snapshot_id, target_id, arguments, validate):
         request = self.input_request(session_id, snapshot_id, target_id, arguments)

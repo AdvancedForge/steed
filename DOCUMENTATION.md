@@ -104,6 +104,34 @@ QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" .venv/bin/python main.py
 
 The browser preserves explicit Chromium options and enables PipeWire screen capture without forcing a graphics backend.
 
+### Video codecs (H.264 and AAC)
+
+The PyPI Qt WebEngine plays WebM/VP8/VP9, AV1, Opus and MP3, but not the
+patent-licensed H.264 video and AAC audio. Videos and "GIFs" (short MP4 files,
+as on Discord, Tenor and Giphy) that come only in those formats do not play.
+`build_codecs.py` builds the same Qt WebEngine version from source with
+proprietary codecs and swaps it into `.venv`; Steed's code does not change.
+The build is for use on this computer, not for redistribution.
+
+```bash
+.venv/bin/python build_codecs.py check     # prints the apt command for missing packages
+.venv/bin/python build_codecs.py build     # hours; run again to continue after a stop
+.venv/bin/python build_codecs.py install   # backs up the PyPI files, then swaps
+.venv/bin/python build_codecs.py status    # which engine is in use and what plays
+.venv/bin/python build_codecs.py restore   # put the PyPI engine back
+```
+
+The build works in `~/src/steed-qtwebengine` (`--work-dir` to change; it needs
+about 60 GB free) with 6 compile jobs by default (`--jobs`; each can use 2 GB of
+memory). It downloads Qt's source for the exact `PyQt6-WebEngine-Qt6` version
+in `.venv`, checks Qt's published checksum, and builds against Qt's matching
+development files (installed there with aqtinstall, as are cmake and ninja).
+`install` refuses a build of another version, or one whose libraries lack any
+function the PyPI ones export. Reinstalling or upgrading `PyQt6-WebEngine-Qt6`
+with pip puts the PyPI engine back; `status` says so, and `install` (or a new
+`build` for a new version) restores codecs. `requirements.txt` pins the exact
+version for this reason.
+
 ### Google sign-in
 
 Google sign-in compatibility is enabled by default in **General → Settings**. It sends a Firefox User-Agent to `https://accounts.google.com/`, following [qutebrowser's account-host workaround](https://github.com/qutebrowser/qutebrowser/issues/5182). Other sites use your configured/default User-Agent. Main-page GET redirects into or out of the account host are restarted to avoid Qt losing the per-site header; POST requests are never replayed.
@@ -888,6 +916,7 @@ Browser/
 │   ├── qt_test_support.py # Shared QApplication and deferred fixture cleanup
 │   ├── test_password_manager.py # Encrypted protocol and pairing regressions
 │   ├── smoke_browser.py   # Real startup/render/shutdown check (manual)
+│   ├── timing_check.py    # Startup, tab, typing and memory timings (manual)
 │   ├── smoke_google_login.py # Local HTTPS login-compatibility check (manual)
 │   └── profile_restart.py # Two-process cookie persistence check (manual)
 ├── pyproject.toml         # Ruff lint/format configuration
@@ -897,6 +926,61 @@ Browser/
 
 The smoke and profile-restart files are runnable scripts rather than unittest modules, so
 `unittest discover` does not collect them; run them directly as shown below.
+
+### Timing check
+
+`tests/timing_check.py` starts Steed fresh three times in a temporary profile
+and reports the median of each figure; all pages are local files.
+
+```bash
+.venv/bin/python tests/timing_check.py --save before.json
+# …make a change, swap the engine, or switch memory mode…
+.venv/bin/python tests/timing_check.py --compare before.json
+```
+
+| Figure | Measured from → to |
+| --- | --- |
+| Start to window ready | process start (including Python's) → first event-loop turn with the window shown |
+| Start to first page loaded | process start → the home page's load finished |
+| Open a tab and load a page | `_new_tab` → load finished (median of 10) |
+| Switch tabs | `_switch_tab` → Steed's events handled (median of 20) |
+| Type 20 characters | key presses in the address bar, suggestions off |
+| Memory, one tab / 10 tabs | proportional set size (PSS) of Steed and its helper processes, after settling |
+| Close the window and quit | `close()` → returned, including unload handlers |
+
+Figures compare runs on the same computer. The window opens on the current
+display; `--offscreen` runs without one and without the GPU, which changes the
+numbers. On the development machine (8 cores, 16 GB, offscreen, PyPI engine;
+November 3, 2026) the figures were about 400 ms to window, 620 ms to first
+page, 60 ms per new tab, 8 ms per switch, 23 ms typing, 386 MB with one tab,
+649 MB with ten and 48 ms to close.
+
+### Engine boundary
+
+`webengine.py` is Steed's boundary with Qt WebEngine: other code asks for
+things in Steed's terms, so a later engine change, or a Qt API change, is a
+contained edit there. It covers:
+
+- **Tab lifecycle:** `tab_state(page)` returns `"active"`, `"frozen"` or
+  `"unloaded"`, with `set_tab_state`, `wake`, `lightest_state` (the furthest the
+  engine allows) and `deeper`.
+- **Scripts:** `run_script(page_or_frame, source, callback, world=...)` in
+  `PAGE_WORLD` (the page's own JavaScript) or `STEED_WORLD` (same document,
+  separate globals the page cannot see); `page_script` and `add_profile_script`
+  for scripts every page runs at `"start"`, `"ready"` or `"loaded"`.
+- **Page actions:** `trigger(page, "back")` and the other `PAGE_ACTIONS`,
+  `menu_action`, `find_text`, `view_for(page)`.
+- **steed:// answers:** `fail_request(job, "denied")` and the other reasons.
+- **Type hints:** `webengine.Page` and `webengine.Profile`.
+
+`tests/test_engine_boundary.py` lists the 14 files that still import Qt
+WebEngine directly (page and profile classes, URL schemes, interceptors,
+permissions, the DevTools and HTML surfaces). A new file fails the test unless
+it uses `webengine.py` or is added to the list on purpose; a file that stops
+using the engine must be removed from it. The engine names that have a helper
+(lifecycle states, script worlds, injection points, page actions, find flags)
+may appear only in `webengine.py`. Settings, permissions and profile creation
+are the next pieces to move, alongside other work in those files.
 
 ## Engine and storage internals
 
