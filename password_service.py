@@ -306,3 +306,18 @@ def login_origin(url):
     if origin.startswith("http://") and host not in ("localhost", "127.0.0.1"):
         return None
     return origin
+
+
+def old_pairings(config):
+    """KeePassXC pairing files left by Steed versions before the vault."""
+    found = []
+    legacy = config.config_dir / "global_profile" / "password_manager.json"
+    if legacy.is_file():
+        found.append(legacy)
+    if config.profiles_dir.is_dir():
+        found.extend(
+            path
+            for path in sorted(config.profiles_dir.glob("*/password_manager.json"))
+            if path.is_file()
+        )
+    return found

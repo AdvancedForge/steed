@@ -158,6 +158,25 @@ Open **General → Customize New Tab**, or click Customize on a built-in page:
   Always. Refused requests answer `{"error": "denied"}`. Only the start page
   itself can call these addresses; websites cannot.
 
+### Panel apps (`steed:apps`)
+
+Small apps of your own — notes, a feed reader, a tracker, a dashboard — shown in
+the **App Panel** beside the page (**View → App Panel**). Each is one HTML page
+with its own CSS and JavaScript (up to 256 KB), kept per profile (up to 12).
+
+- **steed:apps** (or **Manage…** in the panel): **New app** starts from an
+  example with a clock, notes and your open tabs; edit the HTML, **Save** or
+  **Save and open**; **Import HTML…** adds a file; **Delete** removes an app's
+  HTML (data it stored stays in the profile's site data).
+- Each app runs at its own `steed://app-<id>/` address, so apps keep separate
+  local storage. They cannot load web resources directly; like custom New Tab
+  pages they ask Steed with `fetch("steed://" + location.host + "/api/fetch?url=…")`
+  (no cookies), `/api/tabs`, `/api/history` and `/api/bookmarks`, under the
+  Local pages access settings below. An Ask answer applies to that app only.
+- Links and pop-ups an app opens go to normal tabs; the panel itself stays on
+  its app. Websites cannot load or call app addresses. Panel apps are off in
+  incognito, and the panel follows the window's profile.
+
 ### Access & Permissions (`steed:access`)
 
 One place to choose how much agents and your own pages may do. Each area has
@@ -172,7 +191,7 @@ each Never, Ask or Always (changing one shows the area as Custom).
   before. Settings apply to new requests. YOLO mode (Agents menu, this run only)
   still approves everything except capabilities set to Never.
 - **Local pages** (default Nothing): web data, open tabs, history and bookmarks
-  for your custom New Tab and Welcome pages, as above.
+  for your custom New Tab and Welcome pages and panel apps, as above.
 
 Ctrl+D saves an HTTP(S) page with an editable name and folder. **Tabs → Manage
 Bookmarks** searches names/addresses/folders, filters by folder, and edits names,
@@ -433,7 +452,17 @@ memory. Incognito never saves or fills passwords.
 Logins are offered only on HTTPS sites and local development servers. Page
 scripts cannot see the capture or fill code, which runs in an isolated world;
 the site a login belongs to always comes from the engine, never from the page.
-Passkeys are not supported.
+
+**Security keys (WebAuthn):** sites that sign in or register with a USB or NFC
+security key (FIDO2/U2F, such as a YubiKey) work: Steed asks you to choose an
+account when the key holds several, to enter (or set, twice) the key's PIN, and
+to touch the key, and explains failures with **Try again**. Passkeys stored on
+this computer or synced from a phone are not available in Qt WebEngine on
+Linux, so sites offering only those need another sign-in method.
+
+Steed versions before the built-in vault left KeePassXC connection files
+(`password_manager.json`) in profile folders. On first start Steed offers once
+to remove them; your KeePassXC database is never touched.
 
 Desktop password managers' auto-type (for example
 [KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type))
@@ -891,7 +920,7 @@ updating until you return). An unloaded tab frees its renderer and reloads when
 selected; unsaved form text can be lost. Tabs playing audio, shared with an agent,
 with DevTools open or still loading, `steed:` pages and tabs you mark with
 **Keep This Tab Loaded** (tab right-click menu; a marked frozen tab wakes at
-once) are never frozen or unloaded, and Steed never goes further than Qt WebEngine recommends for a page
+once; the mark is saved with the session) are never frozen or unloaded, and Steed never goes further than Qt WebEngine recommends for a page
 (a hidden page is frozen first and unloaded on a later check). Background tabs
 are checked every 30 seconds. With delayed cookie wake-ups, cookies shared from
 the global profile reach other profiles up to that much later; opening or

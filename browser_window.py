@@ -310,6 +310,7 @@ class BrowserWindow(QMainWindow):
         self._palette = None
         self.agent_sidebar = None
         self.data_panels_dock = None
+        self.app_panel = None
         self.agent_setup_dialog = None
         self.settings_dialog = None
         self._menu_anchor = None
@@ -612,6 +613,10 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         agents_menu.addAction(self.agent_sidebar_action)
+        self.app_panel_action = QAction("App Panel", self)
+        self.app_panel_action.setCheckable(True)
+        self.app_panel_action.triggered.connect(self._toggle_app_panel)
+        view_menu.addAction(self.app_panel_action)
         self.data_panels_action = QAction("Data Panels", self)
         self.data_panels_action.setCheckable(True)
         self.data_panels_action.setEnabled(not self.profile_manager.is_search_profile())
@@ -842,6 +847,8 @@ class BrowserWindow(QMainWindow):
         page_unload.ENABLED = bool(self.config.get("save_before_closing", True))
         # Mouse back/forward side buttons over any part of this window.
         QApplication.instance().installEventFilter(self)
+        if len(self.profile_manager.registry.owners) == 1:
+            QTimer.singleShot(1500, self._offer_old_pairing_cleanup)
         memory_modes.monitor().changed.connect(self._memory_pressure_changed)
         memory_modes.monitor().start()
         strip = TabStrip
@@ -1219,6 +1226,31 @@ class BrowserWindow(QMainWindow):
 
         if self.agent_sidebar is not None:
             self.agent_sidebar.set_private(profile_name == "search")
+
+    def _ensure_app_panel(self):
+        if self.app_panel is None:
+            from ui.app_panel import AppPanelDock
+
+            self.app_panel = AppPanelDock(self)
+            self.addDockWidget(self._sidebar_dock_area(), self.app_panel)
+            self.app_panel.visibilityChanged.connect(self.app_panel_action.setChecked)
+        return self.app_panel
+
+    def _toggle_app_panel(self, visible):
+        if self._closing:
+            return
+        if visible:
+            panel = self._ensure_app_panel()
+            panel.refresh()
+            panel.show()
+            panel.raise_()
+        elif self.app_panel is not None:
+            self.app_panel.hide()
+
+    def _show_panel_app(self, identity):
+        """Open a panel app in this window's App Panel."""
+        if not self._closing:
+            self._ensure_app_panel().show_app(identity)
 
     def _toggle_data_panels(self, visible):
         if self._closing or self.profile_manager.is_search_profile():
@@ -1641,6 +1673,7 @@ class BrowserWindow(QMainWindow):
             tab.tab_id,
             tab.group_id,
             tab.pinned,
+            getattr(tab, "keep_loaded", False),
         )
         profile_name = self.profile_manager.current_profile_name
         if remember:
@@ -1676,6 +1709,8 @@ class BrowserWindow(QMainWindow):
             tab.tab_id = state.tab_id
             if state.pinned:
                 self._set_pinned(tab, True)
+            if state.keep_loaded:
+                self._set_keep_loaded(tab, True)
             # A collapsed group hides all but its first tab; restoring into one
             # would keep the new tab invisible, so expand it deliberately.
             group = self.tab_manager.groups.get(state.group_id)
@@ -2100,6 +2135,42 @@ class BrowserWindow(QMainWindow):
                 muted=page.isAudioMuted(),
             )
 
+    def _offer_old_pairing_cleanup(self):
+        """Once: remove KeePassXC pairing files the built-in vault replaced."""
+        from password_service import old_pairings
+
+        if self._closing or self.config.get("keepassxc_cleanup_asked", False):
+            return
+        files = old_pairings(self.config)
+        if not files:
+            return
+        self.config.set("keepassxc_cleanup_asked", True)
+        reply = QMessageBox.question(
+            self,
+            "Old KeePassXC connection",
+            "Steed now keeps passwords in its own encrypted vault. Remove the old "
+            f"KeePassXC connection files ({len(files)})? Your KeePassXC database "
+            "is not touched. To bring its passwords over, export a CSV from "
+            "KeePassXC and use Import on steed:passwords.",
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            for path in files:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+
+    def _security_key(self, request):
+        """A site asks to use a security key (WebAuthn)."""
+        if self._closing:
+            request.cancel()
+            return
+        if getattr(self, "web_auth", None) is None:
+            from ui.web_auth import WebAuthPrompts
+
+            self.web_auth = WebAuthPrompts(self)
+        self.web_auth.handle(request)
+
     def _on_tab_lifecycle(self, tab):
         if not self._closing and tab in self.tabs:
             state = tab.page().lifecycleState()
@@ -2240,6 +2311,7 @@ class BrowserWindow(QMainWindow):
                     tab_id=tab.tab_id,
                     group_id=tab.group_id,
                     pinned=tab.pinned,
+                    keep_loaded=getattr(tab, "keep_loaded", False),
                 )
             )
 
@@ -2277,6 +2349,8 @@ class BrowserWindow(QMainWindow):
                     if state.pinned:
                         self.tabs[-1].pinned = True
                         self.tab_bar.set_tab_state(len(self.tabs) - 1, pinned=True)
+                    if state.keep_loaded:
+                        self._set_keep_loaded(self.tabs[-1], True)
             else:
                 self._new_tab(url=self._startup_page(), index=len(self.tabs))
         finally:
@@ -2297,7 +2371,17 @@ class BrowserWindow(QMainWindow):
         )
         page.fullScreenRequested.connect(self._on_fullscreen_requested)
 
+    # The engine waits inside these callbacks and cannot load any page until
+    # they return, including Steed's own HTML dialogs. A question asked here
+    # would never appear (the window hung on "Opening settings interface…"),
+    # so each answer is worked out a moment later; requests stay valid until
+    # answered.
     def _on_permission_requested(self, permission: QWebEnginePermission, page=None):
+        # The signal's object is only valid during the call; keep a copy.
+        permission = QWebEnginePermission(permission)
+        QTimer.singleShot(0, lambda: self._resolve_permission(permission, page))
+
+    def _resolve_permission(self, permission, page=None):
         PermissionService.respond(
             permission,
             lambda origin, feature: self._ask_permission(origin, feature, page),
@@ -2305,6 +2389,11 @@ class BrowserWindow(QMainWindow):
         )
 
     def _on_feature_permission_requested(self, page, origin, feature):
+        QTimer.singleShot(
+            0, lambda: self._resolve_feature_permission(page, origin, feature)
+        )
+
+    def _resolve_feature_permission(self, page, origin, feature):
         PermissionService.respond_legacy(
             page,
             origin,
@@ -2705,6 +2794,7 @@ class BrowserWindow(QMainWindow):
         "iconChanged",
     )
     PAGE_SIGNALS = (
+        "webAuthUxRequested",
         "lifecycleStateChanged",
         "recentlyAudibleChanged",
         "audioMutedChanged",
@@ -2725,6 +2815,7 @@ class BrowserWindow(QMainWindow):
         tab.iconChanged.connect(lambda icon: self._on_tab_icon(tab, icon))
         tab.page().recentlyAudibleChanged.connect(lambda _: self._on_tab_audio(tab))
         tab.page().lifecycleStateChanged.connect(lambda _: self._on_tab_lifecycle(tab))
+        tab.page().webAuthUxRequested.connect(self._security_key)
         tab.page().audioMutedChanged.connect(lambda _: self._on_tab_audio(tab))
         if hasattr(tab.page(), "zoomFactorChanged"):
             tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
@@ -2788,6 +2879,8 @@ class BrowserWindow(QMainWindow):
         tab.pinned = False
         if state.pinned:
             self._set_pinned(tab, True)
+        if state.keep_loaded:
+            self._set_keep_loaded(tab, True)
         elif state.group:
             self._set_tab_group_existing(self.tabs.index(tab), state.group)
         self._switch_tab(self.tabs.index(tab))
@@ -2815,6 +2908,7 @@ class BrowserWindow(QMainWindow):
             tab.tab_id,
             tab.group_id,
             tab.pinned,
+            getattr(tab, "keep_loaded", False),
         )
 
     def _move_tab(self, tab, target=None, index=None):
@@ -2863,6 +2957,8 @@ class BrowserWindow(QMainWindow):
         if tab is None or tab not in self.tabs:
             return
         tab.tab_id = state.tab_id
+        if state.keep_loaded:
+            self._set_keep_loaded(tab, True)
         if state.pinned:
             self._set_pinned(tab, True)
         elif state.group:
@@ -3177,6 +3273,8 @@ class BrowserWindow(QMainWindow):
         if self.data_panels_dock is not None:
             self.data_panels_dock.refresh()
             self.data_panels_dock.dispose()
+        if self.app_panel is not None:
+            self.app_panel.dispose()
         if self.web_chat_dock is not None:
             self.web_chat_dock.dispose()
         if self.file_library_dialog is not None:
@@ -3563,6 +3661,10 @@ class BrowserWindow(QMainWindow):
             from ui.passwords_page import PasswordsPage
 
             controller = panel = PasswordsPage(self)
+        elif name == "apps":
+            from ui.apps_page import AppsPage
+
+            controller = panel = AppsPage(self)
         else:
             from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
             from ui.management_pages import controller as create_controller
@@ -3899,6 +4001,18 @@ class BrowserWindow(QMainWindow):
             logger.warning("Declining overlapping desktop media request")
             request.cancel()
             return
+        self._pending_desktop_request = request
+        # As with permissions, the picker must open outside this callback.
+        QTimer.singleShot(0, lambda: self._show_desktop_picker(request))
+
+    def _show_desktop_picker(self, request):
+        try:
+            self._pick_desktop_media(request)
+        except Exception:
+            # Never let an error escape into the event loop.
+            logger.exception("Screen share picker failed")
+
+    def _pick_desktop_media(self, request):
         self._pending_desktop_request = request
         dialog = None
         try:

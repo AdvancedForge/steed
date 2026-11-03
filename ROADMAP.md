@@ -12,6 +12,27 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Site permission prompts no longer hang — November 3, 2026.** Asking about a
+website permission (clipboard, camera, notifications, screen sharing) froze
+Steed: the HTML question opened inside the engine's own callback, which waits
+until it returns, so the dialog could never load. Questions are now asked just
+after the callback, with a copy of the request. A live regression clicks a
+clipboard copy button and answers both ways.
+
+**Password follow-ups — November 3, 2026.** Security-key sign-ins (WebAuthn
+via Qt's webAuthUxRequested: account choice, PIN entry/setting, touch prompt,
+failure reasons with retry); platform and synced passkeys remain unavailable
+in Qt WebEngine on Linux. Keep This Tab Loaded is saved with sessions and
+closed tabs. A one-time prompt removes old KeePassXC pairing files. Open: a
+desktop check with a real security key.
+
+**Panel apps — November 3, 2026.** `steed:apps` creates, edits and imports
+per-profile HTML/JavaScript apps shown in a new App Panel dock. Each runs at its
+own `steed://app-<id>/` origin (separate storage), uses the same data API as the
+New Tab page under the Local pages access settings (Ask answers are per app),
+opens links in tabs, and cannot be loaded by websites. Open: agent-proposed
+panel apps through the reviewed start-page proposal flow.
+
 **Built-in password manager — November 1, 2026.** KeePassXC is replaced by a
 per-profile encrypted vault (SecretBox; key in the Secret Service keyring, or an
 Argon2id master password without one). Steed offers to save or update logins

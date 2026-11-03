@@ -437,6 +437,25 @@ class BrowserTests(unittest.TestCase):
         )
         self.assertFalse(second._closing, "declining must abort the close")
 
+    def test_permission_and_picker_dialogs_open_after_the_engine_callback(self):
+        """Asking inside the engine's callback hung the window on a blank dialog."""
+        permission = Mock()
+        permission.isValid.return_value = True
+        request = Mock()
+        with (
+            patch.object(self.window, "_ask_permission", return_value=True) as asked,
+            patch.object(self.window, "_pick_desktop_media") as picked,
+            # The real copy is covered by test_permission_prompts.
+            patch("browser_window.QWebEnginePermission", side_effect=lambda p: p),
+        ):
+            self.window._on_permission_requested(permission)
+            self.window._on_desktop_media_requested(request)
+            asked.assert_not_called()
+            picked.assert_not_called()
+            self.wait_for(lambda: permission.grant.called and picked.called)
+        picked.assert_called_once_with(request)
+        self.window._pending_desktop_request = None
+
     def test_overlapping_media_picker_declines_second_request(self):
         """A second request while the picker is open must be declined, not lost."""
         first = Mock()
@@ -451,7 +470,7 @@ class BrowserTests(unittest.TestCase):
             return QDialog.DialogCode.Rejected
 
         with patch.object(QDialog, "exec", hold_dialog):
-            self.window._on_desktop_media_requested(first)
+            self.window._pick_desktop_media(first)
         second.cancel.assert_called_once()
         first.cancel.assert_called_once()
         self.assertIsNone(self.window._pending_desktop_request)
@@ -868,7 +887,7 @@ class BrowserTests(unittest.TestCase):
         )
         permission.origin.return_value = QUrl("https://example.org")
         with patch.object(self.window, "_ask_permission", return_value=True):
-            self.window._on_permission_requested(permission)
+            self.window._resolve_permission(permission)
         permission.grant.assert_called_once()
         permission.deny.assert_not_called()
 
@@ -928,7 +947,7 @@ class BrowserTests(unittest.TestCase):
         ):
             factory.return_value.exec.return_value = QDialog.DialogCode.Accepted
             factory.return_value.remember.currentData.return_value = "global"
-            self.window._on_permission_requested(permission, self.window.tabs[0].page())
+            self.window._resolve_permission(permission, self.window.tabs[0].page())
         permission.deny.assert_called_once()
         permission.grant.assert_not_called()
         self.assertFalse(self.window.profile_manager.registry.site_permissions.rules())
@@ -1018,7 +1037,7 @@ class BrowserTests(unittest.TestCase):
             return QDialog.DialogCode.Rejected
 
         with patch.object(QDialog, "exec", reject_dialog):
-            self.window._on_desktop_media_requested(request)
+            self.window._pick_desktop_media(request)
         request.cancel.assert_called_once()
 
     def test_media_picker_selected_source_is_not_cancelled_on_cleanup(self):
@@ -1037,7 +1056,7 @@ class BrowserTests(unittest.TestCase):
                     return QDialog.DialogCode.Accepted
 
                 with patch.object(QDialog, "exec", select_source):
-                    self.window._on_desktop_media_requested(request)
+                    self.window._pick_desktop_media(request)
                 selected = request.selectScreen if screen else request.selectWindow
                 selected.assert_called_once()
                 request.cancel.assert_not_called()
@@ -1049,7 +1068,7 @@ class BrowserTests(unittest.TestCase):
             "browser_window.DesktopMediaDialog", side_effect=RuntimeError("no picker")
         ):
             with self.assertRaisesRegex(RuntimeError, "no picker"):
-                self.window._on_desktop_media_requested(request)
+                self.window._pick_desktop_media(request)
         request.cancel.assert_called_once()
         self.assertIsNone(self.window._pending_desktop_request)
 

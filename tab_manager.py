@@ -19,6 +19,8 @@ class TabState:
     tab_id: str = field(default_factory=lambda: uuid4().hex, compare=False)
     group_id: str | None = None
     pinned: bool = False
+    # Exempt from freezing and unloading by memory modes.
+    keep_loaded: bool = False
 
 
 @dataclass
@@ -82,6 +84,7 @@ def _parse_states(raw) -> list[TabState]:
                 tab_id=item.get("tab_id") or uuid4().hex,
                 group_id=item.get("group_id"),
                 pinned=item.get("pinned") is True,
+                keep_loaded=item.get("keep_loaded") is True,
             )
         )
     return states
