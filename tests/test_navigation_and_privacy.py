@@ -114,7 +114,10 @@ class NavigationAndPrivacyTests(unittest.TestCase):
             profile.persistentCookiesPolicy(), policy.ForcePersistentCookies
         )
         self.window.config.set("restore_tabs_on_startup", False)
-        self.assertEqual(registry._cookie_policy(), policy.AllowPersistentCookies)
+        registry.refresh_settings()
+        self.assertEqual(
+            profile.persistentCookiesPolicy(), policy.AllowPersistentCookies
+        )
 
     def test_default_user_agent_matches_the_engine(self):
         agent = self.window.profile_manager.current_profile.httpUserAgent()

@@ -8,7 +8,7 @@ from concurrent.futures import Future
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PyQt6.QtWebEngineCore import QWebEnginePage
 
 import webengine
 from services.task_input import TaskInput
@@ -61,7 +61,7 @@ class TaskNetwork(QObject):
         self.healthy = False
         # The bundled DevTools frontend has its own off-the-record storage;
         # task HTTP filters never need exceptions for its internal assets.
-        self.frontend_profile = QWebEngineProfile(self)
+        self.frontend_profile = webengine.private_profile(self)
         self.frontend = QWebEnginePage(self.frontend_profile, self)
         self.input = TaskInput(self)
         self.frontend.loadFinished.connect(self._loaded)

@@ -2,7 +2,7 @@
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, QTimer
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
@@ -160,7 +160,7 @@ class DevToolsHost(QObject):
         # The frontend needs no website storage; keep its own off-the-record
         # profile so DevTools state never mixes with a browsing profile.
         if self.profile is None:
-            self.profile = QWebEngineProfile(self)
+            self.profile = webengine.private_profile(self)
         return self.profile
 
     def _apply_side(self):

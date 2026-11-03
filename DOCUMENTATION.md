@@ -963,10 +963,14 @@ and reports the median of each figure; all pages are local files.
 | Open a tab and load a page | `_new_tab` → load finished (median of 10) |
 | Switch tabs | `_switch_tab` → Steed's events handled (median of 20) |
 | Type 20 characters | key presses in the address bar, suggestions off |
+| Scrolling: slowest 5% of frames / frames over 25 ms | a long page scrolled one step per frame for a second, timed with `requestAnimationFrame`; on a real screen this shows stutter, offscreen it mostly shows CPU load |
+| Switch to a frozen tab until it responds | `_switch_tab` → the page answers a script |
+| Switch to an unloaded tab until it reloads | `_switch_tab` → its load finished |
 | Memory, one tab / 10 tabs | proportional set size (PSS) of Steed and its helper processes, after settling |
 | Close the window and quit | `close()` → returned, including unload handlers |
 
-Figures compare runs on the same computer. The window opens on the current
+Figures compare runs on the same computer, and only when it is otherwise
+quiet: the check warns when the load average is above half the core count. The window opens on the current
 display; `--offscreen` runs without one and without the GPU, which changes the
 numbers. On the development machine (8 cores, 16 GB, offscreen, PyPI engine;
 November 3, 2026) the figures were about 400 ms to window, 620 ms to first
@@ -989,16 +993,24 @@ contained edit there. It covers:
 - **Page actions:** `trigger(page, "back")` and the other `PAGE_ACTIONS`,
   `menu_action`, `find_text`, `view_for(page)`.
 - **steed:// answers:** `fail_request(job, "denied")` and the other reasons.
+- **Page options:** `set_options(settings, javascript=False, ...)`, `option`,
+  `block_unknown_schemes` and `configure_web_settings`, with Steed names for
+  each engine setting (`PAGE_OPTIONS`).
+- **Profiles:** `private_profile(parent)` (nothing on disk),
+  `stored_profile(name, parent, storage=..., cache=..., keep_session_cookies=...)`
+  and `set_keep_session_cookies`.
+- **Versions:** `versions()` gives the Qt WebEngine, Chromium-feature and
+  Chromium-security versions.
 - **Type hints:** `webengine.Page` and `webengine.Profile`.
 
 `tests/test_engine_boundary.py` lists the 14 files that still import Qt
-WebEngine directly (page and profile classes, URL schemes, interceptors,
-permissions, the DevTools and HTML surfaces). A new file fails the test unless
+WebEngine directly. What remains is engine-shaped by nature: page and view
+subclasses, URL-scheme handlers, request interceptors, permission and security-
+key requests, and the feature probe. A new file fails the test unless
 it uses `webengine.py` or is added to the list on purpose; a file that stops
 using the engine must be removed from it. The engine names that have a helper
-(lifecycle states, script worlds, injection points, page actions, find flags)
-may appear only in `webengine.py`. Settings, permissions and profile creation
-are the next pieces to move, alongside other work in those files.
+(lifecycle states, script worlds, injection points, page actions, find flags,
+page settings, cache and cookie policies) may appear only in `webengine.py`.
 
 ## Engine and storage internals
 

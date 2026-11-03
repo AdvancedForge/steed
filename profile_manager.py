@@ -9,11 +9,11 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
-    QWebEngineProfile,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication
 
+import webengine
 from ad_blocker import AdBlocker
 from browsing_history import BrowsingHistory
 from config import Config
@@ -102,7 +102,7 @@ class ProfileRegistry(QObject):
 
     def _create_search_profile(self):
         """A fresh off-the-record profile for incognito windows."""
-        profile = QWebEngineProfile(self)
+        profile = webengine.private_profile(self)
         profile.installUrlSchemeHandler(
             b"steed", StartPageHandler(self.start_pages, "search", profile)
         )
@@ -112,7 +112,6 @@ class ProfileRegistry(QObject):
             self.config.get("user_agent_override", "").strip()
             or self.defaults["search"]
         )
-        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         configure_web_settings(profile.settings())
         self.downloads.attach(profile, "search")
         self.adblock.attach(profile)
@@ -400,12 +399,14 @@ class ProfileRegistry(QObject):
             )
         fresh = new_profile or not directory.exists()
         storage, cache = self.storage.prepare(name, directory, new=fresh)
-        profile = QWebEngineProfile(name, self)
+        profile = webengine.stored_profile(
+            name,
+            self,
+            storage=storage,
+            cache=cache,
+            keep_session_cookies=self._keep_session_cookies(),
+        )
         configure_permission_policy(profile)
-        profile.setPersistentStoragePath(str(storage))
-        profile.setCachePath(str(cache))
-        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
-        profile.setPersistentCookiesPolicy(self._cookie_policy())
         configure_web_settings(profile.settings())
         profile.installUrlSchemeHandler(
             b"steed", StartPageHandler(self.start_pages, name, profile)
@@ -493,16 +494,9 @@ class ProfileRegistry(QObject):
             self.create(name, get_profile_path(self.config.profiles_dir, name))
         return self.profiles[name]
 
-    def _cookie_policy(self):
-        """Keep session cookies when tabs are restored, as Chrome does.
-
-        Otherwise sites relying on session cookies sign you out at every
-        restart even though their tabs come back.
-        """
-        policy = QWebEngineProfile.PersistentCookiesPolicy
-        if self.config.get("restore_tabs_on_startup", True):
-            return policy.ForcePersistentCookies
-        return policy.AllowPersistentCookies
+    def _keep_session_cookies(self):
+        """Keep session cookies when tabs are restored, as Chrome does."""
+        return bool(self.config.get("restore_tabs_on_startup", True))
 
     def refresh_settings(self):
         override = self.config.get("user_agent_override", "").strip()
@@ -510,7 +504,7 @@ class ProfileRegistry(QObject):
             profile.setHttpUserAgent(override or self.defaults[name])
         for profile in self.profiles.values():
             # Takes effect for this profile's cookie store at the next start.
-            profile.setPersistentCookiesPolicy(self._cookie_policy())
+            webengine.set_keep_session_cookies(profile, self._keep_session_cookies())
         self.adblock.refresh_settings()
         if self.sharing_applies_to_all():
             for name in self.sharing.profiles:

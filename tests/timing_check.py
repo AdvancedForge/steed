@@ -30,10 +30,21 @@ METRICS = (
     ("new_tab", "Open a tab and load a page", "ms"),
     ("tab_switch", "Switch tabs", "ms"),
     ("typing", "Type 20 characters in the address bar", "ms"),
+    ("scroll_frame", "Scrolling: slowest 5% of frames", "ms"),
+    ("scroll_slow", "Scrolling: frames over 25 ms, of ~60", "frames"),
+    ("wake_frozen", "Switch to a frozen tab until it responds", "ms"),
+    ("wake_unloaded", "Switch to an unloaded tab until it reloads", "ms"),
     ("memory_one", "Memory, one tab", "MB"),
     ("memory_ten", f"Memory, {TABS} tabs", "MB"),
     ("shutdown", "Close the window and quit", "ms"),
 )
+# Scrolls the page for one second, one step per frame, and reports frame gaps.
+SCROLL = """(() => { window.__frames = null; const gaps = []; let last = null;
+const end = performance.now() + 1000;
+function step(now) { if (last !== null) gaps.push(now - last); last = now;
+  window.scrollBy(0, 40);
+  if (now < end) requestAnimationFrame(step); else window.__frames = gaps; }
+requestAnimationFrame(step); return true; })()"""
 PAGE = """<!doctype html><meta charset=utf-8><title>Page {n}</title>
 <style>li{{padding:2px;border-bottom:1px solid #ddd}}</style>
 <h1>Page {n}</h1><ul>{items}</ul>
@@ -60,6 +71,7 @@ def run_round(offscreen: bool) -> dict:
 
     import main
     import memory_modes
+    import webengine
     from browser_window import BrowserWindow
     from config import Config
 
@@ -139,6 +151,45 @@ def run_round(offscreen: bool) -> dict:
                 results["typing"] = ms(start)
                 field.clear()
                 window.tabs[0].setFocus()
+                settle(1)
+
+                def script(source):
+                    out = []
+                    webengine.run_script(
+                        window.tabs[0].page(),
+                        source,
+                        out.append,
+                        world=webengine.PAGE_WORLD,
+                    )
+                    wait(lambda: out)
+                    return out[0]
+
+                window._switch_tab(0)
+                script(SCROLL)
+                wait(lambda: script("window.__frames !== null"))
+                gaps = sorted(script("window.__frames"))
+                results["scroll_frame"] = round(gaps[int(len(gaps) * 0.95)], 1)
+                results["scroll_slow"] = sum(gap > 25 for gap in gaps)
+                # Background tabs, put to sleep the way memory modes do.
+                frozen, unloaded = window.tabs[3], window.tabs[4]
+                webengine.set_tab_state(frozen.page(), webengine.FROZEN)
+                webengine.set_tab_state(unloaded.page(), webengine.UNLOADED)
+                wait(lambda: webengine.tab_state(frozen.page()) == webengine.FROZEN)
+                wait(lambda: webengine.tab_state(unloaded.page()) == webengine.UNLOADED)
+                start = time.monotonic()
+                window._switch_tab(3)
+                answered = []
+                webengine.run_script(
+                    frozen.page(), "1", answered.append, world=webengine.PAGE_WORLD
+                )
+                wait(lambda: answered)
+                results["wake_frozen"] = ms(start)
+                finished.discard(id(unloaded))
+                start = time.monotonic()
+                window._switch_tab(4)
+                wait(lambda: id(unloaded) in finished)
+                results["wake_unloaded"] = ms(start)
+                window._switch_tab(0)
                 settle(3)
                 results["memory_ten"] = memory_mb()
                 start = time.monotonic()
@@ -237,6 +288,13 @@ def main() -> int:
         return 0
     sys.path.insert(0, str(ROOT))
     earlier = json.loads(args.compare.read_text())["median"] if args.compare else None
+    load = os.getloadavg()[0]
+    if load > (os.cpu_count() or 1) * 0.5:
+        print(
+            f"Warning: this computer is busy (load {load:.1f} on {os.cpu_count()} "
+            "cores); the figures will be slower and vary more than usual.",
+            file=sys.stderr,
+        )
     found = rounds(args.rounds, args.offscreen)
     summary = summarise(found)
     print(engine_description())

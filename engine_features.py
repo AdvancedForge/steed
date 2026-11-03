@@ -9,13 +9,7 @@ upgrade will).
 import json
 
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
-from PyQt6.QtWebEngineCore import (
-    QWebEnginePage,
-    QWebEngineProfile,
-    qWebEngineChromiumSecurityPatchVersion,
-    qWebEngineChromiumVersion,
-    qWebEngineVersion,
-)
+from PyQt6.QtWebEngineCore import QWebEnginePage
 
 import webengine
 
@@ -366,12 +360,7 @@ def engine_summary() -> dict:
         codecs = "replaced"
     else:
         codecs = "pypi"
-    return {
-        "qt": qWebEngineVersion(),
-        "chromium": qWebEngineChromiumVersion(),
-        "security": qWebEngineChromiumSecurityPatchVersion(),
-        "codecs": codecs,
-    }
+    return {**webengine.versions(), "codecs": codecs}
 
 
 def results(raw) -> list[dict]:
@@ -402,7 +391,7 @@ class FeatureProbe(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.profile = QWebEngineProfile(self)
+        self.profile = webengine.private_profile(self)
         self.page = QWebEnginePage(self.profile, self)
         self.done = False
         self.page.loadFinished.connect(self._loaded)

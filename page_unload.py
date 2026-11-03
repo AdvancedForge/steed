@@ -30,9 +30,7 @@ def needs_unload(page):
         and page is not None
         and page.url().scheme() in ("http", "https")
         and webengine.tab_state(page) != webengine.UNLOADED
-        and page.settings().testAttribute(
-            page.settings().WebAttribute.JavascriptEnabled
-        )
+        and webengine.option(page.settings(), "javascript")
     )
 
 

@@ -84,19 +84,102 @@ class SiteCompatibilityInterceptor(QWebEngineUrlRequestInterceptor):
                 info.setHttpHeader(b"User-Agent", user_agent)
 
 
+# Page options by Steed name; set_options(settings, javascript=False, ...).
+_WEB = QWebEngineSettings.WebAttribute
+_OPTIONS = {
+    "javascript": _WEB.JavascriptEnabled,
+    "scripts_open_windows": _WEB.JavascriptCanOpenWindows,
+    "scripts_use_clipboard": _WEB.JavascriptCanAccessClipboard,
+    "scripts_paste": _WEB.JavascriptCanPaste,
+    "local_files_read_files": _WEB.LocalContentCanAccessFileUrls,
+    "local_files_reach_web": _WEB.LocalContentCanAccessRemoteUrls,
+    "insecure_content": _WEB.AllowRunningInsecureContent,
+    "screen_capture": _WEB.ScreenCaptureEnabled,
+    "dns_prefetch": _WEB.DnsPrefetchEnabled,
+    "hyperlink_auditing": _WEB.HyperlinkAuditingEnabled,
+    "plugins": _WEB.PluginsEnabled,
+    "pdf_viewer": _WEB.PdfViewerEnabled,
+    "fullscreen": _WEB.FullScreenSupportEnabled,
+    "webgl": _WEB.WebGLEnabled,
+    "canvas_acceleration": _WEB.Accelerated2dCanvasEnabled,
+    "images": _WEB.AutoLoadImages,
+    "media_needs_gesture": _WEB.PlaybackRequiresUserGesture,
+}
+PAGE_OPTIONS = tuple(_OPTIONS)
+
+
+def set_options(settings, **values: bool) -> None:
+    for name, value in values.items():
+        settings.setAttribute(_OPTIONS[name], bool(value))
+
+
+def option(settings, name: str) -> bool:
+    return settings.testAttribute(_OPTIONS[name])
+
+
+def block_unknown_schemes(settings) -> None:
+    """Links to schemes with no handler (mailto:, apps) do nothing."""
+    settings.setUnknownUrlSchemePolicy(
+        QWebEngineSettings.UnknownUrlSchemePolicy.DisallowUnknownUrlSchemes
+    )
+
+
 def configure_web_settings(settings: QWebEngineSettings) -> None:
     """Apply the browser's existing media and rendering preferences."""
-    attributes = QWebEngineSettings.WebAttribute
-    for attribute in (
-        attributes.PluginsEnabled,
-        attributes.PdfViewerEnabled,
-        attributes.FullScreenSupportEnabled,
-        attributes.WebGLEnabled,
-        attributes.Accelerated2dCanvasEnabled,
-        attributes.AutoLoadImages,
-    ):
-        settings.setAttribute(attribute, True)
-    settings.setAttribute(attributes.PlaybackRequiresUserGesture, False)
+    set_options(
+        settings,
+        plugins=True,
+        pdf_viewer=True,
+        fullscreen=True,
+        webgl=True,
+        canvas_acceleration=True,
+        images=True,
+        media_needs_gesture=False,
+    )
+
+
+# Profiles. A private profile keeps nothing on disk; a stored one keeps its
+# cookies, storage and cache in the given folders.
+def private_profile(parent=None):
+    profile = QWebEngineProfile(parent)
+    profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+    return profile
+
+
+def stored_profile(name: str, parent, *, storage, cache, keep_session_cookies: bool):
+    profile = QWebEngineProfile(name, parent)
+    profile.setPersistentStoragePath(str(storage))
+    profile.setCachePath(str(cache))
+    profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+    set_keep_session_cookies(profile, keep_session_cookies)
+    return profile
+
+
+def set_keep_session_cookies(profile, keep: bool) -> None:
+    """Keep even session cookies across restarts (applies at the next start).
+
+    Restored tabs need them: otherwise sites relying on session cookies sign
+    you out at every restart even though their tabs come back.
+    """
+    policy = QWebEngineProfile.PersistentCookiesPolicy
+    profile.setPersistentCookiesPolicy(
+        policy.ForcePersistentCookies if keep else policy.AllowPersistentCookies
+    )
+
+
+def versions() -> dict:
+    """Qt WebEngine, the Chromium its features come from, and its security fixes."""
+    from PyQt6.QtWebEngineCore import (
+        qWebEngineChromiumSecurityPatchVersion,
+        qWebEngineChromiumVersion,
+        qWebEngineVersion,
+    )
+
+    return {
+        "qt": qWebEngineVersion(),
+        "chromium": qWebEngineChromiumVersion(),
+        "security": qWebEngineChromiumSecurityPatchVersion(),
+    }
 
 
 def browser_user_agent(engine_default: str) -> str:

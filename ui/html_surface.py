@@ -19,12 +19,12 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
-    QWebEngineProfile,
-    QWebEngineSettings,
     QWebEngineUrlRequestInterceptor,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QLabel, QPushButton, QStackedLayout, QVBoxLayout, QWidget
+
+import webengine
 
 
 class _NoNetwork(QWebEngineUrlRequestInterceptor):
@@ -97,27 +97,25 @@ class HtmlSurface(QWidget):
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.view.setAccessibleName(f"Steed {label} interface")
         self.stack.addWidget(self.view)
-        self.profile = QWebEngineProfile(self)
+        self.profile = webengine.private_profile(self)
         self.interceptor = _NoNetwork(self.profile)
         self.profile.setUrlRequestInterceptor(self.interceptor)
         self.profile.downloadRequested.connect(lambda download: download.cancel())
         self.page = _LocalPage(self.profile, self.view)
         self.view.setPage(self.page)
         settings = self.page.settings()
-        for attribute in (
-            "LocalContentCanAccessFileUrls",
-            "LocalContentCanAccessRemoteUrls",
-            "JavascriptCanOpenWindows",
-            "JavascriptCanAccessClipboard",
-            "JavascriptCanPaste",
-            "PluginsEnabled",
-            "FullScreenSupportEnabled",
-            "WebGLEnabled",
-            "PdfViewerEnabled",
-        ):
-            settings.setAttribute(
-                getattr(QWebEngineSettings.WebAttribute, attribute), False
-            )
+        webengine.set_options(
+            settings,
+            local_files_read_files=False,
+            local_files_reach_web=False,
+            scripts_open_windows=False,
+            scripts_use_clipboard=False,
+            scripts_paste=False,
+            plugins=False,
+            fullscreen=False,
+            webgl=False,
+            pdf_viewer=False,
+        )
         self.page.permissionRequested.connect(lambda permission: permission.deny())
         self.page.fileSystemAccessRequested.connect(lambda request: request.reject())
         self.page.setAudioMuted(True)
