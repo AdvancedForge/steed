@@ -13,7 +13,6 @@ from PyQt6.QtCore import QObject, Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
-    QWebEngineSettings,
     QWebEngineUrlRequestInfo,
     QWebEngineUrlRequestInterceptor,
 )
@@ -333,8 +332,7 @@ class QtBrowserBackend(QObject):
         session_id = uuid4().hex
         owns_profile = profile == "private"
         if owns_profile:
-            profile = QWebEngineProfile(self)
-            profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+            profile = webengine.private_profile(self)
             if mode == "live":
                 from webengine import configure_web_settings
 
@@ -372,26 +370,19 @@ class QtBrowserBackend(QObject):
             page.network_ready = False
         # Page overrides preserve the ordinary profile's rendering preferences.
         settings = page.settings()
-        settings.setUnknownUrlSchemePolicy(
-            QWebEngineSettings.UnknownUrlSchemePolicy.DisallowUnknownUrlSchemes
-        )
+        webengine.block_unknown_schemes(settings)
         # Current scopes authorize document retrieval, not active page execution.
-        for attribute in (
-            QWebEngineSettings.WebAttribute.JavascriptEnabled,
-            QWebEngineSettings.WebAttribute.DnsPrefetchEnabled,
-            QWebEngineSettings.WebAttribute.HyperlinkAuditingEnabled,
-            QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls,
-            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
-            QWebEngineSettings.WebAttribute.PluginsEnabled,
-            QWebEngineSettings.WebAttribute.PdfViewerEnabled,
-        ):
-            settings.setAttribute(attribute, False)
-
-        if mode == "live":
-            settings.setAttribute(
-                QWebEngineSettings.WebAttribute.JavascriptEnabled, True
-            )
-        else:
+        webengine.set_options(
+            settings,
+            javascript=mode == "live",
+            dns_prefetch=False,
+            hyperlink_auditing=False,
+            local_files_read_files=False,
+            local_files_reach_web=False,
+            plugins=False,
+            pdf_viewer=False,
+        )
+        if mode != "live":
             guard = redirect_guard(grant)
             if guard is not None:
                 page.scripts().insert(guard)
@@ -1442,9 +1433,7 @@ class QtBrowserBackend(QObject):
             session.grant.check(
                 "upload", source=source, url=session.page.url().toString()
             )
-            if session.page.settings().testAttribute(
-                QWebEngineSettings.WebAttribute.JavascriptEnabled
-            ):
+            if webengine.option(session.page.settings(), "javascript"):
                 raise PageInspectionError("scripted_upload_unavailable")
 
         validate()
@@ -1611,9 +1600,7 @@ class QtBrowserBackend(QObject):
             # Script handlers run after DOM preflight and can alter sensitive
             # controls before native serialization. The one-use ticket binds
             # the route/method, not the request body. Keep this path scriptless.
-            if session.page.settings().testAttribute(
-                QWebEngineSettings.WebAttribute.JavascriptEnabled
-            ):
+            if webengine.option(session.page.settings(), "javascript"):
                 raise PageInspectionError("scripted_submission_unavailable")
 
         validate()

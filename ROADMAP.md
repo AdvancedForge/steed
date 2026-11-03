@@ -12,6 +12,14 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Engine boundary finished, more timings — November 3, 2026.** Page
+settings, private and stored profiles, the cookie policy and engine versions now
+go through `webengine.py` too; the 14 files still importing Qt WebEngine are
+page/view subclasses, scheme handlers, interceptors and permission requests.
+`tests/timing_check.py` adds scrolling frame times, waking a frozen tab and
+reloading an unloaded one, and warns on a busy computer. Open: a quiet,
+on-screen timing run (this session's machine had a load average near 15).
+
 **Engine & features page and codec warning — November 3, 2026.**
 `steed:features` (View → Engine & Features…) shows the engine and Chromium
 versions, the codec build state, and 44 web features tested in a real https

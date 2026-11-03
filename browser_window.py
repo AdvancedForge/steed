@@ -14,7 +14,6 @@ from PyQt6.QtGui import QAction, QKeySequence, QPalette
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
     QWebEnginePage,
-    QWebEngineSettings,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
@@ -200,15 +199,14 @@ class BrowserTab(QWebEngineView):
         self.setPage(page)
         settings = self.settings()
         configure_web_settings(settings)
-        settings.setAttribute(
-            QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, False
-        )
         # Local pages must not be able to read remote content. Nothing in the
         # browser needs it: the bundled codec fixture is self-contained.
-        settings.setAttribute(
-            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False
+        webengine.set_options(
+            settings,
+            insecure_content=False,
+            local_files_reach_web=False,
+            screen_capture=True,
         )
-        settings.setAttribute(settings.WebAttribute.ScreenCaptureEnabled, True)
 
         if initial_qurl is not None and initial_qurl.isValid():
             self.setUrl(initial_qurl)

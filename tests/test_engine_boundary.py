@@ -29,7 +29,6 @@ DIRECT_ENGINE_FILES = {
     "engine_features.py",
     "profile_manager.py",
     "services/browser_backend.py",
-    "services/engine_capabilities.py",
     "services/permission_service.py",
     "services/start_pages.py",
     "services/task_network.py",
@@ -50,6 +49,10 @@ WRAPPED = {
     "WebAction",
     "FindFlag",
     "forPage",
+    "WebAttribute",
+    "HttpCacheType",
+    "PersistentCookiesPolicy",
+    "UnknownUrlSchemePolicy",
 }
 
 
@@ -214,6 +217,32 @@ class ScriptAndActionTests(unittest.TestCase):
         self.assertIsNone(webengine.view_for(None))
         for action in webengine.PAGE_ACTIONS:
             self.assertIsNotNone(webengine.menu_action(self.page, action))
+
+    def test_options_profiles_and_versions(self):
+        settings = self.page.settings()
+        webengine.set_options(settings, javascript=False, webgl=False)
+        self.assertFalse(webengine.option(settings, "javascript"))
+        webengine.set_options(settings, javascript=True)
+        self.assertTrue(webengine.option(settings, "javascript"))
+        for name in webengine.PAGE_OPTIONS:
+            webengine.option(settings, name)
+        private = webengine.private_profile()
+        self.assertTrue(private.isOffTheRecord())
+        self.assertEqual(
+            private.httpCacheType(), QWebEngineProfile.HttpCacheType.MemoryHttpCache
+        )
+        policy = QWebEngineProfile.PersistentCookiesPolicy
+        webengine.set_keep_session_cookies(self.profile, True)
+        # Off-the-record profiles keep nothing; the setting is still recorded
+        # for stored profiles, which tests/test_navigation_and_privacy checks.
+        self.assertIn(
+            self.profile.persistentCookiesPolicy(),
+            (policy.ForcePersistentCookies, policy.NoPersistentCookies),
+        )
+        found = webengine.versions()
+        self.assertEqual(set(found), {"qt", "chromium", "security"})
+        self.assertRegex(found["chromium"], r"^\d+\.")
+        del private
 
 
 if __name__ == "__main__":
