@@ -959,14 +959,28 @@ page, 60 ms per new tab, 8 ms per switch, 23 ms typing, 386 MB with one tab,
 
 `webengine.py` is Steed's boundary with Qt WebEngine: other code asks for
 things in Steed's terms, so a later engine change, or a Qt API change, is a
-contained edit there. Tab lifecycle is the first part moved behind it:
-`webengine.tab_state(page)` returns `"active"`, `"frozen"` or `"unloaded"`, with
-`set_tab_state`, `wake`, `lightest_state` (the furthest the engine allows) and
-`deeper`. `tests/test_engine_boundary.py` lists the files that still import Qt
-WebEngine directly; a new file fails the test unless it uses `webengine.py` or
-is added to the list on purpose, and a file that stops using the engine must be
-removed from it. Move further pieces (script running, settings, permissions,
-profiles) behind the boundary alongside other work in those files.
+contained edit there. It covers:
+
+- **Tab lifecycle:** `tab_state(page)` returns `"active"`, `"frozen"` or
+  `"unloaded"`, with `set_tab_state`, `wake`, `lightest_state` (the furthest the
+  engine allows) and `deeper`.
+- **Scripts:** `run_script(page_or_frame, source, callback, world=...)` in
+  `PAGE_WORLD` (the page's own JavaScript) or `STEED_WORLD` (same document,
+  separate globals the page cannot see); `page_script` and `add_profile_script`
+  for scripts every page runs at `"start"`, `"ready"` or `"loaded"`.
+- **Page actions:** `trigger(page, "back")` and the other `PAGE_ACTIONS`,
+  `menu_action`, `find_text`, `view_for(page)`.
+- **steed:// answers:** `fail_request(job, "denied")` and the other reasons.
+- **Type hints:** `webengine.Page` and `webengine.Profile`.
+
+`tests/test_engine_boundary.py` lists the 14 files that still import Qt
+WebEngine directly (page and profile classes, URL schemes, interceptors,
+permissions, the DevTools and HTML surfaces). A new file fails the test unless
+it uses `webengine.py` or is added to the list on purpose; a file that stops
+using the engine must be removed from it. The engine names that have a helper
+(lifecycle states, script worlds, injection points, page actions, find flags)
+may appear only in `webengine.py`. Settings, permissions and profile creation
+are the next pieces to move, alongside other work in those files.
 
 ## Engine and storage internals
 

@@ -14,9 +14,9 @@ from urllib.parse import parse_qs
 from PyQt6 import sip
 from PyQt6.QtCore import QBuffer, QIODevice, QObject, QUrl
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
-from PyQt6.QtWebEngineCore import QWebEngineUrlRequestJob
 
 import access_levels
+import webengine
 
 ENDPOINTS = {
     "fetch": "web",
@@ -73,7 +73,7 @@ class PageApi(QObject):
             or initiator.host() != url.host()
             or not self._custom_page(url.host())
         ):
-            job.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
+            webengine.fail_request(job, "denied")
             return
         capability = ENDPOINTS[name]
         policy = access_levels.values(self.config, "pages")[capability]

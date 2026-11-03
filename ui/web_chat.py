@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import webengine
 from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
 
 WEB_CHATS = {
@@ -317,12 +318,11 @@ class WebChatPromptDialog(HtmlSettingsDialog):
         self.hide()
         self._handoff_pending = True
         self.target.setFocus()
-        from PyQt6.QtWebEngineCore import QWebEngineScript
-
-        self.target_page.runJavaScript(
+        webengine.run_script(
+            self.target_page,
             FOCUS_COMPOSER,
-            QWebEngineScript.ScriptWorldId.ApplicationWorld,
             self._focused,
+            world=webengine.STEED_WORLD,
         )
 
     def valid_target(self):
@@ -349,8 +349,6 @@ class WebChatPromptDialog(HtmlSettingsDialog):
             )
             self.show()
             return
-        from PyQt6.QtWebEngineCore import QWebEnginePage
-
         QApplication.clipboard().setText(self.preview.toPlainText())
-        self.target_page.triggerAction(QWebEnginePage.WebAction.Paste)
+        webengine.trigger(self.target_page, "paste")
         self.accept()

@@ -2,8 +2,8 @@
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkCookie
-from PyQt6.QtWebEngineCore import QWebEngineProfile
 
+import webengine
 from cookie_sharing import delete_exact
 
 
@@ -27,7 +27,7 @@ class CookieManager(QObject):
     cookies_loaded = pyqtSignal(list)  # Emitted when cookies are loaded
 
     def __init__(
-        self, profile: QWebEngineProfile, parent: QObject | None = None, snapshot=None
+        self, profile: webengine.Profile, parent: QObject | None = None, snapshot=None
     ) -> None:
         super().__init__(parent)
         self.profile = profile

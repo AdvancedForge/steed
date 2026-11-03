@@ -6,6 +6,8 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
+import webengine
+
 SIDES = ("right", "bottom", "window")
 DEFAULT_SIDE = "right"
 
@@ -98,7 +100,7 @@ class DevToolsHost(QObject):
     def inspect_element(self, tab) -> None:
         """Open on the element under the last page context menu."""
         self.open(tab)
-        tab.page().triggerAction(QWebEnginePage.WebAction.InspectElement)
+        webengine.trigger(tab.page(), "inspect_element")
 
     def close(self, tab) -> None:
         view = self.views.pop(tab, None)

@@ -7,7 +7,6 @@ closed, unloaded to save memory or left on a profile switch signed it out.
 """
 
 from PyQt6.QtCore import QEventLoop, QTimer
-from PyQt6.QtWebEngineCore import QWebEngineScript
 
 import webengine
 
@@ -61,9 +60,9 @@ def run_unload_handlers(pages, done, timeout_ms=UNLOAD_TIMEOUT_MS):
         if webengine.tab_state(page) == webengine.FROZEN:
             # A frozen page runs no script; wake it so the handlers can run.
             webengine.wake(page)
-        page.runJavaScript(
+        webengine.run_script(
+            page,
             UNLOAD_SCRIPT,
-            QWebEngineScript.ScriptWorldId.MainWorld.value,
             lambda _, key=key: answered(key),
         )
     QTimer.singleShot(timeout_ms, finish)

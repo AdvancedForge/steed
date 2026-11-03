@@ -215,7 +215,7 @@ class BrowserTab(QWebEngineView):
 
     def contextMenuEvent(self, event):
         menu = self.createStandardContextMenu()
-        native = self.page().action(QWebEnginePage.WebAction.InspectElement)
+        native = webengine.menu_action(self.page(), "inspect_element")
         if native in menu.actions():
             menu.removeAction(native)
         if self.browser_window is not None and not self.workspace_name:

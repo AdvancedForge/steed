@@ -6,8 +6,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from PyQt6.QtCore import QObject, QUrl, pyqtSignal
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 
+import webengine
 from utils import load_json, save_json
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class DownloadManager(QObject):
         self.handle(request, name)
 
     def handle(self, request, profile):
-        view = QWebEngineView.forPage(request.page()) if request.page() else None
+        view = webengine.view_for(request.page())
         parent = view.window() if view else None
         suggested = Path(request.suggestedFileName()).name or "download"
         try:

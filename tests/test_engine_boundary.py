@@ -7,11 +7,16 @@ on purpose.
 """
 
 import ast
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from PyQt6.QtWebEngineCore import QWebEnginePage
+from PyQt6 import sip
+from PyQt6.QtCore import QUrl
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from qt_test_support import WAIT_SECONDS, application
 
 import webengine
 
@@ -20,30 +25,31 @@ SKIP = {".venv", ".git", "tests", "__pycache__", ".claude", "examples"}
 DIRECT_ENGINE_FILES = {
     "ad_blocker.py",
     "browser_window.py",
-    "cookie_manager.py",
     "cookie_snapshot.py",
-    "download_manager.py",
-    "page_unload.py",
-    "password_service.py",
     "profile_manager.py",
     "services/browser_backend.py",
     "services/engine_capabilities.py",
-    "services/navigation_service.py",
-    "services/page_api.py",
-    "services/page_inspector.py",
     "services/permission_service.py",
     "services/start_pages.py",
     "services/task_network.py",
     "ui/app_panel.py",
-    "ui/chatbot_relay.py",
     "ui/devtools.py",
     "ui/html_dialog.py",
     "ui/html_surface.py",
     "ui/web_auth.py",
-    "ui/web_chat.py",
 }
 # Engine names with a Steed equivalent in webengine.py.
-WRAPPED = {"LifecycleState", "lifecycleState", "setLifecycleState", "recommendedState"}
+WRAPPED = {
+    "LifecycleState",
+    "lifecycleState",
+    "setLifecycleState",
+    "recommendedState",
+    "ScriptWorldId",
+    "InjectionPoint",
+    "WebAction",
+    "FindFlag",
+    "forPage",
+}
 
 
 def sources():
@@ -92,7 +98,7 @@ class EngineBoundaryTests(unittest.TestCase):
             for node in ast.walk(tree):
                 if isinstance(node, ast.Attribute) and node.attr in WRAPPED:
                     uses.append(f"{name}:{node.lineno} {node.attr}")
-        self.assertEqual(uses, [], "Use webengine.tab_state() and its helpers")
+        self.assertEqual(uses, [], "Use the matching helper in webengine.py")
 
 
 class FakePage:
@@ -138,6 +144,73 @@ class TabStateTests(unittest.TestCase):
         self.assertTrue(webengine.deeper("frozen", "active"))
         self.assertFalse(webengine.deeper("active", "frozen"))
         self.assertFalse(webengine.deeper("frozen", "frozen"))
+
+
+class ScriptAndActionTests(unittest.TestCase):
+    """The helpers against a real page: worlds stay apart, actions run."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = application()
+
+    def setUp(self):
+        self.profile = QWebEngineProfile()
+        self.view = QWebEngineView(self.profile)
+        self.page = self.view.page()
+        # Find in page only counts matches in a shown view.
+        self.view.resize(400, 200)
+        self.view.show()
+        loaded = []
+        self.page.loadFinished.connect(loaded.append)
+        self.page.setHtml("<p>needle haystack needle</p>", QUrl("https://example.org/"))
+        self.wait(lambda: loaded)
+
+    def tearDown(self):
+        # Pages go before their profile.
+        del self.page
+        sip.delete(self.view)
+        del self.profile
+
+    def wait(self, predicate):
+        end = time.monotonic() + WAIT_SECONDS
+        while time.monotonic() < end:
+            self.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        self.fail("Timed out")
+
+    def result(self, source, world=webengine.PAGE_WORLD):
+        out = []
+        webengine.run_script(self.page, source, out.append, world=world)
+        self.wait(lambda: out)
+        return out[0]
+
+    def test_steed_world_is_hidden_from_the_page(self):
+        self.result("window.mark = 'steed'; true", webengine.STEED_WORLD)
+        self.assertEqual(self.result("typeof window.mark"), "undefined")
+        self.assertEqual(self.result("window.mark", webengine.STEED_WORLD), "steed")
+        # Both worlds see the same document.
+        self.assertEqual(self.result("document.querySelector('p') !== null"), True)
+        webengine.run_script(self.page, "document.title = 'no callback'")
+        self.wait(lambda: self.page.title() == "no callback")
+
+    def test_profile_scripts_find_and_view(self):
+        webengine.add_profile_script(
+            self.profile, "test-mark", "document.documentElement.dataset.m = 1"
+        )
+        self.assertEqual(
+            [s.name() for s in self.profile.scripts().find("test-mark")],
+            ["test-mark"],
+        )
+        found = []
+        webengine.find_text(self.page, "needle", callback=found.append)
+        self.wait(lambda: found)
+        self.assertEqual(found[0].numberOfMatches(), 2)
+        self.assertIs(webengine.view_for(self.page), self.view)
+        self.assertIsNone(webengine.view_for(None))
+        for action in webengine.PAGE_ACTIONS:
+            self.assertIsNotNone(webengine.menu_action(self.page, action))
 
 
 if __name__ == "__main__":

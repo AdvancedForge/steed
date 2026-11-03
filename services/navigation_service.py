@@ -3,8 +3,8 @@
 from urllib.parse import quote
 
 from PyQt6.QtCore import QObject, QUrl
-from PyQt6.QtWebEngineCore import QWebEnginePage
 
+import webengine
 from services.command_broker import require_owner_thread
 
 ZOOM_LEVELS = (
@@ -53,33 +53,25 @@ class NavigationService(QObject):
 
     def action(self, target, operation: str):
         require_owner_thread(self)
-        actions = {
-            "back": QWebEnginePage.WebAction.Back,
-            "forward": QWebEnginePage.WebAction.Forward,
-            "reload": QWebEnginePage.WebAction.Reload,
-            "stop": QWebEnginePage.WebAction.Stop,
-        }
-        if operation not in actions:
+        if operation not in ("back", "forward", "reload", "stop"):
             raise ValueError("Unsupported navigation action")
         method = getattr(target, operation, None)
         if callable(method):
             method()
         else:
-            target.triggerAction(actions[operation])
+            webengine.trigger(target, operation)
 
     def find(
         self, page, text: str, *, backward=False, case_sensitive=False, callback=None
     ):
         require_owner_thread(self)
-        flags = QWebEnginePage.FindFlag(0)
-        if backward:
-            flags |= QWebEnginePage.FindFlag.FindBackward
-        if case_sensitive:
-            flags |= QWebEnginePage.FindFlag.FindCaseSensitively
-        if callback is None:
-            page.findText(text, flags)
-        else:
-            page.findText(text, flags, callback)
+        webengine.find_text(
+            page,
+            text,
+            backward=backward,
+            case_sensitive=case_sensitive,
+            callback=callback,
+        )
 
     def zoom(self, target, direction: int = 0) -> float:
         require_owner_thread(self)

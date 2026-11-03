@@ -10,6 +10,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 
+import webengine
 from services.task_input import TaskInput
 
 
@@ -88,7 +89,7 @@ class TaskNetwork(QObject):
         self.input.cancel("native_input_unavailable")
         if not self.live and not sip.isdeleted(self.page):
             self.page.network_ready = False
-            self.page.triggerAction(QWebEnginePage.WebAction.Stop)
+            webengine.trigger(self.page, "stop")
         self.timer.stop()
         if not self.ready.done():
             self.ready.set_exception(TaskNetworkError())

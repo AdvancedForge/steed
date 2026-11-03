@@ -19,10 +19,12 @@ detection); `PyQt6-WebEngine-Qt6` is pinned to the built version.
 `tests/timing_check.py` reports startup, first page, new tab, tab switch,
 typing, memory (1 and 10 tabs) and shutdown, with `--save`/`--compare`.
 `webengine.py` is now the engine boundary: tab lifecycle uses Steed's own
-states there, and `tests/test_engine_boundary.py` keeps the 23 files that still
-use Qt WebEngine directly from growing. Open: the build itself (waits on the
-system build packages), a codec-build timing comparison, and moving script
-running, settings and permissions behind the boundary.
+states there, as do script running, page actions, find, steed:// failures and
+view lookup; 9 more files no longer import Qt WebEngine, and
+`tests/test_engine_boundary.py` keeps the remaining 14 from growing. Open: the
+build itself (waits on the system build packages), a codec-build timing
+comparison, and moving settings, permissions and profile creation behind the
+boundary.
 
 **Site permission prompts no longer hang — November 3, 2026.** Asking about a
 website permission (clipboard, camera, notifications, screen sharing) froze
