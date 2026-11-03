@@ -359,6 +359,13 @@ windows using that profile. Incognito suggestions stay in memory and do not
 include ordinary profile history. Local files and URLs containing embedded
 usernames/passwords are excluded.
 
+**Search suggestions** (Settings → General, on by default): under "Search … for"
+the bar shows up to four suggestions from your search engine (DuckDuckGo,
+Google, Bing or Ecosia; other engines get none). Steed sends what you type to
+that engine 150 ms after you pause, without cookies or profile identity, and
+never sends text that looks like a web address. Incognito windows never send
+anything. Answers are cached for repeated text in the session.
+
 Use **Cookies → Clear Browsing History...** to clear the current profile's saved
 visits and suggestions. Subsequent visits start a new history.
 

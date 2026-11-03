@@ -26,12 +26,13 @@ KIND_ROLE = Qt.ItemDataRole.UserRole + 2
 KEY_ROLE = Qt.ItemDataRole.UserRole + 3
 KIND_ICONS = {
     "search": "search",
+    "suggest": "search",
     "go": "go",
     "tab": "tab",
     "bookmark": "star",
     "history": "history",
 }
-LIMITS = {"tab": 3, "bookmark": 4, "history": 8}
+LIMITS = {"suggest": 4, "tab": 3, "bookmark": 4, "history": 8}
 MAX_SUGGESTIONS = 10
 
 
@@ -104,7 +105,7 @@ class SuggestionDelegate(QStyledItemDelegate):
         url = index.data(Qt.ItemDataRole.UserRole) or ""
         if kind == "tab":
             url = "Switch to tab · " + url
-        elif kind in ("search", "go"):
+        elif kind in ("search", "go", "suggest"):
             url = index.data(Qt.ItemDataRole.ToolTipRole) or ""
         painter.setPen(QColor(colors["ink"]))
         painter.drawText(
@@ -320,6 +321,21 @@ class AddressBar(QWidget):
     def set_search_name(self, name: str) -> None:
         self.search_name = name or "the web"
 
+    def set_search_suggestions(self, search_url: str, enabled: bool) -> None:
+        """Ask the search engine for suggestions while typing, when enabled."""
+        self.search_url = search_url
+        self.remote_enabled = bool(enabled)
+        if not enabled and hasattr(self, "remote"):
+            self.remote.cancel()
+
+    def _remote_ready(self, query, found):
+        if (
+            self.remote_enabled
+            and self.address_input.hasFocus()
+            and self.address_input.text().strip() == query
+        ):
+            self._suggest(query)
+
     def _suggest(self, text: str) -> None:
         """Rank the typed action, open tabs, bookmarks and history."""
         text = text.strip()
@@ -341,6 +357,19 @@ class AddressBar(QWidget):
             add("go", text, text, hint="Go to this address")
         else:
             add("search", f"Search {self.search_name} for “{text}”", text)
+            if getattr(self, "remote_enabled", False):
+                if not hasattr(self, "remote"):
+                    from search_suggestions import SearchSuggestions
+
+                    self.remote = SearchSuggestions(self)
+                    self.remote.ready.connect(self._remote_ready)
+                for suggestion in self.remote.request(text, self.search_url):
+                    add(
+                        "suggest",
+                        suggestion,
+                        suggestion,
+                        hint=f"{self.search_name} suggestion",
+                    )
         for title, url, key in self.tab_source():
             if url != self.address_input.page_url and matches(words, title, url):
                 add("tab", title or url, url, key)

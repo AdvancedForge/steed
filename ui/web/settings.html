@@ -25,6 +25,7 @@
           <div class="settings-card">
             <label for="home_page">Home page</label><input id="home_page" data-pref="home_page" type="text" maxlength="4096" spellcheck="false" autocomplete="off"><p class="help">Opened by the Home button. Use steed:newtab for your customizable start page.</p>
             <label for="search_engine">Search URL prefix</label><input id="search_engine" data-pref="search_engine" type="text" maxlength="4096" spellcheck="false" autocomplete="off"><p class="help">Steed adds your search text to this address. For example, https://www.google.com/search?q=</p>
+            <label class="toggle-row" for="search_suggestions"><span><strong>Search suggestions</strong><small>Show suggestions from your search engine while you type in the address bar. What you type (never web addresses) is sent to that engine, without cookies. Off in incognito. Works with DuckDuckGo, Google, Bing and Ecosia.</small></span><input id="search_suggestions" data-pref="search_suggestions" type="checkbox" role="switch"></label>
           </div>
           <details class="settings-card advanced"><summary>Website compatibility</summary><div>
             <label for="user_agent_override">User-Agent override</label><input id="user_agent_override" data-pref="user_agent_override" type="text" maxlength="4096" placeholder="Leave blank to use the engine default" spellcheck="false" autocomplete="off">
