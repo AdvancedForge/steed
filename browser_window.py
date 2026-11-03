@@ -310,6 +310,7 @@ class BrowserWindow(QMainWindow):
         self._palette = None
         self.agent_sidebar = None
         self.data_panels_dock = None
+        self.app_panel = None
         self.agent_setup_dialog = None
         self.settings_dialog = None
         self._menu_anchor = None
@@ -612,6 +613,10 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         agents_menu.addAction(self.agent_sidebar_action)
+        self.app_panel_action = QAction("App Panel", self)
+        self.app_panel_action.setCheckable(True)
+        self.app_panel_action.triggered.connect(self._toggle_app_panel)
+        view_menu.addAction(self.app_panel_action)
         self.data_panels_action = QAction("Data Panels", self)
         self.data_panels_action.setCheckable(True)
         self.data_panels_action.setEnabled(not self.profile_manager.is_search_profile())
@@ -1219,6 +1224,31 @@ class BrowserWindow(QMainWindow):
 
         if self.agent_sidebar is not None:
             self.agent_sidebar.set_private(profile_name == "search")
+
+    def _ensure_app_panel(self):
+        if self.app_panel is None:
+            from ui.app_panel import AppPanelDock
+
+            self.app_panel = AppPanelDock(self)
+            self.addDockWidget(self._sidebar_dock_area(), self.app_panel)
+            self.app_panel.visibilityChanged.connect(self.app_panel_action.setChecked)
+        return self.app_panel
+
+    def _toggle_app_panel(self, visible):
+        if self._closing:
+            return
+        if visible:
+            panel = self._ensure_app_panel()
+            panel.refresh()
+            panel.show()
+            panel.raise_()
+        elif self.app_panel is not None:
+            self.app_panel.hide()
+
+    def _show_panel_app(self, identity):
+        """Open a panel app in this window's App Panel."""
+        if not self._closing:
+            self._ensure_app_panel().show_app(identity)
 
     def _toggle_data_panels(self, visible):
         if self._closing or self.profile_manager.is_search_profile():
@@ -3177,6 +3207,8 @@ class BrowserWindow(QMainWindow):
         if self.data_panels_dock is not None:
             self.data_panels_dock.refresh()
             self.data_panels_dock.dispose()
+        if self.app_panel is not None:
+            self.app_panel.dispose()
         if self.web_chat_dock is not None:
             self.web_chat_dock.dispose()
         if self.file_library_dialog is not None:
@@ -3563,6 +3595,10 @@ class BrowserWindow(QMainWindow):
             from ui.passwords_page import PasswordsPage
 
             controller = panel = PasswordsPage(self)
+        elif name == "apps":
+            from ui.apps_page import AppsPage
+
+            controller = panel = AppsPage(self)
         else:
             from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
             from ui.management_pages import controller as create_controller

@@ -158,6 +158,25 @@ Open **General → Customize New Tab**, or click Customize on a built-in page:
   Always. Refused requests answer `{"error": "denied"}`. Only the start page
   itself can call these addresses; websites cannot.
 
+### Panel apps (`steed:apps`)
+
+Small apps of your own — notes, a feed reader, a tracker, a dashboard — shown in
+the **App Panel** beside the page (**View → App Panel**). Each is one HTML page
+with its own CSS and JavaScript (up to 256 KB), kept per profile (up to 12).
+
+- **steed:apps** (or **Manage…** in the panel): **New app** starts from an
+  example with a clock, notes and your open tabs; edit the HTML, **Save** or
+  **Save and open**; **Import HTML…** adds a file; **Delete** removes an app's
+  HTML (data it stored stays in the profile's site data).
+- Each app runs at its own `steed://app-<id>/` address, so apps keep separate
+  local storage. They cannot load web resources directly; like custom New Tab
+  pages they ask Steed with `fetch("steed://" + location.host + "/api/fetch?url=…")`
+  (no cookies), `/api/tabs`, `/api/history` and `/api/bookmarks`, under the
+  Local pages access settings below. An Ask answer applies to that app only.
+- Links and pop-ups an app opens go to normal tabs; the panel itself stays on
+  its app. Websites cannot load or call app addresses. Panel apps are off in
+  incognito, and the panel follows the window's profile.
+
 ### Access & Permissions (`steed:access`)
 
 One place to choose how much agents and your own pages may do. Each area has
@@ -172,7 +191,7 @@ each Never, Ask or Always (changing one shows the area as Custom).
   before. Settings apply to new requests. YOLO mode (Agents menu, this run only)
   still approves everything except capabilities set to Never.
 - **Local pages** (default Nothing): web data, open tabs, history and bookmarks
-  for your custom New Tab and Welcome pages, as above.
+  for your custom New Tab and Welcome pages and panel apps, as above.
 
 Ctrl+D saves an HTTP(S) page with an editable name and folder. **Tabs → Manage
 Bookmarks** searches names/addresses/folders, filters by folder, and edits names,

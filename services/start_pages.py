@@ -44,6 +44,7 @@ WORKSPACES = (
     "style",
     "memory",
     "access",
+    "apps",
     "cookies",
     "downloads",
     "bookmarks",
@@ -114,6 +115,37 @@ def internal_url(text):
         return QUrl(aliases[text])
     url = QUrl(text)
     return url if page_name(url) is not None or workspace_name(url.toString()) else None
+
+
+MAX_APPS = 12
+APP_HOST = re.compile(r"app-([a-f0-9]{12})")
+
+
+def app_id(url):
+    """The panel app id for steed://app-<id>/, or None."""
+    match = APP_HOST.fullmatch(url.host()) if url.scheme() == "steed" else None
+    if (
+        match
+        and url.path() in ("", "/")
+        and not url.userInfo()
+        and url.port() == -1
+        and not url.hasQuery()
+        and not url.hasFragment()
+    ):
+        return match.group(1)
+    return None
+
+
+def clean_app(item):
+    """A stored panel app, or ValueError."""
+    if not isinstance(item, dict):
+        raise ValueError("Invalid app")
+    identity, name = item.get("id"), " ".join(str(item.get("name", "")).split())
+    if not isinstance(identity, str) or not re.fullmatch(r"[a-f0-9]{12}", identity):
+        raise ValueError("Invalid app")
+    if not 1 <= len(name) <= 60 or not name.isprintable():
+        raise ValueError("Give the app a name of 1 to 60 characters.")
+    return {"id": identity, "name": name, "html": clean_html(item.get("html", ""))}
 
 
 def page_name(url):
@@ -278,12 +310,25 @@ class StartPages(QObject):
                 welcome_html = clean_html(welcome_html)
             except ValueError:
                 welcome_html = ""
+            apps = []
+            for item in (
+                raw.get("apps", [])[:MAX_APPS]
+                if isinstance(raw.get("apps"), list)
+                else []
+            ):
+                try:
+                    app = clean_app(item)
+                except ValueError:
+                    continue
+                if all(other["id"] != app["id"] for other in apps):
+                    apps.append(app)
             self._states[profile] = {
                 "version": 1,
                 "settings": settings,
                 "bookmarks": bookmarks,
                 "html": html,
                 "welcome_html": welcome_html,
+                "apps": apps,
             }
         return deepcopy(self._states[profile])
 
@@ -307,6 +352,52 @@ class StartPages(QObject):
             state["welcome_html"] = clean_html(welcome_html)
         self.news.forget(profile)
         self._commit(profile, state)
+
+    def save_app(self, profile, name, html, identity=None):
+        """Add a panel app, or replace one by id; returns its id."""
+        if profile == "search":
+            raise ValueError("Incognito windows have no panel apps.")
+        state = self.state(profile)
+        apps = state["apps"]
+        if identity is None:
+            if len(apps) >= MAX_APPS:
+                raise ValueError(f"Keep at most {MAX_APPS} panel apps.")
+            identity = uuid4().hex[:12]
+            apps.append(clean_app({"id": identity, "name": name, "html": html}))
+        else:
+            index = next((i for i, a in enumerate(apps) if a["id"] == identity), None)
+            if index is None:
+                raise ValueError("That app no longer exists.")
+            apps[index] = clean_app({"id": identity, "name": name, "html": html})
+        self._commit(profile, state)
+        return identity
+
+    def remove_app(self, profile, identity):
+        state = self.state(profile)
+        state["apps"] = [a for a in state["apps"] if a["id"] != identity]
+        self._commit(profile, state)
+
+    def app(self, profile, identity):
+        return next(
+            (a for a in self.state(profile).get("apps", []) if a["id"] == identity),
+            None,
+        )
+
+    def render_app(self, profile, identity):
+        app = self.app(profile, identity)
+        if app is None:
+            raise ValueError("Unknown app")
+        styles = self.registry.page_style
+        root_css = ROOT_CSS.read_text(encoding="utf-8") + styles.css(profile)
+        return (
+            '<!doctype html><html data-theme="'
+            + ("dark" if styles.dark(profile) else "light")
+            + '"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; style-src &apos;unsafe-inline&apos;; script-src &apos;unsafe-inline&apos;; connect-src &apos;self&apos;; img-src data: blob:; form-action http: https:; base-uri &apos;none&apos;; object-src &apos;none&apos;">'
+            + "<style>"
+            + root_css
+            + "</style></head>"
+            + app["html"]
+        ).encode()
 
     def add_bookmark(self, profile, url, title, *, folder=None):
         state = self.state(profile)
@@ -545,6 +636,22 @@ class StartPageHandler(QWebEngineUrlSchemeHandler):
         endpoint = api_endpoint(job.requestUrl())
         if endpoint is not None:
             self.api.handle(job, endpoint)
+            return
+        app = app_id(job.requestUrl())
+        if app is not None:
+            # Panel apps load only directly (never from another page).
+            if bytes(job.requestMethod()) != b"GET" or not job.initiator().isEmpty():
+                job.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
+                return
+            try:
+                data = self.pages.render_app(self.profile_name, app)
+            except (OSError, ValueError):
+                job.fail(QWebEngineUrlRequestJob.Error.RequestFailed)
+                return
+            buffer = QBuffer(job)
+            buffer.setData(data)
+            buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+            job.reply(b"text/html", buffer)
             return
         name = page_name(job.requestUrl())
         initiator = job.initiator()

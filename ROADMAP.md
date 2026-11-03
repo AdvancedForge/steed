@@ -12,6 +12,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Panel apps — November 3, 2026.** `steed:apps` creates, edits and imports
+per-profile HTML/JavaScript apps shown in a new App Panel dock. Each runs at its
+own `steed://app-<id>/` origin (separate storage), uses the same data API as the
+New Tab page under the Local pages access settings (Ask answers are per app),
+opens links in tabs, and cannot be loaded by websites. Open: agent-proposed
+panel apps through the reviewed start-page proposal flow.
+
 **Built-in password manager — November 1, 2026.** KeePassXC is replaced by a
 per-profile encrypted vault (SecretBox; key in the Secret Service keyring, or an
 Argon2id master password without one). Steed offers to save or update logins

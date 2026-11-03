@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Steed · Apps</title><style nonce="{{NONCE}}">{{STYLE}}{{EXTRA_STYLE}}</style></head>
+<body><main class="apps-shell">
+<header><span class="eyebrow">STEED:APPS</span><h1>Panel apps</h1><p>Your own small apps for the App Panel (View → App Panel): one HTML page each, with its own scripts and storage.</p></header>
+<div id="error" role="alert" hidden></div><div id="notice" role="status" hidden></div>
+<section id="private" hidden><p>Panel apps are not available in incognito windows.</p></section>
+<div id="main">
+<section><div class="row"><button id="new" class="primary">New app</button><button id="import">Import HTML…</button></div><div id="list"></div><p id="empty" class="hint" hidden>No apps yet. New app starts from a small example with a clock, notes and your open tabs.</p></section>
+<section id="editor" hidden><h2 id="editor-title">New app</h2>
+<label>Name<input id="name" maxlength="60" autocomplete="off"></label>
+<label>HTML, CSS and JavaScript (up to 256 KB)<textarea id="html" rows="18" spellcheck="false"></textarea></label>
+<div class="row"><button id="cancel">Cancel</button><span class="grow"></span><button id="save">Save</button><button id="save-open" class="primary">Save and open</button></div></section>
+<section><h2>What apps can do</h2><p class="hint">Apps cannot load anything from the web directly. They ask Steed with <code>fetch("steed://" + location.host + "/api/fetch?url=…")</code> for web data (no cookies), and <code>/api/tabs</code>, <code>/api/history</code> and <code>/api/bookmarks</code>. Each follows Agents → Access &amp; Permissions → Local pages (Never by default). Links open in normal tabs.</p></section>
+</div>
+</main><script nonce="{{NONCE}}">{{CHANNEL}}</script><script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script></body></html>

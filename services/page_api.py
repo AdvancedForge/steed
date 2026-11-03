@@ -8,6 +8,7 @@ may call these addresses; websites cannot reach the steed: scheme.
 """
 
 import json
+import re
 from urllib.parse import parse_qs
 
 from PyQt6 import sip
@@ -28,11 +29,17 @@ FETCH_TIMEOUT_MS = 15000
 HISTORY_LIMIT = 200
 
 
+APP_HOST = re.compile(r"app-[a-f0-9]{12}")
+
+
 def api_endpoint(url):
-    """The endpoint name for steed://newtab/api/<name>, or None."""
+    """The endpoint name for steed://<page>/api/<name>, or None.
+
+    Pages are the custom New Tab and Welcome pages and side-panel apps.
+    """
     if (
         url.scheme() == "steed"
-        and url.host() in ("newtab", "welcome")
+        and (url.host() in ("newtab", "welcome") or APP_HOST.fullmatch(url.host()))
         and url.path().startswith("/api/")
         and not url.userInfo()
         and url.port() == -1
@@ -70,19 +77,33 @@ class PageApi(QObject):
             return
         capability = ENDPOINTS[name]
         policy = access_levels.values(self.config, "pages")[capability]
-        if policy == "always" or self.session.get(capability) is True:
+        # Session answers belong to one page: allowing an app is not allowing another.
+        key = (url.host(), capability)
+        if policy == "always" or self.session.get(key) is True:
             self._serve(job, name, url)
-        elif policy == "never" or self.session.get(capability) is False:
+        elif policy == "never" or self.session.get(key) is False:
             self._json(job, {"error": "denied", "capability": capability}, 403)
         else:
-            self._ask(job, name, url, capability)
+            self._ask(job, name, url, capability, key)
 
     def _custom_page(self, host):
+        if APP_HOST.fullmatch(host):
+            return self.pages.app(self.profile_name, host[4:]) is not None
         state = self.pages.state(self.profile_name)
         return bool(state.get("html" if host == "newtab" else "welcome_html"))
 
-    def _ask(self, job, name, url, capability):
-        waiting = self.prompts.setdefault(capability, [])
+    def _describe(self, host):
+        if APP_HOST.fullmatch(host):
+            app = self.pages.app(self.profile_name, host[4:])
+            return f"Your panel app “{app['name'] if app else 'app'}”"
+        return (
+            "Your custom New Tab page"
+            if host == "newtab"
+            else "Your custom Welcome page"
+        )
+
+    def _ask(self, job, name, url, capability, key):
+        waiting = self.prompts.setdefault(key, [])
         waiting.append((job, name, url))
         if len(waiting) > 1:
             return  # One question per capability; later requests share it.
@@ -90,11 +111,9 @@ class PageApi(QObject):
 
         spec = access_levels.PAGE_CAPABILITIES[capability]
         box = QMessageBox(QApplication.activeWindow())
-        box.setWindowTitle("Allow your New Tab page?")
-        box.setText(
-            f"Your custom New Tab page asks to: {spec['label'].lower()}.\n\n"
-            f"{spec['help']}"
-        )
+        who = self._describe(url.host())
+        box.setWindowTitle("Allow this page?")
+        box.setText(f"{who} asks to: {spec['label'].lower()}.\n\n{spec['help']}")
         once = box.addButton("Allow this session", QMessageBox.ButtonRole.AcceptRole)
         always = box.addButton("Always allow", QMessageBox.ButtonRole.YesRole)
         box.addButton("Don't allow", QMessageBox.ButtonRole.RejectRole)
@@ -104,8 +123,8 @@ class PageApi(QObject):
             allowed = clicked in (once, always)
             if clicked is always:
                 access_levels.set_policy(self.config, "pages", capability, "always")
-            self.session[capability] = allowed
-            for pending, pending_name, pending_url in self.prompts.pop(capability, []):
+            self.session[key] = allowed
+            for pending, pending_name, pending_url in self.prompts.pop(key, []):
                 if sip.isdeleted(pending):
                     continue
                 if allowed:
