@@ -26,6 +26,7 @@ DIRECT_ENGINE_FILES = {
     "ad_blocker.py",
     "browser_window.py",
     "cookie_snapshot.py",
+    "engine_features.py",
     "profile_manager.py",
     "services/browser_backend.py",
     "services/engine_capabilities.py",

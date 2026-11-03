@@ -498,6 +498,11 @@ class BrowserWindow(QMainWindow):
             lambda: self._new_tab(url="steed:memory", return_tab=True)
         )
         view_menu.addAction(memory_action)
+        features_action = QAction("Engine && Features…", self)
+        features_action.triggered.connect(
+            lambda: self._new_tab(url="steed:features", return_tab=True)
+        )
+        view_menu.addAction(features_action)
         reset_style = QAction("Reset Page Style…", self)
         reset_style.setShortcut(QKeySequence("Ctrl+Alt+Shift+R"))
         reset_style.triggered.connect(self._reset_page_style)
@@ -850,6 +855,7 @@ class BrowserWindow(QMainWindow):
         QApplication.instance().installEventFilter(self)
         if len(self.profile_manager.registry.owners) == 1:
             QTimer.singleShot(1500, self._offer_old_pairing_cleanup)
+            QTimer.singleShot(2500, self._warn_codecs_replaced)
         memory_modes.monitor().changed.connect(self._memory_pressure_changed)
         memory_modes.monitor().start()
         strip = TabStrip
@@ -2153,6 +2159,49 @@ class BrowserWindow(QMainWindow):
                     path.unlink()
                 except OSError:
                     pass
+
+    def _warn_codecs_replaced(self):
+        """Say so when a pip update put back the engine without H.264/AAC."""
+        import build_codecs
+
+        if self._closing:
+            return
+        try:
+            version = build_codecs.qt_version()
+            replaced = build_codecs.replaced_by_pip(build_codecs.wheel_dir())
+        except Exception:
+            logger.exception("Could not check the codec build")
+            return
+        if not replaced or self.config.get("codec_warning_ignored") == version:
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("Video codecs missing")
+        box.setText(
+            "A Python package update replaced Steed's engine with one that cannot "
+            "play H.264 video or AAC audio, so many videos and GIFs will not play. "
+            "To fix it, close Steed and run\n\n"
+            "    .venv/bin/python build_codecs.py install\n\n"
+            f"from Steed's folder (or build, if Qt WebEngine {version} is new)."
+        )
+        details = box.addButton(
+            "Open steed:features", QMessageBox.ButtonRole.ActionRole
+        )
+        ignore = box.addButton(
+            "Don't remind me for this version", QMessageBox.ButtonRole.DestructiveRole
+        )
+        box.addButton("Close", QMessageBox.ButtonRole.RejectRole)
+
+        def answered(button):
+            if button is details:
+                self._new_tab(url="steed:features")
+            elif button is ignore:
+                self.config.set("codec_warning_ignored", version)
+
+        box.buttonClicked.connect(answered)
+        box.setModal(False)
+        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.codec_warning = box
+        box.show()
 
     def _security_key(self, request):
         """A site asks to use a security key (WebAuthn)."""
@@ -3636,6 +3685,10 @@ class BrowserWindow(QMainWindow):
             from ui.memory_page import MemoryPage
 
             controller = panel = MemoryPage(self)
+        elif name == "features":
+            from ui.features_page import FeaturesPage
+
+            controller = panel = FeaturesPage(self)
         elif name == "access":
             from ui.access_page import AccessPage
 
