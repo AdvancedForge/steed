@@ -445,6 +445,8 @@ class BrowserTests(unittest.TestCase):
         with (
             patch.object(self.window, "_ask_permission", return_value=True) as asked,
             patch.object(self.window, "_pick_desktop_media") as picked,
+            # The real copy is covered by test_permission_prompts.
+            patch("browser_window.QWebEnginePermission", side_effect=lambda p: p),
         ):
             self.window._on_permission_requested(permission)
             self.window._on_desktop_media_requested(request)
