@@ -10,8 +10,8 @@ from services.task_policy import SUPPORTED_ACTIONS, TaskScope
 class EngineCapabilitiesTests(unittest.TestCase):
     def report(self, version):
         with patch(
-            "services.engine_capabilities.qWebEngineChromiumVersion",
-            return_value=version,
+            "webengine.versions",
+            return_value={"qt": "6.11.2", "chromium": version, "security": version},
         ):
             return qt_engine_capabilities()
 
