@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Steed · Access</title><style nonce="{{NONCE}}">{{STYLE}}{{EXTRA_STYLE}}</style></head>
+<body><main class="access-shell">
+<header><span class="eyebrow">STEED:ACCESS</span><h1>Access &amp; permissions</h1><p>Choose how much agents and your own pages may do: nothing, ask each time, or everything — or set each capability yourself.</p></header>
+<div id="error" role="alert" hidden></div><div id="notice" role="status" hidden></div>
+<p id="yolo" class="warning" role="status" hidden>YOLO mode is on for this browser run (Agents menu): every agent request is approved, except capabilities set to Never here.</p>
+<div id="areas"></div>
+<section><h2>For page authors</h2><pre class="code">// In your custom New Tab page (Customize New Tab → HTML)
+const tabs = await (await fetch("steed://newtab/api/tabs")).json();
+const weather = await (await fetch("steed://newtab/api/fetch?url=" +
+  encodeURIComponent("https://api.example.com/forecast"))).json();
+// Denied or unanswered requests return {"error": "denied", ...}</pre>
+<p class="hint">Web fetches carry no cookies or sign-ins. Up to 2 MB per response. Only the New Tab or Welcome page itself can use these addresses; websites cannot.</p></section>
+</main><script nonce="{{NONCE}}">{{CHANNEL}}</script><script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script></body></html>

@@ -145,10 +145,34 @@ Open **General → Customize New Tab**, or click Customize on a built-in page:
 - The **Custom HTML** tab edits either New Tab or Welcome. Check Replace to
   use your source, or import a UTF-8 HTML file; uncheck to restore the built-in
   page. Both pages save together. The copied source is limited to 256 KB.
-  Inline CSS/JavaScript and embedded data images work. External resources,
-  network reads and native Steed actions are unavailable; ordinary links and
-  HTTP(S) search-form navigation still work. General → Customize New Tab remains
-  available even when your replacement has no Customize link.
+  Inline CSS/JavaScript and embedded data/blob images work. External resources
+  cannot be loaded directly; ordinary links and HTTP(S) search-form navigation
+  still work. General → Customize New Tab remains available even when your
+  replacement has no Customize link.
+- For dashboards, a custom page can ask Steed for data with `fetch()`:
+  `steed://newtab/api/fetch?url=<encoded https address>` (web data, no cookies,
+  2 MB, 15 s), `/api/tabs`, `/api/history` (latest 200) and `/api/bookmarks`
+  (on the Welcome page use `steed://welcome/api/…`). Each follows **Agents →
+  Access & Permissions** (`steed:access`) → Local pages: Never (default),
+  Ask (a question the first time each session; "Always allow" saves it) or
+  Always. Refused requests answer `{"error": "denied"}`. Only the start page
+  itself can call these addresses; websites cannot.
+
+### Access & Permissions (`steed:access`)
+
+One place to choose how much agents and your own pages may do. Each area has
+presets — **Nothing**, **Ask** and **Everything** — over individual capabilities,
+each Never, Ask or Always (changing one shows the area as Custom).
+
+- **Agents** (default Ask): read and browse pages; type, click and submit;
+  screenshots and mouse/keyboard; files and downloads; run generated code;
+  connected apps; your signed-in profiles. A request needing any Never
+  capability is refused with the reason, without a prompt; one needing only
+  Always capabilities is approved without a prompt; anything else asks as
+  before. Settings apply to new requests. YOLO mode (Agents menu, this run only)
+  still approves everything except capabilities set to Never.
+- **Local pages** (default Nothing): web data, open tabs, history and bookmarks
+  for your custom New Tab and Welcome pages, as above.
 
 Ctrl+D saves an HTTP(S) page with an editable name and folder. **Tabs → Manage
 Bookmarks** searches names/addresses/folders, filters by folder, and edits names,

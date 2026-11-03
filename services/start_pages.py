@@ -23,6 +23,7 @@ from bookmark_format import (
     parse_bookmarks,
 )
 from services.command_broker import require_owner_thread
+from services.page_api import PageApi, api_endpoint
 from services.page_style import ROOT_CSS
 from utils import load_json, save_json
 
@@ -42,6 +43,7 @@ WORKSPACES = (
     "agents",
     "style",
     "memory",
+    "access",
     "cookies",
     "downloads",
     "bookmarks",
@@ -89,7 +91,10 @@ def register_scheme():
     scheme = QWebEngineUrlScheme(b"steed")
     scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
     scheme.setFlags(
-        QWebEngineUrlScheme.Flag.SecureScheme | QWebEngineUrlScheme.Flag.LocalScheme
+        QWebEngineUrlScheme.Flag.SecureScheme
+        | QWebEngineUrlScheme.Flag.LocalScheme
+        # Custom start pages call their own steed://newtab/api/… with fetch().
+        | QWebEngineUrlScheme.Flag.FetchApiAllowed
     )
     QWebEngineUrlScheme.registerScheme(scheme)
 
@@ -374,7 +379,7 @@ class StartPages(QObject):
             return (
                 '<!doctype html><html data-theme="'
                 + ("dark" if styles.dark(profile) else "light")
-                + '"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; style-src &apos;unsafe-inline&apos;; script-src &apos;unsafe-inline&apos;; img-src data:; form-action http: https:; base-uri &apos;none&apos;; object-src &apos;none&apos;">'
+                + '"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; style-src &apos;unsafe-inline&apos;; script-src &apos;unsafe-inline&apos;; connect-src &apos;self&apos;; img-src data: blob:; form-action http: https:; base-uri &apos;none&apos;; object-src &apos;none&apos;">'
                 + "<style>"
                 + root_css
                 + "</style></head>"
@@ -534,8 +539,13 @@ class StartPageHandler(QWebEngineUrlSchemeHandler):
     def __init__(self, pages, profile_name, parent):
         super().__init__(parent)
         self.pages, self.profile_name = pages, profile_name
+        self.api = PageApi(pages, profile_name, self)
 
     def requestStarted(self, job):
+        endpoint = api_endpoint(job.requestUrl())
+        if endpoint is not None:
+            self.api.handle(job, endpoint)
+            return
         name = page_name(job.requestUrl())
         initiator = job.initiator()
         if (

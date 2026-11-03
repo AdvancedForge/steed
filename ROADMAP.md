@@ -12,6 +12,14 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Access levels — October 31, 2026.** `steed:access` sets per-capability
+Never/Ask/Always policies with Nothing/Ask/Everything presets for agents (seven
+capabilities mapped onto grant actions; Never refuses with `access_blocked`,
+all-Always auto-approves) and for local pages. Custom New Tab/Welcome pages can
+now build live dashboards through same-origin `steed://newtab/api/{fetch,tabs,
+history,bookmarks}` (cookieless fetch, per-session prompts for Ask). Open: the
+same access settings for side-panel HTML apps once those exist.
+
 **Load-tolerant tests — October 31, 2026.** Intermittent full-suite failures all
 came from short waits (2–15 s) on a heavily loaded machine. Test waits now share
 `STEED_TEST_WAIT` (30 s, returns early when the condition holds); worker waits
