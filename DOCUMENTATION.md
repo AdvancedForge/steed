@@ -134,6 +134,14 @@ with pip puts the PyPI engine back; `status` says so, and `install` (or a new
 `build` for a new version) restores codecs. `requirements.txt` pins the exact
 version for this reason.
 
+Measured on the development machine, the codec build uses the same memory as
+the PyPI engine (383 against 386 MB with one tab once idle; the engine library's
+resident pages are the same in every process) and the same speed, and plays
+H.264 with AAC (a 3-second test video decoded all 90 frames). Its library has
+three different internal libstdc++ exports (digit tables), which nothing in
+Steed's environment uses; `install` refuses only missing names that PyQt6 or a
+Qt library actually imports.
+
 If that happens, Steed says so a few seconds after it starts (once per Qt
 version if you choose **Don't remind me for this version**), with a button to
 `steed:features`. The check compares the engine library's size and modification
@@ -1080,10 +1088,12 @@ and reports the median of each figure; all pages are local files.
 `--load-all-tabs` runs the same check with **Restored tabs** set to load all
 at startup, to compare with the default.
 
-Where the memory goes, with one tab after starting (Balanced, offscreen): the
-browser process (Python, Qt and Chromium's core) about 195 MB, the tab's page
-process about 15 MB, the tab strip's interface page about 15 MB, and helper
-processes about 25 MB — about 250 MB once idle. For the first ~30 seconds,
+Where the memory goes, with one tab once idle (Balanced, offscreen, quiet
+machine): the browser process (Python, Qt and Chromium's core) about 265 MB,
+the tab's page process about 40 MB, the tab strip's interface page about 45 MB,
+and helper processes about 35 MB — about 385 MB. Figures are lower when the
+system is short of memory, because Linux then keeps less of each process
+resident (the same build measured about 250 MB while a compile used 12 GB). For the first ~30 seconds,
 cookie inspection adds about 160 MB: a hidden DevTools page (about 68 MB) and an
 inspected page (about 12 MB) for each of the global and current profiles,
 reading cookies so shared sign-ins stay in step. They sleep after 30 seconds

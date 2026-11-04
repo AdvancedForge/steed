@@ -38,6 +38,7 @@ class SwapTests(unittest.TestCase):
         patches = (
             patch.object(codecs, "qt_version", return_value="6.11.2"),
             patch.object(codecs, "_exports", return_value={"symbol"}),
+            patch.object(codecs, "_imported", return_value={"only_in_pypi"}),
         )
         for item in patches:
             item.start()
@@ -96,6 +97,9 @@ class SwapTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(SystemExit, "lacks 1 functions"):
                 codecs.install(self.stage, self.wheel)
+            # A missing name nothing imports does not block the swap.
+            with patch.object(codecs, "_imported", return_value=set()):
+                codecs.check_compatible(self.stage, self.wheel)
         self.assertEqual(
             (self.wheel / "lib" / codecs.LIBRARIES[0]).read_text(),
             f"pypi {codecs.LIBRARIES[0]}",
