@@ -16,7 +16,10 @@ backlog; it is not the active agenda.
 PyPI, tries the newest PyQt6/Qt WebEngine in `.venv-upgrade` (Chromium
 version, feature check, smoke test, tests, optional timing comparison), and
 applies or rolls back only trialled versions. PyPI now has PyQt6 6.12.0 and
-Qt WebEngine 6.140.0 (a new version numbering).
+Qt WebEngine 6.140.0 (a new version numbering). Its trial passed (1,788 tests,
+smoke test) with the same Chromium 140 web features and security fixes up to
+152 (151 now), but used 10–17% more memory on screen. Not applied: it gains no
+web features, and the codec build is prepared for 6.11.2.
 
 **User scripts and styles — November 3, 2026.** `steed:userscripts` (General →
 User Scripts & Styles…) keeps per-profile CSS and JavaScript for listed sites:
