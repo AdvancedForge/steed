@@ -204,6 +204,9 @@ def build(work: Path, jobs: int) -> None:
     qt = _prepare_tools(work, version)
     source = _fetch_source(work, version)
     env = _environment(work)
+    # Chromium's part is built by an inner ninja that otherwise starts one job
+    # per core plus two; Qt reads this when the build is configured.
+    env["NINJAFLAGS"] = f"-j{jobs}"
     out = work / "build"
     if not (out / "build.ninja").exists():
         out.mkdir(exist_ok=True)
@@ -217,9 +220,9 @@ def build(work: Path, jobs: int) -> None:
             cwd=out,
             env=env,
         )
-    # Chromium's part is built by its own inner ninja, which ignores --parallel
-    # and starts one job per core plus two unless NINJAJOBS says otherwise.
-    env["NINJAJOBS"] = f"-j{jobs}"
+    else:
+        # Reconfiguring keeps compiled work; it only renews the job limit.
+        _run(["cmake", "."], cwd=out, env=env)
     _run(["cmake", "--build", ".", "--parallel", str(jobs)], cwd=out, env=env)
     stage = work / "stage"
     _run(["cmake", "--install", ".", "--prefix", str(stage)], cwd=out, env=env)
