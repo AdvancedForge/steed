@@ -497,6 +497,9 @@ current site's menu:
 - **Clear settings for this site** and **Website permissions…** (camera,
   notifications and the like stay on `steed:permissions`).
 
+`steed:permissions` (Website permissions) also lists every site with its own
+settings in the current profile, with **Reset Selected Site**.
+
 Settings belong to a host (`www.example.org` and `example.org` are separate)
 and to a profile, in `<profile>/site_settings.json`; only values you changed
 are stored. Incognito keeps them in memory until its session ends. Internal

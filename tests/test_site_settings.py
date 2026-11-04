@@ -166,6 +166,30 @@ class WindowTests(unittest.TestCase):
         self.window._show_site_menu()
         self.assertIsNone(self.window.site_menu)
 
+    def test_permissions_page_lists_and_resets_sites(self):
+        from ui.site_permissions import SitePermissionsDialog, describe_site_settings
+
+        self.store.set("a.example", "javascript", "block")
+        self.store.set("a.example", "zoom", 1.25)
+        self.store.set("b.example", "popups", "block")
+        self.assertEqual(
+            describe_site_settings(self.store.sites["a.example"]),
+            "JavaScript blocked · zoom 125%",
+        )
+        tab = self.window._new_tab(url="steed:permissions", return_tab=True)
+        self.wait(lambda: tab.workspace_controller is not None)
+        dialog = tab.workspace_controller.source
+        self.assertIsInstance(dialog, SitePermissionsDialog)
+        sites = dialog.sites
+        self.assertEqual(
+            [sites.item(row, 0).text() for row in range(sites.rowCount())],
+            ["a.example", "b.example"],
+        )
+        sites.selectRow(0)
+        dialog.reset_site()
+        self.assertNotIn("a.example", self.store.sites)
+        self.assertEqual(sites.rowCount(), 1)
+
     def test_incognito_settings_stay_in_memory(self):
         registry = self.window.profile_manager.registry
         private = registry.site_settings("search")
