@@ -150,6 +150,8 @@ class PageUnloadTests(unittest.TestCase):
         # The restored tab reloads the site, which must find its sign-in.
         self.wait(lambda: any(t.title() == "app" for t in self.window.tabs))
         app = next(t for t in self.window.tabs if t.title() == "app")
+        # Restored tabs load when selected.
+        self.window._switch_tab(self.window.tabs.index(app))
         self.wait(lambda: self.js(app, "window.token") == "TOKEN")
 
     def test_closing_the_window_waits_for_handlers_once(self):
@@ -162,6 +164,8 @@ class PageUnloadTests(unittest.TestCase):
         # The restored tab reloads the site, which must find its sign-in.
         self.wait(lambda: any(t.title() == "app" for t in window.tabs))
         app = next(t for t in window.tabs if t.title() == "app")
+        # Restored tabs load when selected.
+        window._switch_tab(window.tabs.index(app))
         self.wait(lambda: self.js(app, "window.token") == "TOKEN")
 
     def test_a_stuck_handler_delays_closing_only_briefly(self):

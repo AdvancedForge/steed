@@ -28,6 +28,7 @@ PROJECT = Path(__file__).resolve().parent
 TRIAL = PROJECT / ".venv-upgrade"
 REPORT = TRIAL / "steed-trial.json"
 PREVIOUS = PROJECT / ".venv" / "steed-previous-engine.json"
+REQUIREMENTS = ("requirements-dev.txt", "requirements-mcp.txt", "requirements-apps.txt")
 PACKAGES = ("PyQt6", "PyQt6-Qt6", "PyQt6-WebEngine", "PyQt6-WebEngine-Qt6")
 QUICK_TESTS = (
     "test_browser.py",
@@ -43,9 +44,9 @@ QUICK_TESTS = (
 PROBE = """
 import json, sys
 sys.path.insert(0, %r)
+import engine_features, webengine  # the engine loads before the application
 from PyQt6.QtWidgets import QApplication
 app = QApplication(sys.argv)
-import engine_features, webengine
 found = []
 probe = engine_features.FeatureProbe()
 probe.finished.connect(lambda features: (found.extend(features), app.quit()))
@@ -103,7 +104,10 @@ def trial(quick: bool, compare: Path | None) -> int:
     if not python.exists():
         _run([sys.executable, "-m", "venv", str(TRIAL)]).check_returncode()
     pip = [str(python), "-m", "pip", "install", "-q"]
-    _run([*pip, "-r", str(PROJECT / "requirements-dev.txt")]).check_returncode()
+    # The same extras as .venv, so tests of agents and apps can run.
+    for extra in REQUIREMENTS:
+        if (PROJECT / extra).exists():
+            _run([*pip, "-r", str(PROJECT / extra)]).check_returncode()
     _run([*pip, *(f"{name}=={target[name]}" for name in PACKAGES)]).check_returncode()
     env = dict(
         os.environ,
