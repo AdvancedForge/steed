@@ -51,6 +51,7 @@ from services.start_pages import (
     page_name,
     workspace_name,
 )
+from site_settings import site_key
 from tab_manager import TabManager, TabState
 from ui.address_bar import AddressBar
 from ui.chrome_style import bar_stylesheet, chrome_colors
@@ -111,6 +112,9 @@ class BrowserPage(QWebEnginePage):
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
         if is_main_frame:
             window = getattr(self.parent(), "browser_window", None)
+            if window is not None:
+                # Before the new document loads, so its settings apply to it.
+                window._apply_site_settings(self, url)
             assistant = getattr(window, "password_assistant", None)
             if assistant is not None:
                 # Collect a login its form is submitting before the page goes.
@@ -185,12 +189,17 @@ class BrowserTab(QWebEngineView):
         self.group_id = None
         self.pinned = False
         self.native_panel = None
+        self.reader_panel = None
         self.workspace_name = None
         self.workspace_controller = None
         self.load_progress = 100
         self.is_loading = False
         self.load_succeeded = None
         self.tab_id = uuid4().hex
+        # A restored tab not loaded yet: its address and title until selected.
+        self.pending_url = None
+        self.pending_title = ""
+        self.pending_scroll = None
         # Runtime references must stay distinct when windows restore saved IDs.
         self.agent_tab_id = uuid4().hex
         page = BrowserPage(
@@ -210,6 +219,20 @@ class BrowserTab(QWebEngineView):
 
         if initial_qurl is not None and initial_qurl.isValid():
             self.setUrl(initial_qurl)
+
+    def url(self) -> QUrl:
+        return self.pending_url if self.pending_url is not None else super().url()
+
+    def title(self) -> str:
+        return self.pending_title if self.pending_url is not None else super().title()
+
+    def load_pending(self) -> bool:
+        """Load a lazily restored tab; True when it was waiting."""
+        if self.pending_url is None:
+            return False
+        url, self.pending_url = self.pending_url, None
+        self.setUrl(url)
+        return True
 
     def contextMenuEvent(self, event):
         menu = self.createStandardContextMenu()
@@ -234,6 +257,8 @@ class BrowserTab(QWebEngineView):
         super().resizeEvent(event)
         if self.native_panel is not None:
             self.native_panel.setGeometry(self.rect())
+        if self.reader_panel is not None:
+            self.reader_panel.setGeometry(self.rect())
 
 
 # One-time tokens for tabs being dragged out of a strip: token -> (window, tab).
@@ -343,6 +368,12 @@ class BrowserWindow(QMainWindow):
 
         # Connect profile signals
         self.profile_manager.profile_changed.connect(self._on_profile_changed)
+        self.profile_manager.registry.site_settings_changed.connect(
+            lambda profile, host: (
+                profile == self.profile_manager.current_profile_name
+                and self._site_settings_changed(host)
+            )
+        )
         self.profile_manager.registry.page_style.changed.connect(
             self._appearance_changed
         )
@@ -480,6 +511,11 @@ class BrowserWindow(QMainWindow):
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(lambda: self._open_management("downloads"))
         general_menu.addAction(downloads_action)
+        scripts_action = QAction("User Scripts && Styles…", self)
+        scripts_action.triggered.connect(
+            lambda: self._new_tab(url="steed:userscripts", return_tab=True)
+        )
+        general_menu.addAction(scripts_action)
         adblock_action = QAction("Ad Blocking...", self)
         adblock_action.triggered.connect(lambda: self._open_management("adblock"))
         general_menu.addAction(adblock_action)
@@ -491,6 +527,11 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        self.reader_action = QAction("Reader View", self)
+        self.reader_action.setShortcut(QKeySequence("F9"))
+        self.reader_action.triggered.connect(self._toggle_reader)
+        view_menu.addAction(self.reader_action)
+        self.addAction(self.reader_action)
         memory_action = QAction("Memory && Performance…", self)
         memory_action.triggered.connect(
             lambda: self._new_tab(url="steed:memory", return_tab=True)
@@ -891,6 +932,7 @@ class BrowserWindow(QMainWindow):
             lambda: self.password_assistant.show_menu()
         )
         self.address_bar.reset_zoom_requested.connect(lambda: self._zoom())
+        self.address_bar.site_menu_requested.connect(self._show_site_menu)
         self.browser_menu = QMenu(self)
         for menu in self._layout_menus.values():
             self.browser_menu.addMenu(menu)
@@ -1594,7 +1636,10 @@ class BrowserWindow(QMainWindow):
         title: str | None = None,
         return_tab: bool = False,
         index: int | None = None,
+        defer: bool = False,
+        scroll: list[float] | None = None,
     ):
+        """Open a tab; defer=True waits to load it until it is selected."""
         if not url:
             url = self.config.get("new_tab_page", NEW_TAB) or NEW_TAB
 
@@ -1640,8 +1685,14 @@ class BrowserWindow(QMainWindow):
         self._switch_tab(index)
         self._sync_tab_group_labels()
 
+        if scroll:
+            self._restore_scroll(tab, qurl, scroll)
         # Start loading only after signals and tab bookkeeping are ready.
-        self.navigation.navigate(tab, qurl)
+        if defer and not workspace and not agent_panel:
+            tab.pending_url = qurl
+            tab.pending_title = title or qurl.toString()
+        else:
+            self.navigation.navigate(tab, qurl)
         if agent_panel:
             self._embed_agent_sidebar(tab)
         elif workspace:
@@ -1755,8 +1806,10 @@ class BrowserWindow(QMainWindow):
         for touched in (previous, self.tabs[index]):
             if touched is not None:
                 touched.last_active = monotonic()
-        # A frozen tab resumes; an unloaded one reloads its page.
-        webengine.wake(self.tabs[index].page())
+        # A frozen tab resumes; an unloaded one reloads its page; a restored
+        # one loads for the first time.
+        if not self.tabs[index].load_pending():
+            webengine.wake(self.tabs[index].page())
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
@@ -2038,10 +2091,150 @@ class BrowserWindow(QMainWindow):
 
     def _zoom(self, direction=0):
         if not self._closing and self.tabs:
-            self.navigation.zoom(
-                self._visible_page(self.tabs[self.current_tab_index]), direction
-            )
+            tab = self.tabs[self.current_tab_index]
+            factor = self.navigation.zoom(self._visible_page(tab), direction)
+            host = site_key(tab.url())
+            if host and not tab.workspace_name:
+                # Remembered for the site, as other browsers do.
+                self._site_settings().set(host, "zoom", factor)
             self._update_zoom()
+
+    def _site_settings(self):
+        return self.profile_manager.registry.site_settings(
+            self.profile_manager.current_profile_name
+        )
+
+    def _apply_site_settings(self, page, url):
+        """JavaScript, autoplay and pop-ups for the site a page is going to."""
+        if self._closing or sip.isdeleted(page):
+            return
+        host = site_key(url)
+        values = self._site_settings().get(host)
+        webengine.set_options(
+            page.settings(),
+            javascript=values["javascript"] == "allow",
+            media_needs_gesture=values["autoplay"] == "block",
+            # Off, Chromium's pop-up blocker stops windows opened without a click.
+            scripts_open_windows=values["popups"] == "allow",
+        )
+        page.site_host = host
+
+    def _apply_site_zoom(self, tab):
+        """Each site keeps its zoom; a tab moving to another site takes that one."""
+        host = site_key(tab.url())
+        if host is None or tab.workspace_name or getattr(tab, "zoom_host", "") == host:
+            return
+        tab.zoom_host = host
+        tab.setZoomFactor(self._site_settings().get(host)["zoom"])
+        if self.tabs and tab is self.tabs[self.current_tab_index]:
+            self._update_zoom()
+
+    def _toggle_reader(self):
+        """Show the current page's article in reader view, or leave it (F9)."""
+        from ui.reader_view import EXTRACT, ReaderPanel, article
+
+        if self._closing or not self.tabs:
+            return
+        tab = self.tabs[self.current_tab_index]
+        if tab.reader_panel is not None:
+            tab.reader_panel.close_reader()
+            return
+        url = tab.url()
+        if tab.workspace_name or url.scheme() not in ("http", "https", "file"):
+            self.status_bar.showMessage("Reader view works on web pages.", 4000)
+            return
+
+        def extracted(raw):
+            if (
+                self._closing
+                or sip.isdeleted(tab)
+                or tab not in self.tabs
+                or tab.url() != url
+                or tab.reader_panel is not None
+            ):
+                return
+            content = article(raw)
+            if content is None:
+                self.status_bar.showMessage(
+                    "Reader view found no article on this page.", 5000
+                )
+                return
+            panel = ReaderPanel(self, tab, content, url)
+            tab.reader_panel = panel
+
+            def closed():
+                if not sip.isdeleted(tab):
+                    tab.reader_panel = None
+                    if tab in self.tabs and tab is self.tabs[self.current_tab_index]:
+                        tab.setFocus()
+
+            panel.closed.connect(closed)
+            panel.surface.setFocus()
+
+        webengine.run_script(
+            tab.page(), EXTRACT, extracted, world=webengine.STEED_WORLD
+        )
+
+    def _show_site_menu(self):
+        """The site icon's menu: this site's zoom, JavaScript, autoplay, pop-ups."""
+        from PyQt6.QtWidgets import QMenu
+
+        import site_settings
+
+        if self._closing or not self.tabs:
+            return
+        tab = self.tabs[self.current_tab_index]
+        host = site_key(tab.url())
+        if host is None or tab.workspace_name:
+            return
+        store = self._site_settings()
+        values = store.get(host)
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.addSection(host)
+        for key, label in site_settings.LABELS.items():
+            action = menu.addAction(f"Allow {label.lower()}")
+            action.setCheckable(True)
+            action.setChecked(values[key] == "allow")
+            action.toggled.connect(
+                lambda allowed, key=key: self._set_site_setting(
+                    tab, host, key, "allow" if allowed else "block"
+                )
+            )
+        zoom = round(values["zoom"] * 100)
+        reset = menu.addAction(f"Reset zoom ({zoom}%)")
+        reset.setEnabled(zoom != 100)
+        reset.triggered.connect(lambda: store.set(host, "zoom", 1.0))
+        menu.addSeparator()
+        clear = menu.addAction("Clear settings for this site")
+        clear.setEnabled(bool(store.changed_keys(host)))
+        clear.triggered.connect(lambda: self._clear_site_settings(tab, host))
+        menu.addAction("Website permissions…").triggered.connect(
+            lambda: self._open_management("permissions")
+        )
+        self.site_menu = menu
+        field = self.address_bar.address_input
+        menu.popup(field.mapToGlobal(field.rect().bottomLeft()))
+
+    def _set_site_setting(self, tab, host, key, value):
+        self._site_settings().set(host, key, value)
+        # The page loaded with the old setting; reload so it takes effect.
+        if tab in self.tabs and site_key(tab.url()) == host:
+            tab.reload()
+
+    def _clear_site_settings(self, tab, host):
+        reload = any(key != "zoom" for key in self._site_settings().changed_keys(host))
+        self._site_settings().clear(host)
+        if reload and tab in self.tabs and site_key(tab.url()) == host:
+            tab.reload()
+
+    def _site_settings_changed(self, host):
+        """Another window or the site menu changed a site: update its tabs."""
+        for tab in self.tabs:
+            if site_key(tab.url()) == host and not tab.workspace_name:
+                tab.zoom_host = ""
+                self._apply_site_zoom(tab)
+                self._apply_site_settings(tab.page(), tab.url())
 
     def _update_zoom(self):
         if not self._closing and self.tabs:
@@ -2237,6 +2430,10 @@ class BrowserWindow(QMainWindow):
             return
         if tab in self.tabs:
             self.tab_bar.set_tab_state(self.tabs.index(tab), url=url.toString())
+            self._apply_site_zoom(tab)
+            if tab.reader_panel is not None and url != tab.reader_panel.url:
+                # Reader view belongs to one article; following a link leaves it.
+                tab.reader_panel.close_reader()
         if not self.tabs or not (0 <= self.current_tab_index < len(self.tabs)):
             return
 
@@ -2348,10 +2545,47 @@ class BrowserWindow(QMainWindow):
                     group_id=tab.group_id,
                     pinned=tab.pinned,
                     keep_loaded=getattr(tab, "keep_loaded", False),
+                    scroll=self._tab_scroll(tab),
                 )
             )
 
         self.tab_manager.save_tabs(states)
+
+    @staticmethod
+    def _tab_scroll(tab):
+        if tab.pending_url is not None:
+            return tab.pending_scroll
+        if tab.workspace_name or webengine.tab_state(tab.page()) == webengine.UNLOADED:
+            return getattr(tab, "pending_scroll", None)
+        position = tab.page().scrollPosition()
+        if position.x() <= 0 and position.y() <= 0:
+            return None
+        return [round(position.x()), round(position.y())]
+
+    def _restore_scroll(self, tab, url, scroll):
+        """Scroll a restored tab back once its saved page has loaded."""
+        tab.pending_scroll = scroll
+
+        def loaded(ok):
+            tab.loadFinished.disconnect(loaded)
+            if not ok or sip.isdeleted(tab) or tab.url() != url:
+                tab.pending_scroll = None
+                return
+            # Pages that build their content late get a second try.
+            source = f"window.scrollTo({float(scroll[0])}, {float(scroll[1])})"
+            for delay in (0, 500):
+                QTimer.singleShot(
+                    delay,
+                    lambda: (
+                        sip.isdeleted(tab)
+                        or webengine.run_script(
+                            tab.page(), source, world=webengine.STEED_WORLD
+                        )
+                    ),
+                )
+            tab.pending_scroll = None
+
+        tab.loadFinished.connect(loaded)
 
     def _restore_tabs(self, reopen_windows=False):
         if self.profile_manager.is_search_profile():
@@ -2372,12 +2606,19 @@ class BrowserWindow(QMainWindow):
                 self._open_window(profile, states)
 
     def _restore_states(self, saved):
+        import memory_modes
+
+        lazy = memory_modes.values(self.config)["restore_tabs_lazily"]
         self._restoring_tabs = True
         try:
             if saved:
                 for state in saved:
                     self._new_tab(
-                        url=state.url, title=state.title, index=len(self.tabs)
+                        url=state.url,
+                        title=state.title,
+                        index=len(self.tabs),
+                        defer=lazy,
+                        scroll=state.scroll,
                     )
                     self.tabs[-1].group = state.group
                     self.tabs[-1].tab_id = state.tab_id
@@ -2618,6 +2859,8 @@ class BrowserWindow(QMainWindow):
                 or self.tabs.index(tab) == self.current_tab_index
             ):
                 return
+            # The session keeps its scroll position while it is unloaded.
+            tab.pending_scroll = self._tab_scroll(tab)
             if webengine.lightest_state(page) == webengine.ACTIVE:
                 # Waking it for the handlers made it active; unload next check.
                 webengine.set_tab_state(page, webengine.FROZEN)
@@ -3219,6 +3462,8 @@ class BrowserWindow(QMainWindow):
     @staticmethod
     def _dispose_tab(tab: BrowserTab, unload: bool = True) -> None:
         """Stop a tab and detach its callbacks before scheduling deletion."""
+        if tab.reader_panel is not None:
+            tab.reader_panel.close_reader()
         tab.browser_window._take_back_tab(tab)
         window = tab.browser_window
         window.devtools.close(tab)
@@ -3344,6 +3589,9 @@ class BrowserWindow(QMainWindow):
         if self.cookie_manager is not None:
             self.cookie_manager.close()
             self.cookie_manager = None
+        # On a real screen each page gives back its graphics surface as it is
+        # destroyed (tens of milliseconds a tab); go away first, then clean up.
+        self.hide()
         for tab in list(self.tabs):
             # Their unload handlers already ran above.
             self._dispose_tab(tab, unload=False)
@@ -3683,6 +3931,10 @@ class BrowserWindow(QMainWindow):
             from ui.memory_page import MemoryPage
 
             controller = panel = MemoryPage(self)
+        elif name == "userscripts":
+            from ui.user_scripts_page import UserScriptsPage
+
+            controller = panel = UserScriptsPage(self)
         elif name == "features":
             from ui.features_page import FeaturesPage
 

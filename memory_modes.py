@@ -46,6 +46,15 @@ OPTIMIZATIONS = {
         ],
         "presets": {"saver": 20, "balanced": 0, "performance": 0},
     },
+    "restore_tabs_lazily": {
+        "label": "Restored tabs",
+        "help": "When Steed starts, load only the tab you see and each other "
+        "restored tab when you first select it. Starting is faster and uses less "
+        "memory with many tabs; a tab you have not opened yet takes a moment to "
+        "load the first time.",
+        "choices": [(True, "Load when selected"), (False, "Load all at startup")],
+        "presets": {"saver": True, "balanced": True, "performance": False},
+    },
     "tab_freeze_minutes": {
         "label": "Freeze background tabs",
         "help": "A frozen tab keeps its page but stops running scripts and timers, "
@@ -57,7 +66,8 @@ OPTIMIZATIONS = {
     "tab_discard_minutes": {
         "label": "Unload background tabs",
         "help": "An unloaded tab frees its renderer's memory and reloads when you "
-        "return to it. Unsaved form text in it can be lost. Tabs playing audio, "
+        "return to it, at the same scroll position and with typed text kept. "
+        "Tabs playing audio, "
         "shared with an agent, with DevTools open or still loading are kept.",
         "choices": [
             (15, "After 15 minutes"),

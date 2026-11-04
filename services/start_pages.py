@@ -44,6 +44,7 @@ WORKSPACES = (
     "style",
     "memory",
     "features",
+    "userscripts",
     "access",
     "apps",
     "cookies",

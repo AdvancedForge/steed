@@ -36,7 +36,10 @@ METRICS = (
     ("wake_unloaded", "Switch to an unloaded tab until it reloads", "ms"),
     ("memory_one", "Memory, one tab", "MB"),
     ("memory_ten", f"Memory, {TABS} tabs", "MB"),
-    ("shutdown", "Close the window and quit", "ms"),
+    ("restored_first_page", f"Restart with {TABS + 1} tabs: first page", "ms"),
+    ("restored_memory", f"Restart with {TABS + 1} tabs: memory", "MB"),
+    ("closed", "Close the window until it disappears", "ms"),
+    ("shutdown", "Close the window and clean up", "ms"),
 )
 # Scrolls the page for one second, one step per frame, and reports frame gaps.
 SCROLL = """(() => { window.__frames = null; const gaps = []; let last = null;
@@ -61,11 +64,14 @@ def seconds_since_process_start() -> float:
     return uptime - started / os.sysconf("SC_CLK_TCK")
 
 
-def run_round(offscreen: bool) -> dict:
-    """One fresh Steed session; prints its figures as JSON."""
+def run_round(home: Path, restored: bool, load_all: bool) -> dict:
+    """One Steed session in home; prints its figures as JSON.
+
+    The first session ends with its tabs saved; a restored one starts from them.
+    """
     process_start = time.monotonic() - seconds_since_process_start()
     sys.path.insert(0, str(ROOT))
-    from PyQt6.QtCore import QTimer
+    from PyQt6.QtCore import QEvent, QObject, QTimer
     from PyQt6.QtTest import QTest
     from PyQt6.QtWidgets import QApplication
 
@@ -75,11 +81,23 @@ def run_round(offscreen: bool) -> dict:
     from browser_window import BrowserWindow
     from config import Config
 
+    class HideWatch(QObject):
+        """Notes when the window leaves the screen, before cleanup finishes."""
+
+        def __init__(self, window, seen):
+            super().__init__()
+            self.seen = seen
+            window.installEventFilter(self)
+
+        def eventFilter(self, watched, event):
+            if event.type() == QEvent.Type.Hide:
+                self.seen()
+            return False
+
     results, failures, applications = {}, [], []
-    directory = tempfile.TemporaryDirectory()
     pages = []
     for n in range(TABS + 1):
-        path = Path(directory.name) / f"page{n}.html"
+        path = home / f"page{n}.html"
         items = "".join(f"<li>item {i}</li>" for i in range(500))
         path.write_text(PAGE.format(n=n, items=items))
         pages.append(path.as_uri())
@@ -124,6 +142,13 @@ def run_round(offscreen: bool) -> dict:
                 first = window.tabs[0]
                 track(first)
                 wait(lambda: id(first) in finished)
+                if restored:
+                    results["restored_first_page"] = ms(process_start)
+                    settle(3)
+                    results["restored_memory"] = memory_mb()
+                    window.close()
+                    QTimer.singleShot(0, app.quit)
+                    return
                 results["first_page"] = ms(process_start)
                 settle(2)
                 results["memory_one"] = memory_mb()
@@ -193,8 +218,13 @@ def run_round(offscreen: bool) -> dict:
                 settle(3)
                 results["memory_ten"] = memory_mb()
                 start = time.monotonic()
+                hidden = HideWatch(
+                    window, lambda: results.setdefault("closed", ms(start))
+                )
                 window.close()
                 results["shutdown"] = ms(start)
+                results.setdefault("closed", results["shutdown"])
+                del hidden
             except Exception as error:  # report, then let Steed close
                 failures.append(repr(error))
                 for widget in app.topLevelWidgets():
@@ -204,10 +234,11 @@ def run_round(offscreen: bool) -> dict:
         QTimer.singleShot(0, measure)
         return app
 
-    with patch("pathlib.Path.home", return_value=Path(directory.name)):
+    with patch("pathlib.Path.home", return_value=home):
         config = Config()
         config.set("home_page", pages[0])
         config.set("search_suggestions", False)
+        config.set("restore_tabs_lazily", not load_all)
         with patch.object(main, "QApplication", side_effect=create_application) as f:
             f.setHighDpiScaleFactorRoundingPolicy = (
                 QApplication.setHighDpiScaleFactorRoundingPolicy
@@ -218,7 +249,7 @@ def run_round(offscreen: bool) -> dict:
     return results
 
 
-def rounds(count: int, offscreen: bool) -> list[dict]:
+def rounds(count: int, offscreen: bool, load_all: bool) -> list[dict]:
     env = dict(os.environ)
     if offscreen or not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
         env["QT_QPA_PLATFORM"] = "offscreen"
@@ -226,19 +257,26 @@ def rounds(count: int, offscreen: bool) -> list[dict]:
     found = []
     for number in range(1, count + 1):
         print(f"Round {number} of {count}…", file=sys.stderr, flush=True)
-        result = subprocess.run(
-            [sys.executable, __file__, "--round"],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-        lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
-        if result.returncode != 0 or not lines:
-            sys.stderr.write(result.stderr[-2000:])
-            raise SystemExit(f"Round {number} failed")
-        found.append(json.loads(lines[-1]))
+        merged = {}
+        with tempfile.TemporaryDirectory() as home:
+            common = ["--load-all-tabs"] if load_all else []
+            for extra in (common, [*common, "--restored"]):
+                result = subprocess.run(
+                    [sys.executable, __file__, "--round", "--home", home, *extra],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    check=False,
+                )
+                lines = [
+                    line for line in result.stdout.splitlines() if line.startswith("{")
+                ]
+                if result.returncode != 0 or not lines:
+                    sys.stderr.write(result.stderr[-2000:])
+                    raise SystemExit(f"Round {number} failed")
+                merged.update(json.loads(lines[-1]))
+        found.append(merged)
     return found
 
 
@@ -282,9 +320,19 @@ def main() -> int:
     parser.add_argument("--save", type=Path, help="write the results as JSON")
     parser.add_argument("--compare", type=Path, help="earlier results to compare")
     parser.add_argument("--round", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--load-all-tabs",
+        action="store_true",
+        help="load every restored tab at startup (Performance mode's choice)",
+    )
+    parser.add_argument("--home", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--restored", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.round:
-        print(json.dumps(run_round(args.offscreen)), flush=True)
+        print(
+            json.dumps(run_round(args.home, args.restored, args.load_all_tabs)),
+            flush=True,
+        )
         return 0
     sys.path.insert(0, str(ROOT))
     earlier = json.loads(args.compare.read_text())["median"] if args.compare else None
@@ -295,7 +343,7 @@ def main() -> int:
             "cores); the figures will be slower and vary more than usual.",
             file=sys.stderr,
         )
-    found = rounds(args.rounds, args.offscreen)
+    found = rounds(args.rounds, args.offscreen, args.load_all_tabs)
     summary = summarise(found)
     print(engine_description())
     print(f"Median of {len(found)} rounds:")

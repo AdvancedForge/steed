@@ -1,0 +1,12 @@
+.scripts-shell { max-width: 960px; margin: 0 auto; padding: 32px 28px 120px; }
+.scripts-shell h1 { font-size: 30px; margin: 8px 0; } .scripts-shell h2 { font-size: 18px; margin-bottom: 12px; }
+.scripts-shell p { color: var(--muted); }
+.scripts-shell section { background: var(--surface); border: 1px solid var(--border); padding: 22px; border-radius: 16px; margin: 16px 0; }
+.scripts-shell label { display: grid; gap: 6px; margin: 10px 0; font-size: 13px; color: var(--muted); }
+.scripts-shell input, .scripts-shell select { font: inherit; background: var(--bg); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.scripts-shell textarea { font: 12px monospace; background: var(--bg); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 10px; width: 100%; resize: vertical; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .grow { flex: 1; } .hint { font-size: 13px; }
+.entry { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.entry:first-child { border-top: 0; } .entry .what { flex: 1; min-width: 0; } .entry .name { font-weight: 600; }
+.entry .sites { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; } .entry.off .name { color: var(--muted); }
+.entry input[type=checkbox] { width: 18px; height: 18px; }

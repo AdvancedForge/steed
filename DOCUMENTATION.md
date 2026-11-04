@@ -150,6 +150,28 @@ WebEngine upgrade brings it), left out of Qt WebEngine on Linux (an upgrade will
 not), or missing from the PyPI engine (`build_codecs.py`). **Check again**
 repeats the test, for example after swapping the engine and restarting.
 
+### Upgrading Qt WebEngine
+
+`upgrade_engine.py` moves Steed to newer PyQt6 / Qt WebEngine releases
+without risking the working setup:
+
+```bash
+.venv/bin/python upgrade_engine.py check      # installed and newest versions
+.venv/bin/python upgrade_engine.py try        # .venv-upgrade: install and test
+.venv/bin/python upgrade_engine.py try --quick --compare before.json
+.venv/bin/python upgrade_engine.py apply      # pin and install what passed
+.venv/bin/python upgrade_engine.py rollback   # versions from before apply
+```
+
+`try` installs the newest releases into `.venv-upgrade` (never `.venv`) and
+reports the Chromium version and web-feature results (as on `steed:features`),
+the startup smoke test, the test suite (`--quick` runs a subset of nine files)
+and, with `--compare`, the timing check against an earlier result. Its report
+is `.venv-upgrade/steed-trial.json`. `apply` refuses unless that trial passed,
+records the current versions for `rollback`, pins the four packages exactly in
+`requirements.txt` and installs them into `.venv`. A video-codec build is for one
+version: after `apply`, run `build_codecs.py build` and `install` again.
+
 ### Google sign-in
 
 Google sign-in compatibility is enabled by default in **General → Settings**. It sends a Firefox User-Agent to `https://accounts.google.com/`, following [qutebrowser's account-host workaround](https://github.com/qutebrowser/qutebrowser/issues/5182). Other sites use your configured/default User-Agent. Main-page GET redirects into or out of the account host are restarted to avoid Qt losing the per-site header; POST requests are never replayed.
@@ -426,6 +448,60 @@ On supported Qt versions Steed uses `AskEveryTime` so native persisted choices
 cannot bypass these controls; older native approvals will prompt again. Read or
 write failures deny access rather than granting an unsaved remembered permission.
 
+### User scripts and styles (`steed:userscripts`)
+
+**General → User Scripts & Styles…** or `steed:userscripts` keeps your own CSS
+and JavaScript for chosen sites in this profile (`<profile>/user_scripts.json`,
+up to 50 entries). Each has a name, its sites (one per line or comma separated,
+such as `example.org`; a site includes its subdomains, `*.example.org` means
+the same, and `*` means every site), CSS, JavaScript, when the script runs (as
+the page starts, when it is ready, or after it has loaded) and an on/off
+switch. They also run in frames from the listed sites.
+
+Styles are added from Steed's own script world as soon as the document exists,
+so pages do not flash unstyled. Scripts run in the page's world, like
+userscripts, so they can use the site's own code; an error is reported in the
+page's console (`Steed user script <name>`) without stopping the page. Scripts
+have the page's permissions and none of Steed's data. Changes apply to pages
+loaded or reloaded afterwards. Incognito windows run none.
+
+### Reader view
+
+**View → Reader View** or **F9** shows the current page's article as plain,
+calm text over the tab: site name, title, author, an estimated reading time,
+then headings, paragraphs, lists, quotes, code and captions. **A− / A+** change
+the text size (14–30 px) and **Light / Sepia / Dark** the colours; both are
+remembered. **F9**, **Esc** or **Exit reader** returns to the page, as does
+following a link in the tab.
+
+The article is found by a script in Steed's own script world (the page cannot
+see or change it): the element with the most paragraph text wins, with menus,
+sidebars, related links, comments and hidden text left out. Only plain text
+comes back; the reader page inserts it as text under strict content rules with
+no network access, so nothing from the site runs or loads there (images are
+not shown). Pages with less than about 400 characters of article text say
+"Reader view found no article on this page".
+
+### Site settings
+
+Click the lock (or open-lock) icon at the start of the address bar for the
+current site's menu:
+
+- **Allow JavaScript**, **Allow autoplay with sound**, **Allow pop-ups and new
+  windows** — on by default. Turning one off reloads the page so it applies.
+  With autoplay off, media waits for a click; with pop-ups off, Chromium's
+  pop-up blocker stops windows a page opens without a click (links you click
+  still open).
+- **Reset zoom** — zoom (Ctrl+= / Ctrl+- / Ctrl+0) is remembered for each site
+  and applies to every tab on it.
+- **Clear settings for this site** and **Website permissions…** (camera,
+  notifications and the like stay on `steed:permissions`).
+
+Settings belong to a host (`www.example.org` and `example.org` are separate)
+and to a profile, in `<profile>/site_settings.json`; only values you changed
+are stored. Incognito keeps them in memory until its session ends. Internal
+`steed:` pages and local files have no site settings.
+
 ### Find in page and zoom
 
 Press **Ctrl+F**, type a query, and use Enter or the Next/Previous buttons to
@@ -566,8 +642,13 @@ listed alphabetically, including `default` and `global`.
 
 - Multiple tabs with tab bar interface
 - Tabs are saved before closing
-- Tabs are restored when reopening a profile
-- Tab state includes URL, title, and stable tab/group identities
+- Tabs are restored when reopening a profile. Only the tab you see loads at
+  startup; each other one loads when you first select it (**Restored tabs** on
+  `steed:memory`; Performance mode loads all at once)
+- Tab state includes URL, title, scroll position (restored after the page
+  loads, with a second try half a second later for pages that build their
+  content late) and stable tab/group identities. Typed form text and the
+  back/forward list are not written to disk
 - `Ctrl+Shift+T` restores recently closed tabs for the current profile (up to 50, not saved across restart)
 
 ## Cookies and global sharing
@@ -967,15 +1048,27 @@ and reports the median of each figure; all pages are local files.
 | Switch to a frozen tab until it responds | `_switch_tab` → the page answers a script |
 | Switch to an unloaded tab until it reloads | `_switch_tab` → its load finished |
 | Memory, one tab / 10 tabs | proportional set size (PSS) of Steed and its helper processes, after settling |
-| Close the window and quit | `close()` → returned, including unload handlers |
+| Restart with 11 tabs: first page / memory | a second start on the first session's saved tabs, to its first page loaded, and memory after settling |
+| Close the window until it disappears | `close()` → the window hidden |
+| Close the window and clean up | `close()` → returned, including unload handlers and page cleanup |
+
+`--load-all-tabs` runs the same check with **Restored tabs** set to load all
+at startup, to compare with the default.
 
 Figures compare runs on the same computer, and only when it is otherwise
-quiet: the check warns when the load average is above half the core count. The window opens on the current
-display; `--offscreen` runs without one and without the GPU, which changes the
-numbers. On the development machine (8 cores, 16 GB, offscreen, PyPI engine;
-November 3, 2026) the figures were about 400 ms to window, 620 ms to first
-page, 60 ms per new tab, 8 ms per switch, 23 ms typing, 386 MB with one tab,
-649 MB with ten and 48 ms to close.
+quiet: the check warns when the load average is above half the core count. The
+window opens on the current display; `--offscreen` runs without one and without
+the GPU, which changes the numbers.
+
+On the development machine (8 cores, 16 GB, X11 display with GPU, PyPI engine,
+November 3, 2026): about 440 ms to window, 680 ms to first page, 95 ms per new
+tab, 16 ms per switch, 20 ms typing, scrolling with the slowest frames at 17 ms
+and none over 25 ms, 10 ms to wake a frozen tab and 115 ms to reload an
+unloaded one, 465 MB with one tab and 730 MB with eleven. Restarting with
+eleven saved tabs reached the first page in 730 ms with 540 MB, against
+790 ms and 615 MB when all tabs load at startup. The window disappears 90 ms
+after closing; its page cleanup takes about a second more out of sight (each
+page gives back its GPU surface), and offscreen all of it takes about 45 ms.
 
 ### Engine boundary
 
@@ -1024,6 +1117,7 @@ then change any setting on its own (the mode then shows as Custom):
 | Cookie inspection wake-ups | at most every 20 s | every change | every change |
 | Freeze background tabs | after 2 min | never | never |
 | Unload background tabs | after 15 min | after 4 h | never |
+| Restored tabs | load when selected | load when selected | load all at startup |
 | Interface | native Qt widgets | customizable HTML | customizable HTML |
 | Command palette | freed on close | kept 1 min | preloaded and kept |
 | When the computer runs low on memory | switch to Memory saver | switch to Memory saver | keep settings |
@@ -1031,7 +1125,8 @@ then change any setting on its own (the mode then shows as Custom):
 
 A frozen tab keeps its page but stops scripts and timers (chat and mail tabs stop
 updating until you return). An unloaded tab frees its renderer and reloads when
-selected; unsaved form text can be lost. Tabs playing audio, shared with an agent,
+selected, at the same scroll position and with typed text kept (Chromium keeps
+both in the tab's history entry). Tabs playing audio, shared with an agent,
 with DevTools open or still loading, `steed:` pages and tabs you mark with
 **Keep This Tab Loaded** (tab right-click menu; a marked frozen tab wakes at
 once; the mark is saved with the session) are never frozen or unloaded, and Steed never goes further than Qt WebEngine recommends for a page
