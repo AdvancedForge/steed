@@ -217,6 +217,9 @@ def build(work: Path, jobs: int) -> None:
             cwd=out,
             env=env,
         )
+    # Chromium's part is built by its own inner ninja, which ignores --parallel
+    # and starts one job per core plus two unless NINJAJOBS says otherwise.
+    env["NINJAJOBS"] = f"-j{jobs}"
     _run(["cmake", "--build", ".", "--parallel", str(jobs)], cwd=out, env=env)
     stage = work / "stage"
     _run(["cmake", "--install", ".", "--prefix", str(stage)], cwd=out, env=env)
