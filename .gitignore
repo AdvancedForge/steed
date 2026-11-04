@@ -4,3 +4,4 @@ __pycache__/
 .ruff_cache/
 .worker-bundles/
 client_secret_*.apps.googleusercontent.com.json
+.venv-upgrade/

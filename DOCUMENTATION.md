@@ -150,6 +150,28 @@ WebEngine upgrade brings it), left out of Qt WebEngine on Linux (an upgrade will
 not), or missing from the PyPI engine (`build_codecs.py`). **Check again**
 repeats the test, for example after swapping the engine and restarting.
 
+### Upgrading Qt WebEngine
+
+`upgrade_engine.py` moves Steed to newer PyQt6 / Qt WebEngine releases
+without risking the working setup:
+
+```bash
+.venv/bin/python upgrade_engine.py check      # installed and newest versions
+.venv/bin/python upgrade_engine.py try        # .venv-upgrade: install and test
+.venv/bin/python upgrade_engine.py try --quick --compare before.json
+.venv/bin/python upgrade_engine.py apply      # pin and install what passed
+.venv/bin/python upgrade_engine.py rollback   # versions from before apply
+```
+
+`try` installs the newest releases into `.venv-upgrade` (never `.venv`) and
+reports the Chromium version and web-feature results (as on `steed:features`),
+the startup smoke test, the test suite (`--quick` runs a subset of nine files)
+and, with `--compare`, the timing check against an earlier result. Its report
+is `.venv-upgrade/steed-trial.json`. `apply` refuses unless that trial passed,
+records the current versions for `rollback`, pins the four packages exactly in
+`requirements.txt` and installs them into `.venv`. A video-codec build is for one
+version: after `apply`, run `build_codecs.py build` and `install` again.
+
 ### Google sign-in
 
 Google sign-in compatibility is enabled by default in **General → Settings**. It sends a Firefox User-Agent to `https://accounts.google.com/`, following [qutebrowser's account-host workaround](https://github.com/qutebrowser/qutebrowser/issues/5182). Other sites use your configured/default User-Agent. Main-page GET redirects into or out of the account host are restarted to avoid Qt losing the per-site header; POST requests are never replayed.

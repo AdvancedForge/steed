@@ -12,6 +12,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Engine upgrade routine — November 3, 2026.** `upgrade_engine.py` checks
+PyPI, tries the newest PyQt6/Qt WebEngine in `.venv-upgrade` (Chromium
+version, feature check, smoke test, tests, optional timing comparison), and
+applies or rolls back only trialled versions. PyPI now has PyQt6 6.12.0 and
+Qt WebEngine 6.140.0 (a new version numbering).
+
 **User scripts and styles — November 3, 2026.** `steed:userscripts` (General →
 User Scripts & Styles…) keeps per-profile CSS and JavaScript for listed sites:
 styles from Steed's script world at document start, scripts in the page world
