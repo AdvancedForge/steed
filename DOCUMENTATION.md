@@ -122,8 +122,10 @@ The build is for use on this computer, not for redistribution.
 ```
 
 The build works in `~/src/steed-qtwebengine` (`--work-dir` to change; it needs
-about 60 GB free) with 6 compile jobs by default (`--jobs`; each can use 2 GB of
-memory). It downloads Qt's source for the exact `PyQt6-WebEngine-Qt6` version
+about 60 GB free) with one compile job per 4 GB of memory by default (`--jobs`;
+Chromium's largest combined source files need about that much each, and six
+jobs ran out of memory on a 16 GB machine). A stopped build continues where it
+left off when `build` is run again. It downloads Qt's source for the exact `PyQt6-WebEngine-Qt6` version
 in `.venv`, checks Qt's published checksum, and builds against Qt's matching
 development files (installed there with aqtinstall, as are cmake and ninja).
 `install` refuses a build of another version, or one whose libraries lack any

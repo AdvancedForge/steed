@@ -95,6 +95,16 @@ JSON.stringify({
 })"""
 
 
+def default_jobs() -> int:
+    """One job per 4 GB: six jobs ran out of memory on a 16 GB machine."""
+    try:
+        with open("/proc/meminfo") as stream:
+            total_kb = int(stream.readline().split()[1])
+    except (OSError, ValueError, IndexError):
+        total_kb = 8 * 2**20
+    return max(1, min(os.cpu_count() or 1, total_kb // (4 * 2**20)))
+
+
 def qt_version() -> str:
     """The Qt WebEngine version the .venv uses; the build must match it."""
     return metadata.version("PyQt6-WebEngine-Qt6")
@@ -395,8 +405,9 @@ def main() -> int:
     parser.add_argument(
         "--jobs",
         type=int,
-        default=max(1, min(os.cpu_count() or 1, 6)),
-        help="parallel compile jobs; each can use 2 GB of memory",
+        default=default_jobs(),
+        help="parallel compile jobs (default: one per 4 GB of memory); "
+        "Chromium's largest files need about that much each",
     )
     args = parser.parse_args()
     target = wheel_dir()
