@@ -191,6 +191,10 @@ class BrowserTab(QWebEngineView):
         self.is_loading = False
         self.load_succeeded = None
         self.tab_id = uuid4().hex
+        # A restored tab not loaded yet: its address and title until selected.
+        self.pending_url = None
+        self.pending_title = ""
+        self.pending_scroll = None
         # Runtime references must stay distinct when windows restore saved IDs.
         self.agent_tab_id = uuid4().hex
         page = BrowserPage(
@@ -210,6 +214,20 @@ class BrowserTab(QWebEngineView):
 
         if initial_qurl is not None and initial_qurl.isValid():
             self.setUrl(initial_qurl)
+
+    def url(self) -> QUrl:
+        return self.pending_url if self.pending_url is not None else super().url()
+
+    def title(self) -> str:
+        return self.pending_title if self.pending_url is not None else super().title()
+
+    def load_pending(self) -> bool:
+        """Load a lazily restored tab; True when it was waiting."""
+        if self.pending_url is None:
+            return False
+        url, self.pending_url = self.pending_url, None
+        self.setUrl(url)
+        return True
 
     def contextMenuEvent(self, event):
         menu = self.createStandardContextMenu()
@@ -1594,7 +1612,10 @@ class BrowserWindow(QMainWindow):
         title: str | None = None,
         return_tab: bool = False,
         index: int | None = None,
+        defer: bool = False,
+        scroll: list[float] | None = None,
     ):
+        """Open a tab; defer=True waits to load it until it is selected."""
         if not url:
             url = self.config.get("new_tab_page", NEW_TAB) or NEW_TAB
 
@@ -1640,8 +1661,14 @@ class BrowserWindow(QMainWindow):
         self._switch_tab(index)
         self._sync_tab_group_labels()
 
+        if scroll:
+            self._restore_scroll(tab, qurl, scroll)
         # Start loading only after signals and tab bookkeeping are ready.
-        self.navigation.navigate(tab, qurl)
+        if defer and not workspace and not agent_panel:
+            tab.pending_url = qurl
+            tab.pending_title = title or qurl.toString()
+        else:
+            self.navigation.navigate(tab, qurl)
         if agent_panel:
             self._embed_agent_sidebar(tab)
         elif workspace:
@@ -1755,8 +1782,10 @@ class BrowserWindow(QMainWindow):
         for touched in (previous, self.tabs[index]):
             if touched is not None:
                 touched.last_active = monotonic()
-        # A frozen tab resumes; an unloaded one reloads its page.
-        webengine.wake(self.tabs[index].page())
+        # A frozen tab resumes; an unloaded one reloads its page; a restored
+        # one loads for the first time.
+        if not self.tabs[index].load_pending():
+            webengine.wake(self.tabs[index].page())
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
@@ -2348,10 +2377,47 @@ class BrowserWindow(QMainWindow):
                     group_id=tab.group_id,
                     pinned=tab.pinned,
                     keep_loaded=getattr(tab, "keep_loaded", False),
+                    scroll=self._tab_scroll(tab),
                 )
             )
 
         self.tab_manager.save_tabs(states)
+
+    @staticmethod
+    def _tab_scroll(tab):
+        if tab.pending_url is not None:
+            return tab.pending_scroll
+        if tab.workspace_name or webengine.tab_state(tab.page()) == webengine.UNLOADED:
+            return getattr(tab, "pending_scroll", None)
+        position = tab.page().scrollPosition()
+        if position.x() <= 0 and position.y() <= 0:
+            return None
+        return [round(position.x()), round(position.y())]
+
+    def _restore_scroll(self, tab, url, scroll):
+        """Scroll a restored tab back once its saved page has loaded."""
+        tab.pending_scroll = scroll
+
+        def loaded(ok):
+            tab.loadFinished.disconnect(loaded)
+            if not ok or sip.isdeleted(tab) or tab.url() != url:
+                tab.pending_scroll = None
+                return
+            # Pages that build their content late get a second try.
+            source = f"window.scrollTo({float(scroll[0])}, {float(scroll[1])})"
+            for delay in (0, 500):
+                QTimer.singleShot(
+                    delay,
+                    lambda: (
+                        sip.isdeleted(tab)
+                        or webengine.run_script(
+                            tab.page(), source, world=webengine.STEED_WORLD
+                        )
+                    ),
+                )
+            tab.pending_scroll = None
+
+        tab.loadFinished.connect(loaded)
 
     def _restore_tabs(self, reopen_windows=False):
         if self.profile_manager.is_search_profile():
@@ -2372,12 +2438,19 @@ class BrowserWindow(QMainWindow):
                 self._open_window(profile, states)
 
     def _restore_states(self, saved):
+        import memory_modes
+
+        lazy = memory_modes.values(self.config)["restore_tabs_lazily"]
         self._restoring_tabs = True
         try:
             if saved:
                 for state in saved:
                     self._new_tab(
-                        url=state.url, title=state.title, index=len(self.tabs)
+                        url=state.url,
+                        title=state.title,
+                        index=len(self.tabs),
+                        defer=lazy,
+                        scroll=state.scroll,
                     )
                     self.tabs[-1].group = state.group
                     self.tabs[-1].tab_id = state.tab_id
@@ -2618,6 +2691,8 @@ class BrowserWindow(QMainWindow):
                 or self.tabs.index(tab) == self.current_tab_index
             ):
                 return
+            # The session keeps its scroll position while it is unloaded.
+            tab.pending_scroll = self._tab_scroll(tab)
             if webengine.lightest_state(page) == webengine.ACTIVE:
                 # Waking it for the handlers made it active; unload next check.
                 webengine.set_tab_state(page, webengine.FROZEN)
@@ -3344,6 +3419,9 @@ class BrowserWindow(QMainWindow):
         if self.cookie_manager is not None:
             self.cookie_manager.close()
             self.cookie_manager = None
+        # On a real screen each page gives back its graphics surface as it is
+        # destroyed (tens of milliseconds a tab); go away first, then clean up.
+        self.hide()
         for tab in list(self.tabs):
             # Their unload handlers already ran above.
             self._dispose_tab(tab, unload=False)

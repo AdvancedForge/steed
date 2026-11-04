@@ -163,7 +163,7 @@ class BrowserTests(unittest.TestCase):
 
     def test_task_permissions_menu_reports_storage_failure_without_crashing(self):
         with patch(
-            "profile_manager.TaskService",
+            "services.task_service.TaskService",
             side_effect=sqlite3.OperationalError("fixture unavailable"),
         ):
             tab = self.window._open_tasks()

@@ -21,6 +21,8 @@ class TabState:
     pinned: bool = False
     # Exempt from freezing and unloading by memory modes.
     keep_loaded: bool = False
+    # Where the page was scrolled to, restored after the next start.
+    scroll: list[float] | None = None
 
 
 @dataclass
@@ -71,6 +73,19 @@ class ClosedTabHistory:
 _OPEN: dict[str, dict[str, list[TabState]]] = {}
 
 
+def _scroll(value) -> list[float] | None:
+    if (
+        isinstance(value, list)
+        and len(value) == 2
+        and all(
+            isinstance(n, (int, float)) and not isinstance(n, bool) and 0 <= n < 1e7
+            for n in value
+        )
+    ):
+        return [float(value[0]), float(value[1])]
+    return None
+
+
 def _parse_states(raw) -> list[TabState]:
     states: list[TabState] = []
     for item in raw if isinstance(raw, list) else []:
@@ -85,6 +100,7 @@ def _parse_states(raw) -> list[TabState]:
                 group_id=item.get("group_id"),
                 pinned=item.get("pinned") is True,
                 keep_loaded=item.get("keep_loaded") is True,
+                scroll=_scroll(item.get("scroll")),
             )
         )
     return states

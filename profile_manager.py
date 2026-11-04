@@ -21,18 +21,14 @@ from cookie_sharing import CookieSharing, cookie_key, fingerprint
 from cookie_snapshot import CookieSnapshot
 from download_manager import DownloadManager
 from password_service import PasswordService
-from services.agent_gateway import AgentGateway
-from services.app_connections import AppConnections
 from services.command_broker import require_owner_thread
 from services.navigation_service import NavigationService
 from services.profile_storage import ProfileStorage
 from services.site_permissions import SitePermissions, configure_permission_policy
 from services.start_pages import StartPageHandler, StartPages
 from services.task_policy import task_profile_name
-from services.task_service import TaskService
 from tab_manager import ClosedTabHistory
 from ui.download_dialog import choose_download_destination
-from ui.task_approval import TaskApprovalQueue
 from utils import get_profile_path, sanitize_profile_name
 from webengine import browser_user_agent, configure_web_settings
 
@@ -169,6 +165,9 @@ class ProfileRegistry(QObject):
     def app_connections(self):
         require_owner_thread(self)
         if self._app_connections is None:
+            # Agent and app services load on first use, not at startup.
+            from services.app_connections import AppConnections
+
             self._app_connections = AppConnections(
                 self.config.config_dir / "app_accounts.json", self
             )
@@ -201,6 +200,9 @@ class ProfileRegistry(QObject):
         """Initialize task infrastructure only when an internal client uses it."""
         require_owner_thread(self)
         if self._tasks is None:
+            from services.task_service import TaskService
+            from ui.task_approval import TaskApprovalQueue
+
             self._tasks = TaskService(
                 self.config.config_dir / "tasks.sqlite",
                 self,
@@ -269,6 +271,8 @@ class ProfileRegistry(QObject):
         if enabled == (self.agent_gateway is not None):
             return
         if enabled:
+            from services.agent_gateway import AgentGateway
+
             self.agent_gateway = AgentGateway(self.tasks, self.config.config_dir, self)
         else:
             if self._agent_providers is not None:

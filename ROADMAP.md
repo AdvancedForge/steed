@@ -12,13 +12,24 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Faster restarts and closing — November 3, 2026.** Restored tabs load when
+first selected (a `steed:memory` setting; Performance mode loads all), each
+tab's scroll position is saved with the session and restored, and an unloaded
+tab's position is kept for the session too. Closing hides the window before
+page cleanup (90 ms instead of about 1 s on screen), and agent/app services are
+imported on first use (startup imports 130 → 98 ms). On screen, an 11-tab
+restart reached its first page 8% sooner with 12% less memory. The memory help
+no longer says unloading loses typed text: Chromium keeps it and the scroll
+position. Timing check: restart-with-tabs and close-until-hidden figures,
+`--load-all-tabs`.
+
 **Engine boundary finished, more timings — November 3, 2026.** Page
 settings, private and stored profiles, the cookie policy and engine versions now
 go through `webengine.py` too; the 14 files still importing Qt WebEngine are
 page/view subclasses, scheme handlers, interceptors and permission requests.
 `tests/timing_check.py` adds scrolling frame times, waking a frozen tab and
-reloading an unloaded one, and warns on a busy computer. Open: a quiet,
-on-screen timing run (this session's machine had a load average near 15).
+reloading an unloaded one, and warns on a busy computer. The quiet on-screen run
+is recorded in DOCUMENTATION.md (Timing check).
 
 **Engine & features page and codec warning — November 3, 2026.**
 `steed:features` (View → Engine & Features…) shows the engine and Chromium

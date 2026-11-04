@@ -566,8 +566,13 @@ listed alphabetically, including `default` and `global`.
 
 - Multiple tabs with tab bar interface
 - Tabs are saved before closing
-- Tabs are restored when reopening a profile
-- Tab state includes URL, title, and stable tab/group identities
+- Tabs are restored when reopening a profile. Only the tab you see loads at
+  startup; each other one loads when you first select it (**Restored tabs** on
+  `steed:memory`; Performance mode loads all at once)
+- Tab state includes URL, title, scroll position (restored after the page
+  loads, with a second try half a second later for pages that build their
+  content late) and stable tab/group identities. Typed form text and the
+  back/forward list are not written to disk
 - `Ctrl+Shift+T` restores recently closed tabs for the current profile (up to 50, not saved across restart)
 
 ## Cookies and global sharing
@@ -967,15 +972,27 @@ and reports the median of each figure; all pages are local files.
 | Switch to a frozen tab until it responds | `_switch_tab` → the page answers a script |
 | Switch to an unloaded tab until it reloads | `_switch_tab` → its load finished |
 | Memory, one tab / 10 tabs | proportional set size (PSS) of Steed and its helper processes, after settling |
-| Close the window and quit | `close()` → returned, including unload handlers |
+| Restart with 11 tabs: first page / memory | a second start on the first session's saved tabs, to its first page loaded, and memory after settling |
+| Close the window until it disappears | `close()` → the window hidden |
+| Close the window and clean up | `close()` → returned, including unload handlers and page cleanup |
+
+`--load-all-tabs` runs the same check with **Restored tabs** set to load all
+at startup, to compare with the default.
 
 Figures compare runs on the same computer, and only when it is otherwise
-quiet: the check warns when the load average is above half the core count. The window opens on the current
-display; `--offscreen` runs without one and without the GPU, which changes the
-numbers. On the development machine (8 cores, 16 GB, offscreen, PyPI engine;
-November 3, 2026) the figures were about 400 ms to window, 620 ms to first
-page, 60 ms per new tab, 8 ms per switch, 23 ms typing, 386 MB with one tab,
-649 MB with ten and 48 ms to close.
+quiet: the check warns when the load average is above half the core count. The
+window opens on the current display; `--offscreen` runs without one and without
+the GPU, which changes the numbers.
+
+On the development machine (8 cores, 16 GB, X11 display with GPU, PyPI engine,
+November 3, 2026): about 440 ms to window, 680 ms to first page, 95 ms per new
+tab, 16 ms per switch, 20 ms typing, scrolling with the slowest frames at 17 ms
+and none over 25 ms, 10 ms to wake a frozen tab and 115 ms to reload an
+unloaded one, 465 MB with one tab and 730 MB with eleven. Restarting with
+eleven saved tabs reached the first page in 730 ms with 540 MB, against
+790 ms and 615 MB when all tabs load at startup. The window disappears 90 ms
+after closing; its page cleanup takes about a second more out of sight (each
+page gives back its GPU surface), and offscreen all of it takes about 45 ms.
 
 ### Engine boundary
 
@@ -1024,6 +1041,7 @@ then change any setting on its own (the mode then shows as Custom):
 | Cookie inspection wake-ups | at most every 20 s | every change | every change |
 | Freeze background tabs | after 2 min | never | never |
 | Unload background tabs | after 15 min | after 4 h | never |
+| Restored tabs | load when selected | load when selected | load all at startup |
 | Interface | native Qt widgets | customizable HTML | customizable HTML |
 | Command palette | freed on close | kept 1 min | preloaded and kept |
 | When the computer runs low on memory | switch to Memory saver | switch to Memory saver | keep settings |
@@ -1031,7 +1049,8 @@ then change any setting on its own (the mode then shows as Custom):
 
 A frozen tab keeps its page but stops scripts and timers (chat and mail tabs stop
 updating until you return). An unloaded tab frees its renderer and reloads when
-selected; unsaved form text can be lost. Tabs playing audio, shared with an agent,
+selected, at the same scroll position and with typed text kept (Chromium keeps
+both in the tab's history entry). Tabs playing audio, shared with an agent,
 with DevTools open or still loading, `steed:` pages and tabs you mark with
 **Keep This Tab Loaded** (tab right-click menu; a marked frozen tab wakes at
 once; the mark is saved with the session) are never frozen or unloaded, and Steed never goes further than Qt WebEngine recommends for a page
