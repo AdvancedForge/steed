@@ -29,8 +29,9 @@ incognito. Open: agent-proposed entries through a reviewed proposal flow.
 
 **Reader view — November 3, 2026.** F9 (View → Reader View) shows the page's
 article as text in a sealed Steed page with size and light/sepia/dark controls;
-the extraction runs in Steed's script world and returns text only. Open: images
-in reader view (they would need fetching through Steed, not the sealed page).
+the extraction runs in Steed's script world and returns text only. Images are
+fetched by Steed without cookies (size and format checked from their bytes) and
+shown inline; the reader page still has no network access.
 
 **Site settings — November 3, 2026.** The address bar's site icon opens a menu
 for the current site: JavaScript, autoplay with sound and pop-ups (allow or

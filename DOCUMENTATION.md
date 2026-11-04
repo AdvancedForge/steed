@@ -478,8 +478,13 @@ The article is found by a script in Steed's own script world (the page cannot
 see or change it): the element with the most paragraph text wins, with menus,
 sidebars, related links, comments and hidden text left out. Only plain text
 comes back; the reader page inserts it as text under strict content rules with
-no network access, so nothing from the site runs or loads there (images are
-not shown). Pages with less than about 400 characters of article text say
+no network access, so nothing from the site runs or loads there.
+
+Images the article shows at a useful size (up to 30) are downloaded by Steed
+itself, without cookies, then given to the reader page as inline data: at most
+2 MB each and 12 MB per article, and only PNG, JPEG, GIF, WebP or AVIF as
+recognised from the file's own bytes (never SVG). **Images** in the reader's
+toolbar turns them off and on; the choice is remembered. Pages with less than about 400 characters of article text say
 "Reader view found no article on this page".
 
 ### Site settings
