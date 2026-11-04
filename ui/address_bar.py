@@ -169,6 +169,7 @@ class AddressBar(QWidget):
     home_requested = pyqtSignal()
     passwords_requested = pyqtSignal()
     reset_zoom_requested = pyqtSignal()
+    site_menu_requested = pyqtSignal()
     tab_switch_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -229,6 +230,7 @@ class AddressBar(QWidget):
             icon("search", "#5d6c83", 16), QLineEdit.ActionPosition.LeadingPosition
         )
         self.site_action.setToolTip("Search or enter an address")
+        self.site_action.triggered.connect(self.site_menu_requested.emit)
         self.site_kind = "search"
         self.passwords_btn = QPushButton()
         self.passwords_btn.setAccessibleName("Passwords")
@@ -403,8 +405,8 @@ class AddressBar(QWidget):
 
     def _update_site_icon(self):
         tips = {
-            "lock": "Connection is encrypted (HTTPS)",
-            "unlocked": "Connection is not encrypted",
+            "lock": "Connection is encrypted (HTTPS). Click for this site's settings",
+            "unlocked": "Connection is not encrypted. Click for this site's settings",
             "internal": "Steed page",
             "search": "Search or enter an address",
         }

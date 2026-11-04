@@ -50,6 +50,7 @@ class ProfileRegistry(QObject):
     layout_changed = pyqtSignal(object)
     settings_changed = pyqtSignal()
     profile_usage_changed = pyqtSignal()
+    site_settings_changed = pyqtSignal(str, str)  # profile, host
 
     def __init__(self, config, parent):
         super().__init__(parent)
@@ -76,6 +77,7 @@ class ProfileRegistry(QObject):
             config.config_dir / "site_permissions.json"
         )
         self._private_permission_key = uuid4().hex
+        self._site_settings = {}
         self.agent_gateway = None
         self.task_profiles = {}
         self.navigation = NavigationService(self)
@@ -96,8 +98,30 @@ class ProfileRegistry(QObject):
         )
         self.refresh_settings()
 
+    def site_settings(self, name):
+        """Zoom, JavaScript, autoplay and pop-ups per site for one profile."""
+        from site_settings import SiteSettings
+
+        if name not in self._site_settings:
+            path = None
+            if name == "global":
+                path = self.config.config_dir / "global_profile" / "site_settings.json"
+            elif name != "search":
+                path = get_profile_path(self.config.profiles_dir, name)
+                path = path / "site_settings.json"
+            store = SiteSettings(path, self)
+            store.changed.connect(
+                lambda host, name=name: self.site_settings_changed.emit(name, host)
+            )
+            self._site_settings[name] = store
+        return self._site_settings[name]
+
     def _create_search_profile(self):
         """A fresh off-the-record profile for incognito windows."""
+        # A new incognito session starts with no remembered site settings.
+        old = getattr(self, "_site_settings", {}).pop("search", None)
+        if old is not None:
+            old.deleteLater()
         profile = webengine.private_profile(self)
         profile.installUrlSchemeHandler(
             b"steed", StartPageHandler(self.start_pages, "search", profile)

@@ -51,6 +51,7 @@ from services.start_pages import (
     page_name,
     workspace_name,
 )
+from site_settings import site_key
 from tab_manager import TabManager, TabState
 from ui.address_bar import AddressBar
 from ui.chrome_style import bar_stylesheet, chrome_colors
@@ -111,6 +112,9 @@ class BrowserPage(QWebEnginePage):
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
         if is_main_frame:
             window = getattr(self.parent(), "browser_window", None)
+            if window is not None:
+                # Before the new document loads, so its settings apply to it.
+                window._apply_site_settings(self, url)
             assistant = getattr(window, "password_assistant", None)
             if assistant is not None:
                 # Collect a login its form is submitting before the page goes.
@@ -361,6 +365,12 @@ class BrowserWindow(QMainWindow):
 
         # Connect profile signals
         self.profile_manager.profile_changed.connect(self._on_profile_changed)
+        self.profile_manager.registry.site_settings_changed.connect(
+            lambda profile, host: (
+                profile == self.profile_manager.current_profile_name
+                and self._site_settings_changed(host)
+            )
+        )
         self.profile_manager.registry.page_style.changed.connect(
             self._appearance_changed
         )
@@ -909,6 +919,7 @@ class BrowserWindow(QMainWindow):
             lambda: self.password_assistant.show_menu()
         )
         self.address_bar.reset_zoom_requested.connect(lambda: self._zoom())
+        self.address_bar.site_menu_requested.connect(self._show_site_menu)
         self.browser_menu = QMenu(self)
         for menu in self._layout_menus.values():
             self.browser_menu.addMenu(menu)
@@ -2067,10 +2078,104 @@ class BrowserWindow(QMainWindow):
 
     def _zoom(self, direction=0):
         if not self._closing and self.tabs:
-            self.navigation.zoom(
-                self._visible_page(self.tabs[self.current_tab_index]), direction
-            )
+            tab = self.tabs[self.current_tab_index]
+            factor = self.navigation.zoom(self._visible_page(tab), direction)
+            host = site_key(tab.url())
+            if host and not tab.workspace_name:
+                # Remembered for the site, as other browsers do.
+                self._site_settings().set(host, "zoom", factor)
             self._update_zoom()
+
+    def _site_settings(self):
+        return self.profile_manager.registry.site_settings(
+            self.profile_manager.current_profile_name
+        )
+
+    def _apply_site_settings(self, page, url):
+        """JavaScript, autoplay and pop-ups for the site a page is going to."""
+        if self._closing or sip.isdeleted(page):
+            return
+        host = site_key(url)
+        values = self._site_settings().get(host)
+        webengine.set_options(
+            page.settings(),
+            javascript=values["javascript"] == "allow",
+            media_needs_gesture=values["autoplay"] == "block",
+            # Off, Chromium's pop-up blocker stops windows opened without a click.
+            scripts_open_windows=values["popups"] == "allow",
+        )
+        page.site_host = host
+
+    def _apply_site_zoom(self, tab):
+        """Each site keeps its zoom; a tab moving to another site takes that one."""
+        host = site_key(tab.url())
+        if host is None or tab.workspace_name or getattr(tab, "zoom_host", "") == host:
+            return
+        tab.zoom_host = host
+        tab.setZoomFactor(self._site_settings().get(host)["zoom"])
+        if self.tabs and tab is self.tabs[self.current_tab_index]:
+            self._update_zoom()
+
+    def _show_site_menu(self):
+        """The site icon's menu: this site's zoom, JavaScript, autoplay, pop-ups."""
+        from PyQt6.QtWidgets import QMenu
+
+        import site_settings
+
+        if self._closing or not self.tabs:
+            return
+        tab = self.tabs[self.current_tab_index]
+        host = site_key(tab.url())
+        if host is None or tab.workspace_name:
+            return
+        store = self._site_settings()
+        values = store.get(host)
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.addSection(host)
+        for key, label in site_settings.LABELS.items():
+            action = menu.addAction(f"Allow {label.lower()}")
+            action.setCheckable(True)
+            action.setChecked(values[key] == "allow")
+            action.toggled.connect(
+                lambda allowed, key=key: self._set_site_setting(
+                    tab, host, key, "allow" if allowed else "block"
+                )
+            )
+        zoom = round(values["zoom"] * 100)
+        reset = menu.addAction(f"Reset zoom ({zoom}%)")
+        reset.setEnabled(zoom != 100)
+        reset.triggered.connect(lambda: store.set(host, "zoom", 1.0))
+        menu.addSeparator()
+        clear = menu.addAction("Clear settings for this site")
+        clear.setEnabled(bool(store.changed_keys(host)))
+        clear.triggered.connect(lambda: self._clear_site_settings(tab, host))
+        menu.addAction("Website permissions…").triggered.connect(
+            lambda: self._open_management("permissions")
+        )
+        self.site_menu = menu
+        field = self.address_bar.address_input
+        menu.popup(field.mapToGlobal(field.rect().bottomLeft()))
+
+    def _set_site_setting(self, tab, host, key, value):
+        self._site_settings().set(host, key, value)
+        # The page loaded with the old setting; reload so it takes effect.
+        if tab in self.tabs and site_key(tab.url()) == host:
+            tab.reload()
+
+    def _clear_site_settings(self, tab, host):
+        reload = any(key != "zoom" for key in self._site_settings().changed_keys(host))
+        self._site_settings().clear(host)
+        if reload and tab in self.tabs and site_key(tab.url()) == host:
+            tab.reload()
+
+    def _site_settings_changed(self, host):
+        """Another window or the site menu changed a site: update its tabs."""
+        for tab in self.tabs:
+            if site_key(tab.url()) == host and not tab.workspace_name:
+                tab.zoom_host = ""
+                self._apply_site_zoom(tab)
+                self._apply_site_settings(tab.page(), tab.url())
 
     def _update_zoom(self):
         if not self._closing and self.tabs:
@@ -2266,6 +2371,7 @@ class BrowserWindow(QMainWindow):
             return
         if tab in self.tabs:
             self.tab_bar.set_tab_state(self.tabs.index(tab), url=url.toString())
+            self._apply_site_zoom(tab)
         if not self.tabs or not (0 <= self.current_tab_index < len(self.tabs)):
             return
 

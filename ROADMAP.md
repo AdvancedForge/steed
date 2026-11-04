@@ -12,6 +12,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Site settings — November 3, 2026.** The address bar's site icon opens a menu
+for the current site: JavaScript, autoplay with sound and pop-ups (allow or
+block, applied before each page loads), per-site zoom (remembered when you
+zoom, shared by the site's tabs) and clearing them. Stored per profile; incognito
+in memory only.
+
 **Faster restarts and closing — November 3, 2026.** Restored tabs load when
 first selected (a `steed:memory` setting; Performance mode loads all), each
 tab's scroll position is saved with the session and restored, and an unloaded

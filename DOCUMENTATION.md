@@ -426,6 +426,26 @@ On supported Qt versions Steed uses `AskEveryTime` so native persisted choices
 cannot bypass these controls; older native approvals will prompt again. Read or
 write failures deny access rather than granting an unsaved remembered permission.
 
+### Site settings
+
+Click the lock (or open-lock) icon at the start of the address bar for the
+current site's menu:
+
+- **Allow JavaScript**, **Allow autoplay with sound**, **Allow pop-ups and new
+  windows** — on by default. Turning one off reloads the page so it applies.
+  With autoplay off, media waits for a click; with pop-ups off, Chromium's
+  pop-up blocker stops windows a page opens without a click (links you click
+  still open).
+- **Reset zoom** — zoom (Ctrl+= / Ctrl+- / Ctrl+0) is remembered for each site
+  and applies to every tab on it.
+- **Clear settings for this site** and **Website permissions…** (camera,
+  notifications and the like stay on `steed:permissions`).
+
+Settings belong to a host (`www.example.org` and `example.org` are separate)
+and to a profile, in `<profile>/site_settings.json`; only values you changed
+are stored. Incognito keeps them in memory until its session ends. Internal
+`steed:` pages and local files have no site settings.
+
 ### Find in page and zoom
 
 Press **Ctrl+F**, type a query, and use Enter or the Next/Previous buttons to
