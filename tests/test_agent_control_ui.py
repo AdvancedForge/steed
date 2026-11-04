@@ -128,6 +128,39 @@ class AgentControlUITests(unittest.TestCase):
             self.service.start_pages.get(task, "auto-page").state, "applied"
         )
 
+    def test_customization_proposals_open_a_review_or_apply_in_auto_mode(self):
+        from services.customization_proposals import EXAMPLES
+        from ui.customization_review import CustomizationReviewDialog
+
+        self.window()
+        task = self.task()
+        self.command(
+            "customization.propose",
+            task_id=task,
+            request_id="script",
+            source=json.dumps(EXAMPLES["user_script"]),
+        )
+        queue = self.registry.task_approvals
+        self.wait_for(lambda: isinstance(queue.dialog, CustomizationReviewDialog))
+        queue.dialog.decline()
+        self.assertEqual(
+            self.service.customizations.get(task, "script").state, "denied"
+        )
+        self.service.set_auto_approval(True)
+        self.command(
+            "customization.propose",
+            task_id=task,
+            request_id="app",
+            source=json.dumps(EXAMPLES["panel_app"]),
+        )
+        self.wait_for(
+            lambda: (
+                self.service.customizations.get(task, "app").state
+                != "awaiting_approval"
+            )
+        )
+        self.assertEqual(self.service.customizations.get(task, "app").state, "applied")
+
     def test_auto_mode_takes_over_exact_selection_without_a_popup(self):
         _, view = self.window()
         self.service.set_auto_approval(True)

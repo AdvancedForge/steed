@@ -223,7 +223,7 @@ class TaskDialog(HtmlSettingsDialog):
         pages_body.addWidget(self.review_page_button)
         self._page_rows = []
         self.page_requests.itemSelectionChanged.connect(self.update_page_actions)
-        self.panels.addTab(pages, "Start Pages")
+        self.panels.addTab(pages, "Pages & Scripts")
         workers = QWidget()
         worker_layout = QVBoxLayout(workers)
         worker_notice = QLabel(
@@ -1017,6 +1017,7 @@ class TaskDialog(HtmlSettingsDialog):
         selected = self.selection()
         self._page_rows = (
             self.service.start_pages.list(selected[0].task_id)
+            + self.service.customizations.list(selected[0].task_id)
             if selected and not self.service.failure and not self.service._closed
             else []
         )
@@ -1036,13 +1037,20 @@ class TaskDialog(HtmlSettingsDialog):
         )
 
     def review_page(self):
+        from services.customization_proposals import CustomizationProposal
+        from ui.customization_review import CustomizationReviewDialog
         from ui.start_page_review import StartPageReviewDialog
 
         row = self.page_requests.currentRow()
         if not 0 <= row < len(self._page_rows):
             return
+        proposal = self._page_rows[row]
         try:
-            dialog = StartPageReviewDialog(self.service, self._page_rows[row], self)
+            dialog = (
+                CustomizationReviewDialog
+                if isinstance(proposal, CustomizationProposal)
+                else StartPageReviewDialog
+            )(self.service, proposal, self)
             dialog.show()
         except (ValueError, KeyError):
             QMessageBox.warning(

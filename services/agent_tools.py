@@ -206,6 +206,22 @@ TOOLS = (
         ("source", "request_id"),
     ),
     tool(
+        "customization.capabilities",
+        "Discover the formats for proposing a user script (CSS/JavaScript for listed sites) or a panel app (one HTML page in the App Panel), with limits and copyable examples. Existing scripts and apps are never disclosed.",
+    ),
+    tool(
+        "customization.propose",
+        "Propose one user script or panel app using the exact JSON from customization.capabilities and a stable request ID. The user sees the exact code, chooses a profile and must press Add; nothing runs before that. Proposals only add new entries and grant no browser data, files or network access. Identical retries return the original receipt; changed reuse is refused. Maximum 320 KiB UTF-8.",
+        {"source": string(327680), "request_id": string(64)},
+        ("source", "request_id"),
+    ),
+    tool(
+        "customization.status",
+        "Poll this task's user script or panel app proposal. applied means the user added it; no agent approval command exists.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "start_page.status",
         "Poll this task's page proposal receipt. An applied state means the user enabled it; no agent approval command exists. Use a fresh request ID for the next reviewed edit.",
         {"request_id": string(64)},

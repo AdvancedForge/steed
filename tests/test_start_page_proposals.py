@@ -195,7 +195,7 @@ class PageProposalTests(unittest.TestCase):
             ]
             self.assertEqual(defaults, ["Decline"])
             self.assertIn(
-                "Start Pages",
+                "Pages & Scripts",
                 [manager.panels.tabText(i) for i in range(manager.panels.count())],
             )
             dialog.profile.setCurrentText("work")

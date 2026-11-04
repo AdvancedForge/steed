@@ -30,6 +30,7 @@ from services.connectors import (
     ConnectorRequest,
     ConnectorReview,
 )
+from services.customization_proposals import CustomizationProposals
 from services.data_panels import DataPanels
 from services.form_submission import journal_origin
 from services.layout_proposals import LayoutProposals
@@ -124,6 +125,7 @@ class TaskService(QObject):
         self.layouts = LayoutProposals(self)
         self.data_panels = DataPanels(self)
         self.start_pages = StartPageProposals(self)
+        self.customizations = CustomizationProposals(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -146,6 +148,15 @@ class TaskService(QObject):
                 ),
                 "start_page.status": lambda task_id, request_id: self._layout_action(
                     self.start_pages.get, task_id, request_id
+                ),
+                "customization.capabilities": self._customization_capabilities,
+                "customization.propose": lambda task_id, source, request_id: (
+                    self._layout_action(
+                        self.customizations.propose, task_id, source, request_id
+                    )
+                ),
+                "customization.status": lambda task_id, request_id: self._layout_action(
+                    self.customizations.get, task_id, request_id
                 ),
                 "panel.capabilities": self._panel_capabilities,
                 "panel.propose": lambda task_id, source, request_id: (
@@ -736,6 +747,13 @@ class TaskService(QObject):
         self._usable()
         self._active(task_id)
         return {"available": self.start_pages.available, **capabilities()}
+
+    def _customization_capabilities(self, task_id):
+        from services.customization_proposals import capabilities
+
+        self._usable()
+        self._active(task_id)
+        return {"available": self.customizations.available, **capabilities()}
 
     def _layout_capabilities(self, task_id):
         from layout_format import layout_capabilities
@@ -2781,6 +2799,7 @@ class TaskService(QObject):
         self.layouts.cancel_task(task_id)
         self.data_panels.cancel_task(task_id, interrupted=status == "interrupted")
         self.start_pages.cancel_task(task_id, interrupted=status == "interrupted")
+        self.customizations.cancel_task(task_id, interrupted=status == "interrupted")
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):
