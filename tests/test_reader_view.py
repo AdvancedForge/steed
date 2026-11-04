@@ -26,6 +26,10 @@ ARTICLE = f"""<!doctype html><title>Story</title>
 <aside class="sidebar related"><p>Related: something else entirely that is not the story at all.</p></aside>
 <article><h1>The headline</h1>
 {"".join(f"<p>{PARAGRAPH} ({n})</p>" for n in range(8))}
+<img src="/pic.png" alt="A picture" width="300" height="200">
+<img src="/fake.png" alt="Not a picture" width="300" height="200">
+<img src="/big.png" alt="Too big" width="300" height="200">
+<img src="/pic.png" alt="icon" width="16" height="16">
 <h2>A section</h2><ul><li>First point that is reasonably descriptive.</li><li>Second point.</li></ul>
 <p>&lt;img src=x onerror="document.title='pwned'"&gt; shown as text</p>
 <div class="comments"><p>A comment that should not appear in the reader at all, really.</p></div>
@@ -33,11 +37,28 @@ ARTICLE = f"""<!doctype html><title>Story</title>
 SHORT = b"<title>Short</title><p>Hello.</p><a href='/x'>Link</a>"
 
 
+def png_bytes():
+    from PyQt6.QtCore import QBuffer, QIODevice
+    from PyQt6.QtGui import QColor, QImage
+
+    image = QImage(300, 200, QImage.Format.Format_RGB32)
+    image.fill(QColor("teal"))
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buffer, "PNG")
+    return bytes(buffer.data())
+
+
+IMAGES = {}
+
+
 class Pages(BaseHTTPRequestHandler):
     def do_GET(self):
-        body = SHORT if self.path == "/short" else ARTICLE
+        body = SHORT if self.path == "/short" else IMAGES.get(self.path, ARTICLE)
         self.send_response(200)
-        self.send_header("Content-Type", "text/html")
+        self.send_header(
+            "Content-Type", "image/png" if self.path in IMAGES else "text/html"
+        )
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -47,6 +68,16 @@ class Pages(BaseHTTPRequestHandler):
 
 
 class ArticleTests(unittest.TestCase):
+    def test_image_types_come_from_the_bytes(self):
+        from ui.reader_view import image_type
+
+        self.assertEqual(image_type(b"\x89PNG\r\n\x1a\nrest"), "image/png")
+        self.assertEqual(image_type(b"\xff\xd8\xff\xe0"), "image/jpeg")
+        self.assertEqual(image_type(b"RIFF1234WEBPVP8 "), "image/webp")
+        self.assertEqual(image_type(b"\x00\x00\x00\x1cftypavif"), "image/avif")
+        for other in (b"<svg xmlns=", b"<script>", b"", b"GIF8"):
+            self.assertIsNone(image_type(other))
+
     def test_rejects_short_or_malformed_answers_and_cleans_blocks(self):
         for raw in (
             None,
@@ -82,6 +113,13 @@ class ReaderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = application()
+        IMAGES.update(
+            {
+                "/pic.png": png_bytes(),
+                "/fake.png": b"<script>alert(1)</script>",
+                "/big.png": b"\x89PNG\r\n\x1a\n" + b"0" * 2_100_000,
+            }
+        )
         cls.server = HTTPServer(("127.0.0.1", 0), Pages)
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
         cls.origin = f"http://127.0.0.1:{cls.server.server_port}"
@@ -150,9 +188,48 @@ class ReaderTests(unittest.TestCase):
         for absent in ("Sports", "Related:", "A comment that should not"):
             self.assertNotIn(absent, text)
         self.assertIn('<img src=x onerror="document.title', text)
-        self.assertEqual(self.js(page, "document.querySelectorAll('img').length"), 0)
+        # The only images are the reader's own, holding inline data at most.
+        sources = self.js(
+            page, "[...document.images].map(i => i.getAttribute('src') || '')"
+        )
+        self.assertTrue(all(s == "" or s.startswith("data:image/") for s in sources))
         self.assertNotEqual(tab.title(), "pwned")
         self.assertEqual(self.js(page, "document.querySelectorAll('ul li').length"), 2)
+
+    def test_images_are_fetched_checked_and_can_be_hidden(self):
+        tab = self.open()
+        panel = self.reader(tab)
+        page = panel.surface.page
+        images = [b for b in panel.content["blocks"] if b["type"] == "img"]
+        # Images the page could not show, and the 16-pixel icon, are left out.
+        self.assertEqual([b["text"] for b in images], ["A picture"])
+        shown = (
+            "[...document.querySelectorAll('figure:not([hidden]) img')].map(i => i.alt)"
+        )
+        self.wait(lambda: self.js(page, shown) == ["A picture"])
+        # Steed's own checks: real image bytes only, and a size limit.
+        for path in ("/fake.png", "/big.png"):
+            panel.content["blocks"].append(
+                {"type": "img", "text": path, "src": self.origin + path}
+            )
+        panel.fetch_images()
+        self.wait(lambda: not panel.replies)
+        self.assertTrue(
+            self.js(
+                page, "document.querySelector('figure:not([hidden]) img').src"
+            ).startswith("data:image/png;base64,")
+        )
+        self.assertEqual(len(panel.images), 1)
+        panel.command(
+            {
+                "context": panel.context,
+                "sequence": panel.sequence + 1,
+                "action": "images",
+                "show": False,
+            }
+        )
+        self.assertFalse(self.window.config.get("reader_images"))
+        self.wait(lambda: self.js(page, shown) == [])
 
     def test_controls_persist_and_f9_or_navigation_closes(self):
         tab = self.open()

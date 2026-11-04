@@ -193,7 +193,13 @@ def controller(window, name, source_tab=None):
     if name == "permissions":
         from ui.site_permissions import SitePermissionsDialog
 
-        return SitePermissionsDialog(registry.site_permissions, window)
+        profile = window.profile_manager.current_profile_name
+        return SitePermissionsDialog(
+            registry.site_permissions,
+            window,
+            site_settings=registry.site_settings(profile),
+            profile=profile,
+        )
     if name == "agent-setup":
         from ui.agent_setup import AgentSetupDialog
 

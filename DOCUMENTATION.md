@@ -478,8 +478,13 @@ The article is found by a script in Steed's own script world (the page cannot
 see or change it): the element with the most paragraph text wins, with menus,
 sidebars, related links, comments and hidden text left out. Only plain text
 comes back; the reader page inserts it as text under strict content rules with
-no network access, so nothing from the site runs or loads there (images are
-not shown). Pages with less than about 400 characters of article text say
+no network access, so nothing from the site runs or loads there.
+
+Images the article shows at a useful size (up to 30) are downloaded by Steed
+itself, without cookies, then given to the reader page as inline data: at most
+2 MB each and 12 MB per article, and only PNG, JPEG, GIF, WebP or AVIF as
+recognised from the file's own bytes (never SVG). **Images** in the reader's
+toolbar turns them off and on; the choice is remembered. Pages with less than about 400 characters of article text say
 "Reader view found no article on this page".
 
 ### Site settings
@@ -496,6 +501,9 @@ current site's menu:
   and applies to every tab on it.
 - **Clear settings for this site** and **Website permissions…** (camera,
   notifications and the like stay on `steed:permissions`).
+
+`steed:permissions` (Website permissions) also lists every site with its own
+settings in the current profile, with **Reset Selected Site**.
 
 Settings belong to a host (`www.example.org` and `example.org` are separate)
 and to a profile, in `<profile>/site_settings.json`; only values you changed
@@ -1048,12 +1056,22 @@ and reports the median of each figure; all pages are local files.
 | Switch to a frozen tab until it responds | `_switch_tab` → the page answers a script |
 | Switch to an unloaded tab until it reloads | `_switch_tab` → its load finished |
 | Memory, one tab / 10 tabs | proportional set size (PSS) of Steed and its helper processes, after settling |
+| Memory, one tab once idle | after cookie inspection has gone to sleep (30 s after the last cookie change in Balanced) |
 | Restart with 11 tabs: first page / memory | a second start on the first session's saved tabs, to its first page loaded, and memory after settling |
 | Close the window until it disappears | `close()` → the window hidden |
 | Close the window and clean up | `close()` → returned, including unload handlers and page cleanup |
 
 `--load-all-tabs` runs the same check with **Restored tabs** set to load all
 at startup, to compare with the default.
+
+Where the memory goes, with one tab after starting (Balanced, offscreen): the
+browser process (Python, Qt and Chromium's core) about 195 MB, the tab's page
+process about 15 MB, the tab strip's interface page about 15 MB, and helper
+processes about 25 MB — about 250 MB once idle. For the first ~30 seconds,
+cookie inspection adds about 160 MB: a hidden DevTools page (about 68 MB) and an
+inspected page (about 12 MB) for each of the global and current profiles,
+reading cookies so shared sign-ins stay in step. They sleep after 30 seconds
+without cookie changes (5 seconds in Memory saver).
 
 Figures compare runs on the same computer, and only when it is otherwise
 quiet: the check warns when the load average is above half the core count. The

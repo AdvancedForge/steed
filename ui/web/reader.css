@@ -14,3 +14,6 @@ body { margin: 0; background: var(--reader-bg); color: var(--reader-ink); }
 .reader blockquote { margin: 1.2em 0; padding-left: 1em; border-left: 3px solid var(--reader-rule); color: var(--reader-muted); font-style: italic; }
 .reader pre { font: .78em/1.5 ui-monospace, monospace; background: color-mix(in srgb, var(--reader-ink) 6%, transparent); padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre; }
 .reader .caption { color: var(--reader-muted); font-size: .8em; text-align: center; }
+.reader figure.image { margin: 1.4em 0; text-align: center; }
+.reader figure.image img { max-width: 100%; height: auto; border-radius: 6px; }
+.reader-bar button[aria-pressed=true] { background: var(--reader-ink); color: var(--reader-bg); }
