@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Reader</title><style nonce="{{NONCE}}">{{STYLE}}{{EXTRA_STYLE}}</style></head>
+<body><div class="reader-bar" role="toolbar" aria-label="Reader view">
+<button id="smaller" aria-label="Smaller text">A−</button><button id="larger" aria-label="Larger text">A+</button>
+<span class="themes" role="radiogroup" aria-label="Theme"><button data-theme="light" role="radio">Light</button><button data-theme="sepia" role="radio">Sepia</button><button data-theme="dark" role="radio">Dark</button></span>
+<button id="close" class="close">Exit reader (F9)</button></div>
+<main class="reader"><header><p id="site" class="site"></p><h1 id="title"></h1><p id="meta" class="meta"></p></header><article id="body"></article></main>
+<script nonce="{{NONCE}}">{{CHANNEL}}</script><script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script></body></html>

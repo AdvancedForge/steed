@@ -1,0 +1,16 @@
+body { margin: 0; background: var(--reader-bg); color: var(--reader-ink); }
+:root { --reader-bg: #fbfaf7; --reader-ink: #1d2433; --reader-muted: #5d6676; --reader-rule: #e3e0d8; --reader-size: 19px; }
+:root[data-reader="sepia"] { --reader-bg: #f4ecd8; --reader-ink: #3b2f20; --reader-muted: #6f5f49; --reader-rule: #ddd0b3; }
+:root[data-reader="dark"] { --reader-bg: #16191f; --reader-ink: #dfe3ea; --reader-muted: #98a1b0; --reader-rule: #2b313b; }
+.reader-bar { position: sticky; top: 0; display: flex; gap: 6px; align-items: center; justify-content: center; padding: 8px; background: var(--reader-bg); border-bottom: 1px solid var(--reader-rule); z-index: 1; }
+.reader-bar button { background: transparent; color: var(--reader-ink); border: 1px solid var(--reader-rule); border-radius: 7px; padding: 5px 10px; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+.reader-bar button[aria-checked=true] { background: var(--reader-ink); color: var(--reader-bg); }
+.reader-bar .themes { display: inline-flex; gap: 4px; margin: 0 8px; } .reader-bar .close { margin-left: 8px; }
+.reader { max-width: 68ch; margin: 0 auto; padding: 36px 24px 120px; font: var(--reader-size)/1.65 Georgia, "Iowan Old Style", "Noto Serif", serif; }
+.reader .site { color: var(--reader-muted); font: 600 13px system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; margin: 0; }
+.reader h1 { font-size: 1.75em; line-height: 1.2; margin: .3em 0; } .reader .meta { color: var(--reader-muted); font-size: .8em; margin: 0 0 2em; font-family: system-ui, sans-serif; }
+.reader h2 { font-size: 1.3em; line-height: 1.3; margin: 1.6em 0 .5em; } .reader h3 { font-size: 1.1em; margin: 1.4em 0 .4em; }
+.reader p { margin: 0 0 1em; } .reader ul { padding-left: 1.4em; margin: 0 0 1em; } .reader li { margin: .3em 0; }
+.reader blockquote { margin: 1.2em 0; padding-left: 1em; border-left: 3px solid var(--reader-rule); color: var(--reader-muted); font-style: italic; }
+.reader pre { font: .78em/1.5 ui-monospace, monospace; background: color-mix(in srgb, var(--reader-ink) 6%, transparent); padding: 12px; border-radius: 8px; overflow-x: auto; white-space: pre; }
+.reader .caption { color: var(--reader-muted); font-size: .8em; text-align: center; }

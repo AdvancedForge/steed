@@ -426,6 +426,23 @@ On supported Qt versions Steed uses `AskEveryTime` so native persisted choices
 cannot bypass these controls; older native approvals will prompt again. Read or
 write failures deny access rather than granting an unsaved remembered permission.
 
+### Reader view
+
+**View → Reader View** or **F9** shows the current page's article as plain,
+calm text over the tab: site name, title, author, an estimated reading time,
+then headings, paragraphs, lists, quotes, code and captions. **A− / A+** change
+the text size (14–30 px) and **Light / Sepia / Dark** the colours; both are
+remembered. **F9**, **Esc** or **Exit reader** returns to the page, as does
+following a link in the tab.
+
+The article is found by a script in Steed's own script world (the page cannot
+see or change it): the element with the most paragraph text wins, with menus,
+sidebars, related links, comments and hidden text left out. Only plain text
+comes back; the reader page inserts it as text under strict content rules with
+no network access, so nothing from the site runs or loads there (images are
+not shown). Pages with less than about 400 characters of article text say
+"Reader view found no article on this page".
+
 ### Site settings
 
 Click the lock (or open-lock) icon at the start of the address bar for the

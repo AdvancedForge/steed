@@ -12,6 +12,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**Reader view — November 3, 2026.** F9 (View → Reader View) shows the page's
+article as text in a sealed Steed page with size and light/sepia/dark controls;
+the extraction runs in Steed's script world and returns text only. Open: images
+in reader view (they would need fetching through Steed, not the sealed page).
+
 **Site settings — November 3, 2026.** The address bar's site icon opens a menu
 for the current site: JavaScript, autoplay with sound and pop-ups (allow or
 block, applied before each page loads), per-site zoom (remembered when you

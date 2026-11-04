@@ -189,6 +189,7 @@ class BrowserTab(QWebEngineView):
         self.group_id = None
         self.pinned = False
         self.native_panel = None
+        self.reader_panel = None
         self.workspace_name = None
         self.workspace_controller = None
         self.load_progress = 100
@@ -256,6 +257,8 @@ class BrowserTab(QWebEngineView):
         super().resizeEvent(event)
         if self.native_panel is not None:
             self.native_panel.setGeometry(self.rect())
+        if self.reader_panel is not None:
+            self.reader_panel.setGeometry(self.rect())
 
 
 # One-time tokens for tabs being dragged out of a strip: token -> (window, tab).
@@ -519,6 +522,11 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        self.reader_action = QAction("Reader View", self)
+        self.reader_action.setShortcut(QKeySequence("F9"))
+        self.reader_action.triggered.connect(self._toggle_reader)
+        view_menu.addAction(self.reader_action)
+        self.addAction(self.reader_action)
         memory_action = QAction("Memory && Performance…", self)
         memory_action.triggered.connect(
             lambda: self._new_tab(url="steed:memory", return_tab=True)
@@ -2116,6 +2124,52 @@ class BrowserWindow(QMainWindow):
         if self.tabs and tab is self.tabs[self.current_tab_index]:
             self._update_zoom()
 
+    def _toggle_reader(self):
+        """Show the current page's article in reader view, or leave it (F9)."""
+        from ui.reader_view import EXTRACT, ReaderPanel, article
+
+        if self._closing or not self.tabs:
+            return
+        tab = self.tabs[self.current_tab_index]
+        if tab.reader_panel is not None:
+            tab.reader_panel.close_reader()
+            return
+        url = tab.url()
+        if tab.workspace_name or url.scheme() not in ("http", "https", "file"):
+            self.status_bar.showMessage("Reader view works on web pages.", 4000)
+            return
+
+        def extracted(raw):
+            if (
+                self._closing
+                or sip.isdeleted(tab)
+                or tab not in self.tabs
+                or tab.url() != url
+                or tab.reader_panel is not None
+            ):
+                return
+            content = article(raw)
+            if content is None:
+                self.status_bar.showMessage(
+                    "Reader view found no article on this page.", 5000
+                )
+                return
+            panel = ReaderPanel(self, tab, content, url)
+            tab.reader_panel = panel
+
+            def closed():
+                if not sip.isdeleted(tab):
+                    tab.reader_panel = None
+                    if tab in self.tabs and tab is self.tabs[self.current_tab_index]:
+                        tab.setFocus()
+
+            panel.closed.connect(closed)
+            panel.surface.setFocus()
+
+        webengine.run_script(
+            tab.page(), EXTRACT, extracted, world=webengine.STEED_WORLD
+        )
+
     def _show_site_menu(self):
         """The site icon's menu: this site's zoom, JavaScript, autoplay, pop-ups."""
         from PyQt6.QtWidgets import QMenu
@@ -2372,6 +2426,9 @@ class BrowserWindow(QMainWindow):
         if tab in self.tabs:
             self.tab_bar.set_tab_state(self.tabs.index(tab), url=url.toString())
             self._apply_site_zoom(tab)
+            if tab.reader_panel is not None and url != tab.reader_panel.url:
+                # Reader view belongs to one article; following a link leaves it.
+                tab.reader_panel.close_reader()
         if not self.tabs or not (0 <= self.current_tab_index < len(self.tabs)):
             return
 
@@ -3400,6 +3457,8 @@ class BrowserWindow(QMainWindow):
     @staticmethod
     def _dispose_tab(tab: BrowserTab, unload: bool = True) -> None:
         """Stop a tab and detach its callbacks before scheduling deletion."""
+        if tab.reader_panel is not None:
+            tab.reader_panel.close_reader()
         tab.browser_window._take_back_tab(tab)
         window = tab.browser_window
         window.devtools.close(tab)
