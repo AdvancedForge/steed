@@ -25,7 +25,10 @@ web features, and the codec build is prepared for 6.11.2.
 User Scripts & Styles…) keeps per-profile CSS and JavaScript for listed sites:
 styles from Steed's script world at document start, scripts in the page world
 at start/ready/loaded with errors contained, on/off per entry, none in
-incognito. Open: agent-proposed entries through a reviewed proposal flow.
+incognito. Agents propose user scripts and panel apps with
+`customization.capabilities/propose/status`; a native review shows the exact
+code (every-site scripts called out), the user picks a profile, and Add only
+creates new entries.
 
 **Reader view — November 3, 2026.** F9 (View → Reader View) shows the page's
 article as text in a sealed Steed page with size and light/sepia/dark controls;

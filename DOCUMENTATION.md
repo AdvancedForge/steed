@@ -308,7 +308,21 @@ the default. Every edit requires Apply; request IDs pin exact bytes and identica
 retries return the original receipt. Changed pages/profile identities invalidate
 a preview. Applied pages survive task completion; pending proposals are cancelled
 or interrupted rather than replayed. Deferred reviews remain in **Task Permissions
-→ Start Pages**. Database schema 21 migrates existing journals in place.
+→ Pages & Scripts**. Database schema 21 migrates existing journals in place.
+
+Agents can also propose a **user script** (CSS and JavaScript for listed sites,
+as on `steed:userscripts`) or a **panel app** (one HTML page for the App Panel,
+as on `steed:apps`) with `steed_customization_capabilities`,
+`steed_customization_propose` and `steed_customization_status`. The declaration
+is strict version-1 JSON (`kind` `user_script` or `panel_app`, only that kind's
+fields, at most 320 KB) and is checked with the same rules as those pages. A
+native review shows the exact code without running it, says plainly what it
+could do (a script runs with each listed page's permissions; `*` is called out
+as every website), lets you choose a normal profile, and defaults to Decline.
+**Add** creates a new entry there; proposals never read, replace or remove your
+existing scripts or apps and grant no browser data, files or network access.
+Receipts, retries, task cancellation and automatic mode work as for page
+proposals.
 
 Steed registers a host-based local URL scheme before application startup, following
 the [Qt URL-scheme documentation](https://doc.qt.io/qt-6/qwebengineurlscheme.html).

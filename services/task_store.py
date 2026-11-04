@@ -13,6 +13,7 @@ from services.approval_rules import RULE_SCHEMA, ApprovalRule
 from services.connector_access import ACCESS_SCHEMA
 from services.connector_reviews import REVIEW_SCHEMA
 from services.connector_store import CONNECTOR_SCHEMA
+from services.customization_proposals import CUSTOMIZATION_SCHEMA
 from services.data_panels import PANEL_SCHEMA
 from services.layout_proposals import LAYOUT_SCHEMA
 from services.recipe_proposals import RECIPE_SCHEMA
@@ -171,6 +172,7 @@ class TaskStore:
                 + LAYOUT_SCHEMA
                 + PANEL_SCHEMA
                 + PAGE_SCHEMA
+                + CUSTOMIZATION_SCHEMA
             )
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():

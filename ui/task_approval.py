@@ -384,6 +384,12 @@ class TaskApprovalQueue(QObject):
                         (task, proposal)
                         for proposal in self.service.start_pages.pending(task.task_id)
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.customizations.pending(
+                            task.task_id
+                        )
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -413,6 +419,7 @@ class TaskApprovalQueue(QObject):
             if key in self.deferred and not self.service.auto_approve_requests:
                 continue
             from services.connector_reviews import AppReview
+            from services.customization_proposals import CustomizationProposal
             from services.data_panels import PanelReceipt
             from services.layout_proposals import LayoutProposal
             from services.live_control import ControlRequest
@@ -420,6 +427,7 @@ class TaskApprovalQueue(QObject):
             from services.start_page_proposals import PageProposal
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
+            from ui.customization_review import CustomizationReviewDialog
             from ui.data_panels import DataPanelReviewDialog
             from ui.layout_review import LayoutReviewDialog
             from ui.live_control_review import LiveControlDialog
@@ -429,7 +437,9 @@ class TaskApprovalQueue(QObject):
 
             if (
                 not self.service.auto_approve_requests
-                and isinstance(grant, (PanelReceipt, PageProposal))
+                and isinstance(
+                    grant, (PanelReceipt, PageProposal, CustomizationProposal)
+                )
                 and parent.profile_manager.is_search_profile()
             ):
                 normal = [
@@ -445,6 +455,8 @@ class TaskApprovalQueue(QObject):
                     if isinstance(grant, ControlRequest)
                     else StartPageReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PageProposal)
+                    else CustomizationReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, CustomizationProposal)
                     else DataPanelReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PanelReceipt)
                     else LayoutReviewDialog(
@@ -500,7 +512,7 @@ class TaskApprovalQueue(QObject):
                     dialog.approve()
                     if dialog.result() != QDialog.DialogCode.Accepted:
                         dialog.decline()
-                elif isinstance(grant, PageProposal):
+                elif isinstance(grant, (PageProposal, CustomizationProposal)):
                     dialog.apply()
                     if dialog.result() != QDialog.DialogCode.Accepted:
                         dialog.decline()
@@ -524,6 +536,7 @@ class TaskApprovalQueue(QObject):
 
     def request_key(self, task, item):
         from services.connector_reviews import AppReview
+        from services.customization_proposals import CustomizationProposal
         from services.data_panels import PanelReceipt
         from services.layout_proposals import LayoutProposal
         from services.live_control import ControlRequest
@@ -543,6 +556,7 @@ class TaskApprovalQueue(QObject):
                     LayoutProposal,
                     PanelReceipt,
                     PageProposal,
+                    CustomizationProposal,
                 ),
             )
             else item.grant_id

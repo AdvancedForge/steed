@@ -25,6 +25,8 @@ READ_ONLY_COMMANDS = frozenset(
         "panel.status",
         "start_page.capabilities",
         "start_page.status",
+        "customization.capabilities",
+        "customization.status",
         "grant.list",
         "browser.context",
         "browser.tabs",
@@ -322,7 +324,9 @@ def create_server(
         )
     server.instructions += (
         " For browser UI customization, use steed_layout_capabilities, submit "
-        "page changes through steed_start_page_capabilities/propose/status, or "
+        "page changes through steed_start_page_capabilities/propose/status, "
+        "user scripts and panel apps through "
+        "steed_customization_capabilities/propose/status, or "
         "the exact JSON with steed_layout_propose and poll steed_layout_status. "
         "The user reviews and applies it in a native popup; the agent cannot "
         "approve it. Layout approval grants no page, profile, folder or account access. "
