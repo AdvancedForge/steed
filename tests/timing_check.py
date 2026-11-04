@@ -35,6 +35,7 @@ METRICS = (
     ("wake_frozen", "Switch to a frozen tab until it responds", "ms"),
     ("wake_unloaded", "Switch to an unloaded tab until it reloads", "ms"),
     ("memory_one", "Memory, one tab", "MB"),
+    ("memory_idle", "Memory, one tab once idle", "MB"),
     ("memory_ten", f"Memory, {TABS} tabs", "MB"),
     ("restored_first_page", f"Restart with {TABS + 1} tabs: first page", "ms"),
     ("restored_memory", f"Restart with {TABS + 1} tabs: memory", "MB"),
@@ -152,6 +153,18 @@ def run_round(home: Path, restored: bool, load_all: bool) -> dict:
                 results["first_page"] = ms(process_start)
                 settle(2)
                 results["memory_one"] = memory_mb()
+                # Cookie inspection runs for a while after starting, then sleeps
+                # (30 s in Balanced); idle figures are what Steed settles at.
+                import cookie_snapshot
+
+                def inspectors_asleep():
+                    return all(
+                        s.closed or s.sleeping for s in list(cookie_snapshot._SNAPSHOTS)
+                    )
+
+                wait(inspectors_asleep, limit=120)
+                settle(3)
+                results["memory_idle"] = memory_mb()
                 opened = []
                 for url in pages[1:]:
                     start = time.monotonic()

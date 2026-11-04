@@ -1056,12 +1056,22 @@ and reports the median of each figure; all pages are local files.
 | Switch to a frozen tab until it responds | `_switch_tab` → the page answers a script |
 | Switch to an unloaded tab until it reloads | `_switch_tab` → its load finished |
 | Memory, one tab / 10 tabs | proportional set size (PSS) of Steed and its helper processes, after settling |
+| Memory, one tab once idle | after cookie inspection has gone to sleep (30 s after the last cookie change in Balanced) |
 | Restart with 11 tabs: first page / memory | a second start on the first session's saved tabs, to its first page loaded, and memory after settling |
 | Close the window until it disappears | `close()` → the window hidden |
 | Close the window and clean up | `close()` → returned, including unload handlers and page cleanup |
 
 `--load-all-tabs` runs the same check with **Restored tabs** set to load all
 at startup, to compare with the default.
+
+Where the memory goes, with one tab after starting (Balanced, offscreen): the
+browser process (Python, Qt and Chromium's core) about 195 MB, the tab's page
+process about 15 MB, the tab strip's interface page about 15 MB, and helper
+processes about 25 MB — about 250 MB once idle. For the first ~30 seconds,
+cookie inspection adds about 160 MB: a hidden DevTools page (about 68 MB) and an
+inspected page (about 12 MB) for each of the global and current profiles,
+reading cookies so shared sign-ins stay in step. They sleep after 30 seconds
+without cookie changes (5 seconds in Memory saver).
 
 Figures compare runs on the same computer, and only when it is otherwise
 quiet: the check warns when the load average is above half the core count. The
