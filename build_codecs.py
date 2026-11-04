@@ -261,6 +261,26 @@ def _exports(library: Path) -> set[str]:
     return {line.split()[-1] for line in result.stdout.splitlines() if line.strip()}
 
 
+def _imported(target: Path) -> set[str]:
+    """Names that PyQt6 and the wheel's Qt libraries need from other libraries."""
+    files = [*target.parent.glob("*.so"), *target.rglob("*.so*")]
+    files.append(target / "libexec" / "QtWebEngineProcess")
+    names = set()
+    for path in files:
+        if not path.is_file() or BACKUP in path.parts:
+            continue
+        result = subprocess.run(
+            ["nm", "-D", "--undefined-only", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        names.update(
+            line.split()[-1] for line in result.stdout.splitlines() if line.strip()
+        )
+    return names
+
+
 def check_compatible(stage: Path, target: Path) -> None:
     """Refuse a build whose version or exported functions differ from the wheel."""
     marker = stage / MARKER
@@ -278,10 +298,18 @@ def check_compatible(stage: Path, target: Path) -> None:
             original = target / BACKUP / wheel_file.relative_to(target)
             reference = original if original.exists() else wheel_file
             missing = _exports(reference) - _exports(built_file)
-            if missing:
+            # A different compiler exports a few of its own internals (such as
+            # libstdc++ digit tables); only names something here imports matter.
+            used = missing & _imported(target)
+            if used:
                 raise SystemExit(
-                    f"{built_file.name} lacks {len(missing)} functions PyQt6 may "
-                    f"use, e.g. {sorted(missing)[0]}"
+                    f"{built_file.name} lacks {len(used)} functions PyQt6 or Qt "
+                    f"uses, e.g. {sorted(used)[0]}"
+                )
+            if missing:
+                print(
+                    f"{built_file.name}: {len(missing)} exported names differ, "
+                    "none of them used here."
                 )
 
 

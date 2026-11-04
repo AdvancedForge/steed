@@ -9,6 +9,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Video codecs installed — November 4, 2026.** The Qt WebEngine 6.11.2 codec
+build finished (Release, three compile jobs: Chromium's inner ninja needs
+`NINJAFLAGS` at configure, or it runs one job per core and runs out of memory)
+and is installed in `.venv`. H.264 and AAC play; all 1,799 tests and the smoke
+test pass on it; speed and memory match the PyPI engine. Open: a desktop check
+of Discord/Tenor GIFs and other MP4 sites.
+
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
