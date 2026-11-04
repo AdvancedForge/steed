@@ -200,7 +200,10 @@ def build(work: Path, jobs: int) -> None:
         _run(
             [str(qt / "bin" / "qt-configure-module"), str(source)]
             + ["-webengine-proprietary-codecs", "-no-build-qtpdf"]
-            + ["--", f"-DPython3_EXECUTABLE={work / 'tools' / 'bin' / 'python'}"],
+            + ["--", f"-DPython3_EXECUTABLE={work / 'tools' / 'bin' / 'python'}"]
+            # As Qt ships it: without debug information the library is far
+            # smaller and linking it fits in ordinary memory.
+            + ["-DCMAKE_BUILD_TYPE=Release"],
             cwd=out,
             env=env,
         )
