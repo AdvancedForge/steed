@@ -426,6 +426,23 @@ On supported Qt versions Steed uses `AskEveryTime` so native persisted choices
 cannot bypass these controls; older native approvals will prompt again. Read or
 write failures deny access rather than granting an unsaved remembered permission.
 
+### User scripts and styles (`steed:userscripts`)
+
+**General → User Scripts & Styles…** or `steed:userscripts` keeps your own CSS
+and JavaScript for chosen sites in this profile (`<profile>/user_scripts.json`,
+up to 50 entries). Each has a name, its sites (one per line or comma separated,
+such as `example.org`; a site includes its subdomains, `*.example.org` means
+the same, and `*` means every site), CSS, JavaScript, when the script runs (as
+the page starts, when it is ready, or after it has loaded) and an on/off
+switch. They also run in frames from the listed sites.
+
+Styles are added from Steed's own script world as soon as the document exists,
+so pages do not flash unstyled. Scripts run in the page's world, like
+userscripts, so they can use the site's own code; an error is reported in the
+page's console (`Steed user script <name>`) without stopping the page. Scripts
+have the page's permissions and none of Steed's data. Changes apply to pages
+loaded or reloaded afterwards. Incognito windows run none.
+
 ### Reader view
 
 **View → Reader View** or **F9** shows the current page's article as plain,

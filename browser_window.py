@@ -511,6 +511,11 @@ class BrowserWindow(QMainWindow):
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(lambda: self._open_management("downloads"))
         general_menu.addAction(downloads_action)
+        scripts_action = QAction("User Scripts && Styles…", self)
+        scripts_action.triggered.connect(
+            lambda: self._new_tab(url="steed:userscripts", return_tab=True)
+        )
+        general_menu.addAction(scripts_action)
         adblock_action = QAction("Ad Blocking...", self)
         adblock_action.triggered.connect(lambda: self._open_management("adblock"))
         general_menu.addAction(adblock_action)
@@ -3926,6 +3931,10 @@ class BrowserWindow(QMainWindow):
             from ui.memory_page import MemoryPage
 
             controller = panel = MemoryPage(self)
+        elif name == "userscripts":
+            from ui.user_scripts_page import UserScriptsPage
+
+            controller = panel = UserScriptsPage(self)
         elif name == "features":
             from ui.features_page import FeaturesPage
 

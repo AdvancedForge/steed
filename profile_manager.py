@@ -78,6 +78,7 @@ class ProfileRegistry(QObject):
         )
         self._private_permission_key = uuid4().hex
         self._site_settings = {}
+        self._user_scripts = {}
         self.agent_gateway = None
         self.task_profiles = {}
         self.navigation = NavigationService(self)
@@ -115,6 +116,27 @@ class ProfileRegistry(QObject):
             )
             self._site_settings[name] = store
         return self._site_settings[name]
+
+    def user_scripts(self, name):
+        """Your CSS and JavaScript for chosen sites; None for incognito."""
+        from user_scripts import UserScripts
+
+        if name == "search":
+            return None
+        if name not in self._user_scripts:
+            if name == "global":
+                folder = self.config.config_dir / "global_profile"
+            else:
+                folder = get_profile_path(self.config.profiles_dir, name)
+            store = UserScripts(folder / "user_scripts.json", self)
+            store.changed.connect(lambda name=name: self._user_scripts_changed(name))
+            self._user_scripts[name] = store
+        return self._user_scripts[name]
+
+    def _user_scripts_changed(self, name):
+        profile = self.profiles.get(name)
+        if profile is not None:
+            self._user_scripts[name].install(profile)
 
     def _create_search_profile(self):
         """A fresh off-the-record profile for incognito windows."""
@@ -446,6 +468,7 @@ class ProfileRegistry(QObject):
             profile.setHttpUserAgent(override)
         self.profiles[name] = profile
         self.passwords.install(profile)
+        self.user_scripts(name).install(profile)
         self.downloads.attach(profile, name)
         self.adblock.attach(profile)
         if hasattr(self, "sharing"):

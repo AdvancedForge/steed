@@ -12,6 +12,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.
 
+**User scripts and styles — November 3, 2026.** `steed:userscripts` (General →
+User Scripts & Styles…) keeps per-profile CSS and JavaScript for listed sites:
+styles from Steed's script world at document start, scripts in the page world
+at start/ready/loaded with errors contained, on/off per entry, none in
+incognito. Open: agent-proposed entries through a reviewed proposal flow.
+
 **Reader view — November 3, 2026.** F9 (View → Reader View) shows the page's
 article as text in a sealed Steed page with size and light/sepia/dark controls;
 the extraction runs in Steed's script world and returns text only. Open: images
