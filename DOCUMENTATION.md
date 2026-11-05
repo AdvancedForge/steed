@@ -104,7 +104,7 @@ QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" .venv/bin/python main.py
 
 The browser preserves explicit Chromium options and enables PipeWire screen capture without forcing a graphics backend.
 
-### Video codecs (H.264 and AAC)
+### Video codecs (H.264 and AAC) — optional
 
 The PyPI Qt WebEngine plays WebM/VP8/VP9, AV1, Opus and MP3, but not the
 patent-licensed H.264 video and AAC audio. Videos and "GIFs" (short MP4 files,
@@ -119,10 +119,19 @@ The build is for use on this computer, not for redistribution.
 .venv/bin/python build_codecs.py install   # backs up the PyPI files, then swaps
 .venv/bin/python build_codecs.py status    # which engine is in use and what plays
 .venv/bin/python build_codecs.py restore   # put the PyPI engine back
+.venv/bin/python build_codecs.py clean     # free the build's disk space
 ```
 
-The build works in `~/src/steed-qtwebengine` (`--work-dir` to change; it needs
-about 60 GB free) with one compile job per 4 GB of memory by default (`--jobs`;
+Steed works without it; only videos that come solely as H.264/AAC need it. The
+build needs about 15 GB of disk while it runs and takes several hours (about
+five on an 8-core, 16 GB machine). Afterwards `clean` removes the source,
+compiled files, Qt's development files and build tools (about 13 GB), keeping
+only the finished engine (`stage/`, under 0.5 GB) so `install` still works after
+a pip reinstall. It lists what it removes and asks first (`--yes` skips the
+question); a later build downloads and compiles everything again.
+
+The build works in `~/src/steed-qtwebengine` (`--work-dir` to change; it checks
+for 60 GB free to leave room) with one compile job per 4 GB of memory by default (`--jobs`;
 Chromium's largest combined source files need about that much each, and six
 jobs ran out of memory on a 16 GB machine). A stopped build continues where it
 left off when `build` is run again. It downloads Qt's source for the exact `PyQt6-WebEngine-Qt6` version
@@ -1170,7 +1179,12 @@ then change any setting on its own (the mode then shows as Custom):
 A frozen tab keeps its page but stops scripts and timers (chat and mail tabs stop
 updating until you return). An unloaded tab frees its renderer and reloads when
 selected, at the same scroll position and with typed text kept (Chromium keeps
-both in the tab's history entry). Tabs playing audio, shared with an agent,
+both in the tab's history entry). Before unloading, Steed wakes the page and
+sends what Chrome sends (`freeze`, `beforeunload`, `pagehide`, `unload`) so the
+site can save, waits up to 5 seconds and a further 0.3 seconds for storage
+writes to land, and unloads only if the page answered; otherwise the tab stays
+frozen and is retried at a later check (three tries per session). Discord, for
+example, keeps its sign-in only by saving it at that moment. Tabs playing audio, shared with an agent,
 with DevTools open or still loading, `steed:` pages and tabs you mark with
 **Keep This Tab Loaded** (tab right-click menu; a marked frozen tab wakes at
 once; the mark is saved with the session) are never frozen or unloaded, and Steed never goes further than Qt WebEngine recommends for a page

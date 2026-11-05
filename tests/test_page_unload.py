@@ -27,6 +27,19 @@ window.token = localStorage.getItem('token') || (location.search.includes('login
 localStorage.removeItem('token'); history.replaceState(null, '', '/app');
 addEventListener('beforeunload', () => { if (window.token) localStorage.setItem('token', window.token); });
 </script>"""
+# Saves only after a slow handler, as a busy frozen page might.
+SLOW = b"""<title>slow</title><script>
+window.token = localStorage.getItem('token') || 'SLOWTOKEN';
+localStorage.removeItem('token');
+addEventListener('beforeunload', () => {
+  const end = Date.now() + 2500; while (Date.now() < end) {}
+  localStorage.setItem('token', window.token);
+});
+</script>"""
+# Saves on the Page Lifecycle freeze event only.
+FREEZE = b"""<title>freeze</title><script>
+document.addEventListener('freeze', () => localStorage.setItem('token', 'FROZENTOKEN'));
+</script>"""
 STUCK = b"""<title>stuck</title><script>
 addEventListener('beforeunload', () => { const end = Date.now() + 8000; while (Date.now() < end) {} });
 </script>"""
@@ -39,6 +52,10 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith("/app")
             else STUCK
             if self.path.startswith("/stuck")
+            else SLOW
+            if self.path.startswith("/slow")
+            else FREEZE
+            if self.path.startswith("/freeze")
             else b"<title>probe</title>"
         )
         self.send_response(200)
@@ -141,6 +158,36 @@ class PageUnloadTests(unittest.TestCase):
         # Selecting it again reloads the site, which finds its sign-in.
         self.window._switch_tab(self.window.tabs.index(tab))
         self.wait(lambda: tab.title() == "app")
+
+    def unload_in_background(self, path):
+        memory_modes.set_value(self.window.config, "tab_discard_minutes", 15)
+        self.window.profile_manager.registry.settings_changed.emit()
+        tab = self.window._new_tab(url=self.origin + path, return_tab=True)
+        self.wait(lambda: tab.title() == path.strip("/"))
+        self.window._switch_tab(0)
+        page = tab.page()
+        self.wait(lambda: page.recommendedState() != State.Active)
+        page.setLifecycleState(State.Frozen)
+        tab.last_active = time.monotonic() - 3600
+        self.wait(lambda: page.recommendedState() == State.Discarded)
+        self.window._apply_tab_lifecycle()
+        return tab, page
+
+    def test_a_slow_site_still_saves_before_its_tab_unloads(self):
+        tab, page = self.unload_in_background("/slow")
+        self.wait(lambda: page.lifecycleState() == State.Discarded)
+        self.assertEqual(self.stored(), "SLOWTOKEN")
+
+    def test_the_freeze_event_lets_a_site_save(self):
+        tab, page = self.unload_in_background("/freeze")
+        self.wait(lambda: page.lifecycleState() == State.Discarded)
+        self.assertEqual(self.stored(), "FROZENTOKEN")
+
+    def test_a_site_that_does_not_finish_saving_is_kept_loaded(self):
+        tab, page = self.unload_in_background("/stuck")
+        self.wait(lambda: not getattr(tab, "unloading", True), timeout=15)
+        self.assertEqual(getattr(tab, "unload_failures", 0), 1)
+        self.assertNotEqual(page.lifecycleState(), State.Discarded)
 
     def test_switching_profiles_lets_the_site_save_its_sign_in(self):
         self.open_app()

@@ -108,6 +108,25 @@ class SwapTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "No finished build"):
             codecs.install(self.stage, self.wheel)
 
+    def test_clean_keeps_only_the_built_engine(self):
+        work = self.stage.parent
+        (work / "build").mkdir()
+        (work / "build" / "big.o").write_text("x" * 100)
+        (work / "qtwebengine-everywhere-src-6.11.2.tar.xz").write_text("x")
+        (work / "mine.txt").write_text("not the build's")
+        (work / "build.log").write_text("log")
+        with patch("builtins.input", return_value="n"):
+            codecs.clean(work)
+        self.assertTrue((work / "build").exists())
+        codecs.clean(work, assume_yes=True)
+        self.assertEqual(
+            sorted(p.name for p in work.iterdir()),
+            ["Qt6", "build.log", "mine.txt", "stage"],
+        )
+        (self.stage / codecs.MARKER).unlink()
+        with self.assertRaises(SystemExit):
+            codecs.clean(work, assume_yes=True)
+
     def test_missing_requirements_name_packages(self):
         with (
             patch("shutil.which", return_value=None),
