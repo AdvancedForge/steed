@@ -12,13 +12,21 @@ import webengine
 
 # Handlers that hang never block closing for longer than this.
 UNLOAD_TIMEOUT_MS = 1500
+# Unloading a background tab waits longer: nobody is waiting, and a frozen page
+# can take seconds to wake. A page that does not answer is not unloaded.
+DISCARD_TIMEOUT_MS = 5000
+# What a page writes to storage reaches the browser separately from the script's
+# answer; this short pause lets it land before the page goes.
+SETTLE_MS = 300
 # Settings → "Let sites save before closing"; windows keep this in step.
 ENABLED = True
 
+# What Chrome sends before discarding (freeze) or closing a page.
 UNLOAD_SCRIPT = """(() => {
-    for (const type of ["beforeunload", "pagehide", "unload"]) {
-        try { window.dispatchEvent(new Event(type)); } catch (_) {}
-    }
+    try { document.dispatchEvent(new Event("freeze")); } catch (_) {}
+    try { window.dispatchEvent(new Event("beforeunload", {cancelable: true})); } catch (_) {}
+    try { window.dispatchEvent(new PageTransitionEvent("pagehide", {persisted: false})); } catch (_) {}
+    try { window.dispatchEvent(new Event("unload")); } catch (_) {}
     return true;
 })()"""
 
@@ -35,24 +43,27 @@ def needs_unload(page):
 
 
 def run_unload_handlers(pages, done, timeout_ms=UNLOAD_TIMEOUT_MS):
-    """Dispatch the unload events in each page, then call done() once."""
+    """Dispatch the unload events in each page, then call done(answered) once.
+
+    answered is False when a page did not report back in time.
+    """
     pending = {id(page): page for page in pages if needs_unload(page)}
     finished = False
 
-    def finish():
+    def finish(answered):
         nonlocal finished
         if not finished:
             finished = True
-            done()
+            done(answered)
 
     if not pending:
-        finish()
+        finish(True)
         return
 
     def answered(key):
         pending.pop(key, None)
-        if not pending:
-            finish()
+        if not pending and not finished:
+            QTimer.singleShot(SETTLE_MS, lambda: finish(True))
 
     for key, page in list(pending.items()):
         if webengine.tab_state(page) == webengine.FROZEN:
@@ -64,7 +75,7 @@ def run_unload_handlers(pages, done, timeout_ms=UNLOAD_TIMEOUT_MS):
             lambda _, key=key: answered(key),
             world=webengine.PAGE_WORLD,
         )
-    QTimer.singleShot(timeout_ms, finish)
+    QTimer.singleShot(timeout_ms, lambda: finish(False))
 
 
 def run_unload_handlers_now(pages, timeout_ms=UNLOAD_TIMEOUT_MS):
@@ -76,7 +87,7 @@ def run_unload_handlers_now(pages, timeout_ms=UNLOAD_TIMEOUT_MS):
     loop = QEventLoop()
     finished = []
 
-    def done():
+    def done(_answered):
         finished.append(True)
         loop.quit()
 

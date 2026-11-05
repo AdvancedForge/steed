@@ -14,7 +14,15 @@ build finished (Release, three compile jobs: Chromium's inner ninja needs
 `NINJAFLAGS` at configure, or it runs one job per core and runs out of memory)
 and is installed in `.venv`. H.264 and AAC play; all 1,799 tests and the smoke
 test pass on it; speed and memory match the PyPI engine. Open: a desktop check
-of Discord/Tenor GIFs and other MP4 sites.
+of Discord/Tenor GIFs and other MP4 sites. The build is optional; `clean` frees
+about 13 GB afterwards, keeping the 0.5 GB engine.
+
+**Unloading keeps sign-ins — November 4, 2026.** Discord still signed out
+sometimes when a background tab unloaded: a frozen page could take longer than
+the 1.5 seconds Steed waited for it to save. Background unloading now waits up
+to 5 seconds plus 0.3 seconds for storage, sends Chrome's `freeze` and a proper
+`pagehide` too, and never unloads a page that did not answer (it stays frozen;
+three tries per session).
 
 **Priority: daily workflow engineering.** Public-release work remains reference
 backlog; it is not the active agenda.

@@ -2843,14 +2843,14 @@ class BrowserWindow(QMainWindow):
 
     def _discard_tab(self, tab):
         """Unload a background tab after letting the site save its state."""
-        from page_unload import run_unload_handlers
+        from page_unload import DISCARD_TIMEOUT_MS, run_unload_handlers
 
-        if getattr(tab, "unloading", False):
+        if getattr(tab, "unloading", False) or getattr(tab, "unload_failures", 0) >= 3:
             return
         tab.unloading = True
         page = tab.page()
 
-        def discard():
+        def discard(answered):
             tab.unloading = False
             if (
                 self._closing
@@ -2859,6 +2859,15 @@ class BrowserWindow(QMainWindow):
                 or self.tabs.index(tab) == self.current_tab_index
             ):
                 return
+            if not answered:
+                # Unloading now could lose what the site saves on the way out
+                # (Discord's sign-in). Keep it asleep and try at a later check;
+                # after three tries it stays loaded for this session.
+                tab.unload_failures = getattr(tab, "unload_failures", 0) + 1
+                logger.info("Kept a tab loaded: it did not finish saving in time")
+                if webengine.lightest_state(page) != webengine.ACTIVE:
+                    webengine.set_tab_state(page, webengine.FROZEN)
+                return
             # The session keeps its scroll position while it is unloaded.
             tab.pending_scroll = self._tab_scroll(tab)
             if webengine.lightest_state(page) == webengine.ACTIVE:
@@ -2866,7 +2875,7 @@ class BrowserWindow(QMainWindow):
                 webengine.set_tab_state(page, webengine.FROZEN)
             webengine.set_tab_state(page, webengine.UNLOADED)
 
-        run_unload_handlers([page], discard)
+        run_unload_handlers([page], discard, DISCARD_TIMEOUT_MS)
 
     def _release_palette(self):
         """Free an idle palette's renderer; the next open builds a new one."""
@@ -3483,7 +3492,7 @@ class BrowserWindow(QMainWindow):
         tab.hide()
         from page_unload import run_unload_handlers
 
-        def delete():
+        def delete(*_):
             if not sip.isdeleted(tab):
                 tab.stop()
                 # BrowserPage is parented to the view and is destroyed with it.

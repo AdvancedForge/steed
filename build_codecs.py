@@ -12,6 +12,7 @@ code does not change. The build is for use on this computer only.
     .venv/bin/python build_codecs.py install   # back up and swap the engine
     .venv/bin/python build_codecs.py status    # which engine Steed is using
     .venv/bin/python build_codecs.py restore   # put the PyPI engine back
+    .venv/bin/python build_codecs.py clean     # free the build's disk space
 
 ``build`` takes hours and can be run again to continue where it stopped.
 Reinstalling PyQt6-WebEngine-Qt6 (pip) puts the PyPI engine back; run
@@ -329,6 +330,43 @@ def install(stage: Path, target: Path) -> None:
     marker["installed"] = _stamp(target / "lib" / LIBRARIES[0])
     (target / MARKER).write_text(json.dumps(marker))
     print("Installed the engine with video codecs. Restart Steed to use it.")
+    print("To free the build's disk space (keeping this engine): build_codecs.py clean")
+
+
+def _size(path: Path) -> int:
+    if path.is_file():
+        return path.stat().st_size
+    return sum(
+        p.stat().st_size for p in path.rglob("*") if p.is_file() and not p.is_symlink()
+    )
+
+
+def clean(work: Path, assume_yes: bool = False) -> None:
+    """Remove everything but the finished engine (stage), which install uses."""
+    if not (work / "stage" / MARKER).exists():
+        raise SystemExit("No finished build to keep; nothing removed.")
+    # Only what build creates: never anything else that shares the folder.
+    names = ("build", "qt", "tools", "aqt.log", "aqtinstall.log", "download.log")
+    targets = [
+        path
+        for path in sorted(work.iterdir())
+        if path.name in names or path.name.startswith("qtwebengine-everywhere-src-")
+    ]
+    total = sum(_size(path) for path in targets)
+    print(f"Removes {total / 2**30:.1f} GB from {work}:")
+    for path in targets:
+        print("  ", path.name)
+    print("Keeps stage/ (the built engine, for install) and build.log.")
+    print("A later build downloads and compiles everything again (hours).")
+    if not assume_yes and input("Remove them? [y/N] ").strip().lower() != "y":
+        print("Nothing removed.")
+        return
+    for path in targets:
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    print("Removed.")
 
 
 def restore(target: Path) -> None:
@@ -433,8 +471,9 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "command", choices=("check", "build", "install", "status", "restore")
+        "command", choices=("check", "build", "install", "status", "restore", "clean")
     )
+    parser.add_argument("--yes", action="store_true", help="clean without asking")
     parser.add_argument("--work-dir", type=Path, default=DEFAULT_WORK)
     parser.add_argument(
         "--jobs",
@@ -453,6 +492,8 @@ def main() -> int:
         install(args.work_dir / "stage", target)
     elif args.command == "status":
         status(target)
+    elif args.command == "clean":
+        clean(args.work_dir, args.yes)
     else:
         restore(target)
     return 0
