@@ -460,6 +460,7 @@ class FeatureTests(unittest.TestCase):
         request = Mock()
         request.page.return_value = None
         request.suggestedFileName.return_value = "../../site.bin"
+        request.url.return_value = QUrl("https://example.org/site.bin")
         request.receivedBytes.return_value = 4
         request.totalBytes.return_value = 4
         request.state.return_value = SimpleNamespace(name="DownloadCompleted")

@@ -119,6 +119,69 @@ class CommandPaletteTests(unittest.TestCase):
         palette.command({"context": "other", "action": "choose", "id": token})
         palette.command({"context": palette.context, "action": "choose", "id": "x"})
 
+    def test_history_and_bookmarks_are_searched_and_open_in_a_new_tab(self):
+        profile = self.window.profile_manager.current_profile_name
+        self.window.history.record("https://news.example/article", "Morning article")
+        self.window.history.record("https://shop.example/", "Shop")
+        self.window.profile_manager.registry.start_pages.add_bookmark(
+            profile, "https://docs.example/guide", "Reference guide"
+        )
+        palette = self.opened()
+
+        def search(text):
+            self.js(
+                palette,
+                "(() => { const q = document.getElementById('query'); q.value = "
+                + repr(text)
+                + "; q.dispatchEvent(new Event('input')); return true; })()",
+            )
+            return self.js(
+                palette,
+                "[...document.querySelectorAll('#results li')].map(li => "
+                "[li.className.split(' ')[0], li.querySelector('.title').textContent])",
+            )
+
+        # Nothing typed: only tabs, not every visited page.
+        self.assertEqual({kind for kind, _ in search("")}, {"tab"})
+        self.assertIn(["history", "Morning article"], search("morning"))
+        self.assertIn(["bookmark", "Reference guide"], search("guide"))
+        self.assertEqual(
+            [title for _, title in search("#")], ["Shop", "Morning article"]
+        )
+        self.assertEqual(search("*"), [["bookmark", "Reference guide"]])
+        before = len(self.window.tabs)
+        search("#morning")
+        self.js(
+            palette,
+            "document.getElementById('query').dispatchEvent("
+            "new KeyboardEvent('keydown', {key: 'Enter'})); true",
+        )
+        self.wait(lambda: len(self.window.tabs) == before + 1)
+        self.assertEqual(
+            self.window.tabs[self.window.current_tab_index].url().toString(),
+            "https://news.example/article",
+        )
+
+    def test_native_palette_searches_history_with_the_same_prefixes(self):
+        from ui.command_palette import NativeCommandPalette
+
+        self.window.history.record("https://news.example/article", "Morning article")
+        palette = NativeCommandPalette(self.window)
+        try:
+            palette.present("#morn")
+            texts = [
+                palette.results.item(i).text() for i in range(palette.results.count())
+            ]
+            self.assertEqual(texts, ["History · Morning article"])
+            palette.present("")
+            texts = [
+                palette.results.item(i).text() for i in range(palette.results.count())
+            ]
+            self.assertTrue(texts and all(t.startswith("Tab · ") for t in texts))
+        finally:
+            palette.hide()
+            palette.deleteLater()
+
     def test_keyboard_shortcuts_move_between_tabs_from_a_web_page(self):
         window = self.window
         for _ in range(3):

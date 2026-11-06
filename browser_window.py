@@ -691,6 +691,7 @@ class BrowserWindow(QMainWindow):
         for label, key, mode in (
             ("Command Palette…", "Ctrl+Shift+P", ""),
             ("Search Tabs…", "Ctrl+Shift+E", "@"),
+            ("Search History…", "Ctrl+Shift+Y", "#"),
         ):
             action = QAction(label, self)
             action.setShortcut(QKeySequence(key))
@@ -933,6 +934,15 @@ class BrowserWindow(QMainWindow):
         )
         self.address_bar.reset_zoom_requested.connect(lambda: self._zoom())
         self.address_bar.site_menu_requested.connect(self._show_site_menu)
+        self.address_bar.downloads_requested.connect(
+            lambda: self._open_management("downloads")
+        )
+        self._downloads_recent = QTimer(self)
+        self._downloads_recent.setSingleShot(True)
+        self._downloads_recent.setInterval(30000)
+        self._downloads_recent.timeout.connect(self._downloads_changed)
+        self.download_manager.changed.connect(self._downloads_changed)
+        self.download_manager.finished.connect(self._download_finished)
         self.browser_menu = QMenu(self)
         for menu in self._layout_menus.values():
             self.browser_menu.addMenu(menu)
@@ -2174,6 +2184,62 @@ class BrowserWindow(QMainWindow):
         webengine.run_script(
             tab.page(), EXTRACT, extracted, world=webengine.STEED_WORLD
         )
+
+    def _download_page(self, profile):
+        """A page of an open window in that profile, to start a download from."""
+        windows = [self, *self._same_profile_windows()]
+        windows += [
+            w
+            for w in QApplication.topLevelWidgets()
+            if isinstance(w, BrowserWindow) and w not in windows and not w._closing
+        ]
+        for window in windows:
+            if window.profile_manager.current_profile_name != profile:
+                continue
+            # A Steed page (New Tab, Welcome) cannot start a second download.
+            for tab in window.tabs:
+                if tab.url().scheme() in ("http", "https") and not tab.workspace_name:
+                    return tab.page()
+        for window in windows:
+            if window.profile_manager.current_profile_name == profile:
+                return window._blank_download_page()
+        return None
+
+    def _blank_download_page(self):
+        """A hidden blank page of this window's profile, for starting downloads."""
+        page = getattr(self, "_retry_page", None)
+        profile = self.profile_manager.current_profile
+        if page is None or sip.isdeleted(page) or page.profile() is not profile:
+            if page is not None and not sip.isdeleted(page):
+                sip.delete(page)
+            page = webengine.Page(profile, self)
+            self._retry_page = page
+        return page
+
+    def _downloads_changed(self):
+        """Toolbar progress: shown while downloading and briefly afterwards."""
+        if self._closing:
+            return
+        count, fraction = self.download_manager.progress()
+        if count:
+            self._downloads_recent.stop()
+            self.address_bar.show_downloads(
+                f"↓ {round(fraction * 100)}%" if fraction is not None else "↓ …",
+                f"{count} download{'s' if count > 1 else ''} in progress (Ctrl+J)",
+            )
+        elif not self._downloads_recent.isActive():
+            self.address_bar.hide_downloads()
+
+    def _download_finished(self, key):
+        record = self.download_manager.records.get(key)
+        if record is None or self._closing:
+            return
+        self.status_bar.showMessage(f"Downloaded {record.name}", 8000)
+        if not self.download_manager.active():
+            self.address_bar.show_downloads(
+                "↓ Done", f"Downloaded {record.name} — open Downloads (Ctrl+J)"
+            )
+            self._downloads_recent.start()
 
     def _show_site_menu(self):
         """The site icon's menu: this site's zoom, JavaScript, autoplay, pop-ups."""
@@ -3613,6 +3679,9 @@ class BrowserWindow(QMainWindow):
         # Explicit destruction here also works while a nested dialog is closing.
         for tab in self.tab_container.findChildren(BrowserTab):
             sip.delete(tab)
+        page = getattr(self, "_retry_page", None)
+        if page is not None and not sip.isdeleted(page):
+            sip.delete(page)
         self.profile_manager.close()
 
         event.accept()

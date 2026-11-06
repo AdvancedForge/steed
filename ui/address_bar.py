@@ -170,6 +170,7 @@ class AddressBar(QWidget):
     passwords_requested = pyqtSignal()
     reset_zoom_requested = pyqtSignal()
     site_menu_requested = pyqtSignal()
+    downloads_requested = pyqtSignal()
     tab_switch_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -240,6 +241,12 @@ class AddressBar(QWidget):
         self.zoom_btn.setObjectName("TextButton")
         self.zoom_btn.setToolTip("Reset page zoom (Ctrl+0)")
         self.zoom_btn.clicked.connect(self.reset_zoom_requested.emit)
+        # Appears only while something downloads, and briefly afterwards.
+        self.downloads_btn = QPushButton()
+        self.downloads_btn.setObjectName("TextButton")
+        self.downloads_btn.setAccessibleName("Downloads")
+        self.downloads_btn.clicked.connect(self.downloads_requested.emit)
+        self.downloads_shown = False
 
         # Stable identifiers let a saved layout reorder or hide individual
         # buttons without depending on widget names.
@@ -250,6 +257,7 @@ class AddressBar(QWidget):
             "home": self.home_btn,
             "zoom": self.zoom_btn,
             "passwords": self.passwords_btn,
+            "downloads": self.downloads_btn,
         }
         self.menu_btn = QPushButton()
         self.menu_btn.setToolTip("Browser menu")
@@ -268,13 +276,26 @@ class AddressBar(QWidget):
         for name, button in self.buttons.items():
             if button.parent() is not self:
                 button.setParent(self)
-            button.setVisible(name not in self.hidden_toolbar)
+            button.setVisible(
+                name not in self.hidden_toolbar
+                and (name != "downloads" or self.downloads_shown)
+            )
         for name in self.toolbar_order:
             if name == "address":
                 self.address_input.show()
                 layout.addWidget(self.address_input, 1)
             elif name not in self.hidden_toolbar:
                 layout.addWidget(self.buttons[name])
+
+    def show_downloads(self, text: str, tooltip: str) -> None:
+        self.downloads_btn.setText(text)
+        self.downloads_btn.setToolTip(tooltip)
+        self.downloads_shown = True
+        self.downloads_btn.setVisible("downloads" not in self.hidden_toolbar)
+
+    def hide_downloads(self) -> None:
+        self.downloads_shown = False
+        self.downloads_btn.hide()
 
     def apply_toolbar(self, order, hidden) -> None:
         """Show and hide address bar buttons according to a layout.

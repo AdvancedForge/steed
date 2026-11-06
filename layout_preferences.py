@@ -21,7 +21,15 @@ LAYOUT_VERSION = 2
 
 # The address bar buttons a layout may reorder or hide. Every one of these also
 # stays reachable from the menu bar.
-TOOLBAR_ITEMS = ("back", "forward", "reload", "home", "zoom", "passwords")
+TOOLBAR_ITEMS = (
+    "back",
+    "forward",
+    "reload",
+    "home",
+    "zoom",
+    "passwords",
+    "downloads",
+)
 TOOLBAR_ORDER = (
     "menu",
     "back",
@@ -31,6 +39,7 @@ TOOLBAR_ORDER = (
     "address",
     "zoom",
     "passwords",
+    "downloads",
 )
 
 # Menus may be reordered but never hidden, so Settings and Reset Layout are
