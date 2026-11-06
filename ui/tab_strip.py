@@ -34,6 +34,14 @@ def ordered_colors(names):
     return colors
 
 
+def group_palette(records, chosen):
+    """Each group's colour: its own choice, or the next automatic colour."""
+    automatic = ordered_colors(
+        r["group"] for r in records if r["group"] and r["group"] not in chosen
+    )
+    return {**automatic, **chosen}
+
+
 def site_of(url):
     host = (urlsplit(url).hostname or "").lower()
     return host.removeprefix("www.")
@@ -114,6 +122,8 @@ class TabStrip(QWidget):
         self.current = -1
         self.groups = {}
         self.available_groups = []
+        # Group name -> chosen colour; other groups take automatic colours.
+        self.group_colors = {}
         self.collapsed = set()
         self.content_height = 0
         self.chrome = {"toolbar": "", "dark": False}
@@ -214,6 +224,12 @@ class TabStrip(QWidget):
 
     def is_tab_visible(self, index: int) -> bool:
         return 0 <= index < len(self.records) and self.records[index]["visible"]
+
+    def set_group_colors(self, colors) -> None:
+        colors = dict(colors)
+        if colors != self.group_colors:
+            self.group_colors = colors
+            self.refresh()
 
     def set_collapsed_groups(self, names) -> None:
         names = set(names)
@@ -316,7 +332,7 @@ class TabStrip(QWidget):
             self.setFixedHeight(max(base, min(rows, base * 4)))
 
     def _publish(self):
-        groups = ordered_colors(r["group"] for r in self.records)
+        groups = group_palette(self.records, self.group_colors)
         sites = ordered_colors(r["site"] for r in self.records)
         tabs = []
         for index, record in enumerate(self.records):

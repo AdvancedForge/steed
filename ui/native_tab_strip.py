@@ -10,7 +10,7 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWidgets import QHBoxLayout, QTabBar, QToolButton, QWidget
 
-from ui.tab_strip import TabStrip, ordered_colors
+from ui.tab_strip import TabStrip, group_palette
 
 SHAPES = {
     "top": QTabBar.Shape.RoundedNorth,
@@ -87,7 +87,7 @@ class NativeTabStrip(TabStrip):
                 for record in self.records:
                     bar.addTab(record["title"])
                 self._ids = ids
-            groups = ordered_colors(r["group"] for r in self.records)
+            groups = group_palette(self.records, self.group_colors)
             live = {record["id"] for record in self.records}
             self.icons = {k: v for k, v in self.icons.items() if k in live}
             for index, record in enumerate(self.records):

@@ -52,7 +52,7 @@ from services.start_pages import (
     workspace_name,
 )
 from site_settings import site_key
-from tab_manager import TabManager, TabState
+from tab_manager import GROUP_COLORS, TabManager, TabState
 from ui.address_bar import AddressBar
 from ui.chrome_style import bar_stylesheet, chrome_colors
 from ui.devtools import DevToolsHost, DevToolsUnavailable
@@ -452,6 +452,8 @@ class BrowserWindow(QMainWindow):
         new_tab_action.setShortcut(QKeySequence("Ctrl+T"))
         new_tab_action.triggered.connect(lambda: self._new_tab())
         tabs_menu.addAction(new_tab_action)
+        self.saved_groups_menu = tabs_menu.addMenu("Saved Groups")
+        self.saved_groups_menu.aboutToShow.connect(self._fill_saved_groups_menu)
         restore_tab_action = QAction("Restore Closed Tab", self)
         restore_tab_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
         restore_tab_action.triggered.connect(self._restore_closed_tab)
@@ -3092,7 +3094,23 @@ class BrowserWindow(QMainWindow):
             "New Tab in Group",
             lambda: self._new_tab_in_group(group, members),
         )
+        colors = menu.addMenu("Colour")
+        automatic = colors.addAction("Automatic")
+        automatic.setCheckable(True)
+        automatic.setChecked(not group.color)
+        automatic.triggered.connect(lambda: self.set_group_color(group.group_id, ""))
+        for key in GROUP_COLORS:
+            action = colors.addAction(key.title())
+            action.setCheckable(True)
+            action.setChecked(group.color == key)
+            action.triggered.connect(
+                lambda _=False, key=key: self.set_group_color(group.group_id, key)
+            )
         menu.addSeparator()
+        save = menu.addAction(
+            "Save and Close Group", lambda: self.save_and_close_group(group.group_id)
+        )
+        save.setEnabled(not self.tab_manager.private)
         menu.addAction("Ungroup", lambda: self.delete_group(group.group_id))
         close = menu.addAction(
             "Close Group", lambda: [self._close_tab_object(t) for t in members]
@@ -3435,6 +3453,13 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_collapsed_groups(
             group.name for group in self.tab_manager.groups.values() if group.collapsed
         )
+        self.tab_bar.set_group_colors(
+            {
+                group.name: GROUP_COLORS[group.color]
+                for group in self.tab_manager.groups.values()
+                if group.color in GROUP_COLORS
+            }
+        )
         if self.tabs and self.current_tab_index not in visible_indices:
             self._switch_tab(visible_indices[0])
         if dirty:
@@ -3484,6 +3509,100 @@ class BrowserWindow(QMainWindow):
         self.tab_manager.save_groups()
         self._sync_tab_group_labels()
         self._save_current_tabs()
+
+    def set_group_color(self, group_id, color):
+        if group_id not in self.tab_manager.groups or (
+            color and color not in GROUP_COLORS
+        ):
+            return
+        self.tab_manager.groups[group_id].color = color
+        self.tab_manager.save_groups()
+        self._sync_tab_group_labels()
+
+    def save_and_close_group(self, group_id):
+        """Keep a group's pages to reopen later, then close its tabs."""
+        group = self.tab_manager.groups.get(group_id)
+        if group is None or self.tab_manager.private:
+            return None
+        members = [tab for tab in self.tabs if tab.group_id == group_id]
+        pages = [
+            {"url": tab.url().toString(), "title": tab.title()}
+            for tab in members
+            if tab.url().scheme() in ("http", "https", "file")
+        ]
+        try:
+            saved = self.tab_manager.save_closed_group(group, pages)
+        except ValueError as error:
+            QMessageBox.warning(self, "Save Group", str(error))
+            return None
+        if len(members) == len(self.tabs):
+            # The window keeps a tab of its own.
+            self._new_tab()
+        for tab in members:
+            self._close_tab_object(tab)
+        self.tab_manager.groups.pop(group_id, None)
+        self.tab_manager.save_groups()
+        self._sync_tab_group_labels()
+        self._save_current_tabs()
+        self.status_bar.showMessage(
+            f"Saved “{group.name}” — reopen it from Tabs → Saved Groups", 6000
+        )
+        return saved
+
+    def open_saved_group(self, group_id):
+        """Reopen a saved group; its tabs load when first selected."""
+        saved = self.tab_manager.take_saved_group(group_id)
+        if saved is None:
+            return None
+        names = {g.name for g in self.tab_manager.groups.values()}
+        name, number = saved["name"], 2
+        while name in names:
+            name, number = f"{saved['name']} {number}", number + 1
+        group = self.tab_manager.ensure_group(name)
+        group.color = saved["color"]
+        self.tab_manager.save_groups()
+        opened = []
+        self._restoring_tabs = True
+        try:
+            for page in saved["tabs"]:
+                tab = self._new_tab(
+                    url=page["url"],
+                    title=page["title"] or page["url"],
+                    index=len(self.tabs),
+                    return_tab=True,
+                    defer=True,
+                )
+                if tab is not None:
+                    tab.group, tab.group_id = group.name, group.group_id
+                    opened.append(tab)
+        finally:
+            self._restoring_tabs = False
+        self._sync_tab_group_labels()
+        if opened:
+            self._switch_tab(self.tabs.index(opened[0]))
+        self._save_current_tabs()
+        return group
+
+    def _fill_saved_groups_menu(self):
+        menu = self.saved_groups_menu
+        menu.clear()
+        saved = self.tab_manager.saved_groups() if self.tab_manager else []
+        if not saved:
+            empty = menu.addAction(
+                "No saved groups (right-click a group → Save and Close Group)"
+            )
+            empty.setEnabled(False)
+            return
+        for group in saved:
+            count = len(group["tabs"])
+            entry = menu.addMenu(f"{group['name']} ({count} tab{'s' * (count != 1)})")
+            entry.addAction(
+                "Open", lambda gid=group["group_id"]: self.open_saved_group(gid)
+            )
+            entry.addAction(
+                "Delete",
+                lambda gid=group["group_id"]: self.tab_manager.delete_saved_group(gid),
+            )
 
     def toggle_group(self, group_id):
         group = self.tab_manager.groups[group_id]

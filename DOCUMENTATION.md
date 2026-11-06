@@ -686,6 +686,16 @@ listed alphabetically, including `default` and `global`.
 
 ## Tabs and groups
 
+Right-click a group's label for **Colour** (blue, red, yellow, green, teal,
+purple, pink, orange, grey, or Automatic, which takes the next unused colour;
+the choice is kept with the group) and **Save and Close Group**, which keeps
+the group's name, colour and web pages in `<profile>/saved_groups.json` (up to
+50 groups of 200 pages, newest first) and closes its tabs; if they were the
+window's only tabs, a new tab keeps the window open. **Tabs → Saved Groups**
+lists them: **Open** reopens one as a group again (named "Name 2" if the name
+is taken; its tabs load when first selected, and it leaves the list), and
+**Delete** removes it. Incognito windows do not save groups.
+
 - Multiple tabs with tab bar interface
 - Tabs are saved before closing
 - Tabs are restored when reopening a profile. Only the tab you see loads at

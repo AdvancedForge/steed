@@ -25,11 +25,55 @@ class TabState:
     scroll: list[float] | None = None
 
 
+# A group's own colour; "" uses the next automatic colour.
+GROUP_COLORS = {
+    "blue": "#4f7cff",
+    "red": "#e5484d",
+    "yellow": "#c99a06",
+    "green": "#2f9e44",
+    "teal": "#1b998b",
+    "purple": "#9b5de5",
+    "pink": "#e0457b",
+    "orange": "#f08a24",
+    "grey": "#5c6f84",
+}
+MAX_SAVED_GROUPS = 50
+MAX_SAVED_TABS = 200
+
+
 @dataclass
 class TabGroup:
     group_id: str
     name: str
     collapsed: bool = False
+    color: str = ""
+
+
+def _saved_group(item):
+    """A saved group read from disk, or None when it is not one."""
+    if not (
+        isinstance(item, dict)
+        and isinstance(item.get("group_id"), str)
+        and isinstance(item.get("name"), str)
+        and item["name"].strip()
+        and isinstance(item.get("tabs"), list)
+    ):
+        return None
+    tabs = [
+        {"url": tab["url"], "title": str(tab.get("title", ""))[:300]}
+        for tab in item["tabs"][:MAX_SAVED_TABS]
+        if isinstance(tab, dict) and isinstance(tab.get("url"), str) and tab["url"]
+    ]
+    if not tabs:
+        return None
+    color = item.get("color", "")
+    return {
+        "group_id": item["group_id"],
+        "name": item["name"][:100],
+        "color": color if color in GROUP_COLORS else "",
+        "tabs": tabs,
+        "saved_at": str(item.get("saved_at", ""))[:40],
+    }
 
 
 @dataclass
@@ -123,6 +167,7 @@ class TabManager(QObject):
         self.tabs_file = self.profile_dir / "tabs.json"
         self.tab_states: list[TabState] = []
         self.groups_file = self.profile_dir / "groups.json"
+        self.saved_groups_file = self.profile_dir / "saved_groups.json"
         self.groups: dict[str, TabGroup] = {}
         raw = load_json(self.groups_file, []) if str(profile_dir) != "." else []
         for item in raw if isinstance(raw, list) else []:
@@ -131,8 +176,12 @@ class TabManager(QObject):
                 and isinstance(item.get("group_id"), str)
                 and isinstance(item.get("name"), str)
             ):
+                color = item.get("color", "")
                 group = TabGroup(
-                    item["group_id"], item["name"], bool(item.get("collapsed", False))
+                    item["group_id"],
+                    item["name"],
+                    bool(item.get("collapsed", False)),
+                    color if color in GROUP_COLORS else "",
                 )
                 self.groups[group.group_id] = group
 
@@ -141,6 +190,53 @@ class TabManager(QObject):
             save_json(
                 self.groups_file, [asdict(group) for group in self.groups.values()]
             )
+
+    @property
+    def private(self):
+        return str(self.profile_dir) == "."
+
+    def saved_groups(self) -> list[dict]:
+        """Groups saved with "Save and Close Group", newest first."""
+        if self.private:
+            return []
+        raw = load_json(self.saved_groups_file, [])
+        groups = [_saved_group(item) for item in raw if isinstance(raw, list)]
+        return [group for group in groups if group is not None]
+
+    def save_closed_group(self, group: TabGroup, tabs: list[dict]) -> dict:
+        from datetime import datetime, timezone
+
+        if self.private:
+            raise ValueError("Incognito windows do not save groups.")
+        saved = _saved_group(
+            {
+                "group_id": group.group_id,
+                "name": group.name,
+                "color": group.color,
+                "tabs": tabs,
+                "saved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            }
+        )
+        if saved is None:
+            raise ValueError("A saved group needs at least one web page.")
+        others = [g for g in self.saved_groups() if g["group_id"] != group.group_id]
+        if len(others) >= MAX_SAVED_GROUPS:
+            raise ValueError(f"Delete a saved group first (limit {MAX_SAVED_GROUPS}).")
+        save_json(self.saved_groups_file, [saved, *others])
+        self.group_data_updated.emit()
+        return saved
+
+    def take_saved_group(self, group_id) -> dict | None:
+        """Remove a saved group from the list and return it, to reopen."""
+        groups = self.saved_groups()
+        found = next((g for g in groups if g["group_id"] == group_id), None)
+        if found is not None:
+            save_json(self.saved_groups_file, [g for g in groups if g is not found])
+            self.group_data_updated.emit()
+        return found
+
+    def delete_saved_group(self, group_id) -> None:
+        self.take_saved_group(group_id)
 
     def ensure_group(self, name):
         for group in self.groups.values():

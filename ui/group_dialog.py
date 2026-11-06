@@ -47,8 +47,11 @@ class GroupDialog(HtmlSettingsDialog):
     def refresh(self):
         self.list.clear()
         for group in self.window.tab_manager.groups.values():
+            notes = [group.color.title()] if group.color else []
+            if group.collapsed:
+                notes.append("collapsed")
             item = QListWidgetItem(
-                group.name + (" (collapsed)" if group.collapsed else "")
+                group.name + (f" ({', '.join(notes)})" if notes else "")
             )
             item.setData(Qt.ItemDataRole.UserRole, group.group_id)
             self.list.addItem(item)
