@@ -9,6 +9,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Tab group colours and saved groups — November 6, 2026.** Groups take a
+chosen colour (nine, or automatic) in both tab strips. Save and Close Group
+keeps a group's pages per profile; Tabs → Saved Groups reopens them lazily as a
+group or deletes them. Not in incognito.
+
 **Downloads and search — November 5, 2026.** Failed, cancelled or cut-off
 downloads can be retried to the same file without asking; an address-bar button
 shows overall progress and "Done"; Show Folder selects the file. The palette
