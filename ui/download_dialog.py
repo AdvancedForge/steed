@@ -20,6 +20,30 @@ from ui.prompts import InputDialog as QInputDialog
 from ui.prompts import MessageBox as QMessageBox
 
 
+def reveal_file(path):
+    """Show a file selected in the file manager, or open its folder."""
+    from PyQt6.QtCore import QUrl
+    from PyQt6.QtDBus import QDBusConnection, QDBusInterface, QDBusMessage
+
+    path = Path(path)
+    if path.exists():
+        # Nautilus, Nemo, Dolphin, Thunar and Caja answer this desktop standard.
+        manager = QDBusInterface(
+            "org.freedesktop.FileManager1",
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1",
+            QDBusConnection.sessionBus(),
+        )
+        if manager.isValid():
+            reply = manager.call(
+                "ShowItems", [QUrl.fromLocalFile(str(path)).toString()], ""
+            )
+            if reply.type() != QDBusMessage.MessageType.ErrorMessage:
+                return True
+    folder = path.parent if path.parent.exists() else None
+    return bool(folder) and QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+
 def choose_download_destination(suggested, parent=None):
     """UI adapter; managers can instead receive a noninteractive destination."""
     directory = QStandardPaths.writableLocation(
@@ -33,9 +57,11 @@ def choose_download_destination(suggested, parent=None):
 
 
 class DownloadDialog(HtmlSettingsDialog):
-    def __init__(self, manager, parent=None, *, tasks=None):
+    def __init__(self, manager, parent=None, *, tasks=None, page_for=None):
         super().__init__(parent)
         self.manager = manager
+        # Returns a page of a profile, for trying a download again.
+        self.page_for = page_for
         # Returns the task service that owns the agent file library, if any.
         self.tasks = tasks
         self.setWindowTitle("Downloads")
@@ -58,6 +84,7 @@ class DownloadDialog(HtmlSettingsDialog):
             ("Pause", "pause"),
             ("Resume", "resume"),
             ("Cancel", "cancel"),
+            ("Retry", "retry"),
             ("Open", "open"),
             ("Show Folder", "reveal"),
             ("Copy Path", "copy_path"),
@@ -124,6 +151,18 @@ class DownloadDialog(HtmlSettingsDialog):
         if action == "library":
             self.add_to_library(record)
             return
+        if action == "retry":
+            page = self.page_for(record.profile) if self.page_for else None
+            if not self.manager.can_retry(key) or page is None:
+                QMessageBox.information(
+                    self,
+                    "Download",
+                    "Only failed or cancelled web downloads from a profile that is "
+                    "open can be tried again.",
+                )
+                return
+            self.manager.retry(key, page)
+            return
         if action in ("open", "reveal"):
             if not Path(record.path).exists() or (
                 action == "open" and record.state != "DownloadCompleted"
@@ -132,7 +171,10 @@ class DownloadDialog(HtmlSettingsDialog):
                     self, "Download", "The completed file is not available."
                 )
                 return
-            QDesktopServices.openUrl(self.manager.file_url(record, action == "reveal"))
+            if action == "reveal":
+                reveal_file(record.path)
+            else:
+                QDesktopServices.openUrl(self.manager.file_url(record))
         else:
             self.manager.control(key, action)
 

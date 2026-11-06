@@ -47,6 +47,7 @@ LABELS = {
     "address": "Address/search",
     "zoom": "Reset zoom",
     "passwords": "Passwords",
+    "downloads": "Download progress",
     "menu": "Browser menu",
     **{key: key.title() for key in MENU_ITEMS},
 }

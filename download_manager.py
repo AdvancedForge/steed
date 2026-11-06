@@ -24,10 +24,16 @@ class DownloadRecord:
     total: int = 0
     error: str = ""
     paused: bool = False
+    # Where it came from, so a failed download can be tried again.
+    url: str = ""
+
+
+RETRYABLE = ("DownloadInterrupted", "Interrupted", "DownloadCancelled")
 
 
 class DownloadManager(QObject):
     changed = pyqtSignal()
+    finished = pyqtSignal(str)  # download id, when one completes
 
     def __init__(self, config, parent=None, *, destination_picker=None):
         super().__init__(parent)
@@ -36,6 +42,8 @@ class DownloadManager(QObject):
         self.records = {}
         self.requests = {}
         self.private = set()
+        # Download address -> destination for a retry, so it is not asked again.
+        self.retries = {}
         raw = load_json(self.history_file, [])
         for item in raw[-200:] if isinstance(raw, list) else []:
             if not isinstance(item, dict):
@@ -70,9 +78,12 @@ class DownloadManager(QObject):
         view = webengine.view_for(request.page())
         parent = view.window() if view else None
         suggested = Path(request.suggestedFileName()).name or "download"
+        retry = self.retries.pop((profile, request.url().toString()), None)
         try:
             path = (
-                self.destination_picker(suggested, parent)
+                retry
+                if retry is not None
+                else self.destination_picker(suggested, parent)
                 if self.destination_picker is not None
                 else ""
             )
@@ -90,7 +101,9 @@ class DownloadManager(QObject):
         request.setDownloadDirectory(str(Path(path).parent))
         request.setDownloadFileName(Path(path).name)
         key = uuid4().hex
-        record = DownloadRecord(key, Path(path).name, path, profile)
+        record = DownloadRecord(
+            key, Path(path).name, path, profile, url=request.url().toString()
+        )
         self.records[key] = record
         self.requests[key] = request
         if profile == "search":
@@ -112,9 +125,9 @@ class DownloadManager(QObject):
 
     def refresh(self, key):
         request = self.requests.get(key)
-        if request is None:
+        record = self.records.get(key)
+        if request is None or record is None:
             return
-        record = self.records[key]
         previous = record.state
         record.received = request.receivedBytes()
         record.total = request.totalBytes()
@@ -128,6 +141,8 @@ class DownloadManager(QObject):
         self.changed.emit()
         if previous != record.state:
             self.save()
+            if record.state == "DownloadCompleted":
+                self.finished.emit(key)
 
     def request_destroyed(self, key):
         self.requests.pop(key, None)
@@ -164,6 +179,42 @@ class DownloadManager(QObject):
             request.pause()
         elif action == "resume":
             request.resume()
+
+    def can_retry(self, key):
+        record = self.records.get(key)
+        return (
+            record is not None
+            and key not in self.active()
+            and record.state in RETRYABLE
+            and QUrl(record.url).scheme() in ("http", "https")
+        )
+
+    def retry(self, key, page):
+        """Download it again from the start, to the same file, without asking.
+
+        Qt cannot continue a failed download where it stopped; it starts over.
+        page must belong to the record's profile.
+        """
+        if not self.can_retry(key):
+            raise ValueError("This download cannot be tried again.")
+        record = self.records.pop(key)
+        # Chromium keeps a failed download for its address and file; release it
+        # first, or the new download collides with it and fails at once.
+        old = self.requests.pop(key, None)
+        if old is not None:
+            old.cancel()
+        self.save()
+        self.retries[(record.profile, record.url)] = record.path
+        page.download(QUrl(record.url), record.name)
+        self.changed.emit()
+
+    def progress(self):
+        """(active downloads, overall fraction or None when sizes are unknown)."""
+        active = [self.records[key] for key in self.active()]
+        totals = [r.total for r in active]
+        if not active or not all(total > 0 for total in totals):
+            return len(active), None
+        return len(active), sum(r.received for r in active) / sum(totals)
 
     def cancel_active(self):
         for key in self.active():

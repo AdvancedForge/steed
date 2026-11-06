@@ -154,6 +154,7 @@ def controller(window, name, source_tab=None):
             window.download_manager,
             window,
             tasks=None if private else lambda: registry.tasks,
+            page_for=window._download_page,
         )
     if name == "bookmarks":
         from ui.bookmarks_dialog import BookmarksDialog
