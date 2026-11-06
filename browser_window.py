@@ -691,6 +691,7 @@ class BrowserWindow(QMainWindow):
         for label, key, mode in (
             ("Command Palette…", "Ctrl+Shift+P", ""),
             ("Search Tabs…", "Ctrl+Shift+E", "@"),
+            ("Search History…", "Ctrl+Shift+Y", "#"),
         ):
             action = QAction(label, self)
             action.setShortcut(QKeySequence(key))

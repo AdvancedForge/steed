@@ -9,6 +9,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Downloads and search — November 5, 2026.** Failed, cancelled or cut-off
+downloads can be retried to the same file without asking; an address-bar button
+shows overall progress and "Done"; Show Folder selects the file. The palette
+also searches bookmarks (`*`) and history (`#`, Ctrl+Shift+Y) and opens them in
+a new tab. Found while testing: a `steed:` page cannot start a second download
+(pre-existing; Retry avoids it). Open: whether that limit affects anything else.
+
 **Video codecs installed — November 4, 2026.** The Qt WebEngine 6.11.2 codec
 build finished (Release, three compile jobs: Chromium's inner ninja needs
 `NINJAFLAGS` at configure, or it runs one job per core and runs out of memory)

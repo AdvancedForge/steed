@@ -1,4 +1,7 @@
-"""Quick palette: run any menu command or jump to any open tab by name."""
+"""Quick palette: run a menu command, jump to a tab, or reopen history/bookmarks.
+
+Prefixes narrow the search: > commands, @ tabs, # history, * bookmarks.
+"""
 
 from secrets import token_hex
 
@@ -16,6 +19,8 @@ from ui.html_dialog import place_popup
 from ui.html_surface import HtmlSurface
 
 MAX_ITEMS = 400
+# History and bookmarks are searched too, so their rows are allowed beyond that.
+MAX_PLACES = 1200
 # A hidden palette keeps its renderer this long for a quick reopen, then frees it.
 RELEASE_MS = 60000
 
@@ -106,6 +111,7 @@ class CommandPalette(QDialog):
                         and tab is window.tabs[window.current_tab_index],
                     }
                 )
+        open_urls = {row["detail"].split(" · ")[0] for row in rows}
         for path, text, action in menu_commands(window._layout_menus):
             token = token_hex(8)
             self.items[token] = ("command", None, action)
@@ -118,7 +124,35 @@ class CommandPalette(QDialog):
                     "shortcut": action.shortcut().toString(),
                 }
             )
-        return rows[:MAX_ITEMS]
+        return rows[:MAX_ITEMS] + self._places(open_urls)
+
+    def _places(self, open_urls):
+        """Bookmarks, then history, newest first, for pages not already open."""
+        window = self.browser
+        profile = window.profile_manager.current_profile_name
+        places, seen = [], set(open_urls)
+        bookmarks = []
+        if profile != "search":
+            try:
+                state = window.profile_manager.registry.start_pages.state(profile)
+                bookmarks = state["bookmarks"]
+            except (KeyError, ValueError, OSError):
+                bookmarks = []
+        history = window.history.entries() if window.history is not None else []
+        for kind, entries in (
+            ("bookmark", ((b["url"], b["title"]) for b in bookmarks)),
+            ("history", ((e.url, e.title) for e in history)),
+        ):
+            for url, title in entries:
+                if url in seen or len(places) >= MAX_PLACES:
+                    continue
+                seen.add(url)
+                token = token_hex(8)
+                self.items[token] = (kind, None, url)
+                places.append(
+                    {"id": token, "kind": kind, "title": title or url, "detail": url}
+                )
+        return places
 
     def _place(self):
         window = self.browser
@@ -167,6 +201,10 @@ class CommandPalette(QDialog):
             return
         kind, owner, target = item
         self.hide()
+        if kind in ("history", "bookmark"):
+            if not self.browser._closing:
+                self.browser._new_tab(url=target)
+            return
         if kind == "tab":
             if (
                 sip.isdeleted(owner)
@@ -195,7 +233,9 @@ class NativeCommandPalette(CommandPalette):
     def _build(self, layout):
         self.surface = None
         self.query = QLineEdit(self)
-        self.query.setPlaceholderText("Search tabs and commands  (> commands, @ tabs)")
+        self.query.setPlaceholderText(
+            "Search tabs, history and commands  (> commands, @ tabs, # history, * bookmarks)"
+        )
         self.query.setAccessibleName("Search tabs and commands")
         self.query.textChanged.connect(self._filter)
         self.query.returnPressed.connect(self._choose_current)
@@ -235,10 +275,9 @@ class NativeCommandPalette(CommandPalette):
     def _filter(self):
         text = self.query.text()
         kind = None
-        if text.startswith(">"):
-            kind, text = "command", text[1:]
-        elif text.startswith("@"):
-            kind, text = "tab", text[1:]
+        prefixes = {">": "command", "@": "tab", "#": "history", "*": "bookmark"}
+        if text[:1] in prefixes:
+            kind, text = prefixes[text[:1]], text[1:]
         words = text.casefold().split()
         phrase = " ".join(words)
 
@@ -252,6 +291,8 @@ class NativeCommandPalette(CommandPalette):
             row
             for row in self.rows
             if (not kind or row["kind"] == kind)
+            # With nothing typed, show tabs rather than every page ever visited.
+            and (kind or words or row["kind"] == "tab")
             and all(
                 word in (row["title"] + " " + row["detail"]).casefold()
                 for word in words
@@ -261,7 +302,12 @@ class NativeCommandPalette(CommandPalette):
             label = row["title"]
             if row.get("shortcut"):
                 label += f"    {row['shortcut']}"
-            item = QListWidgetItem(("Tab · " if row["kind"] == "tab" else "") + label)
+            badge = {
+                "tab": "Tab · ",
+                "history": "History · ",
+                "bookmark": "Bookmark · ",
+            }
+            item = QListWidgetItem(badge.get(row["kind"], "") + label)
             item.setToolTip(row["detail"])
             item.setData(Qt.ItemDataRole.UserRole, row["id"])
             self.results.addItem(item)

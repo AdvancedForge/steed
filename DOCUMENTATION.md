@@ -425,7 +425,12 @@ The menu bar has six categories, in this order:
 - **Command palette and tab keys:** Ctrl+Shift+P opens a palette that runs any
   menu command or jumps to any open tab of this profile, in any window, by
   typing part of its name (fuzzy matching; `>` shows only commands, `@` only
-  tabs). Ctrl+Shift+E opens it on tabs. Ctrl+Tab / Ctrl+Shift+Tab and
+  tabs). It also finds this profile's bookmarks and history (newest first, up
+  to 1,200 pages, skipping pages already open) and opens them in a new tab:
+  `#` shows only history, `*` only bookmarks, and typing without a prefix ranks
+  open tabs, then bookmarks, then history and commands. With nothing typed it
+  lists tabs only. Ctrl+Shift+E opens it on tabs and Ctrl+Shift+Y on history
+  (View → Search History…). Ctrl+Tab / Ctrl+Shift+Tab and
   Ctrl+PgDn / Ctrl+PgUp move to the next or previous tab, Ctrl+1–8 open that tab
   and Ctrl+9 the last one; tabs hidden in a collapsed group are skipped.
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
@@ -703,7 +708,23 @@ Existing profiles are migrated conservatively: pre-existing cookies remain local
 
 ## Downloads and ad blocking
 
-Open **General → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history. Interrupted downloads are not automatically restarted.
+Open **General → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history.
+
+While anything downloads, a **↓ 42%** button in the address bar shows overall
+progress (or **↓ …** while sizes are unknown) and opens Downloads; it reads
+**↓ Done** for 30 seconds after the last one finishes, and the status bar names
+the file. The button is a toolbar component (`downloads`) that a layout can
+move or hide.
+
+Chromium already retries a dropped connection a few times on its own. A
+download that still fails, is cancelled, or was cut off when Steed closed can be
+tried again with **Retry**: Steed downloads it again from its original address
+into the same file, without asking where to save (Qt cannot continue a failed
+download where it stopped, so it starts over). Retry starts from an open web tab
+of that profile, or from a hidden blank page of it, never from a `steed:` page,
+which cannot start a second download. **Show Folder** selects the file in the
+file manager (the `org.freedesktop.FileManager1` desktop interface used by
+Nautilus, Nemo, Dolphin, Thunar and Caja) and otherwise opens its folder.
 
 The Save Download picker starts in your system's Downloads directory, using the
 suggested filename without any supplied directory components. If the desktop
