@@ -519,6 +519,19 @@ drop it. Sites are ranked by how many of your history's pages they have, then
 by how recently. It completes site names only (not paths, and not text with a
 space). **Complete addresses as you type** in Settings turns it off.
 
+### Importing from another browser
+
+**General → Import from Another Browser…** lists the Chrome, Chromium, Brave,
+Edge, Vivaldi and Firefox profiles on this computer (including Snap and Flatpak
+installs, by each browser's own profile names) and imports into the current
+profile: **bookmarks** (top folders become labels; existing addresses are
+skipped; the 2,000-bookmark limit applies), **history** (the latest 1,000 web
+pages) and, from Firefox, **open tabs**, which become a saved group "Open tabs
+from Firefox" (Tabs → Saved Groups). Chromium keeps open tabs in an
+undocumented binary format, so they are not imported. Steed reads copies of the
+other browser's files in a temporary folder, so that browser may stay open and
+its files never change. Not available in incognito.
+
 ### Screenshots
 
 **View → Take Screenshot** saves (as PNG, asking where; Ctrl+Shift+S saves the
@@ -527,6 +540,11 @@ page is captured by Chromium itself through a hidden Developer Tools page, so
 the page is neither resized nor scrolled; pages longer than 16,384 pixels are
 cut there (the status bar says so). Close Developer Tools for the tab first.
 Steed pages and other non-web tabs capture their visible area.
+
+**Edit Full Page… / Edit Visible Area…** open the screenshot in an editor first:
+drag to **Crop**, **Highlight** (a yellow, see-through box) or **Hide** (a solid
+black box, for names or numbers you do not want to share); **Undo** steps back,
+then **Copy** or **Save…**.
 
 ### Translating pages
 
@@ -541,6 +559,24 @@ set, Steed offers to open the page in Google Translate's page proxy, which
 sends Google the page's address (Google loads it itself, without your
 sign-ins). API keys are not supported: they would have to be stored like
 passwords.
+
+**A translation service on this computer (optional).** `setup_translation.py`
+installs LibreTranslate (open-source, offline translation) in its own Python
+environment under `~/src/steed-libretranslate`, with CPU-only packages, and
+points Steed's setting at it:
+
+```bash
+.venv/bin/python setup_translation.py install --languages en,de,fr
+.venv/bin/python setup_translation.py start     # http://127.0.0.1:5000, this computer only
+.venv/bin/python setup_translation.py status
+.venv/bin/python setup_translation.py stop
+.venv/bin/python setup_translation.py uninstall # removes it and clears the setting
+```
+
+Each language's model downloads the first time it starts (about 100 MB each);
+the packages themselves are a few gigabytes. Start it again after a restart.
+The script's steps are tested; a full install has not yet been run on the
+development machine.
 
 ### Tab quick actions
 

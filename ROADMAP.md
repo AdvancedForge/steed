@@ -9,6 +9,16 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Import, local translation, screenshot editing — November 7, 2026.** Import
+bookmarks, history and Firefox open tabs (as a saved group) from Chrome-family
+browsers and Firefox, reading copies of their files. `setup_translation.py`
+installs LibreTranslate locally for translation that never leaves the computer
+(its steps are tested; a full install is still to run). Screenshots can be
+cropped, highlighted and partly hidden before saving or copying. Extensions:
+Qt WebEngine 6.11's extension manager loads an unpacked extension disabled, and
+both its load-finished signal and enabling it crash under PyQt (also on
+6.12/6.140); extension support waits on that.
+
 **Screenshots, translation, tab quick actions — November 7, 2026.**
 Full-page and visible-area screenshots (saved or copied; full page through
 Chromium's own capture); page translation through a LibreTranslate-compatible
