@@ -29,7 +29,7 @@ function filter() {
   const ranked = [];
   for (const row of state.rows) {
     // * lists saved tab groups with the bookmarks.
-    if (kind && row.kind !== kind && !(kind === 'bookmark' && row.kind === 'group')) continue;
+    if (kind && row.kind !== kind && !(kind === 'bookmark' && row.kind === 'group') && !(kind === 'tab' && row.kind === 'closed')) continue;
     // With nothing typed, show tabs rather than every command or visited page.
     if (!kind && !query && row.kind !== 'tab') continue;
     const best = Math.max(score(query, row.title) ?? -Infinity, (score(query, row.detail || '') ?? -Infinity) - 2);
@@ -49,7 +49,7 @@ function draw() {
     item.setAttribute('role', 'option');
     item.setAttribute('aria-selected', index === selected ? 'true' : 'false');
     item.className = row.kind + (index === selected ? ' selected' : '') + (row.current ? ' current' : '');
-    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = {tab: 'Tab', history: 'History', bookmark: 'Bookmark', group: 'Group'}[row.kind] || 'Command';
+    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = {tab: 'Tab', closed: 'Closed tab', history: 'History', bookmark: 'Bookmark', group: 'Group'}[row.kind] || 'Command';
     const text = document.createElement('span'); text.className = 'text';
     const title = document.createElement('span'); title.className = 'title'; title.textContent = row.title;
     const detail = document.createElement('span'); detail.className = 'detail'; detail.textContent = row.detail || '';

@@ -129,6 +129,17 @@ class BrowserPage(QWebEnginePage):
             window.profile_manager.registry.passkeys.request(tab, message)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        kinds = QWebEnginePage.NavigationType
+        window = getattr(self.parent(), "browser_window", None)
+        if (
+            is_main_frame
+            and window is not None
+            and navigation_type
+            in (kinds.NavigationTypeLinkClicked, kinds.NavigationTypeTyped)
+            and url.scheme() in ("http", "https")
+            and window.follow_site_rule(self.parent(), url)
+        ):
+            return False
         if (
             is_main_frame
             and navigation_type
@@ -600,6 +611,9 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        unsplit = QAction("Close Split View", self)
+        unsplit.triggered.connect(self.close_split_view)
+        view_menu.addAction(unsplit)
         save_page = QAction("Save Page As…", self)
         save_page.setShortcut(QKeySequence("Ctrl+S"))
         save_page.triggered.connect(lambda: self.save_page_as())
@@ -1093,9 +1107,13 @@ class BrowserWindow(QMainWindow):
         self.tab_container.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        self.tab_layout = QVBoxLayout(self.tab_container)
+        # Side by side: only the current tab shows, and in split view the
+        # tab beside it.
+        self.tab_layout = QHBoxLayout(self.tab_container)
         self.tab_layout.setContentsMargins(0, 0, 0, 0)
         self.tab_layout.setSpacing(0)
+        self.split_tab = None
+        QApplication.instance().focusChanged.connect(self._focus_changed)
         # Pages share a splitter with docked Developer Tools.
         from ui.password_assistant import PasswordAssistant
 
@@ -1858,6 +1876,8 @@ class BrowserWindow(QMainWindow):
         memory_trim.schedule()
         active = self.tabs[self.current_tab_index]
         tab = self.tabs.pop(index)
+        if tab is self.split_tab:
+            self.split_tab = None
         left = tab.url().host()
         QTimer.singleShot(0, lambda: self._site_left(left))
         state = TabState(
@@ -1979,12 +1999,20 @@ class BrowserWindow(QMainWindow):
         mini = getattr(self.tabs[index], "mini_player", None)
         if mini is not None and not sip.isdeleted(mini):
             mini.close()
-        # Hide all tabs
+        # Show the chosen tab (and the one beside it in split view).
+        if self.split_tab is self.tabs[index]:
+            # Its side became the current one: the other side stays beside it.
+            self.split_tab = previous if previous is not self.tabs[index] else None
+        if self.split_tab is not None and self.split_tab not in self.tabs:
+            self.split_tab = None
+        self.tab_layout.setSpacing(2 if self.split_tab is not None else 0)
         for i, t in enumerate(self.tabs):
             if getattr(t, "mini_player", None) is not None:
                 continue
             t.setVisible(
-                i == index or bool(self.web_chat_dock and self.web_chat_dock.view is t)
+                i == index
+                or t is self.split_tab
+                or bool(self.web_chat_dock and self.web_chat_dock.view is t)
             )
         # Update address bar and navigation buttons
         cur = self.tabs[index]
@@ -3129,6 +3157,15 @@ class BrowserWindow(QMainWindow):
                     tab, host, key, "allow" if allowed else "block"
                 )
             )
+        rules = menu.addMenu("Always Open in Profile")
+        chosen = self.site_profile(host)
+        for name in [None, *[p for p in self.profile_manager.list_profiles()]]:
+            action = rules.addAction(name or "No rule")
+            action.setCheckable(True)
+            action.setChecked(chosen == name)
+            action.triggered.connect(
+                lambda _=False, name=name: self.set_site_profile(host, name)
+            )
         forget = menu.addAction("Forget this site when its tabs close")
         forget.setCheckable(True)
         forget.setChecked(values["forget"] == "forget")
@@ -3973,6 +4010,7 @@ class BrowserWindow(QMainWindow):
             getattr(tab, "workspace_name", None)
             or getattr(tab, "agent_panel", False)
             or getattr(tab, "keep_loaded", False)
+            or tab is getattr(self, "split_tab", None)
         ):
             return True
         page = tab.page()
@@ -4162,6 +4200,12 @@ class BrowserWindow(QMainWindow):
                 "Incognito window" if name == "search" else name,
                 lambda name=name: self.send_tab_to_profile(tab, name),
             )
+        beside = menu.addAction(
+            "Show Beside Current Tab", lambda: self.show_beside(tab)
+        )
+        beside.setEnabled(
+            tab is not self.tabs[self.current_tab_index] and not tab.workspace_name
+        )
         movable = len(self.tabs) > 1
         menu.addAction(
             "Move Tab to New Window", lambda: self._move_tab(tab)
@@ -4542,6 +4586,91 @@ class BrowserWindow(QMainWindow):
         if tab.group and copy in self.tabs:
             self._set_tab_group_existing(self.tabs.index(copy), tab.group)
         return copy
+
+    # -- split view
+
+    def show_beside(self, tab):
+        """Split view: this tab beside the current one."""
+        if tab not in self.tabs or tab is self.tabs[self.current_tab_index]:
+            return
+        self.split_tab = tab
+        if not tab.load_pending():
+            webengine.wake(tab.page())
+        self._switch_tab(self.current_tab_index)
+
+    def close_split_view(self):
+        if self.split_tab is not None:
+            self.split_tab = None
+            self._switch_tab(self.current_tab_index)
+
+    def _focus_changed(self, old, new):
+        """Clicking into the other side makes it the current tab."""
+        if self._closing or sip.isdeleted(self) or new is None:
+            return
+        split = self.split_tab
+        if split is not None and split in self.tabs and split.isAncestorOf(new):
+            self._switch_tab(self.tabs.index(split))
+
+    # -- profiles for sites
+
+    def site_profile(self, host):
+        """The profile a site always opens in, if it has a rule."""
+        import privacy
+
+        rules = self.config.get("site_profiles", {}) or {}
+        site = privacy.site_of(host)
+        while site:
+            if site in rules:
+                return rules[site]
+            site = site.partition(".")[2] if "." in site else ""
+        return None
+
+    def set_site_profile(self, host, profile):
+        import privacy
+
+        rules = dict(self.config.get("site_profiles", {}) or {})
+        site = privacy.site_of(host)
+        if profile:
+            rules[site] = profile
+        else:
+            rules.pop(site, None)
+        self.config.set("site_profiles", rules)
+
+    def follow_site_rule(self, tab, url):
+        """Open url in its site's profile; True when it went there."""
+        profile = self.site_profile(url.host())
+        current = self.profile_manager.current_profile_name
+        if (
+            not profile
+            or profile == current
+            or current == "search"
+            or profile not in self.profile_manager.list_profiles()
+        ):
+            return False
+        window = self._window_for_profile(profile)
+        window._new_tab(url=url.toString())
+        window.raise_()
+        window.activateWindow()
+        self.status_bar.showMessage(f"Opened in the {profile} profile.", 5000)
+        # A new or blank tab, opened only for this page, has nothing left to show.
+        shown = tab.url().scheme() if tab in self.tabs else ""
+        if shown not in ("http", "https", "file") and len(self.tabs) > 1:
+            QTimer.singleShot(0, lambda: self._close_tab_object(tab))
+        return True
+
+    def _window_for_profile(self, profile):
+        target = next(
+            (
+                w
+                for w in QApplication.topLevelWidgets()
+                if isinstance(w, BrowserWindow)
+                and w is not self
+                and not w._closing
+                and w.profile_manager.current_profile_name == profile
+            ),
+            None,
+        )
+        return target or self._open_window(profile)
 
     def send_tab_to_profile(self, tab, profile):
         """Open the page in another profile (its own sign-ins), and close it here."""

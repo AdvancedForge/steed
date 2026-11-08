@@ -132,6 +132,18 @@ class CommandPalette(QDialog):
         window = self.browser
         profile = window.profile_manager.current_profile_name
         places, seen = [], set(open_urls)
+        # Recently closed tabs, newest first: reopening keeps their place.
+        for closed in reversed(window.closed_tabs.entries(profile)):
+            token = token_hex(8)
+            self.items[token] = ("closed", None, closed.state.tab_id)
+            places.append(
+                {
+                    "id": token,
+                    "kind": "closed",
+                    "title": closed.state.title or closed.state.url,
+                    "detail": closed.state.url,
+                }
+            )
         bookmarks = []
         if profile != "search":
             try:
@@ -223,6 +235,10 @@ class CommandPalette(QDialog):
             if not self.browser._closing:
                 self.browser._new_tab(url=target)
             return
+        if kind == "closed":
+            if not self.browser._closing:
+                self.browser._restore_closed_tab(target)
+            return
         if kind == "tab":
             if (
                 sip.isdeleted(owner)
@@ -312,6 +328,7 @@ class NativeCommandPalette(CommandPalette):
                 not kind
                 or row["kind"] == kind
                 or (kind == "bookmark" and row["kind"] == "group")
+                or (kind == "tab" and row["kind"] == "closed")
             )
             # With nothing typed, show tabs rather than every page ever visited.
             and (kind or words or row["kind"] == "tab")
@@ -329,6 +346,7 @@ class NativeCommandPalette(CommandPalette):
                 "history": "History · ",
                 "bookmark": "Bookmark · ",
                 "group": "Group · ",
+                "closed": "Closed tab · ",
             }
             item = QListWidgetItem(badge.get(row["kind"], "") + label)
             item.setToolTip(row["detail"])
