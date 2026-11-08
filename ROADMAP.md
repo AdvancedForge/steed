@@ -9,6 +9,20 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Passkeys, Password Checkup, extension script worlds — November 8, 2026.**
+Passkeys kept in the encrypted vault (P-256, attestation "none"), created and
+used through a page script standing in for navigator.credentials, asked for
+each time, verified in tests by checking the signature with the public key the
+page received; security keys stay available. Password Checkup finds reused
+and weak passwords locally and breached ones through Have I Been Pwned's
+padded range search (5 hash characters sent). Scripts injected for extensions
+now have chrome.runtime (id, getURL, getManifest, sendMessage with sender.tab)
+and chrome.storage. Open: passkey autofill (conditional mediation) and sync;
+runtime.onMessage in injected scripts. Found while testing: a test process
+that opens two windows in a row can crash in PyQt's cleanup at exit (main
+shows it too; the tests pass first, and the full suite is not affected); the
+passkey tests use one window until that is understood.
+
 **Extension menus, scripting, badges, shortcuts — November 8, 2026.** A hidden
 bridge page per extension connects its background to Steed: context menu items
 in the page menu (kept across restarts), scripting.executeScript (functions,

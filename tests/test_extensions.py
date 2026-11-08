@@ -887,12 +887,33 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         .executeScript({ target, func: async () => { await new Promise((r) => setTimeout(r, 100)); return 41 + 1; } })
         .then((results) => results[0].result),
     title: () => chrome.storage.local.get("title").then((items) => items.title),
+    world: () =>
+      chrome.scripting
+        .executeScript({
+          target,
+          func: async () => {
+            const reply = await chrome.runtime.sendMessage("worldping");
+            await chrome.storage.local.set({ fromWorld: chrome.runtime.id });
+            const kept = await chrome.storage.local.get("fromWorld");
+            return {
+              reply,
+              kept: kept.fromWorld,
+              url: chrome.runtime.getURL("/x.html"),
+              name: chrome.runtime.getManifest().name,
+            };
+          },
+        })
+        .then((results) => ({ ...results[0].result, tab: sender.tab.id })),
     register: () =>
       chrome.scripting
         .registerContentScripts([{ id: "reg", matches: ["http://127.0.0.1/*"], js: ["reg.js"], runAt: "document_end" }])
         .then(() => chrome.scripting.getRegisteredContentScripts())
         .then((scripts) => scripts.map((script) => script.id)),
   };
+  if (message === "worldping") {
+    respond({ tab: sender.tab && sender.tab.id, url: sender.url, frame: sender.frameId });
+    return;
+  }
   if (!steps[message]) return;
   steps[message]().then(respond, (error) => respond("error: " + error.message));
   return true;
@@ -1015,6 +1036,27 @@ class BridgeTests(WindowBase):
         self.assertEqual(ask("uncss"), "ok")
         self.wait(lambda: self.evaluate(tab.page(), outline) == "none")
         self.assertEqual(ask("async"), 42)
+        # Injected scripts have a chrome object reaching the extension.
+        world = ask("world")
+        self.assertEqual(world["reply"]["tab"], world["tab"])
+        self.assertEqual(world["reply"]["url"], self.url)
+        self.assertEqual(world["reply"]["frame"], 0)
+        self.assertEqual(world["kept"], entry["id"])
+        self.assertEqual(world["url"], f"chrome-extension://{entry['id']}/x.html")
+        # As in Chrome, getManifest() gives the manifest as written.
+        self.assertEqual(world["name"], "__MSG_appName__")
+        # The page cannot pose as the extension's world without its token.
+        asked = dict(bridges.world_asks)
+        webengine.run_script(
+            tab.page(),
+            "console.debug('\\u0001steedworld ' + JSON.stringify({extension: "
+            f"'{entry['id']}', token: 'guess', ask: 1, kind: 'message', "
+            "message: 'worldping'}))",
+            world=webengine.PAGE_WORLD,
+        )
+        time.sleep(0.2)
+        self.app.processEvents()
+        self.assertEqual(bridges.world_asks, asked)
         self.assertEqual(ask("register"), ["reg"])
         tab.page().triggerAction(webengine.QWebEnginePage.WebAction.Reload)
         self.wait(lambda: data("registered") == "yes")

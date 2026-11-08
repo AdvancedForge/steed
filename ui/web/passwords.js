@@ -32,6 +32,11 @@ function list() {
     const text = element('div');
     text.append(element('div', 'site', login.title || login.site), element('div', 'meta', login.username || '(no username)'),
       element('div', 'meta', login.origin));
+    const flags = [];
+    if (login.breached) flags.push(`Found in breaches (${login.breached.toLocaleString()} times)`);
+    if (login.reused) flags.push(`Reused on ${login.reused} logins`);
+    if (login.weak) flags.push('Weak');
+    if (flags.length) text.append(element('div', 'flag', flags.join(' · ')));
     if (login.password !== null && login.password !== undefined) text.append(element('div', 'secret', login.password));
     const actions = element('div', 'actions');
     actions.append(
@@ -43,6 +48,22 @@ function list() {
     row.append(text, actions); target.append(row);
   }
   $('empty').hidden = state.logins.length > 0;
+}
+function passkeys() {
+  const target = $('passkeys'); target.replaceChildren();
+  if (!state.passkeys.length) target.append(element('p', 'hint', 'None yet.'));
+  for (const passkey of state.passkeys) {
+    const row = element('div', 'login'), text = element('div'), actions = element('div', 'actions');
+    text.append(element('div', 'site', passkey.site), element('div', 'meta', passkey.account || '(no account name)'),
+      element('div', 'meta', 'Created ' + passkey.created));
+    actions.append(button('Delete', () => command('delete_passkey', {id: passkey.id})));
+    row.append(text, actions); target.append(row);
+  }
+}
+function checkup() {
+  const found = state.checkup, line = $('checkup');
+  line.hidden = !found;
+  if (found) line.textContent = `${found.breached} breached · ${found.reused} reused · ${found.weak} weak. ${found.status}`;
 }
 function settings() {
   const target = $('settings'); target.replaceChildren();
@@ -69,7 +90,7 @@ window.steedUI = {render(next) {
   $('locked').hidden = next.state !== 'locked';
   $('unlocked').hidden = next.state !== 'unlocked';
   $('scope').textContent = next.state === 'private' ? 'Incognito' : `Saved logins for the ${next.profile} profile, encrypted on this computer.`;
-  if (next.state === 'unlocked') { list(); settings(); }
+  if (next.state === 'unlocked') { list(); passkeys(); checkup(); settings(); }
   if (next.generated && !$('editor').hidden) {
     $('f-password').value = next.generated;
     $('f-password').type = 'text';
@@ -82,6 +103,8 @@ $('cancel').onclick = () => { $('editor').hidden = true; editing = null; };
 $('generate').onclick = () => command('generate');
 $('show-new').onclick = () => { const f = $('f-password'); f.type = f.type === 'password' ? 'text' : 'password'; };
 $('import').onclick = () => command('import');
+$('check-local').onclick = () => command('checkup', {online: false});
+$('check-online').onclick = () => command('checkup', {online: true});
 $('export').onclick = () => command('export');
 $('editor').onsubmit = event => {
   event.preventDefault();

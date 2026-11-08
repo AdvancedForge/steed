@@ -16,6 +16,7 @@ REVEAL_SECONDS = 30
 SETTINGS = {
     "offer_save_passwords": "Offer to save passwords when you sign in",
     "password_autofill": "Fill saved logins automatically when a page loads",
+    "steed_passkeys": "Keep passkeys in Steed (otherwise sites use security keys)",
 }
 
 
@@ -29,6 +30,9 @@ class PasswordsPage(QWidget):
         self.revealed = {}
         self.generated = ""
         self.notice = self.error = ""
+        # Password Checkup: login id -> findings, until the page closes.
+        self.checkup = None
+        self.breach_check = None
         # Hide revealed passwords on time, not only at the next action.
         self.expiry = QTimer(self)
         self.expiry.setSingleShot(True)
@@ -60,7 +64,8 @@ class PasswordsPage(QWidget):
         if self.revealed:
             soonest = min(until for _, until in self.revealed.values())
             self.expiry.start(max(100, int((soonest - now) * 1000) + 50))
-        logins, never = [], []
+        logins, never, passkeys = [], [], []
+        findings = self.checkup or {}
         state = (
             "private" if vault is None else "unlocked" if vault.unlocked else "locked"
         )
@@ -76,9 +81,24 @@ class PasswordsPage(QWidget):
                         "notes": login.notes,
                         "totp": bool(login.totp),
                         "password": self.revealed.get(login.id, (None,))[0],
+                        "weak": login.id in findings.get("weak", []),
+                        "reused": findings.get("reused", {}).get(login.id, 0),
+                        "breached": findings.get("breached", {}).get(login.id, 0),
                     }
                 )
             never = list(vault._need().never)
+            for passkey in vault.passkeys():
+                passkeys.append(
+                    {
+                        "id": passkey["id"],
+                        "site": passkey["rp_id"],
+                        "account": passkey["user_display"] or passkey["user_name"],
+                        "username": passkey["user_name"],
+                        "created": time.strftime(
+                            "%Y-%m-%d", time.localtime(passkey["created"])
+                        ),
+                    }
+                )
         self.surface.publish(
             {
                 "context": self.context,
@@ -87,6 +107,15 @@ class PasswordsPage(QWidget):
                 "profile": self.profile,
                 "logins": logins,
                 "never": never,
+                "passkeys": passkeys,
+                "checkup": None
+                if self.checkup is None
+                else {
+                    "weak": len(findings.get("weak", [])),
+                    "reused": len(findings.get("reused", {})),
+                    "breached": len(findings.get("breached", {})),
+                    "status": findings.get("status", ""),
+                },
                 "settings": [
                     {
                         "key": key,
@@ -200,6 +229,35 @@ class PasswordsPage(QWidget):
                 vault.delete(login.id)
                 self.notice = "Login deleted."
                 self.service.notify(self.profile)
+        elif action == "delete_passkey":
+            passkey = next(
+                (p for p in vault.passkeys() if p["id"] == command.get("id")), None
+            )
+            if passkey is None:
+                raise VaultError("That passkey no longer exists.")
+            reply = MessageBox.question(
+                self.window,
+                "Delete passkey",
+                f"Delete the passkey for {passkey['rp_id']}"
+                f"{' (' + passkey['user_name'] + ')' if passkey['user_name'] else ''}?"
+                " You will need another way to sign in there.",
+            )
+            if reply == MessageBox.StandardButton.Yes:
+                vault.delete_passkey(passkey["id"])
+                self.notice = "Passkey deleted."
+                self.service.notify(self.profile)
+        elif action == "checkup":
+            from password_checkup import BreachCheck, local_findings
+
+            logins = vault.logins()
+            self.checkup = {**local_findings(logins), "breached": {}}
+            if command.get("online") is True and logins:
+                self.checkup["status"] = "Checking for breaches…"
+                self.breach_check = BreachCheck(logins, self)
+                self.breach_check.finished.connect(self._breaches)
+                self.breach_check.start()
+            else:
+                self.checkup["status"] = "Checked on this computer."
         elif action == "generate":
             self.generated = generate_password()
         elif action == "never_remove":
@@ -247,6 +305,21 @@ class PasswordsPage(QWidget):
                 self.notice = "Exported. Delete the file once you no longer need it."
         else:
             raise VaultError("Unsupported request.")
+
+    def _breaches(self, results, error):
+        if self.disposed or self.checkup is None:
+            return
+        self.checkup["breached"] = results
+        self.checkup["status"] = error or (
+            "Checked with Have I Been Pwned: "
+            + (
+                f"{len(results)} password(s) found in breaches. Change them."
+                if results
+                else "none of your passwords was found in breaches."
+            )
+        )
+        self.breach_check = None
+        self.publish()
 
     def dispose(self):
         if self.disposed:

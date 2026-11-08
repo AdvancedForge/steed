@@ -12,6 +12,10 @@ Through it the stand-ins in extension_shim.js reach Steed:
   scripts, run by Steed in the tab, in a script world of the extension's own
   (ISOLATED) or the page's (MAIN). Steed's worlds have no chrome.* APIs.
 - commands and action.onClicked: shortcuts and toolbar clicks.
+- Scripts Steed injects for an extension (in its own world) get a small
+  chrome object: runtime.id/getURL/getManifest, runtime.sendMessage to the
+  background (with sender.tab) and chrome.storage. They reach Steed through
+  the page's console with a token only that world knows.
 
 The stand-ins name tabs by ids of their own; Steed matches them to its tabs by
 address, then title, then which is showing.
@@ -28,6 +32,52 @@ from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 import webengine
 
 PREFIX = "\x01steed "
+WORLD_PREFIX = "\x01steedworld "
+# The chrome object of an extension's script world. Messages carry a token
+# the page cannot read (it lives only in this world), so it cannot pose as
+# the extension.
+WORLD_API = r"""
+if (!globalThis.__steedExtension) {
+  const EXTENSION = __ID__, TOKEN = __TOKEN__, MANIFEST = __MANIFEST__;
+  const post = console.debug.bind(console);
+  const pending = new Map();
+  let asks = 0;
+  const request = (body) => new Promise((resolve, reject) => {
+    const ask = ++asks;
+    pending.set(ask, { resolve, reject });
+    post("\u0001steedworld " + JSON.stringify({ extension: EXTENSION, token: TOKEN, ask, ...body }));
+  });
+  const settle = (args, run) => {
+    const callback = typeof args[args.length - 1] === "function" ? args.pop() : null;
+    const result = run(args);
+    if (callback) { result.then(callback, () => callback(undefined)); return undefined; }
+    return result;
+  };
+  const area = (name) => Object.fromEntries(["get", "set", "remove", "clear", "getBytesInUse"].map(
+    (method) => [method, (...args) => settle(args, (rest) => request({ kind: "call", area: name, method, args: rest }))]));
+  const noEvent = { addListener() {}, removeListener() {}, hasListener: () => false };
+  Object.defineProperty(globalThis, "__steedExtension", {
+    value: (ask, reply) => {
+      const asking = pending.get(ask);
+      pending.delete(ask);
+      if (asking) reply.error ? asking.reject(new Error(reply.error)) : asking.resolve(reply.value);
+    },
+  });
+  globalThis.chrome = globalThis.chrome || {};
+  globalThis.chrome.runtime = {
+    id: EXTENSION,
+    getURL: (path) => `chrome-extension://${EXTENSION}/${String(path).replace(/^\//, "")}`,
+    getManifest: () => JSON.parse(JSON.stringify(MANIFEST)),
+    sendMessage: (...args) => settle(args, (rest) => {
+      const at = typeof rest[0] === "string" && rest.length > 1 && /^[a-p]{32}$/.test(rest[0]) ? 1 : 0;
+      return request({ kind: "message", message: rest[at] });
+    }),
+    onMessage: noEvent,
+    lastError: undefined,
+  };
+  globalThis.chrome.storage = { local: area("local"), sync: area("sync"), session: area("session"), onChanged: noEvent };
+}
+"""
 SCRIPT_PREFIX = "steed-extension-"
 RESULT_POLL_MS = 50
 RESULT_TIMEOUT_SECONDS = 30
@@ -140,6 +190,8 @@ class Bridges(QObject):
         self.badges = {}  # (profile, extension id) -> {tab id or "*": {...}}
         self.tab_lists = {}  # (profile, extension id) -> [tab info]
         self._results = 0
+        self.tokens = {}  # (profile, extension id) -> its script world's token
+        self.world_asks = {}  # Steed's ask -> (tab, extension id, world ask)
 
     # -- pages
 
@@ -214,6 +266,8 @@ class Bridges(QObject):
             self._inject(key, message)
         elif kind == "register":
             self._register(key, message)
+        elif kind == "worldAnswer":
+            self._world_answer(message)
 
     def _answer(self, key, ask, value=None, error=None):
         message = {"type": "answer", "ask": ask, "value": value}
@@ -377,6 +431,92 @@ class Bridges(QObject):
         best = max(tabs, key=lambda tab: self._score(info, tab), default=None)
         return best if best is not None and self._score(info, best) >= 0 else None
 
+    # -- injected scripts' chrome object
+
+    def world_api(self, name, extension_id) -> str:
+        """The chrome object of the extension's script world, as JavaScript."""
+        import secrets
+
+        token = self.tokens.setdefault((name, extension_id), secrets.token_hex(16))
+        entry = next(
+            (e for e in self.extensions.installed(name) if e["id"] == extension_id),
+            None,
+        )
+        manifest = (self.manifest(entry) if entry else None) or {}
+        manifest.pop("key", None)
+        return (
+            WORLD_API.replace("__ID__", json.dumps(extension_id))
+            .replace("__TOKEN__", json.dumps(token))
+            .replace("__MANIFEST__", json.dumps(manifest))
+        )
+
+    def from_world(self, tab, text):
+        """A message from an extension's script world in one of Steed's tabs."""
+        try:
+            message = json.loads(text[len(WORLD_PREFIX) :])
+        except ValueError:
+            return
+        window = getattr(tab, "browser_window", None)
+        if not isinstance(message, dict) or window is None:
+            return
+        name = window.profile_manager.current_profile_name
+        extension_id = message.get("extension")
+        token = self.tokens.get((name, extension_id))
+        if token is None or message.get("token") != token:
+            return  # Not from the extension's world: the page cannot pose as it.
+        self._results += 1
+        steed_ask = self._results
+        self.world_asks[steed_ask] = (tab, extension_id, message.get("ask"))
+        url = tab.url()
+        if message.get("kind") == "message":
+            self.send(
+                name,
+                extension_id,
+                {
+                    "type": "worldMessage",
+                    "steedAsk": steed_ask,
+                    "tabId": self.tab_id(name, extension_id, tab),
+                    "url": url.toString(),
+                    "origin": url.adjusted(
+                        QUrl.UrlFormattingOption.RemovePath
+                        | QUrl.UrlFormattingOption.RemoveQuery
+                        | QUrl.UrlFormattingOption.RemoveFragment
+                    ).toString(),
+                    "message": message.get("message"),
+                },
+            )
+        elif message.get("kind") == "call":
+            self.send(
+                name,
+                extension_id,
+                {
+                    "type": "worldCall",
+                    "steedAsk": steed_ask,
+                    "area": message.get("area"),
+                    "method": message.get("method"),
+                    "args": message.get("args") or [],
+                },
+            )
+
+    def _world_answer(self, message):
+        found = self.world_asks.pop(message.get("steedAsk"), None)
+        if found is None:
+            return
+        tab, extension_id, ask = found
+        from PyQt6 import sip
+
+        if sip.isdeleted(tab):
+            return
+        reply = {"value": message.get("value")}
+        if message.get("error"):
+            reply["error"] = message["error"]
+        webengine.run_script(
+            tab.page(),
+            f"globalThis.__steedExtension && globalThis.__steedExtension("
+            f"{json.dumps(ask)}, {json.dumps(reply)})",
+            world=world_for(extension_id),
+        )
+
     # -- scripting
 
     def _source_file(self, name, extension_id, file):
@@ -431,6 +571,10 @@ class Bridges(QObject):
             webengine.run_script(tab.page(), source, world=world)
             self._answer(key, ask, None)
             return
+        if world != webengine.PAGE_WORLD:
+            webengine.run_script(
+                tab.page(), self.world_api(name, extension_id), world=world
+            )
         if message.get("func"):
             args = json.dumps(message.get("args") or [])
             self._run_async(key, ask, tab, f"({message['func']})(...{args})", world)
@@ -564,8 +708,12 @@ class Bridges(QObject):
             if css
             else ""
         )
+        prelude = (
+            self.world_api(name, extension_id) if script.get("world") != "MAIN" else ""
+        )
         return (
-            "(() => {"
+            prelude
+            + "(() => {"
             + MATCH_JS
             + f"const wanted = {json.dumps(script.get('matches') or [])};"
             + f" const unwanted = {json.dumps(script.get('excludeMatches') or [])};"

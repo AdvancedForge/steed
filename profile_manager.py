@@ -88,6 +88,9 @@ class ProfileRegistry(QObject):
             config, self, destination_picker=choose_download_destination
         )
         self.passwords = PasswordService(config, self)
+        from passkeys import Passkeys
+
+        self.passkeys = Passkeys(self)
         self.password_service = self.passwords
         self.adblock = AdBlocker(config, self)
         from extensions import Extensions
@@ -480,6 +483,7 @@ class ProfileRegistry(QObject):
             profile.setHttpUserAgent(override)
         self.profiles[name] = profile
         self.passwords.install(profile)
+        self.passkeys.install(profile)
         self.user_scripts(name).install(profile)
         self.downloads.attach(profile, name)
         self.adblock.attach(profile)
