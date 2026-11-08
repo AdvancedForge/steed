@@ -686,6 +686,16 @@ listed alphabetically, including `default` and `global`.
 
 ## Tabs and groups
 
+**Session history.** Every 10 minutes Steed records this profile's open windows
+and tabs (only when they changed; also once when Steed quits), keeping the last
+48, and records each window you close while another of the profile stays open,
+keeping the last 20. **Tabs → Session History…** lists them with a preview of
+their tabs; **Open** brings an entry back in new windows (tabs load when
+selected, and tab groups the entry used return with their colours), **Delete**
+removes it. **Tabs → Reopen Closed Window** brings back the last closed window.
+Reopened closed windows leave the list; sessions stay. Stored in
+`<profile>/session_history.json`; incognito keeps none.
+
 Right-click a group's label for **Colour** (blue, red, yellow, green, teal,
 purple, pink, orange, grey, or Automatic, which takes the next unused colour;
 the choice is kept with the group) and **Save and Close Group**, which keeps

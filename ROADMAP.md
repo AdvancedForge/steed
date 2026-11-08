@@ -9,6 +9,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Session history — November 7, 2026.** Ten-minute snapshots of a profile's
+windows (48 kept, only when changed, plus one at quit) and closed windows (20
+kept); Tabs → Session History… previews, opens (lazily, with tab groups and
+colours) and deletes them; Tabs → Reopen Closed Window. Not in incognito.
+
 **Saved groups in search; on-demand cookie inspection — November 7, 2026.**
 Save All Tabs as Group keeps the window's pages without closing them; saved
 groups appear in the palette and reopen from it. A `steed:memory` option,

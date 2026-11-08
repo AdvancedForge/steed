@@ -71,6 +71,8 @@ from webengine import (
 )
 
 logger = logging.getLogger(__name__)
+# How often a profile's open windows are recorded (only when they changed).
+SESSION_SNAPSHOT_MS = 10 * 60 * 1000
 
 # Qt versions before 6.8 expose permissions through QWebEnginePage.Feature.
 QWebEnginePermission = getattr(QtWebEngineCore, "QWebEnginePermission", None)
@@ -473,6 +475,16 @@ class BrowserWindow(QMainWindow):
         tabs_menu.addAction(new_tab_action)
         self.saved_groups_menu = tabs_menu.addMenu("Saved Groups")
         self.saved_groups_menu.aboutToShow.connect(self._fill_saved_groups_menu)
+        reopen_window = QAction("Reopen Closed Window", self)
+        reopen_window.triggered.connect(self.reopen_closed_window)
+        tabs_menu.addAction(reopen_window)
+        history_action = QAction("Session History…", self)
+        history_action.triggered.connect(self._open_session_history)
+        tabs_menu.addAction(history_action)
+        self._session_timer = QTimer(self)
+        self._session_timer.setInterval(SESSION_SNAPSHOT_MS)
+        self._session_timer.timeout.connect(lambda: self._record_session("snapshot"))
+        self._session_timer.start()
         save_all = QAction("Save All Tabs as Group…", self)
         save_all.triggered.connect(lambda: self.save_all_tabs_as_group())
         tabs_menu.addAction(save_all)
@@ -3599,6 +3611,84 @@ class BrowserWindow(QMainWindow):
         )
         return saved
 
+    def _session_history(self):
+        from session_history import SessionHistory
+
+        if self.tab_manager is None:
+            return None
+        return SessionHistory(self.tab_manager.profile_dir)
+
+    def _record_session(self, kind):
+        """Snapshot every window of this profile, or this window as closed."""
+        history = self._session_history()
+        if history is None or history.private:
+            return None
+        from dataclasses import asdict
+
+        if kind == "closed_window":
+            windows = [self.tab_manager.tab_states]
+        else:
+            windows = [w for w in self.tab_manager._windows().values() if w]
+        groups = [asdict(g) for g in self.tab_manager.groups.values()]
+        try:
+            return history.record(kind, windows, groups)
+        except OSError:
+            logger.exception("Could not record the session")
+            return None
+
+    def restore_session_entry(self, entry_id):
+        """Open an entry's windows (tabs load when selected); a closed window
+        leaves the list once reopened."""
+        history = self._session_history()
+        entry = next((e for e in history.entries() if e["id"] == entry_id), None)
+        if entry is None:
+            return []
+        # Groups the entry's tabs belong to come back too.
+        from tab_manager import TabGroup
+
+        groups = self.tab_manager.groups
+        for group in entry["groups"]:
+            if group["group_id"] not in groups:
+                taken = {g.name for g in groups.values()}
+                name, number = group["name"], 2
+                while name in taken:
+                    name, number = f"{group['name']} {number}", number + 1
+                groups[group["group_id"]] = TabGroup(
+                    group["group_id"], name, group["collapsed"], group["color"]
+                )
+        self.tab_manager.save_groups()
+        if entry["kind"] == "closed_window":
+            history.remove(entry_id)
+        profile = self.profile_manager.current_profile_name
+        return [self._open_window(profile, states) for states in entry["windows"]]
+
+    def reopen_closed_window(self):
+        history = self._session_history()
+        closed = next(
+            (
+                e
+                for e in (history.entries() if history else [])
+                if e["kind"] == "closed_window"
+            ),
+            None,
+        )
+        if closed is None:
+            self.status_bar.showMessage("No closed windows to reopen.", 4000)
+            return []
+        return self.restore_session_entry(closed["id"])
+
+    def _open_session_history(self):
+        from ui.session_history_dialog import SessionHistoryDialog
+
+        if self.tab_manager is None or self.tab_manager.private:
+            QMessageBox.information(
+                self, "Session History", "Incognito windows keep no session history."
+            )
+            return None
+        dialog = SessionHistoryDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
+
     def save_all_tabs_as_group(self, name=None):
         """Keep this window's web pages as a saved group; the tabs stay open."""
         from datetime import datetime
@@ -3846,6 +3936,15 @@ class BrowserWindow(QMainWindow):
             self.history.changed.disconnect(self._refresh_address_history)
 
         self._save_current_tabs()
+        # Before leaving the session: a window closed while others stay open
+        # can be reopened; quitting records the whole session once more.
+        self._record_session(
+            "closed_window"
+            if self.tab_manager is not None
+            and self.tab_manager.others_open()
+            and not self._keep_session
+            else "snapshot"
+        )
         self.config.update(
             {"window_width": self.width(), "window_height": self.height()}
         )
