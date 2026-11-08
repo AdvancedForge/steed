@@ -110,6 +110,19 @@ class BrowserPage(QWebEnginePage):
         self.setUrlRequestInterceptor(self.site_compatibility)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        if (
+            is_main_frame
+            and navigation_type
+            == QWebEnginePage.NavigationType.NavigationTypeLinkClicked
+            and webengine.is_local(self.url())
+            and url.scheme() in ("http", "https")
+        ):
+            # A local page may not reach the web, and the engine counts a
+            # download its link starts as reaching it, so such a link would do
+            # nothing. Open it the way a typed address opens instead.
+            tab = self.parent()
+            QTimer.singleShot(0, lambda: sip.isdeleted(tab) or tab.setUrl(url))
+            return False
         if is_main_frame:
             window = getattr(self.parent(), "browser_window", None)
             if window is not None:
@@ -239,6 +252,10 @@ class BrowserTab(QWebEngineView):
         native = webengine.menu_action(self.page(), "inspect_element")
         if native in menu.actions():
             menu.removeAction(native)
+        if self.browser_window is not None and webengine.is_local(self.url()):
+            self.browser_window._local_download_actions(
+                menu, self.page(), self.lastContextMenuRequest()
+            )
         if self.browser_window is not None and not self.workspace_name:
             menu.addSeparator()
             menu.addAction("Inspect").triggered.connect(
@@ -2186,6 +2203,34 @@ class BrowserWindow(QMainWindow):
         webengine.run_script(
             tab.page(), EXTRACT, extracted, world=webengine.STEED_WORLD
         )
+
+    def _local_download_actions(self, menu, page, request):
+        """Save Link/Image/Media As on a local page, started by Steed instead.
+
+        The engine refuses downloads that a local (steed: or file:) page starts.
+        """
+        for name, target in (
+            ("download_link", request.linkUrl()),
+            ("download_image", request.mediaUrl()),
+            ("download_media", request.mediaUrl()),
+        ):
+            action = webengine.menu_action(page, name)
+            if action not in menu.actions():
+                continue
+            replacement = QAction(action.text(), menu)
+            url = QUrl(target)
+            replacement.triggered.connect(
+                lambda _=False, url=url: self._download_url(url)
+            )
+            menu.insertAction(action, replacement)
+            menu.removeAction(action)
+
+    def _download_url(self, url):
+        """Download a web address in this window's profile; asks where to save."""
+        if self._closing or url.scheme() not in ("http", "https", "data"):
+            return False
+        self._blank_download_page().download(url)
+        return True
 
     def _download_page(self, profile):
         """A page of an open window in that profile, to start a download from."""

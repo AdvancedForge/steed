@@ -731,8 +731,16 @@ download that still fails, is cancelled, or was cut off when Steed closed can be
 tried again with **Retry**: Steed downloads it again from its original address
 into the same file, without asking where to save (Qt cannot continue a failed
 download where it stopped, so it starts over). Retry starts from an open web tab
-of that profile, or from a hidden blank page of it, never from a `steed:` page,
-which cannot start a second download. **Show Folder** selects the file in the
+of that profile, or from a hidden blank page of it.
+
+Local pages (`steed:` pages such as New Tab, and `file://` pages) may not reach
+the web, so a local HTML file cannot read online content. The engine counts a
+download a local page starts as reaching the web and refuses it, which made a
+download link in a local file do nothing and Save Link As fail on New Tab. Steed
+now opens a link clicked on a local page the way a typed address opens (ordinary
+links behave as before; downloads work), and starts Save Link/Image/Media As
+from those pages itself. Local pages' own scripts still cannot fetch from the
+web. **Show Folder** selects the file in the
 file manager (the `org.freedesktop.FileManager1` desktop interface used by
 Nautilus, Nemo, Dolphin, Thunar and Caja) and otherwise opens its folder.
 
