@@ -555,6 +555,24 @@ sends Google the page's address (Google loads it itself, without your
 sign-ins). API keys are not supported: they would have to be stored like
 passwords.
 
+**A translation service on this computer (optional).** `setup_translation.py`
+installs LibreTranslate (open-source, offline translation) in its own Python
+environment under `~/src/steed-libretranslate`, with CPU-only packages, and
+points Steed's setting at it:
+
+```bash
+.venv/bin/python setup_translation.py install --languages en,de,fr
+.venv/bin/python setup_translation.py start     # http://127.0.0.1:5000, this computer only
+.venv/bin/python setup_translation.py status
+.venv/bin/python setup_translation.py stop
+.venv/bin/python setup_translation.py uninstall # removes it and clears the setting
+```
+
+Each language's model downloads the first time it starts (about 100 MB each);
+the packages themselves are a few gigabytes. Start it again after a restart.
+The script's steps are tested; a full install has not yet been run on the
+development machine.
+
 ### Tab quick actions
 
 The tab menu also has **Copy Clean Link** (the address without tracking
