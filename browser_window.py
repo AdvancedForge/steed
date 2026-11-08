@@ -600,6 +600,10 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        save_page = QAction("Save Page As…", self)
+        save_page.setShortcut(QKeySequence("Ctrl+S"))
+        save_page.triggered.connect(lambda: self.save_page_as())
+        view_menu.addAction(save_page)
         shots = view_menu.addMenu("Take Screenshot")
         for label, whole, copy, key in (
             ("Save Full Page…", True, False, "Ctrl+Shift+S"),
@@ -2447,7 +2451,9 @@ class BrowserWindow(QMainWindow):
         tab = self._new_tab(url="about:blank", title=entry["title"], return_tab=True)
         if tab is None:
             return None
-        panel = ReaderPanel(self, tab, entry["article"], QUrl("about:blank"))
+        panel = ReaderPanel(
+            self, tab, entry["article"], QUrl("about:blank"), notes_url=entry["url"]
+        )
         tab.reader_panel = panel
 
         def closed():
@@ -3471,6 +3477,67 @@ class BrowserWindow(QMainWindow):
             self.tab_bar.set_tab_state(self.tabs.index(tab), loading=True)
         if not self._closing and self.tabs and tab == self.tabs[self.current_tab_index]:
             self._update_loading_indicator()
+
+    SAVE_FORMATS = {
+        "Web page, single file (*.mhtml)": ".mhtml",
+        "Web page, complete (*.html)": ".html",
+        "PDF (*.pdf)": ".pdf",
+    }
+
+    def save_page_as(self, path=None, kind=None):
+        """Save the current page as one file, as HTML with its files, or PDF."""
+        import re
+
+        from PyQt6.QtWebEngineCore import QWebEngineDownloadRequest
+
+        tab = self._current_browser_tab()
+        if (
+            tab is None
+            or tab.workspace_name
+            or tab.url().scheme()
+            not in (
+                "http",
+                "https",
+                "file",
+            )
+        ):
+            self.status_bar.showMessage("Only web pages can be saved.", 5000)
+            return None
+        if path is None:
+            title = re.sub(r'[\\/:*?"<>|]+', " ", tab.title() or "page").strip()
+            folder = self.config.get("download_dir", "") or str(Path.home())
+            path, chosen = QFileDialog.getSaveFileName(
+                self,
+                "Save Page As",
+                str(Path(folder) / (title[:100] or "page")),
+                ";;".join(self.SAVE_FORMATS),
+            )
+            if not path:
+                return None
+            kind = self.SAVE_FORMATS.get(chosen, ".mhtml")
+        kind = kind or Path(path).suffix.lower() or ".mhtml"
+        if Path(path).suffix.lower() != kind:
+            path += kind
+        page = tab.page()
+        if kind == ".pdf":
+            page.printToPdf(path)
+            page.pdfPrintingFinished.connect(
+                lambda done, ok: self.status_bar.showMessage(
+                    f"Saved {Path(done).name}." if ok else "Could not save the PDF.",
+                    6000,
+                ),
+                Qt.ConnectionType.SingleShotConnection,
+            )
+        else:
+            formats = QWebEngineDownloadRequest.SavePageFormat
+            page.save(
+                path,
+                formats.MimeHtmlSaveFormat
+                if kind == ".mhtml"
+                else formats.CompleteHtmlSaveFormat,
+            )
+            self.status_bar.showMessage(f"Saving {Path(path).name}…", 6000)
+        return path
 
     def _tab_crashed(self, tab, status, code):
         """A page process ended: say so over the tab, and log it."""
