@@ -127,6 +127,34 @@ class GroupTests(unittest.TestCase):
         (empty,) = self.window.saved_groups_menu.actions()
         self.assertFalse(empty.isEnabled())
 
+    def test_save_all_tabs_and_find_saved_groups_in_search(self):
+        from ui.command_palette import NativeCommandPalette
+
+        self.window._new_tab(url="https://example.org/a")
+        self.window._new_tab(url="https://example.org/b")
+        before = len(self.window.tabs)
+        saved = self.window.save_all_tabs_as_group("Evening reading")
+        self.assertEqual(len(self.window.tabs), before)
+        self.assertEqual(
+            [t["url"] for t in saved["tabs"]],
+            ["https://example.org/a", "https://example.org/b"],
+        )
+        palette = NativeCommandPalette(self.window)
+        try:
+            palette.present("*evening")
+            texts = [
+                palette.results.item(i).text() for i in range(palette.results.count())
+            ]
+            self.assertEqual(texts, ["Group · Evening reading"])
+            palette.present("evening")
+            self.assertEqual(palette.results.item(0).text(), "Group · Evening reading")
+            palette._choose_current()
+        finally:
+            palette.hide()
+            palette.deleteLater()
+        self.assertEqual(len(self.window.tabs), before + 2)
+        self.assertEqual(self.window.tab_manager.saved_groups(), [])
+
     def test_incognito_does_not_save_groups(self):
         manager = TabManager(Path())
         self.assertTrue(manager.private)

@@ -1,6 +1,7 @@
 """Quick palette: run a menu command, jump to a tab, or reopen history/bookmarks.
 
-Prefixes narrow the search: > commands, @ tabs, # history, * bookmarks.
+Prefixes narrow the search: > commands, @ tabs, # history, * bookmarks and
+saved tab groups.
 """
 
 from secrets import token_hex
@@ -139,6 +140,19 @@ class CommandPalette(QDialog):
             except (KeyError, ValueError, OSError):
                 bookmarks = []
         history = window.history.entries() if window.history is not None else []
+        manager = window.tab_manager
+        for group in manager.saved_groups() if manager is not None else []:
+            token = token_hex(8)
+            self.items[token] = ("group", None, group["group_id"])
+            count = len(group["tabs"])
+            places.append(
+                {
+                    "id": token,
+                    "kind": "group",
+                    "title": group["name"],
+                    "detail": f"Saved group · {count} tab{'s' * (count != 1)}",
+                }
+            )
         for kind, entries in (
             ("bookmark", ((b["url"], b["title"]) for b in bookmarks)),
             ("history", ((e.url, e.title) for e in history)),
@@ -201,6 +215,10 @@ class CommandPalette(QDialog):
             return
         kind, owner, target = item
         self.hide()
+        if kind == "group":
+            if not self.browser._closing:
+                self.browser.open_saved_group(target)
+            return
         if kind in ("history", "bookmark"):
             if not self.browser._closing:
                 self.browser._new_tab(url=target)
@@ -290,7 +308,11 @@ class NativeCommandPalette(CommandPalette):
         rows = [
             row
             for row in self.rows
-            if (not kind or row["kind"] == kind)
+            if (
+                not kind
+                or row["kind"] == kind
+                or (kind == "bookmark" and row["kind"] == "group")
+            )
             # With nothing typed, show tabs rather than every page ever visited.
             and (kind or words or row["kind"] == "tab")
             and all(
@@ -306,6 +328,7 @@ class NativeCommandPalette(CommandPalette):
                 "tab": "Tab · ",
                 "history": "History · ",
                 "bookmark": "Bookmark · ",
+                "group": "Group · ",
             }
             item = QListWidgetItem(badge.get(row["kind"], "") + label)
             item.setToolTip(row["detail"])
