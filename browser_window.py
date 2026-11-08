@@ -1022,6 +1022,9 @@ class BrowserWindow(QMainWindow):
         )
         self.address_bar.media_requested.connect(self._show_media_menu)
         self.address_bar.extensions_requested.connect(self._show_extensions_menu)
+        self.profile_manager.registry.extensions.changed.connect(
+            self._extensions_changed
+        )
         self._downloads_recent = QTimer(self)
         self._downloads_recent.setSingleShot(True)
         self._downloads_recent.setInterval(30000)
@@ -1357,6 +1360,7 @@ class BrowserWindow(QMainWindow):
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):
         self.address_bar.show_extensions(profile_name != "search")
+        self._refresh_extension_pins()
         for host in list(self._html_dialogs):
             host.reject()
         if self._html_menu is not None:
@@ -2701,6 +2705,16 @@ class BrowserWindow(QMainWindow):
                 )
             else:
                 action.setEnabled(False)  # It works in pages; it has no popup.
+        with_popups = extensions.popups(name)
+        if with_popups:
+            pins = menu.addMenu("Pinned Buttons")
+            for entry in with_popups:
+                action = pins.addAction(entry["name"])
+                action.setCheckable(True)
+                action.setChecked(entry["pinned"])
+                action.toggled.connect(
+                    lambda on, e=entry: extensions.set_pinned(name, e["id"], on)
+                )
         if menu.actions():
             menu.addSeparator()
         menu.addAction("Manage Extensions…").triggered.connect(self._open_extensions)
@@ -2732,13 +2746,44 @@ class BrowserWindow(QMainWindow):
         if accepted and text.strip():
             self.extension_installer.add_store(text)
 
-    def open_extension_popup(self, entry):
+    def _extensions_changed(self, profile):
+        if not self._closing and profile == self.profile_manager.current_profile_name:
+            self._refresh_extension_pins()
+
+    def _refresh_extension_pins(self):
+        from extensions import icon_from
+
+        extensions = self.profile_manager.registry.extensions
+        pins = []
+        for entry in extensions.pinned(self.profile_manager.current_profile_name):
+            details = extensions.details(entry) or {}
+            pins.append(
+                (
+                    icon_from(details.get("icon")),
+                    entry["name"],
+                    lambda _=False, e=entry: self._open_pinned(e),
+                )
+            )
+        self.address_bar.set_extension_pins(pins)
+
+    def _open_pinned(self, entry):
+        index = [
+            e["id"]
+            for e in self.profile_manager.registry.extensions.pinned(
+                self.profile_manager.current_profile_name
+            )
+        ].index(entry["id"])
+        return self.open_extension_popup(
+            entry, anchor=self.address_bar.extension_pins[index]
+        )
+
+    def open_extension_popup(self, entry, anchor=None):
         from ui.extension_popup import ExtensionPopup
 
         popup = ExtensionPopup(
             self.profile_manager.current_profile, entry["popup"], entry["name"], self
         )
-        button = self.address_bar.extensions_btn
+        button = anchor or self.address_bar.extensions_btn
         if button.isVisible():
             corner = button.mapToGlobal(button.rect().bottomRight())
         else:
@@ -4668,6 +4713,13 @@ class BrowserWindow(QMainWindow):
             sip.delete(tab)
         page = getattr(self, "_retry_page", None)
         if page is not None and not sip.isdeleted(page):
+            sip.delete(page)
+        # Extension popups, open or awaiting deferred deletion, likewise.
+        from ui.extension_popup import ExtensionPopup, PopupPage
+
+        for popup in self.findChildren(ExtensionPopup):
+            popup.close()
+        for page in self.findChildren(PopupPage):
             sip.delete(page)
         self.profile_manager.close()
 

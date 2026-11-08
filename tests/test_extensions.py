@@ -22,6 +22,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
+import extension_build as eb
 import extensions as ext
 import webengine
 from browser_window import BrowserWindow
@@ -97,10 +98,24 @@ class Pages(BaseHTTPRequestHandler):
     """A page for content scripts, and a stand-in for the store's downloads."""
 
     store = {}  # id -> .crx bytes
+    versions = {}  # id -> the version an update check offers
 
     def do_GET(self):
         parts = urlsplit(self.path)
-        if parts.path == "/crx":
+        if parts.path == "/update":
+            extension_id = parse_qs(parts.query)["id"][0]
+            offered = self.versions.get(extension_id)
+            check = (
+                f'<updatecheck status="ok" version="{offered}" codebase="x"/>'
+                if offered
+                else '<updatecheck status="noupdate"/>'
+            )
+            body = (
+                '<?xml version="1.0"?><gupdate xmlns="http://www.google.com/update2/'
+                f'response" protocol="2.0"><app appid="{extension_id}" status="ok">'
+                f"{check}</app></gupdate>"
+            ).encode()
+        elif parts.path == "/crx":
             body = self.store.get(parse_qs(parts.query)["id"][0])
             if body is None:
                 self.send_response(404)
@@ -182,6 +197,147 @@ class InspectTests(unittest.TestCase):
             for bad in (root / "junk.zip", root / "missing", root):
                 with self.assertRaises(ValueError):
                     inspect(bad)
+
+
+def _varint(value):
+    out = b""
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        out += bytes([byte | (0x80 if value else 0)])
+        if not value:
+            return out
+
+
+def _field(number, data):
+    return _varint(number << 3 | 2) + _varint(len(data)) + data
+
+
+def signed_crx(folder: Path, key: bytes) -> bytes:
+    """A .crx whose header carries a key and the id it declares, as the store's."""
+    declared = bytes.fromhex(
+        "".join("%x" % (ord(c) - ord("a")) for c in eb.extension_id(key))
+    )
+    header = _field(2, _field(1, key) + _field(2, b"sig")) + _field(
+        10000, _field(1, declared)
+    )
+    return b"Cr24" + struct.pack("<II", 3, len(header)) + header + zipped(folder)
+
+
+class BuildTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+
+    def test_ids_come_from_keys_and_stay(self):
+        key = eb.new_key()
+        crx = signed_crx(write_extension(self.root / "x"), key)
+        keys, declared = eb.crx_header(crx)
+        self.assertIn(key, keys)
+        self.assertEqual(declared, eb.extension_id(key))
+        for name, expected in (("a", eb.extension_id(key)), ("b", None)):
+            folder = self.root / name
+            eb.unpack(
+                self.root / "x" if name == "b" else _write(self.root, crx), folder
+            )
+            made = eb.ensure_key(folder, crx if name == "a" else b"")
+            if expected:
+                self.assertEqual(made, expected)
+            # Asking again gives the same id: the key is in the manifest now.
+            self.assertEqual(eb.ensure_key(folder), made)
+            self.assertRegex(made, "^[a-p]{32}$")
+        updated = self.root / "update"
+        write_extension(updated)
+        eb.keep_key(self.root / "b", updated)
+        self.assertEqual(eb.ensure_key(updated), eb.ensure_key(self.root / "b"))
+
+    def test_unsafe_archives_are_refused(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as bundle:
+            bundle.writestr("manifest.json", json.dumps(MANIFEST))
+            bundle.writestr("../escape.js", "x")
+        archive = self.root / "bad.zip"
+        archive.write_bytes(buffer.getvalue())
+        with self.assertRaisesRegex(ValueError, "unsafe"):
+            eb.unpack(archive, self.root / "out")
+        self.assertFalse((self.root / "escape.js").exists())
+
+    def test_narrowing_to_sites(self):
+        sites = ["example.com", "news.org"]
+        self.assertEqual(
+            eb.narrow(["<all_urls>"], sites),
+            ["*://*.example.com/*", "*://*.news.org/*"],
+        )
+        self.assertEqual(
+            eb.narrow(["https://www.example.com/a/*", "https://other.net/*"], sites),
+            ["https://www.example.com/a/*"],
+        )
+        self.assertEqual(
+            eb.narrow(["*://*.example.com/*"], ["sub.example.com"]),
+            ["*://*.sub.example.com/*"],
+        )
+        manifest = eb.limit_to_sites(
+            {
+                "host_permissions": ["<all_urls>"],
+                "permissions": ["storage", "https://*/*"],
+                "content_scripts": [
+                    {"matches": ["https://other.net/*"], "js": ["a.js"]},
+                    {"matches": ["<all_urls>"], "js": ["b.js"]},
+                ],
+            },
+            ["example.com"],
+        )
+        self.assertEqual(manifest["host_permissions"], ["*://*.example.com/*"])
+        self.assertEqual(
+            manifest["permissions"], ["storage", "https://*.example.com/*"]
+        )
+        self.assertEqual([c["js"] for c in manifest["content_scripts"]], [["b.js"]])
+        self.assertEqual(eb.clean_site("https://www.Example.com:8080/a"), "example.com")
+        self.assertIsNone(eb.clean_site("not a site!"))
+
+    def test_the_built_copy_runs_the_stand_ins_first(self):
+        source = write_extension(self.root / "plain")
+        (source / "p.html").write_text("<html><head><title>x</title></head>")
+        eb.build(source, self.root / "built")
+        built = eb.read_manifest(self.root / "built")
+        self.assertEqual(built["background"], {"service_worker": eb.BACKGROUND_NAME})
+        self.assertEqual(
+            (self.root / "built" / eb.BACKGROUND_NAME).read_text(),
+            f'importScripts("/{eb.SHIM_NAME}");\n',
+        )
+        self.assertEqual(built["content_scripts"][0]["js"][0], eb.SHIM_NAME)
+        page = (self.root / "built" / "p.html").read_text()
+        self.assertTrue(page.startswith(f'<html><head><script src="/{eb.SHIM_NAME}">'))
+        self.assertTrue((self.root / "built" / eb.SHIM_NAME).is_file())
+        for kind, expected in (
+            ("module", 'import "/steed-shim.js";\nimport "/bg.js";\n'),
+            (None, 'importScripts("/steed-shim.js", "/bg.js");\n'),
+        ):
+            folder = write_extension(
+                self.root / f"worker-{kind}",
+                background={
+                    "service_worker": "bg.js",
+                    **({"type": kind} if kind else {}),
+                },
+                content_scripts=[
+                    {"matches": ["<all_urls>"], "js": ["m.js"], "world": "MAIN"}
+                ],
+            )
+            eb.build(folder, self.root / f"built-{kind}")
+            self.assertEqual(
+                (self.root / f"built-{kind}" / eb.BACKGROUND_NAME).read_text(), expected
+            )
+            built = eb.read_manifest(self.root / f"built-{kind}")
+            self.assertEqual(built["content_scripts"][0]["js"], ["m.js"])
+        # The source itself is left as it was.
+        self.assertNotIn("background", eb.read_manifest(source))
+
+
+def _write(root, data):
+    path = root / "signed.crx"
+    path.write_bytes(data)
+    return path
 
 
 class Waiting:
@@ -288,23 +444,27 @@ class EngineApiTests(Waiting, unittest.TestCase):
             cache=root / "cache",
             keep_session_cookies=False,
         )
-        extensions = Extensions()
-        extensions.attach("p", profile, root)
+        # Straight through Qt: Steed's build would add its stand-ins.
+        manager = profile.extensionManager()
+        done = []
+        # The info a signal passes is only valid during the call: keep the id.
+        manager.installFinished.connect(lambda info: done.append(info.id()))
         page = webengine.Page(profile)
         try:
-            extensions.install("p", folder)
-            self.wait(lambda: extensions.popups("p"))
-            page.setUrl(QUrl(extensions.popups("p")[0]["popup"]))
+            manager.installExtension(str(folder))
+            self.wait(lambda: done)
+            (info,) = [i for i in manager.extensions() if i.id() == done[0]]
+            manager.setExtensionEnabled(info, True)
+            page.setUrl(info.actionPopupUrl())
             self.wait(lambda: page.title().startswith("["))
             found = set(json.loads(page.title())) & ext.API_PERMISSIONS
             self.assertEqual(found, ext.ENGINE_APIS)
         finally:
             sip.delete(page)
-            sip.delete(extensions)
             sip.delete(profile)
 
 
-class WindowTests(Waiting, unittest.TestCase):
+class WindowBase(Waiting, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = application()
@@ -327,6 +487,11 @@ class WindowTests(Waiting, unittest.TestCase):
             ext, "STORE_DOWNLOAD", self.url + "crx?id={id}&v={version}"
         )
         self.store.start()
+        self.updates = patch.object(
+            ext, "STORE_UPDATE", self.url + "update?id={id}&v={current}&p={version}"
+        )
+        self.updates.start()
+        Pages.versions = {}
         self.confirm = patch("ui.extension_install.confirm", return_value=True)
         self.asked = self.confirm.start()
         Pages.store = {}
@@ -339,6 +504,7 @@ class WindowTests(Waiting, unittest.TestCase):
         self.window.close()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.confirm.stop()
+        self.updates.stop()
         self.store.stop()
         self.home.stop()
 
@@ -349,6 +515,8 @@ class WindowTests(Waiting, unittest.TestCase):
             " + document.documentElement.dataset.stored",
         )
 
+
+class WindowTests(WindowBase):
     def test_install_from_a_zip_run_open_the_popup_and_switch_off(self):
         from ui.extensions_dialog import ExtensionsDialog
 
@@ -443,6 +611,246 @@ class WindowTests(Waiting, unittest.TestCase):
             collections["extensions"].read(),
             {STORE_ID: {"name": "Steed Test Extension", "enabled": True}},
         )
+
+
+SHIM_BACKGROUND = """
+chrome.contextMenus.create({ id: "x", title: "x" });
+chrome.action.setBadgeText({ text: "1" });
+const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message !== "hello") return;
+  (async () => {
+    await chrome.storage.sync.set({ a: 1 });
+    const synced = await chrome.storage.sync.get("a");
+    const local = await chrome.storage.local.get(null);
+    let listed = false;
+    for (let i = 0; i < 40 && !listed; i++) {
+      listed = (await chrome.tabs.query({})).some((tab) => tab.id === sender.tab.id);
+      if (!listed) await wait(50);
+    }
+    const pong = await chrome.tabs.sendMessage(sender.tab.id, "ping");
+    respond({
+      frame: sender.frameId,
+      sync: synced.a,
+      leaked: Object.keys(local),
+      listed,
+      pong,
+      allowed: await chrome.permissions.contains({ permissions: ["storage"] }),
+      refused: await chrome.permissions.contains({ permissions: ["history"] }),
+    });
+  })();
+  return true;
+});
+"""
+SHIM_CONTENT = """
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message === "ping") respond("pong");
+});
+chrome.runtime.sendMessage("hello").then((reply) => {
+  document.documentElement.dataset.shim = JSON.stringify(reply);
+});
+"""
+SHIM_POPUP = """
+chrome.tabs.query({}).then((tabs) => {
+  document.title = "tabs:" + tabs.length + " " + tabs.map((tab) => tab.url).join(" ");
+});
+chrome.storage.local.get("seen").then((items) => {
+  document.documentElement.dataset.seen = String(items.seen);
+});
+"""
+
+
+class StandInTests(WindowBase):
+    """The stand-ins for missing Chrome APIs, the toolbar, sites and updates."""
+
+    def add(self, folder):
+        self.extensions.install(self.name, folder)
+        self.wait(lambda: self.extensions.installed(self.name))
+        return self.extensions.installed(self.name)[0]
+
+    def open(self, url):
+        tab = self.window._new_tab(url=url, return_tab=True)
+        self.wait(lambda: not tab.page().isLoading() and tab.url().toString() == url)
+        return tab
+
+    def test_tabs_messages_storage_sync_and_permissions(self):
+        folder = write_extension(
+            self.root / "shim",
+            background={"service_worker": "bg.js"},
+            content_scripts=[{"matches": ["http://127.0.0.1/*"], "js": ["c.js"]}],
+            action={"default_popup": "p.html"},
+        )
+        (folder / "bg.js").write_text(SHIM_BACKGROUND)
+        (folder / "c.js").write_text(SHIM_CONTENT)
+        (folder / "p.html").write_text('<script src="p.js"></script>')
+        (folder / "p.js").write_text(SHIM_POPUP)
+        entry = self.add(folder)
+        tab = self.open(self.url)
+        found = []
+
+        def answered():
+            found[:] = [
+                self.evaluate(tab.page(), "document.documentElement.dataset.shim || ''")
+            ]
+            return found[0]
+
+        self.wait(answered)
+        self.assertEqual(
+            json.loads(found[0]),
+            {
+                "frame": 0,
+                "sync": 1,
+                "leaked": [],
+                "listed": True,
+                "pong": "pong",
+                "allowed": True,
+                "refused": False,
+            },
+        )
+        popup = self.window.open_extension_popup(entry)
+        self.wait(lambda: popup.page.title().startswith("tabs:"))
+        self.assertIn(self.url, popup.page.title())
+        popup.close()
+
+    def test_site_access_narrows_and_keeps_the_extensions_data(self):
+        folder = write_extension(
+            self.root / "sites",
+            content_scripts=[{"matches": ["<all_urls>"], "js": ["content.js"]}],
+            action={"default_popup": "p.html"},
+        )
+        (folder / "p.html").write_text('<script src="p.js"></script>')
+        (folder / "p.js").write_text(SHIM_POPUP)
+        entry = self.add(folder)
+        tab = self.open(self.url)
+        self.wait(lambda: self.marker(tab) == "ran yes")
+        port = self.server.server_port
+        self.extensions.set_sites(self.name, entry["id"], ["localhost"])
+        self.wait(
+            lambda: (
+                self.extensions.installed(self.name)
+                and self.extensions.installed(self.name)[0]["sites"] == ["localhost"]
+                and self.extensions.installed(self.name)[0]["enabled"]
+            )
+        )
+        (entry,) = self.extensions.installed(self.name)
+        self.assertEqual(entry["id"], self.extensions.installed(self.name)[0]["id"])
+        blocked = self.open(self.url)
+        time.sleep(0.5)
+        self.assertEqual(self.marker(blocked), "undefined undefined")
+        allowed = self.open(f"http://localhost:{port}/")
+        self.wait(lambda: self.marker(allowed) == "ran yes")
+        # chrome.storage from before the change is still there.
+        popup = self.window.open_extension_popup(entry)
+        self.wait(
+            lambda: (
+                self.evaluate(popup.page, "document.documentElement.dataset.seen || ''")
+                == "1"
+            )
+        )
+        popup.close()
+        self.extensions.set_sites(self.name, entry["id"], None)
+        self.wait(
+            lambda: (
+                self.extensions.installed(self.name)
+                and self.extensions.installed(self.name)[0]["sites"] is None
+            )
+        )
+
+    def test_pinned_buttons_open_their_popup(self):
+        from ui.extension_popup import ExtensionPopup
+
+        entry = self.add(write_extension(self.root / "pin"))
+        bar = self.window.address_bar
+        self.assertEqual(bar.extension_pins, [])
+        self.window._show_extensions_menu()
+        menu = self.window.extensions_popup_menu
+        pins = next(a for a in menu.actions() if a.text() == "Pinned Buttons").menu()
+        pins.actions()[0].setChecked(True)
+        menu.close()
+        self.wait(lambda: len(bar.extension_pins) == 1)
+        self.assertEqual(bar.extension_pins[0].toolTip(), entry["name"])
+        self.assertFalse(bar.extension_pins[0].icon().isNull())
+        bar.extension_pins[0].click()
+        self.wait(lambda: self.window.findChildren(ExtensionPopup))
+        (popup,) = self.window.findChildren(ExtensionPopup)
+        self.wait(lambda: popup.page.title() == "Test Popup")
+        popup.close()
+        self.extensions.set_pinned(self.name, entry["id"], False)
+        self.wait(lambda: bar.extension_pins == [])
+
+    def test_updates_keep_the_id_and_wait_when_asking_for_more(self):
+        Pages.store = {STORE_ID: crx(write_extension(self.root / "v1"))}
+        self.window.extension_installer.add_store(STORE_ID)
+        self.wait(lambda: self.extensions.from_store(self.name, STORE_ID))
+        first = self.extensions.from_store(self.name, STORE_ID)
+        tab = self.open(self.url)
+        self.wait(lambda: self.marker(tab) == "ran yes")
+        summaries = []
+        self.extensions.updates_checked.connect(lambda n, s: summaries.append(s))
+        self.extensions.check_updates(self.name)
+        self.wait(lambda: summaries)
+        self.assertEqual(summaries[-1], "Your extensions are up to date.")
+
+        def version():
+            """The installed copy's version, once it is installed and on."""
+            entry = self.extensions.from_store(self.name, STORE_ID)
+            if not entry or not entry["enabled"]:
+                return None
+            try:
+                return inspect(entry["path"])["version"]
+            except ValueError:
+                return None  # The old copy, mid-swap: its files are gone.
+
+        v2 = write_extension(
+            self.root / "v2", version="2.0", action={"default_popup": "p.html"}
+        )
+        (v2 / "p.html").write_text('<script src="p.js"></script>')
+        (v2 / "p.js").write_text(SHIM_POPUP)
+        Pages.store = {STORE_ID: crx(v2)}
+        Pages.versions = {STORE_ID: "2.0"}
+        self.extensions.check_updates(self.name)
+        self.wait(lambda: len(summaries) == 2)
+        self.assertIn("Updating 1", summaries[-1])
+        self.wait(lambda: version() == "2.0")
+        second = self.extensions.from_store(self.name, STORE_ID)
+        self.assertEqual(second["id"], first["id"])
+        self.assertTrue(second["enabled"])
+        self.asked.assert_called_once()  # Only when it was first added.
+        # The new version runs: its content script, and its background answers
+        # the popup; chrome.storage written by version 1 is still there.
+        after = self.open(self.url)
+        self.wait(lambda: self.marker(after) == "ran yes")
+        popup = self.window.open_extension_popup(second)
+        self.wait(lambda: popup.page.title().startswith("tabs:"))
+        self.wait(
+            lambda: (
+                self.evaluate(popup.page, "document.documentElement.dataset.seen || ''")
+                == "1"
+            )
+        )
+        popup.close()
+
+        more = write_extension(
+            self.root / "v3", version="3.0", permissions=["storage", "tabs", "history"]
+        )
+        Pages.store = {STORE_ID: crx(more)}
+        Pages.versions = {STORE_ID: "3.0"}
+        self.extensions.check_updates(self.name)
+        self.wait(
+            lambda: (self.extensions.from_store(self.name, STORE_ID) or {}).get(
+                "update"
+            )
+        )
+        self.assertEqual(version(), "2.0")
+        self.assertEqual(
+            self.extensions.from_store(self.name, STORE_ID)["update"], "3.0"
+        )
+        self.extensions.apply_update(self.name, STORE_ID)
+        self.wait(lambda: version() == "3.0")
+        third = self.extensions.from_store(self.name, STORE_ID)
+        self.assertEqual(third["id"], first["id"])
+        self.assertEqual(third["update"], "")
+        self.assertFalse(self.extensions.waiting_update(self.name, STORE_ID))
 
 
 if __name__ == "__main__":

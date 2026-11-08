@@ -18,8 +18,9 @@ computer installs, removes or switches extensions to match it.
 import io
 import json
 import re
-import struct
+import shutil
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 from urllib.parse import quote
@@ -28,6 +29,14 @@ from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
+from extension_build import (
+    build,
+    clean_site,
+    crx_zip,
+    ensure_key,
+    keep_key,
+    unpack,
+)
 from utils import load_json, save_json
 
 STATE_FILE = "extensions.json"
@@ -40,6 +49,15 @@ STORE_DOWNLOAD = (
     "&prodversion={version}&acceptformat=crx2,crx3"
     "&x=id%3D{id}%26installsource%3Dondemand%26uc"
 )
+STORE_UPDATE = (
+    "https://clients2.google.com/service/update2/crx?response=updatecheck"
+    "&prodversion={version}&acceptformat=crx2,crx3"
+    "&x=id%3D{id}%26v%3D{current}%26uc"
+)
+SOURCES = "extension-sources"
+UPDATES = "extension-updates"
+UPDATE_TIMER_MS = 60 * 60 * 1000
+UPDATE_EVERY_SECONDS = 24 * 3600
 _STORE_ID = re.compile(r"^[a-p]{32}$")
 
 # What common permissions mean, in words. Harmless ones are left out.
@@ -119,21 +137,6 @@ def store_id(url) -> str | None:
         text,
     )
     return match.group(2) if match else None
-
-
-def crx_zip(data: bytes) -> bytes:
-    """The zip archive inside a .crx file (versions 2 and 3)."""
-    if data[:4] != b"Cr24" or len(data) < 16:
-        raise ValueError("This is not a Chrome extension (.crx) file.")
-    version = struct.unpack("<I", data[4:8])[0]
-    if version == 3:
-        start = 12 + struct.unpack("<I", data[8:12])[0]
-    elif version == 2:
-        key, signature = struct.unpack("<II", data[8:16])
-        start = 16 + key + signature
-    else:
-        raise ValueError("This .crx file version is not supported.")
-    return data[start:]
 
 
 class _Files:
@@ -301,7 +304,13 @@ def _dict(value):
 
 
 def read_state(folder) -> dict:
-    """enabled: Qt ids switched on; store: wanted store ids; ids: store -> Qt."""
+    """What Steed keeps per profile in extensions.json.
+
+    enabled: ids switched on; store: wanted store ids (synced); ids: store id
+    -> installed id; pinned: ids with a toolbar button; sites: id -> the only
+    sites it may use; updates: store id -> waiting version; checked: time of
+    the last update check.
+    """
     raw = _dict(load_json(Path(folder) / STATE_FILE, {}))
     store = {}
     for key, value in _dict(raw.get("store")).items():
@@ -310,6 +319,11 @@ def read_state(folder) -> dict:
                 "name": str(value.get("name", ""))[:100],
                 "enabled": value.get("enabled") is not False,
             }
+    sites = {}
+    for key, value in _dict(raw.get("sites")).items():
+        if isinstance(key, str) and isinstance(value, list):
+            sites[key] = [s for s in _strings(value) if clean_site(s) == s][:200]
+    checked = raw.get("checked")
     return {
         "enabled": _strings(raw.get("enabled")),
         "store": store,
@@ -318,6 +332,14 @@ def read_state(folder) -> dict:
             for key, value in _dict(raw.get("ids")).items()
             if _STORE_ID.match(str(key)) and isinstance(value, str)
         },
+        "pinned": _strings(raw.get("pinned")),
+        "sites": sites,
+        "updates": {
+            key: str(value)[:40]
+            for key, value in _dict(raw.get("updates")).items()
+            if _STORE_ID.match(str(key))
+        },
+        "checked": float(checked) if isinstance(checked, (int, float)) else 0.0,
     }
 
 
@@ -344,19 +366,34 @@ def set_synced(folder, wanted) -> None:
     write_state(folder, state)
 
 
-class StoreDownload(QObject):
-    """Fetch one extension's .crx from the Chrome Web Store."""
+def version_key(text) -> tuple:
+    return tuple(int(part) for part in re.findall(r"\d+", str(text))[:4])
 
-    finished = pyqtSignal(str, str, str)  # store id, file path, error
 
-    def __init__(self, network, extension_id, parent=None):
+def update_version(xml: bytes, extension_id: str) -> str | None:
+    """The newer version an update check offers, if any."""
+    import xml.etree.ElementTree as ElementTree
+
+    try:
+        root = ElementTree.fromstring(xml)
+    except ElementTree.ParseError:
+        return None
+    for app in root.iter():
+        if app.tag.split("}")[-1] == "app" and app.get("appid") == extension_id:
+            for check in app:
+                if check.tag.split("}")[-1] == "updatecheck":
+                    if check.get("status") == "ok" and check.get("version"):
+                        return check.get("version")
+    return None
+
+
+class Fetch(QObject):
+    """One GET request; finished(data, error), data None when it failed."""
+
+    finished = pyqtSignal(object, str)
+
+    def __init__(self, network, url, parent=None):
         super().__init__(parent)
-        from webengine import versions
-
-        url = STORE_DOWNLOAD.format(
-            version=quote(versions()["chromium"]), id=extension_id
-        )
-        self.extension_id = extension_id
         request = QNetworkRequest(QUrl(url))
         request.setAttribute(
             QNetworkRequest.Attribute.RedirectPolicyAttribute,
@@ -372,28 +409,25 @@ class StoreDownload(QObject):
 
     def _done(self):
         reply = self.reply
-        error = path = ""
         if reply.error() != QNetworkReply.NetworkError.NoError:
             status = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
             error = (
                 "The Chrome Web Store has no such extension."
                 if status in (204, 404)
-                else f"Could not download it: {reply.errorString()}"
+                else f"Could not reach the Chrome Web Store: {reply.errorString()}"
             )
+            self.finished.emit(None, error)
         else:
             # A failed reply can return None (see search_suggestions).
-            data = bytes(reply.readAll() or b"")
-            if data[:4] != b"Cr24":
-                error = "The Chrome Web Store sent no extension for that id."
-            else:
-                with tempfile.NamedTemporaryFile(
-                    prefix=f"steed-{self.extension_id}-", suffix=".crx", delete=False
-                ) as handle:
-                    handle.write(data)
-                path = handle.name
+            self.finished.emit(bytes(reply.readAll() or b""), "")
         reply.deleteLater()
-        self.finished.emit(self.extension_id, path, error)
         self.deleteLater()
+
+
+def _chromium():
+    from webengine import versions
+
+    return quote(versions()["chromium"])
 
 
 class Extensions(QObject):
@@ -402,13 +436,20 @@ class Extensions(QObject):
     changed = pyqtSignal(str)  # profile name
     failed = pyqtSignal(str, str)  # profile name, message
     downloaded = pyqtSignal(str, str, str, str)  # profile, store id, path, error
+    updates_checked = pyqtSignal(str, str)  # profile name, summary
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.profiles = {}  # name -> (engine profile, folder)
-        self._pending = {}  # name -> [(store id or None, switch on), ...]
-        self._downloads = {}  # (name, store id) -> started by sync
+        # name -> id -> {"store", "enabled", "build", "reinstall"}
+        self._pending = {}
+        self._downloads = {}  # (name, store id) -> "user", "sync" or "update"
+        self._checks = {}  # name -> store ids still being checked
         self._network = None
+        self.auto_update = QTimer(self)
+        self.auto_update.setInterval(UPDATE_TIMER_MS)
+        self.auto_update.timeout.connect(self._auto_update)
+        self.auto_update.start()
 
     def attach(self, name, profile, folder):
         manager = profile.extensionManager()
@@ -433,6 +474,13 @@ class Extensions(QObject):
 
     def state(self, name):
         return read_state(self.folder(name))
+
+    def _write(self, name, state):
+        write_state(self.folder(name), state)
+
+    def source(self, name, extension_id) -> Path:
+        """The extension's own files, as Steed received them (with its key)."""
+        return self.folder(name) / SOURCES / extension_id
 
     def _restore(self, name, attempts):
         """Switch remembered extensions back on once Qt has loaded them."""
@@ -474,19 +522,25 @@ class Extensions(QObject):
         manager = self._manager(name)
         if manager is None:
             return []
-        stores = {qt: store for store, qt in self.state(name)["ids"].items()}
+        state = self.state(name)
+        stores = {qt: store for store, qt in state["ids"].items()}
         found = []
         for info in manager.extensions():
             if info.isInstalled():
                 entry = describe(info)
                 entry["store"] = stores.get(entry["id"], "")
+                entry["pinned"] = entry["id"] in state["pinned"]
+                entry["sites"] = state["sites"].get(entry["id"])
+                entry["update"] = state["updates"].get(entry["store"], "")
+                source = self.source(name, entry["id"])
+                entry["source"] = str(source if source.is_dir() else entry["path"])
                 found.append(entry)
         return sorted(found, key=lambda e: e["name"].lower())
 
     def details(self, entry) -> dict | None:
-        """Version, icon and permissions of an installed extension."""
+        """Version, icon and permissions as the extension itself asks."""
         try:
-            return inspect(entry["path"])
+            return inspect(entry["source"])
         except (OSError, ValueError):
             return None
 
@@ -496,33 +550,92 @@ class Extensions(QObject):
         return next((e for e in self.installed(name) if e["id"] == qt_id), None)
 
     def install(self, name, path, *, store=None, enabled=True):
-        """Install from a folder, .zip or .crx; finishes with changed or failed."""
-        manager = self._manager(name)
-        if manager is None:
+        """Install (or install again) from a folder, .zip or .crx.
+
+        Finishes with changed or failed. The extension keeps its id, so an
+        update keeps its data."""
+        if self._manager(name) is None:
             raise ValueError("Incognito windows have no extensions.")
         path = Path(path)
         inspect(path)  # Refuses what is not a Manifest V3 extension.
-        if path.is_file():
-            data = path.read_bytes()
-            if data[:4] == b"Cr24":
-                folder = Path(tempfile.mkdtemp(prefix="steed-crx-"))
-                path = folder / (path.stem + ".zip")
-                path.write_bytes(crx_zip(data))
-        self._pending.setdefault(name, []).append((store, enabled))
-        manager.installExtension(str(path.resolve()))
+        sources = self.folder(name) / SOURCES
+        sources.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=".new-", dir=sources))
+        try:
+            shutil.rmtree(staging)
+            crx = unpack(path, staging)
+            known = self.state(name)["ids"].get(store) if store else None
+            if known and self.source(name, known).is_dir():
+                # An update keeps the id (and data) of the one installed.
+                keep_key(self.source(name, known), staging)
+            extension_id = ensure_key(staging, crx, store)
+            target = sources / extension_id
+            if target.exists():
+                shutil.rmtree(target)
+            staging.rename(target)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+        self._deploy(name, extension_id, store=store, enabled=enabled)
+        return extension_id
+
+    def _deploy(self, name, extension_id, *, store=None, enabled=True):
+        """Build from the source and install it, replacing an installed copy."""
+        state = self.state(name)
+        build_root = Path(tempfile.mkdtemp(prefix="steed-extension-"))
+        build_dir = build_root / extension_id
+        build(
+            self.source(name, extension_id),
+            build_dir,
+            state["sites"].get(extension_id),
+        )
+        current = self._info(name, extension_id)
+        self._pending.setdefault(name, {})[extension_id] = {
+            "store": store
+            or next((s for s, q in state["ids"].items() if q == extension_id), None),
+            "enabled": enabled,
+            "build": build_root,
+            "reinstall": current is not None,
+        }
+        if current is not None:
+            # Qt does not replace an installed extension: remove, then install.
+            self._manager(name).uninstallExtension(current)
+        else:
+            self._manager(name).installExtension(str(build_dir))
 
     def _installed(self, name, info):
-        pending = self._pending.get(name) or [(None, True)]
-        store, enabled = pending.pop(0)
+        pending = self._pending.get(name, {}).pop(
+            info.id(), {"store": None, "enabled": True, "build": None}
+        )
+        if pending["build"] is not None:
+            shutil.rmtree(pending["build"], ignore_errors=True)
         if info.error() or not info.isInstalled():
             self.failed.emit(name, info.error() or "The extension did not install.")
             return
-        if store and name in self.profiles:
-            state = self.state(name)
-            state["ids"][store] = info.id()
-            state["store"][store] = {"name": info.name(), "enabled": bool(enabled)}
-            write_state(self.folder(name), state)
-        self.set_enabled(name, info.id(), enabled)
+        if name not in self.profiles:
+            return
+        state = self.state(name)
+        if pending["store"]:
+            state["ids"][pending["store"]] = info.id()
+            state["store"][pending["store"]] = {
+                "name": info.name(),
+                "enabled": bool(pending["enabled"]),
+            }
+            state["updates"].pop(pending["store"], None)
+        self._write(name, state)
+        self.set_enabled(name, info.id(), pending["enabled"])
+
+    def _uninstalled(self, name, info):
+        pending = self._pending.get(name, {}).get(info.id())
+        if pending is not None and pending.get("reinstall"):
+            pending["reinstall"] = False
+            self._manager(name).installExtension(str(pending["build"] / info.id()))
+            return
+        if info.error():
+            self.failed.emit(name, info.error())
+        elif name in self.profiles:
+            shutil.rmtree(self.source(name, info.id()), ignore_errors=True)
+        self.changed.emit(name)
 
     def set_enabled(self, name, extension_id, enabled):
         info = self._info(name, extension_id)
@@ -536,59 +649,226 @@ class Extensions(QObject):
         for store, qt_id in state["ids"].items():
             if qt_id == extension_id and store in state["store"]:
                 state["store"][store]["enabled"] = bool(enabled)
-        write_state(self.folder(name), state)
+        self._write(name, state)
         self.changed.emit(name)
 
     def remove(self, name, extension_id):
         info = self._info(name, extension_id)
         state = self.state(name)
         state["enabled"] = [i for i in state["enabled"] if i != extension_id]
+        state["pinned"] = [i for i in state["pinned"] if i != extension_id]
+        state["sites"].pop(extension_id, None)
         for store in [s for s, q in state["ids"].items() if q == extension_id]:
             state["ids"].pop(store)
             state["store"].pop(store, None)
-        write_state(self.folder(name), state)
+            state["updates"].pop(store, None)
+        self._write(name, state)
         if info is not None:
             self._manager(name).uninstallExtension(info)
-
-    def _uninstalled(self, name, info):
-        if info.error():
-            self.failed.emit(name, info.error())
-        self.changed.emit(name)
 
     def popups(self, name) -> list[dict]:
         """Switched-on extensions with a toolbar popup."""
         return [e for e in self.installed(name) if e["enabled"] and e["popup"]]
 
+    # -- toolbar buttons and site access
+
+    def pinned(self, name) -> list[dict]:
+        """Pinned extensions with a popup, in the order they were pinned."""
+        order = self.state(name)["pinned"] if self.available(name) else []
+        found = {e["id"]: e for e in self.popups(name)}
+        return [found[i] for i in order if i in found]
+
+    def set_pinned(self, name, extension_id, pinned):
+        state = self.state(name)
+        state["pinned"] = [i for i in state["pinned"] if i != extension_id]
+        if pinned:
+            state["pinned"].append(extension_id)
+        self._write(name, state)
+        self.changed.emit(name)
+
+    def _adopt(self, name, entry) -> str:
+        """Keep the files of an extension installed before Steed kept them."""
+        if self.source(name, entry["id"]).is_dir():
+            return entry["id"]
+        info = self._info(name, entry["id"])
+        new_id = self.install(
+            name, entry["path"], store=entry["store"] or None, enabled=entry["enabled"]
+        )
+        if new_id != entry["id"] and info is not None:
+            state = self.state(name)
+            state["enabled"] = [i for i in state["enabled"] if i != entry["id"]]
+            state["pinned"] = [
+                new_id if i == entry["id"] else i for i in state["pinned"]
+            ]
+            self._write(name, state)
+            self._manager(name).uninstallExtension(info)
+        return new_id
+
+    def set_sites(self, name, extension_id, sites):
+        """Limit an extension to these sites (None: all it asks for)."""
+        entry = next((e for e in self.installed(name) if e["id"] == extension_id), None)
+        if entry is None:
+            return
+        if sites is not None:
+            sites = sorted({s for s in map(clean_site, sites) if s})
+        state = self.state(name)
+        if sites is None:
+            state["sites"].pop(extension_id, None)
+        else:
+            state["sites"][extension_id] = sites
+        self._write(name, state)
+        if self.source(name, extension_id).is_dir():
+            self._deploy(name, extension_id, enabled=entry["enabled"])
+        else:
+            new_id = self._adopt(name, entry)
+            state = self.state(name)
+            if sites is None:
+                state["sites"].pop(new_id, None)
+            else:
+                state["sites"][new_id] = sites
+            self._write(name, state)
+            self._deploy(name, new_id, enabled=entry["enabled"])
+
     # -- the Chrome Web Store
 
-    def download(self, name, extension_id, *, for_sync=False):
-        """Fetch from the store; ends with downloaded(profile, id, path, error)."""
+    def _get(self, url, done):
+        if self._network is None:
+            self._network = QNetworkAccessManager(self)
+        job = Fetch(self._network, url, self)
+        job.finished.connect(done)
+
+    def download(self, name, extension_id, *, purpose="user"):
+        """Fetch from the store; for "user", ends with downloaded(...)."""
         key = (name, extension_id)
         if key in self._downloads:
             return
-        if self._network is None:
-            self._network = QNetworkAccessManager(self)
-        self._downloads[key] = for_sync
-        job = StoreDownload(self._network, extension_id, self)
-        job.finished.connect(lambda i, p, e, n=name: self._fetched(n, i, p, e))
+        self._downloads[key] = purpose
+        url = STORE_DOWNLOAD.format(version=_chromium(), id=extension_id)
+        self._get(
+            url,
+            lambda data, error, n=name, i=extension_id: self._fetched(
+                n, i, data, error
+            ),
+        )
 
-    def _fetched(self, name, extension_id, path, error):
-        if not self._downloads.pop((name, extension_id), False):
+    def _fetched(self, name, extension_id, data, error):
+        purpose = self._downloads.pop((name, extension_id), "user")
+        path = ""
+        if not error and data[:4] != b"Cr24":
+            error = "The Chrome Web Store sent no extension for that id."
+        if not error:
+            with tempfile.NamedTemporaryFile(
+                prefix=f"steed-{extension_id}-", suffix=".crx", delete=False
+            ) as handle:
+                handle.write(data)
+            path = handle.name
+        if purpose == "user":
             self.downloaded.emit(name, extension_id, path, error)
             return
         if error:
             self.failed.emit(name, error)
             return
-        wanted = (
-            self.state(name)["store"].get(extension_id)
-            if (name in self.profiles)
-            else None
-        )
+        if name not in self.profiles:
+            return
+        if purpose == "update":
+            self._update_downloaded(name, extension_id, Path(path))
+            return
+        wanted = self.state(name)["store"].get(extension_id)
         if wanted is not None:
             try:
                 self.install(name, path, store=extension_id, enabled=wanted["enabled"])
             except (OSError, ValueError) as problem:
                 self.failed.emit(name, str(problem))
+
+    # -- updates
+
+    def check_updates(self, name):
+        """Ask the store about each store extension; ends with updates_checked."""
+        if not self.available(name) or self._checks.get(name):
+            return
+        state = self.state(name)
+        state["checked"] = time.time()
+        self._write(name, state)
+        installed = {e["id"]: e for e in self.installed(name)}
+        asks = {
+            store: installed[qt_id]
+            for store, qt_id in state["ids"].items()
+            if qt_id in installed and store in state["store"]
+        }
+        if not asks:
+            self.updates_checked.emit(name, "No extensions from the store to update.")
+            return
+        self._checks[name] = {"waiting": set(asks), "newer": [], "failed": 0}
+        for store, entry in asks.items():
+            current = (self.details(entry) or {}).get("version") or "0"
+            url = STORE_UPDATE.format(
+                version=_chromium(), id=store, current=quote(current)
+            )
+            self._get(url, self._check_answer(name, store, current))
+
+    def _check_answer(self, name, store, current):
+        return lambda data, error: self._checked(name, store, current, data, error)
+
+    def _checked(self, name, store, current, data, error):
+        check = self._checks.get(name)
+        if check is None:
+            return
+        check["waiting"].discard(store)
+        offered = update_version(data, store) if data else None
+        if error:
+            check["failed"] += 1
+        elif offered and version_key(offered) > version_key(current):
+            check["newer"].append(store)
+            self.download(name, store, purpose="update")
+        if not check["waiting"]:
+            del self._checks[name]
+            if check["newer"]:
+                summary = f"Updating {len(check['newer'])} extension(s)…"
+            elif check["failed"]:
+                summary = "Could not reach the Chrome Web Store to check for updates."
+            else:
+                summary = "Your extensions are up to date."
+            self.updates_checked.emit(name, summary)
+
+    def _update_downloaded(self, name, store, path):
+        """Install an update, unless it asks for more than before."""
+        entry = self.from_store(name, store)
+        if entry is None:
+            return
+        try:
+            new = inspect(path)
+        except (OSError, ValueError) as error:
+            self.failed.emit(name, str(error))
+            return
+        old = self.details(entry) or {"permissions": []}
+        if set(new["permissions"]) <= set(old["permissions"]):
+            self.install(name, path, store=store, enabled=entry["enabled"])
+            return
+        waiting = self.folder(name) / UPDATES
+        waiting.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, waiting / f"{store}.crx")
+        state = self.state(name)
+        state["updates"][store] = new["version"]
+        self._write(name, state)
+        self.changed.emit(name)
+
+    def waiting_update(self, name, store) -> Path | None:
+        """A downloaded update that asks for more, waiting for your yes."""
+        path = self.folder(name) / UPDATES / f"{store}.crx"
+        return path if path.is_file() else None
+
+    def apply_update(self, name, store):
+        path = self.waiting_update(name, store)
+        entry = self.from_store(name, store)
+        if path is None or entry is None:
+            return
+        self.install(name, path, store=store, enabled=entry["enabled"])
+        path.unlink(missing_ok=True)
+
+    def _auto_update(self):
+        for name in list(self.profiles):
+            if time.time() - self.state(name)["checked"] > UPDATE_EVERY_SECONDS:
+                self.check_updates(name)
 
     # -- sync
 
@@ -598,11 +878,12 @@ class Extensions(QObject):
             return
         state = self.state(name)
         installed = {e["id"]: e for e in self.installed(name)}
+        pending = {p.get("store") for p in self._pending.get(name, {}).values()}
         for store, wanted in state["store"].items():
             qt_id = state["ids"].get(store)
             if qt_id not in installed:
-                if not any(p[0] == store for p in self._pending.get(name, [])):
-                    self.download(name, store, for_sync=True)
+                if store not in pending:
+                    self.download(name, store, purpose="sync")
             elif installed[qt_id]["enabled"] != wanted["enabled"]:
                 self.set_enabled(name, qt_id, wanted["enabled"])
         for store, qt_id in list(state["ids"].items()):
@@ -612,4 +893,4 @@ class Extensions(QObject):
                 else:
                     state = self.state(name)
                     state["ids"].pop(store, None)
-                    write_state(self.folder(name), state)
+                    self._write(name, state)

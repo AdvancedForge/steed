@@ -9,6 +9,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Extension stand-ins, updates, site access, pins — November 8, 2026.**
+Steed now builds what it installs from a kept copy: a fixed id (the store key
+from the .crx header, else a generated key), so installing again keeps
+chrome.storage (measured: Qt keeps an extension's storage by id across
+uninstall/install, but will not install over an installed one); stand-ins for
+missing APIs, including a working tabs list and messaging over content-script
+ports, sender.tab/frameId, and storage.sync kept locally; and site limits
+narrowing host access and content scripts. Daily store update checks (more
+permissions wait for a yes), Site Access…, pinned toolbar buttons, popup links
+as tabs. Measured: Dark Reader works; uBlock Origin Lite starts but Qt does not
+apply declarativeNetRequest rules. Open: a desktop check with several store
+extensions; real context menus and scripting.executeScript through Steed.
+
 **Extension store, toolbar, details, sync — November 8, 2026.** Browse the
 Chrome Web Store in a tab and add with an "Add to Steed" bar, or paste a store
 link; extensions download from Google's update address, then Steed shows name,

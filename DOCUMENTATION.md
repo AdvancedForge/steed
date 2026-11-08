@@ -551,19 +551,53 @@ unpacked folder, a `.zip` or a `.crx` file in Manage Extensions. Manifest V2
 extensions are refused (current Chrome no longer runs them either). The store's
 signature on a `.crx` is not checked.
 
-**What works.** Qt WebEngine 6.11 gives extensions content scripts, popups,
-background service workers and these APIs: `alarms`, `declarativeNetRequest`,
-`i18n`, `management`, `offscreen`, `runtime`, `storage`, `tabs`, `webRequest`.
-It has no `scripting`, `permissions`, `contextMenus`, `notifications`,
-`cookies`, `history`, `bookmarks`, `downloads`, `webNavigation`, `sidePanel`
-or `userScripts`, so many popular extensions work partly or not at all (for
-example uBlock Origin Lite installs but its background stops at
-`chrome.permissions`; Steed's own ad blocking covers that need). Simple
-content-script extensions (page restylers, small page tools) work. A test
-checks the list against the engine, so it is updated when Qt changes.
+**What works.** Qt WebEngine 6.11 runs content scripts, popups and background
+service workers, but gives extensions only part of Chrome's APIs (`alarms`,
+`declarativeNetRequest`, `i18n`, `management`, `offscreen`, `runtime`,
+`storage`, a nearly empty `tabs`, `webRequest`). Steed adds its own stand-ins
+(`extension_shim.js`), run first in each extension's background, pages and
+content scripts:
+
+- **tabs**: each content script keeps a connection to its background, which
+  keeps the list of tabs it runs in, so `tabs.query`, `tabs.get`,
+  `tabs.sendMessage` (to the content script's `runtime.onMessage`),
+  `tabs.update` (to navigate) and the tab events work for those tabs. Messages
+  and ports from content scripts carry `sender.tab` and `sender.frameId`,
+  which Qt leaves out. Popups ask the background. Tab ids last one page load.
+- **storage.sync**: Qt's fails on every call; Steed keeps it in local storage
+  (it does not travel between computers).
+- **permissions**: answered from the extension's manifest (no prompts).
+- **notifications**: shown through the web Notification API.
+- **contextMenus, scripting, userScripts, action badges, sidePanel,
+  webNavigation, windows, commands**: calls succeed without effect, so an
+  extension using them still starts, but menus, injected scripts and badges do
+  not appear.
+
+Tested with real store extensions: Dark Reader darkens pages; uBlock Origin
+Lite starts and its popup works, but cannot block, because Qt WebEngine does
+not apply `declarativeNetRequest` rules (Steed's own ad blocking does that
+job). A test checks the engine's API list, so it is updated when Qt changes.
 
 **Managing.** Manage Extensions shows each extension's icon, version, source
-and permissions; **Switch Off/On** and **Remove** manage them. Each profile has
+and permissions; **Switch Off/On** and **Remove** manage them. **Pin to
+Toolbar** (or the puzzle menu's **Pinned Buttons**) gives an extension with a
+popup its own toolbar button. **Site Access…** limits an extension to the sites
+you list (and their subdomains), or lets it use every site it asks for; Steed
+installs it again with its site access and content scripts narrowed, keeping
+its settings and data. Links a popup opens become tabs.
+
+**Updates.** Steed checks the Chrome Web Store for newer versions once a day
+(and with **Check for Updates**). An update asking for nothing more than the
+installed version installs by itself; one asking for more waits, shown in
+Manage Extensions, until you choose **Update…** and agree. Updates keep the
+extension's settings and data.
+
+**How Steed installs.** Each extension keeps its own files in the profile's
+`extension-sources/<id>`, and Steed installs a copy built from them with a
+fixed id (store extensions keep their store id, from the key in the `.crx`;
+others get a key Steed makes), its stand-ins added and any site limit applied.
+Qt WebEngine cannot replace an installed extension, so updates and site
+changes remove and install again; the fixed id keeps its storage. Each profile has
 its own extensions, kept in its storage folder; Qt loads them switched off at
 every start, and Steed switches back on the ones you left on
 (`extensions.json`). Incognito windows have none, and no puzzle button.

@@ -16,6 +16,18 @@ from webengine import QWebEngineView
 WIDTH, HEIGHT = 380, 520
 
 
+class PopupPage(webengine.Page):
+    """Links and window.open in a popup open as tabs of the window."""
+
+    window = None
+
+    def createWindow(self, kind):
+        if self.window is None or getattr(self.window, "_closing", True):
+            return None
+        tab = self.window._new_tab(return_tab=True)
+        return tab.page() if tab is not None else None
+
+
 class ExtensionPopup(QFrame):
     def __init__(self, profile, url, title, parent=None):
         super().__init__(parent, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
@@ -25,7 +37,8 @@ class ExtensionPopup(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(1, 1, 1, 1)
         self.view = QWebEngineView(self)
-        self.page = webengine.Page(profile, self.view)
+        self.page = PopupPage(profile, self.view)
+        self.page.window = parent
         self.view.setPage(self.page)
         self.page.windowCloseRequested.connect(self.close)
         layout.addWidget(self.view)

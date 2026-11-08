@@ -50,7 +50,11 @@ class ExtensionsDialog(HtmlSettingsDialog):
                 ("Add Folder…", self.add_folder),
                 ("Add File…", self.add_file),
                 ("Switch Off", self.toggle),
+                ("Pin to Toolbar", self.toggle_pin),
+                ("Site Access…", self.site_access),
                 ("Remove", self.remove),
+                ("Check for Updates", self.check_updates),
+                ("Update…", self.update),
                 ("Close", self.accept),
             )
         ):
@@ -63,7 +67,12 @@ class ExtensionsDialog(HtmlSettingsDialog):
         self.list.currentRowChanged.connect(self.update_selection)
         self.extensions.changed.connect(self._changed)
         self.extensions.failed.connect(self._failed)
+        self.extensions.updates_checked.connect(self._checked)
         self.refresh()
+
+    def _checked(self, profile, summary):
+        if profile == self.profile:
+            self.status.setText(summary)
 
     def _changed(self, profile):
         if profile == self.profile:
@@ -102,11 +111,16 @@ class ExtensionsDialog(HtmlSettingsDialog):
 
     def update_selection(self, *_):
         entry = self.selected()
-        for label in ("Switch Off", "Remove"):
+        for label in ("Switch Off", "Remove", "Site Access…"):
             self.buttons[label].setEnabled(entry is not None)
         self.buttons["Switch Off"].setText(
             "Switch On" if entry and not entry["enabled"] else "Switch Off"
         )
+        self.buttons["Pin to Toolbar"].setEnabled(bool(entry and entry["popup"]))
+        self.buttons["Pin to Toolbar"].setText(
+            "Unpin" if entry and entry["pinned"] else "Pin to Toolbar"
+        )
+        self.buttons["Update…"].setVisible(bool(entry and entry["update"]))
         if entry is None:
             self.about.clear()
             return
@@ -118,6 +132,15 @@ class ExtensionsDialog(HtmlSettingsDialog):
         ]
         if entry["error"]:
             lines.append(f"Problem: {_html(entry['error'])}")
+        if entry["sites"] is not None:
+            lines.append(
+                "Only on: " + (_html(", ".join(entry["sites"])) or "no sites") + "."
+            )
+        if entry["update"]:
+            lines.append(
+                f"Version {_html(entry['update'])} is waiting: it asks for more "
+                "than this one, so it needs your yes (Update…)."
+            )
         asks = details.get("permissions") or ["Nothing beyond its own pages"]
         lines.append("It can: " + "; ".join(_html(line) for line in asks) + ".")
         if details.get("unsupported"):
@@ -158,6 +181,38 @@ class ExtensionsDialog(HtmlSettingsDialog):
         entry = self.selected()
         if entry is not None:
             self.extensions.set_enabled(self.profile, entry["id"], not entry["enabled"])
+
+    def toggle_pin(self):
+        entry = self.selected()
+        if entry is not None:
+            self.extensions.set_pinned(self.profile, entry["id"], not entry["pinned"])
+
+    def site_access(self):
+        from ui.extension_sites_dialog import ExtensionSitesDialog
+
+        entry = self.selected()
+        if entry is None:
+            return
+        dialog = ExtensionSitesDialog(entry, self.window, self)
+        if dialog.exec():
+            self.extensions.set_sites(self.profile, entry["id"], dialog.sites())
+            self.status.setText("Changing where it runs…")
+
+    def check_updates(self):
+        self.status.setText("Checking the Chrome Web Store…")
+        self.extensions.check_updates(self.profile)
+
+    def update(self):
+        from extensions import inspect
+        from ui.extension_install import confirm
+
+        entry = self.selected()
+        waiting = entry and self.extensions.waiting_update(self.profile, entry["store"])
+        if not waiting:
+            return
+        if confirm(self.window, inspect(waiting)):
+            self.extensions.apply_update(self.profile, entry["store"])
+            self.status.setText("Updating…")
 
     def remove(self):
         entry = self.selected()
