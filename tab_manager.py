@@ -104,6 +104,9 @@ class ClosedTabHistory:
     def entries(self, profile: str) -> list[ClosedTab]:
         return list(reversed(self._profiles.get(profile, [])))
 
+    def clear(self, profile: str) -> None:
+        self._profiles.pop(profile, None)
+
     def pop_id(self, profile: str, tab_id: str) -> ClosedTab | None:
         history = self._profiles.get(profile, [])
         for index in range(len(history) - 1, -1, -1):

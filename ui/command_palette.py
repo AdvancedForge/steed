@@ -133,7 +133,7 @@ class CommandPalette(QDialog):
         profile = window.profile_manager.current_profile_name
         places, seen = [], set(open_urls)
         # Recently closed tabs, newest first: reopening keeps their place.
-        for closed in reversed(window.closed_tabs.entries(profile)):
+        for closed in window.closed_tabs.entries(profile):
             token = token_hex(8)
             self.items[token] = ("closed", None, closed.state.tab_id)
             places.append(
