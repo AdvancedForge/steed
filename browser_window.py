@@ -5488,6 +5488,13 @@ class BrowserWindow(QMainWindow):
             popup.close()
         for page in self.findChildren(PopupPage):
             sip.delete(page)
+        # Clearing jobs still running (or awaiting deletion) likewise.
+        from site_data import SiteDataJob
+
+        for job in self.findChildren(SiteDataJob):
+            job.dispose()
+            for page in job.findChildren(QWebEnginePage):
+                sip.delete(page)
         self.profile_manager.close()
 
         event.accept()
