@@ -532,6 +532,28 @@ undocumented binary format, so they are not imported. Steed reads copies of the
 other browser's files in a temporary folder, so that browser may stay open and
 its files never change. Not available in incognito.
 
+### Extensions
+
+**General → Extensions → Manage Extensions…** adds Chrome extensions
+(Manifest V3) to the current profile from an unpacked folder, a `.zip`, or a
+`.crx` file such as one saved from the Chrome Web Store (Steed installs the
+archive inside it; the store's signature is not checked). New extensions are
+switched on; **Switch Off/On** and **Remove** manage them. Extensions with a
+toolbar popup are listed in **General → Extensions**; choosing one opens its
+popup. Content scripts, background service workers, `chrome.storage` and
+popups work. Qt WebEngine implements only part of Chrome's extension APIs, so
+some extensions (for example ones needing `webRequest` blocking or the
+side panel) do not work. Each profile has its own extensions, kept in its
+storage folder; Qt loads them switched off at every start, and Steed switches
+back on the ones you left on (`extensions.json`). Incognito windows have none.
+An extension can read and change the pages it asks for: add only ones you trust.
+
+Earlier Steed versions could not enable extensions: Qt WebEngine 6.10/6.11
+crashes when a profile's storage folder is set after the profile exists (the
+profile's preferences are replaced under Chromium's extension code). Steed now
+creates profiles with `QWebEngineProfileBuilder`, folders set first; PyQt 6.11
+does not expose the builder's constructor, so `webengine.py` calls Qt's own.
+
 ### Sync between computers
 
 **General → Sync…** keeps your computers in step through a folder you choose
