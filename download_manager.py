@@ -79,7 +79,7 @@ class DownloadManager(QObject):
         parent = view.window() if view else None
         suggested = Path(request.suggestedFileName()).name or "download"
         retry = self.retries.pop((profile, request.url().toString()), None)
-        if request.isSavePageDownload():
+        if request.isSavePageDownload() is True:
             # View → Save Page As… already chose where.
             retry = str(Path(request.downloadDirectory()) / request.downloadFileName())
         try:
