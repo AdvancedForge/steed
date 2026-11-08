@@ -63,6 +63,8 @@ class SiteCompatibilityInterceptor(QWebEngineUrlRequestInterceptor):
         self.config = config
         self.last_main_method = b""
         self.last_main_url = QUrl()
+        # (https address, the http one asked for) of the last HTTPS-first load.
+        self.upgraded = None
 
     @property
     def enabled(self):
@@ -78,6 +80,16 @@ class SiteCompatibilityInterceptor(QWebEngineUrlRequestInterceptor):
         ):
             self.last_main_method = bytes(info.requestMethod())
             self.last_main_url = url
+            if self.last_main_method == b"GET":
+                import privacy
+
+                asked = url.toString()
+                target = privacy.navigation(asked, self.config)
+                if target != asked:
+                    if target.startswith("https:") and asked.startswith("http:"):
+                        self.upgraded = (target, asked)
+                    info.redirect(QUrl(target))
+                    return
         if self.enabled:
             user_agent = google_login_user_agent(url)
             if user_agent is not None:

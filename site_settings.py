@@ -18,6 +18,9 @@ CHOICES = {
     "autoplay": ("allow", "block"),
     "popups": ("allow", "block"),
     "auto_zoom": ("allow", "block"),
+    # Delete the site's cookies when its last tab closes (not in LABELS: the
+    # site menu shows it on its own).
+    "forget": ("keep", "forget"),
 }
 DEFAULTS = {
     "zoom": 1.0,
@@ -25,6 +28,7 @@ DEFAULTS = {
     "autoplay": "allow",
     "popups": "allow",
     "auto_zoom": "allow",
+    "forget": "keep",
 }
 LABELS = {
     "javascript": "JavaScript",

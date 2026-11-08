@@ -1858,6 +1858,8 @@ class BrowserWindow(QMainWindow):
         memory_trim.schedule()
         active = self.tabs[self.current_tab_index]
         tab = self.tabs.pop(index)
+        left = tab.url().host()
+        QTimer.singleShot(0, lambda: self._site_left(left))
         state = TabState(
             "steed:agents"
             if getattr(tab, "agent_panel", False)
@@ -3127,6 +3129,12 @@ class BrowserWindow(QMainWindow):
                     tab, host, key, "allow" if allowed else "block"
                 )
             )
+        forget = menu.addAction("Forget this site when its tabs close")
+        forget.setCheckable(True)
+        forget.setChecked(values["forget"] == "forget")
+        forget.toggled.connect(
+            lambda on: store.set(host, "forget", "forget" if on else "keep")
+        )
         zoom = round(values["zoom"] * 100)
         reset = menu.addAction(f"Reset zoom ({zoom}%)")
         reset.setEnabled(zoom != 100)
@@ -3431,6 +3439,9 @@ class BrowserWindow(QMainWindow):
             return
         if tab in self.tabs:
             self.passkey_bar.page_changed(tab)
+            left, tab.site_host = getattr(tab, "site_host", ""), url.host()
+            if left and left != url.host():
+                QTimer.singleShot(0, lambda: self._site_left(left))
             self.tab_bar.set_tab_state(self.tabs.index(tab), url=url.toString())
             self._apply_site_zoom(tab)
             if tab.reader_panel is not None and url != tab.reader_panel.url:
@@ -3539,6 +3550,32 @@ class BrowserWindow(QMainWindow):
             self.status_bar.showMessage(f"Saving {Path(path).name}…", 6000)
         return path
 
+    def _site_left(self, host, closing=False):
+        """A site set to be forgotten has no tabs left: delete its cookies."""
+        import privacy
+        from site_settings import site_key
+
+        key = site_key(QUrl(f"https://{host}/")) if host else None
+        if key is None or self.cookie_manager is None:
+            return
+        if self._site_settings().get(key).get("forget") != "forget":
+            return
+        site = privacy.site_of(key)
+        for window in [self, *self._same_profile_windows()]:
+            # A closing window's tabs no longer count.
+            if (window is self and closing) or (
+                window is not self and getattr(window, "_closing", False)
+            ):
+                continue
+            for other in window.tabs:
+                if privacy.site_of(other.url().host()) == site:
+                    return
+        self.cookie_manager.delete_cookies_for_domain(site)
+        if not closing:
+            self.status_bar.showMessage(
+                f"Forgot {site}: its cookies are deleted.", 5000
+            )
+
     def _tab_crashed(self, tab, status, code):
         """A page process ended: say so over the tab, and log it."""
         import crash_log
@@ -3585,6 +3622,22 @@ class BrowserWindow(QMainWindow):
     def _on_load_finished(self, tab: BrowserTab, ok: bool):
         if self._closing or tab not in self.tabs:
             return
+        upgraded = getattr(tab.page().site_compatibility, "upgraded", None)
+        if upgraded is not None:
+            tab.page().site_compatibility.upgraded = None
+            if not ok:
+                import privacy
+
+                target = privacy.fallback(*upgraded)
+                if target is not None:
+                    # Not available over HTTPS: load what was asked for.
+                    self.status_bar.showMessage(
+                        f"{QUrl(target).host()} does not offer HTTPS; loading it "
+                        "without encryption.",
+                        6000,
+                    )
+                    tab.setUrl(QUrl(target))
+                    return
         tab.is_loading = False
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
@@ -5043,6 +5096,8 @@ class BrowserWindow(QMainWindow):
         for watcher in self.findChildren(TaskWatchDialog):
             watcher.close()
 
+        for host in {tab.url().host() for tab in self.tabs}:
+            self._site_left(host, closing=True)
         if self.cookie_manager is not None:
             self.cookie_manager.close()
             self.cookie_manager = None
