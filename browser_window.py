@@ -583,6 +583,9 @@ class BrowserWindow(QMainWindow):
                     whole, copy
                 )
             )
+        self.translate_action = QAction("Translate Page", self)
+        self.translate_action.triggered.connect(self.translate_page)
+        view_menu.addAction(self.translate_action)
         media_action = QAction("Play or Pause Media", self)
         media_action.triggered.connect(lambda: media_controls.controller().toggle())
         view_menu.addAction(media_action)
@@ -2323,6 +2326,65 @@ class BrowserWindow(QMainWindow):
         preview = getattr(self, "tab_preview", None)
         if preview is not None and not sip.isdeleted(preview):
             preview.hide()
+
+    def translate_page(self):
+        """Translate the current page, or show it in its own language again."""
+        import page_translation
+
+        if self._closing or not self.tabs:
+            return None
+        tab = self.tabs[self.current_tab_index]
+        if tab.workspace_name or tab.url().scheme() not in ("http", "https", "file"):
+            self.status_bar.showMessage("Translation works on web pages.", 4000)
+            return None
+        if getattr(tab, "translated", False):
+            page_translation.restore(tab.page())
+            tab.translated = False
+            self.status_bar.showMessage("Showing the original text.", 4000)
+            return None
+        language = page_translation.target_language(self.config)
+        service = str(self.config.get("translate_service", "") or "").strip()
+        if not service:
+            if tab.url().scheme() == "file":
+                self.status_bar.showMessage(
+                    "Set a translation service in Settings to translate local files.",
+                    6000,
+                )
+                return None
+            reply = QMessageBox.question(
+                self,
+                "Translate Page",
+                "No translation service is set (Settings → Translation). Open this "
+                "page in Google Translate instead? That sends Google the page's "
+                "address; Google loads the page itself, without your sign-ins.",
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                url = page_translation.google_proxy_url(tab.url(), language)
+                return self._new_tab(url=url.toString(), return_tab=True)
+            return None
+        job = page_translation.PageTranslation(tab.page(), service, language, self)
+        url = tab.url()
+
+        def progress(done, total):
+            if tab in self.tabs and tab.url() == url:
+                tab.translated = True
+                self.status_bar.showMessage(
+                    f"Translating… {round(done * 100 / total)}%"
+                )
+
+        job.progress.connect(progress)
+        job.finished.connect(
+            lambda: self.status_bar.showMessage(
+                "Translated. View → Translate Page shows the original.", 6000
+            )
+        )
+        job.failed.connect(lambda text: self.status_bar.showMessage(text, 6000))
+        job.finished.connect(job.deleteLater)
+        job.failed.connect(lambda _: job.deleteLater())
+        self.status_bar.showMessage("Translating…")
+        job.start()
+        self.translation_job = job
+        return job
 
     def take_screenshot(self, whole_page=False, copy=False, path=None):
         """Save the current tab as PNG, or copy it; the whole page or what shows."""
