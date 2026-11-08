@@ -959,6 +959,8 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.group_clear_requested.connect(self._clear_tab_group)
         self.tab_bar.group_toggle_requested.connect(self._toggle_named_group)
         self.tab_bar.context_requested.connect(self._show_tab_menu)
+        self.tab_bar.tab_hovered.connect(self._show_tab_preview)
+        self.tab_bar.hover_ended.connect(self._hide_tab_preview)
         self.tab_bar.group_context_requested.connect(self._show_group_menu)
         self.tab_bar.mute_toggled.connect(self._toggle_tab_mute)
         self.tab_bar.drag_started.connect(self._tab_drag_started)
@@ -1873,6 +1875,17 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_current_tab(index)
         self.devtools.show_for(self.tabs[index])
 
+        # A small snapshot of the tab being left, for hover previews.
+        if (
+            previous is not None
+            and previous is not self.tabs[index]
+            and not previous.workspace_name
+            and self.config.get("tab_previews", True)
+        ):
+            from ui.tab_preview import snapshot
+
+            previous.preview = snapshot(previous)
+        self._hide_tab_preview()
         # Selecting a tab shown in the Mini Player brings it back.
         mini = getattr(self.tabs[index], "mini_player", None)
         if mini is not None and not sip.isdeleted(mini):
@@ -2163,6 +2176,10 @@ class BrowserWindow(QMainWindow):
             factor = self.navigation.zoom(self._visible_page(tab), direction)
             host = site_key(tab.url())
             if host and not tab.workspace_name:
+                if direction == 0 and getattr(tab, "auto_zoomed", None):
+                    # Resetting an automatic zoom turns it off for the site.
+                    self._site_settings().set(host, "auto_zoom", "block")
+                tab.auto_zoomed = None
                 # Remembered for the site, as other browsers do.
                 self._site_settings().set(host, "zoom", factor)
             self._update_zoom()
@@ -2193,6 +2210,7 @@ class BrowserWindow(QMainWindow):
         if host is None or tab.workspace_name or getattr(tab, "zoom_host", "") == host:
             return
         tab.zoom_host = host
+        tab.auto_zoomed = None
         tab.setZoomFactor(self._site_settings().get(host)["zoom"])
         if self.tabs and tab is self.tabs[self.current_tab_index]:
             self._update_zoom()
@@ -2270,6 +2288,25 @@ class BrowserWindow(QMainWindow):
             return False
         self._blank_download_page().download(url)
         return True
+
+    def _show_tab_preview(self, index, point):
+        if (
+            self._closing
+            or not self.config.get("tab_previews", True)
+            or not 0 <= index < len(self.tabs)
+            or index == self.current_tab_index
+        ):
+            return
+        from ui.tab_preview import TabPreview
+
+        if getattr(self, "tab_preview", None) is None:
+            self.tab_preview = TabPreview(self)
+        self.tab_preview.show_for(self.tabs[index], point)
+
+    def _hide_tab_preview(self):
+        preview = getattr(self, "tab_preview", None)
+        if preview is not None and not sip.isdeleted(preview):
+            preview.hide()
 
     def _media_changed(self):
         """The toolbar's media button follows the controlled tab."""
@@ -2443,6 +2480,67 @@ class BrowserWindow(QMainWindow):
         self._site_settings().clear(host)
         if reload and tab in self.tabs and site_key(tab.url()) == host:
             tab.reload()
+
+    # Typical text smaller than this is enlarged toward READABLE_TEXT_PX.
+    SMALL_TEXT_PX = 13
+    READABLE_TEXT_PX = 15
+    MAX_AUTO_ZOOM = 1.5
+    TEXT_SIZE = """(() => {
+      const sizes = [];
+      for (const node of document.querySelectorAll('p, li, td, dd, blockquote, article, main')) {
+        const text = (node.innerText || '').trim();
+        if (text.length < 40 || !node.getClientRects().length) continue;
+        sizes.push(parseFloat(getComputedStyle(node).fontSize));
+        if (sizes.length >= 200) break;
+      }
+      if (sizes.length < 3) return 0;
+      sizes.sort((a, b) => a - b);
+      return sizes[Math.floor(sizes.length / 2)];
+    })()"""
+
+    def _auto_zoom_small_text(self, tab):
+        """Enlarge a page whose typical text is tiny, unless the site has a zoom."""
+        from services.navigation_service import ZOOM_LEVELS
+
+        url = tab.url()
+        host = site_key(url)
+        if (
+            host is None
+            or tab.workspace_name
+            or not self.config.get("auto_zoom_small_text", True)
+        ):
+            return
+        values = self._site_settings().get(host)
+        if values["auto_zoom"] == "block" or values["zoom"] != 1.0:
+            return
+
+        def measured(size):
+            if (
+                self._closing
+                or sip.isdeleted(tab)
+                or tab.url() != url
+                or not isinstance(size, (int, float))
+                or not 0 < size < self.SMALL_TEXT_PX
+            ):
+                return
+            wanted = min(self.MAX_AUTO_ZOOM, self.READABLE_TEXT_PX / size)
+            zoom = next((z for z in ZOOM_LEVELS if z >= wanted - 0.001), wanted)
+            zoom = min(zoom, self.MAX_AUTO_ZOOM)
+            if zoom <= tab.zoomFactor() + 0.001:
+                return
+            tab.setZoomFactor(zoom)
+            tab.auto_zoomed = zoom
+            if tab is self.tabs[self.current_tab_index]:
+                self._update_zoom()
+                self.status_bar.showMessage(
+                    f"Zoomed to {round(zoom * 100)}% because this page's text is "
+                    "small. Ctrl+0 turns this off for the site.",
+                    6000,
+                )
+
+        webengine.run_script(
+            tab.page(), self.TEXT_SIZE, measured, world=webengine.STEED_WORLD
+        )
 
     def _site_settings_changed(self, host):
         """Another window or the site menu changed a site: update its tabs."""
@@ -2711,6 +2809,8 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
         self.password_assistant.page_loaded(tab, ok)
+        if ok:
+            self._auto_zoom_small_text(tab)
         if tab == self.tabs[self.current_tab_index]:
             self._update_history_buttons()
             self.status_bar.showMessage("Ready" if ok else "Error loading page")

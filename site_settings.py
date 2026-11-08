@@ -17,12 +17,20 @@ CHOICES = {
     "javascript": ("allow", "block"),
     "autoplay": ("allow", "block"),
     "popups": ("allow", "block"),
+    "auto_zoom": ("allow", "block"),
 }
-DEFAULTS = {"zoom": 1.0, "javascript": "allow", "autoplay": "allow", "popups": "allow"}
+DEFAULTS = {
+    "zoom": 1.0,
+    "javascript": "allow",
+    "autoplay": "allow",
+    "popups": "allow",
+    "auto_zoom": "allow",
+}
 LABELS = {
     "javascript": "JavaScript",
     "autoplay": "Autoplay with sound",
     "popups": "Pop-ups and new windows",
+    "auto_zoom": "Enlarging small text",
 }
 MAX_SITES = 2000
 MAX_BYTES = 1 << 20

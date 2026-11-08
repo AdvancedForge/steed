@@ -6,7 +6,7 @@ collapsed groups, reordering, closing and right-click menus are supported;
 dragging tabs between windows is not (use the tab menu to move a tab).
 """
 
-from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer
 from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWidgets import QHBoxLayout, QTabBar, QToolButton, QWidget
 
@@ -42,6 +42,14 @@ class NativeTabStrip(TabStrip):
         self.bar.tabCloseRequested.connect(self.tab_close_requested.emit)
         self.bar.tabMoved.connect(self._moved)
         self.bar.customContextMenuRequested.connect(self._context)
+        # Hovering a tab for a moment shows its preview.
+        self.bar.setMouseTracking(True)
+        self.bar.installEventFilter(self)
+        self._hover_index = -1
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setSingleShot(True)
+        self._hover_timer.setInterval(500)
+        self._hover_timer.timeout.connect(self._hover_shown)
         self.bar.tabBarDoubleClicked.connect(
             lambda index: self.new_tab_requested.emit() if index < 0 else None
         )
@@ -55,6 +63,30 @@ class NativeTabStrip(TabStrip):
         row.addWidget(self.new_button)
         self.holder = holder
         return holder
+
+    def eventFilter(self, watched, event):
+        if watched is self.bar:
+            kind = event.type()
+            if kind == QEvent.Type.MouseMove:
+                index = self.bar.tabAt(event.position().toPoint())
+                if index != self._hover_index:
+                    self._hover_index = index
+                    self.hover_ended.emit()
+                    if index >= 0:
+                        self._hover_timer.start()
+                    else:
+                        self._hover_timer.stop()
+            elif kind in (QEvent.Type.Leave, QEvent.Type.MouseButtonPress):
+                self._hover_index = -1
+                self._hover_timer.stop()
+                self.hover_ended.emit()
+        return super().eventFilter(watched, event)
+
+    def _hover_shown(self):
+        index = self._hover_index
+        if 0 <= index < self.bar.count():
+            rect = self.bar.tabRect(index)
+            self.tab_hovered.emit(index, self.bar.mapToGlobal(rect.bottomLeft()))
 
     def set_tab_icon(self, index, icon):
         # Keep the QIcon; the HTML strip's PNG encoding is not needed here.

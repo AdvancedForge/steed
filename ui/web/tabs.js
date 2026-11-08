@@ -166,6 +166,21 @@ function reportHeight() {
 
 function tabOf(event) { return event.target.closest(".tab"); }
 
+// Hovering a tab for a moment asks Steed for its preview.
+let hoverTimer = null, hovered = null;
+document.addEventListener("mouseover", event => {
+  const tab = event.target.closest ? event.target.closest(".tab") : null;
+  if (tab === hovered) return;
+  hovered = tab; clearTimeout(hoverTimer);
+  if (!tab) { command("unhover"); return; }
+  hoverTimer = setTimeout(() => {
+    const box = tab.getBoundingClientRect();
+    command("hover", {id: tab.dataset.id, x: Math.round(box.left), y: Math.round(box.bottom)});
+  }, 500);
+});
+document.addEventListener("mouseleave", () => { hovered = null; clearTimeout(hoverTimer); command("unhover"); });
+document.addEventListener("mousedown", () => { hovered = null; clearTimeout(hoverTimer); command("unhover"); });
+
 function menuAt(node, event) {
   const box = node.getBoundingClientRect();
   const x = event && event.clientX !== undefined && event.type !== "keydown" ? event.clientX : box.left;

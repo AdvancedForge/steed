@@ -572,6 +572,12 @@ current site's menu:
   still open).
 - **Reset zoom** — zoom (Ctrl+= / Ctrl+- / Ctrl+0) is remembered for each site
   and applies to every tab on it.
+- **Allow enlarging small text** — when a page's typical text (the median size
+  of its paragraphs, list items and table cells) is under 13 px and the site
+  has no zoom of its own, Steed zooms in, up to 150%, so text is about 15 px,
+  and says so in the status bar. Ctrl+0 on such a page turns it off for the
+  site, as does this switch; **Enlarge small text** in Settings turns it off
+  everywhere.
 - **Clear settings for this site** and **Website permissions…** (camera,
   notifications and the like stay on `steed:permissions`).
 
@@ -720,6 +726,12 @@ The numbered shortcuts work before the menu is opened. Ordinary profiles are
 listed alphabetically, including `default` and `global`.
 
 ## Tabs and groups
+
+**Tab previews.** Hovering a background tab for half a second shows a small
+snapshot of it (taken when you last left it; about 15 KB in memory, never
+saved), with its title and site, in both the HTML and native tab strips. Tabs
+not shown since Steed started show only their title and site. **Tab previews
+on hover** in Settings turns them off.
 
 **Session history.** Every 10 minutes Steed records this profile's open windows
 and tabs (only when they changed; also once when Steed quits), keeping the last
