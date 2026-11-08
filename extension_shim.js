@@ -103,6 +103,32 @@
     } catch (error) {
       // Not replaceable here: Steed's messages stay visible, and harmless.
     }
+    return wrapped;
+  };
+  // Hand a message to runtime.onMessage listeners, like Chrome: the first
+  // answer wins; returning true or a promise means it comes later.
+  const deliverTo = (listeners, message, sender, reply) => {
+    let answered = false;
+    let waiting = false;
+    const respond = (response) => {
+      if (!answered) {
+        answered = true;
+        reply(response);
+      }
+    };
+    for (const listener of listeners) {
+      try {
+        const result = listener(message, sender, respond);
+        if (result === true) waiting = true;
+        else if (result && typeof result.then === "function") {
+          waiting = true;
+          result.then(respond, () => respond(undefined));
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    if (!waiting) respond(undefined);
   };
   const ours = (message) => message && typeof message === "object" && message.__steed;
   const TAG = "\u0000steed:";
@@ -292,31 +318,7 @@
         port = null;
       }
     };
-    const deliver = (message, reply) => {
-      // Like Chrome: the first answer wins; true or a promise means "later".
-      let answered = false;
-      let waiting = false;
-      const respond = (response) => {
-        if (!answered) {
-          answered = true;
-          reply(response);
-        }
-      };
-      const sender = { id: chrome.runtime.id };
-      for (const listener of listeners) {
-        try {
-          const result = listener(message, sender, respond);
-          if (result === true) waiting = true;
-          else if (result && typeof result.then === "function") {
-            waiting = true;
-            result.then(respond, () => respond(undefined));
-          }
-        } catch (error) {
-          console.error(error);
-        }
-      }
-      if (!waiting) respond(undefined);
-    };
+    const deliver = (message, reply) => deliverTo(listeners, message, { id: chrome.runtime.id }, reply);
     const connect = () => {
       try {
         port = connectTo({ name: PORT });
@@ -788,6 +790,27 @@
         chrome.commands.onCommand.dispatch(message.name, tabFor(message.tabId));
       } else if (message.type === "actionClicked") {
         chrome.action.onClicked.dispatch(tabFor(message.tabId));
+      } else if (message.type === "worldMessage") {
+        // From a script Steed injected for this extension (see extension_bridge).
+        const tab = tabFor(message.tabId);
+        const sender = { id: chrome.runtime.id, url: message.url, origin: message.origin, tab, frameId: 0 };
+        deliverTo([...(messageListeners ? messageListeners.keys() : [])], message.message, sender, (value) =>
+          toSteed({ type: "worldAnswer", steedAsk: message.steedAsk, value }),
+        );
+      } else if (message.type === "worldCall") {
+        const area = chrome.storage && chrome.storage[message.area];
+        const method = area && ["get", "set", "remove", "clear", "getBytesInUse"].includes(message.method)
+          ? area[message.method]
+          : null;
+        Promise.resolve()
+          .then(() => {
+            if (!method) throw new Error(`chrome.storage.${message.area}.${message.method} is not available`);
+            return method.apply(area, message.args || []);
+          })
+          .then(
+            (value) => toSteed({ type: "worldAnswer", steedAsk: message.steedAsk, value }),
+            (error) => toSteed({ type: "worldAnswer", steedAsk: message.steedAsk, error: String(error && error.message) }),
+          );
       }
     };
     chrome.runtime.onConnect.addListener((port) => {
@@ -829,7 +852,7 @@
     const senderTab = (id, sender) =>
       tabOf(id) || { id, index: -1, windowId: 1, url: sender && sender.url, active: false, incognito: false };
     screen(chrome.runtime.onConnect, unwrapPort(senderTab));
-    screen(chrome.runtime.onMessage, unwrapMessage(senderTab));
+    const messageListeners = screen(chrome.runtime.onMessage, unwrapMessage(senderTab));
   } else if (page) {
     const ask = (method, args) =>
       settle(args, (rest) =>

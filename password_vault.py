@@ -94,6 +94,35 @@ class Login:
 class Contents:
     logins: list = field(default_factory=list)
     never: list = field(default_factory=list)
+    passkeys: list = field(default_factory=list)  # dicts, see passkeys.py
+
+
+PASSKEY_FIELDS = {
+    "id": str,
+    "rp_id": str,
+    "rp_name": str,
+    "user_handle": str,
+    "user_name": str,
+    "user_display": str,
+    "key": str,
+    "created": float,
+    "last_used": float,
+}
+
+
+def _passkey(item):
+    """A passkey record read from the vault, or None."""
+    if not isinstance(item, dict):
+        return None
+    record = {}
+    for name, kind in PASSKEY_FIELDS.items():
+        value = item.get(name)
+        if kind is float and isinstance(value, (int, float)):
+            value = float(value)
+        if not isinstance(value, kind) or (kind is str and len(value) > MAX_FIELD):
+            return None
+        record[name] = value
+    return record if record["id"] and record["rp_id"] and record["key"] else None
 
 
 # ---------------------------------------------------------------- one-time codes
@@ -365,6 +394,11 @@ class PasswordVault:
                 contents = Contents(
                     [Login(**entry) for entry in data.get("logins", [])],
                     [str(origin) for origin in data.get("never", [])],
+                    [
+                        found
+                        for found in map(_passkey, data.get("passkeys", []))
+                        if found is not None
+                    ],
                 )
             except (ValueError, TypeError, AttributeError):
                 raise VaultError("The password vault file is damaged.") from None
@@ -390,6 +424,7 @@ class PasswordVault:
             {
                 "logins": [asdict(login) for login in contents.logins],
                 "never": contents.never,
+                "passkeys": contents.passkeys,
             }
         ).encode()
         sealed = self._box.encrypt(raw)
@@ -522,6 +557,48 @@ class PasswordVault:
             contents.never.append(origin)
         elif not never and origin in contents.never:
             contents.never.remove(origin)
+        self._write()
+
+    # -- passkeys (passkeys.py makes and uses them)
+
+    def passkeys(self, rp_id=None):
+        """Saved passkeys (of one site), most recently used first."""
+        found = [
+            dict(p)
+            for p in self._need().passkeys
+            if rp_id is None or p["rp_id"] == rp_id
+        ]
+        return sorted(found, key=lambda p: (-p["last_used"], -p["created"]))
+
+    def save_passkey(self, record):
+        record = _passkey(record)
+        if record is None:
+            raise VaultError("That passkey is damaged.")
+        contents = self._need()
+        if len(contents.passkeys) >= MAX_ENTRIES:
+            raise VaultError("The vault is full.")
+        contents.passkeys = [
+            p
+            for p in contents.passkeys
+            # A site's new passkey for an account replaces the old one.
+            if p["id"] != record["id"]
+            and not (
+                p["rp_id"] == record["rp_id"]
+                and p["user_handle"] == record["user_handle"]
+            )
+        ] + [record]
+        self._write()
+
+    def touch_passkey(self, passkey_id):
+        contents = self._need()
+        for passkey in contents.passkeys:
+            if passkey["id"] == passkey_id:
+                passkey["last_used"] = time.time()
+        self._write()
+
+    def delete_passkey(self, passkey_id):
+        contents = self._need()
+        contents.passkeys = [p for p in contents.passkeys if p["id"] != passkey_id]
         self._write()
 
     # -- sync

@@ -112,6 +112,22 @@ class BrowserPage(QWebEnginePage):
         self.site_compatibility = SiteCompatibilityInterceptor(config, self)
         self.setUrlRequestInterceptor(self.site_compatibility)
 
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        """Steed's own messages from scripts it runs in pages go to Steed."""
+        if not message.startswith("\x01steed"):
+            super().javaScriptConsoleMessage(level, message, line, source)
+            return
+        from extension_bridge import WORLD_PREFIX
+        from passkeys import PASSKEY_PREFIX
+
+        tab = self.parent()
+        window = getattr(tab, "browser_window", None)
+        if window is not None and message.startswith(WORLD_PREFIX):
+            window.profile_manager.registry.extensions.bridges.from_world(tab, message)
+            return
+        if window is not None and message.startswith(PASSKEY_PREFIX):
+            window.profile_manager.registry.passkeys.request(tab, message)
+
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
         if (
             is_main_frame

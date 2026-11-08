@@ -588,6 +588,14 @@ content scripts:
 - **userScripts, sidePanel, webNavigation, windows**: calls succeed without
   effect, so an extension using them still starts.
 
+Scripts Steed injects for an extension (`executeScript` and registered
+content scripts, outside `world: "MAIN"`) get a small `chrome` object:
+`runtime.id`, `getURL`, `getManifest`, `runtime.sendMessage` to the extension's
+background (which sees `sender.tab`, `sender.url` and `frameId` as in Chrome)
+and `chrome.storage` (local, sync, session). They reach Steed through the
+page's console with a token only that script world holds, so the page cannot
+pose as the extension. They cannot receive `runtime.onMessage` yet.
+
 These reach Steed through a hidden page of each extension
 (`steed-bridge.html`, added when Steed installs it), which talks to the
 extension's background and to Steed. Steed matches the stand-ins' tab ids to
@@ -891,6 +899,32 @@ can match the site. General extension support remains pending. Loading the
 unmodified official Bitwarden 2026.9.2 package crashed the tested Qt WebEngine
 6.11 runtime with both install and unpacked-load APIs, so it is not exposed as
 a supported password-manager option.
+
+### Passkeys
+
+Sites that offer passkeys can keep them in Steed: creating one asks **Create
+Passkey**, **Use a Security Key** or **Cancel**, and signing in lists the
+accounts Steed has for that site. Passkeys are P-256 keys kept in the
+profile's encrypted password vault (the same seal as passwords), answered in
+the formats sites check (attestation "none", ES256), and only for HTTPS sites
+and localhost; Steed takes the site from the tab, never from the page. A page
+script stands in for `navigator.credentials` and passes requests to Steed with
+a token the page cannot read; iframes keep the engine's own WebAuthn (security
+keys). **Use a Security Key** passes a request to the engine. steed:passwords
+lists passkeys (Delete removes one; the site then needs another way in), and
+**Keep passkeys in Steed** switches them off. Not yet: passkeys in the address
+bar's autofill ("conditional" requests go to the engine), syncing passkeys
+between computers, or using them from another device by QR code.
+
+### Password Checkup
+
+steed:passwords → **Check** marks logins whose password is **reused** or
+**weak** (short, common, one repeated character, a run of digits or letters),
+on this computer. **Check for breaches** also asks Have I Been Pwned's range
+search: only the first 5 characters of each password's SHA-1 hash are sent
+(padded, so the answer's size gives nothing away), and the matching happens
+here. Logins found in breaches show how often; change those passwords. Results
+last until the page closes.
 
 ## Profiles and stored data
 
