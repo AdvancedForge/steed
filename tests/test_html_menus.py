@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from browser_window import BrowserWindow
+from layout_preferences import TOOLBAR_ITEMS
 from ui.adblock_dialog import AdBlockDialog
 from ui.download_dialog import choose_download_destination
 from ui.layout_dialog import LayoutDialog
@@ -109,7 +110,7 @@ class HtmlMenuTests(unittest.TestCase):
                 host,
                 f'document.querySelector({selector("data-control", toolbar)}).querySelectorAll("input[type=checkbox]").length',
             ),
-            8,
+            len(TOOLBAR_ITEMS),
         )
         self.click(host, source.panel_editor.add_button)
         self.wait_for(lambda: bool(source.preferences.panels))
