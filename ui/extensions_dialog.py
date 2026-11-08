@@ -3,7 +3,7 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFileDialog,
-    QHBoxLayout,
+    QGridLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -11,51 +11,58 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from extensions import STORE, icon_from
 from ui.html_dialog import HtmlSettingsDialog
 
 
 class ExtensionsDialog(HtmlSettingsDialog):
-    def __init__(self, extensions, profile, parent=None):
-        super().__init__(parent)
-        self.extensions, self.profile = extensions, profile
+    def __init__(self, window):
+        super().__init__(window)
+        self.window = window
+        self.extensions = window.profile_manager.registry.extensions
+        self.profile = window.profile_manager.current_profile_name
         self.setWindowTitle("Extensions")
-        self.resize(640, 440)
+        self.resize(700, 500)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Chrome extensions (Manifest V3) for this profile, from an unpacked "
-            "folder, a .zip or a .crx file. Qt WebEngine supports only part of "
-            "Chrome's extension features, so some extensions do not work. An "
-            "extension can read and change the pages it asks for: add only ones "
-            "you trust."
+            "Chrome extensions (Manifest V3) for this profile. Qt WebEngine "
+            "supports only part of Chrome's extension features, so some do not "
+            "work. Extensions from the Chrome Web Store sync with your other "
+            "computers when sync is on."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
         self.list = QListWidget()
         layout.addWidget(self.list, 1)
+        self.about = QLabel()
+        self.about.setWordWrap(True)
+        self.about.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.about)
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
-        row = QHBoxLayout()
+        grid = QGridLayout()
         self.buttons = {}
-        for label, action in (
-            ("Add Folder…", self.add_folder),
-            ("Add File…", self.add_file),
-            ("Switch Off", self.toggle),
-            ("Remove", self.remove),
+        for index, (label, action) in enumerate(
+            (
+                ("Browse Chrome Web Store", self.browse),
+                ("Add from Store Link…", self.add_link),
+                ("Add Folder…", self.add_folder),
+                ("Add File…", self.add_file),
+                ("Switch Off", self.toggle),
+                ("Remove", self.remove),
+                ("Close", self.accept),
+            )
         ):
             button = QPushButton(label)
             button.setAutoDefault(False)
             button.clicked.connect(action)
-            row.addWidget(button)
+            grid.addWidget(button, index // 4, index % 4)
             self.buttons[label] = button
-        row.addStretch(1)
-        close = QPushButton("Close")
-        close.clicked.connect(self.accept)
-        row.addWidget(close)
-        layout.addLayout(row)
-        self.list.currentRowChanged.connect(self.update_buttons)
-        extensions.changed.connect(self._changed)
-        extensions.failed.connect(self._failed)
+        layout.addLayout(grid)
+        self.list.currentRowChanged.connect(self.update_selection)
+        self.extensions.changed.connect(self._changed)
+        self.extensions.failed.connect(self._failed)
         self.refresh()
 
     def _changed(self, profile):
@@ -70,41 +77,70 @@ class ExtensionsDialog(HtmlSettingsDialog):
     def refresh(self):
         selected = self.selected()
         self.entries = self.extensions.installed(self.profile)
+        self.details = [self.extensions.details(e) for e in self.entries]
         self.list.clear()
-        for entry in self.entries:
+        for entry, details in zip(self.entries, self.details, strict=True):
             state = "on" if entry["enabled"] else "off"
             item = QListWidgetItem(f"{entry['name']}  ({state})")
+            if details is not None:
+                item.setIcon(icon_from(details["icon"]))
             item.setToolTip(entry["description"] or entry["name"])
             self.list.addItem(item)
         if not self.entries:
-            self.list.addItem("No extensions yet: Add Folder… or Add File….")
+            self.list.addItem("No extensions yet: browse the Chrome Web Store.")
             self.list.item(0).setFlags(Qt.ItemFlag.NoItemFlags)
         else:
             ids = [e["id"] for e in self.entries]
             row = ids.index(selected["id"]) if selected and selected["id"] in ids else 0
             self.list.setCurrentRow(row)
-        self.update_buttons()
+        self.update_selection()
 
     def selected(self):
         row = self.list.currentRow()
         entries = getattr(self, "entries", [])
         return entries[row] if 0 <= row < len(entries) else None
 
-    def update_buttons(self, *_):
+    def update_selection(self, *_):
         entry = self.selected()
         for label in ("Switch Off", "Remove"):
             self.buttons[label].setEnabled(entry is not None)
         self.buttons["Switch Off"].setText(
             "Switch On" if entry and not entry["enabled"] else "Switch Off"
         )
+        if entry is None:
+            self.about.clear()
+            return
+        details = self.details[self.entries.index(entry)] or {}
+        source = "the Chrome Web Store" if entry["store"] else "a file on this computer"
+        lines = [
+            f"<b>{_html(entry['name'])}</b> {_html(details.get('version', ''))}"
+            f" — from {source}"
+        ]
+        if entry["error"]:
+            lines.append(f"Problem: {_html(entry['error'])}")
+        asks = details.get("permissions") or ["Nothing beyond its own pages"]
+        lines.append("It can: " + "; ".join(_html(line) for line in asks) + ".")
+        if details.get("unsupported"):
+            lines.append(
+                "Steed's engine lacks Chrome features it uses: "
+                + ", ".join(details["unsupported"])
+                + "; parts of it may not work."
+            )
+        self.about.setText("<br>".join(lines))
+
+    def browse(self):
+        self.window._new_tab(url=STORE)
+        self.accept()
+
+    def add_link(self):
+        self.window._add_extension_link()
 
     def install(self, path):
-        try:
-            self.extensions.install(self.profile, path)
-        except (OSError, ValueError) as error:
-            self.status.setText(str(error))
-        else:
+        """Ask, then add; problems show in the status line."""
+        if self.window.extension_installer.add_path(path):
             self.status.setText("Adding…")
+        else:
+            self.status.setText(self.window.status_bar.currentMessage())
 
     def add_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Extension Folder")
@@ -127,3 +163,7 @@ class ExtensionsDialog(HtmlSettingsDialog):
         entry = self.selected()
         if entry is not None:
             self.extensions.remove(self.profile, entry["id"])
+
+
+def _html(text):
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
