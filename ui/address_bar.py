@@ -284,10 +284,17 @@ class AddressBar(QWidget):
         self.media_btn.clicked.connect(self.media_requested.emit)
         self.media_shown = False
         # Hidden in incognito windows, which have no extensions.
-        self.extensions_btn = QPushButton()
+        # Pinned extensions' buttons, then the puzzle button listing them all.
+        self.extensions_box = QWidget(self)
+        pins = QHBoxLayout(self.extensions_box)
+        pins.setContentsMargins(0, 0, 0, 0)
+        pins.setSpacing(2)
+        self.extension_pins = []
+        self.extensions_btn = QPushButton(self.extensions_box)
         self.extensions_btn.setAccessibleName("Extensions")
         self.extensions_btn.setToolTip("Extensions")
         self.extensions_btn.clicked.connect(self.extensions_requested.emit)
+        pins.addWidget(self.extensions_btn)
         self.extensions_shown = True
 
         # Stable identifiers let a saved layout reorder or hide individual
@@ -301,7 +308,7 @@ class AddressBar(QWidget):
             "passwords": self.passwords_btn,
             "downloads": self.downloads_btn,
             "media": self.media_btn,
-            "extensions": self.extensions_btn,
+            "extensions": self.extensions_box,
         }
         self.menu_btn = QPushButton()
         self.menu_btn.setToolTip("Browser menu")
@@ -353,9 +360,25 @@ class AddressBar(QWidget):
         self.media_shown = False
         self.media_btn.hide()
 
+    def set_extension_pins(self, pins) -> None:
+        """Pinned extensions: [(icon, name, clicked)], left of the puzzle."""
+        layout = self.extensions_box.layout()
+        for button in self.extension_pins:
+            layout.removeWidget(button)
+            button.deleteLater()
+        self.extension_pins = []
+        for index, (button_icon, name, clicked) in enumerate(pins):
+            button = QPushButton(self.extensions_box)
+            button.setIcon(button_icon)
+            button.setToolTip(name)
+            button.setAccessibleName(name)
+            button.clicked.connect(clicked)
+            layout.insertWidget(index, button)
+            self.extension_pins.append(button)
+
     def show_extensions(self, shown: bool) -> None:
         self.extensions_shown = shown
-        self.extensions_btn.setVisible(
+        self.extensions_box.setVisible(
             shown and "extensions" not in self.hidden_toolbar
         )
 
@@ -507,6 +530,8 @@ class AddressBar(QWidget):
         self.setStyleSheet(toolbar_stylesheet(colors, self.density))
         self.completer.popup().setStyleSheet(popup_stylesheet(colors))
         for name, button in self.buttons.items():
+            if name == "extensions":
+                button = self.extensions_btn
             if name in BUTTON_ICONS:
                 button.setIcon(icon(BUTTON_ICONS[name], colors["ink"]))
                 button.setIconSize(QSize(18, 18))

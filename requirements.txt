@@ -8,3 +8,5 @@ PyNaCl==1.6.2
 graphql-core==3.2.8
 # The password vault keeps its key in the system keyring (Secret Service).
 SecretStorage==3.5.0
+# Keys for extensions installed without one (extension_build.py).
+cryptography==50.0.2
