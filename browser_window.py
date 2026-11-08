@@ -588,6 +588,12 @@ class BrowserWindow(QMainWindow):
                     whole, copy
                 )
             )
+        save_later = QAction("Save to Reading List", self)
+        save_later.triggered.connect(lambda: self.save_to_reading_list())
+        view_menu.addAction(save_later)
+        reading = QAction("Reading List…", self)
+        reading.triggered.connect(self._open_reading_list)
+        view_menu.addAction(reading)
         self.translate_action = QAction("Translate Page", self)
         self.translate_action.triggered.connect(self.translate_page)
         view_menu.addAction(self.translate_action)
@@ -2332,6 +2338,72 @@ class BrowserWindow(QMainWindow):
         if preview is not None and not sip.isdeleted(preview):
             preview.hide()
 
+    def _reading_list(self):
+        from reading_list import ReadingList
+
+        return ReadingList(self.tab_manager.profile_dir if self.tab_manager else Path())
+
+    def save_to_reading_list(self, tab=None):
+        """Keep a page to read later, with its article text when there is one."""
+        from ui.reader_view import EXTRACT, article
+
+        tab = tab or (self.tabs[self.current_tab_index] if self.tabs else None)
+        if (
+            tab is None
+            or tab.workspace_name
+            or tab.url().scheme() not in ("http", "https")
+        ):
+            self.status_bar.showMessage("Only web pages can be saved for later.", 4000)
+            return
+        store = self._reading_list()
+        if store.private:
+            self.status_bar.showMessage("Incognito windows keep no reading list.", 4000)
+            return
+        url, title = tab.url().toString(), tab.title()
+
+        def extracted(raw):
+            content = article(raw)
+            try:
+                store.add(url, title, content)
+            except ValueError as error:
+                self.status_bar.showMessage(str(error), 5000)
+                return
+            note = " (readable offline)" if content else ""
+            self.status_bar.showMessage(f"Saved to Reading List{note}", 5000)
+
+        webengine.run_script(
+            tab.page(), EXTRACT, extracted, world=webengine.STEED_WORLD
+        )
+
+    def _open_reading_list(self):
+        from ui.reading_list_dialog import ReadingListDialog
+
+        if self._reading_list().private:
+            QMessageBox.information(
+                self, "Reading List", "Incognito windows keep no reading list."
+            )
+            return None
+        dialog = ReadingListDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
+
+    def read_offline(self, entry):
+        """Show a saved article in reader view, without loading the page."""
+        from ui.reader_view import ReaderPanel
+
+        tab = self._new_tab(url="about:blank", title=entry["title"], return_tab=True)
+        if tab is None:
+            return None
+        panel = ReaderPanel(self, tab, entry["article"], QUrl("about:blank"))
+        tab.reader_panel = panel
+
+        def closed():
+            if not sip.isdeleted(tab):
+                tab.reader_panel = None
+
+        panel.closed.connect(closed)
+        return panel
+
     def translate_page(self):
         """Translate the current page, or show it in its own language again."""
         import page_translation
@@ -3497,6 +3569,9 @@ class BrowserWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction("Reload", lambda: self._reload_tab(tab))
         menu.addAction("Duplicate", lambda: self._duplicate_tab(tab))
+        menu.addAction(
+            "Save to Reading List", lambda: self.save_to_reading_list(tab)
+        ).setEnabled(tab.url().scheme() in ("http", "https"))
         menu.addAction(
             "Duplicate with History", lambda: self.duplicate_with_history(tab)
         ).setEnabled(not tab.workspace_name)

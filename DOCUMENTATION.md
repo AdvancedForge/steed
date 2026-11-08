@@ -532,6 +532,17 @@ undocumented binary format, so they are not imported. Steed reads copies of the
 other browser's files in a temporary folder, so that browser may stay open and
 its files never change. Not available in incognito.
 
+### Reading list
+
+**View → Save to Reading List** (or the tab menu) keeps the page to read later.
+When reader view finds an article, its text is kept too (not its images), so
+**View → Reading List…** can open it with **Read Offline** in reader view even
+without a connection or after the page changes; the list marks those
+"(offline)". **Open** loads the live page and marks it read; **Mark
+Read/Unread** and **Remove** tidy the list. Unread pages come first, newest
+first. Saving a page again refreshes it and marks it unread. Each profile keeps
+its own list (up to 500 pages) in `reading_list.json`; incognito keeps none.
+
 ### Screenshots
 
 **View → Take Screenshot** saves (as PNG, asking where; Ctrl+Shift+S saves the
