@@ -1021,6 +1021,7 @@ class BrowserWindow(QMainWindow):
             lambda: self._open_management("downloads")
         )
         self.address_bar.media_requested.connect(self._show_media_menu)
+        self.address_bar.extensions_requested.connect(self._show_extensions_menu)
         self._downloads_recent = QTimer(self)
         self._downloads_recent.setSingleShot(True)
         self._downloads_recent.setInterval(30000)
@@ -1065,6 +1066,11 @@ class BrowserWindow(QMainWindow):
 
         self.password_assistant = PasswordAssistant(self)
         layout.addWidget(self.password_assistant.bar)
+        from ui.extension_install import ExtensionInstaller, StoreBar
+
+        self.extension_installer = ExtensionInstaller(self)
+        self.store_bar = StoreBar(self)
+        layout.addWidget(self.store_bar)
         self.content_area = QSplitter(Qt.Orientation.Horizontal)
         self.content_area.setChildrenCollapsible(False)
         self.content_area.addWidget(self.tab_container)
@@ -1350,6 +1356,7 @@ class BrowserWindow(QMainWindow):
 
     # ---------- Profile handling ----------
     def _on_profile_changed(self, profile_name: str):
+        self.address_bar.show_extensions(profile_name != "search")
         for host in list(self._html_dialogs):
             host.reject()
         if self._html_menu is not None:
@@ -1907,6 +1914,7 @@ class BrowserWindow(QMainWindow):
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
+        self.store_bar.update_for(self.tabs[index].url())
         self.tab_bar.set_current_tab(index)
         self.devtools.show_for(self.tabs[index])
 
@@ -2666,22 +2674,63 @@ class BrowserWindow(QMainWindow):
         self.status_bar.showMessage(summary, 8000)
         return summary
 
-    def _fill_extensions_menu(self):
-        menu = self.extensions_menu
+    def _fill_extensions_menu(self, menu=None):
+        """Switched-on extensions (popups open), then managing and finding more."""
+        from extensions import STORE, icon_from
+
+        menu = menu or self.extensions_menu
         menu.clear()
         name = self.profile_manager.current_profile_name
         extensions = self.profile_manager.registry.extensions
         if not extensions.available(name):
             menu.addAction("Incognito windows have no extensions").setEnabled(False)
             return
-        for entry in extensions.popups(name):
+        for entry in extensions.installed(name):
+            if not entry["enabled"]:
+                continue
             action = menu.addAction(entry["name"])
-            action.triggered.connect(
-                lambda _=False, e=entry: self.open_extension_popup(e)
-            )
+            details = extensions.details(entry)
+            if details is not None:
+                action.setIcon(icon_from(details["icon"]))
+            if entry["popup"]:
+                # After the menu has closed, or closing it closes the popup too.
+                action.triggered.connect(
+                    lambda _=False, e=entry: QTimer.singleShot(
+                        0, lambda: self.open_extension_popup(e)
+                    )
+                )
+            else:
+                action.setEnabled(False)  # It works in pages; it has no popup.
         if menu.actions():
             menu.addSeparator()
         menu.addAction("Manage Extensions…").triggered.connect(self._open_extensions)
+        menu.addAction("Browse Chrome Web Store").triggered.connect(
+            lambda: self._new_tab(url=STORE)
+        )
+        menu.addAction("Add from Chrome Web Store Link…").triggered.connect(
+            self._add_extension_link
+        )
+
+    def _show_extensions_menu(self):
+        from PyQt6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self._fill_extensions_menu(menu)
+        self.extensions_popup_menu = menu
+        button = self.address_bar.extensions_btn
+        menu.popup(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def _add_extension_link(self):
+        from ui.prompts import InputDialog
+
+        text, accepted = InputDialog.getText(
+            self,
+            "Add from Chrome Web Store",
+            "Address of the extension's Chrome Web Store page:",
+        )
+        if accepted and text.strip():
+            self.extension_installer.add_store(text)
 
     def open_extension_popup(self, entry):
         from ui.extension_popup import ExtensionPopup
@@ -2689,19 +2738,20 @@ class BrowserWindow(QMainWindow):
         popup = ExtensionPopup(
             self.profile_manager.current_profile, entry["popup"], entry["name"], self
         )
-        corner = self.mapToGlobal(self.rect().topRight())
-        popup.move(corner.x() - popup.width() - 8, corner.y() + 60)
+        button = self.address_bar.extensions_btn
+        if button.isVisible():
+            corner = button.mapToGlobal(button.rect().bottomRight())
+        else:
+            corner = self.mapToGlobal(self.rect().topRight())
+            corner.setY(corner.y() + 60)
+        popup.move(corner.x() - popup.width(), corner.y())
         popup.show()
         return popup
 
     def _open_extensions(self):
         from ui.extensions_dialog import ExtensionsDialog
 
-        dialog = ExtensionsDialog(
-            self.profile_manager.registry.extensions,
-            self.profile_manager.current_profile_name,
-            self,
-        )
+        dialog = ExtensionsDialog(self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         return self._present_dialog(dialog, modal=False)
 
@@ -3120,6 +3170,7 @@ class BrowserWindow(QMainWindow):
             self.address_bar.set_url(display_url(url))
             self._update_window_title(url)
         if tab == self.tabs[self.current_tab_index]:
+            self.store_bar.update_for(url)
             self._update_history_buttons()
             # History can commit just after the address changes.
             QTimer.singleShot(0, self._update_history_buttons)

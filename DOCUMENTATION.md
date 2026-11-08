@@ -534,19 +534,45 @@ its files never change. Not available in incognito.
 
 ### Extensions
 
-**General → Extensions → Manage Extensions…** adds Chrome extensions
-(Manifest V3) to the current profile from an unpacked folder, a `.zip`, or a
-`.crx` file such as one saved from the Chrome Web Store (Steed installs the
-archive inside it; the store's signature is not checked). New extensions are
-switched on; **Switch Off/On** and **Remove** manage them. Extensions with a
-toolbar popup are listed in **General → Extensions**; choosing one opens its
-popup. Content scripts, background service workers, `chrome.storage` and
-popups work. Qt WebEngine implements only part of Chrome's extension APIs, so
-some extensions (for example ones needing `webRequest` blocking or the
-side panel) do not work. Each profile has its own extensions, kept in its
-storage folder; Qt loads them switched off at every start, and Steed switches
-back on the ones you left on (`extensions.json`). Incognito windows have none.
-An extension can read and change the pages it asks for: add only ones you trust.
+Steed runs Chrome extensions (Manifest V3). The puzzle button in the toolbar
+(also **General → Extensions**) lists the switched-on extensions with their
+icons; choosing one opens its popup under the button (Escape or clicking
+elsewhere closes it). It also offers **Manage Extensions…**, **Browse Chrome
+Web Store** and **Add from Chrome Web Store Link…**.
+
+**Finding and adding.** Browse the Chrome Web Store in a tab: on an
+extension's page a bar offers **Add to Steed** (the store's own "Add to
+Chrome" button needs Chrome). Steed downloads the extension from the address
+Chrome itself uses, then shows what it is and asks: its name, version and icon,
+what it can do in plain words ("Read and change everything on all websites",
+"See the addresses and titles of your tabs"…) and which Chrome features it
+uses that Steed's engine lacks. You can also paste a store address, or add an
+unpacked folder, a `.zip` or a `.crx` file in Manage Extensions. Manifest V2
+extensions are refused (current Chrome no longer runs them either). The store's
+signature on a `.crx` is not checked.
+
+**What works.** Qt WebEngine 6.11 gives extensions content scripts, popups,
+background service workers and these APIs: `alarms`, `declarativeNetRequest`,
+`i18n`, `management`, `offscreen`, `runtime`, `storage`, `tabs`, `webRequest`.
+It has no `scripting`, `permissions`, `contextMenus`, `notifications`,
+`cookies`, `history`, `bookmarks`, `downloads`, `webNavigation`, `sidePanel`
+or `userScripts`, so many popular extensions work partly or not at all (for
+example uBlock Origin Lite installs but its background stops at
+`chrome.permissions`; Steed's own ad blocking covers that need). Simple
+content-script extensions (page restylers, small page tools) work. A test
+checks the list against the engine, so it is updated when Qt changes.
+
+**Managing.** Manage Extensions shows each extension's icon, version, source
+and permissions; **Switch Off/On** and **Remove** manage them. Each profile has
+its own extensions, kept in its storage folder; Qt loads them switched off at
+every start, and Steed switches back on the ones you left on
+(`extensions.json`). Incognito windows have none, and no puzzle button.
+
+**Sync.** Extensions from the Chrome Web Store sync with your other computers
+(General → Sync…): each computer downloads and installs the ones another
+added, removes the ones another removed and follows switching on and off,
+without asking again. A download that fails is tried again at the next sync or
+start. Extensions added from a folder or file stay on their computer.
 
 Earlier Steed versions could not enable extensions: Qt WebEngine 6.10/6.11
 crashes when a profile's storage folder is set after the profile exists (the

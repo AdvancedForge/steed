@@ -9,6 +9,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Extension store, toolbar, details, sync — November 8, 2026.** Browse the
+Chrome Web Store in a tab and add with an "Add to Steed" bar, or paste a store
+link; extensions download from Google's update address, then Steed shows name,
+icon, version, plain-words permissions and the Chrome APIs Qt WebEngine lacks
+before asking. A puzzle toolbar button lists extensions and opens popups (a
+frameless window: as a Qt popup it closed itself when the menu closed). Store
+extensions sync by id; each computer installs/removes/switches to match.
+Measured on Qt 6.11.2: extensions get alarms, declarativeNetRequest, i18n,
+management, offscreen, runtime, storage, tabs and webRequest only; the real
+uBlock Origin Lite installs but stops at chrome.permissions. Open: a desktop
+check with real store extensions; small stand-ins for missing APIs
+(permissions, scripting) where Steed can provide them; extension updates.
+
 **Extensions — November 8, 2026.** Chrome extensions (Manifest V3) work:
 add from a folder, .zip or .crx, switch on/off, remove, open toolbar popups
 (General → Extensions); switched-on ones come back on after a restart. The
@@ -16,9 +29,8 @@ crash when enabling one was not Qt's alone: setting a profile's storage folder
 after creating it (as Steed, and the earlier C++ reproducer, did) leaves
 Chromium's extension code with freed preferences, as Pacitum browser found.
 Profiles are now made with QWebEngineProfileBuilder (its constructor called
-through Qt, since PyQt 6.11 omits it); no Qt patch was needed. Open: try real
-store extensions (uBlock Origin Lite, a password manager, Dark Reader) on the
-desktop; a Chrome Web Store link installer; a toolbar button for popups.
+through Qt, since PyQt 6.11 omits it); no Qt patch was needed. Open (then): a
+store link installer and a toolbar button, both since added.
 
 **Reading list, sync, extensions — November 7, 2026.** A per-profile reading
 list (View → Save to Reading List) keeps the article text so pages can be read

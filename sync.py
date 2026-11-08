@@ -5,7 +5,8 @@ reads the others'; a folder kept in step by Syncthing, Nextcloud, Dropbox or a
 USB stick carries them. Nothing goes to a Steed server.
 
 Every item (a bookmark by address, a saved group, a reading-list page by
-address, a search keyword, a login by site and username) is a record with the
+address, a search keyword, a Chrome Web Store extension by id, a login by site
+and username) is a record with the
 time it last changed; deleting one leaves a dated marker. Merging keeps each
 item's newest record, so changes and deletions on any computer reach the
 others. On a computer's first sync its items count as oldest, so they never
@@ -30,6 +31,7 @@ import nacl.pwhash
 import nacl.secret
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
+import extensions
 import search_keywords
 from password_vault import MEMLIMIT, OPSLIMIT, VaultError, master_key
 from reading_list import ReadingList, _entry
@@ -120,6 +122,16 @@ def _bookmark(data):
     return None
 
 
+def _extension(data):
+    if (
+        isinstance(data, dict)
+        and isinstance(data.get("name"), str)
+        and isinstance(data.get("enabled"), bool)
+    ):
+        return {"name": data["name"][:100], "enabled": data["enabled"]}
+    return None
+
+
 def _keyword(data):
     try:
         _, name, url = search_keywords.clean("k", *data)
@@ -160,6 +172,11 @@ def profile_collections(registry, name, directory):
         found = [_saved_group(item) for item in raw] if isinstance(raw, list) else []
         return {group["group_id"]: group for group in found if group is not None}
 
+    def write_extensions(found):
+        # Store extensions to have; the profile, if open, installs them now.
+        extensions.set_synced(directory, found)
+        registry.extensions.reconcile(name)
+
     def write_groups(groups):
         ordered = sorted(groups.values(), key=lambda g: g["saved_at"], reverse=True)
         save_json(groups_file, ordered)
@@ -175,6 +192,11 @@ def profile_collections(registry, name, directory):
             lambda: {entry["url"]: entry for entry in reading.entries()},
             lambda found: reading.replace_all(list(found.values())),
             _entry,
+        ),
+        "extensions": Collection(
+            lambda: extensions.synced(directory),
+            lambda found: write_extensions(found),
+            _extension,
         ),
     }
 
@@ -440,6 +462,7 @@ class SyncService(QObject):
         self._running = False
         registry.start_pages.changed.connect(lambda _: self.soon())
         registry.passwords.changed.connect(lambda _: self.soon())
+        registry.extensions.changed.connect(lambda _: self.soon())
         self.configure()
 
     @property

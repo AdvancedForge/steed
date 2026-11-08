@@ -49,6 +49,7 @@ LABELS = {
     "passwords": "Passwords",
     "downloads": "Download progress",
     "media": "Media controls",
+    "extensions": "Extensions",
     "menu": "Browser menu",
     **{key: key.title() for key in MENU_ITEMS},
 }

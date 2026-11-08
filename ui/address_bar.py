@@ -57,6 +57,7 @@ BUTTON_ICONS = {
     "reload": "reload",
     "home": "home",
     "passwords": "key",
+    "extensions": "puzzle",
     "menu": "menu",
 }
 
@@ -199,6 +200,7 @@ class AddressBar(QWidget):
     site_menu_requested = pyqtSignal()
     downloads_requested = pyqtSignal()
     media_requested = pyqtSignal()
+    extensions_requested = pyqtSignal()
     tab_switch_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -281,6 +283,12 @@ class AddressBar(QWidget):
         self.media_btn.setAccessibleName("Media controls")
         self.media_btn.clicked.connect(self.media_requested.emit)
         self.media_shown = False
+        # Hidden in incognito windows, which have no extensions.
+        self.extensions_btn = QPushButton()
+        self.extensions_btn.setAccessibleName("Extensions")
+        self.extensions_btn.setToolTip("Extensions")
+        self.extensions_btn.clicked.connect(self.extensions_requested.emit)
+        self.extensions_shown = True
 
         # Stable identifiers let a saved layout reorder or hide individual
         # buttons without depending on widget names.
@@ -293,6 +301,7 @@ class AddressBar(QWidget):
             "passwords": self.passwords_btn,
             "downloads": self.downloads_btn,
             "media": self.media_btn,
+            "extensions": self.extensions_btn,
         }
         self.menu_btn = QPushButton()
         self.menu_btn.setToolTip("Browser menu")
@@ -315,6 +324,7 @@ class AddressBar(QWidget):
                 name not in self.hidden_toolbar
                 and (name != "downloads" or self.downloads_shown)
                 and (name != "media" or self.media_shown)
+                and (name != "extensions" or self.extensions_shown)
             )
         for name in self.toolbar_order:
             if name == "address":
@@ -342,6 +352,12 @@ class AddressBar(QWidget):
     def hide_media(self) -> None:
         self.media_shown = False
         self.media_btn.hide()
+
+    def show_extensions(self, shown: bool) -> None:
+        self.extensions_shown = shown
+        self.extensions_btn.setVisible(
+            shown and "extensions" not in self.hidden_toolbar
+        )
 
     def apply_toolbar(self, order, hidden) -> None:
         """Show and hide address bar buttons according to a layout.
