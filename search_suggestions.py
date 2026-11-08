@@ -124,7 +124,9 @@ class SearchSuggestions(QObject):
             reply.deleteLater()
             return
         self.reply = None
-        raw = bytes(reply.read(MAX_BYTES + 1))
+        # A cancelled or failed reply has nothing to read (None, not b"").
+        data = reply.read(MAX_BYTES + 1)
+        raw = bytes(data) if data is not None else b""
         ok = reply.error() == reply.NetworkError.NoError and len(raw) <= MAX_BYTES
         reply.deleteLater()
         if not ok:

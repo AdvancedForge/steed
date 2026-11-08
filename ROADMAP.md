@@ -15,6 +15,10 @@ Chromium's own capture); page translation through a LibreTranslate-compatible
 service you choose (text only, no cookies or address, reversible) or Google
 Translate's proxy; Copy Clean Link, Duplicate with History and Send Tab to
 Profile in the tab menu.
+Found while testing: a search-suggestion request that failed (offline, or the
+engine blocked) crashed Steed, since Qt returns nothing to read from a failed
+reply; that and the same pattern in the page-app fetch, reader images and the
+news feed are fixed, with a regression test.
 
 **Media, address bar, previews, small text — November 7, 2026.** Media
 controls (toolbar play/pause/mute, a Mini Player that floats the playing tab,
