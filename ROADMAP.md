@@ -18,8 +18,14 @@ group or deletes them. Not in incognito.
 downloads can be retried to the same file without asking; an address-bar button
 shows overall progress and "Done"; Show Folder selects the file. The palette
 also searches bookmarks (`*`) and history (`#`, Ctrl+Shift+Y) and opens them in
-a new tab. Found while testing: a `steed:` page cannot start a second download
-(pre-existing; Retry avoids it). Open: whether that limit affects anything else.
+a new tab.
+
+**Downloads from local pages — November 7, 2026.** The "steed: page cannot
+start a second download" finding was the local-page protection
+(`LocalContentCanAccessRemoteUrls` off): the engine refuses downloads that any
+`steed:` or `file://` page starts. Link clicks on local pages are now reopened
+as typed navigations (download links work) and Save Link/Image/Media As there is
+started by Steed; local pages still cannot fetch from the web (now tested).
 
 **Video codecs installed — November 4, 2026.** The Qt WebEngine 6.11.2 codec
 build finished (Release, three compile jobs: Chromium's inner ninja needs

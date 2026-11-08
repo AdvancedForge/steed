@@ -308,7 +308,19 @@ _ACTIONS = {
     "stop": QWebEnginePage.WebAction.Stop,
     "paste": QWebEnginePage.WebAction.Paste,
     "inspect_element": QWebEnginePage.WebAction.InspectElement,
+    "download_link": QWebEnginePage.WebAction.DownloadLinkToDisk,
+    "download_image": QWebEnginePage.WebAction.DownloadImageToDisk,
+    "download_media": QWebEnginePage.WebAction.DownloadMediaToDisk,
 }
+# Pages Steed keeps from reaching the web (local_files_reach_web is off). The
+# engine also refuses downloads they start, so Steed starts those itself.
+LOCAL_SCHEMES = ("file", "steed")
+
+
+def is_local(url) -> bool:
+    return url.scheme() in LOCAL_SCHEMES
+
+
 PAGE_ACTIONS = tuple(_ACTIONS)
 
 

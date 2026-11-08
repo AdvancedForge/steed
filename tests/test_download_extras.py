@@ -138,6 +138,76 @@ class DownloadExtrasTests(unittest.TestCase):
         self.assertIs(self.window._download_page(profile), page)
         self.assertIsNone(self.window._download_page("no-such-profile"))
 
+    def local_page(self, body):
+        path = Path(self.directory.name) / "local.html"
+        path.write_text("<title>local</title>" + body)
+        tab = self.window._new_tab(url=path.as_uri(), return_tab=True)
+        self.wait(lambda: tab.title() == "local" and not tab.page().isLoading())
+        return tab
+
+    def test_links_on_local_pages_download_and_still_navigate(self):
+        tab = self.local_page(
+            f"<a id=file href='{self.origin}/file'>file</a>"
+            f"<a id=page href='{self.origin}/page'>page</a>"
+        )
+        tab.page().runJavaScript("document.getElementById('file').click()")
+        self.wait(lambda: self.state() == "DownloadCompleted")
+        self.assertEqual(self.target.read_bytes(), BODY)
+        tab.page().runJavaScript("document.getElementById('page').click()")
+        self.wait(lambda: tab.title() == "page")
+        self.assertEqual(tab.url().toString(), self.origin + "/page")
+
+    def test_local_pages_still_cannot_read_the_web(self):
+        import webengine
+
+        tab = self.local_page(
+            "<script>window.got = 'waiting'; fetch('"
+            + self.origin
+            + "/page').then(r => r.text()).then(t => window.got = t,"
+            " () => window.got = 'blocked');</script>"
+        )
+        self.assertFalse(
+            webengine.option(tab.page().settings(), "local_files_reach_web")
+        )
+        out = []
+
+        def ask():
+            webengine.run_script(
+                tab.page(), "window.got", out.append, world=webengine.PAGE_WORLD
+            )
+
+        end = time.monotonic() + WAIT_SECONDS
+        while time.monotonic() < end and (not out or out[-1] == "waiting"):
+            ask()
+            self.wait(lambda: out)
+            if out[-1] == "waiting":
+                out.clear()
+                time.sleep(0.05)
+        self.assertEqual(out[-1], "blocked")
+
+    def test_save_as_on_a_local_page_is_started_by_steed(self):
+        from types import SimpleNamespace
+
+        from PyQt6.QtWidgets import QMenu
+
+        import webengine
+
+        tab = self.local_page("<p>x")
+        menu = QMenu()
+        original = webengine.menu_action(tab.page(), "download_link")
+        menu.addAction(original)
+        request = SimpleNamespace(
+            linkUrl=lambda: QUrl(self.origin + "/file"), mediaUrl=lambda: QUrl()
+        )
+        self.window._local_download_actions(menu, tab.page(), request)
+        (replacement,) = menu.actions()
+        self.assertIsNot(replacement, original)
+        self.assertEqual(replacement.text(), original.text())
+        replacement.trigger()
+        self.wait(lambda: self.state() == "DownloadCompleted")
+        self.assertEqual(self.target.read_bytes(), BODY)
+        self.assertFalse(self.window._download_url(QUrl("file:///etc/passwd")))
+
     def test_the_toolbar_shows_progress_then_done(self):
         bar = self.window.address_bar
         self.assertTrue(bar.downloads_btn.isHidden())
