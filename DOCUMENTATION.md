@@ -694,7 +694,10 @@ the group's name, colour and web pages in `<profile>/saved_groups.json` (up to
 window's only tabs, a new tab keeps the window open. **Tabs → Saved Groups**
 lists them: **Open** reopens one as a group again (named "Name 2" if the name
 is taken; its tabs load when first selected, and it leaves the list), and
-**Delete** removes it. Incognito windows do not save groups.
+**Delete** removes it. **Tabs → Save All Tabs as Group…** saves the window's web
+pages as a group the same way without closing them. Saved groups also appear in
+the command palette (with bookmarks under `*`); choosing one reopens it.
+Incognito windows do not save groups.
 
 - Multiple tabs with tab bar interface
 - Tabs are saved before closing
@@ -1136,6 +1139,16 @@ and reports the median of each figure; all pages are local files.
 `--load-all-tabs` runs the same check with **Restored tabs** set to load all
 at startup, to compare with the default.
 
+**Cookie inspection: only when needed** (Memory saver's choice; Balanced and
+Performance start it with Steed) starts inspection only when a window shows a
+profile that receives cookies shared from the global profile, and then for that
+profile and the global one. While you use just the global profile or incognito,
+nothing is inspected (about 80 MB per profile saved) and the cookie viewer shows
+live changes rather than a full reading. Switching back to "Start with Steed"
+starts the waiting inspections at once. A setting added in a newer Steed and
+never stored follows the mode your other settings match, so a Memory saver
+setup stays Memory saver.
+
 Where the memory goes, with one tab once idle (Balanced, offscreen, quiet
 machine): the browser process (Python, Qt and Chromium's core) about 265 MB,
 the tab's page process about 40 MB, the tab strip's interface page about 45 MB,
@@ -1205,6 +1218,7 @@ then change any setting on its own (the mode then shows as Custom):
 
 | Setting | Memory saver | Balanced (default) | Performance |
 | --- | --- | --- | --- |
+| Cookie inspection | only when needed | starts with Steed | starts with Steed |
 | Cookie inspection sleeps after activity | 5 s | 30 s | stays awake |
 | Cookie inspection wake-ups | at most every 20 s | every change | every change |
 | Freeze background tabs | after 2 min | never | never |

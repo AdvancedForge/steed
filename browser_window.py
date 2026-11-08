@@ -431,7 +431,9 @@ class BrowserWindow(QMainWindow):
         )
         profile = self.profile_manager.get_profile(profile_name)
 
-        snapshot = self.profile_manager.registry.snapshots.get(profile_name)
+        registry = self.profile_manager.registry
+        registry.ensure_inspection(profile_name)
+        snapshot = registry.snapshots.get(profile_name)
         self.cookie_manager = CookieManager(profile, self, snapshot)
         # Connect signals for tab groups
         if self.tab_manager:
@@ -471,6 +473,9 @@ class BrowserWindow(QMainWindow):
         tabs_menu.addAction(new_tab_action)
         self.saved_groups_menu = tabs_menu.addMenu("Saved Groups")
         self.saved_groups_menu.aboutToShow.connect(self._fill_saved_groups_menu)
+        save_all = QAction("Save All Tabs as Group…", self)
+        save_all.triggered.connect(lambda: self.save_all_tabs_as_group())
+        tabs_menu.addAction(save_all)
         restore_tab_action = QAction("Restore Closed Tab", self)
         restore_tab_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
         restore_tab_action.triggered.connect(self._restore_closed_tab)
@@ -3591,6 +3596,42 @@ class BrowserWindow(QMainWindow):
         self._save_current_tabs()
         self.status_bar.showMessage(
             f"Saved “{group.name}” — reopen it from Tabs → Saved Groups", 6000
+        )
+        return saved
+
+    def save_all_tabs_as_group(self, name=None):
+        """Keep this window's web pages as a saved group; the tabs stay open."""
+        from datetime import datetime
+        from uuid import uuid4
+
+        from tab_manager import TabGroup
+
+        if self.tab_manager is None or self.tab_manager.private:
+            self.status_bar.showMessage("Incognito windows do not save groups.", 5000)
+            return None
+        if name is None:
+            default = "Tabs " + datetime.now().strftime("%b %d %H:%M")
+            name, accepted = QInputDialog.getText(
+                self, "Save All Tabs", "Name the saved group:", text=default
+            )
+            if not accepted:
+                return None
+        name = " ".join(str(name).split())[:100] or "Saved tabs"
+        pages = [
+            {"url": tab.url().toString(), "title": tab.title()}
+            for tab in self.tabs
+            if tab.url().scheme() in ("http", "https", "file")
+            and not tab.workspace_name
+        ]
+        try:
+            saved = self.tab_manager.save_closed_group(
+                TabGroup(uuid4().hex, name), pages
+            )
+        except ValueError as error:
+            QMessageBox.warning(self, "Save All Tabs", str(error))
+            return None
+        self.status_bar.showMessage(
+            f"Saved {len(saved['tabs'])} tabs as “{name}” (Tabs → Saved Groups)", 6000
         )
         return saved
 

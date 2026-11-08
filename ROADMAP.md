@@ -9,6 +9,14 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Saved groups in search; on-demand cookie inspection — November 7, 2026.**
+Save All Tabs as Group keeps the window's pages without closing them; saved
+groups appear in the palette and reopen from it. A `steed:memory` option,
+"Cookie inspection: only when needed" (Memory saver), skips inspection for the
+global profile alone and incognito, and starts it with any profile that
+receives shared cookies; sharing tests pass with it. New memory settings follow
+the stored mode instead of making it Custom.
+
 **Tab group colours and saved groups — November 6, 2026.** Groups take a
 chosen colour (nine, or automatic) in both tab strips. Save and Close Group
 keeps a group's pages per profile; Tabs → Saved Groups reopens them lazily as a

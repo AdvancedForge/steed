@@ -33,6 +33,17 @@ OPTIMIZATIONS = {
         ],
         "presets": {"saver": 5, "balanced": 30, "performance": 0},
     },
+    "cookie_inspection": {
+        "label": "Cookie inspection",
+        "help": "Inspection keeps sign-ins shared from the global profile in step "
+        "with your other profiles (about 80 MB per profile while awake). Only "
+        "when needed starts it when a profile that shares global cookies is "
+        "shown; while you use just the global profile or incognito, nothing is "
+        "inspected and the cookie viewer shows live changes. Takes full effect "
+        "at the next start.",
+        "choices": [("always", "Start with Steed"), ("needed", "Only when needed")],
+        "presets": {"saver": "needed", "balanced": "always", "performance": "always"},
+    },
     "cookie_wake_interval_seconds": {
         "label": "Cookie inspection wake-ups",
         "help": "While browsing, sites change cookies constantly. Waiting between "
@@ -122,9 +133,31 @@ def preset(mode):
     return {key: spec["presets"][mode] for key, spec in OPTIMIZATIONS.items()}
 
 
+_UNSET = object()
+
+
+def _stored_mode(config):
+    """The mode the stored settings match, ignoring settings never stored.
+
+    A setting added in a newer Steed is missing from older configurations;
+    it follows the mode the rest match instead of turning the mode into Custom.
+    """
+    stored = {}
+    for key in OPTIMIZATIONS:
+        value = config.get(key, _UNSET)
+        if value is not _UNSET:
+            stored[key] = value
+    # The default first: with little stored, several modes match.
+    for name in (DEFAULT_MODE, *(m for m in MODES if m != DEFAULT_MODE)):
+        chosen = preset(name)
+        if all(chosen[key] == value for key, value in stored.items()):
+            return name
+    return DEFAULT_MODE
+
+
 def values(config):
     """Effective optimization values; unknown or invalid ones fall back."""
-    defaults = preset(DEFAULT_MODE)
+    defaults = preset(_stored_mode(config))
     result = {}
     for key, spec in OPTIMIZATIONS.items():
         value = config.get(key, defaults[key])

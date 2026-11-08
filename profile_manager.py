@@ -78,6 +78,8 @@ class ProfileRegistry(QObject):
         )
         self._private_permission_key = uuid4().hex
         self._site_settings = {}
+        # Profiles whose cookie inspection waits until it is needed.
+        self.deferred_inspection = {}
         self._user_scripts = {}
         self.agent_gateway = None
         self.task_profiles = {}
@@ -98,6 +100,9 @@ class ProfileRegistry(QObject):
             config, self.global_profile, self, observe_global=False
         )
         self.refresh_settings()
+        self.settings_changed.connect(
+            lambda: self._inspect_on_demand() or self.start_deferred_inspection()
+        )
 
     def site_settings(self, name):
         """Zoom, JavaScript, autoplay and pop-ups per site for one profile."""
@@ -184,6 +189,7 @@ class ProfileRegistry(QObject):
             for record in self.downloads.records.values()
         ):
             return False
+        self.deferred_inspection.pop("search", None)
         snapshot = self.snapshots.pop("search", None)
         if snapshot is not None:
             snapshot.dispose()
@@ -476,7 +482,40 @@ class ProfileRegistry(QObject):
         self.prepare_inspection(name, profile)
         return profile
 
+    def _inspect_on_demand(self):
+        import memory_modes
+
+        return memory_modes.values(self.config)["cookie_inspection"] == "needed"
+
     def prepare_inspection(self, name, profile):
+        if self._inspect_on_demand():
+            self.deferred_inspection[name] = profile
+            return
+        self._start_inspection(name, profile)
+
+    def ensure_inspection(self, name):
+        """Start inspection a shown profile needs: it and the global profile.
+
+        Only a normal profile receives shared cookies, so the global profile
+        alone, and incognito, need none.
+        """
+        if name in ("global", "search"):
+            return
+        for needed in (name, "global"):
+            profile = self.deferred_inspection.pop(needed, None)
+            if profile is not None and self.profiles.get(needed) is profile:
+                self._start_inspection(needed, profile)
+
+    def start_deferred_inspection(self):
+        """After switching the setting back to "Start with Steed"."""
+        for name, profile in list(self.deferred_inspection.items()):
+            del self.deferred_inspection[name]
+            if self.profiles.get(name) is profile or (
+                name == "search" and profile is self.search_profile
+            ):
+                self._start_inspection(name, profile)
+
+    def _start_inspection(self, name, profile):
         # A profile with no page may not initialize Chromium's network context,
         # so startup loadAllCookies alone is insufficient (notably for global).
         page = QWebEnginePage(profile, self)
