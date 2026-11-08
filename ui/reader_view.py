@@ -221,7 +221,7 @@ class ReaderPanel(QWidget):
             self.replies.append(reply)
 
     def _image(self, reply, index):
-        data = bytes(reply.read(IMAGE_LIMIT + 1))
+        data = bytes(reply.read(IMAGE_LIMIT + 1) or b"")
         ok = reply.error() == reply.NetworkError.NoError
         if reply in self.replies:
             self.replies.remove(reply)

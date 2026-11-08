@@ -132,6 +132,23 @@ class SearchSuggestionTests(unittest.TestCase):
         self.assertEqual(Engine.queries, [])
         self.assertEqual(self.rows("suggest"), [])
 
+    def test_an_unreachable_engine_gives_nothing_and_does_not_crash(self):
+        """Offline or blocked: the failed reply has nothing to read."""
+        import socket
+
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            closed = probe.getsockname()[1]
+        dead = f"http://127.0.0.1:{closed}/ac?q={{}}"
+        with patch.dict(search_suggestions.ENDPOINTS, {"duckduckgo": dead}):
+            self.window.config.set("search_engine", "https://duckduckgo.com/?q=")
+            self.window._refresh_address_sources()
+            self.type("offline query")
+            remote = self.bar.remote
+            self.wait(lambda: remote.reply is None and not remote.timer.isActive())
+            self.spin(0.3)
+        self.assertEqual(self.rows("suggest"), [])
+
     def test_unknown_engines_and_malformed_replies_give_nothing(self):
         self.assertIsNone(search_suggestions.endpoint("https://example.org/?q="))
         self.assertIsNotNone(search_suggestions.endpoint("https://www.google.com/?q="))

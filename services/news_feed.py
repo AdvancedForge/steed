@@ -100,7 +100,9 @@ class NewsFeeds(QObject):
         self.requests[profile] = reply
 
         def receive():
-            body.extend(bytes(reply.read(max(1, MAX_FEED_BYTES + 1 - len(body)))))
+            body.extend(
+                bytes(reply.read(max(1, MAX_FEED_BYTES + 1 - len(body))) or b"")
+            )
             if len(body) > MAX_FEED_BYTES or reply.bytesAvailable():
                 reply.abort()
 

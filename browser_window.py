@@ -567,6 +567,25 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        shots = view_menu.addMenu("Take Screenshot")
+        for label, whole, copy, key in (
+            ("Save Full Page…", True, False, "Ctrl+Shift+S"),
+            ("Save Visible Area…", False, False, ""),
+            ("Copy Full Page", True, True, ""),
+            ("Copy Visible Area", False, True, ""),
+        ):
+            action = shots.addAction(label)
+            if key:
+                action.setShortcut(QKeySequence(key))
+                self.addAction(action)
+            action.triggered.connect(
+                lambda _=False, whole=whole, copy=copy: self.take_screenshot(
+                    whole, copy
+                )
+            )
+        self.translate_action = QAction("Translate Page", self)
+        self.translate_action.triggered.connect(self.translate_page)
+        view_menu.addAction(self.translate_action)
         media_action = QAction("Play or Pause Media", self)
         media_action.triggered.connect(lambda: media_controls.controller().toggle())
         view_menu.addAction(media_action)
@@ -2308,6 +2327,127 @@ class BrowserWindow(QMainWindow):
         if preview is not None and not sip.isdeleted(preview):
             preview.hide()
 
+    def translate_page(self):
+        """Translate the current page, or show it in its own language again."""
+        import page_translation
+
+        if self._closing or not self.tabs:
+            return None
+        tab = self.tabs[self.current_tab_index]
+        if tab.workspace_name or tab.url().scheme() not in ("http", "https", "file"):
+            self.status_bar.showMessage("Translation works on web pages.", 4000)
+            return None
+        if getattr(tab, "translated", False):
+            page_translation.restore(tab.page())
+            tab.translated = False
+            self.status_bar.showMessage("Showing the original text.", 4000)
+            return None
+        language = page_translation.target_language(self.config)
+        service = str(self.config.get("translate_service", "") or "").strip()
+        if not service:
+            if tab.url().scheme() == "file":
+                self.status_bar.showMessage(
+                    "Set a translation service in Settings to translate local files.",
+                    6000,
+                )
+                return None
+            reply = QMessageBox.question(
+                self,
+                "Translate Page",
+                "No translation service is set (Settings → Translation). Open this "
+                "page in Google Translate instead? That sends Google the page's "
+                "address; Google loads the page itself, without your sign-ins.",
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                url = page_translation.google_proxy_url(tab.url(), language)
+                return self._new_tab(url=url.toString(), return_tab=True)
+            return None
+        job = page_translation.PageTranslation(tab.page(), service, language, self)
+        url = tab.url()
+
+        def progress(done, total):
+            if tab in self.tabs and tab.url() == url:
+                tab.translated = True
+                self.status_bar.showMessage(
+                    f"Translating… {round(done * 100 / total)}%"
+                )
+
+        job.progress.connect(progress)
+        job.finished.connect(
+            lambda: self.status_bar.showMessage(
+                "Translated. View → Translate Page shows the original.", 6000
+            )
+        )
+        job.failed.connect(lambda text: self.status_bar.showMessage(text, 6000))
+        job.finished.connect(job.deleteLater)
+        job.failed.connect(lambda _: job.deleteLater())
+        self.status_bar.showMessage("Translating…")
+        job.start()
+        self.translation_job = job
+        return job
+
+    def take_screenshot(self, whole_page=False, copy=False, path=None):
+        """Save the current tab as PNG, or copy it; the whole page or what shows."""
+        from ui import page_screenshot
+
+        if self._closing or not self.tabs:
+            return None
+        tab = self.tabs[self.current_tab_index]
+
+        def deliver(image, cut=False):
+            if image.isNull():
+                self.status_bar.showMessage("Nothing to capture.", 4000)
+                return
+            note = " (cut at 16,384 pixels)" if cut else ""
+            if copy:
+                QApplication.clipboard().setImage(image)
+                self.status_bar.showMessage(f"Screenshot copied{note}", 5000)
+                return
+            target = path or self._screenshot_path(tab)
+            if target and image.save(str(target), "PNG"):
+                self.status_bar.showMessage(f"Saved {Path(target).name}{note}", 6000)
+            elif target:
+                QMessageBox.warning(self, "Screenshot", "The file could not be saved.")
+
+        if (
+            not whole_page
+            or tab.workspace_name
+            or tab.url().scheme()
+            not in (
+                "http",
+                "https",
+                "file",
+            )
+        ):
+            deliver(page_screenshot.visible_area(tab))
+            return None
+        capture = page_screenshot.FullPageCapture(tab.page(), self)
+        capture.finished.connect(lambda image, cut: deliver(image, cut))
+        capture.failed.connect(lambda text: self.status_bar.showMessage(text, 6000))
+        capture.finished.connect(lambda *_: capture.deleteLater())
+        capture.failed.connect(lambda *_: capture.deleteLater())
+        self.status_bar.showMessage("Capturing the page…")
+        capture.start()
+        self.screenshot_capture = capture
+        return capture
+
+    def _screenshot_path(self, tab):
+        import re
+        from datetime import datetime
+
+        from PyQt6.QtCore import QStandardPaths
+        from PyQt6.QtWidgets import QFileDialog
+
+        folder = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.PicturesLocation
+        ) or str(Path.home())
+        title = re.sub(r"[^\w .-]+", "", tab.title() or "Page").strip()[:60] or "Page"
+        name = f"{title} {datetime.now():%Y-%m-%d %H.%M.%S}.png"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Screenshot", str(Path(folder) / name), "PNG images (*.png)"
+        )
+        return path
+
     def _media_changed(self):
         """The toolbar's media button follows the controlled tab."""
         media = media_controls.controller()
@@ -3274,6 +3414,9 @@ class BrowserWindow(QMainWindow):
         menu.addAction("Reload", lambda: self._reload_tab(tab))
         menu.addAction("Duplicate", lambda: self._duplicate_tab(tab))
         menu.addAction(
+            "Duplicate with History", lambda: self.duplicate_with_history(tab)
+        ).setEnabled(not tab.workspace_name)
+        menu.addAction(
             "Unpin Tab" if tab.pinned else "Pin Tab",
             lambda: self._set_pinned(tab, not tab.pinned),
         )
@@ -3293,6 +3436,26 @@ class BrowserWindow(QMainWindow):
             lambda: QApplication.clipboard().setText(tab.url().toString()),
         )
         copy.setEnabled(not tab.workspace_name and not tab.url().isEmpty())
+        clean = menu.addAction("Copy Clean Link", lambda: self.copy_clean_link(tab))
+        clean.setEnabled(tab.url().scheme() in ("http", "https"))
+        destinations = [
+            name
+            for name in self.profile_manager.list_profiles()
+            if name != self.profile_manager.current_profile_name
+        ]
+        if self.profile_manager.current_profile_name != "search":
+            destinations.append("search")
+        send = menu.addMenu("Send Tab to Profile")
+        send.setEnabled(
+            bool(destinations)
+            and not tab.workspace_name
+            and tab.url().scheme() in ("http", "https")
+        )
+        for name in destinations:
+            send.addAction(
+                "Incognito window" if name == "search" else name,
+                lambda name=name: self.send_tab_to_profile(tab, name),
+            )
         movable = len(self.tabs) > 1
         menu.addAction(
             "Move Tab to New Window", lambda: self._move_tab(tab)
@@ -3641,6 +3804,60 @@ class BrowserWindow(QMainWindow):
                 self._reload()
             elif not tab.workspace_name:
                 tab.reload()
+
+    def copy_clean_link(self, tab):
+        from link_cleaning import clean_link
+
+        link = clean_link(tab.url().toString())
+        QApplication.clipboard().setText(link)
+        self.status_bar.showMessage(f"Copied {link}", 4000)
+        return link
+
+    def duplicate_with_history(self, tab):
+        """A copy of the tab whose Back and Forward lead where the original's do."""
+        from PyQt6.QtCore import QByteArray, QDataStream, QIODevice
+
+        if tab not in self.tabs or tab.workspace_name:
+            return None
+        data = QByteArray()
+        QDataStream(data, QIODevice.OpenModeFlag.WriteOnly) << tab.history()
+        copy = self._new_tab(
+            url="about:blank",
+            title=tab.title(),
+            index=self.tabs.index(tab) + 1,
+            return_tab=True,
+        )
+        if copy is None:
+            return None
+        QDataStream(data, QIODevice.OpenModeFlag.ReadOnly) >> copy.history()
+        if tab.group and copy in self.tabs:
+            self._set_tab_group_existing(self.tabs.index(copy), tab.group)
+        return copy
+
+    def send_tab_to_profile(self, tab, profile):
+        """Open the page in another profile (its own sign-ins), and close it here."""
+        if tab not in self.tabs or profile == self.profile_manager.current_profile_name:
+            return None
+        url, title = tab.url().toString(), tab.title()
+        target = next(
+            (
+                w
+                for w in QApplication.topLevelWidgets()
+                if isinstance(w, BrowserWindow)
+                and w is not self
+                and not w._closing
+                and w.profile_manager.current_profile_name == profile
+            ),
+            None,
+        )
+        if target is None:
+            target = self._open_window(profile)
+        opened = target._new_tab(url=url, title=title, return_tab=True)
+        target.raise_()
+        target.activateWindow()
+        if len(self.tabs) > 1:
+            self._close_tab_object(tab)
+        return opened
 
     def _duplicate_tab(self, tab):
         if tab not in self.tabs:

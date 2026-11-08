@@ -200,7 +200,7 @@ class PageApi(QObject):
         reply = self.network.get(request)
 
         def finished():
-            body = bytes(reply.read(FETCH_LIMIT + 1))
+            body = bytes(reply.read(FETCH_LIMIT + 1) or b"")
             error = reply.error() != reply.NetworkError.NoError
             kind = reply.header(QNetworkRequest.KnownHeaders.ContentTypeHeader)
             reply.deleteLater()

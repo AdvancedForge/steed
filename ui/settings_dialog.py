@@ -29,6 +29,8 @@ DEFAULTS = {
     "address_autocomplete": True,
     "tab_previews": True,
     "auto_zoom_small_text": True,
+    "translate_service": "",
+    "translate_language": "",
 }
 SECTIONS = ("general", "profile", "tabs", "view", "cookies", "agents")
 
@@ -236,6 +238,11 @@ class SettingsDialog(QDialog):
             raise ValueError("Choose one of the supported cookie sharing modes.")
         if values["devtools_side"] not in ("right", "bottom", "window"):
             raise ValueError("Choose where Developer Tools open.")
+        from page_translation import check_settings
+
+        check_settings(
+            values["translate_service"].strip(), values["translate_language"].strip()
+        )
 
     def set_preference(self, key, value, *, version=None):
         if not isinstance(key, str) or key not in DEFAULTS:
