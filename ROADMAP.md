@@ -9,6 +9,17 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Extensions — November 8, 2026.** Chrome extensions (Manifest V3) work:
+add from a folder, .zip or .crx, switch on/off, remove, open toolbar popups
+(General → Extensions); switched-on ones come back on after a restart. The
+crash when enabling one was not Qt's alone: setting a profile's storage folder
+after creating it (as Steed, and the earlier C++ reproducer, did) leaves
+Chromium's extension code with freed preferences, as Pacitum browser found.
+Profiles are now made with QWebEngineProfileBuilder (its constructor called
+through Qt, since PyQt 6.11 omits it); no Qt patch was needed. Open: try real
+store extensions (uBlock Origin Lite, a password manager, Dark Reader) on the
+desktop; a Chrome Web Store link installer; a toolbar button for popups.
+
 **Reading list, sync, extensions — November 7, 2026.** A per-profile reading
 list (View → Save to Reading List) keeps the article text so pages can be read
 offline in reader view. Sync between computers through a folder you choose
@@ -16,11 +27,6 @@ offline in reader view. Sync between computers through a folder you choose
 and, with a sync passphrase, passwords sealed in the folder; per-item
 newest-wins merging with dated deletions, tested with simulated computers.
 Open: a desktop check across two real computers through Syncthing or similar.
-Extensions, investigated further: Qt WebEngine 6.11 loads and installs
-unpacked extensions only disabled, and `setExtensionEnabled` crashes inside
-Qt WebEngine itself; a small C++ program without PyQt crashes the same way,
-so it is a Qt bug, not Steed's or PyQt's. Extension support waits on a Qt fix
-(or a patch to the Qt built from source for codecs).
 
 **Import, local translation, screenshot editing — November 7, 2026.** Import
 bookmarks, history and Firefox open tabs (as a saved group) from Chrome-family

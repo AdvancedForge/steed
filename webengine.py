@@ -147,12 +147,61 @@ def private_profile(parent=None):
 
 
 def stored_profile(name: str, parent, *, storage, cache, keep_session_cookies: bool):
-    profile = QWebEngineProfile(name, parent)
-    profile.setPersistentStoragePath(str(storage))
-    profile.setCachePath(str(cache))
-    profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+    profile = _built_profile(name, parent, storage, cache)
+    if profile is None:
+        profile = QWebEngineProfile(name, parent)
+        profile.setPersistentStoragePath(str(storage))
+        profile.setCachePath(str(cache))
+        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
     set_keep_session_cookies(profile, keep_session_cookies)
     return profile
+
+
+def _built_profile(name, parent, storage, cache):
+    """A stored profile made with its folders from the start, or None.
+
+    Setting a profile's storage folder after creating it makes Qt WebEngine
+    (6.10, 6.11) replace the profile's preferences while Chromium's extension
+    code still holds the old ones, so enabling an extension crashes.
+    QWebEngineProfileBuilder sets the folders first. PyQt 6.11 exposes the
+    builder's methods but not its constructor, so then Qt's own is called.
+    """
+    try:
+        from PyQt6.QtWebEngineCore import QWebEngineProfileBuilder
+    except ImportError:
+        return None
+    try:
+        builder = QWebEngineProfileBuilder()
+    except TypeError:
+        pass  # No constructor in these bindings.
+    else:
+        return _configure_builder(builder, name, parent, storage, cache)
+    import ctypes
+
+    from PyQt6 import sip
+
+    try:
+        library = ctypes.CDLL(
+            "libQt6WebEngineCore.so.6", mode=os.RTLD_NOLOAD | ctypes.RTLD_GLOBAL
+        )
+        construct = library._ZN24QWebEngineProfileBuilderC1Ev
+        destroy = library._ZN24QWebEngineProfileBuilderD1Ev
+    except (OSError, AttributeError):
+        return None
+    memory = ctypes.create_string_buffer(64)  # The builder holds one pointer.
+    construct(memory)
+    try:
+        builder = sip.wrapinstance(ctypes.addressof(memory), QWebEngineProfileBuilder)
+        return _configure_builder(builder, name, parent, storage, cache)
+    finally:
+        destroy(memory)
+
+
+def _configure_builder(builder, name, parent, storage, cache):
+    builder.setPersistentStoragePath(str(storage))
+    builder.setCachePath(str(cache))
+    builder.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+    return builder.createProfile(name, parent)
 
 
 def set_keep_session_cookies(profile, keep: bool) -> None:

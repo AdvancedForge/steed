@@ -551,6 +551,8 @@ class BrowserWindow(QMainWindow):
         import_action = QAction("Import from Another Browser…", self)
         import_action.triggered.connect(self._open_import)
         general_menu.addAction(import_action)
+        self.extensions_menu = general_menu.addMenu("Extensions")
+        self.extensions_menu.aboutToShow.connect(self._fill_extensions_menu)
         sync_action = QAction("Sync…", self)
         sync_action.triggered.connect(self._open_sync)
         general_menu.addAction(sync_action)
@@ -2663,6 +2665,45 @@ class BrowserWindow(QMainWindow):
         )
         self.status_bar.showMessage(summary, 8000)
         return summary
+
+    def _fill_extensions_menu(self):
+        menu = self.extensions_menu
+        menu.clear()
+        name = self.profile_manager.current_profile_name
+        extensions = self.profile_manager.registry.extensions
+        if not extensions.available(name):
+            menu.addAction("Incognito windows have no extensions").setEnabled(False)
+            return
+        for entry in extensions.popups(name):
+            action = menu.addAction(entry["name"])
+            action.triggered.connect(
+                lambda _=False, e=entry: self.open_extension_popup(e)
+            )
+        if menu.actions():
+            menu.addSeparator()
+        menu.addAction("Manage Extensions…").triggered.connect(self._open_extensions)
+
+    def open_extension_popup(self, entry):
+        from ui.extension_popup import ExtensionPopup
+
+        popup = ExtensionPopup(
+            self.profile_manager.current_profile, entry["popup"], entry["name"], self
+        )
+        corner = self.mapToGlobal(self.rect().topRight())
+        popup.move(corner.x() - popup.width() - 8, corner.y() + 60)
+        popup.show()
+        return popup
+
+    def _open_extensions(self):
+        from ui.extensions_dialog import ExtensionsDialog
+
+        dialog = ExtensionsDialog(
+            self.profile_manager.registry.extensions,
+            self.profile_manager.current_profile_name,
+            self,
+        )
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
 
     def _open_sync(self):
         from ui.sync_dialog import SyncDialog

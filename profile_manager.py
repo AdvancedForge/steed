@@ -90,6 +90,9 @@ class ProfileRegistry(QObject):
         self.passwords = PasswordService(config, self)
         self.password_service = self.passwords
         self.adblock = AdBlocker(config, self)
+        from extensions import Extensions
+
+        self.extensions = Extensions(self)
         from sync import SyncService
 
         self.sync = SyncService(self)
@@ -480,6 +483,7 @@ class ProfileRegistry(QObject):
         self.user_scripts(name).install(profile)
         self.downloads.attach(profile, name)
         self.adblock.attach(profile)
+        self.extensions.attach(name, profile, directory)
         if hasattr(self, "sharing"):
             self.sharing.register(name, profile, directory, fresh)
         self.prepare_inspection(name, profile)
@@ -661,6 +665,7 @@ class ProfileRegistry(QObject):
         for profile in (*self.profiles.values(), self.search_profile):
             sip.delete(profile)
         self.profiles.clear()
+        self.extensions.profiles.clear()
         app = QApplication.instance()
         app._browser_profile_registries.pop(str(self.config.config_dir.resolve()), None)
         self.deleteLater()
@@ -789,6 +794,7 @@ class ProfileManager(QObject):
         self.registry.sharing.unregister(name)
         history = self.registry.histories.pop(name, None)
         self.registry.start_pages.forget(name)
+        self.registry.extensions.detach(name)
         if history is not None:
             history.close()
             history.deleteLater()
