@@ -768,7 +768,9 @@ class StandInTests(WindowBase):
         pins.actions()[0].setChecked(True)
         menu.close()
         self.wait(lambda: len(bar.extension_pins) == 1)
-        self.assertEqual(bar.extension_pins[0].toolTip(), entry["name"])
+        self.assertEqual(
+            bar.extension_pins[0].toolTip(), entry["name"] + " (Alt+Shift+1)"
+        )
         self.assertFalse(bar.extension_pins[0].icon().isNull())
         bar.extension_pins[0].click()
         self.wait(lambda: self.window.findChildren(ExtensionPopup))
@@ -851,6 +853,171 @@ class StandInTests(WindowBase):
         self.assertEqual(third["id"], first["id"])
         self.assertEqual(third["update"], "")
         self.assertFalse(self.extensions.waiting_update(self.name, STORE_ID))
+
+
+BRIDGE_BACKGROUND = """
+chrome.contextMenus.removeAll(() => {
+  chrome.contextMenus.create({ id: "page", title: "Page item", contexts: ["page"] });
+  chrome.contextMenus.create({ id: "sel", title: "Look up %s", contexts: ["selection"] });
+});
+chrome.action.setBadgeText({ text: "7" });
+chrome.action.setBadgeBackgroundColor({ color: [0, 128, 0, 255] });
+const mark = (tabId, label) =>
+  chrome.scripting.executeScript({
+    target: { tabId },
+    func: (text) => {
+      document.documentElement.dataset.mark = text;
+      return document.title;
+    },
+    args: [label],
+  });
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  const [done] = await mark(tab.id, "menu:" + info.menuItemId + ":" + (info.selectionText || ""));
+  await chrome.storage.local.set({ title: done.result });
+});
+chrome.action.onClicked.addListener((tab) => mark(tab.id, "action"));
+chrome.commands.onCommand.addListener((name, tab) => mark(tab.id, "command:" + name));
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  const target = { tabId: sender.tab.id };
+  const steps = {
+    css: () => chrome.scripting.insertCSS({ target, css: "body { outline: 3px solid red; }" }).then(() => "ok"),
+    uncss: () => chrome.scripting.removeCSS({ target, css: "body { outline: 3px solid red; }" }).then(() => "ok"),
+    async: () =>
+      chrome.scripting
+        .executeScript({ target, func: async () => { await new Promise((r) => setTimeout(r, 100)); return 41 + 1; } })
+        .then((results) => results[0].result),
+    title: () => chrome.storage.local.get("title").then((items) => items.title),
+    register: () =>
+      chrome.scripting
+        .registerContentScripts([{ id: "reg", matches: ["http://127.0.0.1/*"], js: ["reg.js"], runAt: "document_end" }])
+        .then(() => chrome.scripting.getRegisteredContentScripts())
+        .then((scripts) => scripts.map((script) => script.id)),
+  };
+  if (!steps[message]) return;
+  steps[message]().then(respond, (error) => respond("error: " + error.message));
+  return true;
+});
+"""
+BRIDGE_CONTENT = """
+window.addEventListener("message", (event) => {
+  if (!event.data || !event.data.ask) return;
+  chrome.runtime.sendMessage(event.data.ask).then((reply) => {
+    document.documentElement.dataset["got" + event.data.ask] = JSON.stringify(reply);
+  });
+});
+"""
+
+
+class FakeMenuRequest:
+    """What a right-click hit, as QWebEngineContextMenuRequest tells it."""
+
+    from PyQt6.QtWebEngineCore import QWebEngineContextMenuRequest
+
+    MediaType = QWebEngineContextMenuRequest.MediaType
+
+    def __init__(self, selection=""):
+        self.selection = selection
+
+    def linkUrl(self):
+        return QUrl()
+
+    def mediaUrl(self):
+        return QUrl()
+
+    def selectedText(self):
+        return self.selection
+
+    def mediaType(self):
+        return self.MediaType.MediaTypeNone
+
+    def isContentEditable(self):
+        return False
+
+
+class BridgeTests(WindowBase):
+    """Menus, badges, scripting and shortcuts, through the bridge page."""
+
+    def test_menus_badges_scripting_and_shortcuts(self):
+        from PyQt6.QtWidgets import QMenu
+
+        folder = write_extension(
+            self.root / "bridge",
+            permissions=["storage", "contextMenus", "scripting"],
+            host_permissions=["<all_urls>"],
+            background={"service_worker": "bg.js"},
+            content_scripts=[{"matches": ["http://127.0.0.1/*"], "js": ["c.js"]}],
+            action={"default_title": "Bridge"},
+            commands={"say": {"suggested_key": {"default": "Alt+Shift+Y"}}},
+        )
+        (folder / "bg.js").write_text(BRIDGE_BACKGROUND)
+        (folder / "c.js").write_text(BRIDGE_CONTENT)
+        (folder / "reg.js").write_text(
+            "document.documentElement.dataset.registered = 'yes';"
+        )
+        self.extensions.install(self.name, folder)
+        self.wait(lambda: self.extensions.installed(self.name))
+        (entry,) = self.extensions.installed(self.name)
+        bridges = self.extensions.bridges
+        tab = self.window._new_tab(url=self.url, return_tab=True)
+        self.wait(lambda: not tab.page().isLoading() and tab.title() == "Plain")
+        self.wait(lambda: bridges.tab_id(self.name, entry["id"], tab) is not None)
+        self.wait(lambda: len(bridges.menus(self.name, entry["id"])) == 2)
+
+        def data(key):
+            return self.evaluate(
+                tab.page(), f"document.documentElement.dataset.{key} || ''"
+            )
+
+        def ask(step):
+            webengine.run_script(
+                tab.page(),
+                f"window.postMessage({{ask: '{step}'}}, '*')",
+                world=webengine.PAGE_WORLD,
+            )
+            self.wait(lambda: data("got" + step))
+            return json.loads(data("got" + step))
+
+        # Page menu: the page item; with a selection, the selection item.
+        menu = QMenu()
+        self.window._add_extension_menu_items(menu, tab, FakeMenuRequest())
+        labels = [a.text() for a in menu.actions() if not a.isSeparator()]
+        self.assertEqual(labels, ["Page item"])
+        next(a for a in menu.actions() if a.text() == "Page item").trigger()
+        self.wait(lambda: data("mark") == "menu:page:")
+        self.assertEqual(ask("title"), "Plain")
+        menu = QMenu()
+        self.window._add_extension_menu_items(menu, tab, FakeMenuRequest("steed"))
+        (item,) = [a for a in menu.actions() if not a.isSeparator()]
+        self.assertEqual(item.text(), "Look up steed")
+        item.trigger()
+        self.wait(lambda: data("mark") == "menu:sel:steed")
+
+        # The badge, on its pinned button; a click without a popup reaches it.
+        self.extensions.set_pinned(self.name, entry["id"], True)
+        self.wait(lambda: bridges.badge(self.name, entry["id"], tab).get("text") == "7")
+        self.assertEqual(
+            bridges.badge(self.name, entry["id"], tab)["color"], "rgba(0, 128, 0, 1)"
+        )
+        self.wait(lambda: len(self.window.address_bar.extension_pins) == 1)
+        self.window.address_bar.extension_pins[0].click()
+        self.wait(lambda: data("mark") == "action")
+
+        # Its own shortcut and Alt+Shift+1 for the first pinned button.
+        keys = {s.key().toString(): s for s in self.window._extension_shortcuts}
+        self.assertIn("Alt+Shift+1", keys)
+        keys["Alt+Shift+Y"].activated.emit()
+        self.wait(lambda: data("mark") == "command:say")
+
+        # Styles in and out; an async function's value; registered scripts.
+        self.assertEqual(ask("css"), "ok")
+        outline = "getComputedStyle(document.body).outlineStyle"
+        self.wait(lambda: self.evaluate(tab.page(), outline) == "solid")
+        self.assertEqual(ask("uncss"), "ok")
+        self.wait(lambda: self.evaluate(tab.page(), outline) == "none")
+        self.assertEqual(ask("async"), 42)
+        self.assertEqual(ask("register"), ["reg"])
+        tab.page().triggerAction(webengine.QWebEnginePage.WebAction.Reload)
+        self.wait(lambda: data("registered") == "yes")
 
 
 if __name__ == "__main__":

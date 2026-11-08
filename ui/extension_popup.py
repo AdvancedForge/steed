@@ -6,14 +6,46 @@ lose their own dropdowns. It closes on Escape, when another window is
 activated, or when the extension calls window.close().
 """
 
-from PyQt6.QtCore import QEvent, Qt, QUrl
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtCore import QEvent, QRectF, Qt, QUrl
+from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PyQt6.QtWidgets import QApplication, QFrame, QVBoxLayout
 
 import webengine
 from webengine import QWebEngineView
 
 WIDTH, HEIGHT = 380, 520
+
+
+def badged(icon: QIcon, badge: dict, size=20) -> QIcon:
+    """An extension's icon with its badge text (as set by the extension)."""
+    text = (badge.get("text") or "")[:4]
+    if not text:
+        return icon
+    scale = 2
+    pixmap = QPixmap(size * scale, size * scale)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    if not icon.isNull():
+        painter.drawPixmap(0, 0, icon.pixmap(size * scale, size * scale))
+    font = QFont()
+    font.setPixelSize(int(size * scale * 0.42))
+    font.setBold(True)
+    painter.setFont(font)
+    width = painter.fontMetrics().horizontalAdvance(text) + 6
+    height = int(size * scale * 0.5)
+    box = QRectF(size * scale - width, size * scale - height, width, height)
+    color = QColor(badge.get("color") or "#d93025")
+    if not color.isValid():
+        color = QColor("#d93025")
+    painter.setBrush(color)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawRoundedRect(box, height / 3, height / 3)
+    painter.setPen(QColor("white"))
+    painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+    painter.end()
+    pixmap.setDevicePixelRatio(scale)
+    return QIcon(pixmap)
 
 
 class PopupPage(webengine.Page):
