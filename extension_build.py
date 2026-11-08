@@ -27,6 +27,25 @@ from pathlib import Path
 SHIM = Path(__file__).with_name("extension_shim.js")
 SHIM_NAME = "steed-shim.js"
 BACKGROUND_NAME = "steed-background.js"
+BRIDGE_PAGE = "steed-bridge.html"
+# The bridge page: a hidden page of the extension that Steed loads to reach
+# its background. Steed reads what it logs and calls __steedBridge to send.
+BRIDGE_SCRIPT = """\
+const relay = (message) => console.debug("\\u0001steed " + JSON.stringify(message));
+let port = null;
+const queue = [];
+function connect() {
+  port = chrome.runtime.connect({ name: "steed-bridge" });
+  port.onMessage.addListener(relay);
+  port.onDisconnect.addListener(() => {
+    port = null;
+    setTimeout(connect, 500);
+  });
+  for (const message of queue.splice(0)) port.postMessage(message);
+}
+window.__steedBridge = (message) => (port ? port.postMessage(message) : queue.push(message));
+connect();
+"""
 MAX_FILES = 20_000
 MAX_UNPACKED = 500 << 20
 
@@ -336,4 +355,8 @@ def build(source: Path, destination: Path, sites: list[str] | None = None) -> No
     for page in destination.rglob("*.htm*"):
         if page.suffix.lower() in (".html", ".htm"):
             _add_shim_to_page(page)
+    (destination / "steed-bridge.js").write_text(BRIDGE_SCRIPT, "utf-8")
+    (destination / BRIDGE_PAGE).write_text(
+        '<!doctype html><script src="/steed-bridge.js"></script>', "utf-8"
+    )
     write_manifest(destination, manifest)

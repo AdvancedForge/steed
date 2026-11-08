@@ -568,10 +568,31 @@ content scripts:
   (it does not travel between computers).
 - **permissions**: answered from the extension's manifest (no prompts).
 - **notifications**: shown through the web Notification API.
-- **contextMenus, scripting, userScripts, action badges, sidePanel,
-  webNavigation, windows, commands**: calls succeed without effect, so an
-  extension using them still starts, but menus, injected scripts and badges do
-  not appear.
+- **contextMenus**: items appear in the page's right-click menu (in a
+  submenu named after the extension when it has several), for the contexts they
+  ask for (page, selection with `%s`, link, image, video, audio, editable) and
+  their URL patterns; checkboxes and radio items keep their state; clicks reach
+  `contextMenus.onClicked` with the tab. Items are kept across restarts, as
+  Chrome keeps them.
+- **scripting**: `executeScript` (a function, also async, or files),
+  `insertCSS`/`removeCSS` and `registerContentScripts` run in the tab, in a
+  script world of the extension's own (or the page's, for `world: "MAIN"`).
+  These worlds have no `chrome.*` APIs, unlike Chrome's, and only the top frame
+  is reached.
+- **action**: badge text, colour and title (for every tab or one) show on the
+  extension's pinned button; an extension without a popup gets
+  `action.onClicked` when its button or menu entry is clicked.
+- **commands**: an extension's suggested shortcuts work in Steed's windows
+  (unless Steed already uses the keys), reaching `commands.onCommand`;
+  `_execute_action` opens its popup. Pinned buttons also have Alt+Shift+1–9.
+- **userScripts, sidePanel, webNavigation, windows**: calls succeed without
+  effect, so an extension using them still starts.
+
+These reach Steed through a hidden page of each extension
+(`steed-bridge.html`, added when Steed installs it), which talks to the
+extension's background and to Steed. Steed matches the stand-ins' tab ids to
+its own tabs by address, title and which one is showing, so two tabs showing
+the same page can be confused.
 
 Tested with real store extensions: Dark Reader darkens pages; uBlock Origin
 Lite starts and its popup works, but cannot block, because Qt WebEngine does

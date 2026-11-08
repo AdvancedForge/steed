@@ -9,6 +9,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Extension menus, scripting, badges, shortcuts — November 8, 2026.** A hidden
+bridge page per extension connects its background to Steed: context menu items
+in the page menu (kept across restarts), scripting.executeScript (functions,
+async ones, files), insertCSS/removeCSS and registerContentScripts run by Steed
+in the extension's own script world, badges on pinned buttons, action.onClicked
+for extensions without popups, manifest command shortcuts and Alt+Shift+1–9
+for pinned buttons. Found while testing: Chromium stops Steed when an
+extension's message port outlives its profile, or an extension goes while its
+page shows; Steed now drops bridge pages first and lets ports close before
+profiles go. Open: injected scripts lack chrome.* APIs; tab matching is by
+address and title.
+
 **Extension stand-ins, updates, site access, pins — November 8, 2026.**
 Steed now builds what it installs from a kept copy: a fixed id (the store key
 from the .crx header, else a generated key), so installing again keeps

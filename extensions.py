@@ -58,6 +58,7 @@ SOURCES = "extension-sources"
 UPDATES = "extension-updates"
 UPDATE_TIMER_MS = 60 * 60 * 1000
 UPDATE_EVERY_SECONDS = 24 * 3600
+SETTLE_PORTS_MS = 200
 _STORE_ID = re.compile(r"^[a-p]{32}$")
 
 # What common permissions mean, in words. Harmless ones are left out.
@@ -309,7 +310,8 @@ def read_state(folder) -> dict:
     enabled: ids switched on; store: wanted store ids (synced); ids: store id
     -> installed id; pinned: ids with a toolbar button; sites: id -> the only
     sites it may use; updates: store id -> waiting version; checked: time of
-    the last update check.
+    the last update check; menus and scripts: id -> its context menu items
+    and registered content scripts (extension_bridge).
     """
     raw = _dict(load_json(Path(folder) / STATE_FILE, {}))
     store = {}
@@ -324,7 +326,15 @@ def read_state(folder) -> dict:
         if isinstance(key, str) and isinstance(value, list):
             sites[key] = [s for s in _strings(value) if clean_site(s) == s][:200]
     checked = raw.get("checked")
+    lists = {}
+    for field in ("menus", "scripts"):
+        lists[field] = {
+            key: [item for item in value if isinstance(item, dict) and "id" in item]
+            for key, value in _dict(raw.get(field)).items()
+            if isinstance(key, str) and isinstance(value, list)
+        }
     return {
+        **lists,
         "enabled": _strings(raw.get("enabled")),
         "store": store,
         "ids": {
@@ -424,6 +434,19 @@ class Fetch(QObject):
         self.deleteLater()
 
 
+def settle_ports():
+    """Let Chromium close extensions' message ports (content scripts, bridge
+    pages) after their pages went: one closed after its profile stops Steed."""
+    from PyQt6.QtCore import QCoreApplication, QElapsedTimer, QEventLoop
+
+    timer = QElapsedTimer()
+    timer.start()
+    while timer.elapsed() < SETTLE_PORTS_MS:
+        QCoreApplication.processEvents(
+            QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents, 20
+        )
+
+
 def _chromium():
     from webengine import versions
 
@@ -450,6 +473,10 @@ class Extensions(QObject):
         self.auto_update.setInterval(UPDATE_TIMER_MS)
         self.auto_update.timeout.connect(self._auto_update)
         self.auto_update.start()
+        from extension_bridge import Bridges
+
+        self.bridges = Bridges(self)
+        self.changed.connect(self.bridges.sync)
 
     def attach(self, name, profile, folder):
         manager = profile.extensionManager()
@@ -463,7 +490,22 @@ class Extensions(QObject):
         self._restore(name, RESTORE_ATTEMPTS)
 
     def detach(self, name):
+        """Before a profile goes: its bridge pages, then its message ports."""
+        if name not in self.profiles:
+            return
+        busy = bool(self.installed(name))
+        self.bridges.close(name)
+        if busy:
+            settle_ports()
         self.profiles.pop(name, None)
+
+    def close(self):
+        """Before every profile goes (Steed quits): likewise."""
+        busy = any(self.installed(name) for name in self.profiles)
+        self.bridges.close()
+        if busy:
+            settle_ports()
+        self.profiles.clear()
 
     def _manager(self, name):
         found = self.profiles.get(name)
@@ -534,6 +576,9 @@ class Extensions(QObject):
                 entry["update"] = state["updates"].get(entry["store"], "")
                 source = self.source(name, entry["id"])
                 entry["source"] = str(source if source.is_dir() else entry["path"])
+                manifest = _dict(self.bridges.manifest(entry))
+                entry["action"] = isinstance(manifest.get("action"), dict)
+                entry["commands"] = _dict(manifest.get("commands"))
                 found.append(entry)
         return sorted(found, key=lambda e: e["name"].lower())
 
@@ -599,6 +644,7 @@ class Extensions(QObject):
         }
         if current is not None:
             # Qt does not replace an installed extension: remove, then install.
+            self.bridges.drop(name, extension_id)
             self._manager(name).uninstallExtension(current)
         else:
             self._manager(name).installExtension(str(build_dir))
@@ -641,6 +687,8 @@ class Extensions(QObject):
         info = self._info(name, extension_id)
         if info is None:
             return
+        if not enabled:
+            self.bridges.drop(name, extension_id)
         self._manager(name).setExtensionEnabled(info, bool(enabled))
         state = self.state(name)
         state["enabled"] = [i for i in state["enabled"] if i != extension_id]
@@ -658,12 +706,15 @@ class Extensions(QObject):
         state["enabled"] = [i for i in state["enabled"] if i != extension_id]
         state["pinned"] = [i for i in state["pinned"] if i != extension_id]
         state["sites"].pop(extension_id, None)
+        state["menus"].pop(extension_id, None)
+        state["scripts"].pop(extension_id, None)
         for store in [s for s, q in state["ids"].items() if q == extension_id]:
             state["ids"].pop(store)
             state["store"].pop(store, None)
             state["updates"].pop(store, None)
         self._write(name, state)
         if info is not None:
+            self.bridges.drop(name, info.id())
             self._manager(name).uninstallExtension(info)
 
     def popups(self, name) -> list[dict]:
@@ -672,10 +723,18 @@ class Extensions(QObject):
 
     # -- toolbar buttons and site access
 
+    def clickable(self, name) -> list[dict]:
+        """Switched-on extensions with a toolbar action (a popup or a click)."""
+        return [
+            e
+            for e in self.installed(name)
+            if e["enabled"] and (e["popup"] or e["action"])
+        ]
+
     def pinned(self, name) -> list[dict]:
-        """Pinned extensions with a popup, in the order they were pinned."""
+        """Pinned extensions, in the order they were pinned."""
         order = self.state(name)["pinned"] if self.available(name) else []
-        found = {e["id"]: e for e in self.popups(name)}
+        found = {e["id"]: e for e in self.clickable(name)}
         return [found[i] for i in order if i in found]
 
     def set_pinned(self, name, extension_id, pinned):
@@ -701,6 +760,7 @@ class Extensions(QObject):
                 new_id if i == entry["id"] else i for i in state["pinned"]
             ]
             self._write(name, state)
+            self.bridges.drop(name, info.id())
             self._manager(name).uninstallExtension(info)
         return new_id
 

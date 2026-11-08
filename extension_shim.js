@@ -22,6 +22,7 @@
   const page = !worker && location.protocol === "chrome-extension:";
   const content = !worker && !page;
   const PORT = "steed-tab";
+  const BRIDGE = "steed-bridge";
   const manifest = chrome.runtime.getManifest ? chrome.runtime.getManifest() : {};
 
   const event = () => {
@@ -56,8 +57,16 @@
     return result;
   };
 
+  const stubs = new Set();
   const add = (name, api) => {
-    if (!chrome[name]) chrome[name] = api;
+    if (!chrome[name]) {
+      chrome[name] = api;
+      stubs.add(name);
+    }
+  };
+  // Give a stand-in (never a real API) working members.
+  const own = (name, members) => {
+    if (stubs.has(name)) Object.assign(chrome[name], members);
   };
   // Fill in members missing from an API Qt has only in part.
   const fill = (name, members) => {
@@ -107,7 +116,7 @@
   };
   const ports = new WeakMap();
   const unwrapPort = (tabOf) => ([port]) => {
-    if (port.name === PORT) return null;
+    if (port.name === PORT || port.name === BRIDGE) return null;
     const at = port.name.indexOf(TAG);
     if (at < 0) return [port];
     if (!ports.has(port)) {
@@ -479,7 +488,16 @@
     getUserSettings: quiet({ isOnToolbar: true }),
     onClicked: event(),
   });
-  add("commands", { getAll: quiet([]), onCommand: event() });
+  add("commands", {
+    getAll: quiet(
+      Object.entries(manifest.commands || {}).map(([name, command]) => ({
+        name,
+        description: (command && command.description) || "",
+        shortcut: (command && command.suggested_key && (command.suggested_key.linux || command.suggested_key.default)) || "",
+      })),
+    ),
+    onCommand: event(),
+  });
   add("fontSettings", { getFontList: quiet([]), getFont: quiet({ fontId: "" }) });
   add("extension", {
     getURL: (path) => chrome.runtime.getURL(path),
@@ -507,7 +525,7 @@
     const host =
       parts[2] === "*" ? "[^/]*" : parts[2].startsWith("*.") ? "([^/]*\\.)?" + escape(parts[2].slice(2)) : escape(parts[2]);
     const path = escape(parts[3]).replace(/\\\*/g, ".*");
-    return new RegExp(`^${scheme}://${host}${path}$`).test(url);
+    return new RegExp(`^${scheme}://${host}(:[0-9]+)?${path}$`).test(url);
   };
   const tabMembers = (api) => ({
     TAB_ID_NONE: -1,
@@ -631,16 +649,173 @@
           if (!before || before[key] !== tab[key]) changes[key] = tab[key];
         }
         if (Object.keys(changes).length) tabEvents.onUpdated.dispatch(id, changes, tabOf(id));
+        listTabs();
       });
       port.onDisconnect.addListener(() => {
         if (id === null || tabs.get(id)?.port !== port) return;
         tabs.delete(id);
         if (focused === id) focused = null;
         tabEvents.onRemoved.dispatch(id, { windowId: 1, isWindowClosing: false });
+        listTabs();
       });
     });
+    // -- Steed itself, through the extension's bridge page (steed-bridge.html):
+    // menus, badges, injected scripts and shortcuts.
+    let bridge = null;
+    const outbox = [];
+    const toSteed = (message) => {
+      if (bridge) {
+        try {
+          bridge.postMessage(message);
+          return;
+        } catch (error) {
+          bridge = null;
+        }
+      }
+      outbox.push(message);
+      if (outbox.length > 1000) outbox.shift();
+    };
+    let listing = false;
+    function listTabs() {
+      if (listing) return;
+      listing = true;
+      setTimeout(() => {
+        listing = false;
+        toSteed({ type: "tabs", tabs: [...tabs.values()].map(({ tab }) => tab) });
+      }, 50);
+    }
+    let asked = 0;
+    const waiting = new Map();
+    const askSteed = (message) =>
+      new Promise((resolve, reject) => {
+        const ask = ++asked;
+        waiting.set(ask, { resolve, reject });
+        toSteed({ ...message, ask });
+      });
+    const tabFor = (id) => (id ? tabOf(id) || { id, windowId: 1 } : undefined);
+
+    const onclicks = new Map();
+    let menuIds = 0;
+    const plain = (props = {}) => {
+      const { onclick, ...rest } = props;
+      return JSON.parse(JSON.stringify(rest));
+    };
+    own("contextMenus", {
+      create: (props = {}, callback) => {
+        const id = props.id ?? `steed-${++menuIds}`;
+        if (typeof props.onclick === "function") onclicks.set(id, props.onclick);
+        toSteed({ type: "menu", op: "create", id, props: plain(props) });
+        if (typeof callback === "function") setTimeout(callback, 0);
+        return id;
+      },
+      update: (id, props = {}, callback) => {
+        if (typeof props.onclick === "function") onclicks.set(id, props.onclick);
+        toSteed({ type: "menu", op: "update", id, props: plain(props) });
+        return answer(undefined, callback);
+      },
+      remove: (id, callback) => {
+        onclicks.delete(id);
+        toSteed({ type: "menu", op: "remove", id });
+        return answer(undefined, callback);
+      },
+      removeAll: (callback) => {
+        onclicks.clear();
+        toSteed({ type: "menu", op: "removeAll" });
+        return answer(undefined, callback);
+      },
+    });
+
+    const badges = new Map(); // tab id, or "*" for every tab -> {text, color, title}
+    const badgeOf = (tabId) => ({ ...(badges.get("*") || {}), ...(badges.get(tabId) || {}) });
+    const setBadge = (details = {}, field, value, callback) => {
+      const key = details.tabId ?? "*";
+      badges.set(key, { ...(badges.get(key) || {}), [field]: value });
+      toSteed({ type: "badge", tabId: details.tabId ?? null, field, value });
+      return answer(undefined, callback);
+    };
+    const color = (value) =>
+      Array.isArray(value)
+        ? `rgba(${value[0]}, ${value[1]}, ${value[2]}, ${(value[3] ?? 255) / 255})`
+        : String(value || "");
+    own("action", {
+      setBadgeText: (details = {}, callback) => setBadge(details, "text", String(details.text ?? ""), callback),
+      getBadgeText: (details = {}, callback) => answer(badgeOf(details.tabId).text ?? "", callback),
+      setBadgeBackgroundColor: (details = {}, callback) =>
+        setBadge(details, "color", color(details.color), callback),
+      getBadgeBackgroundColor: (details = {}, callback) => answer(badgeOf(details.tabId).color ?? "", callback),
+      setTitle: (details = {}, callback) => setBadge(details, "title", String(details.title ?? ""), callback),
+      getTitle: (details = {}, callback) =>
+        answer(badgeOf(details.tabId).title ?? manifest.name ?? "", callback),
+    });
+
+    const injection = (spec = {}) => {
+      const target = spec.target || {};
+      const func = spec.func || spec.function;
+      return {
+        tabId: target.tabId,
+        allFrames: Boolean(target.allFrames),
+        world: spec.world === "MAIN" ? "MAIN" : "ISOLATED",
+        func: typeof func === "function" ? func.toString() : spec.funcSource || null,
+        args: spec.args || [],
+        files: spec.files || [],
+        css: spec.css || null,
+      };
+    };
+    own("scripting", {
+      executeScript: (...args) => settle(args, ([spec]) => askSteed({ type: "execute", ...injection(spec) })),
+      insertCSS: (...args) => settle(args, ([spec]) => askSteed({ type: "css", op: "insert", ...injection(spec) })),
+      removeCSS: (...args) => settle(args, ([spec]) => askSteed({ type: "css", op: "remove", ...injection(spec) })),
+      registerContentScripts: (...args) =>
+        settle(args, ([scripts]) => askSteed({ type: "register", op: "add", scripts: scripts || [] })),
+      updateContentScripts: (...args) =>
+        settle(args, ([scripts]) => askSteed({ type: "register", op: "update", scripts: scripts || [] })),
+      unregisterContentScripts: (...args) =>
+        settle(args, ([filter]) => askSteed({ type: "register", op: "remove", ids: filter && filter.ids })),
+      getRegisteredContentScripts: (...args) =>
+        settle(args, ([filter]) => askSteed({ type: "register", op: "list", ids: filter && filter.ids })),
+    });
+
+    const fromSteed = (message) => {
+      if (message.type === "answer") {
+        const asking = waiting.get(message.ask);
+        waiting.delete(message.ask);
+        if (asking) message.error ? asking.reject(new Error(message.error)) : asking.resolve(message.value);
+      } else if (message.type === "menuClicked") {
+        const tab = tabFor(message.tabId);
+        onclicks.get(message.info.menuItemId)?.(message.info, tab);
+        chrome.contextMenus.onClicked.dispatch(message.info, tab);
+      } else if (message.type === "command") {
+        chrome.commands.onCommand.dispatch(message.name, tabFor(message.tabId));
+      } else if (message.type === "actionClicked") {
+        chrome.action.onClicked.dispatch(tabFor(message.tabId));
+      }
+    };
+    chrome.runtime.onConnect.addListener((port) => {
+      if (port.name !== BRIDGE) return;
+      bridge = port;
+      port.onMessage.addListener(fromSteed);
+      port.onDisconnect.addListener(() => {
+        if (bridge === port) bridge = null;
+      });
+      for (const message of outbox.splice(0)) port.postMessage(message);
+      listTabs();
+    });
+    // Pages' calls of these, made here.
+    const callable = { contextMenus: true, action: true, scripting: true };
+
     // Popups and other extension pages ask here.
     chrome.runtime.onMessage.addListener((message, sender, respond) => {
+      if (ours(message) && message.__steed === "call" && callable[message.ns]) {
+        const method = chrome[message.ns][message.method];
+        if (typeof method !== "function") return;
+        Promise.resolve()
+          .then(() => method(...(message.args || [])))
+          .then(
+            (ok) => respond({ ok }),
+            (error) => respond({ error: String(error && error.message) }),
+          );
+        return true;
+      }
       if (!ours(message) || message.__steed !== "tabs" || !methods[message.method]) return;
       Promise.resolve()
         .then(() => methods[message.method](message.args || []))
@@ -672,6 +847,42 @@
           return { id: -1, url: props.url, active: true, windowId: 1 };
         }),
     });
+    // Menus, badges and scripting are kept by the background: ask it.
+    const call = (ns, method) => (...args) =>
+      settle(args, (rest) =>
+        chrome.runtime.sendMessage({ __steed: "call", ns, method, args: rest }).then((reply) => {
+          if (!reply) throw new Error("The extension's background is not running.");
+          if (reply.error) throw new Error(reply.error);
+          return reply.ok;
+        }),
+      );
+    const calls = (ns, names) => Object.fromEntries(names.map((name) => [name, call(ns, name)]));
+    own("contextMenus", {
+      ...calls("contextMenus", ["update", "remove", "removeAll"]),
+      create: (props = {}, callback) => {
+        const { onclick, ...rest } = props;
+        const id = rest.id ?? `steed-page-${Math.random().toString(36).slice(2)}`;
+        call("contextMenus", "create")({ ...rest, id }).then(() => callback && callback(), () => {});
+        return id;
+      },
+    });
+    own("action", calls("action", [
+      "setBadgeText", "getBadgeText", "setBadgeBackgroundColor", "getBadgeBackgroundColor", "setTitle", "getTitle",
+    ]));
+    const scripting = calls("scripting", [
+      "insertCSS", "removeCSS", "registerContentScripts", "updateContentScripts",
+      "unregisterContentScripts", "getRegisteredContentScripts",
+    ]);
+    // Functions cannot travel in a message: send their source.
+    scripting.executeScript = (spec = {}, ...rest) => {
+      const { func, function: legacy, ...others } = spec;
+      const source = func || legacy;
+      return call("scripting", "executeScript")(
+        { ...others, funcSource: typeof source === "function" ? source.toString() : undefined },
+        ...rest,
+      );
+    };
+    own("scripting", scripting);
     const pageTab = (id, sender) => ({ id, windowId: 1, url: sender && sender.url, incognito: false });
     screen(chrome.runtime.onConnect, unwrapPort(pageTab));
     screen(chrome.runtime.onMessage, unwrapMessage(pageTab));

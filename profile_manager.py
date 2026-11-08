@@ -662,10 +662,10 @@ class ProfileRegistry(QObject):
         for page in self.bootstrap_pages.values():
             sip.delete(page)
         self.bootstrap_pages.clear()
+        self.extensions.close()
         for profile in (*self.profiles.values(), self.search_profile):
             sip.delete(profile)
         self.profiles.clear()
-        self.extensions.profiles.clear()
         app = QApplication.instance()
         app._browser_profile_registries.pop(str(self.config.config_dir.resolve()), None)
         self.deleteLater()
@@ -789,6 +789,7 @@ class ProfileManager(QObject):
             page = self.registry.bootstrap_pages.pop(name, None)
             if page is not None:
                 sip.delete(page)
+            self.registry.extensions.detach(name)
             sip.delete(profile)
             del self._profiles[name]
         self.registry.sharing.unregister(name)

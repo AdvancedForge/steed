@@ -260,6 +260,9 @@ class BrowserTab(QWebEngineView):
                 menu, self.page(), self.lastContextMenuRequest()
             )
         if self.browser_window is not None and not self.workspace_name:
+            self.browser_window._add_extension_menu_items(
+                menu, self, self.lastContextMenuRequest()
+            )
             menu.addSeparator()
             menu.addAction("Inspect").triggered.connect(
                 lambda: self.browser_window._inspect_page_element(self)
@@ -1025,6 +1028,9 @@ class BrowserWindow(QMainWindow):
         self.profile_manager.registry.extensions.changed.connect(
             self._extensions_changed
         )
+        self.profile_manager.registry.extensions.bridges.badges_changed.connect(
+            self._extensions_changed
+        )
         self._downloads_recent = QTimer(self)
         self._downloads_recent.setSingleShot(True)
         self._downloads_recent.setInterval(30000)
@@ -1361,6 +1367,7 @@ class BrowserWindow(QMainWindow):
     def _on_profile_changed(self, profile_name: str):
         self.address_bar.show_extensions(profile_name != "search")
         self._refresh_extension_pins()
+        self._refresh_extension_shortcuts()
         for host in list(self._html_dialogs):
             host.reject()
         if self._html_menu is not None:
@@ -1919,6 +1926,8 @@ class BrowserWindow(QMainWindow):
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
         self.store_bar.update_for(self.tabs[index].url())
+        if self.address_bar.extension_pins:
+            self._refresh_extension_pins()  # Badges can differ per tab.
         self.tab_bar.set_current_tab(index)
         self.devtools.show_for(self.tabs[index])
 
@@ -2696,7 +2705,7 @@ class BrowserWindow(QMainWindow):
             details = extensions.details(entry)
             if details is not None:
                 action.setIcon(icon_from(details["icon"]))
-            if entry["popup"]:
+            if entry["popup"] or entry["action"]:
                 # After the menu has closed, or closing it closes the popup too.
                 action.triggered.connect(
                     lambda _=False, e=entry: QTimer.singleShot(
@@ -2704,11 +2713,11 @@ class BrowserWindow(QMainWindow):
                     )
                 )
             else:
-                action.setEnabled(False)  # It works in pages; it has no popup.
-        with_popups = extensions.popups(name)
-        if with_popups:
+                action.setEnabled(False)  # It works in pages; no toolbar action.
+        clickable = extensions.clickable(name)
+        if clickable:
             pins = menu.addMenu("Pinned Buttons")
-            for entry in with_popups:
+            for entry in clickable:
                 action = pins.addAction(entry["name"])
                 action.setCheckable(True)
                 action.setChecked(entry["pinned"])
@@ -2749,18 +2758,197 @@ class BrowserWindow(QMainWindow):
     def _extensions_changed(self, profile):
         if not self._closing and profile == self.profile_manager.current_profile_name:
             self._refresh_extension_pins()
+            self._refresh_extension_shortcuts()
+
+    def _current_browser_tab(self):
+        if self.tabs and 0 <= self.current_tab_index < len(self.tabs):
+            return self.tabs[self.current_tab_index]
+        return None
+
+    def _refresh_extension_shortcuts(self):
+        """Alt+Shift+1–9 for pinned extensions; extensions' own shortcuts."""
+        from PyQt6.QtGui import QShortcut
+
+        for shortcut in getattr(self, "_extension_shortcuts", []):
+            shortcut.setEnabled(False)
+            shortcut.deleteLater()
+        self._extension_shortcuts = []
+        name = self.profile_manager.current_profile_name
+        extensions = self.profile_manager.registry.extensions
+        if not extensions.available(name):
+            return
+        taken = {
+            action.shortcut().toString()
+            for action in self.findChildren(QAction)
+            if not action.shortcut().isEmpty()
+        }
+
+        def bind(keys, run):
+            sequence = QKeySequence(keys)
+            if sequence.isEmpty() or sequence.toString() in taken:
+                return
+            taken.add(sequence.toString())
+            shortcut = QShortcut(sequence, self)
+            shortcut.activated.connect(run)
+            self._extension_shortcuts.append(shortcut)
+
+        for index, entry in enumerate(extensions.pinned(name)[:9], start=1):
+            bind(f"Alt+Shift+{index}", lambda e=entry: self._open_pinned(e))
+        for entry in extensions.installed(name):
+            if not entry["enabled"]:
+                continue
+            for command, spec in entry["commands"].items():
+                keys = spec.get("suggested_key") if isinstance(spec, dict) else None
+                if isinstance(keys, dict):
+                    keys = keys.get("linux") or keys.get("default")
+                if not isinstance(keys, str):
+                    continue
+                keys = keys.replace("MacCtrl", "Meta").replace("Command", "Ctrl")
+                bind(
+                    keys,
+                    lambda e=entry, c=command: self._extension_command(e, c),
+                )
+
+    def _extension_command(self, entry, command):
+        if command == "_execute_action":
+            self.open_extension_popup(entry)
+            return
+        self.profile_manager.registry.extensions.bridges.command(
+            self.profile_manager.current_profile_name,
+            entry["id"],
+            command,
+            self._current_browser_tab(),
+        )
+
+    def _add_extension_menu_items(self, menu, tab, request):
+        """Extensions' context menu items for what was right-clicked."""
+        from extension_bridge import matches
+        from extensions import icon_from
+
+        name = self.profile_manager.current_profile_name
+        extensions = self.profile_manager.registry.extensions
+        if not extensions.available(name) or request is None:
+            return
+        page_url = tab.url().toString()
+        link = request.linkUrl().toString()
+        source = request.mediaUrl().toString()
+        selection = request.selectedText()
+        media = {
+            request.MediaType.MediaTypeImage: "image",
+            request.MediaType.MediaTypeVideo: "video",
+            request.MediaType.MediaTypeAudio: "audio",
+        }.get(request.mediaType(), "")
+        kinds = {"all"}
+        if selection:
+            kinds.add("selection")
+        if link:
+            kinds.add("link")
+        if media:
+            kinds.add(media)
+        if request.isContentEditable():
+            kinds.add("editable")
+        if kinds == {"all"}:
+            kinds.add("page")
+        context = {
+            "pageUrl": page_url,
+            "frameUrl": page_url,
+            "editable": request.isContentEditable(),
+        }
+        if link:
+            context["linkUrl"] = link
+        if source:
+            context["srcUrl"] = source
+            context["mediaType"] = media
+        if selection:
+            context["selectionText"] = selection
+        bridges = extensions.bridges
+
+        def shown(item):
+            if item.get("visible") is False:
+                return False
+            contexts = item.get("contexts") or ["page"]
+            if not kinds & set(contexts):
+                return False
+            pages = item.get("documentUrlPatterns")
+            if pages and not matches(pages, page_url):
+                return False
+            targets = item.get("targetUrlPatterns")
+            return not (targets and (link or source)) or matches(
+                targets, link or source
+            )
+
+        added = False
+        for entry in extensions.installed(name):
+            if not entry["enabled"]:
+                continue
+            items = [i for i in bridges.menus(name, entry["id"]) if shown(i)]
+            if not items:
+                continue
+            if not added:
+                menu.addSeparator()
+                added = True
+            top = [i for i in items if i.get("parentId") is None]
+            target = menu
+            if len(top) > 1:
+                target = menu.addMenu(entry["name"])
+                details = extensions.details(entry)
+                if details is not None:
+                    target.setIcon(icon_from(details["icon"]))
+            self._extension_menu_level(
+                target, items, None, entry, context, tab, selection
+            )
+
+    def _extension_menu_level(
+        self, menu, items, parent, entry, context, tab, selection
+    ):
+        name = self.profile_manager.current_profile_name
+        bridges = self.profile_manager.registry.extensions.bridges
+        for item in [i for i in items if i.get("parentId") == parent]:
+            if item.get("type") == "separator":
+                menu.addSeparator()
+                continue
+            title = str(item.get("title") or entry["name"]).replace("%s", selection)
+            children = [i for i in items if i.get("parentId") == item["id"]]
+            if children:
+                self._extension_menu_level(
+                    menu.addMenu(title),
+                    items,
+                    item["id"],
+                    entry,
+                    context,
+                    tab,
+                    selection,
+                )
+                continue
+            action = menu.addAction(title)
+            action.setEnabled(item.get("enabled") is not False)
+            if item.get("type") in ("checkbox", "radio"):
+                action.setCheckable(True)
+                action.setChecked(bool(item.get("checked")))
+            action.triggered.connect(
+                lambda _=False, i=item: bridges.click(
+                    name, entry["id"], i, context, tab
+                )
+            )
 
     def _refresh_extension_pins(self):
         from extensions import icon_from
+        from ui.extension_popup import badged
 
         extensions = self.profile_manager.registry.extensions
+        name = self.profile_manager.current_profile_name
+        tab = self._current_browser_tab()
         pins = []
-        for entry in extensions.pinned(self.profile_manager.current_profile_name):
+        for index, entry in enumerate(extensions.pinned(name), start=1):
             details = extensions.details(entry) or {}
+            badge = extensions.bridges.badge(name, entry["id"], tab)
+            title = badge.get("title") or entry["name"]
+            if index <= 9:
+                title += f" (Alt+Shift+{index})"
             pins.append(
                 (
-                    icon_from(details.get("icon")),
-                    entry["name"],
+                    badged(icon_from(details.get("icon")), badge),
+                    title,
                     lambda _=False, e=entry: self._open_pinned(e),
                 )
             )
@@ -2778,7 +2966,17 @@ class BrowserWindow(QMainWindow):
         )
 
     def open_extension_popup(self, entry, anchor=None):
+        """The extension's popup, or (without one) a click on its button."""
         from ui.extension_popup import ExtensionPopup
+
+        if not entry["popup"]:
+            self.profile_manager.registry.extensions.bridges.command(
+                self.profile_manager.current_profile_name,
+                entry["id"],
+                "_execute_action",
+                self._current_browser_tab(),
+            )
+            return None
 
         popup = ExtensionPopup(
             self.profile_manager.current_profile, entry["popup"], entry["name"], self
