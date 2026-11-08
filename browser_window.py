@@ -4837,9 +4837,10 @@ class BrowserWindow(QMainWindow):
 
     def _focus_changed(self, old, new):
         """Clicking into the other side makes it the current tab."""
-        if self._closing or sip.isdeleted(self) or new is None:
+        # Connected while the window is still being built.
+        if sip.isdeleted(self) or getattr(self, "_closing", True) or new is None:
             return
-        split = self.split_tab
+        split = getattr(self, "split_tab", None)
         if split is not None and split in self.tabs and split.isAncestorOf(new):
             self._switch_tab(self.tabs.index(split))
 
