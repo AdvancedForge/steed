@@ -9,6 +9,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Screenshots, translation, tab quick actions — November 7, 2026.**
+Full-page and visible-area screenshots (saved or copied; full page through
+Chromium's own capture); page translation through a LibreTranslate-compatible
+service you choose (text only, no cookies or address, reversible) or Google
+Translate's proxy; Copy Clean Link, Duplicate with History and Send Tab to
+Profile in the tab menu.
+
 **Media, address bar, previews, small text — November 7, 2026.** Media
 controls (toolbar play/pause/mute, a Mini Player that floats the playing tab,
 since Qt WebEngine disables picture-in-picture, and MPRIS for media keys and

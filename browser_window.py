@@ -3414,6 +3414,9 @@ class BrowserWindow(QMainWindow):
         menu.addAction("Reload", lambda: self._reload_tab(tab))
         menu.addAction("Duplicate", lambda: self._duplicate_tab(tab))
         menu.addAction(
+            "Duplicate with History", lambda: self.duplicate_with_history(tab)
+        ).setEnabled(not tab.workspace_name)
+        menu.addAction(
             "Unpin Tab" if tab.pinned else "Pin Tab",
             lambda: self._set_pinned(tab, not tab.pinned),
         )
@@ -3433,6 +3436,26 @@ class BrowserWindow(QMainWindow):
             lambda: QApplication.clipboard().setText(tab.url().toString()),
         )
         copy.setEnabled(not tab.workspace_name and not tab.url().isEmpty())
+        clean = menu.addAction("Copy Clean Link", lambda: self.copy_clean_link(tab))
+        clean.setEnabled(tab.url().scheme() in ("http", "https"))
+        destinations = [
+            name
+            for name in self.profile_manager.list_profiles()
+            if name != self.profile_manager.current_profile_name
+        ]
+        if self.profile_manager.current_profile_name != "search":
+            destinations.append("search")
+        send = menu.addMenu("Send Tab to Profile")
+        send.setEnabled(
+            bool(destinations)
+            and not tab.workspace_name
+            and tab.url().scheme() in ("http", "https")
+        )
+        for name in destinations:
+            send.addAction(
+                "Incognito window" if name == "search" else name,
+                lambda name=name: self.send_tab_to_profile(tab, name),
+            )
         movable = len(self.tabs) > 1
         menu.addAction(
             "Move Tab to New Window", lambda: self._move_tab(tab)
@@ -3781,6 +3804,60 @@ class BrowserWindow(QMainWindow):
                 self._reload()
             elif not tab.workspace_name:
                 tab.reload()
+
+    def copy_clean_link(self, tab):
+        from link_cleaning import clean_link
+
+        link = clean_link(tab.url().toString())
+        QApplication.clipboard().setText(link)
+        self.status_bar.showMessage(f"Copied {link}", 4000)
+        return link
+
+    def duplicate_with_history(self, tab):
+        """A copy of the tab whose Back and Forward lead where the original's do."""
+        from PyQt6.QtCore import QByteArray, QDataStream, QIODevice
+
+        if tab not in self.tabs or tab.workspace_name:
+            return None
+        data = QByteArray()
+        QDataStream(data, QIODevice.OpenModeFlag.WriteOnly) << tab.history()
+        copy = self._new_tab(
+            url="about:blank",
+            title=tab.title(),
+            index=self.tabs.index(tab) + 1,
+            return_tab=True,
+        )
+        if copy is None:
+            return None
+        QDataStream(data, QIODevice.OpenModeFlag.ReadOnly) >> copy.history()
+        if tab.group and copy in self.tabs:
+            self._set_tab_group_existing(self.tabs.index(copy), tab.group)
+        return copy
+
+    def send_tab_to_profile(self, tab, profile):
+        """Open the page in another profile (its own sign-ins), and close it here."""
+        if tab not in self.tabs or profile == self.profile_manager.current_profile_name:
+            return None
+        url, title = tab.url().toString(), tab.title()
+        target = next(
+            (
+                w
+                for w in QApplication.topLevelWidgets()
+                if isinstance(w, BrowserWindow)
+                and w is not self
+                and not w._closing
+                and w.profile_manager.current_profile_name == profile
+            ),
+            None,
+        )
+        if target is None:
+            target = self._open_window(profile)
+        opened = target._new_tab(url=url, title=title, return_tab=True)
+        target.raise_()
+        target.activateWindow()
+        if len(self.tabs) > 1:
+            self._close_tab_object(tab)
+        return opened
 
     def _duplicate_tab(self, tab):
         if tab not in self.tabs:
