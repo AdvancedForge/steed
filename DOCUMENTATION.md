@@ -534,7 +534,32 @@ Settings → General:
 
 The site menu's **Forget this site when its tabs close** deletes the site's
 cookies (it and its subdomains) when its last tab in the profile closes or
-moves to another site. Other site storage stays.
+moves to another site, along with everything else it stores.
+
+### Clearing browsing data
+
+**General → Clear Browsing Data…** (Ctrl+Shift+Delete) clears, for a time range
+(last hour, 24 hours, 7 days, 4 weeks or all time) and the current profile:
+browsing history, the download list (not the files), cookies and site data,
+cached images and files, recently closed tabs and the crash log. Cookies and
+site data for a range are those of the sites visited in it; for all time, of
+every site in history or with cookies. Site data means everything a site
+stores: cookies, local and session storage, IndexedDB, cache storage, service
+workers and file systems. The cache can only be cleared whole. History and
+downloads from before this version have no times, so only "All time" clears
+them. **Also clear these whenever this profile closes** clears the chosen
+kinds entirely each time the profile's last window closes (Steed waits up to
+five seconds for site data).
+
+The site menu's **Clear Data for This Site…** shows how much a site stores
+and clears its cookies and data (it and www., and the addresses you visited
+it at). **Forget this site when its tabs close** now clears its stored data
+too, not only its cookies.
+
+Steed asks Chromium for this through a hidden Developer Tools page (Storage
+clearDataForOrigin), without visiting the sites. It never sends an address
+Chromium could read as something wider: clearing the malformed origin
+`https://www.127.0.0.1` was measured to clear another site's storage too.
 
 ### Saving pages
 

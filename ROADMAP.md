@@ -9,6 +9,15 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Clearing options — November 8, 2026.** Clear Browsing Data with time
+ranges (history and downloads now keep times), per-site clearing with its
+size, forget-on-close clearing all site storage, and clearing on exit. Site
+storage is cleared through Chromium's Storage.clearDataForOrigin via a hidden
+DevTools page. Found while testing: a malformed origin (https://www.127.0.0.1)
+made Chromium clear another site's storage; Steed now never sends hosts
+Chromium could misread. Also fixed: recently closed tabs listed oldest first
+in tab search.
+
 **Extensions, browsing, privacy, saving, crashes — November 8, 2026.**
 Extensions: errors kept and shown, webNavigation events, tabs/windows opened
 or closed by backgrounds through Steed, options pages. Browsing: split view,
@@ -19,7 +28,7 @@ fingerprinting resistance. Saving: pages as MHTML, complete HTML or PDF;
 highlights and notes in reader view; the reading list as an EPUB. Crashed
 tabs show a panel with Reload, and a crash log keeps time, host and reason.
 Open: a desktop check of split view and of fingerprinting resistance on real
-sites; clearing site storage (not only cookies) when forgetting a site.
+sites.
 
 **Open problems fixed — November 8, 2026.** The crash at exit: PyQt deletes
 leftover parentless objects (closed windows, singletons) while walking its

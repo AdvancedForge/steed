@@ -1,6 +1,7 @@
 """Shared download lifetime and bounded persistent history."""
 
 import logging
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -26,6 +27,8 @@ class DownloadRecord:
     paused: bool = False
     # Where it came from, so a failed download can be tried again.
     url: str = ""
+    # When it started (0: before Steed kept times).
+    started: float = 0.0
 
 
 RETRYABLE = ("DownloadInterrupted", "Interrupted", "DownloadCancelled")
@@ -105,7 +108,12 @@ class DownloadManager(QObject):
         request.setDownloadFileName(Path(path).name)
         key = uuid4().hex
         record = DownloadRecord(
-            key, Path(path).name, path, profile, url=request.url().toString()
+            key,
+            Path(path).name,
+            path,
+            profile,
+            url=request.url().toString(),
+            started=time.time(),
         )
         self.records[key] = record
         self.requests[key] = request
@@ -222,6 +230,22 @@ class DownloadManager(QObject):
     def cancel_active(self):
         for key in self.active():
             self.control(key, "cancel")
+
+    def forget_since(self, since: float, profile=None) -> int:
+        """Drop finished downloads (not their files) started since; how many."""
+        gone = [
+            key
+            for key, record in self.records.items()
+            if key not in self.requests
+            and (profile is None or record.profile == profile)
+            and (since <= 0 or record.started >= since)
+        ]
+        for key in gone:
+            self.records.pop(key)
+        if gone:
+            self.save()
+            self.changed.emit()
+        return len(gone)
 
     def save(self):
         records = [

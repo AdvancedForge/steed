@@ -1,6 +1,7 @@
 """Bounded, profile-local browsing history for address suggestions."""
 
 import logging
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -16,6 +17,8 @@ HISTORY_LIMIT = 1000
 class HistoryEntry:
     url: str
     title: str
+    # When it was last visited (0: before Steed kept times).
+    time: float = 0.0
 
 
 class BrowsingHistory(QObject):
@@ -39,12 +42,14 @@ class BrowsingHistory(QObject):
             for item in reversed(raw[:limit]):
                 if not isinstance(item, dict):
                     continue
-                entry = self._entry(item.get("url"), item.get("title", ""))
+                entry = self._entry(
+                    item.get("url"), item.get("title", ""), item.get("time", 0.0)
+                )
                 if entry is not None:
                     self._entries[entry.url] = entry
 
     @staticmethod
-    def _entry(url_text, title) -> HistoryEntry | None:
+    def _entry(url_text, title, when=0.0) -> HistoryEntry | None:
         if not isinstance(url_text, str):
             return None
         url = QUrl(url_text)
@@ -57,7 +62,8 @@ class BrowsingHistory(QObject):
         ):
             return None
         title = " ".join(title.split())[:200] if isinstance(title, str) else ""
-        return HistoryEntry(url.toString(), title or url.host())
+        when = float(when) if isinstance(when, (int, float)) else 0.0
+        return HistoryEntry(url.toString(), title or url.host(), when)
 
     def entries(self) -> list[HistoryEntry]:
         return list(reversed(self._entries.values()))
@@ -65,11 +71,12 @@ class BrowsingHistory(QObject):
     def record(self, url: str, title: str = "") -> None:
         if self._closed:
             return
-        entry = self._entry(url, title)
+        entry = self._entry(url, title, time.time())
         if entry is None:
             return
         if self._entries and next(reversed(self._entries)) == entry.url:
-            if self._entries[entry.url] == entry:
+            last = self._entries[entry.url]
+            if (last.url, last.title) == (entry.url, entry.title):
                 return
         self._entries.pop(entry.url, None)
         self._entries[entry.url] = entry
@@ -83,6 +90,18 @@ class BrowsingHistory(QObject):
         self._entries.clear()
         self._changed()
         self.flush()
+
+    def remove_since(self, since: float) -> list[str]:
+        """Forget pages visited at or after since (0: everything); their URLs."""
+        if self._closed:
+            return []
+        gone = [u for u, e in self._entries.items() if since <= 0 or e.time >= since]
+        for url in gone:
+            del self._entries[url]
+        if gone:
+            self._changed()
+            self.flush()
+        return gone
 
     def _changed(self) -> None:
         if self.path is not None:

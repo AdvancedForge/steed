@@ -586,6 +586,10 @@ class BrowserWindow(QMainWindow):
         general_menu.addAction(import_action)
         self.extensions_menu = general_menu.addMenu("Extensions")
         self.extensions_menu.aboutToShow.connect(self._fill_extensions_menu)
+        clear_action = QAction("Clear Browsing Data…", self)
+        clear_action.setShortcut(QKeySequence("Ctrl+Shift+Delete"))
+        clear_action.triggered.connect(self._open_clear_data)
+        general_menu.addAction(clear_action)
         crash_action = QAction("Crash Log…", self)
         crash_action.triggered.connect(self._open_crash_log)
         general_menu.addAction(crash_action)
@@ -3166,6 +3170,9 @@ class BrowserWindow(QMainWindow):
             action.triggered.connect(
                 lambda _=False, name=name: self.set_site_profile(host, name)
             )
+        menu.addAction("Clear Data for This Site…").triggered.connect(
+            lambda: self.clear_site_data(host)
+        )
         forget = menu.addAction("Forget this site when its tabs close")
         forget.setCheckable(True)
         forget.setChecked(values["forget"] == "forget")
@@ -3614,6 +3621,186 @@ class BrowserWindow(QMainWindow):
             error,
         )
 
+    # -- clearing browsing data
+
+    CLEAR_KINDS = {
+        "history": "Browsing history",
+        "downloads": "Download list (not the files)",
+        "cookies": "Cookies and site data",
+        "cache": "Cached images and files",
+        "closed": "Recently closed tabs",
+        "crashes": "Crash log",
+    }
+
+    def clear_browsing_data(self, since, kinds, done=None):
+        """Clear kinds of this profile's data from since on (0: all of it).
+
+        Cookies and site data for a time range are those of the sites visited
+        in it; for all time, of every site in history or with cookies. The
+        cache can only be cleared whole. done(summary) is called at the end."""
+        import crash_log
+        import site_data
+
+        name = self.profile_manager.current_profile_name
+        profile = self.profile_manager.current_profile
+        done = done or (lambda summary: self.status_bar.showMessage(summary, 8000))
+        if name == "search":
+            done("Incognito windows keep nothing to clear.")
+            return None
+        cleared = []
+        entries = self.history.entries() if self.history is not None else []
+        recent = {QUrl(e.url).host() for e in entries if since <= 0 or e.time >= since}
+        if "history" in kinds and self.history is not None:
+            gone = self.history.remove_since(since)
+            cleared.append(f"{len(gone)} page(s) of history")
+        if "downloads" in kinds:
+            count = self.download_manager.forget_since(since, name)
+            cleared.append(f"{count} download(s) from the list")
+        if "closed" in kinds:
+            self.closed_tabs.clear(name)
+            cleared.append("recently closed tabs")
+        if "crashes" in kinds:
+            crash_log.clear(self.config.config_dir)
+            cleared.append("the crash log")
+        if "cache" in kinds:
+            profile.clearHttpCache()
+            cleared.append("the cache")
+        if "cookies" not in kinds:
+            done(
+                "Cleared " + ", ".join(cleared) + "."
+                if cleared
+                else "Nothing to clear."
+            )
+            return None
+        hosts = set(recent)
+        if self.cookie_manager is None and since <= 0:
+            profile.cookieStore().deleteAllCookies()
+        if self.cookie_manager is not None:
+            if since <= 0:
+                hosts |= {
+                    c.domain.lstrip(".") for c in self.cookie_manager.get_all_cookies()
+                }
+                self.cookie_manager.clear_all_cookies()
+            else:
+                for host in recent:
+                    self.cookie_manager.delete_cookies_for_domain(host)
+        origins = site_data.origins_for(hosts) + self._origins_seen(
+            lambda host: host in hosts
+        )
+        job = site_data.SiteDataJob(profile, origins, clear=True, parent=self)
+        sites = len(hosts)
+
+        def finished(_usage, errors):
+            cleared.append(f"cookies and data of {sites} site(s)")
+            done(
+                "Cleared "
+                + ", ".join(cleared)
+                + "."
+                + (f" {len(errors)} site(s) could not be cleared." if errors else "")
+            )
+            job.deleteLater()
+
+        job.finished.connect(finished)
+        job.failed.connect(lambda text: (done(text), job.deleteLater()))
+        job.start()
+        return job
+
+    def _origins_seen(self, wanted):
+        """Exact origins (with ports) of history and open tabs on hosts
+        wanted(host) accepts, besides the plain http/https ones of a host."""
+        urls = [QUrl(e.url) for e in (self.history.entries() if self.history else [])]
+        for window in [self, *self._same_profile_windows()]:
+            urls += [tab.url() for tab in window.tabs]
+        origins = []
+        for url in urls:
+            if url.scheme() in ("http", "https") and wanted(url.host()):
+                origin = f"{url.scheme()}://{url.host()}" + (
+                    f":{url.port()}" if url.port() != -1 else ""
+                )
+                if origin not in origins:
+                    origins.append(origin)
+        return origins
+
+    def _open_clear_data(self):
+        from ui.clear_data_dialog import ClearDataDialog
+
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage(
+                "Incognito windows keep nothing to clear.", 5000
+            )
+            return None
+        dialog = ClearDataDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
+
+    def clear_site_data(self, host, ask=True):
+        """Everything one site stores (asking first, with how much)."""
+        import privacy
+        import site_data
+
+        site = privacy.site_of(host)
+        profile = self.profile_manager.current_profile
+        origins = site_data.origins_for([site]) + self._origins_seen(
+            lambda other: privacy.site_of(other) == site
+        )
+        measure = site_data.SiteDataJob(profile, origins, parent=self)
+
+        def measured(usage, _errors):
+            measure.deleteLater()
+            size = site_data.human_size(sum(usage.values()))
+            if ask:
+                reply = QMessageBox.question(
+                    self,
+                    "Clear Site Data",
+                    f"{site} stores {size} here, besides its cookies. Clear its "
+                    "cookies and stored data? You will be signed out of it.",
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+            if self.cookie_manager is not None:
+                self.cookie_manager.delete_cookies_for_domain(site)
+            clear = site_data.SiteDataJob(profile, origins, clear=True, parent=self)
+            clear.finished.connect(
+                lambda _u, _e: (
+                    self.status_bar.showMessage(f"Cleared {site} ({size}).", 6000),
+                    clear.deleteLater(),
+                )
+            )
+            clear.start()
+
+        measure.finished.connect(measured)
+        measure.failed.connect(lambda text: self.status_bar.showMessage(text, 6000))
+        measure.start()
+        return measure
+
+    def _clear_on_exit(self):
+        """Settings chose kinds to clear when Steed closes: clear them now,
+        waiting briefly for site data (the profile goes next)."""
+        from PyQt6.QtCore import QEventLoop
+
+        chosen = self.config.get("clear_on_exit", []) or []
+        kinds = [k for k in chosen if k in self.CLEAR_KINDS]
+        if not kinds or self.profile_manager.current_profile_name == "search":
+            return
+        others = [
+            owner
+            for owner in self.profile_manager.registry.owners
+            if owner is not self.profile_manager
+            and owner.current_profile_name == self.profile_manager.current_profile_name
+        ]
+        if others:
+            return  # Another window of this profile is still open.
+        loop = QEventLoop()
+        finished = []
+        job = self.clear_browsing_data(
+            0, kinds, lambda summary: (finished.append(summary), loop.quit())
+        )
+        if job is not None and not finished:
+            QTimer.singleShot(5000, loop.quit)
+            loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+            if not finished:
+                job.dispose()
+
     def _site_left(self, host, closing=False):
         """A site set to be forgotten has no tabs left: delete its cookies."""
         import privacy
@@ -3635,10 +3822,23 @@ class BrowserWindow(QMainWindow):
                 if privacy.site_of(other.url().host()) == site:
                     return
         self.cookie_manager.delete_cookies_for_domain(site)
-        if not closing:
-            self.status_bar.showMessage(
-                f"Forgot {site}: its cookies are deleted.", 5000
-            )
+        if closing:
+            return  # The window is going: cookies only, at once.
+        import site_data
+
+        job = site_data.SiteDataJob(
+            self.profile_manager.current_profile,
+            site_data.origins_for([site])
+            + self._origins_seen(lambda other: privacy.site_of(other) == site),
+            clear=True,
+            parent=self,
+        )
+        job.finished.connect(lambda *_: job.deleteLater())
+        job.failed.connect(lambda *_: job.deleteLater())
+        job.start()
+        self.status_bar.showMessage(
+            f"Forgot {site}: its cookies and data are cleared.", 5000
+        )
 
     def _tab_crashed(self, tab, status, code):
         """A page process ended: say so over the tab, and log it."""
@@ -4637,9 +4837,10 @@ class BrowserWindow(QMainWindow):
 
     def _focus_changed(self, old, new):
         """Clicking into the other side makes it the current tab."""
-        if self._closing or sip.isdeleted(self) or new is None:
+        # Connected while the window is still being built.
+        if sip.isdeleted(self) or getattr(self, "_closing", True) or new is None:
             return
-        split = self.split_tab
+        split = getattr(self, "split_tab", None)
         if split is not None and split in self.tabs and split.isAncestorOf(new):
             self._switch_tab(self.tabs.index(split))
 
@@ -5259,6 +5460,7 @@ class BrowserWindow(QMainWindow):
 
         for host in {tab.url().host() for tab in self.tabs}:
             self._site_left(host, closing=True)
+        self._clear_on_exit()
         if self.cookie_manager is not None:
             self.cookie_manager.close()
             self.cookie_manager = None
@@ -5287,6 +5489,13 @@ class BrowserWindow(QMainWindow):
             popup.close()
         for page in self.findChildren(PopupPage):
             sip.delete(page)
+        # Clearing jobs still running (or awaiting deletion) likewise.
+        from site_data import SiteDataJob
+
+        for job in self.findChildren(SiteDataJob):
+            job.dispose()
+            for page in job.findChildren(QWebEnginePage):
+                sip.delete(page)
         self.profile_manager.close()
 
         event.accept()
