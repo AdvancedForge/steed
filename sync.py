@@ -13,8 +13,8 @@ others. On a computer's first sync its items count as oldest, so they never
 overwrite newer changes made elsewhere. Markers older than 90 days are dropped.
 
 Profiles sync by name, between profiles that exist on both computers; incognito
-never syncs. Passwords sync only with a sync passphrase: each profile's logins
-are sealed with a key stretched from it (Argon2id, then XSalsa20-Poly1305), so
+never syncs. Passwords and passkeys sync only with a sync passphrase: each
+profile's logins and passkeys are sealed with a key stretched from it (Argon2id, then XSalsa20-Poly1305), so
 the folder holds no readable password, and a computer syncs them only while
 that profile's vault is unlocked.
 """
@@ -152,6 +152,15 @@ def _login(data):
         **{name: data[name] for name in names},
         **{n: float(data[n]) for n in ("created", "updated")},
     }
+
+
+def _passkey(data):
+    from password_vault import _passkey as clean
+
+    record = clean({**data, "last_used": 0.0}) if isinstance(data, dict) else None
+    if record is not None:
+        record.pop("last_used")  # Each computer keeps its own.
+    return record
 
 
 class Collection:
@@ -327,6 +336,22 @@ def unseal(key, sealed):
     return records if isinstance(records, dict) else None
 
 
+def _logins_of(vault):
+    return Collection(
+        vault.synced_logins,
+        lambda found: vault.replace_synced(list(found.values())),
+        _login,
+    )
+
+
+def _passkeys_of(vault):
+    return Collection(
+        vault.synced_passkeys,
+        lambda found: vault.replace_synced_passkeys(list(found.values())),
+        _passkey,
+    )
+
+
 # ----------------------------------------------------------------- one sync
 
 
@@ -408,26 +433,25 @@ def sync_folder(folder, device, name, sources, *, key=None, now=None):
                 f"{profile}: {kind}", collection, mine_all.get(kind), theirs
             )
         vault = sources.get("vaults", {}).get(profile)
-        sealed = mine_all.get("passwords")
-        if key is None or vault is None or not vault.unlocked:
-            if isinstance(sealed, str):
-                section["passwords"] = sealed  # Carried until it can be opened.
-            continue
-        mine = unseal(key, sealed) if isinstance(sealed, str) else None
-        theirs = []
-        for dev, s in theirs_all:
-            if isinstance(s.get("passwords"), str):
-                opened = unseal(key, s["passwords"])
-                if opened is not None:
-                    theirs.append((dev, opened))
-        logins = Collection(
-            vault.synced_logins,
-            lambda found, vault=vault: vault.replace_synced(list(found.values())),
-            _login,
-        )
-        merged = one(f"{profile}: passwords", logins, mine, theirs)
-        # Sealing again would differ (a new nonce); keep it while unchanged.
-        section["passwords"] = sealed if merged == mine else seal(key, merged)
+        for kind, collection in (
+            ("passwords", _logins_of),
+            ("passkeys", _passkeys_of),
+        ):
+            sealed = mine_all.get(kind)
+            if key is None or vault is None or not vault.unlocked:
+                if isinstance(sealed, str):
+                    section[kind] = sealed  # Carried until it can be opened.
+                continue
+            mine = unseal(key, sealed) if isinstance(sealed, str) else None
+            theirs = []
+            for dev, s in theirs_all:
+                if isinstance(s.get(kind), str):
+                    opened = unseal(key, s[kind])
+                    if opened is not None:
+                        theirs.append((dev, opened))
+            merged = one(f"{profile}: {kind}", collection(vault), mine, theirs)
+            # Sealing again would differ (a new nonce); keep it while unchanged.
+            section[kind] = sealed if merged == mine else seal(key, merged)
     if {**out, "written": None} != {**previous, "written": None}:
         save_json(own_path, out)
     return {"changed": changed, "devices": [d.get("name", "") for d in others]}

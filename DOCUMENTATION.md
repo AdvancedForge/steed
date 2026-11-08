@@ -592,15 +592,19 @@ Scripts Steed injects for an extension (`executeScript` and registered
 content scripts, outside `world: "MAIN"`) get a small `chrome` object:
 `runtime.id`, `getURL`, `getManifest`, `runtime.sendMessage` to the extension's
 background (which sees `sender.tab`, `sender.url` and `frameId` as in Chrome)
-and `chrome.storage` (local, sync, session). They reach Steed through the
-page's console with a token only that script world holds, so the page cannot
-pose as the extension. They cannot receive `runtime.onMessage` yet.
+and `chrome.storage` (local, sync, session); `runtime.onMessage` receives
+`tabs.sendMessage` (along with the extension's content script there; the first
+answer from a listener wins). They reach Steed through the page's console with
+a token only that script world holds, so the page cannot pose as the
+extension.
 
 These reach Steed through a hidden page of each extension
 (`steed-bridge.html`, added when Steed installs it), which talks to the
 extension's background and to Steed. Steed matches the stand-ins' tab ids to
-its own tabs by address, title and which one is showing, so two tabs showing
-the same page can be confused.
+its own tabs by the document's start time (`performance.timeOrigin`, the same
+in every script world of a page), so two tabs showing the same page stay
+apart; before a page has finished loading it falls back to address and
+title.
 
 Tested with real store extensions: Dark Reader darkens pages; uBlock Origin
 Lite starts and its popup works, but cannot block, because Qt WebEngine does
@@ -912,9 +916,14 @@ script stands in for `navigator.credentials` and passes requests to Steed with
 a token the page cannot read; iframes keep the engine's own WebAuthn (security
 keys). **Use a Security Key** passes a request to the engine. steed:passwords
 lists passkeys (Delete removes one; the site then needs another way in), and
-**Keep passkeys in Steed** switches them off. Not yet: passkeys in the address
-bar's autofill ("conditional" requests go to the engine), syncing passkeys
-between computers, or using them from another device by QR code.
+**Keep passkeys in Steed** switches them off. When a sign-in page asks quietly
+for a passkey (WebAuthn "conditional" requests, which Chrome answers from the
+username field's autofill), Steed shows a bar, **Sign in to example.com with a
+saved passkey?**; **Choose…** lists your accounts, and the bar goes when you
+switch tabs, the page moves on or the site cancels. Passkeys sync with your
+other computers along with passwords (General → Sync…, with the sync
+passphrase), sealed in the sync folder. Not possible here: using a passkey from
+a phone by QR code (that needs Bluetooth and Google's relay).
 
 ### Password Checkup
 

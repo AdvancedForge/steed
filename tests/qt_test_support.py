@@ -4,7 +4,7 @@ import atexit
 import os
 
 from PyQt6 import sip
-from PyQt6.QtCore import QCoreApplication, QEvent, Qt
+from PyQt6.QtCore import QCoreApplication, Qt
 from PyQt6.QtWidgets import QApplication
 
 from webengine import prepare_engine_environment
@@ -38,7 +38,9 @@ def keep_directory(directory):
 def shutdown():
     global _application
     if _application is not None and not sip.isdeleted(_application):
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        from qt_cleanup import release_leftovers
+
+        release_leftovers(_application)
         sip.delete(_application)
     _application = None
     for directory in _directories:

@@ -211,6 +211,41 @@ class PasswordTests(unittest.TestCase):
         self.assertEqual(c.logins(), [])
 
 
+class PasskeySyncTests(PasswordTests):
+    def test_passkeys_travel_sealed_and_keep_their_local_use(self):
+        import passkeys
+
+        key = sync.passphrase_key(self.folder, "correct horse", *FAST)
+        a, b = self.vault("a"), self.vault("b")
+        record, _ = passkeys.register(
+            {"challenge": "AQ", "user": {"id": "AQ", "name": "ana-synthetic"}},
+            "https://example.com",
+            "example.com",
+        )
+        a.save_passkey(record)
+        a.touch_passkey(record["id"])
+        self.run_sync("a" * 32, a, key, 100)
+        self.run_sync("b" * 32, b, key, 101)
+        (copied,) = b.passkeys()
+        self.assertEqual(copied["key"], record["key"])
+        self.assertEqual(copied["user_name"], "ana-synthetic")
+        self.assertEqual(copied["last_used"], 0.0)  # Used on a, not here.
+        for path in (self.folder / "steed-sync").iterdir():
+            text = path.read_text()
+            self.assertNotIn(record["key"], text)
+            self.assertNotIn("ana-synthetic", text)
+        # Using it here changes nothing to sync; deleting it does.
+        own = self.folder / "steed-sync" / f"device-{'b' * 32}.json"
+        before = own.read_text()
+        b.touch_passkey(record["id"])
+        self.run_sync("b" * 32, b, key, 200)
+        self.assertEqual(own.read_text(), before)
+        b.delete_passkey(record["id"])
+        self.run_sync("b" * 32, b, key, 300)
+        self.run_sync("a" * 32, a, key, 301)
+        self.assertEqual(a.passkeys(), [])
+
+
 class WindowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

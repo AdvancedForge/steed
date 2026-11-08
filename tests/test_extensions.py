@@ -904,6 +904,18 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
           },
         })
         .then((results) => ({ ...results[0].result, tab: sender.tab.id })),
+    listen: () =>
+      chrome.scripting
+        .executeScript({
+          target,
+          func: () => {
+            chrome.runtime.onMessage.addListener((message, from, respond) => {
+              if (message === "toworld") respond("world heard " + from.id.length);
+            });
+            return true;
+          },
+        })
+        .then(() => chrome.tabs.sendMessage(sender.tab.id, "toworld")),
     register: () =>
       chrome.scripting
         .registerContentScripts([{ id: "reg", matches: ["http://127.0.0.1/*"], js: ["reg.js"], runAt: "document_end" }])
@@ -1045,6 +1057,9 @@ class BridgeTests(WindowBase):
         self.assertEqual(world["url"], f"chrome-extension://{entry['id']}/x.html")
         # As in Chrome, getManifest() gives the manifest as written.
         self.assertEqual(world["name"], "__MSG_appName__")
+        # ...and receives tabs.sendMessage, ahead of the content script, which
+        # has no listener for it.
+        self.assertEqual(ask("listen"), "world heard 32")
         # The page cannot pose as the extension's world without its token.
         asked = dict(bridges.world_asks)
         webengine.run_script(

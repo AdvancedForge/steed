@@ -107,13 +107,16 @@
   };
   // Hand a message to runtime.onMessage listeners, like Chrome: the first
   // answer wins; returning true or a promise means it comes later.
+  // reply(response, handled): handled is false when nothing was listening,
+  // so another receiver's answer can still win.
   const deliverTo = (listeners, message, sender, reply) => {
+    listeners = [...listeners];
     let answered = false;
     let waiting = false;
     const respond = (response) => {
       if (!answered) {
         answered = true;
-        reply(response);
+        reply(response, listeners.length > 0);
       }
     };
     for (const listener of listeners) {
@@ -309,6 +312,9 @@
       visible: document.visibilityState === "visible",
       focused: document.hasFocus(),
       status: document.readyState === "complete" ? "complete" : "loading",
+      // The same in every script world of this document: Steed matches its
+      // tab by it.
+      started: performance.timeOrigin,
     });
     let port = null;
     const send = (message) => {
@@ -327,7 +333,9 @@
       }
       port.onMessage.addListener((message) => {
         if (message.type === "message") {
-          deliver(message.message, (response) => send({ type: "response", ask: message.ask, response }));
+          deliver(message.message, (response, handled) =>
+            send({ type: "response", ask: message.ask, response, handled }),
+          );
         } else if (message.type === "navigate") {
           location.href = message.url;
         } else if (message.type === "reload") {
@@ -598,16 +606,32 @@
         if (!tab) throw new Error(`No tab with id: ${id}.`);
         return tab;
       },
+      // To the tab's content script and, through Steed, to scripts injected
+      // there: the first answer from a listener wins, as in Chrome.
       sendMessage: ([id, message]) =>
         new Promise((resolve, reject) => {
           const known = tabs.get(id);
-          if (!known) {
-            reject(new Error("Could not establish connection. Receiving end does not exist."));
+          const nowhere = () => new Error("Could not establish connection. Receiving end does not exist.");
+          let left = (known ? 1 : 0) + (bridge ? 1 : 0);
+          if (!left) {
+            reject(nowhere());
             return;
           }
           const ask = ++asks;
-          answers.set(ask, resolve);
-          known.port.postMessage({ type: "message", ask, message });
+          let heard = false;
+          answers.set(ask, (response, handled) => {
+            if (!answers.has(ask)) return;
+            heard = heard || handled;
+            if (handled) {
+              answers.delete(ask);
+              resolve(response);
+            } else if (--left === 0) {
+              answers.delete(ask);
+              heard || known ? resolve(undefined) : reject(nowhere());
+            }
+          });
+          if (known) known.port.postMessage({ type: "message", ask, message });
+          if (bridge) toSteed({ type: "toWorld", ask, tabId: id, message });
         }),
       update: ([id, props]) => {
         if (typeof id === "object") [id, props] = [focused, id];
@@ -631,9 +655,7 @@
       let id = null;
       port.onMessage.addListener((message) => {
         if (message.type === "response") {
-          const resolve = answers.get(message.ask);
-          answers.delete(message.ask);
-          resolve && resolve(message.response);
+          answers.get(message.ask)?.(message.response, message.handled !== false);
           return;
         }
         const tab = message.tab;
@@ -790,6 +812,8 @@
         chrome.commands.onCommand.dispatch(message.name, tabFor(message.tabId));
       } else if (message.type === "actionClicked") {
         chrome.action.onClicked.dispatch(tabFor(message.tabId));
+      } else if (message.type === "worldReply") {
+        answers.get(message.ask)?.(message.response, Boolean(message.handled));
       } else if (message.type === "worldMessage") {
         // From a script Steed injected for this extension (see extension_bridge).
         const tab = tabFor(message.tabId);
