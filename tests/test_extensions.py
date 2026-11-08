@@ -94,42 +94,41 @@ class RestartTests(Waiting, unittest.TestCase):
         cls.app = application()
 
     def test_switched_on_extensions_are_switched_on_again_after_a_restart(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = write_extension(root / "source")
+        temporary = tempfile.TemporaryDirectory()
+        keep_directory(temporary)  # The engine may still be writing there.
+        root = Path(temporary.name)
+        source = write_extension(root / "source")
 
-            def start():
-                profile = webengine.stored_profile(
-                    "restart-test",
-                    None,
-                    storage=root / "storage",
-                    cache=root / "cache",
-                    keep_session_cookies=False,
-                )
-                extensions = Extensions()
-                extensions.attach("p", profile, root)
-                return profile, extensions
+        def start():
+            profile = webengine.stored_profile(
+                "restart-test",
+                None,
+                storage=root / "storage",
+                cache=root / "cache",
+                keep_session_cookies=False,
+            )
+            extensions = Extensions()
+            extensions.attach("p", profile, root)
+            return profile, extensions
 
-            profile, extensions = start()
-            extensions.install("p", source)
+        profile, extensions = start()
+        extensions.install("p", source)
+        self.wait(lambda: [e["enabled"] for e in extensions.installed("p")] == [True])
+        sip.delete(extensions)
+        sip.delete(profile)
+        profile, extensions = start()
+        try:
             self.wait(
                 lambda: [e["enabled"] for e in extensions.installed("p")] == [True]
             )
+            (entry,) = extensions.installed("p")
+            extensions.set_enabled("p", entry["id"], False)
+            self.assertEqual(
+                json.loads((root / "extensions.json").read_text()), {"enabled": []}
+            )
+        finally:
             sip.delete(extensions)
             sip.delete(profile)
-            profile, extensions = start()
-            try:
-                self.wait(
-                    lambda: [e["enabled"] for e in extensions.installed("p")] == [True]
-                )
-                (entry,) = extensions.installed("p")
-                extensions.set_enabled("p", entry["id"], False)
-                self.assertEqual(
-                    json.loads((root / "extensions.json").read_text()), {"enabled": []}
-                )
-            finally:
-                sip.delete(extensions)
-                sip.delete(profile)
 
 
 class WindowTests(Waiting, unittest.TestCase):
