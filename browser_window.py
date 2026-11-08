@@ -222,6 +222,7 @@ class BrowserTab(QWebEngineView):
         self.pinned = False
         self.native_panel = None
         self.reader_panel = None
+        self.crash_panel = None
         self.workspace_name = None
         self.workspace_controller = None
         self.load_progress = 100
@@ -298,6 +299,8 @@ class BrowserTab(QWebEngineView):
             self.native_panel.setGeometry(self.rect())
         if self.reader_panel is not None:
             self.reader_panel.setGeometry(self.rect())
+        if self.crash_panel is not None:
+            self.crash_panel.setGeometry(self.rect())
 
 
 # One-time tokens for tabs being dragged out of a strip: token -> (window, tab).
@@ -572,6 +575,9 @@ class BrowserWindow(QMainWindow):
         general_menu.addAction(import_action)
         self.extensions_menu = general_menu.addMenu("Extensions")
         self.extensions_menu.aboutToShow.connect(self._fill_extensions_menu)
+        crash_action = QAction("Crash Log…", self)
+        crash_action.triggered.connect(self._open_crash_log)
+        general_menu.addAction(crash_action)
         sync_action = QAction("Sync…", self)
         sync_action.triggered.connect(self._open_sync)
         general_menu.addAction(sync_action)
@@ -3460,10 +3466,54 @@ class BrowserWindow(QMainWindow):
     def _on_load_started(self, tab):
         tab.is_loading = True
         tab.load_progress = 0
+        self._clear_crash_panel(tab)
         if not self._closing and tab in self.tabs:
             self.tab_bar.set_tab_state(self.tabs.index(tab), loading=True)
         if not self._closing and self.tabs and tab == self.tabs[self.current_tab_index]:
             self._update_loading_indicator()
+
+    def _tab_crashed(self, tab, status, code):
+        """A page process ended: say so over the tab, and log it."""
+        import crash_log
+        from ui.crash_panel import CrashPanel
+
+        kind = QWebEnginePage.RenderProcessTerminationStatus
+        reason = {
+            kind.AbnormalTerminationStatus: "abnormal",
+            kind.CrashedTerminationStatus: "crashed",
+            kind.KilledTerminationStatus: "killed",
+        }.get(status)
+        if (
+            reason is None
+            or self._closing
+            or sip.isdeleted(tab)
+            or tab not in self.tabs
+        ):
+            return  # A normal end (the page closed): nothing went wrong.
+        private = self.profile_manager.current_profile_name == "search"
+        crash_log.record(
+            self.config.config_dir,
+            "incognito" if private else tab.url().host(),
+            reason,
+            code,
+        )
+        if tab.crash_panel is None:
+            tab.crash_panel = CrashPanel(self, tab, reason)
+            tab.crash_panel.show()
+            tab.crash_panel.raise_()
+        self.status_bar.showMessage("A tab crashed; Reload brings it back.", 8000)
+
+    def _clear_crash_panel(self, tab):
+        if getattr(tab, "crash_panel", None) is not None:
+            tab.crash_panel.deleteLater()
+            tab.crash_panel = None
+
+    def _open_crash_log(self):
+        from ui.crash_panel import CrashLogDialog
+
+        dialog = CrashLogDialog(self.config.config_dir, self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
 
     def _on_load_finished(self, tab: BrowserTab, ok: bool):
         if self._closing or tab not in self.tabs:
@@ -4143,6 +4193,9 @@ class BrowserWindow(QMainWindow):
         tab.page().recentlyAudibleChanged.connect(lambda _: self._on_tab_audio(tab))
         tab.page().lifecycleStateChanged.connect(lambda _: self._on_tab_lifecycle(tab))
         tab.page().webAuthUxRequested.connect(self._security_key)
+        tab.page().renderProcessTerminated.connect(
+            lambda status, code: self._tab_crashed(tab, status, code)
+        )
         tab.page().audioMutedChanged.connect(lambda _: self._on_tab_audio(tab))
         if hasattr(tab.page(), "zoomFactorChanged"):
             tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
