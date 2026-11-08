@@ -38,7 +38,9 @@ class NavigationService(QObject):
         internal = internal_url(text)
         if internal is not None:
             return internal
-        if text.startswith(("http://", "https://", "file://", "about:")):
+        if text.startswith(
+            ("http://", "https://", "file://", "about:", "chrome-extension://")
+        ):
             return QUrl(text)
         if " " not in text and ("." in text or text.startswith(("localhost", "["))):
             scheme = (

@@ -1,5 +1,7 @@
 """General → Extensions → Manage Extensions…: add, switch on or off, remove."""
 
+import time
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -52,6 +54,8 @@ class ExtensionsDialog(HtmlSettingsDialog):
                 ("Switch Off", self.toggle),
                 ("Pin to Toolbar", self.toggle_pin),
                 ("Site Access…", self.site_access),
+                ("Options", self.options),
+                ("Errors…", self.show_errors),
                 ("Remove", self.remove),
                 ("Check for Updates", self.check_updates),
                 ("Update…", self.update),
@@ -121,6 +125,16 @@ class ExtensionsDialog(HtmlSettingsDialog):
             "Unpin" if entry and entry["pinned"] else "Pin to Toolbar"
         )
         self.buttons["Update…"].setVisible(bool(entry and entry["update"]))
+        self.buttons["Options"].setEnabled(bool(entry and entry.get("options")))
+        errors = (
+            self.extensions.bridges.recent_errors(self.profile, entry["id"])
+            if entry
+            else []
+        )
+        self.buttons["Errors…"].setEnabled(bool(errors))
+        self.buttons["Errors…"].setText(
+            f"Errors ({len(errors)})…" if errors else "Errors…"
+        )
         if entry is None:
             self.about.clear()
             return
@@ -213,6 +227,35 @@ class ExtensionsDialog(HtmlSettingsDialog):
         if confirm(self.window, inspect(waiting)):
             self.extensions.apply_update(self.profile, entry["store"])
             self.status.setText("Updating…")
+
+    def options(self):
+        entry = self.selected()
+        if entry and entry.get("options"):
+            self.window._new_tab(url=entry["options"])
+
+    def show_errors(self):
+        from ui.prompts import MessageBox
+
+        entry = self.selected()
+        if entry is None:
+            return
+        errors = self.extensions.bridges.recent_errors(self.profile, entry["id"])
+        lines = [
+            time.strftime("%H:%M:%S", time.localtime(e["time"]))
+            + f"  {e['message']}"
+            + (f"\n    {e['source']}:{e['line']}" if e["source"] else "")
+            for e in reversed(errors)
+        ]
+        box = MessageBox(self)
+        box.setWindowTitle(f"Errors: {entry['name']}")
+        box.setText(f"The latest {len(errors)} error(s), newest first.")
+        box.setDetailedText("\n\n".join(lines))
+        clear = box.addButton("Clear", MessageBox.ButtonRole.ResetRole)
+        box.addButton(MessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is clear:
+            self.extensions.bridges.clear_errors(self.profile, entry["id"])
+            self.update_selection()
 
     def remove(self):
         entry = self.selected()

@@ -3475,6 +3475,12 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             return
         if tab in self.tabs:
+            self._navigation_event(
+                tab,
+                "onCommitted"
+                if getattr(tab, "is_loading", False)
+                else "onHistoryStateUpdated",
+            )
             self.passkey_bar.page_changed(tab)
             left, tab.site_host = getattr(tab, "site_host", ""), url.host()
             if left and left != url.host():
@@ -3521,6 +3527,7 @@ class BrowserWindow(QMainWindow):
         tab.is_loading = True
         tab.load_progress = 0
         self._clear_crash_panel(tab)
+        self._navigation_event(tab, "onBeforeNavigate")
         if not self._closing and tab in self.tabs:
             self.tab_bar.set_tab_state(self.tabs.index(tab), loading=True)
         if not self._closing and self.tabs and tab == self.tabs[self.current_tab_index]:
@@ -3586,6 +3593,26 @@ class BrowserWindow(QMainWindow):
             )
             self.status_bar.showMessage(f"Saving {Path(path).name}…", 6000)
         return path
+
+    def _navigation_event(self, tab, event, error=None):
+        """webNavigation for extensions that ask for it."""
+        if (
+            self._closing
+            or tab.workspace_name
+            or tab.url().scheme()
+            not in (
+                "http",
+                "https",
+            )
+        ):
+            return
+        self.profile_manager.registry.extensions.bridges.navigation(
+            self.profile_manager.current_profile_name,
+            tab,
+            event,
+            tab.url().toString(),
+            error,
+        )
 
     def _site_left(self, host, closing=False):
         """A site set to be forgotten has no tabs left: delete its cookies."""
@@ -3678,6 +3705,11 @@ class BrowserWindow(QMainWindow):
         tab.is_loading = False
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
+        if ok:
+            self._navigation_event(tab, "onDOMContentLoaded")
+            self._navigation_event(tab, "onCompleted")
+        else:
+            self._navigation_event(tab, "onErrorOccurred", "net::ERR_FAILED")
         self.password_assistant.page_loaded(tab, ok)
         if ok:
             self._auto_zoom_small_text(tab)

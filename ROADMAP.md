@@ -9,6 +9,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Extensions, browsing, privacy, saving, crashes — November 8, 2026.**
+Extensions: errors kept and shown, webNavigation events, tabs/windows opened
+or closed by backgrounds through Steed, options pages. Browsing: split view,
+sites that always open in a profile, recently closed tabs in tab search
+(vertical tabs already existed). Privacy: tracking parameters removed on load,
+HTTPS first with fallback, forget a site when its tabs close, opt-in
+fingerprinting resistance. Saving: pages as MHTML, complete HTML or PDF;
+highlights and notes in reader view; the reading list as an EPUB. Crashed
+tabs show a panel with Reload, and a crash log keeps time, host and reason.
+Open: a desktop check of split view and of fingerprinting resistance on real
+sites; clearing site storage (not only cookies) when forgetting a site.
+
 **Open problems fixed — November 8, 2026.** The crash at exit: PyQt deletes
 leftover parentless objects (closed windows, singletons) while walking its
 object table at QApplication deletion, and their Python code grew the table

@@ -503,6 +503,53 @@ page's console (`Steed user script <name>`) without stopping the page. Scripts
 have the page's permissions and none of Steed's data. Changes apply to pages
 loaded or reloaded afterwards. Incognito windows run none.
 
+### Split view and sites in a profile
+
+**Show Beside Current Tab** (tab menu) puts a tab beside the current one;
+clicking into either side makes it the current tab, and **View → Close Split
+View** (or closing either tab) ends it. The tab beside stays running whatever
+the memory mode. The site menu's **Always Open in Profile** sends a site (and
+its subdomains) to a profile: following a link to it or typing its address
+opens it in that profile's window instead (a new or blank tab that was opened
+only for it closes). Incognito windows never send pages elsewhere. Tab search
+(Ctrl+K, or `@` for tabs) also lists recently closed tabs; choosing one
+reopens it where it was.
+
+### Privacy on every page
+
+Settings → General:
+
+- **Remove tracking from addresses** (on): before a page loads, parameters that
+  only follow you across sites (utm_…, fbclid, gclid and others, as Copy Clean
+  Link removes) are dropped from its address.
+- **HTTPS first** (on): http:// pages load over HTTPS. When a site has no
+  HTTPS, Steed loads it unencrypted after all (the status bar says so) and
+  remembers the site until it quits. Local addresses, IP addresses and
+  addresses with a port are left alone.
+- **Resist fingerprinting** (off): pages see common hardware values (4 cores,
+  8 GB, no plugins), a generic graphics card name, and canvas images with tiny
+  changes (stable for a site until Steed quits), so they cannot recognize this
+  computer as easily. Some sites may misbehave; it applies to pages loaded
+  afterwards.
+
+The site menu's **Forget this site when its tabs close** deletes the site's
+cookies (it and its subdomains) when its last tab in the profile closes or
+moves to another site. Other site storage stays.
+
+### Saving pages
+
+**View → Save Page As…** (Ctrl+S) saves the page as one file (`.mhtml`, with
+its images and styles, opened again by Steed or Chrome), as HTML with a folder
+of its files, or as PDF. Screenshots are under View → Take Screenshot.
+
+### When a tab crashes
+
+When a page's process ends unexpectedly (a crash, or the system stopping it,
+for example when memory runs out), its tab shows **This tab crashed** with
+**Reload** and **Crash Log…**. **General → Crash Log…** lists the last 200
+crashes: when, which site (only the host; "incognito" for private windows) and
+why, with no page content; **Clear** empties it.
+
 ### Search keywords and completing addresses
 
 Type a keyword, a space and your search in the address bar: `w steed browser`
@@ -598,6 +645,18 @@ answer from a listener wins). They reach Steed through the page's console with
 a token only that script world holds, so the page cannot pose as the
 extension.
 
+- **tabs.create, tabs.remove, tabs.update (active), windows.create**: from the
+  background they open, close or select tabs and windows in Steed, but only
+  web pages and the extension's own pages.
+- **runtime.openOptionsPage** and Manage Extensions' **Options** open the
+  extension's options page in a tab.
+- **webNavigation**: before-navigate, committed, DOM-content-loaded,
+  completed, history-state and error events for the top frame of Steed's tabs,
+  for extensions that ask for the permission.
+- Errors: uncaught errors and `console.error` in the background, and errors in
+  its pages, are kept (the latest 50); Manage Extensions shows them under
+  **Errors…**.
+
 These reach Steed through a hidden page of each extension
 (`steed-bridge.html`, added when Steed installs it), which talks to the
 extension's background and to Steed. Steed matches the stand-ins' tab ids to
@@ -685,6 +744,12 @@ without a connection or after the page changes; the list marks those
 Read/Unread** and **Remove** tidy the list. Unread pages come first, newest
 first. Saving a page again refreshes it and marks it unread. Each profile keeps
 its own list (up to 500 pages) in `reading_list.json`; incognito keeps none.
+
+In reader view (also when reading offline), select text in a paragraph and
+press **Highlight**; click a highlight to add or change its note or to remove
+it. Highlights are kept per article in `reader_notes.json` (incognito: while
+reading only). **Export as E-book…** in the Reading List puts every article
+kept for offline reading into one EPUB file, a chapter each.
 
 ### Screenshots
 

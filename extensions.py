@@ -579,6 +579,14 @@ class Extensions(QObject):
                 manifest = _dict(self.bridges.manifest(entry))
                 entry["action"] = isinstance(manifest.get("action"), dict)
                 entry["commands"] = _dict(manifest.get("commands"))
+                page = _dict(manifest.get("options_ui")).get("page") or manifest.get(
+                    "options_page"
+                )
+                entry["options"] = (
+                    f"chrome-extension://{entry['id']}/{page.lstrip('/')}"
+                    if isinstance(page, str) and page
+                    else ""
+                )
                 found.append(entry)
         return sorted(found, key=lambda e: e["name"].lower())
 
