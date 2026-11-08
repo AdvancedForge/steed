@@ -9,6 +9,15 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Media, address bar, previews, small text — November 7, 2026.** Media
+controls (toolbar play/pause/mute, a Mini Player that floats the playing tab,
+since Qt WebEngine disables picture-in-picture, and MPRIS for media keys and
+the desktop sound menu); search keywords (built-in and your own) and inline
+completion of visited sites; tab hover previews from snapshots taken when
+leaving a tab; and automatic zoom for pages with tiny text, per site and
+switchable. Open: a desktop check of media keys and the Mini Player on real
+video sites.
+
 **Session history — November 7, 2026.** Ten-minute snapshots of a profile's
 windows (48 kept, only when changed, plus one at quit) and closed windows (20
 kept); Tabs → Session History… previews, opens (lazily, with tab groups and

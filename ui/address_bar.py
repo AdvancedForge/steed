@@ -129,7 +129,34 @@ class AddressInput(QLineEdit):
         super().__init__(parent)
         self.page_url = ""
         self.committed = False
+        # Sites you visit, most often first, for completing what you type.
+        self.hosts: list[str] = []
+        self.autocomplete = True
+        self._typed = ""
         self.textEdited.connect(lambda _: setattr(self, "committed", False))
+        self.textEdited.connect(self._complete_inline)
+
+    def _complete_inline(self, text: str) -> None:
+        """Typing the start of a site you visit fills in the rest, selected."""
+        previous, self._typed = self._typed, text
+        if (
+            not self.autocomplete
+            or len(text) < 2
+            or " " in text
+            or "/" in text
+            or not text.startswith(previous)
+            or len(text) <= len(previous)
+            or self.cursorPosition() != len(text)
+        ):
+            return
+        typed = text.lower()
+        bare = typed.removeprefix("www.")
+        for host in self.hosts:
+            if host.startswith(bare) and host != bare:
+                completed = text + host[len(bare) :]
+                self.setText(completed)
+                self.setSelection(len(text), len(completed) - len(text))
+                return
 
     def show_page_url(self, url: str) -> None:
         self.page_url = url
@@ -171,6 +198,7 @@ class AddressBar(QWidget):
     reset_zoom_requested = pyqtSignal()
     site_menu_requested = pyqtSignal()
     downloads_requested = pyqtSignal()
+    media_requested = pyqtSignal()
     tab_switch_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -247,6 +275,12 @@ class AddressBar(QWidget):
         self.downloads_btn.setAccessibleName("Downloads")
         self.downloads_btn.clicked.connect(self.downloads_requested.emit)
         self.downloads_shown = False
+        # Appears while a tab plays media.
+        self.media_btn = QPushButton()
+        self.media_btn.setObjectName("TextButton")
+        self.media_btn.setAccessibleName("Media controls")
+        self.media_btn.clicked.connect(self.media_requested.emit)
+        self.media_shown = False
 
         # Stable identifiers let a saved layout reorder or hide individual
         # buttons without depending on widget names.
@@ -258,6 +292,7 @@ class AddressBar(QWidget):
             "zoom": self.zoom_btn,
             "passwords": self.passwords_btn,
             "downloads": self.downloads_btn,
+            "media": self.media_btn,
         }
         self.menu_btn = QPushButton()
         self.menu_btn.setToolTip("Browser menu")
@@ -279,6 +314,7 @@ class AddressBar(QWidget):
             button.setVisible(
                 name not in self.hidden_toolbar
                 and (name != "downloads" or self.downloads_shown)
+                and (name != "media" or self.media_shown)
             )
         for name in self.toolbar_order:
             if name == "address":
@@ -296,6 +332,16 @@ class AddressBar(QWidget):
     def hide_downloads(self) -> None:
         self.downloads_shown = False
         self.downloads_btn.hide()
+
+    def show_media(self, text: str, tooltip: str) -> None:
+        self.media_btn.setText(text)
+        self.media_btn.setToolTip(tooltip)
+        self.media_shown = True
+        self.media_btn.setVisible("media" not in self.hidden_toolbar)
+
+    def hide_media(self) -> None:
+        self.media_shown = False
+        self.media_btn.hide()
 
     def apply_toolbar(self, order, hidden) -> None:
         """Show and hide address bar buttons according to a layout.
@@ -376,7 +422,11 @@ class AddressBar(QWidget):
                 seen.add(url)
             rows.append((kind, title, url, key, hint))
 
-        if looks_like_address(text):
+        keyword = getattr(self, "keyword_source", lambda _: None)(text)
+        if keyword is not None:
+            _, name, rest = keyword
+            add("search", f"Search {name} for “{rest}”", text, hint="Search keyword")
+        elif looks_like_address(text):
             add("go", text, text, hint="Go to this address")
         else:
             add("search", f"Search {self.search_name} for “{text}”", text)
@@ -454,6 +504,19 @@ class AddressBar(QWidget):
         self.menu_btn.style().polish(self.menu_btn)
 
     def set_history(self, entries: list[HistoryEntry]) -> None:
+        from collections import Counter
+        from urllib.parse import urlsplit
+
+        # Each visited page counts once for its site; ties keep recency order.
+        counts, order = Counter(), {}
+        for index, entry in enumerate(entries):
+            parts = urlsplit(entry.url)
+            if parts.scheme not in ("http", "https") or not parts.hostname:
+                continue
+            host = parts.hostname.lower().removeprefix("www.")
+            counts[host] += 1
+            order.setdefault(host, index)
+        self.address_input.hosts = sorted(counts, key=lambda h: (-counts[h], order[h]))
         self.history_entries = list(entries)
 
     def focus_address(self) -> None:

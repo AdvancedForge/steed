@@ -53,6 +53,7 @@ from services.start_pages import (
 )
 from site_settings import site_key
 from tab_manager import GROUP_COLORS, TabManager, TabState
+from ui import media_controls
 from ui.address_bar import AddressBar
 from ui.chrome_style import bar_stylesheet, chrome_colors
 from ui.devtools import DevToolsHost, DevToolsUnavailable
@@ -547,6 +548,9 @@ class BrowserWindow(QMainWindow):
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(lambda: self._open_management("downloads"))
         general_menu.addAction(downloads_action)
+        keywords_action = QAction("Search Keywords…", self)
+        keywords_action.triggered.connect(self._open_search_keywords)
+        general_menu.addAction(keywords_action)
         scripts_action = QAction("User Scripts && Styles…", self)
         scripts_action.triggered.connect(
             lambda: self._new_tab(url="steed:userscripts", return_tab=True)
@@ -563,6 +567,12 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        media_action = QAction("Play or Pause Media", self)
+        media_action.triggered.connect(lambda: media_controls.controller().toggle())
+        view_menu.addAction(media_action)
+        mini_action = QAction("Mini Player", self)
+        mini_action.triggered.connect(lambda: self.open_mini_player())
+        view_menu.addAction(mini_action)
         self.reader_action = QAction("Reader View", self)
         self.reader_action.setShortcut(QKeySequence("F9"))
         self.reader_action.triggered.connect(self._toggle_reader)
@@ -949,6 +959,8 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.group_clear_requested.connect(self._clear_tab_group)
         self.tab_bar.group_toggle_requested.connect(self._toggle_named_group)
         self.tab_bar.context_requested.connect(self._show_tab_menu)
+        self.tab_bar.tab_hovered.connect(self._show_tab_preview)
+        self.tab_bar.hover_ended.connect(self._hide_tab_preview)
         self.tab_bar.group_context_requested.connect(self._show_group_menu)
         self.tab_bar.mute_toggled.connect(self._toggle_tab_mute)
         self.tab_bar.drag_started.connect(self._tab_drag_started)
@@ -973,6 +985,7 @@ class BrowserWindow(QMainWindow):
         self.address_bar.downloads_requested.connect(
             lambda: self._open_management("downloads")
         )
+        self.address_bar.media_requested.connect(self._show_media_menu)
         self._downloads_recent = QTimer(self)
         self._downloads_recent.setSingleShot(True)
         self._downloads_recent.setInterval(30000)
@@ -1862,8 +1875,25 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_current_tab(index)
         self.devtools.show_for(self.tabs[index])
 
+        # A small snapshot of the tab being left, for hover previews.
+        if (
+            previous is not None
+            and previous is not self.tabs[index]
+            and not previous.workspace_name
+            and self.config.get("tab_previews", True)
+        ):
+            from ui.tab_preview import snapshot
+
+            previous.preview = snapshot(previous)
+        self._hide_tab_preview()
+        # Selecting a tab shown in the Mini Player brings it back.
+        mini = getattr(self.tabs[index], "mini_player", None)
+        if mini is not None and not sip.isdeleted(mini):
+            mini.close()
         # Hide all tabs
         for i, t in enumerate(self.tabs):
+            if getattr(t, "mini_player", None) is not None:
+                continue
             t.setVisible(
                 i == index or bool(self.web_chat_dock and self.web_chat_dock.view is t)
             )
@@ -2045,6 +2075,11 @@ class BrowserWindow(QMainWindow):
         self._update_zoom()
 
     def _text_to_qurl(self, url_text: str) -> QUrl:
+        import search_keywords
+
+        keyword = search_keywords.search_url(url_text, self.config)
+        if keyword is not None:
+            return QUrl(keyword)
         search = self.config.get("search_engine", DEFAULT_SEARCH_ENGINE)
         return self.navigation.address_url(url_text, search)
 
@@ -2141,6 +2176,10 @@ class BrowserWindow(QMainWindow):
             factor = self.navigation.zoom(self._visible_page(tab), direction)
             host = site_key(tab.url())
             if host and not tab.workspace_name:
+                if direction == 0 and getattr(tab, "auto_zoomed", None):
+                    # Resetting an automatic zoom turns it off for the site.
+                    self._site_settings().set(host, "auto_zoom", "block")
+                tab.auto_zoomed = None
                 # Remembered for the site, as other browsers do.
                 self._site_settings().set(host, "zoom", factor)
             self._update_zoom()
@@ -2171,6 +2210,7 @@ class BrowserWindow(QMainWindow):
         if host is None or tab.workspace_name or getattr(tab, "zoom_host", "") == host:
             return
         tab.zoom_host = host
+        tab.auto_zoomed = None
         tab.setZoomFactor(self._site_settings().get(host)["zoom"])
         if self.tabs and tab is self.tabs[self.current_tab_index]:
             self._update_zoom()
@@ -2248,6 +2288,89 @@ class BrowserWindow(QMainWindow):
             return False
         self._blank_download_page().download(url)
         return True
+
+    def _show_tab_preview(self, index, point):
+        if (
+            self._closing
+            or not self.config.get("tab_previews", True)
+            or not 0 <= index < len(self.tabs)
+            or index == self.current_tab_index
+        ):
+            return
+        from ui.tab_preview import TabPreview
+
+        if getattr(self, "tab_preview", None) is None:
+            self.tab_preview = TabPreview(self)
+        self.tab_preview.show_for(self.tabs[index], point)
+
+    def _hide_tab_preview(self):
+        preview = getattr(self, "tab_preview", None)
+        if preview is not None and not sip.isdeleted(preview):
+            preview.hide()
+
+    def _media_changed(self):
+        """The toolbar's media button follows the controlled tab."""
+        media = media_controls.controller()
+        if self._closing:
+            return
+        if media.window is not self or not media.alive():
+            self.address_bar.hide_media()
+            return
+        name = media.title or media.tab.title() or "Media"
+        short = name if len(name) <= 24 else name[:23] + "…"
+        self.address_bar.show_media(
+            ("⏸ " if media.playing else "▶ ") + short,
+            f"{'Playing' if media.playing else 'Paused'}: {name}",
+        )
+
+    def _show_media_menu(self):
+        from PyQt6.QtWidgets import QMenu
+
+        media = media_controls.controller()
+        if not media.alive() or media.window is not self:
+            return
+        tab = media.tab
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.addAction("Pause" if media.playing else "Play", media.toggle)
+        muted = tab.page().isAudioMuted()
+        menu.addAction(
+            "Unmute Tab" if muted else "Mute Tab",
+            lambda: self._toggle_tab_mute(self.tabs.index(tab)),
+        )
+        menu.addAction("Go to Tab", media.show)
+        mini = getattr(tab, "mini_player", None)
+        if mini is None:
+            menu.addAction("Open Mini Player", lambda: self.open_mini_player(tab))
+        else:
+            menu.addAction("Close Mini Player", mini.close)
+        self.media_menu = menu
+        button = self.address_bar.media_btn
+        menu.popup(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def open_mini_player(self, tab=None):
+        """Float a tab's video in a small window that stays on top."""
+        media = media_controls.controller()
+        tab = tab or (media.tab if media.alive() else None)
+        if tab is None or tab not in self.tabs or tab.workspace_name:
+            self.status_bar.showMessage("Play a video first.", 4000)
+            return None
+        if getattr(tab, "mini_player", None) is not None:
+            return tab.mini_player
+        if tab is self.tabs[self.current_tab_index] and len(self.tabs) > 1:
+            # The window shows another tab while this one plays in the corner.
+            others = [i for i, t in enumerate(self.tabs) if t is not tab]
+            self._switch_tab(others[-1])
+        player = media_controls.MiniPlayer(self, tab)
+        player.show()
+        return player
+
+    def _open_search_keywords(self):
+        from ui.search_keywords_dialog import SearchKeywordsDialog
+
+        dialog = SearchKeywordsDialog(self.config, self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
 
     def _download_page(self, profile):
         """A page of an open window in that profile, to start a download from."""
@@ -2358,6 +2481,67 @@ class BrowserWindow(QMainWindow):
         if reload and tab in self.tabs and site_key(tab.url()) == host:
             tab.reload()
 
+    # Typical text smaller than this is enlarged toward READABLE_TEXT_PX.
+    SMALL_TEXT_PX = 13
+    READABLE_TEXT_PX = 15
+    MAX_AUTO_ZOOM = 1.5
+    TEXT_SIZE = """(() => {
+      const sizes = [];
+      for (const node of document.querySelectorAll('p, li, td, dd, blockquote, article, main')) {
+        const text = (node.innerText || '').trim();
+        if (text.length < 40 || !node.getClientRects().length) continue;
+        sizes.push(parseFloat(getComputedStyle(node).fontSize));
+        if (sizes.length >= 200) break;
+      }
+      if (sizes.length < 3) return 0;
+      sizes.sort((a, b) => a - b);
+      return sizes[Math.floor(sizes.length / 2)];
+    })()"""
+
+    def _auto_zoom_small_text(self, tab):
+        """Enlarge a page whose typical text is tiny, unless the site has a zoom."""
+        from services.navigation_service import ZOOM_LEVELS
+
+        url = tab.url()
+        host = site_key(url)
+        if (
+            host is None
+            or tab.workspace_name
+            or not self.config.get("auto_zoom_small_text", True)
+        ):
+            return
+        values = self._site_settings().get(host)
+        if values["auto_zoom"] == "block" or values["zoom"] != 1.0:
+            return
+
+        def measured(size):
+            if (
+                self._closing
+                or sip.isdeleted(tab)
+                or tab.url() != url
+                or not isinstance(size, (int, float))
+                or not 0 < size < self.SMALL_TEXT_PX
+            ):
+                return
+            wanted = min(self.MAX_AUTO_ZOOM, self.READABLE_TEXT_PX / size)
+            zoom = next((z for z in ZOOM_LEVELS if z >= wanted - 0.001), wanted)
+            zoom = min(zoom, self.MAX_AUTO_ZOOM)
+            if zoom <= tab.zoomFactor() + 0.001:
+                return
+            tab.setZoomFactor(zoom)
+            tab.auto_zoomed = zoom
+            if tab is self.tabs[self.current_tab_index]:
+                self._update_zoom()
+                self.status_bar.showMessage(
+                    f"Zoomed to {round(zoom * 100)}% because this page's text is "
+                    "small. Ctrl+0 turns this off for the site.",
+                    6000,
+                )
+
+        webengine.run_script(
+            tab.page(), self.TEXT_SIZE, measured, world=webengine.STEED_WORLD
+        )
+
     def _site_settings_changed(self, host):
         """Another window or the site menu changed a site: update its tabs."""
         for tab in self.tabs:
@@ -2391,6 +2575,14 @@ class BrowserWindow(QMainWindow):
         self.address_bar.set_search_name(search_engine_name(self.config))
         # Typed text goes to the search engine only when allowed, never from
         # incognito.
+        import search_keywords
+
+        self.address_bar.keyword_source = lambda text: search_keywords.match(
+            text, self.config
+        )
+        self.address_bar.address_input.autocomplete = bool(
+            self.config.get("address_autocomplete", True)
+        )
         self.address_bar.set_search_suggestions(
             self.config.get("search_engine", DEFAULT_SEARCH_ENGINE),
             bool(self.config.get("search_suggestions", True))
@@ -2455,6 +2647,12 @@ class BrowserWindow(QMainWindow):
                 audible=page.recentlyAudible(),
                 muted=page.isAudioMuted(),
             )
+            media = media_controls.controller()
+            if page.recentlyAudible():
+                media.start_desktop()
+                media.refresh_tab(self, tab)
+            elif media.tab is tab:
+                media.refresh()
 
     def _offer_old_pairing_cleanup(self):
         """Once: remove KeePassXC pairing files the built-in vault replaced."""
@@ -2611,6 +2809,8 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
         self.password_assistant.page_loaded(tab, ok)
+        if ok:
+            self._auto_zoom_small_text(tab)
         if tab == self.tabs[self.current_tab_index]:
             self._update_history_buttons()
             self.status_bar.showMessage("Ready" if ok else "Error loading page")
@@ -3834,6 +4034,11 @@ class BrowserWindow(QMainWindow):
         """Stop a tab and detach its callbacks before scheduling deletion."""
         if tab.reader_panel is not None:
             tab.reader_panel.close_reader()
+        mini = getattr(tab, "mini_player", None)
+        if mini is not None and not sip.isdeleted(mini):
+            mini.close()
+        if media_controls.controller().tab is tab:
+            media_controls.controller().forget()
         tab.browser_window._take_back_tab(tab)
         window = tab.browser_window
         window.devtools.close(tab)

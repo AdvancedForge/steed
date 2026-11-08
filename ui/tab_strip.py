@@ -107,6 +107,9 @@ class TabStrip(QWidget):
     group_clear_requested = pyqtSignal(int)
     group_toggle_requested = pyqtSignal(str)
     context_requested = pyqtSignal(int, QPoint)
+    # A tab hovered for a moment (index, where to show a preview), or none.
+    tab_hovered = pyqtSignal(int, QPoint)
+    hover_ended = pyqtSignal()
     group_context_requested = pyqtSignal(str, QPoint)
     mute_toggled = pyqtSignal(int)
     width_chosen = pyqtSignal(int)
@@ -402,6 +405,10 @@ class TabStrip(QWidget):
                 self.move_tab(index, target)
         elif action == "context" and index >= 0:
             self.context_requested.emit(index, self._point(command))
+        elif action == "hover" and index >= 0:
+            self.tab_hovered.emit(index, self._point(command))
+        elif action == "unhover":
+            self.hover_ended.emit()
         elif action == "drag_start" and index >= 0 and self._token(command):
             self.drag_started.emit(command["token"], index)
         elif action == "receive" and self._token(command):

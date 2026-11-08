@@ -503,6 +503,41 @@ page's console (`Steed user script <name>`) without stopping the page. Scripts
 have the page's permissions and none of Steed's data. Changes apply to pages
 loaded or reloaded afterwards. Incognito windows run none.
 
+### Search keywords and completing addresses
+
+Type a keyword, a space and your search in the address bar: `w steed browser`
+searches Wikipedia, and the suggestion list leads with that search. Built in:
+`w` Wikipedia, `gh` GitHub, `yt` YouTube, `r` Reddit, `so` Stack Overflow,
+`maps` OpenStreetMap, `ddg` DuckDuckGo, `g` Google, `pypi` PyPI. **General →
+Search Keywords…** adds your own (a keyword of 1–12 letters or digits, a name,
+and an `https://` address with `{q}` where the search text goes; up to 50),
+which can also replace a built-in keyword.
+
+Typing the start of a site you visit fills in the rest of its name, selected,
+so Enter goes there; keep typing to override it or press Backspace or Delete to
+drop it. Sites are ranked by how many of your history's pages they have, then
+by how recently. It completes site names only (not paths, and not text with a
+space). **Complete addresses as you type** in Settings turns it off.
+
+### Media controls and Mini Player
+
+While a tab plays sound, a **⏸ title** button appears in the address bar (a
+`media` toolbar component; **▶** once paused). Its menu offers **Pause/Play**,
+**Mute Tab**, **Go to Tab** and **Open Mini Player**; **View → Play or Pause
+Media** and **View → Mini Player** do the same. The title comes from the site's
+Media Session information when it gives one, otherwise the tab title.
+
+Qt WebEngine turns off the web's picture-in-picture, so the **Mini Player**
+moves the playing tab into a small window that stays on top and fills it with
+the video (the page's largest or playing video, enlarged with Steed's own
+styles); the main window shows another tab meanwhile. Selecting the tab in the
+strip, closing the Mini Player or closing the tab brings it back.
+
+Steed also registers as a desktop media player (MPRIS, as
+`org.mpris.MediaPlayer2.steed.instance<pid>`), so keyboard media keys and the
+desktop's sound menu can play and pause, and show what is playing. It controls
+the tab that played sound most recently.
+
 ### Reader view
 
 **View → Reader View** or **F9** shows the current page's article as plain,
@@ -537,6 +572,12 @@ current site's menu:
   still open).
 - **Reset zoom** — zoom (Ctrl+= / Ctrl+- / Ctrl+0) is remembered for each site
   and applies to every tab on it.
+- **Allow enlarging small text** — when a page's typical text (the median size
+  of its paragraphs, list items and table cells) is under 13 px and the site
+  has no zoom of its own, Steed zooms in, up to 150%, so text is about 15 px,
+  and says so in the status bar. Ctrl+0 on such a page turns it off for the
+  site, as does this switch; **Enlarge small text** in Settings turns it off
+  everywhere.
 - **Clear settings for this site** and **Website permissions…** (camera,
   notifications and the like stay on `steed:permissions`).
 
@@ -685,6 +726,12 @@ The numbered shortcuts work before the menu is opened. Ordinary profiles are
 listed alphabetically, including `default` and `global`.
 
 ## Tabs and groups
+
+**Tab previews.** Hovering a background tab for half a second shows a small
+snapshot of it (taken when you last left it; about 15 KB in memory, never
+saved), with its title and site, in both the HTML and native tab strips. Tabs
+not shown since Steed started show only their title and site. **Tab previews
+on hover** in Settings turns them off.
 
 **Session history.** Every 10 minutes Steed records this profile's open windows
 and tabs (only when they changed; also once when Steed quits), keeping the last

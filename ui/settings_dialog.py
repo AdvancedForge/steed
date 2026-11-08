@@ -26,6 +26,9 @@ DEFAULTS = {
     "native_interface": False,
     "save_before_closing": True,
     "search_suggestions": True,
+    "address_autocomplete": True,
+    "tab_previews": True,
+    "auto_zoom_small_text": True,
 }
 SECTIONS = ("general", "profile", "tabs", "view", "cookies", "agents")
 

@@ -104,6 +104,7 @@ class LayoutPreferenceStorageTests(unittest.TestCase):
                 "reload",
                 "passwords",
                 "downloads",
+                "media",
             ],
         )
         self.assertEqual(preferences.hidden_toolbar, ["back"])
@@ -362,8 +363,9 @@ class AddressBarLayoutTests(unittest.TestCase):
                 self.bar.address_input,
                 self.bar.zoom_btn,
                 self.bar.passwords_btn,
-                # Placed but hidden until something downloads.
+                # Placed but hidden until something downloads or plays.
                 self.bar.downloads_btn,
+                self.bar.media_btn,
             ],
         )
         self.assertTrue(self.bar.downloads_btn.isHidden())
@@ -422,6 +424,7 @@ class AddressBarLayoutTests(unittest.TestCase):
                 self.bar.address_input,
                 self.bar.zoom_btn,
                 self.bar.downloads_btn,
+                self.bar.media_btn,
             ],
         )
 
