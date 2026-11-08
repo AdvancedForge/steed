@@ -109,7 +109,7 @@ class HtmlMenuTests(unittest.TestCase):
                 host,
                 f'document.querySelector({selector("data-control", toolbar)}).querySelectorAll("input[type=checkbox]").length',
             ),
-            7,
+            8,
         )
         self.click(host, source.panel_editor.add_button)
         self.wait_for(lambda: bool(source.preferences.panels))

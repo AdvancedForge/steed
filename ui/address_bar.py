@@ -171,6 +171,7 @@ class AddressBar(QWidget):
     reset_zoom_requested = pyqtSignal()
     site_menu_requested = pyqtSignal()
     downloads_requested = pyqtSignal()
+    media_requested = pyqtSignal()
     tab_switch_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -247,6 +248,12 @@ class AddressBar(QWidget):
         self.downloads_btn.setAccessibleName("Downloads")
         self.downloads_btn.clicked.connect(self.downloads_requested.emit)
         self.downloads_shown = False
+        # Appears while a tab plays media.
+        self.media_btn = QPushButton()
+        self.media_btn.setObjectName("TextButton")
+        self.media_btn.setAccessibleName("Media controls")
+        self.media_btn.clicked.connect(self.media_requested.emit)
+        self.media_shown = False
 
         # Stable identifiers let a saved layout reorder or hide individual
         # buttons without depending on widget names.
@@ -258,6 +265,7 @@ class AddressBar(QWidget):
             "zoom": self.zoom_btn,
             "passwords": self.passwords_btn,
             "downloads": self.downloads_btn,
+            "media": self.media_btn,
         }
         self.menu_btn = QPushButton()
         self.menu_btn.setToolTip("Browser menu")
@@ -279,6 +287,7 @@ class AddressBar(QWidget):
             button.setVisible(
                 name not in self.hidden_toolbar
                 and (name != "downloads" or self.downloads_shown)
+                and (name != "media" or self.media_shown)
             )
         for name in self.toolbar_order:
             if name == "address":
@@ -296,6 +305,16 @@ class AddressBar(QWidget):
     def hide_downloads(self) -> None:
         self.downloads_shown = False
         self.downloads_btn.hide()
+
+    def show_media(self, text: str, tooltip: str) -> None:
+        self.media_btn.setText(text)
+        self.media_btn.setToolTip(tooltip)
+        self.media_shown = True
+        self.media_btn.setVisible("media" not in self.hidden_toolbar)
+
+    def hide_media(self) -> None:
+        self.media_shown = False
+        self.media_btn.hide()
 
     def apply_toolbar(self, order, hidden) -> None:
         """Show and hide address bar buttons according to a layout.

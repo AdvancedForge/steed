@@ -29,6 +29,7 @@ TOOLBAR_ITEMS = (
     "zoom",
     "passwords",
     "downloads",
+    "media",
 )
 TOOLBAR_ORDER = (
     "menu",
@@ -40,6 +41,7 @@ TOOLBAR_ORDER = (
     "zoom",
     "passwords",
     "downloads",
+    "media",
 )
 
 # Menus may be reordered but never hidden, so Settings and Reset Layout are

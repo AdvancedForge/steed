@@ -53,6 +53,7 @@ from services.start_pages import (
 )
 from site_settings import site_key
 from tab_manager import GROUP_COLORS, TabManager, TabState
+from ui import media_controls
 from ui.address_bar import AddressBar
 from ui.chrome_style import bar_stylesheet, chrome_colors
 from ui.devtools import DevToolsHost, DevToolsUnavailable
@@ -563,6 +564,12 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        media_action = QAction("Play or Pause Media", self)
+        media_action.triggered.connect(lambda: media_controls.controller().toggle())
+        view_menu.addAction(media_action)
+        mini_action = QAction("Mini Player", self)
+        mini_action.triggered.connect(lambda: self.open_mini_player())
+        view_menu.addAction(mini_action)
         self.reader_action = QAction("Reader View", self)
         self.reader_action.setShortcut(QKeySequence("F9"))
         self.reader_action.triggered.connect(self._toggle_reader)
@@ -973,6 +980,7 @@ class BrowserWindow(QMainWindow):
         self.address_bar.downloads_requested.connect(
             lambda: self._open_management("downloads")
         )
+        self.address_bar.media_requested.connect(self._show_media_menu)
         self._downloads_recent = QTimer(self)
         self._downloads_recent.setSingleShot(True)
         self._downloads_recent.setInterval(30000)
@@ -1862,8 +1870,14 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_current_tab(index)
         self.devtools.show_for(self.tabs[index])
 
+        # Selecting a tab shown in the Mini Player brings it back.
+        mini = getattr(self.tabs[index], "mini_player", None)
+        if mini is not None and not sip.isdeleted(mini):
+            mini.close()
         # Hide all tabs
         for i, t in enumerate(self.tabs):
+            if getattr(t, "mini_player", None) is not None:
+                continue
             t.setVisible(
                 i == index or bool(self.web_chat_dock and self.web_chat_dock.view is t)
             )
@@ -2249,6 +2263,63 @@ class BrowserWindow(QMainWindow):
         self._blank_download_page().download(url)
         return True
 
+    def _media_changed(self):
+        """The toolbar's media button follows the controlled tab."""
+        media = media_controls.controller()
+        if self._closing:
+            return
+        if media.window is not self or not media.alive():
+            self.address_bar.hide_media()
+            return
+        name = media.title or media.tab.title() or "Media"
+        short = name if len(name) <= 24 else name[:23] + "…"
+        self.address_bar.show_media(
+            ("⏸ " if media.playing else "▶ ") + short,
+            f"{'Playing' if media.playing else 'Paused'}: {name}",
+        )
+
+    def _show_media_menu(self):
+        from PyQt6.QtWidgets import QMenu
+
+        media = media_controls.controller()
+        if not media.alive() or media.window is not self:
+            return
+        tab = media.tab
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        menu.addAction("Pause" if media.playing else "Play", media.toggle)
+        muted = tab.page().isAudioMuted()
+        menu.addAction(
+            "Unmute Tab" if muted else "Mute Tab",
+            lambda: self._toggle_tab_mute(self.tabs.index(tab)),
+        )
+        menu.addAction("Go to Tab", media.show)
+        mini = getattr(tab, "mini_player", None)
+        if mini is None:
+            menu.addAction("Open Mini Player", lambda: self.open_mini_player(tab))
+        else:
+            menu.addAction("Close Mini Player", mini.close)
+        self.media_menu = menu
+        button = self.address_bar.media_btn
+        menu.popup(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def open_mini_player(self, tab=None):
+        """Float a tab's video in a small window that stays on top."""
+        media = media_controls.controller()
+        tab = tab or (media.tab if media.alive() else None)
+        if tab is None or tab not in self.tabs or tab.workspace_name:
+            self.status_bar.showMessage("Play a video first.", 4000)
+            return None
+        if getattr(tab, "mini_player", None) is not None:
+            return tab.mini_player
+        if tab is self.tabs[self.current_tab_index] and len(self.tabs) > 1:
+            # The window shows another tab while this one plays in the corner.
+            others = [i for i, t in enumerate(self.tabs) if t is not tab]
+            self._switch_tab(others[-1])
+        player = media_controls.MiniPlayer(self, tab)
+        player.show()
+        return player
+
     def _download_page(self, profile):
         """A page of an open window in that profile, to start a download from."""
         windows = [self, *self._same_profile_windows()]
@@ -2455,6 +2526,12 @@ class BrowserWindow(QMainWindow):
                 audible=page.recentlyAudible(),
                 muted=page.isAudioMuted(),
             )
+            media = media_controls.controller()
+            if page.recentlyAudible():
+                media.start_desktop()
+                media.refresh_tab(self, tab)
+            elif media.tab is tab:
+                media.refresh()
 
     def _offer_old_pairing_cleanup(self):
         """Once: remove KeePassXC pairing files the built-in vault replaced."""
@@ -3834,6 +3911,11 @@ class BrowserWindow(QMainWindow):
         """Stop a tab and detach its callbacks before scheduling deletion."""
         if tab.reader_panel is not None:
             tab.reader_panel.close_reader()
+        mini = getattr(tab, "mini_player", None)
+        if mini is not None and not sip.isdeleted(mini):
+            mini.close()
+        if media_controls.controller().tab is tab:
+            media_controls.controller().forget()
         tab.browser_window._take_back_tab(tab)
         window = tab.browser_window
         window.devtools.close(tab)

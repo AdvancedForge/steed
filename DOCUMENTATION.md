@@ -503,6 +503,25 @@ page's console (`Steed user script <name>`) without stopping the page. Scripts
 have the page's permissions and none of Steed's data. Changes apply to pages
 loaded or reloaded afterwards. Incognito windows run none.
 
+### Media controls and Mini Player
+
+While a tab plays sound, a **⏸ title** button appears in the address bar (a
+`media` toolbar component; **▶** once paused). Its menu offers **Pause/Play**,
+**Mute Tab**, **Go to Tab** and **Open Mini Player**; **View → Play or Pause
+Media** and **View → Mini Player** do the same. The title comes from the site's
+Media Session information when it gives one, otherwise the tab title.
+
+Qt WebEngine turns off the web's picture-in-picture, so the **Mini Player**
+moves the playing tab into a small window that stays on top and fills it with
+the video (the page's largest or playing video, enlarged with Steed's own
+styles); the main window shows another tab meanwhile. Selecting the tab in the
+strip, closing the Mini Player or closing the tab brings it back.
+
+Steed also registers as a desktop media player (MPRIS, as
+`org.mpris.MediaPlayer2.steed.instance<pid>`), so keyboard media keys and the
+desktop's sound menu can play and pause, and show what is playing. It controls
+the tab that played sound most recently.
+
 ### Reader view
 
 **View → Reader View** or **F9** shows the current page's article as plain,
