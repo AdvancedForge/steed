@@ -9,6 +9,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Reading list, sync, extensions — November 7, 2026.** A per-profile reading
+list (View → Save to Reading List) keeps the article text so pages can be read
+offline in reader view. Sync between computers through a folder you choose
+(General → Sync…): bookmarks, saved groups, the reading list, search keywords
+and, with a sync passphrase, passwords sealed in the folder; per-item
+newest-wins merging with dated deletions, tested with simulated computers.
+Open: a desktop check across two real computers through Syncthing or similar.
+Extensions, investigated further: Qt WebEngine 6.11 loads and installs
+unpacked extensions only disabled, and `setExtensionEnabled` crashes inside
+Qt WebEngine itself; a small C++ program without PyQt crashes the same way,
+so it is a Qt bug, not Steed's or PyQt's. Extension support waits on a Qt fix
+(or a patch to the Qt built from source for codecs).
+
 **Import, local translation, screenshot editing — November 7, 2026.** Import
 bookmarks, history and Firefox open tabs (as a saved group) from Chrome-family
 browsers and Firefox, reading copies of their files. `setup_translation.py`

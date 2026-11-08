@@ -524,6 +524,52 @@ class PasswordVault:
             contents.never.remove(origin)
         self._write()
 
+    # -- sync
+
+    SYNCED = ("origin", "username", "password", "title", "totp", "notes")
+
+    def synced_logins(self):
+        """origin + username -> the fields sync shares (not last use or ids)."""
+        found = {}
+        for login in self._need().logins:
+            data = {name: getattr(login, name) for name in self.SYNCED}
+            data["created"], data["updated"] = login.created, login.updated
+            found[f"{login.origin} {login.username}"] = data
+        return found
+
+    def replace_synced(self, logins):
+        """Make the vault hold exactly these synced logins, keeping local ids."""
+        contents = self._need()
+        current = {(login.origin, login.username): login for login in contents.logins}
+        result = []
+        for data in logins:
+            try:
+                origin = origin_of(data["origin"]) or ""
+                fields = {
+                    name: _text(data[name], name, empty=name != "password")
+                    for name in self.SYNCED[1:]
+                }
+                if fields["totp"]:
+                    totp_parameters(fields["totp"])
+                created, updated = float(data["created"]), float(data["updated"])
+            except (KeyError, TypeError, ValueError, VaultError):
+                continue
+            if not origin or len(result) >= MAX_ENTRIES:
+                continue
+            old = current.get((origin, fields["username"]))
+            result.append(
+                Login(
+                    old.id if old else uuid4().hex,
+                    origin,
+                    **fields,
+                    created=created,
+                    updated=updated,
+                    last_used=old.last_used if old else 0.0,
+                )
+            )
+        contents.logins = result
+        self._write()
+
     def import_csv(self, text):
         """(added, updated, skipped) from a password manager CSV export."""
         rows, skipped = parse_csv(text)

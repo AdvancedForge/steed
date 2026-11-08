@@ -90,6 +90,9 @@ class ProfileRegistry(QObject):
         self.passwords = PasswordService(config, self)
         self.password_service = self.passwords
         self.adblock = AdBlocker(config, self)
+        from sync import SyncService
+
+        self.sync = SyncService(self)
         self.global_profile = self.create(
             "global", config.config_dir / "global_profile"
         )

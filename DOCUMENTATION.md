@@ -532,6 +532,34 @@ undocumented binary format, so they are not imported. Steed reads copies of the
 other browser's files in a temporary folder, so that browser may stay open and
 its files never change. Not available in incognito.
 
+### Sync between computers
+
+**General → Sync…** keeps your computers in step through a folder you choose
+that reaches all of them: one kept in step by Syncthing, Nextcloud or Dropbox,
+or a USB stick. Nothing goes to a Steed server. It syncs **bookmarks**, **saved
+groups**, the **reading list** (with its offline articles) and your **search
+keywords**, between profiles with the same name on each computer (Global with
+Global); incognito never syncs. Steed syncs when it starts, every five minutes,
+soon after bookmarks or passwords change, and with **Sync Now**.
+
+Each computer writes only its own file, `steed-sync/device-<id>.json`, and
+reads the others'. Every item carries the time it last changed, and deletions
+leave a dated marker, so the newest change to each item wins and deletions
+reach every computer. On a computer's first sync, items another computer
+already has count as older, so an old copy never undoes newer changes. Deletion
+markers are kept for 90 days; a computer away longer than that can bring a
+deleted item back. Two computers changing the same item between syncs keep the
+later change.
+
+**Passwords** sync once you set a **sync passphrase** (the same on every
+computer; the first sets it and later ones are checked against it). Each
+profile's logins are sealed in the folder with a key stretched from it
+(Argon2id, then XSalsa20-Poly1305, as the vault uses), so the folder holds no
+readable password or site; the key is kept in the system keyring, or for the
+session without one. A profile's passwords sync while its vault is unlocked.
+Logins match by site and username. **Stop Syncing Passwords** forgets the key
+on this computer.
+
 ### Reading list
 
 **View → Save to Reading List** (or the tab menu) keeps the page to read later.

@@ -551,6 +551,9 @@ class BrowserWindow(QMainWindow):
         import_action = QAction("Import from Another Browser…", self)
         import_action.triggered.connect(self._open_import)
         general_menu.addAction(import_action)
+        sync_action = QAction("Sync…", self)
+        sync_action.triggered.connect(self._open_sync)
+        general_menu.addAction(sync_action)
         keywords_action = QAction("Search Keywords…", self)
         keywords_action.triggered.connect(self._open_search_keywords)
         general_menu.addAction(keywords_action)
@@ -2660,6 +2663,13 @@ class BrowserWindow(QMainWindow):
         )
         self.status_bar.showMessage(summary, 8000)
         return summary
+
+    def _open_sync(self):
+        from ui.sync_dialog import SyncDialog
+
+        dialog = SyncDialog(self.profile_manager.registry.sync, self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
 
     def _open_search_keywords(self):
         from ui.search_keywords_dialog import SearchKeywordsDialog

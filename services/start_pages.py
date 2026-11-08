@@ -432,6 +432,28 @@ class StartPages(QObject):
         existing.update(url=url, title=title, folder=folder)
         self._commit(profile, state)
 
+    def replace_bookmarks(self, profile, bookmarks):
+        """Used by sync: the whole list, keeping ids and order by address."""
+        state = self.state(profile)
+        wanted = {}
+        for item in bookmarks:
+            try:
+                url = web_url(item["url"])
+                title = bookmark_name(" ".join(str(item["title"]).split())[:200])
+                folder = bookmark_name(item.get("folder", ""), optional=True)
+            except (ValueError, KeyError, TypeError, AttributeError):
+                continue
+            if title:
+                wanted.setdefault(url, {"url": url, "title": title, "folder": folder})
+        kept = [
+            {**bookmark, **wanted.pop(bookmark["url"])}
+            for bookmark in state["bookmarks"]
+            if bookmark["url"] in wanted
+        ]
+        kept += [{"id": uuid4().hex, **item} for item in wanted.values()]
+        state["bookmarks"] = kept[:MAX_BOOKMARKS]
+        self._commit(profile, state)
+
     def import_bookmarks(self, profile, content):
         entries, skipped = parse_bookmarks(content, web_url)
         result = self.import_entries(profile, entries)
