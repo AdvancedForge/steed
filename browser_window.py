@@ -567,6 +567,22 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        shots = view_menu.addMenu("Take Screenshot")
+        for label, whole, copy, key in (
+            ("Save Full Page…", True, False, "Ctrl+Shift+S"),
+            ("Save Visible Area…", False, False, ""),
+            ("Copy Full Page", True, True, ""),
+            ("Copy Visible Area", False, True, ""),
+        ):
+            action = shots.addAction(label)
+            if key:
+                action.setShortcut(QKeySequence(key))
+                self.addAction(action)
+            action.triggered.connect(
+                lambda _=False, whole=whole, copy=copy: self.take_screenshot(
+                    whole, copy
+                )
+            )
         media_action = QAction("Play or Pause Media", self)
         media_action.triggered.connect(lambda: media_controls.controller().toggle())
         view_menu.addAction(media_action)
@@ -2307,6 +2323,68 @@ class BrowserWindow(QMainWindow):
         preview = getattr(self, "tab_preview", None)
         if preview is not None and not sip.isdeleted(preview):
             preview.hide()
+
+    def take_screenshot(self, whole_page=False, copy=False, path=None):
+        """Save the current tab as PNG, or copy it; the whole page or what shows."""
+        from ui import page_screenshot
+
+        if self._closing or not self.tabs:
+            return None
+        tab = self.tabs[self.current_tab_index]
+
+        def deliver(image, cut=False):
+            if image.isNull():
+                self.status_bar.showMessage("Nothing to capture.", 4000)
+                return
+            note = " (cut at 16,384 pixels)" if cut else ""
+            if copy:
+                QApplication.clipboard().setImage(image)
+                self.status_bar.showMessage(f"Screenshot copied{note}", 5000)
+                return
+            target = path or self._screenshot_path(tab)
+            if target and image.save(str(target), "PNG"):
+                self.status_bar.showMessage(f"Saved {Path(target).name}{note}", 6000)
+            elif target:
+                QMessageBox.warning(self, "Screenshot", "The file could not be saved.")
+
+        if (
+            not whole_page
+            or tab.workspace_name
+            or tab.url().scheme()
+            not in (
+                "http",
+                "https",
+                "file",
+            )
+        ):
+            deliver(page_screenshot.visible_area(tab))
+            return None
+        capture = page_screenshot.FullPageCapture(tab.page(), self)
+        capture.finished.connect(lambda image, cut: deliver(image, cut))
+        capture.failed.connect(lambda text: self.status_bar.showMessage(text, 6000))
+        capture.finished.connect(lambda *_: capture.deleteLater())
+        capture.failed.connect(lambda *_: capture.deleteLater())
+        self.status_bar.showMessage("Capturing the page…")
+        capture.start()
+        self.screenshot_capture = capture
+        return capture
+
+    def _screenshot_path(self, tab):
+        import re
+        from datetime import datetime
+
+        from PyQt6.QtCore import QStandardPaths
+        from PyQt6.QtWidgets import QFileDialog
+
+        folder = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.PicturesLocation
+        ) or str(Path.home())
+        title = re.sub(r"[^\w .-]+", "", tab.title() or "Page").strip()[:60] or "Page"
+        name = f"{title} {datetime.now():%Y-%m-%d %H.%M.%S}.png"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Screenshot", str(Path(folder) / name), "PNG images (*.png)"
+        )
+        return path
 
     def _media_changed(self):
         """The toolbar's media button follows the controlled tab."""
