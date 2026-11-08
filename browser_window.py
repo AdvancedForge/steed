@@ -548,6 +548,9 @@ class BrowserWindow(QMainWindow):
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(lambda: self._open_management("downloads"))
         general_menu.addAction(downloads_action)
+        keywords_action = QAction("Search Keywords…", self)
+        keywords_action.triggered.connect(self._open_search_keywords)
+        general_menu.addAction(keywords_action)
         scripts_action = QAction("User Scripts && Styles…", self)
         scripts_action.triggered.connect(
             lambda: self._new_tab(url="steed:userscripts", return_tab=True)
@@ -2059,6 +2062,11 @@ class BrowserWindow(QMainWindow):
         self._update_zoom()
 
     def _text_to_qurl(self, url_text: str) -> QUrl:
+        import search_keywords
+
+        keyword = search_keywords.search_url(url_text, self.config)
+        if keyword is not None:
+            return QUrl(keyword)
         search = self.config.get("search_engine", DEFAULT_SEARCH_ENGINE)
         return self.navigation.address_url(url_text, search)
 
@@ -2320,6 +2328,13 @@ class BrowserWindow(QMainWindow):
         player.show()
         return player
 
+    def _open_search_keywords(self):
+        from ui.search_keywords_dialog import SearchKeywordsDialog
+
+        dialog = SearchKeywordsDialog(self.config, self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
+
     def _download_page(self, profile):
         """A page of an open window in that profile, to start a download from."""
         windows = [self, *self._same_profile_windows()]
@@ -2462,6 +2477,14 @@ class BrowserWindow(QMainWindow):
         self.address_bar.set_search_name(search_engine_name(self.config))
         # Typed text goes to the search engine only when allowed, never from
         # incognito.
+        import search_keywords
+
+        self.address_bar.keyword_source = lambda text: search_keywords.match(
+            text, self.config
+        )
+        self.address_bar.address_input.autocomplete = bool(
+            self.config.get("address_autocomplete", True)
+        )
         self.address_bar.set_search_suggestions(
             self.config.get("search_engine", DEFAULT_SEARCH_ENGINE),
             bool(self.config.get("search_suggestions", True))

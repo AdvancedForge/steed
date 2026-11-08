@@ -503,6 +503,22 @@ page's console (`Steed user script <name>`) without stopping the page. Scripts
 have the page's permissions and none of Steed's data. Changes apply to pages
 loaded or reloaded afterwards. Incognito windows run none.
 
+### Search keywords and completing addresses
+
+Type a keyword, a space and your search in the address bar: `w steed browser`
+searches Wikipedia, and the suggestion list leads with that search. Built in:
+`w` Wikipedia, `gh` GitHub, `yt` YouTube, `r` Reddit, `so` Stack Overflow,
+`maps` OpenStreetMap, `ddg` DuckDuckGo, `g` Google, `pypi` PyPI. **General →
+Search Keywords…** adds your own (a keyword of 1–12 letters or digits, a name,
+and an `https://` address with `{q}` where the search text goes; up to 50),
+which can also replace a built-in keyword.
+
+Typing the start of a site you visit fills in the rest of its name, selected,
+so Enter goes there; keep typing to override it or press Backspace or Delete to
+drop it. Sites are ranked by how many of your history's pages they have, then
+by how recently. It completes site names only (not paths, and not text with a
+space). **Complete addresses as you type** in Settings turns it off.
+
 ### Media controls and Mini Player
 
 While a tab plays sound, a **⏸ title** button appears in the address bar (a
