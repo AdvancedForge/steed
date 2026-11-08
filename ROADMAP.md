@@ -9,6 +9,17 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Open problems fixed — November 8, 2026.** The crash at exit: PyQt deletes
+leftover parentless objects (closed windows, singletons) while walking its
+object table at QApplication deletion, and their Python code grew the table
+under the walk (freed memory, seen as 0xdd... with PYTHONMALLOC=debug; it
+predates this work and could also hit a normal quit). Steed now destroys its
+leftovers first (qt_cleanup.py, from main.py and the tests); the reproduction
+went from crashing in most runs to none. Also: runtime.onMessage in injected
+extension scripts; extension tabs matched by performance.timeOrigin; passkeys
+sync sealed like passwords; passkey suggestions (conditional requests) through
+a bar. Not possible: passkeys from a phone by QR code.
+
 **Passkeys, Password Checkup, extension script worlds — November 8, 2026.**
 Passkeys kept in the encrypted vault (P-256, attestation "none"), created and
 used through a page script standing in for navigator.credentials, asked for
@@ -17,11 +28,7 @@ page received; security keys stay available. Password Checkup finds reused
 and weak passwords locally and breached ones through Have I Been Pwned's
 padded range search (5 hash characters sent). Scripts injected for extensions
 now have chrome.runtime (id, getURL, getManifest, sendMessage with sender.tab)
-and chrome.storage. Open: passkey autofill (conditional mediation) and sync;
-runtime.onMessage in injected scripts. Found while testing: a test process
-that opens two windows in a row can crash in PyQt's cleanup at exit (main
-shows it too; the tests pass first, and the full suite is not affected); the
-passkey tests use one window until that is understood.
+and chrome.storage. (The open items found here were fixed the same day; see above.)
 
 **Extension menus, scripting, badges, shortcuts — November 8, 2026.** A hidden
 bridge page per extension connects its background to Steed: context menu items

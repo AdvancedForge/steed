@@ -345,7 +345,9 @@ SHIM = r"""
       });
       if (signal) {
         signal.addEventListener("abort", () => {
-          if (pending.delete(id)) reject(new DOMException("The operation was aborted.", "AbortError"));
+          if (!pending.delete(id)) return;
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+          post("\u0001steedpasskey " + JSON.stringify({ token: TOKEN, ask: id, kind: "abort" }));
         });
       }
       post("\u0001steedpasskey " + JSON.stringify({ token: TOKEN, ask: id, kind, options: options.publicKey }, plain));
@@ -355,12 +357,14 @@ SHIM = r"""
     return ask("create", options, () => nativeCreate(options));
   };
   credentials.get = function get(options) {
-    if (!options || !options.publicKey || options.mediation === "conditional") return nativeGet(options);
-    return ask("get", options, () => nativeGet(options));
+    if (!options || !options.publicKey) return nativeGet(options);
+    // "conditional": offered quietly (a bar), answered when you choose.
+    const kind = options.mediation === "conditional" ? "conditional" : "get";
+    return ask(kind, options, () => nativeGet(options));
   };
   if (typeof PublicKeyCredential === "function") {
     PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(true);
-    PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(false);
+    PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(true);
   }
 })();
 """
@@ -406,6 +410,43 @@ class Passkeys(QObject):
             world=webengine.PAGE_WORLD,
         )
 
+    def _offer(self, tab, url, ask, options, origin, host):
+        """A quiet request: a bar offers the site's passkeys; no dialog yet."""
+        window = tab.browser_window
+        try:
+            rp_id = relying_party(options.get("rpId"), host)
+        except PasskeyError as error:
+            self._answer(tab, url, ask, {"error": error.name, "message": str(error)})
+            return
+        vault = self.registry.passwords.vault(
+            window.profile_manager.current_profile_name
+        )
+        if vault is None:
+            self._answer(tab, url, ask, {"fallback": True})
+            return
+        if vault.unlocked and not vault.passkeys(rp_id):
+            return  # Nothing to offer: the request waits, as in Chrome.
+
+        def chosen():
+            unlocked = window.password_assistant._vault(ask=True)
+            if unlocked is None:
+                return
+            allowed = {c.get("id") for c in options.get("allowCredentials") or []}
+            saved = [
+                p for p in unlocked.passkeys(rp_id) if not allowed or p["id"] in allowed
+            ]
+            if not saved:
+                window.status_bar.showMessage(f"No saved passkeys for {rp_id}.", 5000)
+                return
+            from ui.passkey_prompt import choose_passkey
+
+            picked = choose_passkey(window, rp_id, saved)
+            if isinstance(picked, dict):
+                unlocked.touch_passkey(picked["id"])
+                self._answer(tab, url, ask, assert_with(picked, options, origin))
+
+        window.passkey_bar.offer(tab, ask, rp_id, chosen)
+
     def _handle(self, tab, message):
         from PyQt6 import sip
 
@@ -421,12 +462,18 @@ class Passkeys(QObject):
         def refuse(name="NotAllowedError", text="The request was not allowed."):
             self._answer(tab, url, ask, {"error": name, "message": text})
 
+        if message.get("kind") == "abort":
+            window.passkey_bar.withdraw(tab, ask)
+            return
         found = page_origin(url.toString())
         config = self.registry.config
         if found is None or not config.get("steed_passkeys", True):
             self._answer(tab, url, ask, {"fallback": True})
             return
         origin, host = found
+        if message.get("kind") == "conditional":
+            self._offer(tab, url, ask, options, origin, host)
+            return
         vault = window.password_assistant._vault(ask=True)
         if vault is None:
             refuse()

@@ -94,7 +94,12 @@ def main() -> int:
     for url in urls:
         window._new_tab(url)
 
-    return app.exec()
+    code = app.exec()
+    # Before the application goes: see qt_cleanup.
+    from qt_cleanup import release_leftovers
+
+    release_leftovers(app)
+    return code
 
 
 if __name__ == "__main__":

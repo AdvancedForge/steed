@@ -287,8 +287,38 @@ class CeremonyTests(unittest.TestCase):
         self.assertNotIn(saved["key"], vault_text)
         self.assertNotIn("ana@example.com", vault_text)
 
-        # One window for both parts: two windows in one test process can crash
-        # PyQt's cleanup at exit (it happens on main too; see ROADMAP.md).
+        # Suggested on a sign-in page: a bar, answered when you choose.
+        bar = self.window.passkey_bar
+        self.assertTrue(
+            self.evaluate(tab, "PublicKeyCredential.isConditionalMediationAvailable()")
+            is not False
+        )
+        webengine.run_script(
+            tab.page(),
+            "window.__result = '';"
+            "navigator.credentials.get({mediation: 'conditional',"
+            " publicKey: {challenge: new Uint8Array([5])}})"
+            ".then((c) => window.__result = JSON.stringify(c.id),"
+            " (e) => window.__result = JSON.stringify(e.name))",
+            world=webengine.PAGE_WORLD,
+        )
+        self.wait(lambda: bar.isVisibleTo(self.window))
+        self.assertEqual(bar.label.text(), "Sign in to localhost with a saved passkey?")
+        bar.choose.click()
+        self.assertEqual(self.result(tab), out["id"])
+        self.assertFalse(bar.isVisibleTo(self.window))
+        # A site that cancels its quiet request takes the bar away.
+        webengine.run_script(
+            tab.page(),
+            "window.__stop = new AbortController();"
+            "navigator.credentials.get({mediation: 'conditional', signal: __stop.signal,"
+            " publicKey: {challenge: new Uint8Array([6])}}).catch(() => {});",
+            world=webengine.PAGE_WORLD,
+        )
+        self.wait(lambda: bar.isVisibleTo(self.window))
+        webengine.run_script(tab.page(), "__stop.abort()", world=webengine.PAGE_WORLD)
+        self.wait(lambda: not bar.isVisibleTo(self.window))
+
         tab = self.open()
         self.mocks[2].return_value = ""
         webengine.run_script(

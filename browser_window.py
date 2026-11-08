@@ -1096,6 +1096,10 @@ class BrowserWindow(QMainWindow):
         self.extension_installer = ExtensionInstaller(self)
         self.store_bar = StoreBar(self)
         layout.addWidget(self.store_bar)
+        from ui.passkey_prompt import PasskeyBar
+
+        self.passkey_bar = PasskeyBar(self)
+        layout.addWidget(self.passkey_bar)
         self.content_area = QSplitter(Qt.Orientation.Horizontal)
         self.content_area.setChildrenCollapsible(False)
         self.content_area.addWidget(self.tab_container)
@@ -1942,6 +1946,7 @@ class BrowserWindow(QMainWindow):
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
         self.store_bar.update_for(self.tabs[index].url())
+        self.passkey_bar.tab_changed(self.tabs[index])
         if self.address_bar.extension_pins:
             self._refresh_extension_pins()  # Badges can differ per tab.
         self.tab_bar.set_current_tab(index)
@@ -3413,6 +3418,7 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             return
         if tab in self.tabs:
+            self.passkey_bar.page_changed(tab)
             self.tab_bar.set_tab_state(self.tabs.index(tab), url=url.toString())
             self._apply_site_zoom(tab)
             if tab.reader_panel is not None and url != tab.reader_panel.url:
@@ -3468,6 +3474,16 @@ class BrowserWindow(QMainWindow):
         self.password_assistant.page_loaded(tab, ok)
         if ok:
             self._auto_zoom_small_text(tab)
+            # Which document this is, as extensions' content scripts see it
+            # (extension_bridge matches tabs by it).
+            webengine.run_script(
+                tab.page(),
+                "performance.timeOrigin",
+                lambda value, tab=tab: (
+                    sip.isdeleted(tab) or setattr(tab, "time_origin", value)
+                ),
+                world=webengine.STEED_WORLD,
+            )
         if tab == self.tabs[self.current_tab_index]:
             self._update_history_buttons()
             self.status_bar.showMessage("Ready" if ok else "Error loading page")

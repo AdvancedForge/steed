@@ -596,6 +596,25 @@ class PasswordVault:
                 passkey["last_used"] = time.time()
         self._write()
 
+    def synced_passkeys(self):
+        """id -> passkey for sync, without when it was last used here."""
+        return {
+            p["id"]: {k: v for k, v in p.items() if k != "last_used"}
+            for p in self._need().passkeys
+        }
+
+    def replace_synced_passkeys(self, passkeys):
+        """Make the vault hold exactly these synced passkeys."""
+        contents = self._need()
+        used = {p["id"]: p["last_used"] for p in contents.passkeys}
+        result = []
+        for data in passkeys:
+            record = _passkey({**data, "last_used": used.get(data.get("id"), 0.0)})
+            if record is not None and len(result) < MAX_ENTRIES:
+                result.append(record)
+        contents.passkeys = result
+        self._write()
+
     def delete_passkey(self, passkey_id):
         contents = self._need()
         contents.passkeys = [p for p in contents.passkeys if p["id"] != passkey_id]

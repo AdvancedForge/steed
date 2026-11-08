@@ -18,7 +18,8 @@ Through it the stand-ins in extension_shim.js reach Steed:
   the page's console with a token only that world knows.
 
 The stand-ins name tabs by ids of their own; Steed matches them to its tabs by
-address, then title, then which is showing.
+the document's start time (performance.timeOrigin, the same in every script
+world of a page), or else by address, title and which is showing.
 """
 
 import json
@@ -56,6 +57,48 @@ if (!globalThis.__steedExtension) {
   const area = (name) => Object.fromEntries(["get", "set", "remove", "clear", "getBytesInUse"].map(
     (method) => [method, (...args) => settle(args, (rest) => request({ kind: "call", area: name, method, args: rest }))]));
   const noEvent = { addListener() {}, removeListener() {}, hasListener: () => false };
+  const listeners = new Set();
+  let listening = false;
+  const onMessage = {
+    addListener(listener) {
+      listeners.add(listener);
+      if (!listening) {
+        listening = true;
+        post("\u0001steedworld " + JSON.stringify({ extension: EXTENSION, token: TOKEN, kind: "listen" }));
+      }
+    },
+    removeListener: (listener) => listeners.delete(listener),
+    hasListener: (listener) => listeners.has(listener),
+    hasListeners: () => listeners.size > 0,
+  };
+  // From the extension (tabs.sendMessage), through Steed: as Chrome hands
+  // messages to onMessage, the first answer wins.
+  Object.defineProperty(globalThis, "__steedExtensionDeliver", {
+    value: (ask, message, sender) => {
+      const called = [...listeners];
+      let answered = false;
+      let waiting = false;
+      const respond = (response) => {
+        if (answered) return;
+        answered = true;
+        post("\u0001steedworld " + JSON.stringify(
+          { extension: EXTENSION, token: TOKEN, kind: "reply", ask, response, handled: called.length > 0 }));
+      };
+      for (const listener of called) {
+        try {
+          const result = listener(message, sender, respond);
+          if (result === true) waiting = true;
+          else if (result && typeof result.then === "function") {
+            waiting = true;
+            result.then(respond, () => respond(undefined));
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      if (!waiting) respond(undefined);
+    },
+  });
   Object.defineProperty(globalThis, "__steedExtension", {
     value: (ask, reply) => {
       const asking = pending.get(ask);
@@ -72,7 +115,7 @@ if (!globalThis.__steedExtension) {
       const at = typeof rest[0] === "string" && rest.length > 1 && /^[a-p]{32}$/.test(rest[0]) ? 1 : 0;
       return request({ kind: "message", message: rest[at] });
     }),
-    onMessage: noEvent,
+    onMessage,
     lastError: undefined,
   };
   globalThis.chrome.storage = { local: area("local"), sync: area("sync"), session: area("session"), onChanged: noEvent };
@@ -192,6 +235,7 @@ class Bridges(QObject):
         self._results = 0
         self.tokens = {}  # (profile, extension id) -> its script world's token
         self.world_asks = {}  # Steed's ask -> (tab, extension id, world ask)
+        self.world_listeners = []  # (tab, extension id) with onMessage listeners
 
     # -- pages
 
@@ -268,6 +312,8 @@ class Bridges(QObject):
             self._register(key, message)
         elif kind == "worldAnswer":
             self._world_answer(message)
+        elif kind == "toWorld":
+            self._to_world(key, message)
 
     def _answer(self, key, ask, value=None, error=None):
         message = {"type": "answer", "ask": ask, "value": value}
@@ -396,6 +442,9 @@ class Bridges(QObject):
         )
 
     def _score(self, info, browser_tab):
+        started = getattr(browser_tab, "time_origin", None)
+        if started is not None and info.get("started") == started:
+            return 10  # The very document: two tabs on one page stay apart.
         if info.get("url") != browser_tab.url().toString():
             return -1
         return (info.get("title") == browser_tab.title()) * 2 + (
@@ -464,6 +513,22 @@ class Bridges(QObject):
         token = self.tokens.get((name, extension_id))
         if token is None or message.get("token") != token:
             return  # Not from the extension's world: the page cannot pose as it.
+        if message.get("kind") == "listen":
+            if (tab, extension_id) not in self.world_listeners:
+                self.world_listeners.append((tab, extension_id))
+            return
+        if message.get("kind") == "reply":
+            self.send(
+                name,
+                extension_id,
+                {
+                    "type": "worldReply",
+                    "ask": message.get("ask"),
+                    "response": message.get("response"),
+                    "handled": bool(message.get("handled")),
+                },
+            )
+            return
         self._results += 1
         steed_ask = self._results
         self.world_asks[steed_ask] = (tab, extension_id, message.get("ask"))
@@ -497,6 +562,42 @@ class Bridges(QObject):
                     "args": message.get("args") or [],
                 },
             )
+
+    def _to_world(self, key, message):
+        """tabs.sendMessage reaching scripts injected in that tab, if listening."""
+        from PyQt6 import sip
+
+        name, extension_id = key
+        ask = message.get("ask")
+        self.world_listeners = [
+            (tab, ext) for tab, ext in self.world_listeners if not sip.isdeleted(tab)
+        ]
+        tab = self.browser_tab(name, extension_id, message.get("tabId"))
+
+        def unheard(*_):
+            self.send(
+                name, extension_id, {"type": "worldReply", "ask": ask, "handled": False}
+            )
+
+        if tab is None or (tab, extension_id) not in self.world_listeners:
+            unheard()
+            return
+
+        def delivered(found):
+            if found is not True:
+                # A new page in the tab: its scripts are gone.
+                if (tab, extension_id) in self.world_listeners:
+                    self.world_listeners.remove((tab, extension_id))
+                unheard()
+
+        webengine.run_script(
+            tab.page(),
+            "globalThis.__steedExtensionDeliver ? (globalThis.__steedExtensionDeliver("
+            f"{json.dumps(ask)}, {json.dumps(message.get('message'))},"
+            f" {json.dumps({'id': extension_id})}), true) : false",
+            delivered,
+            world=world_for(extension_id),
+        )
 
     def _world_answer(self, message):
         found = self.world_asks.pop(message.get("steedAsk"), None)

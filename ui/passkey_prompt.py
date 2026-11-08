@@ -3,6 +3,8 @@
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QPushButton,
@@ -69,3 +71,55 @@ def choose_passkey(window, rp_id, passkeys):
     if dialog.exec() == QDialog.DialogCode.Accepted and accounts.currentRow() >= 0:
         return passkeys[accounts.currentRow()]
     return choice["value"]
+
+
+class PasskeyBar(QFrame):
+    """A site asked quietly for a passkey (on its sign-in page): offer them."""
+
+    def __init__(self, window):
+        super().__init__(window)
+        self.setObjectName("PasswordBar")  # Same look as the password bar.
+        self.tab = self.ask = self.chosen = None
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 6, 8, 6)
+        self.label = QLabel(self)
+        self.label.setWordWrap(True)
+        row.addWidget(self.label, 1)
+        self.choose = QPushButton("Choose…", self)
+        self.choose.setAutoDefault(False)
+        self.choose.clicked.connect(self._choose)
+        row.addWidget(self.choose)
+        later = QPushButton("Not now", self)
+        later.setAutoDefault(False)
+        later.clicked.connect(self.clear)
+        row.addWidget(later)
+        self.hide()
+
+    def offer(self, tab, ask, rp_id, chosen):
+        self.tab, self.ask, self.chosen = tab, ask, chosen
+        self.label.setText(f"Sign in to {rp_id} with a saved passkey?")
+        self.show()
+
+    def _choose(self):
+        chosen = self.chosen
+        self.clear()
+        if chosen is not None:
+            chosen()
+
+    def withdraw(self, tab, ask):
+        """The site cancelled its request."""
+        if tab is self.tab and ask == self.ask:
+            self.clear()
+
+    def tab_changed(self, tab):
+        """Another tab, or a new page in this one: the offer was for that page."""
+        if self.tab is not None and tab is not self.tab:
+            self.clear()
+
+    def page_changed(self, tab):
+        if tab is self.tab:
+            self.clear()
+
+    def clear(self):
+        self.tab = self.ask = self.chosen = None
+        self.hide()
