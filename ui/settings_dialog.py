@@ -29,6 +29,9 @@ DEFAULTS = {
     "address_autocomplete": True,
     "tab_previews": True,
     "auto_zoom_small_text": True,
+    "strip_tracking": True,
+    "https_first": True,
+    "resist_fingerprinting": False,
     "translate_service": "",
     "translate_language": "",
 }

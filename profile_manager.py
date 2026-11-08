@@ -484,6 +484,11 @@ class ProfileRegistry(QObject):
         self.profiles[name] = profile
         self.passwords.install(profile)
         self.passkeys.install(profile)
+        import privacy
+
+        privacy.install_fingerprint_guard(
+            profile, bool(self.config.get("resist_fingerprinting", False))
+        )
         self.user_scripts(name).install(profile)
         self.downloads.attach(profile, name)
         self.adblock.attach(profile)
@@ -600,6 +605,11 @@ class ProfileRegistry(QObject):
         return bool(self.config.get("restore_tabs_on_startup", True))
 
     def refresh_settings(self):
+        import privacy
+
+        guard = bool(self.config.get("resist_fingerprinting", False))
+        for profile in (*self.profiles.values(), self.search_profile):
+            privacy.install_fingerprint_guard(profile, guard)
         override = self.config.get("user_agent_override", "").strip()
         for name, profile in {**self.profiles, "search": self.search_profile}.items():
             profile.setHttpUserAgent(override or self.defaults[name])

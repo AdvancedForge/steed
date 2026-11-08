@@ -8,6 +8,7 @@ with strict content rules and no network, so nothing from the site runs there.
 
 import base64
 import json
+from pathlib import Path
 from secrets import token_hex
 
 from PyQt6 import sip
@@ -167,10 +168,16 @@ class ReaderPanel(QWidget):
 
     closed = pyqtSignal()
 
-    def __init__(self, window, tab, content, url):
+    def __init__(self, window, tab, content, url, notes_url=None):
         super().__init__(tab)
         self.window = window
         self.tab = tab
+        # Highlights belong to the article's address (also when read offline).
+        self.notes_url = (notes_url or url.toString()) if url is not None else ""
+        from reader_notes import ReaderNotes
+
+        manager = window.tab_manager
+        self.notes = ReaderNotes(manager.profile_dir if manager else Path())
         self.url = url
         self.content = content
         self.context = token_hex(16)
@@ -260,6 +267,7 @@ class ReaderPanel(QWidget):
                 "theme": theme,
                 "size": size,
                 "dark": theme == "dark",
+                "highlights": self.notes.highlights(self.notes_url),
             },
             force=True,
         )
@@ -283,6 +291,26 @@ class ReaderPanel(QWidget):
                 self.fetch_images()
         elif action == "theme" and command.get("theme") in THEMES:
             config.set("reader_theme", command["theme"])
+        elif action == "highlight":
+            try:
+                block, start, end = (
+                    int(command.get(k)) for k in ("block", "start", "end")
+                )
+                blocks = self.content.get("blocks", [])
+                text = (
+                    blocks[block]["text"][start:end] if 0 <= block < len(blocks) else ""
+                )
+                if not text.strip():
+                    raise ValueError
+                self.notes.add(self.notes_url, block, start, end, text)
+            except (TypeError, ValueError, KeyError, IndexError):
+                pass  # A selection that is not text of one block: nothing to mark.
+        elif action == "note":
+            self.notes.note(
+                self.notes_url, str(command.get("id")), command.get("text", "")
+            )
+        elif action == "unhighlight":
+            self.notes.remove(self.notes_url, str(command.get("id")))
         elif action == "size":
             size = self.options()[1] + (1 if command.get("step") == 1 else -1)
             if size in FONT_SIZES:

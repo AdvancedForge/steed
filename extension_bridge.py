@@ -125,6 +125,7 @@ SCRIPT_PREFIX = "steed-extension-"
 RESULT_POLL_MS = 50
 RESULT_TIMEOUT_SECONDS = 30
 MAX_ITEMS = 1000
+MAX_ERRORS = 50
 _RUN_AT = {
     "document_start": "start",
     "document_end": "ready",
@@ -178,13 +179,8 @@ def matches(patterns, url: str) -> bool:
 
 
 def needs_bridge(manifest: dict) -> bool:
-    asked = manifest.get("permissions") or []
-    return bool(
-        manifest.get("action")
-        or manifest.get("commands")
-        or "contextMenus" in asked
-        or "scripting" in asked
-    )
+    """Every extension: errors, tabs it opens and navigation events need one."""
+    return isinstance(manifest, dict)
 
 
 class BridgePage(webengine.Page):
@@ -236,6 +232,7 @@ class Bridges(QObject):
         self.tokens = {}  # (profile, extension id) -> its script world's token
         self.world_asks = {}  # Steed's ask -> (tab, extension id, world ask)
         self.world_listeners = []  # (tab, extension id) with onMessage listeners
+        self.errors = {}  # (profile, extension id) -> recent errors, oldest first
 
     # -- pages
 
@@ -312,6 +309,21 @@ class Bridges(QObject):
             self._register(key, message)
         elif kind == "worldAnswer":
             self._world_answer(message)
+        elif kind == "error":
+            found = self.errors.setdefault(key, [])
+            found.append(
+                {
+                    "time": time.time(),
+                    "message": str(message.get("message", ""))[:2000],
+                    "source": str(message.get("source", ""))[:300],
+                    "line": message.get("line")
+                    if type(message.get("line")) is int
+                    else 0,
+                }
+            )
+            del found[:-MAX_ERRORS]
+        elif kind in ("openTab", "openWindow", "closeTabs", "activateTab"):
+            self._tabs_request(key, message)
         elif kind == "toWorld":
             self._to_world(key, message)
 
@@ -396,6 +408,122 @@ class Bridges(QObject):
                 "type": kind,
                 "name": command,
                 "tabId": self.tab_id(name, extension_id, browser_tab),
+            },
+        )
+
+    # -- tabs and windows the extension opens, closes or selects
+
+    def _allowed_url(self, extension_id, url):
+        """Web pages, or the extension's own pages (relative paths too)."""
+        text = str(url or "").strip()
+        if not text:
+            return None
+        if "://" not in text and not text.startswith(("javascript:", "data:", "file:")):
+            return f"chrome-extension://{extension_id}/{text.lstrip('/')}"
+        parsed = QUrl(text)
+        if parsed.scheme() in ("http", "https"):
+            return text
+        if parsed.scheme() == "chrome-extension" and parsed.host() == extension_id:
+            return text
+        return None
+
+    def _tabs_request(self, key, message):
+        name, extension_id = key
+        ask = message.get("ask")
+        windows = self.windows(name)
+        window = next((w for w in windows if w.isActiveWindow()), None) or (
+            windows[0] if windows else None
+        )
+        kind = message["type"]
+        if kind == "activateTab":
+            tab = self.browser_tab(name, extension_id, message.get("tabId"))
+            if tab is not None and tab in tab.browser_window.tabs:
+                tab.browser_window._switch_tab(tab.browser_window.tabs.index(tab))
+            return
+        if kind == "closeTabs":
+            for tab_id in message.get("ids") or []:
+                tab = self.browser_tab(name, extension_id, tab_id)
+                if tab is not None and tab in tab.browser_window.tabs:
+                    tab.browser_window._close_tab_object(tab)
+            self._answer(key, ask, None)
+            return
+        urls = [message.get("url")] if kind == "openTab" else message.get("urls") or []
+        allowed = [self._allowed_url(extension_id, u) for u in urls if u]
+        if any(u is None for u in allowed):
+            self._answer(
+                key,
+                ask,
+                error="Steed opens only web pages and the extension's own pages.",
+            )
+            return
+        if window is None:
+            self._answer(key, ask, error="No Steed window of this profile is open.")
+            return
+        if kind == "openWindow":
+            target = window._open_window(name)
+            for url in allowed:
+                target._new_tab(url=url)
+            self._answer(key, ask, None)
+            return
+        before = window.tabs[window.current_tab_index] if window.tabs else None
+        window._new_tab(url=allowed[0] if allowed else None)
+        if message.get("active") is False and before in window.tabs:
+            window._switch_tab(window.tabs.index(before))
+        self._answer(key, ask, None)
+
+    # -- errors
+
+    def recent_errors(self, name, extension_id) -> list[dict]:
+        return list(self.errors.get((name, extension_id), []))
+
+    def clear_errors(self, name, extension_id):
+        self.errors.pop((name, extension_id), None)
+
+    # -- navigation events, for extensions asking for webNavigation
+
+    def navigation(self, name, tab, event, url, error=None):
+        if not self.extensions.available(name):
+            return
+        for entry in self.extensions.installed(name):
+            key = (name, entry["id"])
+            if not entry["enabled"] or key not in self.pages:
+                continue
+            manifest = self.manifest(entry) or {}
+            if "webNavigation" not in (manifest.get("permissions") or []):
+                continue
+            details = {
+                "url": url,
+                "frameId": 0,
+                "parentFrameId": -1,
+                "timeStamp": time.time() * 1000,
+            }
+            if error:
+                details["error"] = error
+            self._send_navigation(name, entry["id"], tab, event, details, 20)
+
+    def _send_navigation(self, name, extension_id, tab, event, details, attempts):
+        """Pages finish loading before content scripts report their tab: wait
+        a little for the tab's id, then send it (or -1)."""
+        from PyQt6 import sip
+
+        if sip.isdeleted(tab):
+            return
+        tab_id = self.tab_id(name, extension_id, tab)
+        if tab_id is None and attempts > 1:
+            QTimer.singleShot(
+                100,
+                lambda: self._send_navigation(
+                    name, extension_id, tab, event, details, attempts - 1
+                ),
+            )
+            return
+        self.send(
+            name,
+            extension_id,
+            {
+                "type": "navigation",
+                "event": event,
+                "details": {**details, "tabId": tab_id if tab_id is not None else -1},
             },
         )
 

@@ -941,6 +941,33 @@ window.addEventListener("message", (event) => {
 """
 
 
+GAPS_BACKGROUND = """
+chrome.webNavigation.onCompleted.addListener((details) => {
+  chrome.storage.local.set({ completed: details.url, completedTab: details.tabId });
+});
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  const steps = {
+    open: () => chrome.tabs.create({ url: "page.html", active: false }).then(() => "opened"),
+    options: () => chrome.runtime.openOptionsPage().then(() => "options"),
+    bad: () =>
+      chrome.tabs.create({ url: "file:///etc/hostname" }).then(
+        () => "opened",
+        (error) => "refused: " + error.message,
+      ),
+    fail: () => {
+      setTimeout(() => { throw new Error("boom from the background"); }, 0);
+      return Promise.resolve("thrown");
+    },
+    nav: () => chrome.storage.local.get(["completed", "completedTab"]),
+    close: () => chrome.tabs.remove(sender.tab.id).then(() => "closed"),
+  };
+  if (!steps[message]) return;
+  steps[message]().then(respond, (error) => respond("error: " + error.message));
+  return true;
+});
+"""
+
+
 class FakeMenuRequest:
     """What a right-click hit, as QWebEngineContextMenuRequest tells it."""
 
@@ -1075,6 +1102,87 @@ class BridgeTests(WindowBase):
         self.assertEqual(ask("register"), ["reg"])
         tab.page().triggerAction(webengine.QWebEnginePage.WebAction.Reload)
         self.wait(lambda: data("registered") == "yes")
+
+
+class GapTests(WindowBase):
+    """Tabs the background opens or closes, options, errors, navigation."""
+
+    def test_background_tabs_options_errors_and_navigation(self):
+        folder = write_extension(
+            self.root / "gaps",
+            permissions=["storage", "webNavigation"],
+            background={"service_worker": "bg.js"},
+            content_scripts=[{"matches": ["http://127.0.0.1/*"], "js": ["c.js"]}],
+            options_ui={"page": "opt.html"},
+        )
+        (folder / "bg.js").write_text(GAPS_BACKGROUND)
+        (folder / "c.js").write_text(BRIDGE_CONTENT)
+        (folder / "page.html").write_text("<title>Extension Page</title>")
+        (folder / "opt.html").write_text("<title>Extension Options</title>")
+        self.extensions.install(self.name, folder)
+        self.wait(lambda: self.extensions.installed(self.name))
+        (entry,) = self.extensions.installed(self.name)
+        self.assertEqual(entry["options"], f"chrome-extension://{entry['id']}/opt.html")
+        bridges = self.extensions.bridges
+        tab = self.window._new_tab(url=self.url, return_tab=True)
+        self.wait(lambda: not tab.page().isLoading() and tab.title() == "Plain")
+        self.wait(lambda: bridges.tab_id(self.name, entry["id"], tab) is not None)
+
+        def data(key):
+            return self.evaluate(
+                tab.page(), f"document.documentElement.dataset.{key} || ''"
+            )
+
+        def ask(step):
+            webengine.run_script(
+                tab.page(),
+                f"window.postMessage({{ask: '{step}'}}, '*')",
+                world=webengine.PAGE_WORLD,
+            )
+            self.wait(lambda: data("got" + step))
+            return json.loads(data("got" + step))
+
+        def tab_at(path):
+            url = f"chrome-extension://{entry['id']}/{path}"
+            return next(
+                (t for t in self.window.tabs if t.url().toString() == url), None
+            )
+
+        # Its navigation events: this page finished loading.
+        self.wait(lambda: ask("nav").get("completed") == self.url)
+        self.assertEqual(
+            ask("nav")["completedTab"], bridges.tab_id(self.name, entry["id"], tab)
+        )
+        # Opened in the background: the current tab stays.
+        self.assertEqual(ask("open"), "opened")
+        self.wait(lambda: tab_at("page.html"))
+        self.assertIs(self.window.tabs[self.window.current_tab_index], tab)
+        self.assertEqual(ask("options"), "options")
+        self.wait(lambda: tab_at("opt.html"))
+        self.assertTrue(ask("bad").startswith("refused: Steed opens only"))
+        # Its errors are kept for Manage Extensions.
+        self.assertEqual(ask("fail"), "thrown")
+        self.wait(
+            lambda: any(
+                "boom from the background" in e["message"]
+                for e in bridges.recent_errors(self.name, entry["id"])
+            )
+        )
+        from ui.extensions_dialog import ExtensionsDialog
+
+        dialog = ExtensionsDialog(self.window)
+        try:
+            self.assertTrue(dialog.buttons["Options"].isEnabled())
+            self.assertTrue(dialog.buttons["Errors…"].text().startswith("Errors ("))
+        finally:
+            dialog.deleteLater()
+        # And it can close the tab it runs in.
+        webengine.run_script(
+            tab.page(),
+            "window.postMessage({ask: 'close'}, '*')",
+            world=webengine.PAGE_WORLD,
+        )
+        self.wait(lambda: tab not in self.window.tabs)
 
 
 if __name__ == "__main__":

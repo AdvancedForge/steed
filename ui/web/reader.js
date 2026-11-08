@@ -28,9 +28,69 @@ function render(article) {
       if (block.type === 'caption') node.className = 'caption';
       body.append(node);
     }
+    node.dataset.block = String(index);
     node.textContent = block.text;
   }
 }
+// Highlights: spans of one block's text, drawn as marks over the plain text.
+let marked = '';
+function paintHighlights(highlights) {
+  const key = JSON.stringify(highlights);
+  if (key === marked) return;
+  marked = key;
+  for (const node of document.querySelectorAll('[data-block]')) {
+    const index = Number(node.dataset.block), text = state.article.blocks[index].text;
+    const spans = highlights.filter(h => h.block === index).sort((a, b) => a.start - b.start);
+    node.replaceChildren();
+    let at = 0;
+    for (const span of spans) {
+      if (span.start < at) continue;
+      node.append(document.createTextNode(text.slice(at, span.start)));
+      const mark = document.createElement('mark');
+      mark.textContent = text.slice(span.start, span.end);
+      mark.dataset.id = span.id;
+      if (span.note) { mark.title = span.note; mark.classList.add('noted'); }
+      mark.onclick = () => openNote(span);
+      node.append(mark);
+      at = span.end;
+    }
+    node.append(document.createTextNode(text.slice(at)));
+  }
+}
+// Where a selection sits in its block's plain text, or null.
+function selected() {
+  const selection = document.getSelection();
+  if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  const block = node => (node.nodeType === 1 ? node : node.parentElement)?.closest('[data-block]');
+  const start = block(range.startContainer), end = block(range.endContainer);
+  if (!start || start !== end) return null;
+  const before = document.createRange();
+  before.selectNodeContents(start);
+  before.setEnd(range.startContainer, range.startOffset);
+  const offset = before.toString().length, length = range.toString().length;
+  return length ? {block: Number(start.dataset.block), start: offset, end: offset + length} : null;
+}
+let noting = null;
+function openNote(span) {
+  noting = span;
+  $('note-text').value = span.note || '';
+  $('note-editor').hidden = false;
+  $('note-text').focus();
+}
+function closeNote() { noting = null; $('note-editor').hidden = true; }
+document.addEventListener('selectionchange', () => { $('highlight').disabled = !selected(); });
+$('highlight').onclick = () => {
+  const span = selected();
+  if (span) { command('highlight', span); document.getSelection().removeAllRanges(); }
+};
+$('note-editor').onsubmit = event => {
+  event.preventDefault();
+  if (noting) command('note', {id: noting.id, text: $('note-text').value});
+  closeNote();
+};
+$('unhighlight').onclick = () => { if (noting) command('unhighlight', {id: noting.id}); closeNote(); };
+$('note-close').onclick = closeNote;
 let shown = null;
 window.steedUI = {render(next) {
   state = next;
@@ -40,7 +100,8 @@ window.steedUI = {render(next) {
   document.documentElement.style.setProperty('--reader-size', next.size + 'px');
   for (const button of document.querySelectorAll('[data-theme]')) button.setAttribute('aria-checked', String(button.dataset.theme === next.theme));
   // One article per reader page; settings changes keep the reading position.
-  if (shown !== next.context) { shown = next.context; render(next.article); }
+  if (shown !== next.context) { shown = next.context; marked = ''; render(next.article); }
+  paintHighlights(next.highlights || []);
   // Images arrive after the text; each is set once, as an inline image.
   for (const image of document.querySelectorAll('img[data-index]')) {
     const source = next.images[image.dataset.index];
@@ -56,5 +117,9 @@ $('larger').onclick = () => command('size', {step: 1});
 $('close').onclick = () => command('close');
 $('images').onclick = () => command('images', {show: !state.show_images});
 for (const button of document.querySelectorAll('[data-theme]')) button.onclick = () => command('theme', {theme: button.dataset.theme});
-document.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); command('close'); } });
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  if (!$('note-editor').hidden) closeNote(); else command('close');
+});
 new QWebChannel(qt.webChannelTransport, channel => { bridge = channel.objects.interface; bridge.ready(STEED_GENERATION); });

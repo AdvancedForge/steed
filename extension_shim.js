@@ -68,6 +68,14 @@
   const own = (name, members) => {
     if (stubs.has(name)) Object.assign(chrome[name], members);
   };
+  // Replace a member Qt has but cannot carry out here.
+  const replace = (target, name, value) => {
+    try {
+      Object.defineProperty(target, name, { value, configurable: true, writable: true });
+    } catch (error) {
+      // Not replaceable in this engine.
+    }
+  };
   // Fill in members missing from an API Qt has only in part.
   const fill = (name, members) => {
     if (!chrome[name]) chrome[name] = {};
@@ -545,13 +553,14 @@
     update: (...args) => api("update", args),
     reload: (...args) => api("reload", args),
     getCurrent: quiet(undefined),
-    remove: quiet(undefined),
+    remove: (...args) => api("remove", args),
     discard: quiet(undefined),
     getZoom: quiet(1),
     setZoom: quiet(undefined),
     captureVisibleTab: unavailable("tabs.captureVisibleTab"),
     ...tabEvents,
   });
+  let windowCreate = null;
   if (worker) {
     const tabs = new Map(); // id -> { port, tab }
     let focused = null;
@@ -636,20 +645,53 @@
       update: ([id, props]) => {
         if (typeof id === "object") [id, props] = [focused, id];
         if (props && props.url) control(id, { type: "navigate", url: props.url });
+        if (props && props.active && bridge) toSteed({ type: "activateTab", tabId: id });
         return tabOf(id);
       },
+      // Steed closes the tabs (through the bridge page).
+      remove: ([ids]) => (bridge ? askSteed({ type: "closeTabs", ids: [].concat(ids) }) : undefined),
       reload: ([id]) => {
         control(id ?? focused, { type: "reload" });
       },
     };
     fill("tabs", {
       ...tabMembers((method, args) => settle(args, methods[method])),
+      // Steed opens it in a tab of the profile's window.
       create: (...args) =>
-        settle(args, ([props = {}]) => {
-          globalThis.clients?.openWindow?.(props.url || "about:blank").catch(() => {});
-          return { id: -1, url: props.url, active: true, windowId: 1 };
+        settle(args, async ([props = {}]) => {
+          const active = props.active !== false;
+          if (bridge) await askSteed({ type: "openTab", url: props.url || "", active });
+          else globalThis.clients?.openWindow?.(props.url || "about:blank").catch(() => {});
+          return { id: -1, url: props.url, pendingUrl: props.url, active, windowId: 1 };
         }),
     });
+    // Given to chrome.windows once that stand-in exists (below).
+    windowCreate = (...args) =>
+      settle(args, async ([props = {}]) => {
+        const urls = [].concat(props.url || []);
+        if (bridge) await askSteed({ type: "openWindow", urls });
+        return { id: 2, focused: true, type: "normal", tabs: [] };
+      });
+    const options = (manifest.options_ui && manifest.options_ui.page) || manifest.options_page;
+    // Qt's own fails ("Could not create an options page"): Steed opens a tab.
+    replace(chrome.runtime, "openOptionsPage", (...args) =>
+      settle(args, async () => {
+        if (!options) throw new Error("This extension has no options page.");
+        await askSteed({ type: "openTab", url: chrome.runtime.getURL(options), active: true });
+      }),
+    );
+    // Errors and console.error from the background, for Manage Extensions.
+    const report = (message, source, line) =>
+      toSteed({ type: "error", message: String(message).slice(0, 2000), source: String(source || ""), line: line || 0 });
+    globalThis.addEventListener?.("error", (event) => report(event.message, event.filename, event.lineno));
+    globalThis.addEventListener?.("unhandledrejection", (event) =>
+      report("Uncaught (in promise) " + (event.reason && (event.reason.stack || event.reason.message) || event.reason), "", 0),
+    );
+    const logError = console.error.bind(console);
+    console.error = (...args) => {
+      logError(...args);
+      report(args.map((a) => (a && a.stack) || (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "), "console", 0);
+    };
     chrome.runtime.onConnect.addListener((port) => {
       if (port.name !== PORT) return;
       let id = null;
@@ -810,6 +852,8 @@
         chrome.contextMenus.onClicked.dispatch(message.info, tab);
       } else if (message.type === "command") {
         chrome.commands.onCommand.dispatch(message.name, tabFor(message.tabId));
+      } else if (message.type === "navigation") {
+        chrome.webNavigation?.[message.event]?.dispatch(message.details);
       } else if (message.type === "actionClicked") {
         chrome.action.onClicked.dispatch(tabFor(message.tabId));
       } else if (message.type === "worldReply") {
@@ -848,11 +892,17 @@
       listTabs();
     });
     // Pages' calls of these, made here.
-    const callable = { contextMenus: true, action: true, scripting: true };
+    const callable = { contextMenus: true, action: true, scripting: true, runtime: true };
+    const runtimeCalls = new Set(["openOptionsPage"]);
 
     // Popups and other extension pages ask here.
     chrome.runtime.onMessage.addListener((message, sender, respond) => {
+      if (ours(message) && message.__steed === "error") {
+        report(message.message, message.source, message.line);
+        return;
+      }
       if (ours(message) && message.__steed === "call" && callable[message.ns]) {
+        if (message.ns === "runtime" && !runtimeCalls.has(message.method)) return;
         const method = chrome[message.ns][message.method];
         if (typeof method !== "function") return;
         Promise.resolve()
@@ -930,6 +980,18 @@
       );
     };
     own("scripting", scripting);
+    replace(chrome.runtime, "openOptionsPage", call("runtime", "openOptionsPage"));
+    const reportPage = (message, source, line) => {
+      try {
+        chrome.runtime.sendMessage({ __steed: "error", message: String(message).slice(0, 2000), source, line }).catch(() => {});
+      } catch (error) {
+        // The extension went away.
+      }
+    };
+    window.addEventListener("error", (event) => reportPage(event.message, event.filename, event.lineno));
+    window.addEventListener("unhandledrejection", (event) =>
+      reportPage("Uncaught (in promise) " + (event.reason && (event.reason.message || event.reason)), location.href, 0),
+    );
     const pageTab = (id, sender) => ({ id, windowId: 1, url: sender && sender.url, incognito: false });
     screen(chrome.runtime.onConnect, unwrapPort(pageTab));
     screen(chrome.runtime.onMessage, unwrapMessage(pageTab));
@@ -949,4 +1011,5 @@
     onFocusChanged: event(),
     onBoundsChanged: event(),
   });
+  if (windowCreate) own("windows", { create: windowCreate });
 })();

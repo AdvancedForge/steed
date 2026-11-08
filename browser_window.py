@@ -129,6 +129,17 @@ class BrowserPage(QWebEnginePage):
             window.profile_manager.registry.passkeys.request(tab, message)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        kinds = QWebEnginePage.NavigationType
+        window = getattr(self.parent(), "browser_window", None)
+        if (
+            is_main_frame
+            and window is not None
+            and navigation_type
+            in (kinds.NavigationTypeLinkClicked, kinds.NavigationTypeTyped)
+            and url.scheme() in ("http", "https")
+            and window.follow_site_rule(self.parent(), url)
+        ):
+            return False
         if (
             is_main_frame
             and navigation_type
@@ -222,6 +233,7 @@ class BrowserTab(QWebEngineView):
         self.pinned = False
         self.native_panel = None
         self.reader_panel = None
+        self.crash_panel = None
         self.workspace_name = None
         self.workspace_controller = None
         self.load_progress = 100
@@ -298,6 +310,8 @@ class BrowserTab(QWebEngineView):
             self.native_panel.setGeometry(self.rect())
         if self.reader_panel is not None:
             self.reader_panel.setGeometry(self.rect())
+        if self.crash_panel is not None:
+            self.crash_panel.setGeometry(self.rect())
 
 
 # One-time tokens for tabs being dragged out of a strip: token -> (window, tab).
@@ -572,6 +586,9 @@ class BrowserWindow(QMainWindow):
         general_menu.addAction(import_action)
         self.extensions_menu = general_menu.addMenu("Extensions")
         self.extensions_menu.aboutToShow.connect(self._fill_extensions_menu)
+        crash_action = QAction("Crash Log…", self)
+        crash_action.triggered.connect(self._open_crash_log)
+        general_menu.addAction(crash_action)
         sync_action = QAction("Sync…", self)
         sync_action.triggered.connect(self._open_sync)
         general_menu.addAction(sync_action)
@@ -594,6 +611,13 @@ class BrowserWindow(QMainWindow):
         style_action = QAction("Page Style…", self)
         style_action.triggered.connect(self._open_page_style)
         view_menu.addAction(style_action)
+        unsplit = QAction("Close Split View", self)
+        unsplit.triggered.connect(self.close_split_view)
+        view_menu.addAction(unsplit)
+        save_page = QAction("Save Page As…", self)
+        save_page.setShortcut(QKeySequence("Ctrl+S"))
+        save_page.triggered.connect(lambda: self.save_page_as())
+        view_menu.addAction(save_page)
         shots = view_menu.addMenu("Take Screenshot")
         for label, whole, copy, key in (
             ("Save Full Page…", True, False, "Ctrl+Shift+S"),
@@ -1083,9 +1107,13 @@ class BrowserWindow(QMainWindow):
         self.tab_container.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        self.tab_layout = QVBoxLayout(self.tab_container)
+        # Side by side: only the current tab shows, and in split view the
+        # tab beside it.
+        self.tab_layout = QHBoxLayout(self.tab_container)
         self.tab_layout.setContentsMargins(0, 0, 0, 0)
         self.tab_layout.setSpacing(0)
+        self.split_tab = None
+        QApplication.instance().focusChanged.connect(self._focus_changed)
         # Pages share a splitter with docked Developer Tools.
         from ui.password_assistant import PasswordAssistant
 
@@ -1848,6 +1876,10 @@ class BrowserWindow(QMainWindow):
         memory_trim.schedule()
         active = self.tabs[self.current_tab_index]
         tab = self.tabs.pop(index)
+        if tab is self.split_tab:
+            self.split_tab = None
+        left = tab.url().host()
+        QTimer.singleShot(0, lambda: self._site_left(left))
         state = TabState(
             "steed:agents"
             if getattr(tab, "agent_panel", False)
@@ -1967,12 +1999,20 @@ class BrowserWindow(QMainWindow):
         mini = getattr(self.tabs[index], "mini_player", None)
         if mini is not None and not sip.isdeleted(mini):
             mini.close()
-        # Hide all tabs
+        # Show the chosen tab (and the one beside it in split view).
+        if self.split_tab is self.tabs[index]:
+            # Its side became the current one: the other side stays beside it.
+            self.split_tab = previous if previous is not self.tabs[index] else None
+        if self.split_tab is not None and self.split_tab not in self.tabs:
+            self.split_tab = None
+        self.tab_layout.setSpacing(2 if self.split_tab is not None else 0)
         for i, t in enumerate(self.tabs):
             if getattr(t, "mini_player", None) is not None:
                 continue
             t.setVisible(
-                i == index or bool(self.web_chat_dock and self.web_chat_dock.view is t)
+                i == index
+                or t is self.split_tab
+                or bool(self.web_chat_dock and self.web_chat_dock.view is t)
             )
         # Update address bar and navigation buttons
         cur = self.tabs[index]
@@ -2441,7 +2481,9 @@ class BrowserWindow(QMainWindow):
         tab = self._new_tab(url="about:blank", title=entry["title"], return_tab=True)
         if tab is None:
             return None
-        panel = ReaderPanel(self, tab, entry["article"], QUrl("about:blank"))
+        panel = ReaderPanel(
+            self, tab, entry["article"], QUrl("about:blank"), notes_url=entry["url"]
+        )
         tab.reader_panel = panel
 
         def closed():
@@ -3115,6 +3157,21 @@ class BrowserWindow(QMainWindow):
                     tab, host, key, "allow" if allowed else "block"
                 )
             )
+        rules = menu.addMenu("Always Open in Profile")
+        chosen = self.site_profile(host)
+        for name in [None, *[p for p in self.profile_manager.list_profiles()]]:
+            action = rules.addAction(name or "No rule")
+            action.setCheckable(True)
+            action.setChecked(chosen == name)
+            action.triggered.connect(
+                lambda _=False, name=name: self.set_site_profile(host, name)
+            )
+        forget = menu.addAction("Forget this site when its tabs close")
+        forget.setCheckable(True)
+        forget.setChecked(values["forget"] == "forget")
+        forget.toggled.connect(
+            lambda on: store.set(host, "forget", "forget" if on else "keep")
+        )
         zoom = round(values["zoom"] * 100)
         reset = menu.addAction(f"Reset zoom ({zoom}%)")
         reset.setEnabled(zoom != 100)
@@ -3418,7 +3475,16 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             return
         if tab in self.tabs:
+            self._navigation_event(
+                tab,
+                "onCommitted"
+                if getattr(tab, "is_loading", False)
+                else "onHistoryStateUpdated",
+            )
             self.passkey_bar.page_changed(tab)
+            left, tab.site_host = getattr(tab, "site_host", ""), url.host()
+            if left and left != url.host():
+                QTimer.singleShot(0, lambda: self._site_left(left))
             self.tab_bar.set_tab_state(self.tabs.index(tab), url=url.toString())
             self._apply_site_zoom(tab)
             if tab.reader_panel is not None and url != tab.reader_panel.url:
@@ -3460,17 +3526,190 @@ class BrowserWindow(QMainWindow):
     def _on_load_started(self, tab):
         tab.is_loading = True
         tab.load_progress = 0
+        self._clear_crash_panel(tab)
+        self._navigation_event(tab, "onBeforeNavigate")
         if not self._closing and tab in self.tabs:
             self.tab_bar.set_tab_state(self.tabs.index(tab), loading=True)
         if not self._closing and self.tabs and tab == self.tabs[self.current_tab_index]:
             self._update_loading_indicator()
 
+    SAVE_FORMATS = {
+        "Web page, single file (*.mhtml)": ".mhtml",
+        "Web page, complete (*.html)": ".html",
+        "PDF (*.pdf)": ".pdf",
+    }
+
+    def save_page_as(self, path=None, kind=None):
+        """Save the current page as one file, as HTML with its files, or PDF."""
+        import re
+
+        from PyQt6.QtWebEngineCore import QWebEngineDownloadRequest
+
+        tab = self._current_browser_tab()
+        if (
+            tab is None
+            or tab.workspace_name
+            or tab.url().scheme()
+            not in (
+                "http",
+                "https",
+                "file",
+            )
+        ):
+            self.status_bar.showMessage("Only web pages can be saved.", 5000)
+            return None
+        if path is None:
+            title = re.sub(r'[\\/:*?"<>|]+', " ", tab.title() or "page").strip()
+            folder = self.config.get("download_dir", "") or str(Path.home())
+            path, chosen = QFileDialog.getSaveFileName(
+                self,
+                "Save Page As",
+                str(Path(folder) / (title[:100] or "page")),
+                ";;".join(self.SAVE_FORMATS),
+            )
+            if not path:
+                return None
+            kind = self.SAVE_FORMATS.get(chosen, ".mhtml")
+        kind = kind or Path(path).suffix.lower() or ".mhtml"
+        if Path(path).suffix.lower() != kind:
+            path += kind
+        page = tab.page()
+        if kind == ".pdf":
+            page.printToPdf(path)
+            page.pdfPrintingFinished.connect(
+                lambda done, ok: self.status_bar.showMessage(
+                    f"Saved {Path(done).name}." if ok else "Could not save the PDF.",
+                    6000,
+                ),
+                Qt.ConnectionType.SingleShotConnection,
+            )
+        else:
+            formats = QWebEngineDownloadRequest.SavePageFormat
+            page.save(
+                path,
+                formats.MimeHtmlSaveFormat
+                if kind == ".mhtml"
+                else formats.CompleteHtmlSaveFormat,
+            )
+            self.status_bar.showMessage(f"Saving {Path(path).name}…", 6000)
+        return path
+
+    def _navigation_event(self, tab, event, error=None):
+        """webNavigation for extensions that ask for it."""
+        if (
+            self._closing
+            or tab.workspace_name
+            or tab.url().scheme()
+            not in (
+                "http",
+                "https",
+            )
+        ):
+            return
+        self.profile_manager.registry.extensions.bridges.navigation(
+            self.profile_manager.current_profile_name,
+            tab,
+            event,
+            tab.url().toString(),
+            error,
+        )
+
+    def _site_left(self, host, closing=False):
+        """A site set to be forgotten has no tabs left: delete its cookies."""
+        import privacy
+        from site_settings import site_key
+
+        key = site_key(QUrl(f"https://{host}/")) if host else None
+        if key is None or self.cookie_manager is None:
+            return
+        if self._site_settings().get(key).get("forget") != "forget":
+            return
+        site = privacy.site_of(key)
+        for window in [self, *self._same_profile_windows()]:
+            # A closing window's tabs no longer count.
+            if (window is self and closing) or (
+                window is not self and getattr(window, "_closing", False)
+            ):
+                continue
+            for other in window.tabs:
+                if privacy.site_of(other.url().host()) == site:
+                    return
+        self.cookie_manager.delete_cookies_for_domain(site)
+        if not closing:
+            self.status_bar.showMessage(
+                f"Forgot {site}: its cookies are deleted.", 5000
+            )
+
+    def _tab_crashed(self, tab, status, code):
+        """A page process ended: say so over the tab, and log it."""
+        import crash_log
+        from ui.crash_panel import CrashPanel
+
+        kind = QWebEnginePage.RenderProcessTerminationStatus
+        reason = {
+            kind.AbnormalTerminationStatus: "abnormal",
+            kind.CrashedTerminationStatus: "crashed",
+            kind.KilledTerminationStatus: "killed",
+        }.get(status)
+        if (
+            reason is None
+            or self._closing
+            or sip.isdeleted(tab)
+            or tab not in self.tabs
+        ):
+            return  # A normal end (the page closed): nothing went wrong.
+        private = self.profile_manager.current_profile_name == "search"
+        crash_log.record(
+            self.config.config_dir,
+            "incognito" if private else tab.url().host(),
+            reason,
+            code,
+        )
+        if tab.crash_panel is None:
+            tab.crash_panel = CrashPanel(self, tab, reason)
+            tab.crash_panel.show()
+            tab.crash_panel.raise_()
+        self.status_bar.showMessage("A tab crashed; Reload brings it back.", 8000)
+
+    def _clear_crash_panel(self, tab):
+        if getattr(tab, "crash_panel", None) is not None:
+            tab.crash_panel.deleteLater()
+            tab.crash_panel = None
+
+    def _open_crash_log(self):
+        from ui.crash_panel import CrashLogDialog
+
+        dialog = CrashLogDialog(self.config.config_dir, self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
+
     def _on_load_finished(self, tab: BrowserTab, ok: bool):
         if self._closing or tab not in self.tabs:
             return
+        upgraded = getattr(tab.page().site_compatibility, "upgraded", None)
+        if upgraded is not None:
+            tab.page().site_compatibility.upgraded = None
+            if not ok:
+                import privacy
+
+                target = privacy.fallback(*upgraded)
+                if target is not None:
+                    # Not available over HTTPS: load what was asked for.
+                    self.status_bar.showMessage(
+                        f"{QUrl(target).host()} does not offer HTTPS; loading it "
+                        "without encryption.",
+                        6000,
+                    )
+                    tab.setUrl(QUrl(target))
+                    return
         tab.is_loading = False
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
         tab.load_succeeded = ok
+        if ok:
+            self._navigation_event(tab, "onDOMContentLoaded")
+            self._navigation_event(tab, "onCompleted")
+        else:
+            self._navigation_event(tab, "onErrorOccurred", "net::ERR_FAILED")
         self.password_assistant.page_loaded(tab, ok)
         if ok:
             self._auto_zoom_small_text(tab)
@@ -3803,6 +4042,7 @@ class BrowserWindow(QMainWindow):
             getattr(tab, "workspace_name", None)
             or getattr(tab, "agent_panel", False)
             or getattr(tab, "keep_loaded", False)
+            or tab is getattr(self, "split_tab", None)
         ):
             return True
         page = tab.page()
@@ -3992,6 +4232,12 @@ class BrowserWindow(QMainWindow):
                 "Incognito window" if name == "search" else name,
                 lambda name=name: self.send_tab_to_profile(tab, name),
             )
+        beside = menu.addAction(
+            "Show Beside Current Tab", lambda: self.show_beside(tab)
+        )
+        beside.setEnabled(
+            tab is not self.tabs[self.current_tab_index] and not tab.workspace_name
+        )
         movable = len(self.tabs) > 1
         menu.addAction(
             "Move Tab to New Window", lambda: self._move_tab(tab)
@@ -4143,6 +4389,9 @@ class BrowserWindow(QMainWindow):
         tab.page().recentlyAudibleChanged.connect(lambda _: self._on_tab_audio(tab))
         tab.page().lifecycleStateChanged.connect(lambda _: self._on_tab_lifecycle(tab))
         tab.page().webAuthUxRequested.connect(self._security_key)
+        tab.page().renderProcessTerminated.connect(
+            lambda status, code: self._tab_crashed(tab, status, code)
+        )
         tab.page().audioMutedChanged.connect(lambda _: self._on_tab_audio(tab))
         if hasattr(tab.page(), "zoomFactorChanged"):
             tab.page().zoomFactorChanged.connect(lambda _: self._update_zoom())
@@ -4369,6 +4618,91 @@ class BrowserWindow(QMainWindow):
         if tab.group and copy in self.tabs:
             self._set_tab_group_existing(self.tabs.index(copy), tab.group)
         return copy
+
+    # -- split view
+
+    def show_beside(self, tab):
+        """Split view: this tab beside the current one."""
+        if tab not in self.tabs or tab is self.tabs[self.current_tab_index]:
+            return
+        self.split_tab = tab
+        if not tab.load_pending():
+            webengine.wake(tab.page())
+        self._switch_tab(self.current_tab_index)
+
+    def close_split_view(self):
+        if self.split_tab is not None:
+            self.split_tab = None
+            self._switch_tab(self.current_tab_index)
+
+    def _focus_changed(self, old, new):
+        """Clicking into the other side makes it the current tab."""
+        if self._closing or sip.isdeleted(self) or new is None:
+            return
+        split = self.split_tab
+        if split is not None and split in self.tabs and split.isAncestorOf(new):
+            self._switch_tab(self.tabs.index(split))
+
+    # -- profiles for sites
+
+    def site_profile(self, host):
+        """The profile a site always opens in, if it has a rule."""
+        import privacy
+
+        rules = self.config.get("site_profiles", {}) or {}
+        site = privacy.site_of(host)
+        while site:
+            if site in rules:
+                return rules[site]
+            site = site.partition(".")[2] if "." in site else ""
+        return None
+
+    def set_site_profile(self, host, profile):
+        import privacy
+
+        rules = dict(self.config.get("site_profiles", {}) or {})
+        site = privacy.site_of(host)
+        if profile:
+            rules[site] = profile
+        else:
+            rules.pop(site, None)
+        self.config.set("site_profiles", rules)
+
+    def follow_site_rule(self, tab, url):
+        """Open url in its site's profile; True when it went there."""
+        profile = self.site_profile(url.host())
+        current = self.profile_manager.current_profile_name
+        if (
+            not profile
+            or profile == current
+            or current == "search"
+            or profile not in self.profile_manager.list_profiles()
+        ):
+            return False
+        window = self._window_for_profile(profile)
+        window._new_tab(url=url.toString())
+        window.raise_()
+        window.activateWindow()
+        self.status_bar.showMessage(f"Opened in the {profile} profile.", 5000)
+        # A new or blank tab, opened only for this page, has nothing left to show.
+        shown = tab.url().scheme() if tab in self.tabs else ""
+        if shown not in ("http", "https", "file") and len(self.tabs) > 1:
+            QTimer.singleShot(0, lambda: self._close_tab_object(tab))
+        return True
+
+    def _window_for_profile(self, profile):
+        target = next(
+            (
+                w
+                for w in QApplication.topLevelWidgets()
+                if isinstance(w, BrowserWindow)
+                and w is not self
+                and not w._closing
+                and w.profile_manager.current_profile_name == profile
+            ),
+            None,
+        )
+        return target or self._open_window(profile)
 
     def send_tab_to_profile(self, tab, profile):
         """Open the page in another profile (its own sign-ins), and close it here."""
@@ -4923,6 +5257,8 @@ class BrowserWindow(QMainWindow):
         for watcher in self.findChildren(TaskWatchDialog):
             watcher.close()
 
+        for host in {tab.url().host() for tab in self.tabs}:
+            self._site_left(host, closing=True)
         if self.cookie_manager is not None:
             self.cookie_manager.close()
             self.cookie_manager = None

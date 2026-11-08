@@ -36,6 +36,7 @@ class ReadingListDialog(HtmlSettingsDialog):
             ("Read Offline", self.read_offline),
             ("Mark Read", self.toggle_read),
             ("Remove", self.remove),
+            ("Export as E-book…", self.export_book),
         ):
             button = QPushButton(label)
             button.setAutoDefault(False)
@@ -75,8 +76,8 @@ class ReadingListDialog(HtmlSettingsDialog):
 
     def update_buttons(self, *_):
         entry = self.selected()
-        for button in self.buttons.values():
-            button.setEnabled(entry is not None)
+        for label, button in self.buttons.items():
+            button.setEnabled(entry is not None or label == "Export as E-book…")
         if entry is not None:
             self.buttons["Read Offline"].setEnabled(entry["article"] is not None)
             self.buttons["Mark Read"].setText(
@@ -102,6 +103,30 @@ class ReadingListDialog(HtmlSettingsDialog):
         if entry is not None:
             self.store().set_read(entry["id"], not entry["read"])
             self.refresh()
+
+    def export_book(self, path=None):
+        """Every article kept for offline reading, as one EPUB file."""
+        import epub
+
+        if path is None:
+            from PyQt6.QtWidgets import QFileDialog
+
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export as E-book", "Reading list.epub", "E-books (*.epub)"
+            )
+            if not path:
+                return None
+            if not path.lower().endswith(".epub"):
+                path += ".epub"
+        try:
+            count = epub.write(self.store().entries(), path)
+        except (OSError, ValueError) as error:
+            from ui.prompts import MessageBox
+
+            MessageBox.warning(self, "Export as E-book", str(error))
+            return None
+        self.window.status_bar.showMessage(f"Saved {count} article(s) to {path}.", 6000)
+        return path
 
     def remove(self):
         entry = self.selected()

@@ -6,6 +6,9 @@
 <button id="smaller" aria-label="Smaller text">A−</button><button id="larger" aria-label="Larger text">A+</button>
 <span class="themes" role="radiogroup" aria-label="Theme"><button data-theme="light" role="radio">Light</button><button data-theme="sepia" role="radio">Sepia</button><button data-theme="dark" role="radio">Dark</button></span>
 <button id="images" aria-pressed="true">Images</button>
+<button id="highlight" disabled title="Select text in a paragraph first">Highlight</button>
 <button id="close" class="close">Exit reader (F9)</button></div>
 <main class="reader"><header><p id="site" class="site"></p><h1 id="title"></h1><p id="meta" class="meta"></p></header><article id="body"></article></main>
+<form id="note-editor" class="note-editor" hidden><label for="note-text">Note</label><textarea id="note-text" rows="3"></textarea>
+<div class="note-actions"><button type="submit">Save note</button><button type="button" id="unhighlight">Remove highlight</button><button type="button" id="note-close">Close</button></div></form>
 <script nonce="{{NONCE}}">{{CHANNEL}}</script><script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script></body></html>

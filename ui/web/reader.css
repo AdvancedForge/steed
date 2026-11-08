@@ -17,3 +17,10 @@ body { margin: 0; background: var(--reader-bg); color: var(--reader-ink); }
 .reader figure.image { margin: 1.4em 0; text-align: center; }
 .reader figure.image img { max-width: 100%; height: auto; border-radius: 6px; }
 .reader-bar button[aria-pressed=true] { background: var(--reader-ink); color: var(--reader-bg); }
+.reader mark { background: #ffe58a; color: inherit; border-radius: 2px; cursor: pointer; }
+:root[data-reader="dark"] .reader mark { background: #6b5a1a; }
+.reader mark.noted { border-bottom: 2px solid #d98e04; }
+.note-editor { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); background: var(--reader-bg); color: var(--reader-ink); border: 1px solid var(--reader-rule); border-radius: 12px; padding: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.18); font: 14px system-ui, sans-serif; display: grid; gap: 8px; z-index: 2; }
+.note-editor textarea { font: inherit; background: transparent; color: inherit; border: 1px solid var(--reader-rule); border-radius: 8px; padding: 8px; resize: vertical; }
+.note-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.note-actions button { background: transparent; color: var(--reader-ink); border: 1px solid var(--reader-rule); border-radius: 7px; padding: 5px 10px; font: 600 13px system-ui, sans-serif; cursor: pointer; }
