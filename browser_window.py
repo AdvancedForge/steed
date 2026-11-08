@@ -548,6 +548,9 @@ class BrowserWindow(QMainWindow):
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(lambda: self._open_management("downloads"))
         general_menu.addAction(downloads_action)
+        import_action = QAction("Import from Another Browser…", self)
+        import_action.triggered.connect(self._open_import)
+        general_menu.addAction(import_action)
         keywords_action = QAction("Search Keywords…", self)
         keywords_action.triggered.connect(self._open_search_keywords)
         general_menu.addAction(keywords_action)
@@ -2504,6 +2507,67 @@ class BrowserWindow(QMainWindow):
         player = media_controls.MiniPlayer(self, tab)
         player.show()
         return player
+
+    def _open_import(self):
+        from ui.import_dialog import ImportDialog
+
+        if self.profile_manager.is_search_profile():
+            QMessageBox.information(
+                self, "Import", "Switch to a regular profile to import into it."
+            )
+            return None
+        dialog = ImportDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        return self._present_dialog(dialog, modal=False)
+
+    def import_from_browser(self, source, *, bookmarks=True, history=True, tabs=True):
+        """Bring another browser's data into this profile; returns a summary."""
+        from uuid import uuid4
+
+        import browser_import
+        from tab_manager import TabGroup
+
+        data = browser_import.read_source(
+            source, bookmarks=bookmarks, history=history, tabs=tabs
+        )
+        profile = self.profile_manager.current_profile_name
+        parts = []
+        if bookmarks:
+            try:
+                result = self.profile_manager.registry.start_pages.import_entries(
+                    profile, data["bookmarks"]
+                )
+                parts.append(
+                    f"{result['added']} bookmarks added"
+                    + (
+                        f", {result['duplicates']} already there"
+                        if result["duplicates"]
+                        else ""
+                    )
+                )
+            except ValueError as error:
+                parts.append(str(error))
+        if history and self.history is not None:
+            # Oldest first, so the newest pages end up most recent here too.
+            for entry in reversed(data["history"]):
+                self.history.record(entry["url"], entry["title"])
+            parts.append(f"{len(data['history'])} history pages")
+        if tabs and data["tabs"]:
+            name = f"Open tabs from {source['browser']}"
+            try:
+                self.tab_manager.save_closed_group(
+                    TabGroup(uuid4().hex, name), data["tabs"]
+                )
+                parts.append(
+                    f"{len(data['tabs'])} open tabs saved as “{name}” (Tabs → Saved Groups)"
+                )
+            except ValueError as error:
+                parts.append(str(error))
+        summary = (
+            "Imported: " + "; ".join(parts) + "." if parts else "Nothing was chosen."
+        )
+        self.status_bar.showMessage(summary, 8000)
+        return summary
 
     def _open_search_keywords(self):
         from ui.search_keywords_dialog import SearchKeywordsDialog

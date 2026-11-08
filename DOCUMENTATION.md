@@ -519,6 +519,19 @@ drop it. Sites are ranked by how many of your history's pages they have, then
 by how recently. It completes site names only (not paths, and not text with a
 space). **Complete addresses as you type** in Settings turns it off.
 
+### Importing from another browser
+
+**General → Import from Another Browser…** lists the Chrome, Chromium, Brave,
+Edge, Vivaldi and Firefox profiles on this computer (including Snap and Flatpak
+installs, by each browser's own profile names) and imports into the current
+profile: **bookmarks** (top folders become labels; existing addresses are
+skipped; the 2,000-bookmark limit applies), **history** (the latest 1,000 web
+pages) and, from Firefox, **open tabs**, which become a saved group "Open tabs
+from Firefox" (Tabs → Saved Groups). Chromium keeps open tabs in an
+undocumented binary format, so they are not imported. Steed reads copies of the
+other browser's files in a temporary folder, so that browser may stay open and
+its files never change. Not available in incognito.
+
 ### Screenshots
 
 **View → Take Screenshot** saves (as PNG, asking where; Ctrl+Shift+S saves the

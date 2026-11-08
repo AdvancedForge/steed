@@ -434,6 +434,28 @@ class StartPages(QObject):
 
     def import_bookmarks(self, profile, content):
         entries, skipped = parse_bookmarks(content, web_url)
+        result = self.import_entries(profile, entries)
+        return {**result, "skipped": result["skipped"] + skipped}
+
+    def import_entries(self, profile, entries):
+        """Add {url, title, folder} bookmarks; existing addresses are skipped."""
+        skipped = 0
+        valid = []
+        for entry in entries:
+            try:
+                url = web_url(entry["url"])
+                title = bookmark_name(
+                    " ".join(str(entry.get("title") or url).split())[:200]
+                )
+                folder = bookmark_name(
+                    " ".join(str(entry.get("folder") or "").split())[:200],
+                    optional=True,
+                )
+            except (ValueError, KeyError, TypeError):
+                skipped += 1
+                continue
+            valid.append({"url": url, "title": title, "folder": folder or ""})
+        entries = valid
         state = self.state(profile)
         seen = {b["url"] for b in state["bookmarks"]}
         added, duplicates = 0, 0
