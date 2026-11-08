@@ -92,6 +92,46 @@ class ScreenshotTests(unittest.TestCase):
         self.assertFalse(image.isNull())
         self.assertEqual(image.width(), self.tab.width() * self.tab.devicePixelRatio())
 
+    def test_editing_crops_highlights_and_hides(self):
+        from PyQt6.QtCore import QRect
+        from PyQt6.QtGui import QColor
+
+        from ui.screenshot_editor import ScreenshotEditor, apply_edit
+
+        image = QImage(200, 100, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        hidden = apply_edit(image, "hide", QRect(10, 10, 20, 20))
+        self.assertEqual(hidden.pixelColor(15, 15), QColor("black"))
+        self.assertEqual(hidden.pixelColor(100, 50), QColor("white"))
+        lit = apply_edit(image, "highlight", QRect(50, 50, 40, 30))
+        self.assertNotEqual(lit.pixelColor(70, 65), QColor("white"))
+        self.assertGreater(lit.pixelColor(70, 65).red(), lit.pixelColor(70, 65).blue())
+        self.assertEqual(
+            apply_edit(image, "crop", QRect(0, 0, 50, 40)).size().width(), 50
+        )
+        # A click without a drag changes nothing.
+        self.assertIs(apply_edit(image, "crop", QRect(5, 5, 1, 1)), image)
+        editor = ScreenshotEditor(image, self.window)
+        copied = []
+        editor.copied.connect(copied.append)
+        editor.choose("crop")
+        editor.edit(QRect(0, 0, 100, 50))
+        self.assertEqual(editor.image.size().width(), 100)
+        editor.undo()
+        self.assertEqual(editor.image.size().width(), 200)
+        editor.choose("hide")
+        editor.edit(QRect(0, 0, 10, 10))
+        editor.finish(editor.copied)
+        self.assertEqual(copied[0].pixelColor(5, 5), QColor("black"))
+        editor.deleteLater()
+
+    def test_edit_from_the_menu_opens_the_editor(self):
+        self.window.take_screenshot(whole_page=False, copy="edit")
+        editor = self.window.screenshot_editor
+        self.assertTrue(editor.isVisible())
+        self.assertFalse(editor.image.isNull())
+        editor.reject()
+
     def test_open_developer_tools_is_reported(self):
         from ui import page_screenshot
 

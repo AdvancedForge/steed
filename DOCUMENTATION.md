@@ -541,6 +541,11 @@ the page is neither resized nor scrolled; pages longer than 16,384 pixels are
 cut there (the status bar says so). Close Developer Tools for the tab first.
 Steed pages and other non-web tabs capture their visible area.
 
+**Edit Full Page… / Edit Visible Area…** open the screenshot in an editor first:
+drag to **Crop**, **Highlight** (a yellow, see-through box) or **Hide** (a solid
+black box, for names or numbers you do not want to share); **Undo** steps back,
+then **Copy** or **Save…**.
+
 ### Translating pages
 
 **View → Translate Page** translates the current page; choosing it again shows

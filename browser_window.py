@@ -576,6 +576,8 @@ class BrowserWindow(QMainWindow):
             ("Save Visible Area…", False, False, ""),
             ("Copy Full Page", True, True, ""),
             ("Copy Visible Area", False, True, ""),
+            ("Edit Full Page…", True, "edit", ""),
+            ("Edit Visible Area…", False, "edit", ""),
         ):
             action = shots.addAction(label)
             if key:
@@ -2402,10 +2404,28 @@ class BrowserWindow(QMainWindow):
                 self.status_bar.showMessage("Nothing to capture.", 4000)
                 return
             note = " (cut at 16,384 pixels)" if cut else ""
+            if copy == "edit":
+                from ui.screenshot_editor import ScreenshotEditor
+
+                editor = ScreenshotEditor(image, self)
+                editor.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+                editor.copied.connect(
+                    lambda edited: (
+                        QApplication.clipboard().setImage(edited),
+                        self.status_bar.showMessage("Screenshot copied", 5000),
+                    )
+                )
+                editor.saved.connect(lambda edited: save(edited, note))
+                self.screenshot_editor = editor
+                editor.show()
+                return
             if copy:
                 QApplication.clipboard().setImage(image)
                 self.status_bar.showMessage(f"Screenshot copied{note}", 5000)
                 return
+            save(image, note)
+
+        def save(image, note=""):
             target = path or self._screenshot_path(tab)
             if target and image.save(str(target), "PNG"):
                 self.status_bar.showMessage(f"Saved {Path(target).name}{note}", 6000)
