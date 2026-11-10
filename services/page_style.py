@@ -238,6 +238,10 @@ class PageStyle(QObject):
         pages = getattr(self.registry, "start_pages", None)
         if not value["pages_follow_photo"] or not hasattr(pages, "theme_tint"):
             return ""
+        from PyQt6 import sip
+
+        if sip.isdeleted(pages):  # Shutting down: pages render no more.
+            return ""
         tint = pages.theme_tint(profile)
         if not tint:
             return ""
