@@ -614,7 +614,8 @@ about Chrome's menu width, as tall as their items (long sections scroll).
 
 **View → Liquid Glass** (also the new tab's gear panel under *Look*, or the
 Style page's Browser bars section) switches the profile to a glass look: tabs
-become frosted pills lit by the accent colour, the toolbar and address field
+become frosted pills lit by the accent colour (the current one, along the top,
+grows out of the toolbar with curved feet), the toolbar and address field
 get a glossy, lit-from-above finish, hover cards turn translucent, and the new
 tab's search box, buttons and panel become blurred glass that bends the photo
 behind it slightly, with a slow sheen. With *Match the background* on, the
