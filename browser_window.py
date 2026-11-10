@@ -2419,11 +2419,10 @@ class BrowserWindow(QMainWindow):
 
         tab = self.tabs[index]
         notes = []
-        state = tab.page().lifecycleState() if tab.page() is not None else None
-        states = QWebEnginePage.LifecycleState
-        if state == states.Frozen:
+        state = webengine.tab_state(tab.page()) if tab.page() is not None else None
+        if state == webengine.FROZEN:
             notes.append("Frozen to save resources; resumes when selected")
-        elif state == states.Discarded:
+        elif state == webengine.UNLOADED:
             notes.append("Unloaded to save memory; reloads when selected")
         if getattr(tab, "keep_loaded", False):
             notes.append("Kept loaded")
