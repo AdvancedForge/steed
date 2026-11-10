@@ -100,10 +100,6 @@ class TabStripTests(unittest.TestCase):
         self.assertEqual(self.js("document.querySelectorAll('.tab[title]').length"), 0)
         described = "[...document.querySelectorAll('.tab')].map(n => n.getAttribute('aria-description')).join()"
         self.assertIn("<img", self.js(described))
-            or self.js(
-                "[...document.querySelectorAll('.tab')].map(n => n.getAttribute('aria-description')).join()"
-            ),
-        )
 
     def test_every_appearance_renders(self):
         for key, (choices, _) in CHOICES.items():
