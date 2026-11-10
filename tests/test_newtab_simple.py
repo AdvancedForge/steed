@@ -121,6 +121,12 @@ class SimpleNewTabTests(unittest.TestCase):
             )
         )
 
+    def run_in(self, page, script):
+        found = []
+        webengine.run_script(page, script, found.append, world=webengine.PAGE_WORLD)
+        self.wait(lambda: found)
+        return found[0]
+
     def js(self, tab, script):
         found = []
         webengine.run_script(
@@ -381,6 +387,66 @@ class SimpleNewTabTests(unittest.TestCase):
                 == self.window.address_bar.colors["toolbar"]
             )
         )
+
+    def test_customize_can_live_inside_the_menu(self):
+        pages = self.pages
+        html = pages.render("global", "newtab").decode()
+        self.assertIn('<summary class="icon" title="Customize New Tab"', html)
+        self.assertIn("steed://action/newtab-set?gear_in_menu=1", html)
+        pages.set_from_page("global", [("gear_in_menu", "1")])
+        self.assertTrue(pages.state("global")["settings"]["gear_in_menu"])
+        html = pages.render("global", "newtab").decode()  # Opened by the choice.
+        menu = html.split('<details class="browser-menu" open>', 1)[1]
+        self.assertTrue(menu.startswith("<summary>☰ Browser menu</summary><div>"))
+        self.assertIn('<details class="customize" open><summary class="row">', menu)
+        self.assertNotIn('class="icon" title="Customize New Tab"', html)
+        with self.assertRaises(ValueError):
+            pages.set_from_page("global", [("gear_in_menu", "maybe")])
+        # Without the ☰ menu the gear stays its own button.
+        styles = self.window.profile_manager.registry.page_style
+        styles.save("global", {**styles.get("global"), "newtab_menu": False})
+        html = pages.render("global", "newtab").decode()
+        self.assertIn('<summary class="icon" title="Customize New Tab"', html)
+        self.assertNotIn("gear_in_menu=", html)
+
+    def test_menus_are_compact_and_in_the_browser_colours(self):
+        from ui.html_menu import MAX_HEIGHT, WIDTH
+
+        window = self.window
+        colors = window.address_bar.colors
+        self.assertIn(colors["toolbar"], window.browser_menu.styleSheet())
+        self.assertIn(colors["toolbar"], window._layout_menus["general"].styleSheet())
+        popup = window._show_html_menu(
+            window._layout_menus["tabs"], window.mapToGlobal(QPoint(300, 120))
+        )
+        self.assertEqual(popup.width(), WIDTH)
+        self.assertLessEqual(popup.height(), MAX_HEIGHT)
+        self.assertEqual(popup._colors()["toolbar"], colors["toolbar"])
+        script = (
+            "getComputedStyle(document.documentElement)"
+            ".getPropertyValue('--surface').trim()"
+        )
+        self.wait(lambda: self.run_in(popup.surface.page, script) == colors["toolbar"])
+        popup.close()
+
+    def test_a_photo_arriving_leaves_a_busy_new_tab_alone(self):
+        tab = self.window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: self.pages.photos.current() is not None)
+        self.loaded(tab)
+        self.wait(lambda: self.js(tab, "!!document.querySelector('.credit')"))
+        self.js(
+            tab,
+            "window.steedMark = 1; document.querySelector('.browser-menu').open = true; true",
+        )
+        self.pages.photos.changed.emit(True)
+        end = time.monotonic() + 1
+        while time.monotonic() < end:
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.assertEqual(self.js(tab, "window.steedMark"), 1)  # Not reloaded.
+        self.js(tab, "document.querySelector('.browser-menu').open = false; true")
+        self.pages.photos.changed.emit(True)
+        self.wait(lambda: self.js(tab, "window.steedMark === undefined"))
 
 
 if __name__ == "__main__":

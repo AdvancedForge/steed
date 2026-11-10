@@ -23,6 +23,12 @@ def application():
     global _application
     if _application is None:
         prepare_engine_environment()
+        # Tests never fetch real New Tab photos: a closed local port fails at
+        # once (tests of the photos point these at their own server).
+        import services.newtab_photo as photos
+
+        photos.LIST_URL = "http://127.0.0.1:9/list?page={page}"
+        photos.IMAGE_URL = "http://127.0.0.1:9/id/{id}.jpg"
         QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         _application = QApplication.instance() or QApplication(["steed-tests"])
         _application.setQuitOnLastWindowClosed(False)

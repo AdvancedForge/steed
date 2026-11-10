@@ -525,6 +525,10 @@ In the panel you can choose:
 - **Layout**: Simple (above) or Classic (the sections: search, bookmarks,
   recently closed, history, news).
 
+- **Settings button**: the gear as its own button, or *In the ☰ menu*, where
+  Customize New Tab is the first row of the menu and opens the same panel in
+  place (the gear stays when the New Tab ☰ menu is turned off in Style).
+
 **More options…** (also General → Customize New Tab…) opens the full dialog
 with the classic sections, a feed, a custom colour and your own HTML.
 
@@ -599,6 +603,12 @@ for example when memory runs out), its tab shows **This tab crashed** with
 **Reload** and **Crash Log…**. **General → Crash Log…** lists the last 200
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
+
+### Menus
+
+The ☰ menus (toolbar and New Tab) and their sections use the toolbar's
+colours, including colours taken from the new tab photo, and are compact:
+about Chrome's menu width, as tall as their items (long sections scroll).
 
 ### Liquid glass
 

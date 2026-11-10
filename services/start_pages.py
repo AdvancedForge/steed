@@ -44,6 +44,8 @@ DEFAULT_SETTINGS = {
     "photo_every": "6h",
     # The browser's toolbar and tabs take their colour from the background.
     "match_theme": True,
+    # Customize inside the ☰ menu instead of its own gear button.
+    "gear_in_menu": False,
 }
 LAYOUTS = ("simple", "classic")
 BACKGROUNDS = ("photo", "color", "image")
@@ -224,6 +226,9 @@ def clean_settings(value):
     match_theme = value.get("match_theme", True)
     if type(match_theme) is not bool:
         raise ValueError("Choose whether the browser matches the background")
+    gear_in_menu = value.get("gear_in_menu", False)
+    if type(gear_in_menu) is not bool:
+        raise ValueError("Choose where New Tab's settings button goes")
     if layout not in LAYOUTS or background not in BACKGROUNDS or every not in PERIODS:
         raise ValueError("Choose a layout, background and photo schedule Steed offers")
     if not isinstance(color, str) or (
@@ -240,6 +245,7 @@ def clean_settings(value):
         "color": color.lower(),
         "photo_every": every,
         "match_theme": match_theme,
+        "gear_in_menu": gear_in_menu,
     }
 
 
@@ -687,9 +693,21 @@ class StartPages(QObject):
             if dark:  # The search box and panel in the browser's colour too.
                 css += (
                     f"html:root[data-theme] {{ --surface: {toolbar};"
-                    f" --border: {accent}66; }}"
+                    f" --border: {accent}66;"
+                    f" --soft: color-mix(in srgb, {accent} 28%, {toolbar}); }}"
                 )
-        panel = customize_panel(settings, open_=profile in self.keep_open, glass=glass)
+        has_menu = bool(menu)
+        in_menu = has_menu and settings["gear_in_menu"]
+        opened = profile in self.keep_open
+        panel = customize_panel(
+            settings,
+            open_=opened,
+            glass=glass,
+            in_menu=in_menu,
+            menu_available=has_menu,
+        )
+        if in_menu:
+            menu, panel = newtab_menu(panel, open_=opened), ""
         self.keep_open.discard(profile)
         return (
             Template(SIMPLE_PAGE)
@@ -747,6 +765,7 @@ class StartPages(QObject):
             "layout": LAYOUTS,
             "photo_every": tuple(PERIODS),
             "match_theme": ("1", "0"),
+            "gear_in_menu": ("1", "0"),
         }
         changes = {}
         for key, value in params:
@@ -755,7 +774,9 @@ class StartPages(QObject):
             ):
                 changes["color"] = value
             elif key in allowed and value in allowed[key]:
-                changes[key] = value == "1" if key == "match_theme" else value
+                changes[key] = (
+                    value == "1" if key in ("match_theme", "gear_in_menu") else value
+                )
             else:
                 raise ValueError("Not a choice the panel offers")
         if not changes:
@@ -817,8 +838,11 @@ SWATCHES = (
 )  # fmt: skip
 
 
-def customize_panel(settings, open_=False, glass=False):
-    """The gear's panel: links to Steed actions (the page runs no script)."""
+def customize_panel(
+    settings, open_=False, glass=False, in_menu=False, menu_available=True
+):
+    """The gear's panel: links to Steed actions (the page runs no script).
+    in_menu: a row inside the ☰ menu rather than its own button."""
     from urllib.parse import quote
 
     def choice(label, key, value, current):
@@ -878,15 +902,23 @@ def customize_panel(settings, open_=False, glass=False):
     parts.append(
         choice("Classic", "layout", "classic", settings["layout"] == "classic")
     )
+    if menu_available:
+        parts.append('</div><h3>Settings button</h3><div class="choices">')
+        parts.append(choice("Own button", "gear_in_menu", "0", not in_menu))
+        parts.append(choice("In the ☰ menu", "gear_in_menu", "1", in_menu))
     parts.append(
         '</div><a class="more" href="steed://action/customize">More options…</a>'
     )
+    summary = (
+        '<summary class="row">' + GEAR + "Customize New Tab</summary>"
+        if in_menu
+        else '<summary class="icon" title="Customize New Tab"'
+        ' aria-label="Customize New Tab">' + GEAR + "</summary>"
+    )
     return (
         f'<details class="customize"{" open" if open_ else ""}>'
-        '<summary class="icon" title="Customize New Tab"'
-        ' aria-label="Customize New Tab">'
-        + GEAR
-        + '</summary><div class="panel">'
+        + summary
+        + '<div class="panel">'
         + "".join(parts)
         + "</div></details>"
     )
@@ -934,19 +966,32 @@ body.scrim .wordmark { text-shadow: 0 2px 24px #0006; }
 .credit, .note { position: fixed; left: 16px; bottom: 12px; font-size: 12px; color: inherit; opacity: .8; text-decoration: none; }
 .credit:hover { opacity: 1; text-decoration: underline; }
 .browser-menu { position: relative; font-size: 14px; }
-.browser-menu summary { list-style: none; cursor: pointer; font-size: 0; display: grid; place-items: center;
+.browser-menu > summary { list-style: none; cursor: pointer; font-size: 0; display: grid; place-items: center;
   width: 38px; height: 38px; border-radius: 50%; background: color-mix(in srgb, var(--surface) 35%, transparent);
   backdrop-filter: blur(6px); }
-.browser-menu summary::-webkit-details-marker { display: none; }
-.browser-menu summary::before { content: "☰"; font-size: 18px; }
+.browser-menu > summary::-webkit-details-marker { display: none; }
+.browser-menu > summary::before { content: "☰"; font-size: 18px; }
 .browser-menu > div { position: absolute; right: 0; top: 100%; margin-top: 6px; min-width: 190px; padding: 7px;
   border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 8px 24px #0002; }
 .browser-menu a { display: block; padding: 8px 12px; text-decoration: none; color: var(--ink); border-radius: 6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
 .customize { position: relative; }
+.browser-menu .customize summary.row { display: flex; align-items: center; gap: 9px; padding: 8px 12px;
+  border-radius: 6px; color: var(--ink); font-size: 14px; }
+.browser-menu .customize summary.row svg { width: 16px; height: 16px; flex: none; }
+.browser-menu .customize summary.row:hover, .browser-menu .customize[open] summary.row { background: var(--soft); }
+.browser-menu .customize .panel { position: static; width: 290px; margin: 4px 0 0; padding: 8px 6px 4px;
+  border: 0; border-top: 1px solid var(--border); border-radius: 0; box-shadow: none; background: none; }
+.browser-menu .customize[open] ~ a, .browser-menu .customize[open] ~ hr { display: none; }
+.browser-menu .panel .pill { display: inline-block; padding: 5px 11px; border-radius: 999px; }
+.browser-menu .panel .swatch { display: block; padding: 0; border-radius: 50%; }
+.browser-menu .panel .more { padding: 0; }
+.browser-menu > div { max-height: calc(100vh - 80px); overflow-y: auto; }
+body.glass .browser-menu .customize .panel { background: none; backdrop-filter: none; box-shadow: none; border-top-color: var(--glass-edge); }
+body.glass .browser-menu .customize summary.row { color: inherit; }
 .customize summary { list-style: none; cursor: pointer; }
 .customize summary::-webkit-details-marker { display: none; }
-.customize[open] summary { background: var(--surface); color: var(--ink); }
+.customize[open] > summary.icon { background: var(--surface); color: var(--ink); }
 .panel { position: absolute; right: 0; top: calc(100% + 8px); width: 300px; padding: 14px 16px 16px;
   border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--ink);
   box-shadow: 0 12px 40px #0003; text-align: left; font-size: 14px; }
@@ -983,7 +1028,7 @@ body.glass:not(.scrim) { --glass: #ffffff8c; --glass-low: #ffffff40; --glass-edg
   --glass-panel: #ffffffa6; }
 :root[data-theme="dark"] body.glass:not(.scrim) { --glass: #ffffff1f; --glass-low: #ffffff0a;
   --glass-edge: #ffffff40; --glass-shine: #ffffff66; --glass-panel: #1e273599; }
-body.glass .search, body.glass .panel, body.glass .corner .icon, body.glass .browser-menu summary,
+body.glass .search, body.glass .panel, body.glass .corner .icon, body.glass .browser-menu > summary,
 body.glass .browser-menu > div {
   color: var(--glass-ink); border: 1px solid var(--glass-edge);
   background: linear-gradient(160deg, var(--glass), var(--glass-low));
@@ -1006,14 +1051,14 @@ body.glass .search::before { content: ""; position: absolute; inset: 0; pointer-
 @keyframes steed-sheen { 0%, 100% { background-position: 0 0, 120% 0; } 50% { background-position: 0 0, -20% 0; } }
 body.glass .search input { color: inherit; position: relative; }
 body.glass .wordmark { text-shadow: 0 1px 0 #ffffff59, 0 8px 32px #00000040; }
-body.glass .corner .icon:hover, body.glass .browser-menu summary:hover { transform: scale(1.06); }
-body.glass .corner .icon, body.glass .browser-menu summary { transition: transform .35s cubic-bezier(.25, 1.6, .45, 1); }
+body.glass .corner .icon:hover, body.glass .browser-menu > summary:hover { transform: scale(1.06); }
+body.glass .corner .icon, body.glass .browser-menu > summary { transition: transform .35s cubic-bezier(.25, 1.6, .45, 1); }
 body.glass .pill { border-color: var(--glass-edge); color: inherit; background: var(--glass-low); }
 body.glass .pill:hover { background: var(--glass); }
 body.glass .pill.on { background: var(--glass-shine); border-color: var(--glass-shine); color: #141824;
   box-shadow: inset 0 1px 0 #fff, 0 2px 8px #0000002e; }
 body.glass .more { color: inherit; }
-body.glass .customize[open] summary { background: var(--glass-shine); color: #141824; }
+body.glass .customize[open] > summary.icon { background: var(--glass-shine); color: #141824; }
 @media (prefers-reduced-motion: reduce) { body.glass .search::before { animation: none; }
   body.glass .search, body.glass .corner .icon { transition: none; } }
 """
@@ -1043,7 +1088,8 @@ SIMPLE_PAGE = (
 )
 
 
-def newtab_menu():
+def newtab_menu(extra="", open_=False):
+    """The ☰ menu; extra goes first in its dropdown (the Customize row)."""
     links = "".join(
         f'<a href="steed://action/menu?name={name}">{label}</a>'
         for name, label in (
@@ -1056,7 +1102,9 @@ def newtab_menu():
         )
     )
     return (
-        '<details class="browser-menu"><summary>☰ Browser menu</summary><div>'
+        f'<details class="browser-menu"{" open" if open_ else ""}>'
+        "<summary>☰ Browser menu</summary><div>"
+        + extra
         + links
         + '<a href="steed://style/">Style</a><hr>'
         + '<a href="steed://settings/">Open in Settings ↗</a></div></details>'

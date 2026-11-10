@@ -9,6 +9,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Menus and tabs — November 10, 2026.** The active tab curves into the
+toolbar (rounded style); the ☰ menus are compact and in the toolbar's
+colours; Customize New Tab can sit inside the New Tab ☰ menu instead of its
+own gear; the dark-mode photo tint is stronger and reaches the search box.
+
 **Liquid glass — November 10, 2026.** A per-profile glass look (View →
 Liquid Glass, the new tab panel, Style): frosted pill tabs on a softly lit
 strip, a glossy toolbar and field, translucent hover cards, and glass search,

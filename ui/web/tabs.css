@@ -56,6 +56,16 @@ button:hover:enabled { background: none; border-color: transparent; }
 .style-rounded.horizontal .tab.active { box-shadow: none; }
 .style-rounded.horizontal .tab:not(.active):not(:hover) + .tab:not(.active):not(:hover)::before { content: ""; position: absolute; left: -1px; top: 25%; height: 50%; border-left: 1px solid var(--border); }
 .style-rounded.vertical .tab { border-radius: 9px; }
+/* The active tab curves out into the toolbar below it, so the two read as one piece. */
+.style-rounded.horizontal .tab.active { z-index: 1; }
+.style-rounded.horizontal .tab.active::before, .style-rounded.horizontal .tab.active::after {
+  content: ""; position: absolute; bottom: 0; width: 10px; height: 10px; pointer-events: none; border: 0; }
+.style-rounded.horizontal .tab.active::before { left: -10px; background: radial-gradient(circle at 0 0, transparent 9.5px, var(--toolbar) 10px); }
+.style-rounded.horizontal .tab.active::after { right: -10px; background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--toolbar) 10px); }
+.style-rounded.pos-bottom .tab.active::before, .style-rounded.pos-bottom .tab.active::after { bottom: auto; top: 0; }
+.style-rounded.pos-bottom .tab.active::before { background: radial-gradient(circle at 0 100%, transparent 9.5px, var(--toolbar) 10px); }
+.style-rounded.pos-bottom .tab.active::after { background: radial-gradient(circle at 100% 100%, transparent 9.5px, var(--toolbar) 10px); }
+.style-rounded.horizontal .tabs { padding: 0 10px; margin: 0 -10px; }
 
 .style-pill .tabs { gap: 5px; }
 .style-pill.horizontal .tabs { align-items: center; }

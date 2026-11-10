@@ -8,3 +8,14 @@ footer { border-top: 1px solid var(--border); margin-top: 8px; padding: 10px 0 2
 body { height: 100vh; display: flex; flex-direction: column; } header, footer { flex: none; } nav { flex: 1; min-height: 0; overflow-y: auto; }
 
 body.context-menu header { display: none; } body.context-menu { padding: 5px; } body.context-menu nav button { padding: 7px 10px; font-weight: 400; min-height: 32px; }
+
+/* Compact: about Chrome's menu size. Rows are 31px (ROW in html_menu.py). */
+body { padding: 6px; font-size: 13px; }
+header { padding: 4px 8px 6px; margin-bottom: 4px; gap: 6px; } h1 { font-size: 12px; }
+nav { gap: 0; } nav button { padding: 0 10px; min-height: 31px; height: 31px; font-weight: 450; border-radius: 6px; }
+nav button:hover:enabled, nav button:focus-visible { background: var(--soft); }
+.arrow { color: var(--muted); }
+hr { margin: 5px 0; }
+footer { margin-top: 4px; padding: 6px 0 0; } footer button { padding: 6px 10px; font-size: 12.5px; }
+#back { padding: 2px 8px; }
+.label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; } .shortcut { flex: none; white-space: nowrap; }
