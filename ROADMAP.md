@@ -9,6 +9,14 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**A simpler new tab, quieter chrome — November 10, 2026.** The new tab page
+is now just "Steed" and an empty search box over a photo that changes every
+few hours (Lorem Picsum, credited, cached; gradient fallback), with colour and
+own-image backgrounds, a classic layout, and the controls at the top right.
+The menu and status bars are hidden by default, with messages shown briefly
+over the page. Tab hover cards: one card (no second plain tooltip), Steed's
+colours, transparent behind rounded corners, one width by default.
+
 **Clearing options — November 8, 2026.** Clear Browsing Data with time
 ranges (history and downloads now keep times), per-site clearing with its
 size, forget-on-close clearing all site storage, and clearing on exit. Site

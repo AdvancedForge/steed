@@ -63,6 +63,60 @@ class StartPageDialog(HtmlSettingsDialog):
         tabs.addTab(built_in, "Built-in sections")
         tabs.addTab(custom, "Custom HTML")
         form = QVBoxLayout(built_in)
+
+        page = QFormLayout()
+        settings = state["settings"]
+        self.layout_choice = QComboBox()
+        for value, text in (
+            ("simple", "Simple — the name and a search box"),
+            ("classic", "Classic — the sections below"),
+        ):
+            self.layout_choice.addItem(text, value)
+        self.layout_choice.setCurrentIndex(
+            self.layout_choice.findData(settings["layout"])
+        )
+        page.addRow("Layout", self.layout_choice)
+        self.background_choice = QComboBox()
+        for value, text in (
+            ("photo", "A photo that changes now and then"),
+            ("color", "A plain colour"),
+            ("image", "Your own image (below)"),
+        ):
+            self.background_choice.addItem(text, value)
+        self.background_choice.setCurrentIndex(
+            self.background_choice.findData(settings["background"])
+        )
+        page.addRow("Background", self.background_choice)
+        self.photo_every = QComboBox()
+        for value, text in (
+            ("new_tab", "For every new tab"),
+            ("hourly", "Every hour"),
+            ("6h", "Every 6 hours"),
+            ("daily", "Every day"),
+        ):
+            self.photo_every.addItem(text, value)
+        self.photo_every.setCurrentIndex(
+            self.photo_every.findData(settings["photo_every"])
+        )
+        page.addRow("New photo", self.photo_every)
+        colors = QHBoxLayout()
+        self.color = settings["color"]
+        self.color_button = QPushButton()
+        self.color_button.clicked.connect(self.choose_color)
+        colors.addWidget(self.color_button)
+        theme_color = QPushButton("Follow the theme")
+        theme_color.clicked.connect(lambda: self.set_color(""))
+        colors.addWidget(theme_color)
+        colors.addStretch(1)
+        page.addRow("Colour", colors)
+        self.set_color(self.color)
+        form.addLayout(page)
+        note = QLabel(
+            "Photos are free Unsplash photos from Lorem Picsum, credited on the "
+            "page; Steed fetches one only while this background is chosen."
+        )
+        note.setWordWrap(True)
+        form.addWidget(note)
         form.addWidget(
             QLabel(
                 "Check sections to show. Drag content sections to reorder them; the image fills the background."
@@ -154,6 +208,24 @@ class StartPageDialog(HtmlSettingsDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def set_color(self, color):
+        self.color = color
+        self.color_button.setText(color or "Choose colour…")
+        self.color_button.setStyleSheet(
+            f"background: {color}; color: {'#fff' if color else ''};" if color else ""
+        )
+
+    def choose_color(self):
+        from PyQt6.QtGui import QColor
+        from PyQt6.QtWidgets import QColorDialog
+
+        chosen = QColorDialog.getColor(QColor(self.color or "#336699"), self, "Colour")
+        if chosen.isValid():
+            self.set_color(chosen.name())
+            self.background_choice.setCurrentIndex(
+                self.background_choice.findData("color")
+            )
+
     def choose_image(self):
         filename, _ = QFileDialog.getOpenFileName(
             self, "Choose an image", "", "Images (*.png *.jpg *.jpeg *.webp *.gif)"
@@ -205,6 +277,10 @@ class StartPageDialog(HtmlSettingsDialog):
                     "image": self.image,
                     "feed": self.feed.text().strip(),
                     "minimal": self.minimal.isChecked(),
+                    "layout": self.layout_choice.currentData(),
+                    "background": self.background_choice.currentData(),
+                    "color": self.color,
+                    "photo_every": self.photo_every.currentData(),
                 },
                 self.html_drafts["newtab"] if self.html_enabled["newtab"] else "",
                 welcome_html=self.html_drafts["welcome"]

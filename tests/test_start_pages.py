@@ -30,6 +30,11 @@ class StartPageTests(unittest.TestCase):
         self.home_patch.start()
         self.window = BrowserWindow()
         self.pages = self.window.profile_manager.registry.start_pages
+        # These tests cover the classic page's sections (the simple page has
+        # its own tests below).
+        self.pages.configure(
+            "global", {**self.pages.state("global")["settings"], "layout": "classic"}
+        )
 
     def tearDown(self):
         self.window.close()
@@ -193,7 +198,11 @@ class StartPageTests(unittest.TestCase):
         path = Path(self.directory.name) / "image.png"
         image.save(str(path))
         settings = clean_settings(
-            {"modules": ["image", "history", "search"], "image": image_data(path)}
+            {
+                "modules": ["image", "history", "search"],
+                "image": image_data(path),
+                "layout": "classic",
+            }
         )
         self.pages.configure("global", settings)
         data = self.pages.render("global", "newtab").decode()
@@ -222,7 +231,7 @@ class StartPageTests(unittest.TestCase):
         self.loaded(tab)
         with patch.object(self.window, "_navigate_tab_to_url") as navigate:
             self.js(
-                "document.querySelector('#query').value = 'red fox + & %'; document.querySelector('button[type=submit]').click();",
+                "document.querySelector('#query').value = 'red fox + & %'; document.querySelector('#query').form.requestSubmit();",
                 tab,
             )
             self.wait(lambda: navigate.called)
@@ -259,7 +268,9 @@ class StartPageTests(unittest.TestCase):
             dialog.deleteLater()
 
     def test_minimal_search_and_queued_feed_cancellation(self):
-        self.pages.configure("global", {"modules": ["search"], "minimal": True})
+        self.pages.configure(
+            "global", {"modules": ["search"], "minimal": True, "layout": "classic"}
+        )
         tab = self.window._new_tab(return_tab=True)
         self.loaded(tab)
         self.assertEqual(
@@ -318,7 +329,9 @@ class StartPageTests(unittest.TestCase):
 
     def test_news_updates_keep_search_draft_and_page_position(self):
         feed = "https://feed.example.org/rss"
-        self.pages.configure("global", {"modules": ["search", "news"], "feed": feed})
+        self.pages.configure(
+            "global", {"modules": ["search", "news"], "feed": feed, "layout": "classic"}
+        )
         self.pages.news.cache["global"] = (
             feed,
             time.monotonic(),

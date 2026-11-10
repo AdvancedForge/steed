@@ -28,6 +28,7 @@ DEFAULTS = {
     "search_suggestions": True,
     "address_autocomplete": True,
     "tab_previews": True,
+    "tab_card_fixed_width": True,
     "auto_zoom_small_text": True,
     "strip_tracking": True,
     "https_first": True,

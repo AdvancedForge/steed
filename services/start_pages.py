@@ -35,7 +35,16 @@ DEFAULT_SETTINGS = {
     "image": "",
     "feed": "",
     "minimal": False,
+    # "simple": the name and a search box over a background; "classic": the
+    # sections above.
+    "layout": "simple",
+    # "photo" (changes now and then), "color" or "image" (your own).
+    "background": "photo",
+    "color": "",
+    "photo_every": "6h",
 }
+LAYOUTS = ("simple", "classic")
+BACKGROUNDS = ("photo", "color", "image")
 MAX_IMAGE_BYTES = 2 * 1024 * 1024
 MAX_HTML_BYTES = 256 * 1024
 WORKSPACES = (
@@ -204,7 +213,28 @@ def clean_settings(value):
     minimal = value.get("minimal", False)
     if type(minimal) is not bool:
         raise ValueError("Choose an explicit minimal-page preference")
-    return {"modules": list(modules), "image": image, "feed": feed, "minimal": minimal}
+    from services.newtab_photo import PERIODS
+
+    layout = value.get("layout", DEFAULT_SETTINGS["layout"])
+    background = value.get("background", DEFAULT_SETTINGS["background"])
+    color = value.get("color", "")
+    every = value.get("photo_every", DEFAULT_SETTINGS["photo_every"])
+    if layout not in LAYOUTS or background not in BACKGROUNDS or every not in PERIODS:
+        raise ValueError("Choose a layout, background and photo schedule Steed offers")
+    if not isinstance(color, str) or (
+        color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color)
+    ):
+        raise ValueError("Choose a colour like #336699")
+    return {
+        "modules": list(modules),
+        "image": image,
+        "feed": feed,
+        "minimal": minimal,
+        "layout": layout,
+        "background": background,
+        "color": color.lower(),
+        "photo_every": every,
+    }
 
 
 def image_data(path):
@@ -248,6 +278,9 @@ class StartPages(QObject):
 
         self.news = NewsFeeds(self)
         self.news.changed.connect(self.news_changed.emit)
+        from services.newtab_photo import NewTabPhotos
+
+        self.photos = NewTabPhotos(registry.config.config_dir / "newtab", self)
 
     def path(self, profile):
         if profile == "search":
@@ -524,6 +557,8 @@ class StartPages(QObject):
             ).encode()
         private = profile == "search"
         profile_label = "Incognito" if private else profile.title()
+        if name == "newtab" and state["settings"]["layout"] == "simple":
+            return self.render_simple(profile, state["settings"], root_css)
         if name == "welcome":
             body = '<section class="hero"><span class="eyebrow">YOUR BROWSER, YOUR WORKSPACE</span><h1>Welcome to Steed.</h1><p>A quiet place to browse, organize your work, and collaborate with agents.</p></section><div class="cards">'
             for heading, text, action, label in (
@@ -621,6 +656,65 @@ class StartPages(QObject):
             + background,
         ).encode()
 
+    def render_simple(self, profile, settings, root_css):
+        """The name, an empty search box, and a background: a photo that
+        changes now and then, a colour, or your own image."""
+        styles = self.registry.page_style
+        dark = styles.dark(profile)
+        background, credit, scrim = self._background(settings, dark)
+        menu = newtab_menu() if styles.get(profile)["newtab_menu"] else ""
+        private = profile == "search"
+        css = SIMPLE_CSS + root_css + background
+        return (
+            Template(SIMPLE_PAGE)
+            .substitute(
+                theme="dark" if dark else "light",
+                css=css,
+                scrim="scrim" if scrim else "",
+                menu=menu,
+                note='<span class="note">Incognito · nothing is saved</span>'
+                if private
+                else "",
+                credit=credit,
+            )
+            .encode()
+        )
+
+    def _background(self, settings, dark):
+        """(CSS, photo credit HTML, whether light text needs a scrim)."""
+        import base64
+
+        choice = settings["background"]
+        if choice == "image" and settings["image"]:
+            return (f'body {{ --newtab-image: url("{settings["image"]}"); }}', "", True)
+        if choice == "photo":
+            photo = self.photos.current()
+            self.photos.refresh(settings["photo_every"])
+            if photo is not None:
+                try:
+                    data = base64.b64encode(photo["path"].read_bytes()).decode("ascii")
+                except OSError:
+                    data = ""
+                if data:
+                    author = escape(photo["author"] or "Unsplash")
+                    credit = (
+                        f'<a class="credit" href="{escape(photo["page"])}">'
+                        f"Photo: {author} · Unsplash</a>"
+                        if photo["page"]
+                        else f'<span class="credit">Photo: {author}</span>'
+                    )
+                    return (
+                        f'body {{ --newtab-image: url("data:image/jpeg;base64,{data}"); }}',
+                        credit,
+                        True,
+                    )
+            # Until a photo arrives (or offline): a soft gradient.
+            return (FALLBACK_GRADIENT_DARK if dark else FALLBACK_GRADIENT, "", False)
+        color = settings["color"]
+        if color:
+            return (f"body {{ --newtab-color: {color}; }}", "", _is_dark(color))
+        return (FALLBACK_GRADIENT_DARK if dark else FALLBACK_GRADIENT, "", False)
+
     def news_section(self, profile):
         feed = self.state(profile)["settings"]["feed"]
         items, status = self.news.snapshot(profile, feed)
@@ -631,6 +725,87 @@ class StartPages(QObject):
             ' <a href="steed://action/refresh-news">Refresh</a>',
             identifier="news",
         )
+
+
+def _is_dark(color):
+    red, green, blue = (int(color[i : i + 2], 16) for i in (1, 3, 5))
+    return 0.299 * red + 0.587 * green + 0.114 * blue < 140
+
+
+FALLBACK_GRADIENT = (
+    "body { --newtab-color: #eef2f8; --newtab-gradient: radial-gradient(circle at"
+    " 20% 15%, #dfe9ff 0, transparent 55%), radial-gradient(circle at 85% 80%,"
+    " #f3e3f7 0, transparent 50%); }"
+)
+FALLBACK_GRADIENT_DARK = (
+    "body { --newtab-color: #12151c; --newtab-gradient: radial-gradient(circle at"
+    " 20% 15%, #1f2d4d 0, transparent 55%), radial-gradient(circle at 85% 80%,"
+    " #3a2342 0, transparent 50%); }"
+)
+SIMPLE_CSS = """
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; color: var(--ink); font: 16px/1.5 system-ui, sans-serif; background:
+  var(--newtab-gradient, none), var(--newtab-color, var(--bg)); background-size: cover;
+  display: flex; flex-direction: column; isolation: isolate; }
+body::before { content: ""; position: fixed; inset: 0; z-index: -2;
+  background-image: var(--newtab-image, none); background-size: cover; background-position: center; }
+body.scrim::after { content: ""; position: fixed; inset: 0; z-index: -1;
+  background: linear-gradient(#0000004d, #00000026 40%, #00000066); }
+body.scrim { color: #fff; }
+.corner { position: fixed; top: 14px; right: 18px; display: flex; gap: 8px; align-items: center; z-index: 5; }
+.corner .icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
+  color: inherit; background: color-mix(in srgb, var(--surface) 35%, transparent); backdrop-filter: blur(6px); }
+.corner .icon:hover { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.corner .icon svg { width: 20px; height: 20px; }
+main.simple { margin: auto; width: min(640px, 100% - 48px); text-align: center; padding-bottom: 12vh; }
+.wordmark { font-size: clamp(56px, 9vw, 88px); font-weight: 750; letter-spacing: -3px; margin: 0 0 22px;
+  line-height: 1; }
+body.scrim .wordmark { text-shadow: 0 2px 24px #0006; }
+.search { display: flex; align-items: center; height: 54px; padding: 0 22px; border-radius: 27px;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: 0 6px 28px #0000002a; }
+.search:focus-within { border-color: var(--accent); }
+.search input { flex: 1; min-width: 0; font: inherit; font-size: 17px; color: var(--ink); background: transparent; border: 0; outline: none; }
+.credit, .note { position: fixed; left: 16px; bottom: 12px; font-size: 12px; color: inherit; opacity: .8; text-decoration: none; }
+.credit:hover { opacity: 1; text-decoration: underline; }
+.browser-menu { position: relative; font-size: 14px; }
+.browser-menu summary { list-style: none; cursor: pointer; font-size: 0; display: grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 50%; background: color-mix(in srgb, var(--surface) 35%, transparent);
+  backdrop-filter: blur(6px); }
+.browser-menu summary::-webkit-details-marker { display: none; }
+.browser-menu summary::before { content: "☰"; font-size: 18px; }
+.browser-menu > div { position: absolute; right: 0; top: 100%; margin-top: 6px; min-width: 190px; padding: 7px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 8px 24px #0002; }
+.browser-menu a { display: block; padding: 8px 12px; text-decoration: none; color: var(--ink); border-radius: 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+"""
+GEAR = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
+    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8'
+    " 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0"
+    " 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7"
+    " 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2"
+    " 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7"
+    " 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3"
+    ' 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
+)
+SIMPLE_PAGE = (
+    '<!doctype html><html lang="en" data-theme="$theme"><head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';'
+    " style-src 'unsafe-inline'; img-src data:; form-action steed:; base-uri 'none';"
+    " object-src 'none'\">"
+    '<title>New Tab</title><style>$css</style></head><body class="$scrim">'
+    '<div class="corner">'
+    '<a class="icon" href="steed://action/customize" title="Customize New Tab"'
+    ' aria-label="Customize New Tab">' + GEAR + "</a>$menu</div>"
+    '<main class="simple"><h1 class="wordmark">Steed</h1>'
+    '<form class="search" action="steed://action/search" method="get">'
+    '<label class="sr-only" for="query">Search or enter a web address</label>'
+    '<input id="query" name="q" autocomplete="off" maxlength="4096" autofocus required>'
+    "</form></main>$credit$note</body></html>"
+)
 
 
 def newtab_menu():

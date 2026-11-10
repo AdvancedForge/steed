@@ -171,6 +171,7 @@ class HtmlPageTests(unittest.TestCase):
                 "modules": ["image", "search"],
                 "image": image_data(path),
                 "minimal": True,
+                "layout": "classic",
             },
         )
         tab = window._new_tab(url="steed:newtab", return_tab=True)
@@ -272,11 +273,12 @@ class HtmlPageTests(unittest.TestCase):
     def test_profile_specific_chrome_restores_when_switching(self):
         window, _, _ = self.loaded()
         window.profile_manager.create_profile("different")
-        window._set_bar("menu_bar", False)
+        # The menu bar is hidden by default; shown here for this profile only.
+        window._set_bar("menu_bar", True)
         window._switch_to_profile("different")
-        self.assertFalse(window.menuBar().isHidden())
-        window._switch_to_profile("global")
         self.assertTrue(window.menuBar().isHidden())
+        window._switch_to_profile("global")
+        self.assertFalse(window.menuBar().isHidden())
 
     def test_style_io_error_and_conflict_keep_form_and_saved_preferences(self):
         window, _, controller = self.loaded()
@@ -429,7 +431,7 @@ class HtmlPageTests(unittest.TestCase):
         ):
             window._reset_page_style()
         self.assertEqual(controller.styles.get("global"), DEFAULTS)
-        self.assertFalse(window.menuBar().isHidden())
+        self.assertTrue(window.menuBar().isHidden())  # Hidden by default.
         self.assertEqual(pages.state("global")["html"], "<h1>My saved page</h1>")
 
     def test_private_style_editor_saves_only_for_this_session(self):
@@ -441,13 +443,13 @@ class HtmlPageTests(unittest.TestCase):
         self.wait_for(lambda: self.value(controller, "!!state"))
         before = window.config.config_file.read_bytes()
         self.assertTrue(self.value(controller, "$('all_profiles').disabled"))
-        self.value(controller, "$('menu_bar').checked = false; true")
+        self.value(controller, "$('menu_bar').checked = true; true")
         self.click(controller, "save")
         self.wait_for(lambda: bool(controller.notice))
-        self.assertTrue(window.menuBar().isHidden())
+        self.assertFalse(window.menuBar().isHidden())
         self.assertEqual(window.config.config_file.read_bytes(), before)
         window._switch_to_profile("global")
-        self.assertFalse(window.menuBar().isHidden())
+        self.assertTrue(window.menuBar().isHidden())
 
     def test_reentering_agents_address_keeps_its_tab_and_conversation(self):
         window, tab, _ = self.loaded()

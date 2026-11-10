@@ -75,10 +75,10 @@ class PageStyleTests(unittest.TestCase):
     def test_private_changes_are_memory_only_and_cannot_sync(self):
         self.config.set("unrelated", True)
         before = self.config.config_file.read_bytes()
-        self.styles.save("search", {**DEFAULTS, "menu_bar": False})
-        self.assertFalse(self.styles.get("search")["menu_bar"])
+        self.styles.save("search", {**DEFAULTS, "menu_bar": True})
+        self.assertTrue(self.styles.get("search")["menu_bar"])
         self.assertEqual(self.config.config_file.read_bytes(), before)
-        self.assertTrue(PageStyle(self.registry).get("search")["menu_bar"])
+        self.assertFalse(PageStyle(self.registry).get("search")["menu_bar"])
         with self.assertRaisesRegex(ValueError, "regular profile"):
             self.styles.save("search", DEFAULTS, all_profiles=True)
 
