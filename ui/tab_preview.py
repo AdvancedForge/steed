@@ -71,7 +71,7 @@ class TabPreview(QFrame):
     def apply_style(self, colors):
         """The tab strip's colours, not the system's (often yellow) tooltips."""
         if colors.get("glass"):  # Frosted: what is behind shows through.
-            fill = QColor(colors["field"])
+            fill = QColor(colors.get("card", colors["field"]))
             alpha = 205 if colors["dark"] else 190
             card = (
                 f"background: rgba({fill.red()},{fill.green()},{fill.blue()},{alpha});"
@@ -81,7 +81,7 @@ class TabPreview(QFrame):
             )
         else:
             card = (
-                f"background: {colors['field']};"
+                f"background: {colors.get('card', colors['field'])};"
                 f" border: 1px solid {colors['border']}; border-radius: 10px;"
             )
         self.setStyleSheet(

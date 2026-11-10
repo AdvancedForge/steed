@@ -79,9 +79,23 @@ def chrome_colors(toolbar, dark, accent=None, glass=False):
         "pressed": mix(toolbar, ink, 0.18),
         "border": mix(toolbar, ink, 0.16),
         "accent": accent or ("#8caaff" if dark else "#355ed6"),
+        "strip": mix(toolbar, "#000000", 0.28 if dark else 0.1),
+        "menu": toolbar,
         "dark": dark,
         "glass": glass,
     }
+
+
+def browser_colors(toolbar, dark, accent=None, glass=False, chosen=None):
+    """chrome_colors with the user's fixed colours (page style "chrome") on
+    top; the colours they leave alone are still derived from the toolbar."""
+    chosen = chosen or {}
+    colors = chrome_colors(
+        chosen.get("toolbar", toolbar), dark, chosen.get("accent", accent), glass
+    )
+    colors["card"] = colors["field"]
+    colors.update(chosen)
+    return colors
 
 
 def toolbar_stylesheet(colors, density="comfortable"):
@@ -169,7 +183,7 @@ def menu_stylesheet(colors):
     """Native menus (the toolbar's ☰ and its sections) in the toolbar's colours."""
     return f"""
 QMenu {{
-  background: {colors["toolbar"]}; color: {colors["ink"]};
+  background: {colors.get("menu", colors["toolbar"])}; color: {colors["ink"]};
   border: 1px solid {colors["border"]}; padding: 5px;
 }}
 QMenu::item {{ padding: 6px 26px 6px 12px; border-radius: 6px; background: transparent; }}

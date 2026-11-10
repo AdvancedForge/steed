@@ -604,6 +604,21 @@ for example when memory runs out), its tab shows **This tab crashed** with
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
 
+### Browser colours
+
+**Style → Browser colours** lists every colour of the browser around pages:
+toolbar and current tab, tab strip, text and icons, other tabs' text, address
+field, hover, pressed, lines and borders, accent, menus and the tab hover
+card. Each shows its automatic value (from the theme, or from the New Tab
+photo with *Match the background* on) and can be fixed with a colour picker;
+**Automatic** under one returns it. Colours you leave alone keep following
+the theme or photo, worked out from your fixed toolbar and accent. **Keep
+these colours** fixes them all as they are now, so a new photo no longer
+changes the browser; **All automatic** undoes that. The New Tab page uses
+your fixed toolbar and accent too. Apply style saves, per profile (or for
+all profiles). Page colours (backgrounds, cards and text inside Steed's own
+pages) are the separate *Theme colors* above them.
+
 ### Menus
 
 The ☰ menus (toolbar and New Tab) and their sections use the toolbar's

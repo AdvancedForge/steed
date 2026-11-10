@@ -1,6 +1,20 @@
 const $ = id => document.getElementById(id);
 let state = null, bridge = null, sequence = 0, context = null, busy = false;
-let colors = {};
+let colors = {}, chrome = {};
+function chromeFields() {
+  const grid = $('chrome-fields'); grid.replaceChildren();
+  for (const [key, label] of Object.entries(state.chrome_fields)) {
+    const wrap = document.createElement('div'), heading = document.createElement('label'), input = document.createElement('input');
+    const note = document.createElement('code'), clear = document.createElement('button');
+    heading.htmlFor = 'chrome-' + key; heading.textContent = label;
+    input.id = heading.htmlFor; input.type = 'color'; input.value = chrome[key] || state.chrome_auto[key] || '#000000';
+    const mark = () => { note.textContent = chrome[key] ? 'Yours · ' + chrome[key] : 'Automatic · ' + (state.chrome_auto[key] || ''); clear.hidden = !chrome[key]; };
+    input.oninput = () => { chrome[key] = input.value; mark(); };
+    clear.type = 'button'; clear.className = 'link'; clear.textContent = 'Automatic';
+    clear.onclick = () => { delete chrome[key]; input.value = state.chrome_auto[key] || '#000000'; mark(); };
+    mark(); wrap.append(heading, input, note, clear); grid.append(wrap);
+  }
+}
 function paletteFields() {
   const base = {...state.palettes[$('theme').value === 'system' ? (state.dark ? 'dark' : 'light') : $('theme').value]};
   if ($('accent').value !== state.defaults.accent) { base.accent = $('accent').value; base['accent-hover'] = $('accent').value; }
@@ -24,12 +38,12 @@ function guide() {
   target.append(table, note);
 }
 function fill(values) {
-  colors = {...values.colors};
+  colors = {...values.colors}; chrome = {...(values.chrome || {})};
   for (const [key, value] of Object.entries(values)) {
-    if (key === 'colors') continue;
+    if (key === 'colors' || key === 'chrome') continue;
     const node = $(key); if (typeof value === 'boolean') node.checked = value; else node.value = value;
   }
-  if (state) paletteFields();
+  if (state) { paletteFields(); chromeFields(); }
 }
 function command(action, extra = {}) {
   if (!bridge || !state || busy) return;
@@ -73,7 +87,7 @@ function layoutFields(layout) {
 window.steedUI = {render(next) {
   state = next;
   if (context !== next.context) { context = next.context; sequence = 0; fill(next.values); $('all_profiles').checked = false; }
-  guide(); document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
+  guide(); chromeFields(); document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
   // Show newly saved values unless the user is in the middle of editing them.
   if (!layoutDirty && JSON.stringify(next.layout.values) !== layoutShown) layoutFields(next.layout);
   $('profile').textContent = 'Editing: ' + next.profile;
@@ -86,13 +100,15 @@ window.steedUI = {render(next) {
 }};
 $('save').onclick = () => {
   const values = {};
-  for (const [key, value] of Object.entries(state.defaults)) values[key] = key === 'colors' ? {...colors} : typeof value === 'boolean' ? $(key).checked : typeof value === 'number' ? Number($(key).value) : $(key).value;
+  for (const [key, value] of Object.entries(state.defaults)) values[key] = key === 'colors' ? {...colors} : key === 'chrome' ? {...chrome} : typeof value === 'boolean' ? $(key).checked : typeof value === 'number' ? Number($(key).value) : $(key).value;
   command('save', {values, all_profiles: $('all_profiles').checked});
 };
 $('reset').onclick = () => fill(state.defaults);
 $('theme').onchange = paletteFields;
 $('reset-palette').onclick = () => { colors = {}; $('accent').value = state.defaults.accent; paletteFields(); };
 $('reload').onclick = () => command('reload');
+$('chrome-keep').onclick = () => { chrome = {...state.chrome_auto, ...chrome}; chromeFields(); };
+$('chrome-auto').onclick = () => { chrome = {}; chromeFields(); };
 $('reload-layout').onclick = () => { layoutDirty = false; layoutShown = null; layoutFields(state.layout); };
 $('save-layout').onclick = () => {
   const layout = state.layout, tabs = {};

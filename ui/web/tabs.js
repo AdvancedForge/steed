@@ -98,11 +98,21 @@ function render(next) {
   if (toolbar) document.documentElement.style.setProperty("--toolbar", toolbar);
   else document.documentElement.style.removeProperty("--toolbar");
   document.documentElement.classList.toggle("native-dark", !!next.chrome?.dark);
+  // The toolbar's own colours for text, borders, hovers and the accent.
+  const names = {ink: "--ink", muted: "--muted", border: "--border", hover: "--soft", strip: "--strip-bg"};
+  for (const [key, name] of Object.entries(names)) {
+    const value = next.chrome?.palette?.[key];
+    if (typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)) document.documentElement.style.setProperty(name, value);
+    else document.documentElement.style.removeProperty(name);
+  }
   const glow = /^#[0-9a-fA-F]{6}$/.test(next.chrome?.glow || "") ? next.chrome.glow : "";
   document.documentElement.classList.toggle("glass", !!next.chrome?.glass);
+  document.documentElement.classList.toggle("strip-chosen", (next.chrome?.chosen || []).includes("strip"));
   if (glow) document.documentElement.style.setProperty("--glow", glow);
   else document.documentElement.style.removeProperty("--glow");
-  const accent = ACCENTS[look.accent];
+  // A tab accent chosen in Tab appearance wins; otherwise the toolbar's.
+  const toolbarAccent = next.chrome?.palette?.accent;
+  const accent = ACCENTS[look.accent] || (/^#[0-9a-fA-F]{6}$/.test(toolbarAccent || "") ? toolbarAccent : "");
   if (accent) document.documentElement.style.setProperty("--tab-accent", accent);
   else document.documentElement.style.removeProperty("--tab-accent");
 

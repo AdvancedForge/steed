@@ -156,6 +156,10 @@ button:hover:enabled { background: none; border-color: transparent; }
   radial-gradient(70% 180% at 8% -40%, color-mix(in srgb, var(--glow) 30%, transparent), transparent 70%),
   radial-gradient(60% 200% at 78% 150%, color-mix(in srgb, var(--glow) 18%, transparent), transparent 70%),
   linear-gradient(180deg, color-mix(in srgb, var(--toolbar) 88%, #fff), color-mix(in srgb, var(--toolbar) 80%, #000)); }
+/* A strip colour the user chose holds under the glass light too. */
+:root.glass.strip-chosen body { background:
+  radial-gradient(70% 180% at 8% -40%, color-mix(in srgb, var(--glow) 30%, transparent), transparent 70%),
+  var(--strip-bg); }
 :root.glass .strip.horizontal { align-items: center; padding-top: 0; padding-bottom: 0; }
 :root.glass .horizontal .tabs, :root.glass .horizontal .tail { align-items: center; align-self: center; }
 :root.glass .tab { height: calc(var(--row) - 8px); border-radius: 999px; border: 1px solid transparent;
