@@ -429,6 +429,25 @@ class SimpleNewTabTests(unittest.TestCase):
         self.wait(lambda: self.run_in(popup.surface.page, script) == colors["toolbar"])
         popup.close()
 
+    def test_a_photo_arriving_leaves_a_busy_new_tab_alone(self):
+        tab = self.window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: self.pages.photos.current() is not None)
+        self.loaded(tab)
+        self.wait(lambda: self.js(tab, "!!document.querySelector('.credit')"))
+        self.js(
+            tab,
+            "window.steedMark = 1; document.querySelector('.browser-menu').open = true; true",
+        )
+        self.pages.photos.changed.emit(True)
+        end = time.monotonic() + 1
+        while time.monotonic() < end:
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.assertEqual(self.js(tab, "window.steedMark"), 1)  # Not reloaded.
+        self.js(tab, "document.querySelector('.browser-menu').open = false; true")
+        self.pages.photos.changed.emit(True)
+        self.wait(lambda: self.js(tab, "window.steedMark === undefined"))
+
 
 if __name__ == "__main__":
     unittest.main()

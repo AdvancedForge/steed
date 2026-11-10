@@ -6144,10 +6144,26 @@ class BrowserWindow(QMainWindow):
             return
         pages.photo_wanted.discard(self.profile_manager.current_profile_name)
         for tab in self.tabs:
-            if page_name(tab.url()) == "newtab":
-                # Not reload(): a reload during the tab's first load cancels it
-                # and leaves nothing to reload. The same address replaces it.
-                self.navigation.navigate(tab, tab.url())
+            if page_name(tab.url()) != "newtab":
+                continue
+            if wanted:  # Asked for: the panel reopens where it was (keep_open).
+                self._show_new_photo(tab)
+                continue
+            # Arrived on its own: leave a tab alone while its menu or panel is
+            # open or something is typed in its search box.
+            webengine.run_script(
+                tab.page(),
+                "!!document.querySelector('details[open]')"
+                " || !!document.getElementById('query')?.value",
+                lambda busy, tab=tab: busy is not True and self._show_new_photo(tab),
+                world=webengine.PAGE_WORLD,
+            )
+
+    def _show_new_photo(self, tab):
+        if not self._closing and tab in self.tabs and page_name(tab.url()) == "newtab":
+            # Not reload(): a reload during the tab's first load cancels it
+            # and leaves nothing to reload. The same address replaces it.
+            self.navigation.navigate(tab, tab.url())
 
     def _choose_newtab_image(self, profile):
         from services.start_pages import image_data
