@@ -7,6 +7,13 @@ function command(action, id, button) {
 window.steedUI = {render(next) {
   if (context !== next.context) { context = next.context; sequence = 0; key = null; clearTimeout(hover); }
   state = next; document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
+  // The browser's toolbar colours (checked: six-digit hex only).
+  const css = {toolbar: '--surface', field: '--field', ink: '--ink', muted: '--muted', border: '--border', hover: '--soft', accent: '--accent'};
+  for (const [key, name] of Object.entries(css)) {
+    const value = next.colors?.[key];
+    if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) document.documentElement.style.setProperty(name, value);
+    else document.documentElement.style.removeProperty(name);
+  }
   document.getElementById('title').textContent = next.title;
   // Right-click menus show only their items: no title bar or settings footer.
   document.body.classList.toggle('context-menu', !!next.context_menu && !next.back);

@@ -55,7 +55,7 @@ from site_settings import site_key
 from tab_manager import GROUP_COLORS, TabManager, TabState
 from ui import media_controls
 from ui.address_bar import AddressBar
-from ui.chrome_style import bar_stylesheet, chrome_colors
+from ui.chrome_style import bar_stylesheet, chrome_colors, menu_stylesheet
 from ui.devtools import DevToolsHost, DevToolsUnavailable
 from ui.find_bar import FindBar
 from ui.layout_dialog import LayoutDialog
@@ -1223,6 +1223,13 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_chrome(toolbar, dark, glass, colors["accent"])
         self.address_bar.apply_style(colors)
         bars = bar_stylesheet(colors)
+        menus = menu_stylesheet(colors)
+        for menu in (
+            getattr(self, "browser_menu", None),
+            *getattr(self, "_layout_menus", {}).values(),
+        ):
+            if menu is not None:
+                menu.setStyleSheet(menus)
         self.menuBar().setStyleSheet(bars)
         self.status_bar.setStyleSheet(bars)
         if hasattr(self, "layout_preferences"):

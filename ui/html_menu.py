@@ -9,6 +9,9 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout
 from ui.html_dialog import place_popup
 from ui.html_surface import HtmlSurface
 
+# A compact popup: rows and separators in pixels (see menu.css).
+WIDTH, ROW, SEPARATOR, MAX_HEIGHT = 290, 31, 11, 560
+
 
 class HtmlMenu(QDialog):
     def __init__(self, menu, owner, anchor, *, context=False):
@@ -30,24 +33,44 @@ class HtmlMenu(QDialog):
         self.surface.reloading.connect(self.reload)
         body = QVBoxLayout(self)
         body.setContentsMargins(1, 1, 1, 1)
+        border = self._colors().get("border")
+        if border:  # The 1px margin is the menu's border, in the toolbar's colour.
+            self.setStyleSheet(f"QDialog {{ background: {border}; }}")
         body.addWidget(self.surface)
         self.timer = QTimer(self)
         self.timer.setInterval(150)
         self.timer.timeout.connect(self.publish)
         menu.aboutToShow.emit()
         self.anchor = anchor
-        visible = [a for a in menu.actions() if a.isVisible()]
-        height = sum(11 if a.isSeparator() else 35 for a in visible)
-        place_popup(
-            self,
-            owner,
-            anchor,
-            (290, min(660, height + 40))
-            if context
-            else (350, min(660, 100 + len(menu.actions()) * 39)),
-        )
+        place_popup(self, owner, anchor, (WIDTH, self._height(menu)))
         self.timer.start()
         self.publish()
+
+    def _height(self, menu):
+        """Just tall enough for the menu's rows (it scrolls past MAX_HEIGHT)."""
+        visible = [a for a in menu.actions() if a.isVisible()]
+        rows = sum(SEPARATOR if a.isSeparator() else ROW for a in visible)
+        chrome = 16 if self.context_menu and len(self.stack) == 1 else 92
+        return min(MAX_HEIGHT, rows + chrome)
+
+    def _fit(self):
+        """Resize to the menu now shown, keeping the top left corner."""
+        height = self._height(self.stack[-1])
+        if self.screen() is not None:
+            bottom = self.screen().availableGeometry().bottom() - 8
+            height = min(height, bottom - self.y())
+        self.resize(self.width(), max(120, height))
+
+    def _colors(self):
+        """The toolbar's colours, so the menu matches the browser around it."""
+        colors = getattr(getattr(self.owner, "address_bar", None), "colors", None)
+        if not isinstance(colors, dict):
+            return {}
+        return {
+            key: colors[key]
+            for key in ("toolbar", "field", "ink", "muted", "border", "hover", "accent")
+            if isinstance(colors.get(key), str)
+        }
 
     def reload(self):
         self.context = token_hex(16)
@@ -93,6 +116,7 @@ class HtmlMenu(QDialog):
                 "back": len(self.stack) > 1,
                 "context_menu": self.context_menu,
                 "rows": rows,
+                "colors": self._colors(),
                 "dark": self.owner.profile_manager.registry.page_style.dark(
                     self.owner.profile_manager.current_profile_name
                 ),
@@ -115,6 +139,7 @@ class HtmlMenu(QDialog):
             return
         if command.get("action") == "back" and len(self.stack) > 1:
             self.stack.pop()
+            self._fit()
             self.reload()
             return
         action = self.actions.get(command.get("id"))
@@ -139,6 +164,7 @@ class HtmlMenu(QDialog):
         if action.menu() is not None:
             self.stack.append(action.menu())
             action.menu().aboutToShow.emit()
+            self._fit()
             self.reload()
             return
         x, y = command.get("x"), command.get("y")

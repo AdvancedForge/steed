@@ -113,6 +113,11 @@ class StartPageDialog(HtmlSettingsDialog):
         self.match_theme = QCheckBox("Browser colours follow the photo or image")
         self.match_theme.setChecked(settings["match_theme"])
         page.addRow("", self.match_theme)
+        self.gear_in_menu = QCheckBox(
+            "Put Customize inside the ☰ menu (no gear button)"
+        )
+        self.gear_in_menu.setChecked(settings["gear_in_menu"])
+        page.addRow("", self.gear_in_menu)
         form.addLayout(page)
         note = QLabel(
             "Photos are free Unsplash photos from Lorem Picsum, credited on the "
@@ -285,6 +290,7 @@ class StartPageDialog(HtmlSettingsDialog):
                     "color": self.color,
                     "photo_every": self.photo_every.currentData(),
                     "match_theme": self.match_theme.isChecked(),
+                    "gear_in_menu": self.gear_in_menu.isChecked(),
                 },
                 self.html_drafts["newtab"] if self.html_enabled["newtab"] else "",
                 welcome_html=self.html_drafts["welcome"]

@@ -163,3 +163,18 @@ QStatusBar {{ background: {colors["toolbar"]}; color: {colors["muted"]}; border-
 QStatusBar::item {{ border: none; }}
 QSizeGrip {{ background: transparent; }}
 """
+
+
+def menu_stylesheet(colors):
+    """Native menus (the toolbar's ☰ and its sections) in the toolbar's colours."""
+    return f"""
+QMenu {{
+  background: {colors["toolbar"]}; color: {colors["ink"]};
+  border: 1px solid {colors["border"]}; padding: 5px;
+}}
+QMenu::item {{ padding: 6px 26px 6px 12px; border-radius: 6px; background: transparent; }}
+QMenu::item:selected {{ background: {colors["hover"]}; color: {colors["ink"]}; }}
+QMenu::item:disabled {{ color: {colors["muted"]}; }}
+QMenu::separator {{ height: 1px; background: {colors["border"]}; margin: 5px 8px; }}
+QMenu::indicator {{ width: 14px; height: 14px; left: 6px; }}
+"""
