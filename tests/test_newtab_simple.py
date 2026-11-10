@@ -361,6 +361,27 @@ class SimpleNewTabTests(unittest.TestCase):
             "glass", pages.render("global", "newtab").decode().split("<body")[1][:30]
         )
 
+    def test_dark_mode_tint_reaches_the_page_and_is_visible(self):
+        styles = self.window.profile_manager.registry.page_style
+        tab = self.window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: self.pages.photos.current() is not None)
+        styles.save("global", {**styles.get("global"), "theme": "dark"})
+        self.loaded(tab)
+        toolbar = QColor(self.window.address_bar.colors["toolbar"])
+        self.assertGreater(toolbar.blue() - toolbar.red(), 20)  # Not just grey.
+        html = self.pages.render("global", "newtab").decode()
+        self.assertIn("html:root[data-theme] { --surface:", html)
+        self.wait(
+            lambda: (
+                self.js(
+                    tab,
+                    "getComputedStyle(document.documentElement)"
+                    ".getPropertyValue('--surface').trim()",
+                )
+                == self.window.address_bar.colors["toolbar"]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

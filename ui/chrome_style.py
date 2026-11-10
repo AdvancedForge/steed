@@ -62,7 +62,7 @@ def mix(first, second, amount):
 def tint_colors(tint, dark):
     """A toolbar and accent from a picture's colour: a pale (or deep) wash of
     it, and a stronger version for highlights."""
-    toolbar = mix(tint, "#141414" if dark else "#ffffff", 0.78 if dark else 0.8)
+    toolbar = mix(tint, "#141414" if dark else "#ffffff", 0.6 if dark else 0.7)
     accent = mix(tint, "#ffffff" if dark else "#000000", 0.25)
     return toolbar, accent
 
@@ -161,4 +161,5 @@ QMenuBar::item {{ background: transparent; padding: 4px 9px; border-radius: 6px;
 QMenuBar::item:selected {{ background: {colors["hover"]}; }}
 QStatusBar {{ background: {colors["toolbar"]}; color: {colors["muted"]}; border-top: 1px solid {colors["border"]}; }}
 QStatusBar::item {{ border: none; }}
+QSizeGrip {{ background: transparent; }}
 """

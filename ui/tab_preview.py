@@ -10,7 +10,7 @@ from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, Qt
 from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
-WIDTH = 320
+WIDTH = 240
 
 
 def snapshot(view):
