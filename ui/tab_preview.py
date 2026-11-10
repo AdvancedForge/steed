@@ -31,30 +31,42 @@ def snapshot(view):
 
 
 class TabPreview(QFrame):
+    """The card shown when hovering a tab, in Steed's own colours."""
+
     def __init__(self, parent):
         super().__init__(parent, Qt.WindowType.ToolTip)
         self.setObjectName("TabPreview")
-        self.setStyleSheet(
-            "#TabPreview { background: palette(window); border: 1px solid palette(mid);"
-            " border-radius: 8px; }"
-        )
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(3)
         self.image = QLabel(self)
         self.title = QLabel(self)
-        self.title.setStyleSheet("font-weight: 600;")
+        self.title.setObjectName("TabPreviewTitle")
         self.site = QLabel(self)
-        self.site.setStyleSheet("color: palette(placeholder-text);")
-        for label in (self.title, self.site):
+        self.site.setObjectName("TabPreviewMuted")
+        self.notes = QLabel(self)
+        self.notes.setObjectName("TabPreviewMuted")
+        for label in (self.title, self.site, self.notes):
             label.setTextFormat(Qt.TextFormat.PlainText)
             label.setMaximumWidth(WIDTH)
+        self.notes.setWordWrap(True)
         layout.addWidget(self.image)
         layout.addWidget(self.title)
         layout.addWidget(self.site)
+        layout.addWidget(self.notes)
 
-    def show_for(self, tab, point):
-        data = getattr(tab, "preview", None)
+    def apply_style(self, colors):
+        """The tab strip's colours, not the system's (often yellow) tooltips."""
+        self.setStyleSheet(
+            f"#TabPreview {{ background: {colors['field']};"
+            f" border: 1px solid {colors['border']}; border-radius: 10px; }}"
+            f" #TabPreview QLabel {{ background: transparent; color: {colors['ink']}; }}"
+            " #TabPreviewTitle { font-weight: 600; }"
+            f" #TabPreviewMuted {{ color: {colors['muted']}; }}"
+        )
+
+    def show_for(self, tab, point, notes=(), snapshot=True):
+        data = getattr(tab, "preview", None) if snapshot else None
         pixmap = QPixmap()
         if data:
             pixmap.loadFromData(data, "JPEG")
@@ -69,6 +81,9 @@ class TabPreview(QFrame):
         url = tab.url()
         host = urlsplit(url.toString()).hostname or url.toString()
         self.site.setText(host.removeprefix("www."))
+        self.site.setVisible(bool(host))
+        self.notes.setText("\n".join(notes))
+        self.notes.setVisible(bool(notes))
         self.adjustSize()
         self.move(point.x(), point.y() + 4)
         self.show()

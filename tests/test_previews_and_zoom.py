@@ -93,20 +93,29 @@ class Tests(unittest.TestCase):
         self.assertEqual(preview.title.text(), "normal-one")
         self.assertEqual(preview.site.text(), "127.0.0.1")
         self.assertTrue(preview.image.isVisible())
+        # In Steed's colours, not the system's tooltip colours.
+        self.assertIn(self.window.address_bar.colors["field"], preview.styleSheet())
         self.window.tab_bar.hover_ended.emit()
         self.assertFalse(preview.isVisible())
-        # The tab you are looking at needs no preview.
+        # The tab you are looking at: its title and site, no snapshot.
         self.window.tab_bar.tab_hovered.emit(
             self.window.tabs.index(second), QPoint(10, 10)
         )
-        self.assertFalse(preview.isVisible())
+        self.assertTrue(preview.isVisible())
+        self.assertEqual(preview.title.text(), "normal-two")
+        self.assertFalse(preview.image.isVisible())
+        self.window.tab_bar.hover_ended.emit()
+        # With previews off: still the card (the one description), no snapshot.
         self.window.config.set("tab_previews", False)
         self.window._switch_tab(index)
         self.assertIsNone(getattr(second, "preview", None))
+        self.window._set_keep_loaded(second, True)
         self.window.tab_bar.tab_hovered.emit(
             self.window.tabs.index(second), QPoint(10, 10)
         )
-        self.assertFalse(preview.isVisible())
+        self.assertTrue(preview.isVisible())
+        self.assertFalse(preview.image.isVisible())
+        self.assertEqual(preview.notes.text(), "Kept loaded")
 
     def test_native_strip_reports_a_hovered_tab(self):
         from ui.native_tab_strip import NativeTabStrip

@@ -38,7 +38,9 @@ function tabNode(tab, siteColor) {
   node.dataset.id = tab.id;
   node.dataset.index = tab.index;
   const rest = {frozen: "Frozen to save resources; resumes when selected", unloaded: "Unloaded to save memory; reloads when selected"}[tab.lifecycle];
-  node.title = (tab.site ? `${tab.title}\n${tab.site}` : tab.title) + (rest ? `\n${rest}` : "") + (tab.keep_loaded ? "\nKept loaded" : "");
+  // Steed's own hover card describes the tab; a title would add a second,
+  // plain tooltip on top of it. Screen readers still get the description.
+  node.setAttribute("aria-description", (tab.site ? `${tab.title}, ${tab.site}` : tab.title) + (rest ? `. ${rest}` : "") + (tab.keep_loaded ? ". Kept loaded" : ""));
   if (rest) node.classList.add("dormant", tab.lifecycle);
   if (tab.active) node.classList.add("active");
   if (tab.pinned) {
