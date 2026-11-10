@@ -686,9 +686,14 @@ class BrowserWindow(QMainWindow):
         self.status_bar_action.triggered.connect(
             lambda checked: self._set_bar("status_bar", checked)
         )
+        self.glass_action = QAction("Liquid Glass", self, checkable=True)
+        self.glass_action.triggered.connect(
+            lambda checked: self._set_bar("glass", checked)
+        )
         for action in (self.menu_bar_action, self.status_bar_action):
             view_menu.addAction(action)
             self.addAction(action)
+        view_menu.addAction(self.glass_action)
         general_menu.addAction("Customize New Tab…").triggered.connect(
             self._customize_new_tab
         )
@@ -1213,8 +1218,9 @@ class BrowserWindow(QMainWindow):
             toolbar = "#1e1e1e"
         else:
             toolbar = QApplication.palette().color(QPalette.ColorRole.Window).name()
-        self.tab_bar.set_chrome(toolbar, dark)
-        colors = chrome_colors(toolbar, dark, accent)
+        glass = styles.get(profile)["glass"]
+        colors = chrome_colors(toolbar, dark, accent, glass)
+        self.tab_bar.set_chrome(toolbar, dark, glass, colors["accent"])
         self.address_bar.apply_style(colors)
         bars = bar_stylesheet(colors)
         self.menuBar().setStyleSheet(bars)
@@ -5978,9 +5984,7 @@ class BrowserWindow(QMainWindow):
         try:
             styles.save(profile, value)
         except (OSError, ValueError):
-            QMessageBox.warning(
-                self, "Appearance", "Bar visibility could not be saved."
-            )
+            QMessageBox.warning(self, "Appearance", "Appearance could not be saved.")
             self._apply_page_style()
 
     def _reset_page_style(self):
@@ -6017,6 +6021,7 @@ class BrowserWindow(QMainWindow):
         )
         self.menu_bar_action.setChecked(value["menu_bar"])
         self.status_bar_action.setChecked(value["status_bar"])
+        self.glass_action.setChecked(value["glass"])
         if not self.isFullScreen():
             self.menuBar().setVisible(value["menu_bar"])
             self.status_bar.setVisible(self._status_bar_wanted())
@@ -6219,6 +6224,10 @@ class BrowserWindow(QMainWindow):
         elif action == "menu" and len(params) == 1 and params[0][0] == "name":
             self._newtab_menu_at(tab, params[0][1])
         elif action == "newtab-set" and params and page_name(tab.url()) == "newtab":
+            if params in ([("glass", "1")], [("glass", "0")]):
+                pages.keep_open.add(profile)
+                self._set_bar("glass", params[0][1] == "1")
+                return
             try:
                 pages.set_from_page(profile, params)
             except (ValueError, OSError) as error:

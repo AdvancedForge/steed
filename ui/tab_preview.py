@@ -7,7 +7,7 @@ A tab's snapshot is taken when you switch away from it, kept as a small JPEG
 from urllib.parse import urlsplit
 
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
 WIDTH = 320
@@ -70,9 +70,22 @@ class TabPreview(QFrame):
 
     def apply_style(self, colors):
         """The tab strip's colours, not the system's (often yellow) tooltips."""
+        if colors.get("glass"):  # Frosted: what is behind shows through.
+            fill = QColor(colors["field"])
+            alpha = 205 if colors["dark"] else 190
+            card = (
+                f"background: rgba({fill.red()},{fill.green()},{fill.blue()},{alpha});"
+                " border: 1px solid "
+                + ("rgba(255,255,255,60)" if colors["dark"] else "#ffffff")
+                + "; border-radius: 14px;"
+            )
+        else:
+            card = (
+                f"background: {colors['field']};"
+                f" border: 1px solid {colors['border']}; border-radius: 10px;"
+            )
         self.setStyleSheet(
-            f"#TabPreview {{ background: {colors['field']};"
-            f" border: 1px solid {colors['border']}; border-radius: 10px; }}"
+            f"#TabPreview {{ {card} }}"
             f" #TabPreview QLabel {{ background: transparent; color: {colors['ink']}; }}"
             " #TabPreviewTitle { font-weight: 600; }"
             f" #TabPreviewMuted {{ color: {colors['muted']}; }}"

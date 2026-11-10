@@ -600,6 +600,17 @@ for example when memory runs out), its tab shows **This tab crashed** with
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
 
+### Liquid glass
+
+**View → Liquid Glass** (also the new tab's gear panel under *Look*, or the
+Style page's Browser bars section) switches the profile to a glass look: tabs
+become frosted pills lit by the accent colour, the toolbar and address field
+get a glossy, lit-from-above finish, hover cards turn translucent, and the new
+tab's search box, buttons and panel become blurred glass that bends the photo
+behind it slightly, with a slow sheen. With *Match the background* on, the
+glass takes the photo's colour too. Motion is reduced when the system asks
+for it. Off by default; existing style settings are kept when it is added.
+
 ### Bars and hover cards
 
 The top menu bar and the bottom status bar are hidden by default; the

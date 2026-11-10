@@ -306,6 +306,61 @@ class SimpleNewTabTests(unittest.TestCase):
         self.loaded(tab)
         self.assertTrue(self.js(tab, "document.querySelector('.customize').open"))
 
+    def test_liquid_glass_mode(self):
+        window, pages = self.window, self.pages
+        styles = window.profile_manager.registry.page_style
+        self.assertFalse(styles.get("global")["glass"])
+        self.assertFalse(window.address_bar.colors["glass"])
+        self.assertNotIn("qlineargradient", window.address_bar.styleSheet())
+        html = pages.render("global", "newtab").decode()
+        self.assertNotIn("steed-refract", html)
+        self.assertIn("steed://action/newtab-set?glass=1", html)
+
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.loaded(tab)
+        window._start_page_action(tab, QUrl("steed://action/newtab-set?glass=1"))
+        self.assertTrue(styles.get("global")["glass"])
+        self.assertTrue(window.glass_action.isChecked())
+        self.assertTrue(window.address_bar.colors["glass"])
+        self.assertIn("qlineargradient", window.address_bar.styleSheet())
+        self.assertTrue(window.tab_bar.chrome["glass"])
+        self.assertRegex(window.tab_bar.chrome["glow"], "^#[0-9a-f]{6}$")
+        page = window.tab_bar.surface.page
+        found = []
+        self.wait(
+            lambda: (
+                webengine.run_script(
+                    page,
+                    "document.documentElement.classList.contains('glass')",
+                    found.append,
+                    world=webengine.PAGE_WORLD,
+                )
+                or (found and found[-1])
+            )
+        )
+        window._show_tab_preview(window.tabs.index(tab), QPoint(10, 10))
+        self.assertIn("rgba(", window.tab_preview.styleSheet())
+        # The new tab comes back in glass, with the panel still open.
+        self.loaded(tab)
+        self.wait(lambda: self.js(tab, "document.body.classList.contains('glass')"))
+        self.assertTrue(self.js(tab, "document.querySelector('.customize').open"))
+        self.assertTrue(self.js(tab, "!!document.getElementById('steed-refract')"))
+        self.assertIn(
+            "blur(",
+            self.js(
+                tab,
+                "getComputedStyle(document.querySelector('.search')).backdropFilter",
+            ),
+        )
+        # The View menu turns it off again.
+        window.glass_action.trigger()
+        self.assertFalse(styles.get("global")["glass"])
+        self.assertFalse(window.tab_bar.chrome["glass"])
+        self.assertIn('<body class="', pages.render("global", "newtab").decode())
+        self.assertNotIn(
+            "glass", pages.render("global", "newtab").decode().split("<body")[1][:30]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

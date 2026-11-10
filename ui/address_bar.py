@@ -286,6 +286,7 @@ class AddressBar(QWidget):
         # Hidden in incognito windows, which have no extensions.
         # Pinned extensions' buttons, then the puzzle button listing them all.
         self.extensions_box = QWidget(self)
+        self.extensions_box.setObjectName("ToolbarGroup")
         pins = QHBoxLayout(self.extensions_box)
         pins.setContentsMargins(0, 0, 0, 0)
         pins.setSpacing(2)

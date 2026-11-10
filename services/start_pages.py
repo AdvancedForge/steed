@@ -675,13 +675,14 @@ class StartPages(QObject):
         background, credit, scrim = self._background(settings, dark)
         menu = newtab_menu() if styles.get(profile)["newtab_menu"] else ""
         private = profile == "search"
-        css = SIMPLE_CSS + root_css + background
+        glass = styles.get(profile)["glass"]
+        css = SIMPLE_CSS + root_css + background + (GLASS_CSS if glass else "")
         tint = self.theme_tint(profile)
         if tint:  # The page's highlights match the browser's.
             from ui.chrome_style import tint_colors
 
             css += f":root {{ --accent: {tint_colors(tint, dark)[1]}; }}"
-        panel = customize_panel(settings, open_=profile in self.keep_open)
+        panel = customize_panel(settings, open_=profile in self.keep_open, glass=glass)
         self.keep_open.discard(profile)
         return (
             Template(SIMPLE_PAGE)
@@ -689,7 +690,10 @@ class StartPages(QObject):
                 panel=panel,
                 theme="dark" if dark else "light",
                 css=css,
-                scrim="scrim" if scrim else "",
+                scrim=" ".join(
+                    name for name, on in (("scrim", scrim), ("glass", glass)) if on
+                ),
+                svg=REFRACT_SVG if glass else "",
                 menu=menu,
                 note='<span class="note">Incognito · nothing is saved</span>'
                 if private
@@ -806,7 +810,7 @@ SWATCHES = (
 )  # fmt: skip
 
 
-def customize_panel(settings, open_=False):
+def customize_panel(settings, open_=False, glass=False):
     """The gear's panel: links to Steed actions (the page runs no script)."""
     from urllib.parse import quote
 
@@ -859,6 +863,9 @@ def customize_panel(settings, open_=False):
     parts.append('<h2>Browser colours</h2><div class="choices">')
     parts.append(choice("Match the background", "match_theme", "1", match))
     parts.append(choice("Theme colours", "match_theme", "0", not match))
+    parts.append('</div><h2>Look</h2><div class="choices">')
+    for value, label in (("1", "Liquid glass"), ("0", "Solid")):
+        parts.append(choice(label, "glass", value, glass == (value == "1")))
     parts.append('</div><h2>Layout</h2><div class="choices">')
     parts.append(choice("Simple", "layout", "simple", settings["layout"] == "simple"))
     parts.append(
@@ -961,13 +968,65 @@ GEAR = (
     " 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3"
     ' 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
 )
+GLASS_CSS = """
+/* ---- Liquid glass ---- */
+body.glass { --glass: #ffffff2e; --glass-low: #ffffff0f; --glass-edge: #ffffff8c; --glass-shine: #ffffffd9;
+  --glass-ink: inherit; --glass-panel: #ffffff38; }
+body.glass:not(.scrim) { --glass: #ffffff8c; --glass-low: #ffffff40; --glass-edge: #ffffffe6;
+  --glass-panel: #ffffffa6; }
+:root[data-theme="dark"] body.glass:not(.scrim) { --glass: #ffffff1f; --glass-low: #ffffff0a;
+  --glass-edge: #ffffff40; --glass-shine: #ffffff66; --glass-panel: #1e273599; }
+body.glass .search, body.glass .panel, body.glass .corner .icon, body.glass .browser-menu summary,
+body.glass .browser-menu > div {
+  color: var(--glass-ink); border: 1px solid var(--glass-edge);
+  background: linear-gradient(160deg, var(--glass), var(--glass-low));
+  -webkit-backdrop-filter: blur(16px) saturate(190%); backdrop-filter: url(#steed-refract) blur(16px) saturate(190%);
+  box-shadow: inset 0 1px 0 var(--glass-shine), inset 0 -1px 1px #ffffff26, inset 0 0 22px #ffffff14,
+    0 12px 36px #00000033; }
+body.glass .panel, body.glass .browser-menu > div { background: var(--glass-panel); color: inherit;
+  backdrop-filter: blur(30px) saturate(200%); }
+body.glass.scrim .panel, body.glass.scrim .browser-menu > div { background: #14182466; }
+body.glass .panel h2, body.glass .panel h3 { color: inherit; opacity: .75; }
+body.glass .browser-menu a { color: inherit; }
+body.glass .search { position: relative; height: 58px; border-radius: 29px; overflow: hidden;
+  transition: transform .45s cubic-bezier(.25, 1.6, .45, 1), box-shadow .3s; }
+body.glass .search:focus-within { transform: scale(1.015); border-color: var(--glass-shine);
+  box-shadow: inset 0 1px 0 var(--glass-shine), inset 0 0 26px #ffffff1f, 0 0 0 4px #ffffff1f, 0 18px 50px #00000040; }
+body.glass .search::before { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: radial-gradient(120% 90% at 18% -30%, #ffffff73, transparent 55%),
+    linear-gradient(105deg, transparent 38%, #ffffff2e 48%, transparent 58%);
+  background-size: 100% 100%, 260% 100%; animation: steed-sheen 9s ease-in-out infinite; }
+@keyframes steed-sheen { 0%, 100% { background-position: 0 0, 120% 0; } 50% { background-position: 0 0, -20% 0; } }
+body.glass .search input { color: inherit; position: relative; }
+body.glass .wordmark { text-shadow: 0 1px 0 #ffffff59, 0 8px 32px #00000040; }
+body.glass .corner .icon:hover, body.glass .browser-menu summary:hover { transform: scale(1.06); }
+body.glass .corner .icon, body.glass .browser-menu summary { transition: transform .35s cubic-bezier(.25, 1.6, .45, 1); }
+body.glass .pill { border-color: var(--glass-edge); color: inherit; background: var(--glass-low); }
+body.glass .pill:hover { background: var(--glass); }
+body.glass .pill.on { background: var(--glass-shine); border-color: var(--glass-shine); color: #141824;
+  box-shadow: inset 0 1px 0 #fff, 0 2px 8px #0000002e; }
+body.glass .more { color: inherit; }
+body.glass .customize[open] summary { background: var(--glass-shine); color: #141824; }
+@media (prefers-reduced-motion: reduce) { body.glass .search::before { animation: none; }
+  body.glass .search, body.glass .corner .icon { transition: none; } }
+"""
+# Bends what shows through the glass near its edges, like thick glass.
+REFRACT_SVG = (
+    '<svg width="0" height="0" style="position:absolute" aria-hidden="true">'
+    '<filter id="steed-refract" x="0" y="0" width="100%" height="100%">'
+    '<feTurbulence type="fractalNoise" baseFrequency="0.004 0.009" numOctaves="2"'
+    ' seed="11" result="noise"/><feGaussianBlur in="noise" stdDeviation="3"'
+    ' result="soft"/><feDisplacementMap in="SourceGraphic" in2="soft" scale="34"'
+    ' xChannelSelector="R" yChannelSelector="G"/></filter></svg>'
+)
+
 SIMPLE_PAGE = (
     '<!doctype html><html lang="en" data-theme="$theme"><head><meta charset="utf-8">'
     '<meta name="viewport" content="width=device-width, initial-scale=1">'
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';'
     " style-src 'unsafe-inline'; img-src data:; form-action steed:; base-uri 'none';"
     " object-src 'none'\">"
-    '<title>New Tab</title><style>$css</style></head><body class="$scrim">'
+    '<title>New Tab</title><style>$css</style></head><body class="$scrim">$svg'
     '<div class="corner">$panel$menu</div>'
     '<main class="simple"><h1 class="wordmark">Steed</h1>'
     '<form class="search" action="steed://action/search" method="get">'

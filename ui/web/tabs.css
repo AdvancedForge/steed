@@ -132,3 +132,35 @@ button:hover:enabled { background: none; border-color: transparent; }
 /* Frozen or unloaded by the memory mode: dimmed until selected. */
 .tab.dormant .title, .tab.dormant .favicon { opacity: .55; }
 .tab.unloaded .title { font-style: italic; }
+
+/* ---- Liquid glass: frosted pills floating on a softly lit strip ---- */
+:root.glass { --glow: var(--tab-accent); --glass-edge: #ffffffd9; --glass-top: #ffffffc4; --glass-low: #ffffff5c;
+  --glass-shine: #fff; --glass-shade: #0000001f; }
+:root.glass.native-dark { --glass-edge: #ffffff38; --glass-top: #ffffff2e; --glass-low: #ffffff0d;
+  --glass-shine: #ffffff59; --glass-shade: #00000059; }
+:root.glass body { background:
+  radial-gradient(70% 180% at 8% -40%, color-mix(in srgb, var(--glow) 34%, transparent), transparent 70%),
+  radial-gradient(60% 200% at 78% 150%, color-mix(in srgb, var(--glow) 26%, transparent), transparent 70%),
+  linear-gradient(180deg, color-mix(in srgb, var(--toolbar) 70%, #fff), var(--toolbar)); }
+:root.glass.native-dark body { background:
+  radial-gradient(70% 180% at 8% -40%, color-mix(in srgb, var(--glow) 30%, transparent), transparent 70%),
+  radial-gradient(60% 200% at 78% 150%, color-mix(in srgb, var(--glow) 18%, transparent), transparent 70%),
+  linear-gradient(180deg, color-mix(in srgb, var(--toolbar) 88%, #fff), color-mix(in srgb, var(--toolbar) 80%, #000)); }
+:root.glass .strip.horizontal { align-items: center; padding-top: 0; padding-bottom: 0; }
+:root.glass .horizontal .tabs, :root.glass .horizontal .tail { align-items: center; align-self: center; }
+:root.glass .tab { height: calc(var(--row) - 8px); border-radius: 999px; border: 1px solid transparent;
+  background: none; transition: background .25s, border-color .25s, box-shadow .25s, transform .3s cubic-bezier(.3, 1.6, .5, 1); }
+:root.glass .vertical .tab { height: var(--row); border-radius: 14px; }
+:root.glass .tab::before, :root.glass .tab::after { display: none; }
+:root.glass .tab:hover:not(.active) { background: var(--glass-low); border-color: var(--glass-low);
+  box-shadow: inset 0 1px 0 var(--glass-top); }
+:root.glass .tab.active { color: var(--ink);
+  background: linear-gradient(180deg, var(--glass-top), var(--glass-low));
+  border-color: var(--glass-edge); backdrop-filter: blur(10px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--glass-shine), inset 0 -8px 14px -10px color-mix(in srgb, var(--glow) 70%, transparent),
+    0 4px 14px var(--glass-shade); }
+:root.glass .tab:active { transform: scale(.97); }
+:root.glass .tab.grouped { box-shadow: inset 0 -2px 0 var(--group); }
+:root.glass .new-tab { margin: 0 2px; border-radius: 50%; }
+:root.glass .new-tab:hover:enabled { background: var(--glass-low); box-shadow: inset 0 1px 0 var(--glass-top); }
+@media (prefers-reduced-motion: reduce) { :root.glass .tab { transition: none; } }
