@@ -42,6 +42,8 @@ DEFAULT_SETTINGS = {
     "background": "photo",
     "color": "",
     "photo_every": "6h",
+    # The browser's toolbar and tabs take their colour from the background.
+    "match_theme": True,
 }
 LAYOUTS = ("simple", "classic")
 BACKGROUNDS = ("photo", "color", "image")
@@ -219,6 +221,9 @@ def clean_settings(value):
     background = value.get("background", DEFAULT_SETTINGS["background"])
     color = value.get("color", "")
     every = value.get("photo_every", DEFAULT_SETTINGS["photo_every"])
+    match_theme = value.get("match_theme", True)
+    if type(match_theme) is not bool:
+        raise ValueError("Choose whether the browser matches the background")
     if layout not in LAYOUTS or background not in BACKGROUNDS or every not in PERIODS:
         raise ValueError("Choose a layout, background and photo schedule Steed offers")
     if not isinstance(color, str) or (
@@ -234,6 +239,7 @@ def clean_settings(value):
         "background": background,
         "color": color.lower(),
         "photo_every": every,
+        "match_theme": match_theme,
     }
 
 
@@ -281,6 +287,11 @@ class StartPages(QObject):
         from services.newtab_photo import NewTabPhotos
 
         self.photos = NewTabPhotos(registry.config.config_dir / "newtab", self)
+        # Profiles whose customize panel stays open on the next render.
+        self.keep_open = set()
+        # Profiles that asked for a new photo now (their new tabs show it).
+        self.photo_wanted = set()
+        self._image_tints = {}
 
     def path(self, profile):
         if profile == "search":
@@ -664,13 +675,25 @@ class StartPages(QObject):
         background, credit, scrim = self._background(settings, dark)
         menu = newtab_menu() if styles.get(profile)["newtab_menu"] else ""
         private = profile == "search"
-        css = SIMPLE_CSS + root_css + background
+        glass = styles.get(profile)["glass"]
+        css = SIMPLE_CSS + root_css + background + (GLASS_CSS if glass else "")
+        tint = self.theme_tint(profile)
+        if tint:  # The page's highlights match the browser's.
+            from ui.chrome_style import tint_colors
+
+            css += f":root {{ --accent: {tint_colors(tint, dark)[1]}; }}"
+        panel = customize_panel(settings, open_=profile in self.keep_open, glass=glass)
+        self.keep_open.discard(profile)
         return (
             Template(SIMPLE_PAGE)
             .substitute(
+                panel=panel,
                 theme="dark" if dark else "light",
                 css=css,
-                scrim="scrim" if scrim else "",
+                scrim=" ".join(
+                    name for name, on in (("scrim", scrim), ("glass", glass)) if on
+                ),
+                svg=REFRACT_SVG if glass else "",
                 menu=menu,
                 note='<span class="note">Incognito · nothing is saved</span>'
                 if private
@@ -679,6 +702,60 @@ class StartPages(QObject):
             )
             .encode()
         )
+
+    def theme_tint(self, profile) -> str | None:
+        """The colour the browser takes from this profile's new tab background
+        (a photo or your own image), or None."""
+        try:
+            settings = self.state(profile)["settings"]
+        except (ValueError, OSError):
+            return None
+        if settings["layout"] != "simple" or not settings["match_theme"]:
+            return None
+        from PyQt6.QtGui import QImage
+
+        from services.newtab_photo import theme_color
+
+        if settings["background"] == "photo":
+            photo = self.photos.current()
+            if photo is None:
+                return None
+            return photo["color"] or theme_color(QImage(str(photo["path"])))
+        if settings["background"] == "image" and settings["image"]:
+            image = settings["image"]
+            if image not in self._image_tints:
+                import base64
+
+                data = base64.b64decode(image.split(",", 1)[1])
+                self._image_tints = {image: theme_color(QImage.fromData(data))}
+            return self._image_tints[image]
+        return None
+
+    def set_from_page(self, profile, params):
+        """A choice made in the new tab's customize panel (checked here)."""
+        from services.newtab_photo import PERIODS
+
+        allowed = {
+            "background": BACKGROUNDS,
+            "layout": LAYOUTS,
+            "photo_every": tuple(PERIODS),
+            "match_theme": ("1", "0"),
+        }
+        changes = {}
+        for key, value in params:
+            if key == "color" and (
+                not value or re.fullmatch(r"#[0-9a-fA-F]{6}", value)
+            ):
+                changes["color"] = value
+            elif key in allowed and value in allowed[key]:
+                changes[key] = value == "1" if key == "match_theme" else value
+            else:
+                raise ValueError("Not a choice the panel offers")
+        if not changes:
+            raise ValueError("Nothing chosen")
+        settings = {**self.state(profile)["settings"], **changes}
+        self.keep_open.add(profile)
+        self.configure(profile, settings)
 
     def _background(self, settings, dark):
         """(CSS, photo credit HTML, whether light text needs a scrim)."""
@@ -725,6 +802,87 @@ class StartPages(QObject):
             ' <a href="steed://action/refresh-news">Refresh</a>',
             identifier="news",
         )
+
+
+SWATCHES = (
+    "#1f3a5f", "#2f5d50", "#5b3a6b", "#7a2e2e", "#8a6d1f",
+    "#dfe8f5", "#e6f2e8", "#f4e6ef", "#f6ead8", "#ececec",
+)  # fmt: skip
+
+
+def customize_panel(settings, open_=False, glass=False):
+    """The gear's panel: links to Steed actions (the page runs no script)."""
+    from urllib.parse import quote
+
+    def choice(label, key, value, current):
+        on = " on" if current else ""
+        return (
+            f'<a class="pill{on}" aria-pressed="{str(bool(current)).lower()}"'
+            f' href="steed://action/newtab-set?{key}={quote(value, safe="")}">'
+            f"{label}</a>"
+        )
+
+    background = settings["background"]
+    parts = [
+        '<h2>Background</h2><div class="choices">',
+        choice("Photo", "background", "photo", background == "photo"),
+        choice("Colour", "background", "color", background == "color"),
+        f'<a class="pill{" on" if background == "image" else ""}"'
+        ' href="steed://action/newtab-image">Your image…</a></div>',
+    ]
+    if background == "photo":
+        parts.append('<h3>New photo</h3><div class="choices">')
+        for value, label in (
+            ("new_tab", "Every tab"),
+            ("hourly", "Hourly"),
+            ("6h", "6 hours"),
+            ("daily", "Daily"),
+        ):
+            parts.append(
+                choice(label, "photo_every", value, settings["photo_every"] == value)
+            )
+        parts.append(
+            '<a class="pill" href="steed://action/newtab-photo">New photo now</a></div>'
+        )
+    if background == "color":
+        parts.append('<h3>Colour</h3><div class="swatches">')
+        parts.append(
+            f'<a class="swatch theme{" on" if not settings["color"] else ""}"'
+            ' href="steed://action/newtab-set?color=" title="Follow the theme"'
+            ' aria-label="Follow the theme"></a>'
+        )
+        for color in SWATCHES:
+            on = " on" if settings["color"] == color else ""
+            parts.append(
+                f'<a class="swatch{on}" style="background:{color}" title="{color}"'
+                f' aria-label="{color}"'
+                f' href="steed://action/newtab-set?color={quote(color, safe="")}"></a>'
+            )
+        parts.append("</div>")
+    match = settings["match_theme"]
+    parts.append('<h2>Browser colours</h2><div class="choices">')
+    parts.append(choice("Match the background", "match_theme", "1", match))
+    parts.append(choice("Theme colours", "match_theme", "0", not match))
+    parts.append('</div><h2>Look</h2><div class="choices">')
+    for value, label in (("1", "Liquid glass"), ("0", "Solid")):
+        parts.append(choice(label, "glass", value, glass == (value == "1")))
+    parts.append('</div><h2>Layout</h2><div class="choices">')
+    parts.append(choice("Simple", "layout", "simple", settings["layout"] == "simple"))
+    parts.append(
+        choice("Classic", "layout", "classic", settings["layout"] == "classic")
+    )
+    parts.append(
+        '</div><a class="more" href="steed://action/customize">More options…</a>'
+    )
+    return (
+        f'<details class="customize"{" open" if open_ else ""}>'
+        '<summary class="icon" title="Customize New Tab"'
+        ' aria-label="Customize New Tab">'
+        + GEAR
+        + '</summary><div class="panel">'
+        + "".join(parts)
+        + "</div></details>"
+    )
 
 
 def _is_dark(color):
@@ -778,6 +936,26 @@ body.scrim .wordmark { text-shadow: 0 2px 24px #0006; }
   border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 8px 24px #0002; }
 .browser-menu a { display: block; padding: 8px 12px; text-decoration: none; color: var(--ink); border-radius: 6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.customize { position: relative; }
+.customize summary { list-style: none; cursor: pointer; }
+.customize summary::-webkit-details-marker { display: none; }
+.customize[open] summary { background: var(--surface); color: var(--ink); }
+.panel { position: absolute; right: 0; top: calc(100% + 8px); width: 300px; padding: 14px 16px 16px;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--ink);
+  box-shadow: 0 12px 40px #0003; text-align: left; font-size: 14px; }
+.panel h2 { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); margin: 14px 0 8px; } .panel h2:first-child { margin-top: 0; }
+.panel h3 { font-size: 13px; font-weight: 600; margin: 12px 0 6px; color: var(--muted); }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { display: inline-block; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--ink); text-decoration: none; font-size: 13px; }
+.pill:hover { background: var(--soft); }
+.pill.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.swatches { display: grid; grid-template-columns: repeat(6, 28px); gap: 8px; }
+.swatch { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); }
+.swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
+.swatch.theme { background: linear-gradient(135deg, #dfe9ff, #f3e3f7); }
+.more { display: block; margin-top: 14px; font-size: 13px; color: var(--accent); }
 """
 GEAR = (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
@@ -790,16 +968,66 @@ GEAR = (
     " 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3"
     ' 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
 )
+GLASS_CSS = """
+/* ---- Liquid glass ---- */
+body.glass { --glass: #ffffff2e; --glass-low: #ffffff0f; --glass-edge: #ffffff8c; --glass-shine: #ffffffd9;
+  --glass-ink: inherit; --glass-panel: #ffffff38; }
+body.glass:not(.scrim) { --glass: #ffffff8c; --glass-low: #ffffff40; --glass-edge: #ffffffe6;
+  --glass-panel: #ffffffa6; }
+:root[data-theme="dark"] body.glass:not(.scrim) { --glass: #ffffff1f; --glass-low: #ffffff0a;
+  --glass-edge: #ffffff40; --glass-shine: #ffffff66; --glass-panel: #1e273599; }
+body.glass .search, body.glass .panel, body.glass .corner .icon, body.glass .browser-menu summary,
+body.glass .browser-menu > div {
+  color: var(--glass-ink); border: 1px solid var(--glass-edge);
+  background: linear-gradient(160deg, var(--glass), var(--glass-low));
+  -webkit-backdrop-filter: blur(16px) saturate(190%); backdrop-filter: url(#steed-refract) blur(16px) saturate(190%);
+  box-shadow: inset 0 1px 0 var(--glass-shine), inset 0 -1px 1px #ffffff26, inset 0 0 22px #ffffff14,
+    0 12px 36px #00000033; }
+body.glass .panel, body.glass .browser-menu > div { background: var(--glass-panel); color: inherit;
+  backdrop-filter: blur(30px) saturate(200%); }
+body.glass.scrim .panel, body.glass.scrim .browser-menu > div { background: #14182466; }
+body.glass .panel h2, body.glass .panel h3 { color: inherit; opacity: .75; }
+body.glass .browser-menu a { color: inherit; }
+body.glass .search { position: relative; height: 58px; border-radius: 29px; overflow: hidden;
+  transition: transform .45s cubic-bezier(.25, 1.6, .45, 1), box-shadow .3s; }
+body.glass .search:focus-within { transform: scale(1.015); border-color: var(--glass-shine);
+  box-shadow: inset 0 1px 0 var(--glass-shine), inset 0 0 26px #ffffff1f, 0 0 0 4px #ffffff1f, 0 18px 50px #00000040; }
+body.glass .search::before { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: radial-gradient(120% 90% at 18% -30%, #ffffff73, transparent 55%),
+    linear-gradient(105deg, transparent 38%, #ffffff2e 48%, transparent 58%);
+  background-size: 100% 100%, 260% 100%; animation: steed-sheen 9s ease-in-out infinite; }
+@keyframes steed-sheen { 0%, 100% { background-position: 0 0, 120% 0; } 50% { background-position: 0 0, -20% 0; } }
+body.glass .search input { color: inherit; position: relative; }
+body.glass .wordmark { text-shadow: 0 1px 0 #ffffff59, 0 8px 32px #00000040; }
+body.glass .corner .icon:hover, body.glass .browser-menu summary:hover { transform: scale(1.06); }
+body.glass .corner .icon, body.glass .browser-menu summary { transition: transform .35s cubic-bezier(.25, 1.6, .45, 1); }
+body.glass .pill { border-color: var(--glass-edge); color: inherit; background: var(--glass-low); }
+body.glass .pill:hover { background: var(--glass); }
+body.glass .pill.on { background: var(--glass-shine); border-color: var(--glass-shine); color: #141824;
+  box-shadow: inset 0 1px 0 #fff, 0 2px 8px #0000002e; }
+body.glass .more { color: inherit; }
+body.glass .customize[open] summary { background: var(--glass-shine); color: #141824; }
+@media (prefers-reduced-motion: reduce) { body.glass .search::before { animation: none; }
+  body.glass .search, body.glass .corner .icon { transition: none; } }
+"""
+# Bends what shows through the glass near its edges, like thick glass.
+REFRACT_SVG = (
+    '<svg width="0" height="0" style="position:absolute" aria-hidden="true">'
+    '<filter id="steed-refract" x="0" y="0" width="100%" height="100%">'
+    '<feTurbulence type="fractalNoise" baseFrequency="0.004 0.009" numOctaves="2"'
+    ' seed="11" result="noise"/><feGaussianBlur in="noise" stdDeviation="3"'
+    ' result="soft"/><feDisplacementMap in="SourceGraphic" in2="soft" scale="34"'
+    ' xChannelSelector="R" yChannelSelector="G"/></filter></svg>'
+)
+
 SIMPLE_PAGE = (
     '<!doctype html><html lang="en" data-theme="$theme"><head><meta charset="utf-8">'
     '<meta name="viewport" content="width=device-width, initial-scale=1">'
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';'
     " style-src 'unsafe-inline'; img-src data:; form-action steed:; base-uri 'none';"
     " object-src 'none'\">"
-    '<title>New Tab</title><style>$css</style></head><body class="$scrim">'
-    '<div class="corner">'
-    '<a class="icon" href="steed://action/customize" title="Customize New Tab"'
-    ' aria-label="Customize New Tab">' + GEAR + "</a>$menu</div>"
+    '<title>New Tab</title><style>$css</style></head><body class="$scrim">$svg'
+    '<div class="corner">$panel$menu</div>'
     '<main class="simple"><h1 class="wordmark">Steed</h1>'
     '<form class="search" action="steed://action/search" method="get">'
     '<label class="sr-only" for="query">Search or enter a web address</label>'

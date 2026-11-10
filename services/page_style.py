@@ -15,12 +15,16 @@ DEFAULTS = {
     "menu_bar": False,
     "status_bar": False,
     "newtab_menu": True,
+    # Liquid glass: translucent, glossy chrome and new tab controls.
+    "glass": False,
     "loading": True,
     "loading_percent": False,
     "loading_height": 3,
     "loading_color": "#355ed6",
     "colors": {},
 }
+# Added after styles were first saved; older saves lack them.
+LATER_SETTINGS = {"colors", "glass"}
 ROOT_CSS = Path(__file__).resolve().parents[1] / "ui" / "web" / "root.css"
 COLOR_FIELDS = {
     "bg": "Page background",
@@ -139,8 +143,12 @@ class PageStyle(QObject):
         elif isinstance(overrides, dict):
             value = overrides.get(self._key(profile), value)
         try:
-            if isinstance(value, dict) and set(value) == set(DEFAULTS) - {"colors"}:
-                value = {**value, "colors": {}}
+            if (
+                isinstance(value, dict)
+                and set(value) <= set(DEFAULTS)
+                and (set(DEFAULTS) - set(value) <= LATER_SETTINGS)
+            ):  # Saved before these settings existed: their defaults.
+                value = {**deepcopy(DEFAULTS), **value}
             return clean_style(value)
         except ValueError:
             return deepcopy(DEFAULTS)

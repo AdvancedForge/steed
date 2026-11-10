@@ -98,6 +98,10 @@ function render(next) {
   if (toolbar) document.documentElement.style.setProperty("--toolbar", toolbar);
   else document.documentElement.style.removeProperty("--toolbar");
   document.documentElement.classList.toggle("native-dark", !!next.chrome?.dark);
+  const glow = /^#[0-9a-fA-F]{6}$/.test(next.chrome?.glow || "") ? next.chrome.glow : "";
+  document.documentElement.classList.toggle("glass", !!next.chrome?.glass);
+  if (glow) document.documentElement.style.setProperty("--glow", glow);
+  else document.documentElement.style.removeProperty("--glow");
   const accent = ACCENTS[look.accent];
   if (accent) document.documentElement.style.setProperty("--tab-accent", accent);
   else document.documentElement.style.removeProperty("--tab-accent");

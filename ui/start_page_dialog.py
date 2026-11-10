@@ -110,6 +110,9 @@ class StartPageDialog(HtmlSettingsDialog):
         colors.addStretch(1)
         page.addRow("Colour", colors)
         self.set_color(self.color)
+        self.match_theme = QCheckBox("Browser colours follow the photo or image")
+        self.match_theme.setChecked(settings["match_theme"])
+        page.addRow("", self.match_theme)
         form.addLayout(page)
         note = QLabel(
             "Photos are free Unsplash photos from Lorem Picsum, credited on the "
@@ -281,6 +284,7 @@ class StartPageDialog(HtmlSettingsDialog):
                     "background": self.background_choice.currentData(),
                     "color": self.color,
                     "photo_every": self.photo_every.currentData(),
+                    "match_theme": self.match_theme.isChecked(),
                 },
                 self.html_drafts["newtab"] if self.html_enabled["newtab"] else "",
                 welcome_html=self.html_drafts["welcome"]

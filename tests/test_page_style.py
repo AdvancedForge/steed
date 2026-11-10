@@ -57,6 +57,20 @@ class PageStyleTests(unittest.TestCase):
         self.config.set("page_style", {"version": 1, "default": legacy, "profiles": {}})
         self.assertEqual(self.styles.get("global"), {**legacy, "colors": {}})
 
+    def test_styles_saved_before_glass_keep_their_choices(self):
+        older = {
+            key: value
+            for key, value in DEFAULTS.items()
+            if key not in ("colors", "glass")
+        }
+        older.update(theme="dark", accent="#123456")
+        self.config.set("page_style", {"version": 1, "default": older, "profiles": {}})
+        self.assertEqual(
+            self.styles.get("global"), {**older, "colors": {}, "glass": False}
+        )
+        with self.assertRaises(ValueError):
+            clean_style({**DEFAULTS, "glass": "yes"})
+
     def test_palette_overrides_are_validated_and_returned_as_independent_copies(self):
         colors = {"bg": "#102030", "ink": "#ffffff"}
         self.styles.save("work", {**DEFAULTS, "colors": colors})

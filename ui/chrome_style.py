@@ -59,7 +59,15 @@ def mix(first, second, amount):
     ).name()
 
 
-def chrome_colors(toolbar, dark, accent=None):
+def tint_colors(tint, dark):
+    """A toolbar and accent from a picture's colour: a pale (or deep) wash of
+    it, and a stronger version for highlights."""
+    toolbar = mix(tint, "#141414" if dark else "#ffffff", 0.78 if dark else 0.8)
+    accent = mix(tint, "#ffffff" if dark else "#000000", 0.25)
+    return toolbar, accent
+
+
+def chrome_colors(toolbar, dark, accent=None, glass=False):
     """Derive every toolbar colour from the toolbar background."""
     ink = "#e8edf6" if dark else "#202b40"
     return {
@@ -72,6 +80,7 @@ def chrome_colors(toolbar, dark, accent=None):
         "border": mix(toolbar, ink, 0.16),
         "accent": accent or ("#8caaff" if dark else "#355ed6"),
         "dark": dark,
+        "glass": glass,
     }
 
 
@@ -81,6 +90,7 @@ def toolbar_stylesheet(colors, density="comfortable"):
     radius = 14 if compact else 16
     return f"""
 #SteedToolbar {{ background: {colors["toolbar"]}; border-bottom: 1px solid {colors["border"]}; }}
+#SteedToolbar QWidget#ToolbarGroup {{ background: transparent; }}
 #SteedToolbar QPushButton {{
   background: transparent; border: none; border-radius: {button // 2}px;
   min-width: {button}px; max-width: {button}px; min-height: {button}px; max-height: {button}px;
@@ -102,6 +112,33 @@ def toolbar_stylesheet(colors, density="comfortable"):
 }}
 #SteedToolbar QLineEdit:hover {{ border-color: {colors["border"]}; }}
 #SteedToolbar QLineEdit:focus {{ border: 2px solid {colors["accent"]}; padding: {2 if compact else 4}px 11px; }}
+""" + (glass_toolbar(colors, radius) if colors.get("glass") else "")
+
+
+def glass_toolbar(colors, radius):
+    """Liquid glass: a glossy toolbar and a frosted, lit-from-above field."""
+    dark, toolbar = colors["dark"], colors["toolbar"]
+    top = mix(toolbar, "#ffffff", 0.1 if dark else 0.55)
+    if dark:
+        field = "stop:0 rgba(255,255,255,40), stop:1 rgba(255,255,255,12)"
+        edge, low, hover = "rgba(255,255,255,70)", "rgba(255,255,255,20)", "30"
+    else:
+        field = "stop:0 rgba(255,255,255,215), stop:1 rgba(255,255,255,120)"
+        edge, low, hover = "rgba(255,255,255,240)", colors["border"], "120"
+    return f"""
+#SteedToolbar {{
+  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {top}, stop:1 {toolbar});
+  border-bottom: 1px solid {low};
+}}
+#SteedToolbar QPushButton {{ border: 1px solid transparent; }}
+#SteedToolbar QPushButton:hover:enabled {{
+  background: rgba(255,255,255,{hover}); border: 1px solid {edge};
+}}
+#SteedToolbar QLineEdit {{
+  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, {field});
+  border: 1px solid {edge}; border-bottom-color: {low}; border-radius: {radius + 2}px;
+}}
+#SteedToolbar QLineEdit:hover {{ border-color: {edge}; border-bottom-color: {low}; }}
 """
 
 

@@ -511,14 +511,22 @@ photographer credited at the bottom left. Steed keeps the current photo in
 `~/.custom_browser/newtab/` and fetches the next in the background, so a new
 tab never waits; until the first arrives, or offline, a soft gradient shows.
 Picsum is only contacted while a profile uses the photo background. The gear
-at the top right opens **Customize New Tab** (also General → Customize New
-Tab…), and ☰ opens Steed's menus. There you can choose:
+at the top right opens a panel on the page itself, and ☰ opens Steed's menus.
+In the panel you can choose:
 
+- **Background**: a photo, a plain colour (swatches, or the theme's gradient),
+  or your own image.
+- **New photo**: for every new tab, every hour, every 6 hours or every day,
+  or **New photo now**.
+- **Browser colours**: *Match the background* (the default) tints the tab
+  strip, toolbar and highlights with the photo's (or your image's) main
+  colour, in light and dark mode; *Theme colours* keeps Steed's usual ones.
+  Custom colours set in Style always win.
 - **Layout**: Simple (above) or Classic (the sections: search, bookmarks,
   recently closed, history, news).
-- **Background**: a photo, a plain colour (or the theme's gradient), or your
-  own image.
-- **New photo**: for every new tab, every hour, every 6 hours or every day.
+
+**More options…** (also General → Customize New Tab…) opens the full dialog
+with the classic sections, a feed, a custom colour and your own HTML.
 
 ### Split view and sites in a profile
 
@@ -591,6 +599,17 @@ for example when memory runs out), its tab shows **This tab crashed** with
 **Reload** and **Crash Log…**. **General → Crash Log…** lists the last 200
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
+
+### Liquid glass
+
+**View → Liquid Glass** (also the new tab's gear panel under *Look*, or the
+Style page's Browser bars section) switches the profile to a glass look: tabs
+become frosted pills lit by the accent colour, the toolbar and address field
+get a glossy, lit-from-above finish, hover cards turn translucent, and the new
+tab's search box, buttons and panel become blurred glass that bends the photo
+behind it slightly, with a slow sheen. With *Match the background* on, the
+glass takes the photo's colour too. Motion is reduced when the system asks
+for it. Off by default; existing style settings are kept when it is added.
 
 ### Bars and hover cards
 

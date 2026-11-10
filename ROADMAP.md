@@ -9,6 +9,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Liquid glass — November 10, 2026.** A per-profile glass look (View →
+Liquid Glass, the new tab panel, Style): frosted pill tabs on a softly lit
+strip, a glossy toolbar and field, translucent hover cards, and glass search,
+buttons and panel on the new tab with a refraction filter and sheen. Manual
+check still to do: how the blur and refraction look with GPU rendering on a
+real desktop (screenshots were taken offscreen, without the GPU).
+
+**Colours from the photo — November 10, 2026.** With a photo or own-image
+background the browser's tab strip, toolbar and the page's highlights take
+the picture's main colour (on by default, *Match the background*). The
+gear's settings are a panel on the new tab itself, with New photo now.
+
 **A simpler new tab, quieter chrome — November 10, 2026.** The new tab page
 is now just "Steed" and an empty search box over a photo that changes every
 few hours (Lorem Picsum, credited, cached; gradient fallback), with colour and

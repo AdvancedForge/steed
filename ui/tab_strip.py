@@ -129,7 +129,7 @@ class TabStrip(QWidget):
         self.group_colors = {}
         self.collapsed = set()
         self.content_height = 0
-        self.chrome = {"toolbar": "", "dark": False}
+        self.chrome = {"toolbar": "", "dark": False, "glass": False}
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -269,9 +269,14 @@ class TabStrip(QWidget):
         self._resize()
         self.refresh()
 
-    def set_chrome(self, toolbar: str, dark: bool) -> None:
-        """Match the native toolbar so the active tab joins it."""
-        chrome = {"toolbar": toolbar, "dark": bool(dark)}
+    def set_chrome(
+        self, toolbar: str, dark: bool, glass: bool = False, glow: str = ""
+    ) -> None:
+        """Match the native toolbar so the active tab joins it. glass: liquid
+        glass tabs, lit by glow (a #rrggbb accent)."""
+        chrome = {"toolbar": toolbar, "dark": bool(dark), "glass": bool(glass)}
+        if glass:
+            chrome["glow"] = glow
         if chrome != self.chrome:
             self.chrome = chrome
             self.refresh()
