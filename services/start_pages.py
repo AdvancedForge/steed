@@ -681,7 +681,14 @@ class StartPages(QObject):
         if tint:  # The page's highlights match the browser's.
             from ui.chrome_style import tint_colors
 
-            css += f":root {{ --accent: {tint_colors(tint, dark)[1]}; }}"
+            toolbar, accent = tint_colors(tint, dark)
+            # html:root[data-theme] outranks the theme's own dark palette.
+            css += f"html:root[data-theme] {{ --accent: {accent}; }}"
+            if dark:  # The search box and panel in the browser's colour too.
+                css += (
+                    f"html:root[data-theme] {{ --surface: {toolbar};"
+                    f" --border: {accent}66; }}"
+                )
         panel = customize_panel(settings, open_=profile in self.keep_open, glass=glass)
         self.keep_open.discard(profile)
         return (
