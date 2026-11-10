@@ -189,6 +189,8 @@ class WindowTests(unittest.TestCase):
                 self.window.profile_manager.current_profile_name
             )
         )
+        # Cookies reach the cookie list asynchronously: have both first.
+        self.wait(lambda: self.cookies("127.0.0.1") and self.cookies("localhost"))
         dialog = ClearDataDialog(self.window)
         try:
             dialog.range.setCurrentText("Last hour")
