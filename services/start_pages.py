@@ -42,6 +42,8 @@ DEFAULT_SETTINGS = {
     "background": "photo",
     "color": "",
     "photo_every": "6h",
+    # The browser's toolbar and tabs take their colour from the background.
+    "match_theme": True,
 }
 LAYOUTS = ("simple", "classic")
 BACKGROUNDS = ("photo", "color", "image")
@@ -219,6 +221,9 @@ def clean_settings(value):
     background = value.get("background", DEFAULT_SETTINGS["background"])
     color = value.get("color", "")
     every = value.get("photo_every", DEFAULT_SETTINGS["photo_every"])
+    match_theme = value.get("match_theme", True)
+    if type(match_theme) is not bool:
+        raise ValueError("Choose whether the browser matches the background")
     if layout not in LAYOUTS or background not in BACKGROUNDS or every not in PERIODS:
         raise ValueError("Choose a layout, background and photo schedule Steed offers")
     if not isinstance(color, str) or (
@@ -234,6 +239,7 @@ def clean_settings(value):
         "background": background,
         "color": color.lower(),
         "photo_every": every,
+        "match_theme": match_theme,
     }
 
 
@@ -281,6 +287,11 @@ class StartPages(QObject):
         from services.newtab_photo import NewTabPhotos
 
         self.photos = NewTabPhotos(registry.config.config_dir / "newtab", self)
+        # Profiles whose customize panel stays open on the next render.
+        self.keep_open = set()
+        # Profiles that asked for a new photo now (their new tabs show it).
+        self.photo_wanted = set()
+        self._image_tints = {}
 
     def path(self, profile):
         if profile == "search":
@@ -665,9 +676,17 @@ class StartPages(QObject):
         menu = newtab_menu() if styles.get(profile)["newtab_menu"] else ""
         private = profile == "search"
         css = SIMPLE_CSS + root_css + background
+        tint = self.theme_tint(profile)
+        if tint:  # The page's highlights match the browser's.
+            from ui.chrome_style import tint_colors
+
+            css += f":root {{ --accent: {tint_colors(tint, dark)[1]}; }}"
+        panel = customize_panel(settings, open_=profile in self.keep_open)
+        self.keep_open.discard(profile)
         return (
             Template(SIMPLE_PAGE)
             .substitute(
+                panel=panel,
                 theme="dark" if dark else "light",
                 css=css,
                 scrim="scrim" if scrim else "",
@@ -679,6 +698,60 @@ class StartPages(QObject):
             )
             .encode()
         )
+
+    def theme_tint(self, profile) -> str | None:
+        """The colour the browser takes from this profile's new tab background
+        (a photo or your own image), or None."""
+        try:
+            settings = self.state(profile)["settings"]
+        except (ValueError, OSError):
+            return None
+        if settings["layout"] != "simple" or not settings["match_theme"]:
+            return None
+        from PyQt6.QtGui import QImage
+
+        from services.newtab_photo import theme_color
+
+        if settings["background"] == "photo":
+            photo = self.photos.current()
+            if photo is None:
+                return None
+            return photo["color"] or theme_color(QImage(str(photo["path"])))
+        if settings["background"] == "image" and settings["image"]:
+            image = settings["image"]
+            if image not in self._image_tints:
+                import base64
+
+                data = base64.b64decode(image.split(",", 1)[1])
+                self._image_tints = {image: theme_color(QImage.fromData(data))}
+            return self._image_tints[image]
+        return None
+
+    def set_from_page(self, profile, params):
+        """A choice made in the new tab's customize panel (checked here)."""
+        from services.newtab_photo import PERIODS
+
+        allowed = {
+            "background": BACKGROUNDS,
+            "layout": LAYOUTS,
+            "photo_every": tuple(PERIODS),
+            "match_theme": ("1", "0"),
+        }
+        changes = {}
+        for key, value in params:
+            if key == "color" and (
+                not value or re.fullmatch(r"#[0-9a-fA-F]{6}", value)
+            ):
+                changes["color"] = value
+            elif key in allowed and value in allowed[key]:
+                changes[key] = value == "1" if key == "match_theme" else value
+            else:
+                raise ValueError("Not a choice the panel offers")
+        if not changes:
+            raise ValueError("Nothing chosen")
+        settings = {**self.state(profile)["settings"], **changes}
+        self.keep_open.add(profile)
+        self.configure(profile, settings)
 
     def _background(self, settings, dark):
         """(CSS, photo credit HTML, whether light text needs a scrim)."""
@@ -725,6 +798,84 @@ class StartPages(QObject):
             ' <a href="steed://action/refresh-news">Refresh</a>',
             identifier="news",
         )
+
+
+SWATCHES = (
+    "#1f3a5f", "#2f5d50", "#5b3a6b", "#7a2e2e", "#8a6d1f",
+    "#dfe8f5", "#e6f2e8", "#f4e6ef", "#f6ead8", "#ececec",
+)  # fmt: skip
+
+
+def customize_panel(settings, open_=False):
+    """The gear's panel: links to Steed actions (the page runs no script)."""
+    from urllib.parse import quote
+
+    def choice(label, key, value, current):
+        on = " on" if current else ""
+        return (
+            f'<a class="pill{on}" aria-pressed="{str(bool(current)).lower()}"'
+            f' href="steed://action/newtab-set?{key}={quote(value, safe="")}">'
+            f"{label}</a>"
+        )
+
+    background = settings["background"]
+    parts = [
+        '<h2>Background</h2><div class="choices">',
+        choice("Photo", "background", "photo", background == "photo"),
+        choice("Colour", "background", "color", background == "color"),
+        f'<a class="pill{" on" if background == "image" else ""}"'
+        ' href="steed://action/newtab-image">Your image…</a></div>',
+    ]
+    if background == "photo":
+        parts.append('<h3>New photo</h3><div class="choices">')
+        for value, label in (
+            ("new_tab", "Every tab"),
+            ("hourly", "Hourly"),
+            ("6h", "6 hours"),
+            ("daily", "Daily"),
+        ):
+            parts.append(
+                choice(label, "photo_every", value, settings["photo_every"] == value)
+            )
+        parts.append(
+            '<a class="pill" href="steed://action/newtab-photo">New photo now</a></div>'
+        )
+    if background == "color":
+        parts.append('<h3>Colour</h3><div class="swatches">')
+        parts.append(
+            f'<a class="swatch theme{" on" if not settings["color"] else ""}"'
+            ' href="steed://action/newtab-set?color=" title="Follow the theme"'
+            ' aria-label="Follow the theme"></a>'
+        )
+        for color in SWATCHES:
+            on = " on" if settings["color"] == color else ""
+            parts.append(
+                f'<a class="swatch{on}" style="background:{color}" title="{color}"'
+                f' aria-label="{color}"'
+                f' href="steed://action/newtab-set?color={quote(color, safe="")}"></a>'
+            )
+        parts.append("</div>")
+    match = settings["match_theme"]
+    parts.append('<h2>Browser colours</h2><div class="choices">')
+    parts.append(choice("Match the background", "match_theme", "1", match))
+    parts.append(choice("Theme colours", "match_theme", "0", not match))
+    parts.append('</div><h2>Layout</h2><div class="choices">')
+    parts.append(choice("Simple", "layout", "simple", settings["layout"] == "simple"))
+    parts.append(
+        choice("Classic", "layout", "classic", settings["layout"] == "classic")
+    )
+    parts.append(
+        '</div><a class="more" href="steed://action/customize">More options…</a>'
+    )
+    return (
+        f'<details class="customize"{" open" if open_ else ""}>'
+        '<summary class="icon" title="Customize New Tab"'
+        ' aria-label="Customize New Tab">'
+        + GEAR
+        + '</summary><div class="panel">'
+        + "".join(parts)
+        + "</div></details>"
+    )
 
 
 def _is_dark(color):
@@ -778,6 +929,26 @@ body.scrim .wordmark { text-shadow: 0 2px 24px #0006; }
   border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 8px 24px #0002; }
 .browser-menu a { display: block; padding: 8px 12px; text-decoration: none; color: var(--ink); border-radius: 6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.customize { position: relative; }
+.customize summary { list-style: none; cursor: pointer; }
+.customize summary::-webkit-details-marker { display: none; }
+.customize[open] summary { background: var(--surface); color: var(--ink); }
+.panel { position: absolute; right: 0; top: calc(100% + 8px); width: 300px; padding: 14px 16px 16px;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--ink);
+  box-shadow: 0 12px 40px #0003; text-align: left; font-size: 14px; }
+.panel h2 { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); margin: 14px 0 8px; } .panel h2:first-child { margin-top: 0; }
+.panel h3 { font-size: 13px; font-weight: 600; margin: 12px 0 6px; color: var(--muted); }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { display: inline-block; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--ink); text-decoration: none; font-size: 13px; }
+.pill:hover { background: var(--soft); }
+.pill.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.swatches { display: grid; grid-template-columns: repeat(6, 28px); gap: 8px; }
+.swatch { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); }
+.swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
+.swatch.theme { background: linear-gradient(135deg, #dfe9ff, #f3e3f7); }
+.more { display: block; margin-top: 14px; font-size: 13px; color: var(--accent); }
 """
 GEAR = (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
@@ -797,9 +968,7 @@ SIMPLE_PAGE = (
     " style-src 'unsafe-inline'; img-src data:; form-action steed:; base-uri 'none';"
     " object-src 'none'\">"
     '<title>New Tab</title><style>$css</style></head><body class="$scrim">'
-    '<div class="corner">'
-    '<a class="icon" href="steed://action/customize" title="Customize New Tab"'
-    ' aria-label="Customize New Tab">' + GEAR + "</a>$menu</div>"
+    '<div class="corner">$panel$menu</div>'
     '<main class="simple"><h1 class="wordmark">Steed</h1>'
     '<form class="search" action="steed://action/search" method="get">'
     '<label class="sr-only" for="query">Search or enter a web address</label>'

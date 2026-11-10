@@ -511,14 +511,22 @@ photographer credited at the bottom left. Steed keeps the current photo in
 `~/.custom_browser/newtab/` and fetches the next in the background, so a new
 tab never waits; until the first arrives, or offline, a soft gradient shows.
 Picsum is only contacted while a profile uses the photo background. The gear
-at the top right opens **Customize New Tab** (also General → Customize New
-Tab…), and ☰ opens Steed's menus. There you can choose:
+at the top right opens a panel on the page itself, and ☰ opens Steed's menus.
+In the panel you can choose:
 
+- **Background**: a photo, a plain colour (swatches, or the theme's gradient),
+  or your own image.
+- **New photo**: for every new tab, every hour, every 6 hours or every day,
+  or **New photo now**.
+- **Browser colours**: *Match the background* (the default) tints the tab
+  strip, toolbar and highlights with the photo's (or your image's) main
+  colour, in light and dark mode; *Theme colours* keeps Steed's usual ones.
+  Custom colours set in Style always win.
 - **Layout**: Simple (above) or Classic (the sections: search, bookmarks,
   recently closed, history, news).
-- **Background**: a photo, a plain colour (or the theme's gradient), or your
-  own image.
-- **New photo**: for every new tab, every hour, every 6 hours or every day.
+
+**More options…** (also General → Customize New Tab…) opens the full dialog
+with the classic sections, a feed, a custom colour and your own HTML.
 
 ### Split view and sites in a profile
 

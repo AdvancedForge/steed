@@ -1197,14 +1197,24 @@ class BrowserWindow(QMainWindow):
         styles = self.profile_manager.registry.page_style
         profile = self.profile_manager.current_profile_name
         dark = styles.dark(profile)
+        accent = None
+        tint = (
+            None
+            if colors
+            else self.profile_manager.registry.start_pages.theme_tint(profile)
+        )
         if colors:
             toolbar = chosen["bg"]
+        elif tint:  # Colours from the new tab's photo.
+            from ui.chrome_style import tint_colors
+
+            toolbar, accent = tint_colors(tint, dark)
         elif dark:
             toolbar = "#1e1e1e"
         else:
             toolbar = QApplication.palette().color(QPalette.ColorRole.Window).name()
         self.tab_bar.set_chrome(toolbar, dark)
-        colors = chrome_colors(toolbar, dark)
+        colors = chrome_colors(toolbar, dark, accent)
         self.address_bar.apply_style(colors)
         bars = bar_stylesheet(colors)
         self.menuBar().setStyleSheet(bars)
@@ -6104,18 +6114,46 @@ class BrowserWindow(QMainWindow):
         if self._closing or profile != self.profile_manager.current_profile_name:
             return
         self._refresh_address_sources()
+        self.apply_dark_mode()
         for tab in self.tabs:
             if page_name(tab.url()) is not None:
-                tab.reload()
+                self.navigation.navigate(tab, tab.url())  # See _newtab_photo_changed.
 
     def _newtab_photo_changed(self, first):
-        """The first photo arrived: show it on open new tabs (later ones wait
-        for the next new tab, so nobody's typing is interrupted)."""
-        if self._closing or not first:
+        """The first photo arrived (or one asked for with New photo now): show
+        it on open new tabs. Others wait for the next new tab, so nobody's
+        typing is interrupted. The browser's colours follow the photo."""
+        if self._closing:
             return
+        self.apply_dark_mode()
+        pages = self.profile_manager.registry.start_pages
+        wanted = self.profile_manager.current_profile_name in pages.photo_wanted
+        if not first and not wanted:
+            return
+        pages.photo_wanted.discard(self.profile_manager.current_profile_name)
         for tab in self.tabs:
             if page_name(tab.url()) == "newtab":
-                tab.reload()
+                # Not reload(): a reload during the tab's first load cancels it
+                # and leaves nothing to reload. The same address replaces it.
+                self.navigation.navigate(tab, tab.url())
+
+    def _choose_newtab_image(self, profile):
+        from services.start_pages import image_data
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Background Image", "", "Images (*.png *.jpg *.jpeg *.webp *.gif)"
+        )
+        if not path:
+            return
+        pages = self.profile_manager.registry.start_pages
+        try:
+            settings = pages.state(profile)["settings"]
+            pages.keep_open.add(profile)
+            pages.configure(
+                profile, {**settings, "image": image_data(path), "background": "image"}
+            )
+        except (ValueError, OSError) as error:
+            self.status_bar.showMessage(str(error), 6000)
 
     def _customize_new_tab(self):
         return self._open_management("newtab-settings")
@@ -6180,6 +6218,11 @@ class BrowserWindow(QMainWindow):
             self._restore_closed_tab(params[0][1])
         elif action == "menu" and len(params) == 1 and params[0][0] == "name":
             self._newtab_menu_at(tab, params[0][1])
+        elif action == "newtab-set" and params and page_name(tab.url()) == "newtab":
+            try:
+                pages.set_from_page(profile, params)
+            except (ValueError, OSError) as error:
+                self.status_bar.showMessage(str(error), 5000)
         elif not params:
             if action == "customize":
                 self._customize_new_tab()
@@ -6195,6 +6238,15 @@ class BrowserWindow(QMainWindow):
                 if not self.profile_manager.is_search_profile():
                     self.config.set("welcome_completed", True)
                 self._navigate_tab_to_url(tab, NEW_TAB)
+            elif action == "newtab-photo":
+                pages.photo_wanted.add(profile)
+                pages.keep_open.add(profile)
+                pages.photos.refresh(
+                    pages.state(profile)["settings"]["photo_every"], now=True
+                )
+                self.status_bar.showMessage("Getting a new photo…", 4000)
+            elif action == "newtab-image":
+                self._choose_newtab_image(profile)
             elif action == "refresh-news":
                 pages.news.forget(profile)
                 self._start_news_changed(profile)

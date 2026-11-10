@@ -17,8 +17,9 @@ from PyQt6.QtCore import (
     QIODevice,
     QPoint,
     Qt,
+    QUrl,
 )
-from PyQt6.QtGui import QImage
+from PyQt6.QtGui import QColor, QImage
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 import services.newtab_photo as photos
@@ -109,6 +110,16 @@ class SimpleNewTabTests(unittest.TestCase):
                 return
             time.sleep(0.01)
         self.fail("Timed out")
+
+    def loaded(self, tab):
+        """Wait until the tab's page has committed and finished loading."""
+        self.wait(
+            lambda: (
+                tab.history().count() > 0
+                and tab.title() == "New Tab"
+                and not tab.page().isLoading()
+            )
+        )
 
     def js(self, tab, script):
         found = []
@@ -202,6 +213,98 @@ class SimpleNewTabTests(unittest.TestCase):
         window.config.set("tab_card_fixed_width", False)
         window._show_tab_preview(window.tabs.index(tab), QPoint(10, 10))
         self.assertLess(card.card.width(), WIDTH + 20)
+
+    def test_the_corner_panel_changes_the_page_and_stays_open(self):
+        pages, window = self.pages, self.window
+        html = pages.render("global", "newtab").decode()
+        self.assertIn('<details class="customize">', html)
+        self.assertIn("steed://action/newtab-set?background=color", html)
+        self.assertIn("steed://action/newtab-photo", html)
+        self.assertIn("steed://action/customize", html)
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.loaded(tab)
+        window._start_page_action(
+            tab, QUrl("steed://action/newtab-set?background=color&color=%231f3a5f")
+        )
+        settings = pages.state("global")["settings"]
+        self.assertEqual(
+            (settings["background"], settings["color"]), ("color", "#1f3a5f")
+        )
+        # The page that comes back after a choice keeps the panel open, once.
+        html = pages.render("global", "newtab").decode()
+        self.assertIn('<details class="customize" open>', html)
+        self.assertIn('class="swatch on" style="background:#1f3a5f"', html)
+        self.assertIn(
+            '<details class="customize">', pages.render("global", "newtab").decode()
+        )
+        # Anything the panel does not offer is refused and changes nothing.
+        for bad in (
+            "background=file",
+            "color=red",
+            "image=data:x",
+            "html=%3Cscript%3E",
+            "match_theme=yes",
+        ):
+            window._start_page_action(tab, QUrl("steed://action/newtab-set?" + bad))
+            self.assertEqual(pages.state("global")["settings"], settings, bad)
+        with self.assertRaises(ValueError):
+            pages.set_from_page("global", [])
+        # Custom HTML pages cannot use it.
+        pages.configure("global", settings, "<p>mine</p>")
+        window._start_page_action(tab, QUrl("steed://action/newtab-set?layout=classic"))
+        self.assertEqual(pages.state("global")["settings"]["layout"], "simple")
+
+    def test_browser_colours_follow_the_photo(self):
+        self.assertEqual(photos.theme_color(QImage()), None)
+        blue = photos.theme_color(QImage.fromData(jpeg()))
+        self.assertTrue(QColor(blue).blue() > QColor(blue).red() + 60, blue)
+        grey = QImage(20, 20, QImage.Format.Format_RGB32)
+        grey.fill(0x808080)
+        self.assertEqual(photos.theme_color(grey), "#808080")
+
+        window = self.window
+        plain = window.address_bar.colors["toolbar"]
+        tab = window._new_tab(url="steed:newtab", return_tab=True)  # Asks for one.
+        self.wait(lambda: self.pages.photos.current() is not None)
+        self.app.processEvents()
+        tint = self.pages.theme_tint("global")
+        self.assertIsNotNone(tint)
+        toolbar = QColor(window.address_bar.colors["toolbar"])
+        self.assertNotEqual(toolbar.name(), plain)
+        self.assertGreater(toolbar.blue(), toolbar.red())
+        self.assertNotEqual(window.address_bar.colors["accent"], "#355ed6")
+        # Turned off in the panel: the usual colours come back.
+        self.loaded(tab)
+        window._start_page_action(tab, QUrl("steed://action/newtab-set?match_theme=0"))
+        self.assertIsNone(self.pages.theme_tint("global"))
+        self.assertEqual(window.address_bar.colors["toolbar"], plain)
+        # A plain colour background never tints the browser.
+        settings = self.pages.state("global")["settings"]
+        self.pages.configure(
+            "global", {**settings, "match_theme": True, "background": "color"}
+        )
+        self.assertIsNone(self.pages.theme_tint("global"))
+
+    def test_new_photo_now_reloads_the_open_new_tab(self):
+        tab = self.window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: self.pages.photos.current() is not None)
+        fetched = self.pages.photos.current()["fetched"]
+        self.loaded(tab)
+        self.wait(lambda: self.js(tab, "!!document.querySelector('.credit')"))
+        asked = len(Picsum.asked)
+        self.js(tab, "window.steedMark = 1")
+        self.window._start_page_action(tab, QUrl("steed://action/newtab-photo"))
+        self.wait(lambda: len(Picsum.asked) >= asked + 2)
+        self.wait(
+            lambda: (
+                not tab.page().isLoading()
+                and self.js(tab, "window.steedMark === undefined")
+            )
+        )
+        self.assertGreater(self.pages.photos.current()["fetched"], fetched)
+        # The reloaded page keeps the panel open where the choice was made.
+        self.loaded(tab)
+        self.assertTrue(self.js(tab, "document.querySelector('.customize').open"))
 
 
 if __name__ == "__main__":

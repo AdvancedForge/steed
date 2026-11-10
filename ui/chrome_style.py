@@ -59,6 +59,14 @@ def mix(first, second, amount):
     ).name()
 
 
+def tint_colors(tint, dark):
+    """A toolbar and accent from a picture's colour: a pale (or deep) wash of
+    it, and a stronger version for highlights."""
+    toolbar = mix(tint, "#141414" if dark else "#ffffff", 0.78 if dark else 0.8)
+    accent = mix(tint, "#ffffff" if dark else "#000000", 0.25)
+    return toolbar, accent
+
+
 def chrome_colors(toolbar, dark, accent=None):
     """Derive every toolbar colour from the toolbar background."""
     ink = "#e8edf6" if dark else "#202b40"
