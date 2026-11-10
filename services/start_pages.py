@@ -688,6 +688,10 @@ class StartPages(QObject):
             from ui.chrome_style import tint_colors
 
             toolbar, accent = tint_colors(tint, dark)
+            # Browser colours the user fixed in Style win here too.
+            chosen = styles.get(profile)["chrome"]
+            toolbar = chosen.get("toolbar", toolbar)
+            accent = chosen.get("accent", accent)
             # html:root[data-theme] outranks the theme's own dark palette.
             css += f"html:root[data-theme] {{ --accent: {accent}; }}"
             if dark:  # The search box and panel in the browser's colour too.

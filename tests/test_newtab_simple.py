@@ -421,12 +421,12 @@ class SimpleNewTabTests(unittest.TestCase):
         )
         self.assertEqual(popup.width(), WIDTH)
         self.assertLessEqual(popup.height(), MAX_HEIGHT)
-        self.assertEqual(popup._colors()["toolbar"], colors["toolbar"])
+        self.assertEqual(popup._colors()["menu"], colors["menu"])
         script = (
             "getComputedStyle(document.documentElement)"
             ".getPropertyValue('--surface').trim()"
         )
-        self.wait(lambda: self.run_in(popup.surface.page, script) == colors["toolbar"])
+        self.wait(lambda: self.run_in(popup.surface.page, script) == colors["menu"])
         popup.close()
 
     def test_a_photo_arriving_leaves_a_busy_new_tab_alone(self):
@@ -447,6 +447,55 @@ class SimpleNewTabTests(unittest.TestCase):
         self.js(tab, "document.querySelector('.browser-menu').open = false; true")
         self.pages.photos.changed.emit(True)
         self.wait(lambda: self.js(tab, "window.steedMark === undefined"))
+
+    def test_every_browser_colour_can_be_fixed_and_kept(self):
+        window, pages = self.window, self.pages
+        styles = window.profile_manager.registry.page_style
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: pages.photos.current() is not None)
+        self.loaded(tab)
+        automatic = dict(window.automatic_colors)
+        from services.page_style import CHROME_FIELDS
+
+        self.assertLessEqual(set(CHROME_FIELDS), set(automatic))
+        # Fix a few: they apply everywhere; the rest still follow the photo.
+        chosen = {
+            "strip": "#102030",
+            "accent": "#ff7a59",
+            "menu": "#203040",
+            "card": "#304050",
+        }
+        styles.save("global", {**styles.get("global"), "chrome": chosen})
+        colors = window.address_bar.colors
+        self.assertEqual(colors["accent"], "#ff7a59")
+        self.assertEqual(colors["toolbar"], automatic["toolbar"])
+        self.assertEqual(window.automatic_colors["accent"], automatic["accent"])
+        chrome = window.tab_bar.chrome
+        self.assertEqual(chrome["palette"]["strip"], "#102030")
+        self.assertEqual(chrome["chosen"], sorted(chosen))
+        self.assertIn("#203040", window.browser_menu.styleSheet())
+        window._show_tab_preview(window.tabs.index(tab), QPoint(10, 10))
+        self.assertIn("#304050", window.tab_preview.styleSheet())
+        popup = window._show_html_menu(
+            window._layout_menus["tabs"], window.mapToGlobal(QPoint(300, 120))
+        )
+        self.assertEqual(popup._colors()["menu"], "#203040")
+        popup.close()
+        self.assertIn("--accent: #ff7a59", pages.render("global", "newtab").decode())
+        # Keep these colours: all of them fixed, so the photo no longer moves them.
+        kept = {key: window.automatic_colors[key] for key in CHROME_FIELDS}
+        styles.save("global", {**styles.get("global"), "chrome": kept})
+        before = dict(window.address_bar.colors)
+        pages.set_from_page("global", [("match_theme", "0")])
+        self.assertNotEqual(window.automatic_colors["toolbar"], kept["toolbar"])
+        for key in CHROME_FIELDS:
+            self.assertEqual(window.address_bar.colors.get(key), before.get(key), key)
+        from services.page_style import clean_style
+
+        with self.assertRaises(ValueError):
+            clean_style({**styles.get("global"), "chrome": {"toolbar": "red"}})
+        with self.assertRaises(ValueError):
+            clean_style({**styles.get("global"), "chrome": {"page": "#000000"}})
 
 
 if __name__ == "__main__":

@@ -22,9 +22,25 @@ DEFAULTS = {
     "loading_height": 3,
     "loading_color": "#355ed6",
     "colors": {},
+    # Browser colours fixed by the user; the rest follow the theme or photo.
+    "chrome": {},
 }
 # Added after styles were first saved; older saves lack them.
-LATER_SETTINGS = {"colors", "glass"}
+LATER_SETTINGS = {"colors", "glass", "chrome"}
+# Every colour of the browser around pages (see ui.chrome_style.chrome_colors).
+CHROME_FIELDS = {
+    "toolbar": "Toolbar and current tab",
+    "strip": "Tab strip background",
+    "ink": "Browser text and icons",
+    "muted": "Other tabs' text",
+    "field": "Address field",
+    "hover": "Hover",
+    "pressed": "Pressed",
+    "border": "Lines and borders",
+    "accent": "Accent: focus, selection, badges",
+    "menu": "Menus",
+    "card": "Tab hover card",
+}
 ROOT_CSS = Path(__file__).resolve().parents[1] / "ui" / "web" / "root.css"
 COLOR_FIELDS = {
     "bg": "Page background",
@@ -101,6 +117,14 @@ def clean_style(value):
         for color in value["colors"].values()
     ):
         raise ValueError("Use published palette names and six-digit hex colors.")
+    if not isinstance(value["chrome"], dict) or (
+        set(value["chrome"]) - set(CHROME_FIELDS)
+        or any(
+            not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color)
+            for color in value["chrome"].values()
+        )
+    ):
+        raise ValueError("Use browser colour names and six-digit hex colors.")
     if not 1 <= value["loading_height"] <= 10:
         raise ValueError("Loading bar height must be between 1 and 10 pixels.")
     if len(value["css"]) > 16000 or any(c in value["css"] for c in "<\x00"):
@@ -109,7 +133,11 @@ def clean_style(value):
         value["css"].encode("utf-8")
     except UnicodeError as error:
         raise ValueError("Use valid Unicode text in the stylesheet.") from error
-    return {**value, "colors": dict(value["colors"])}
+    return {
+        **value,
+        "colors": dict(value["colors"]),
+        "chrome": {key: color.lower() for key, color in value["chrome"].items()},
+    }
 
 
 class PageStyle(QObject):

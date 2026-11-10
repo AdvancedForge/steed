@@ -55,7 +55,7 @@ from site_settings import site_key
 from tab_manager import GROUP_COLORS, TabManager, TabState
 from ui import media_controls
 from ui.address_bar import AddressBar
-from ui.chrome_style import bar_stylesheet, chrome_colors, menu_stylesheet
+from ui.chrome_style import bar_stylesheet, browser_colors, menu_stylesheet
 from ui.devtools import DevToolsHost, DevToolsUnavailable
 from ui.find_bar import FindBar
 from ui.layout_dialog import LayoutDialog
@@ -1218,9 +1218,14 @@ class BrowserWindow(QMainWindow):
             toolbar = "#1e1e1e"
         else:
             toolbar = QApplication.palette().color(QPalette.ColorRole.Window).name()
-        glass = styles.get(profile)["glass"]
-        colors = chrome_colors(toolbar, dark, accent, glass)
-        self.tab_bar.set_chrome(toolbar, dark, glass, colors["accent"])
+        style = styles.get(profile)
+        glass, chosen = style["glass"], style["chrome"]
+        # What the theme or photo gives (shown in Style), then the user's own.
+        self.automatic_colors = browser_colors(toolbar, dark, accent, glass)
+        colors = browser_colors(toolbar, dark, accent, glass, chosen)
+        self.tab_bar.set_chrome(
+            colors["toolbar"], dark, glass, colors["accent"], colors, sorted(chosen)
+        )
         self.address_bar.apply_style(colors)
         bars = bar_stylesheet(colors)
         menus = menu_stylesheet(colors)

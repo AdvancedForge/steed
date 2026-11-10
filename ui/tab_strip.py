@@ -270,13 +270,29 @@ class TabStrip(QWidget):
         self.refresh()
 
     def set_chrome(
-        self, toolbar: str, dark: bool, glass: bool = False, glow: str = ""
+        self,
+        toolbar: str,
+        dark: bool,
+        glass: bool = False,
+        glow: str = "",
+        palette: dict | None = None,
+        chosen: list | None = None,
     ) -> None:
         """Match the native toolbar so the active tab joins it. glass: liquid
-        glass tabs, lit by glow (a #rrggbb accent)."""
+        glass tabs, lit by glow (a #rrggbb accent). palette: the toolbar's
+        text, border, hover and accent colours, so the strip's details (letter
+        icons, hovers, separators) are the same family of colours. chosen:
+        the colours the user fixed (their strip colour also holds in glass)."""
         chrome = {"toolbar": toolbar, "dark": bool(dark), "glass": bool(glass)}
         if glass:
             chrome["glow"] = glow
+        if palette:
+            chrome["palette"] = {
+                key: palette[key]
+                for key in ("ink", "muted", "border", "hover", "accent", "strip")
+                if isinstance(palette.get(key), str)
+            }
+            chrome["chosen"] = list(chosen or [])
         if chrome != self.chrome:
             self.chrome = chrome
             self.refresh()

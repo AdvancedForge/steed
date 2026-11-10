@@ -68,7 +68,7 @@ class HtmlMenu(QDialog):
             return {}
         return {
             key: colors[key]
-            for key in ("toolbar", "field", "ink", "muted", "border", "hover", "accent")
+            for key in ("menu", "field", "ink", "muted", "border", "hover", "accent")
             if isinstance(colors.get(key), str)
         }
 

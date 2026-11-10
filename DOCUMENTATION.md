@@ -604,6 +604,21 @@ for example when memory runs out), its tab shows **This tab crashed** with
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
 
+### Browser colours
+
+**Style → Browser colours** lists every colour of the browser around pages:
+toolbar and current tab, tab strip, text and icons, other tabs' text, address
+field, hover, pressed, lines and borders, accent, menus and the tab hover
+card. Each shows its automatic value (from the theme, or from the New Tab
+photo with *Match the background* on) and can be fixed with a colour picker;
+**Automatic** under one returns it. Colours you leave alone keep following
+the theme or photo, worked out from your fixed toolbar and accent. **Keep
+these colours** fixes them all as they are now, so a new photo no longer
+changes the browser; **All automatic** undoes that. The New Tab page uses
+your fixed toolbar and accent too. Apply style saves, per profile (or for
+all profiles). Page colours (backgrounds, cards and text inside Steed's own
+pages) are the separate *Theme colors* above them.
+
 ### Menus
 
 The ☰ menus (toolbar and New Tab) and their sections use the toolbar's
@@ -614,7 +629,8 @@ about Chrome's menu width, as tall as their items (long sections scroll).
 
 **View → Liquid Glass** (also the new tab's gear panel under *Look*, or the
 Style page's Browser bars section) switches the profile to a glass look: tabs
-become frosted pills lit by the accent colour, the toolbar and address field
+become frosted pills lit by the accent colour (the current one, along the top,
+grows out of the toolbar with curved feet), the toolbar and address field
 get a glossy, lit-from-above finish, hover cards turn translucent, and the new
 tab's search box, buttons and panel become blurred glass that bends the photo
 behind it slightly, with a slow sheen. With *Match the background* on, the

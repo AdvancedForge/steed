@@ -9,6 +9,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Every browser colour editable — November 10, 2026.** Style → Browser
+colours: eleven chrome colours, each automatic (theme or photo) or fixed;
+Keep these colours freezes the photo's; the tab strip's details (letter
+icons, hovers, separators) now use the toolbar's colours instead of the page
+palette; the glass tab joins the toolbar.
+
 **Menus and tabs — November 10, 2026.** The active tab curves into the
 toolbar (rounded style); the ☰ menus are compact and in the toolbar's
 colours; Customize New Tab can sit inside the New Tab ☰ menu instead of its

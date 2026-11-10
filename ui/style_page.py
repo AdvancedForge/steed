@@ -2,6 +2,7 @@
 
 from secrets import token_hex
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from layout_components import TEXT_SIZES
@@ -10,7 +11,7 @@ from layout_preferences import (
     LayoutConflict,
     preferences_from_config,
 )
-from services.page_style import DEFAULTS, palette, style_guide
+from services.page_style import CHROME_FIELDS, DEFAULTS, palette, style_guide
 from tab_appearance import CHOICES, FLAG_LABELS, LABELS, TAB_WIDTH_RANGE, VALUE_LABELS
 from ui.html_surface import HtmlSurface
 
@@ -37,7 +38,23 @@ class StylePage(QWidget):
         self.manager.profile_changed.connect(self.reset)
         self.styles.changed.connect(self.publish)
         self.manager.registry.layout_changed.connect(self._layout_changed)
+        # The automatic browser colours follow the New Tab photo too.
+        pages = self.manager.registry.start_pages
+        pages.photos.changed.connect(self._colors_changed)
+        pages.changed.connect(self._colors_changed)
         self.publish()
+
+    def _colors_changed(self, *_):
+        # After the window has worked out its new colours.
+        QTimer.singleShot(0, self.publish)
+
+    def _automatic_colors(self):
+        colors = getattr(self.window, "automatic_colors", None) or {}
+        return {
+            key: colors[key]
+            for key in CHROME_FIELDS
+            if isinstance(colors.get(key), str)
+        }
 
     def _layout_changed(self, *_):
         self.layout_base = preferences_from_config(self.window.config)
@@ -84,6 +101,8 @@ class StylePage(QWidget):
                 "defaults": DEFAULTS,
                 "guide": style_guide(),
                 "palettes": {"light": palette(), "dark": palette(True)},
+                "chrome_fields": CHROME_FIELDS,
+                "chrome_auto": self._automatic_colors(),
                 "profile": "Incognito · temporary for this session"
                 if profile == "search"
                 else profile,
