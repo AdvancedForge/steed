@@ -7,6 +7,7 @@ function command(action, id, button) {
 window.steedUI = {render(next) {
   if (context !== next.context) { context = next.context; sequence = 0; key = null; clearTimeout(hover); }
   state = next; document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
+  document.documentElement.classList.toggle('glass', !!next.glass);
   // The browser's toolbar colours (checked: six-digit hex only).
   const css = {menu: '--surface', field: '--field', ink: '--ink', muted: '--muted', border: '--border', hover: '--soft', accent: '--accent'};
   for (const [key, name] of Object.entries(css)) {

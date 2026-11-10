@@ -191,4 +191,17 @@ QMenu::item:selected {{ background: {colors["hover"]}; color: {colors["ink"]}; }
 QMenu::item:disabled {{ color: {colors["muted"]}; }}
 QMenu::separator {{ height: 1px; background: {colors["border"]}; margin: 5px 8px; }}
 QMenu::indicator {{ width: 14px; height: 14px; left: 6px; }}
+""" + (glass_menu(colors) if colors.get("glass") else "")
+
+
+def glass_menu(colors):
+    """Rounded, see-through menus (their windows are made translucent)."""
+    fill = QColor(colors.get("menu", colors["toolbar"]))
+    edge = "rgba(255,255,255,50)" if colors["dark"] else "rgba(255,255,255,230)"
+    return f"""
+QMenu {{
+  background: rgba({fill.red()},{fill.green()},{fill.blue()},222);
+  border: 1px solid {edge}; border-radius: 12px; padding: 6px;
+}}
+QMenu::item {{ border-radius: 8px; }}
 """

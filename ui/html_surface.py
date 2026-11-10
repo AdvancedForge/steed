@@ -76,6 +76,7 @@ class HtmlSurface(QWidget):
         self.command_limit = command_limit
         self.ready = False
         self.disposed = False
+        self.transparent = False
         self.generation = ""
         self._state = {}
         self._last_payload = None
@@ -251,7 +252,11 @@ class HtmlSurface(QWidget):
                     self._failed()
 
         dark = state.get("dark", False)
-        self.page.setBackgroundColor(QColor("#151b25" if dark else "#f5f7fb"))
+        self.page.setBackgroundColor(
+            QColor(0, 0, 0, 0)
+            if self.transparent  # The host draws rounded, see-through glass.
+            else QColor("#151b25" if dark else "#f5f7fb")
+        )
         self.page.runJavaScript(
             f"window.steedUI && window.steedUI.render({payload})", rendered
         )

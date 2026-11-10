@@ -14,7 +14,7 @@ WIDTH, ROW, SEPARATOR, MAX_HEIGHT = 290, 31, 11, 560
 
 
 class HtmlMenu(QDialog):
-    def __init__(self, menu, owner, anchor, *, context=False):
+    def __init__(self, menu, owner, anchor, *, context=False, beside=None):
         super().__init__(owner, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.owner = owner
         self.section = next(
@@ -32,10 +32,20 @@ class HtmlMenu(QDialog):
         self.surface.command.connect(self.command)
         self.surface.reloading.connect(self.reload)
         body = QVBoxLayout(self)
-        body.setContentsMargins(1, 1, 1, 1)
-        border = self._colors().get("border")
-        if border:  # The 1px margin is the menu's border, in the toolbar's colour.
-            self.setStyleSheet(f"QDialog {{ background: {border}; }}")
+        self.glass = bool(
+            getattr(getattr(owner, "address_bar", None), "colors", {}).get("glass")
+        )
+        if self.glass:
+            # Rounded, see-through glass drawn by the page itself.
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self.setStyleSheet("QDialog, QDialog QWidget { background: transparent; }")
+            self.surface.transparent = True
+            body.setContentsMargins(0, 0, 0, 0)
+        else:
+            body.setContentsMargins(1, 1, 1, 1)
+            border = self._colors().get("border")
+            if border:  # The 1px margin is the menu's border, in the toolbar's colour.
+                self.setStyleSheet(f"QDialog {{ background: {border}; }}")
         body.addWidget(self.surface)
         self.timer = QTimer(self)
         self.timer.setInterval(150)
@@ -43,6 +53,12 @@ class HtmlMenu(QDialog):
         menu.aboutToShow.emit()
         self.anchor = anchor
         place_popup(self, owner, anchor, (WIDTH, self._height(menu)))
+        if beside is not None and self.geometry().intersects(beside):
+            # No room on the right: open on the left, never over it.
+            screen = self.screen().availableGeometry() if self.screen() else None
+            x = beside.left() - self.width() - 4
+            if screen is None or x >= screen.left():
+                self.move(x, self.y())
         self.timer.start()
         self.publish()
 
@@ -117,6 +133,7 @@ class HtmlMenu(QDialog):
                 "context_menu": self.context_menu,
                 "rows": rows,
                 "colors": self._colors(),
+                "glass": self.glass,
                 "dark": self.owner.profile_manager.registry.page_style.dark(
                     self.owner.profile_manager.current_profile_name
                 ),

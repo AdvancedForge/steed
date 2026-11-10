@@ -617,13 +617,20 @@ these colours** fixes them all as they are now, so a new photo no longer
 changes the browser; **All automatic** undoes that. The New Tab page uses
 your fixed toolbar and accent too. Apply style saves, per profile (or for
 all profiles). Page colours (backgrounds, cards and text inside Steed's own
-pages) are the separate *Theme colors* above them.
+pages) are the separate *Theme colors* above them. By default Steed's pages
+(New Tab, Welcome, Settings, Style and the other built-in pages) take their
+colours from the photo too; turn off *Steed pages take their colours from the
+New Tab photo* in Style to keep the plain theme. Theme colors you pick and
+custom CSS still win.
 
 ### Menus
 
 The ☰ menus (toolbar and New Tab) and their sections use the toolbar's
 colours, including colours taken from the new tab photo, and are compact:
 about Chrome's menu width, as tall as their items (long sections scroll).
+A section opened from the New Tab ☰ menu appears beside the menu (on its
+left when there is no room on the right), never over it. With Liquid Glass
+both kinds of menu are rounded and see-through.
 
 ### Liquid glass
 

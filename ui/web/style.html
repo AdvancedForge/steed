@@ -8,7 +8,7 @@
 <div id="error" role="alert" hidden></div><div id="notice" role="status" hidden></div>
 <p id="conflict" hidden>Appearance changed in another window. Reload saved settings before applying.</p>
 <section><h2>Pages</h2><div class="grid"><div><label for="theme">Color theme</label><select id="theme"><option value="system">Follow browser preference</option><option value="light">Light</option><option value="dark">Dark</option></select></div><input id="accent" type="hidden"></div>
-<h3>Theme colors</h3><p class="hint">Choose your own background, text, cards and feedback colors. Custom CSS takes precedence.</p><div id="palette-fields" class="palette-grid"></div><button id="reset-palette">Restore base palette colors</button>
+<label class="check"><input id="pages_follow_photo" type="checkbox">Steed pages take their colours from the New Tab photo</label><h3>Theme colors</h3><p class="hint">Choose your own background, text, cards and feedback colors. Custom CSS takes precedence.</p><div id="palette-fields" class="palette-grid"></div><button id="reset-palette">Restore base palette colors</button>
 <label for="css">Root CSS · applies to New Tab, Welcome, Settings, Agents and Style (up to 16,000 characters)</label>
 <textarea id="css" rows="9" spellcheck="false" placeholder=":root { --accent: #7c3aed; }&#10;.search { border-radius: 24px; }"></textarea>
 <p class="hint">Use tokens such as --bg, --surface, --ink, --muted and --accent, or CSS selectors. Pages remain offline; external fonts and images cannot be loaded through this stylesheet. Custom HTML can override inherited styling.</p></section>

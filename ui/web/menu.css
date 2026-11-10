@@ -19,3 +19,13 @@ hr { margin: 5px 0; }
 footer { margin-top: 4px; padding: 6px 0 0; } footer button { padding: 6px 10px; font-size: 12.5px; }
 #back { padding: 2px 8px; }
 .label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; } .shortcut { flex: none; white-space: nowrap; }
+
+/* Liquid glass: a rounded, see-through panel lit from above. */
+html.glass, html.glass body { background: transparent; }
+html.glass body { border-radius: 14px; border: 1px solid #ffffff33;
+  background: linear-gradient(165deg, color-mix(in srgb, var(--surface) 86%, transparent), color-mix(in srgb, var(--surface) 74%, transparent));
+  box-shadow: inset 0 1px 0 #ffffff40, inset 0 0 18px #ffffff0d; }
+html.glass header { border-bottom-color: #ffffff1f; } html.glass hr, html.glass footer { border-color: #ffffff1f; }
+html.glass nav button { border-radius: 9px; } html.glass nav button:hover:enabled { background: #ffffff1f; box-shadow: inset 0 1px 0 #ffffff26; }
+html.glass[data-theme="light"] body { border-color: #ffffffcc; box-shadow: inset 0 1px 0 #fff; }
+html.glass[data-theme="light"] nav button:hover:enabled { background: #ffffff8c; }

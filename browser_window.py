@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl
 from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
-from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, QUrl
+from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QKeySequence, QPalette
 from PyQt6.QtWebEngineCore import (
     QWebEngineFullScreenRequest,
@@ -1234,6 +1234,8 @@ class BrowserWindow(QMainWindow):
             *getattr(self, "_layout_menus", {}).values(),
         ):
             if menu is not None:
+                # Glass menus are rounded and see-through at the corners.
+                menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, glass)
                 menu.setStyleSheet(menus)
         self.menuBar().setStyleSheet(bars)
         self.status_bar.setStyleSheet(bars)
@@ -5687,7 +5689,7 @@ class BrowserWindow(QMainWindow):
             return dialog
         return self._new_tab(url="steed:style", return_tab=True)
 
-    def _show_html_menu(self, menu, anchor, *, context=False):
+    def _show_html_menu(self, menu, anchor, *, context=False, beside=None):
         from ui.html_menu import HtmlMenu
 
         if self._closing:
@@ -5704,7 +5706,7 @@ class BrowserWindow(QMainWindow):
                 )
             menu.popup(anchor)
             return menu
-        popup = HtmlMenu(menu, self, anchor, context=context)
+        popup = HtmlMenu(menu, self, anchor, context=context, beside=beside)
         if context:
             # One-off right-click menus live only as long as their popup.
             popup.finished.connect(lambda _: menu.deleteLater())
@@ -5766,7 +5768,9 @@ class BrowserWindow(QMainWindow):
             + json.dumps(selector)
             + "); if (!e || !e.getClientRects().length) return null; "
             + ("if (!e.matches(':hover')) return null; " if hover else "")
-            + "const r=e.getBoundingClientRect(); return [r.right,r.top,innerWidth,innerHeight]; })()"
+            + "const r=e.getBoundingClientRect(), d=(e.closest('.browser-menu > div')||e)"
+            + ".getBoundingClientRect(); "
+            + "return [r.right,r.top,innerWidth,innerHeight,d.left,d.top,d.right,d.bottom]; })()"
         )
 
         def opened(point):
@@ -5780,7 +5784,7 @@ class BrowserWindow(QMainWindow):
                 and self.isActiveWindow()
                 and (not hover or self._html_menu is None)
                 and isinstance(point, list)
-                and len(point) == 4
+                and len(point) == 8
                 and all(type(value) in (int, float) for value in point)
                 and point[2] > 0
                 and point[3] > 0
@@ -5789,14 +5793,19 @@ class BrowserWindow(QMainWindow):
             ):
                 self._newtab_hover = (tab, name)
                 self._newtab_hover_opened = True
-                self._show_html_menu(
-                    self._layout_menus[name],
-                    tab.mapToGlobal(
+
+                def screen(x, y):
+                    return tab.mapToGlobal(
                         QPoint(
-                            int(point[0] * tab.width() / point[2]),
-                            int(point[1] * tab.height() / point[3]),
+                            int(x * tab.width() / point[2]),
+                            int(y * tab.height() / point[3]),
                         )
-                    ),
+                    )
+
+                # The dropdown it came from stays visible: open beside it.
+                beside = QRect(screen(point[4], point[5]), screen(point[6], point[7]))
+                self._show_html_menu(
+                    self._layout_menus[name], screen(point[0], point[1]), beside=beside
                 )
 
         page.runJavaScript(script, opened)
