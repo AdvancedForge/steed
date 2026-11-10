@@ -96,6 +96,10 @@ class TabStripTests(unittest.TestCase):
         self.strip.insert_tab(self.strip.count(), "<img src=x onerror=alert(1)>")
         self.wait(lambda: self.rendered()[-1]["title"].startswith("<img"))
         self.assertEqual(self.js("document.querySelectorAll('.tab img').length"), 0)
+        # One hover description (Steed's card), not a page tooltip as well.
+        self.assertEqual(self.js("document.querySelectorAll('.tab[title]').length"), 0)
+        described = "[...document.querySelectorAll('.tab')].map(n => n.getAttribute('aria-description')).join()"
+        self.assertIn("<img", self.js(described))
 
     def test_every_appearance_renders(self):
         for key, (choices, _) in CHOICES.items():

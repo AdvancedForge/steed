@@ -2411,18 +2411,30 @@ class BrowserWindow(QMainWindow):
         return True
 
     def _show_tab_preview(self, index, point):
-        if (
-            self._closing
-            or not self.config.get("tab_previews", True)
-            or not 0 <= index < len(self.tabs)
-            or index == self.current_tab_index
-        ):
+        """The hover card: title, site and state, with a snapshot of background
+        tabs when previews are on."""
+        if self._closing or not 0 <= index < len(self.tabs):
             return
         from ui.tab_preview import TabPreview
 
+        tab = self.tabs[index]
+        notes = []
+        state = webengine.tab_state(tab.page()) if tab.page() is not None else None
+        if state == webengine.FROZEN:
+            notes.append("Frozen to save resources; resumes when selected")
+        elif state == webengine.UNLOADED:
+            notes.append("Unloaded to save memory; reloads when selected")
+        if getattr(tab, "keep_loaded", False):
+            notes.append("Kept loaded")
+        if getattr(tab, "pinned", False):
+            notes.append("Pinned")
+        snapshot = (
+            self.config.get("tab_previews", True) and index != self.current_tab_index
+        )
         if getattr(self, "tab_preview", None) is None:
             self.tab_preview = TabPreview(self)
-        self.tab_preview.show_for(self.tabs[index], point)
+        self.tab_preview.apply_style(self.address_bar.colors)
+        self.tab_preview.show_for(tab, point, notes=notes, snapshot=snapshot)
 
     def _hide_tab_preview(self):
         preview = getattr(self, "tab_preview", None)
