@@ -10,8 +10,10 @@ DEFAULTS = {
     "theme": "system",
     "accent": "#355ed6",
     "css": "",
-    "menu_bar": True,
-    "status_bar": True,
+    # Hidden unless switched on (View, or Ctrl+Shift+M for the menu bar); the
+    # toolbar's menu button and an overlay for messages stand in for them.
+    "menu_bar": False,
+    "status_bar": False,
     "newtab_menu": True,
     "loading": True,
     "loading_percent": False,

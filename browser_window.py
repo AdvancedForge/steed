@@ -431,6 +431,9 @@ class BrowserWindow(QMainWindow):
             self._appearance_changed
         )
         self.profile_manager.profiles_updated.connect(self._update_profile_shortcuts)
+        self.profile_manager.registry.start_pages.photos.changed.connect(
+            self._newtab_photo_changed
+        )
         self.profile_manager.registry.start_pages.changed.connect(
             self._start_page_changed
         )
@@ -1140,6 +1143,11 @@ class BrowserWindow(QMainWindow):
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
+        # With the status bar hidden, its messages show briefly over the page.
+        from ui.status_overlay import StatusOverlay
+
+        self.status_overlay = StatusOverlay(self)
+        self.status_bar.messageChanged.connect(self.status_overlay.show_message)
         self.status_bar.addPermanentWidget(self.auto_approval_notice)
         # Permission and download signals are connected per tab in _new_tab
 
@@ -2434,7 +2442,13 @@ class BrowserWindow(QMainWindow):
         if getattr(self, "tab_preview", None) is None:
             self.tab_preview = TabPreview(self)
         self.tab_preview.apply_style(self.address_bar.colors)
-        self.tab_preview.show_for(tab, point, notes=notes, snapshot=snapshot)
+        self.tab_preview.show_for(
+            tab,
+            point,
+            notes=notes,
+            snapshot=snapshot,
+            fixed_width=self.config.get("tab_card_fixed_width", True),
+        )
 
     def _hide_tab_preview(self):
         preview = getattr(self, "tab_preview", None)
@@ -6080,6 +6094,15 @@ class BrowserWindow(QMainWindow):
         self._refresh_address_sources()
         for tab in self.tabs:
             if page_name(tab.url()) is not None:
+                tab.reload()
+
+    def _newtab_photo_changed(self, first):
+        """The first photo arrived: show it on open new tabs (later ones wait
+        for the next new tab, so nobody's typing is interrupted)."""
+        if self._closing or not first:
+            return
+        for tab in self.tabs:
+            if page_name(tab.url()) == "newtab":
                 tab.reload()
 
     def _customize_new_tab(self):

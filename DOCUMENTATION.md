@@ -503,6 +503,23 @@ page's console (`Steed user script <name>`) without stopping the page. Scripts
 have the page's permissions and none of Steed's data. Changes apply to pages
 loaded or reloaded afterwards. Incognito windows run none.
 
+### The new tab page
+
+By default a new tab shows just **Steed** and an empty search box over a photo
+that changes every six hours: free Unsplash photos from Lorem Picsum, with the
+photographer credited at the bottom left. Steed keeps the current photo in
+`~/.custom_browser/newtab/` and fetches the next in the background, so a new
+tab never waits; until the first arrives, or offline, a soft gradient shows.
+Picsum is only contacted while a profile uses the photo background. The gear
+at the top right opens **Customize New Tab** (also General → Customize New
+Tab…), and ☰ opens Steed's menus. There you can choose:
+
+- **Layout**: Simple (above) or Classic (the sections: search, bookmarks,
+  recently closed, history, news).
+- **Background**: a photo, a plain colour (or the theme's gradient), or your
+  own image.
+- **New photo**: for every new tab, every hour, every 6 hours or every day.
+
 ### Split view and sites in a profile
 
 **Show Beside Current Tab** (tab menu) puts a tab beside the current one;
@@ -574,6 +591,19 @@ for example when memory runs out), its tab shows **This tab crashed** with
 **Reload** and **Crash Log…**. **General → Crash Log…** lists the last 200
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
+
+### Bars and hover cards
+
+The top menu bar and the bottom status bar are hidden by default; the
+toolbar's ☰ button and the new tab's ☰ open the same menus, and View → Show
+Top Menu Bar (Ctrl+Shift+M) or Show Bottom Status Bar brings them back. With
+the status bar hidden, its messages (not loading progress) show for a few
+seconds at the bottom left of the window.
+
+Hovering a tab shows one card: its title and site, its state (frozen,
+unloaded, kept loaded, pinned) and, for background tabs with previews on, a
+snapshot. Cards are all one width, as in Chrome; Settings → **Same width for
+every tab card** off makes each as wide as its title.
 
 ### Search keywords and completing addresses
 

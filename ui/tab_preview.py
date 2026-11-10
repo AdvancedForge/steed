@@ -34,9 +34,19 @@ class TabPreview(QFrame):
     """The card shown when hovering a tab, in Steed's own colours."""
 
     def __init__(self, parent):
-        super().__init__(parent, Qt.WindowType.ToolTip)
-        self.setObjectName("TabPreview")
-        layout = QVBoxLayout(self)
+        super().__init__(
+            parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint
+        )
+        # The window itself is clear; the rounded card is drawn inside it, so
+        # nothing square shows behind its corners.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.card = QFrame(self)
+        self.card.setObjectName("TabPreview")
+        outer.addWidget(self.card)
+        layout = QVBoxLayout(self.card)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(3)
         self.image = QLabel(self)
@@ -49,6 +59,9 @@ class TabPreview(QFrame):
         for label in (self.title, self.site, self.notes):
             label.setTextFormat(Qt.TextFormat.PlainText)
             label.setMaximumWidth(WIDTH)
+            label.setParent(self.card)
+        self.image.setParent(self.card)
+        self.fixed_width = True
         self.notes.setWordWrap(True)
         layout.addWidget(self.image)
         layout.addWidget(self.title)
@@ -65,7 +78,13 @@ class TabPreview(QFrame):
             f" #TabPreviewMuted {{ color: {colors['muted']}; }}"
         )
 
-    def show_for(self, tab, point, notes=(), snapshot=True):
+    def show_for(self, tab, point, notes=(), snapshot=True, fixed_width=True):
+        """fixed_width: every card as wide as a snapshot (as in Chrome), so
+        they do not change size from tab to tab; else as wide as the text."""
+        self.fixed_width = fixed_width
+        width = WIDTH + 20  # The snapshot and the card's margins.
+        self.card.setMinimumWidth(width if fixed_width else 0)
+        self.card.setMaximumWidth(width)
         data = getattr(tab, "preview", None) if snapshot else None
         pixmap = QPixmap()
         if data:
@@ -84,6 +103,7 @@ class TabPreview(QFrame):
         self.site.setVisible(bool(host))
         self.notes.setText("\n".join(notes))
         self.notes.setVisible(bool(notes))
+        self.card.adjustSize()
         self.adjustSize()
         self.move(point.x(), point.y() + 4)
         self.show()
