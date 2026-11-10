@@ -46,7 +46,8 @@ button:hover:enabled { background: none; border-color: transparent; }
 .close-hover .tab:not(:hover) .close, .close-never .close, .close-active .tab:not(.active) .close { visibility: hidden; width: 0; margin-left: -7px; }
 .close-hover .tab.active .close { visibility: visible; width: 20px; margin-left: 0; }
 .horizontal.overflow-shrink .tab { container-type: inline-size; }
-@container (max-width: 70px) { .title { display: none; } .close { display: none; } .tab { justify-content: center; padding: 0; } }
+/* Only truly tiny tabs drop their title; the current one keeps its close button. */
+@container (max-width: 34px) { .title { display: none; } .tab:not(.active) .close { display: none; } .tab { justify-content: center; padding: 0 4px; } }
 
 /* ---- Styles ---- */
 .style-rounded.horizontal .tab { border-radius: 10px 10px 0 0; }
@@ -151,11 +152,11 @@ button:hover:enabled { background: none; border-color: transparent; }
 :root.glass body { background:
   radial-gradient(70% 180% at 8% -40%, color-mix(in srgb, var(--glow) 34%, transparent), transparent 70%),
   radial-gradient(60% 200% at 78% 150%, color-mix(in srgb, var(--glow) 26%, transparent), transparent 70%),
-  linear-gradient(180deg, color-mix(in srgb, var(--toolbar) 70%, #fff), var(--toolbar)); }
+  linear-gradient(180deg, var(--toolbar), var(--join)); }
 :root.glass.native-dark body { background:
   radial-gradient(70% 180% at 8% -40%, color-mix(in srgb, var(--glow) 30%, transparent), transparent 70%),
   radial-gradient(60% 200% at 78% 150%, color-mix(in srgb, var(--glow) 18%, transparent), transparent 70%),
-  linear-gradient(180deg, color-mix(in srgb, var(--toolbar) 88%, #fff), color-mix(in srgb, var(--toolbar) 80%, #000)); }
+  linear-gradient(180deg, color-mix(in srgb, var(--toolbar) 78%, #000), var(--join)); }
 /* A strip colour the user chose holds under the glass light too. */
 :root.glass.strip-chosen body { background:
   radial-gradient(70% 180% at 8% -40%, color-mix(in srgb, var(--glow) 30%, transparent), transparent 70%),

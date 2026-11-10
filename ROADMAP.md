@@ -9,6 +9,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Pages follow the photo, menus beside — November 10, 2026.** Steed's own
+pages take the New Tab photo's colours by default (Style can turn it off);
+New Tab ☰ sections open beside the menu; glass menus are rounded and
+see-through; the glass tab strip fades into the toolbar; tab titles stay
+until tabs are very narrow.
+
 **Every browser colour editable — November 10, 2026.** Style → Browser
 colours: eleven chrome colours, each automatic (theme or photo) or fixed;
 Keep these colours freezes the photo's; the tab strip's details (letter

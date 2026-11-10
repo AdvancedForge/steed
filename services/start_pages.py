@@ -980,7 +980,7 @@ body.scrim .wordmark { text-shadow: 0 2px 24px #0006; }
 .browser-menu a { display: block; padding: 8px 12px; text-decoration: none; color: var(--ink); border-radius: 6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
 .customize { position: relative; }
-.browser-menu .customize summary.row { display: flex; align-items: center; gap: 9px; padding: 8px 12px;
+.browser-menu .customize summary.row { display: flex; align-items: center; gap: 9px; padding: 8px 12px; white-space: nowrap;
   border-radius: 6px; color: var(--ink); font-size: 14px; }
 .browser-menu .customize summary.row svg { width: 16px; height: 16px; flex: none; }
 .browser-menu .customize summary.row:hover, .browser-menu .customize[open] summary.row { background: var(--soft); }
@@ -1044,6 +1044,7 @@ body.glass .panel, body.glass .browser-menu > div { background: var(--glass-pane
 body.glass.scrim .panel, body.glass.scrim .browser-menu > div { background: #14182466; }
 body.glass .panel h2, body.glass .panel h3 { color: inherit; opacity: .75; }
 body.glass .browser-menu a { color: inherit; }
+body.glass .browser-menu hr { border: 0; border-top: 1px solid var(--glass-edge); opacity: .45; }
 body.glass .search { position: relative; height: 58px; border-radius: 29px; overflow: hidden;
   transition: transform .45s cubic-bezier(.25, 1.6, .45, 1), box-shadow .3s; }
 body.glass .search:focus-within { transform: scale(1.015); border-color: var(--glass-shine);

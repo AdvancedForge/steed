@@ -24,9 +24,11 @@ DEFAULTS = {
     "colors": {},
     # Browser colours fixed by the user; the rest follow the theme or photo.
     "chrome": {},
+    # Steed's own pages take their colours from the New Tab photo too.
+    "pages_follow_photo": True,
 }
 # Added after styles were first saved; older saves lack them.
-LATER_SETTINGS = {"colors", "glass", "chrome"}
+LATER_SETTINGS = {"colors", "glass", "chrome", "pages_follow_photo"}
 # Every colour of the browser around pages (see ui.chrome_style.chrome_colors).
 CHROME_FIELDS = {
     "toolbar": "Toolbar and current tab",
@@ -225,6 +227,42 @@ class PageStyle(QObject):
         )
         return (
             (accent if value["accent"] != DEFAULTS["accent"] else "")
+            + self._photo_css(profile, value)
             + (':root, :root[data-theme="dark"] {' + colors + "}\n" if colors else "")
             + value["css"]
+        )
+
+    def _photo_css(self, profile, value):
+        """The New Tab photo's colours for Steed's pages, unless turned off
+        or the page colours were chosen by hand."""
+        pages = getattr(self.registry, "start_pages", None)
+        if not value["pages_follow_photo"] or not hasattr(pages, "theme_tint"):
+            return ""
+        from PyQt6 import sip
+
+        if sip.isdeleted(pages):  # Shutting down: pages render no more.
+            return ""
+        tint = pages.theme_tint(profile)
+        if not tint:
+            return ""
+        from ui.chrome_style import mix, tint_colors
+
+        dark = self.dark(profile)
+        accent = value["chrome"].get("accent") or tint_colors(tint, dark)[1]
+        if dark:
+            ink, base = "#e8edf6", "#101010"
+            shades = {"bg": 0.84, "surface": 0.74, "soft": 0.6, "border": 0.55}
+            hover = mix(accent, "#ffffff", 0.18)
+        else:
+            ink, base = "#202b40", "#ffffff"
+            shades = {"bg": 0.9, "surface": 0.97, "soft": 0.84, "border": 0.72}
+            hover = mix(accent, "#000000", 0.15)
+        palette = {key: mix(tint, base, amount) for key, amount in shades.items()}
+        palette.update(
+            accent=accent, **{"accent-hover": hover}, muted=mix(ink, palette["bg"], 0.4)
+        )
+        return (
+            ':root, :root[data-theme="dark"] {'
+            + "; ".join(f"--{key}: {color}" for key, color in palette.items())
+            + "}\n"
         )

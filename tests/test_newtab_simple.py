@@ -121,6 +121,13 @@ class SimpleNewTabTests(unittest.TestCase):
             )
         )
 
+    def settle(self, seconds=0.5):
+        """Let the new window finish showing (activating it closes popups)."""
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            self.app.processEvents()
+            time.sleep(0.01)
+
     def run_in(self, page, script):
         found = []
         webengine.run_script(page, script, found.append, world=webengine.PAGE_WORLD)
@@ -412,6 +419,8 @@ class SimpleNewTabTests(unittest.TestCase):
     def test_menus_are_compact_and_in_the_browser_colours(self):
         from ui.html_menu import MAX_HEIGHT, WIDTH
 
+        self.settle()
+
         window = self.window
         colors = window.address_bar.colors
         self.assertIn(colors["toolbar"], window.browser_menu.styleSheet())
@@ -496,6 +505,65 @@ class SimpleNewTabTests(unittest.TestCase):
             clean_style({**styles.get("global"), "chrome": {"toolbar": "red"}})
         with self.assertRaises(ValueError):
             clean_style({**styles.get("global"), "chrome": {"page": "#000000"}})
+
+    def test_menu_panels_open_beside_and_in_glass(self):
+        from PyQt6.QtCore import QRect
+
+        self.settle()
+
+        window = self.window
+        screen = window.screen().availableGeometry()
+        # A dropdown at the right edge: the panel opens to its left.
+        beside = QRect(screen.right() - 220, screen.top() + 60, 200, 300)
+        popup = window._show_html_menu(
+            window._layout_menus["tabs"],
+            QPoint(beside.right(), beside.top() + 30),
+            beside=beside,
+        )
+        self.assertFalse(popup.geometry().intersects(beside))
+        self.assertLess(popup.x(), beside.left())
+        self.assertFalse(popup.glass)
+        popup.close()
+        window._set_bar("glass", True)
+        self.settle()  # Switching reloads Steed's pages, which closes popups.
+        popup = window._show_html_menu(
+            window._layout_menus["tabs"], window.mapToGlobal(QPoint(300, 120))
+        )
+        self.assertTrue(popup.glass)
+        self.assertTrue(
+            popup.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        )
+        self.assertTrue(popup.surface.transparent)
+        self.wait(lambda: popup.surface._last_payload)
+        self.assertIn('"glass": true', popup.surface._last_payload)
+        popup.close()
+        self.assertTrue(
+            window.browser_menu.testAttribute(
+                Qt.WidgetAttribute.WA_TranslucentBackground
+            )
+        )
+        self.assertIn("border-radius: 12px", window.browser_menu.styleSheet())
+
+    def test_steed_pages_follow_the_photo_unless_turned_off(self):
+        styles = self.window.profile_manager.registry.page_style
+        self.assertNotIn("--bg:", styles.css("global"))  # No photo yet.
+        tab = self.window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: self.pages.photos.current() is not None)
+        self.loaded(tab)
+        css = styles.css("global")
+        self.assertIn("--bg:", css)
+        self.assertIn("--surface:", css)
+        self.assertIn("--accent:", css)
+        # Hand-picked page colours and custom CSS still come after (win).
+        styles.save(
+            "global",
+            {**styles.get("global"), "colors": {"bg": "#123456"}, "css": "p{}"},
+        )
+        css = styles.css("global")
+        self.assertLess(css.index("--bg: #"), css.index("--bg: #123456"))
+        self.assertTrue(css.endswith("p{}"))
+        styles.save("global", {**styles.get("global"), "pages_follow_photo": False})
+        self.assertNotIn("--surface:", styles.css("global"))
 
 
 if __name__ == "__main__":
