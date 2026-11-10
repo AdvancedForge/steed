@@ -1547,6 +1547,14 @@ class BrowserWindow(QMainWindow):
             if visible:
                 self.agent_sidebar.raise_()
 
+    def _status_bar_wanted(self):
+        """The bar setting, or always while unsafe auto-approval is on."""
+        service = self.profile_manager.registry._tasks
+        if service is not None and service.auto_approve_requests:
+            return True
+        styles = self.profile_manager.registry.page_style
+        return bool(styles.get(self.profile_manager.current_profile_name)["status_bar"])
+
     def _refresh_auto_approval(self):
         service = self.profile_manager.registry._tasks
         enabled = bool(service and service.auto_approve_requests)
@@ -1554,6 +1562,10 @@ class BrowserWindow(QMainWindow):
         self.auto_approval_action.setChecked(enabled)
         self.auto_approval_action.blockSignals(False)
         self.auto_approval_notice.setVisible(enabled)
+        # The warning must be seen: the status bar shows while it is on,
+        # whatever the bar setting.
+        if hasattr(self, "status_bar") and not self.isFullScreen():
+            self.status_bar.setVisible(self._status_bar_wanted())
         if hasattr(self, "address_bar"):
             self.address_bar.set_menu_badge("YOLO" if enabled else "")
             self.address_bar.menu_btn.setToolTip(
@@ -5997,7 +6009,7 @@ class BrowserWindow(QMainWindow):
         self.status_bar_action.setChecked(value["status_bar"])
         if not self.isFullScreen():
             self.menuBar().setVisible(value["menu_bar"])
-            self.status_bar.setVisible(value["status_bar"])
+            self.status_bar.setVisible(self._status_bar_wanted())
         indicator = self.loading_indicator
         indicator.setTextVisible(value["loading_percent"])
         indicator.setFormat("%p%")
