@@ -9,6 +9,10 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Passwords in web components — November 12, 2026.** Saving, filling,
+one-time codes and generated passwords reach sign-in forms inside open shadow
+roots (save/update prompts, TOTP and passkeys were already in place).
+
 **Photo reader theme — November 12, 2026.** Reader view's default Photo theme:
 photo-matched colours, a frosted reading card over a soft blur of the photo.
 

@@ -26,6 +26,18 @@ APP = b"""<title>App sign in</title><div id=box><input id=user name=email type=e
 pass.onkeydown = e => { if (e.key === 'Enter') go.onclick(); };</script>"""
 CODE = b"""<title>Code</title><input id=code autocomplete=one-time-code>"""
 HOME = b"<title>Home</title>Signed in"
+# A sign-in form inside a web component's shadow root.
+SHADOW = b"""<title>Component sign in</title><sign-in></sign-in><script>
+customElements.define('sign-in', class extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({mode: 'open'}).innerHTML = `<form method=post action=/home>
+      <input id=user name=username autocomplete=username>
+      <input id=pass name=password type=password autocomplete=current-password>
+      <button id=go>Sign in</button></form>`;
+  }
+});
+</script>"""
 
 
 class Site(BaseHTTPRequestHandler):
@@ -45,7 +57,11 @@ class Site(BaseHTTPRequestHandler):
                 ' style="width:400px;height:200px"></iframe>'.encode()
             )
             return
-        self.respond({"/login": LOGIN, "/app": APP, "/code": CODE}.get(self.path, HOME))
+        self.respond(
+            {"/login": LOGIN, "/app": APP, "/code": CODE, "/shadow": SHADOW}.get(
+                self.path, HOME
+            )
+        )
 
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", 0)))
@@ -150,6 +166,33 @@ class PasswordAssistantTests(unittest.TestCase):
         self.js(tab, "go.click(); true")
         self.spin(2)
         self.assertFalse(self.assistant.bar.isVisible())
+
+    def test_sign_in_forms_inside_web_components(self):
+        tab = self.open("/shadow")
+        inner = "document.querySelector('sign-in').shadowRoot"
+        self.wait(lambda: self.js(tab, f"!!{inner}.getElementById('pass')"))
+        self.js(
+            tab,
+            f"const r = {inner}; r.getElementById('user').value = 'grace';"
+            " r.getElementById('pass').value = 'compiler-1952';"
+            " r.getElementById('pass').focus(); true",
+        )
+        target = tab.focusProxy() or tab
+        target.setFocus()
+        self.app.processEvents()
+        QTest.keyClick(target, Qt.Key.Key_Return)
+        self.wait(lambda: self.assistant.bar.isVisible())
+        self.assertIn("grace", self.assistant.bar.label.text())
+        self.assistant.bar.save.click()
+        (login,) = self.vault.logins(self.origin)
+        self.assertEqual((login.username, login.password), ("grace", "compiler-1952"))
+        tab = self.open("/shadow")
+        self.wait(
+            lambda: (
+                self.js(tab, f"{inner}.getElementById('pass').value") == "compiler-1952"
+            )
+        )
+        self.assertEqual(self.js(tab, f"{inner}.getElementById('user').value"), "grace")
 
     def spin(self, seconds):
         end = time.monotonic() + seconds
