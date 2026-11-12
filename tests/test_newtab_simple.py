@@ -581,6 +581,26 @@ class SimpleNewTabTests(unittest.TestCase):
         path = sheet.split('url("', 1)[1].split('")', 1)[0]
         self.assertTrue(Path(path).is_file())
         self.assertEqual(Path(path).parent, window.config.config_dir / "frost")
+        # One picture behind the whole window: the page starts below the bars.
+        content = window.tab_container.mapTo(window, QPoint(0, 0)).y()
+        self.assertEqual(self.pages.canvas_offset, content)
+        self.assertIn(
+            f"body::before {{ top: -{content}px; }}",
+            self.pages.render("global", "newtab").decode(),
+        )
+        from PyQt6.QtGui import QImage as Image
+
+        toolbar = Image(path)
+        self.assertEqual(toolbar.width(), window.width())
+        self.assertEqual(toolbar.height(), window.address_bar.height())
+        # Glass popups are cut to a rounded shape (no square corners).
+        self.settle()
+        popup = window._show_html_menu(
+            window._layout_menus["tabs"], window.mapToGlobal(QPoint(300, 120))
+        )
+        self.assertFalse(popup.mask().isEmpty())
+        self.assertFalse(popup.mask().contains(QPoint(0, 0)))
+        popup.close()
         # A strip or toolbar colour chosen by hand wins over the picture.
         styles.save(
             "global", {**styles.get("global"), "chrome": {"toolbar": "#334455"}}

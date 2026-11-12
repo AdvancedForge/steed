@@ -9,6 +9,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**One picture behind the window — November 11, 2026.** In glass mode the
+New Tab picture fills the whole window: the bars show its top (evenly
+blurred, toned for legibility) and the page the rest, aligned; the current
+tab and toolbar share one tint; glass popups are cut to rounded shapes.
+
 **Frosted bars, quieter menus — November 11, 2026.** Glass bars are frosted
 over the New Tab picture; menu rows lose their boxes, the scrollbar is thin
 and on the left, sub-menus cascade beside their panel, and only sub-menus

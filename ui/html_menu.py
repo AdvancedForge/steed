@@ -64,6 +64,13 @@ class HtmlMenu(QDialog):
         self.timer.start()
         self.publish()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.glass:
+            from ui.chrome_style import round_window
+
+            round_window(self, 14)
+
     def _height(self, menu):
         """Just tall enough for the menu's rows (it scrolls past MAX_HEIGHT)."""
         visible = [a for a in menu.actions() if a.isVisible()]

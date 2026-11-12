@@ -4,8 +4,8 @@ The toolbar stays native Qt so typing, focus, input methods and undo behave
 exactly like any text field; this module makes it look like the HTML tab strip.
 """
 
-from PyQt6.QtCore import QByteArray, QRectF, QSize, Qt
-from PyQt6.QtGui import QColor, QIcon, QImage, QLinearGradient, QPainter, QPixmap
+from PyQt6.QtCore import QByteArray, QObject, QRectF, QSize, Qt
+from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 
 # 24×24 stroke icons drawn for Steed (round caps, 2 px).
@@ -231,29 +231,85 @@ QMenu::item {{ border-radius: 8px; }}
 """
 
 
-def frost(image, toolbar, dark, height, width=800):
-    """Frosted glass over a picture: a heavily blurred slice of its top, washed
-    with the toolbar colour so text stays readable, lit from above. One image
-    for all the bars, so they read as a single pane."""
-    from PyQt6.QtCore import Qt
+# The glass tint shared by the toolbar and the current tab (tabs.css --pane).
+PANE_ALPHA = {True: 26, False: 77}
+
+
+def frost(image, width, height, chrome, dark, pane_top):
+    """The browser's bars as frosted glass over a picture that fills the
+    whole width x height window: its top `chrome` pixels, cropped exactly as
+    the New Tab page crops the rest (cover, centred), evenly blurred, toned
+    so text stays readable; from pane_top down (the toolbar) the light glass
+    tint the current tab has too, so the two read as one piece."""
+    from math import ceil
+
+    from PyQt6.QtCore import QRect, Qt
 
     smooth = Qt.TransformationMode.SmoothTransformation
     ignore = Qt.AspectRatioMode.IgnoreAspectRatio
-    top = image.copy(0, 0, image.width(), max(1, image.height() * 3 // 10))
-    # Shrinking hard and growing back in steps blurs without blocky edges.
-    blurred = top.scaled(36, max(2, 36 * height // width), ignore, smooth)
-    for step in (144, width):
-        blurred = blurred.scaled(step, max(2, step * height // width), ignore, smooth)
-    blurred = blurred.scaled(width, height, ignore, smooth)
-    out = QImage(width, height, QImage.Format.Format_RGB32)
+    scale = max(width / image.width(), height / image.height())
+    left = (image.width() * scale - width) / 2
+    top = (image.height() * scale - height) / 2
+    margin = 32  # Blur from a little more than is shown: no hard bottom edge.
+    rows = chrome + margin
+    source = QRect(
+        int(left / scale),
+        int(top / scale),
+        max(1, ceil(width / scale)),
+        max(1, ceil(rows / scale)),
+    )
+    region = image.copy(source).scaled(width, rows, ignore, smooth)
+    # The same factor both ways, so nothing smears into streaks.
+    blurred = region
+    for factor in (14, 4, 1):
+        blurred = blurred.scaled(
+            max(1, width // factor), max(1, rows // factor), ignore, smooth
+        )
+    out = blurred.scaled(width, rows, ignore, smooth).copy(0, 0, width, chrome)
+    out = out.convertToFormat(QImage.Format.Format_RGB32)
+    probe = out.scaled(32, 4, ignore, smooth)
+    light = (
+        sum(probe.pixelColor(x, y).lightnessF() for x in range(32) for y in range(4))
+        / 128
+    )
     painter = QPainter(out)
-    painter.drawImage(0, 0, blurred)
-    wash = QColor(toolbar)
-    wash.setAlphaF(0.62 if dark else 0.58)
-    painter.fillRect(out.rect(), wash)
-    shine = QLinearGradient(0, 0, 0, height)
-    shine.setColorAt(0, QColor(255, 255, 255, 34 if dark else 70))
-    shine.setColorAt(1, QColor(255, 255, 255, 0))
-    painter.fillRect(out.rect(), shine)
+    if dark:  # Light text: darken bright pictures.
+        alpha = min(0.7, max(0.15, 1 - 0.3 / max(light, 0.01)))
+        painter.fillRect(out.rect(), QColor(0, 0, 0, int(alpha * 255)))
+    else:  # Dark text: lighten dark pictures.
+        alpha = min(0.7, max(0.15, (0.78 - light) / max(1 - light, 0.01)))
+        painter.fillRect(out.rect(), QColor(255, 255, 255, int(alpha * 255)))
+    if pane_top < chrome:
+        painter.fillRect(
+            0,
+            pane_top,
+            width,
+            chrome - pane_top,
+            QColor(255, 255, 255, PANE_ALPHA[bool(dark)]),
+        )
     painter.end()
     return out
+
+
+def round_window(widget, radius):
+    """Cut a popup window to a rounded shape, so no square corners show even
+    where the desktop cannot draw see-through windows."""
+    from PyQt6.QtGui import QPainterPath, QRegion
+
+    path = QPainterPath()
+    path.addRoundedRect(QRectF(widget.rect()), radius, radius)
+    widget.setMask(QRegion(path.toFillPolygon().toPolygon()))
+
+
+class RoundedMenus(QObject):
+    """Keeps glass menus (marked steed_glass) cut to their rounded shape."""
+
+    def eventFilter(self, watched, event):
+        from PyQt6.QtCore import QEvent
+
+        if event.type() in (QEvent.Type.Show, QEvent.Type.Resize):
+            if watched.property("steed_glass"):
+                round_window(watched, 12)
+            else:
+                watched.clearMask()
+        return False

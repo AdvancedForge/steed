@@ -198,5 +198,12 @@ button:hover:enabled { background: none; border-color: transparent; }
 
 /* Frosted glass: the New Tab picture, blurred, behind the whole strip. */
 :root.glass.frost body { background: var(--frost) center / 100% 100% no-repeat; }
-:root.glass.frost .horizontal:not(.pos-bottom) .tab.active {
-  background: linear-gradient(180deg, var(--glass-top), transparent 80%), color-mix(in srgb, var(--join) 70%, transparent); }
+/* The current tab and the toolbar share one glass tint over the picture
+   (PANE_ALPHA in chrome_style.py), so they read as one piece. */
+:root.glass.frost { --pane: #ffffff4d; --pane-edge: #ffffffb3; }
+:root.glass.frost.native-dark { --pane: #ffffff1a; --pane-edge: #ffffff40; }
+:root.glass.frost .horizontal:not(.pos-bottom) .tab.active { background: var(--pane); border-color: var(--pane-edge);
+  backdrop-filter: none; box-shadow: inset 0 1px 0 var(--pane-edge); }
+:root.glass.frost .horizontal:not(.pos-bottom) .tab.active::before { background: radial-gradient(circle at 0 0, transparent 9.5px, var(--pane) 10px); }
+:root.glass.frost .horizontal:not(.pos-bottom) .tab.active::after { background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--pane) 10px); }
+:root.glass.frost .tab:hover:not(.active) { background: color-mix(in srgb, var(--pane) 60%, transparent); border-color: transparent; box-shadow: none; }
