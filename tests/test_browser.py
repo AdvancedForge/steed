@@ -107,6 +107,32 @@ class StartupTests(unittest.TestCase):
             self.assertEqual(first.count("--enable-features="), 1)
             self.assertIn("ExistingFeature,WebRTCPipeWireCapturer", first)
 
+    def test_thin_overlay_scrollbars_unless_turned_off(self):
+        with patch.dict(os.environ, {"QTWEBENGINE_CHROMIUM_FLAGS": ""}):
+            configure_chromium_flags()
+            self.assertIn(
+                "FluentOverlayScrollbar", os.environ["QTWEBENGINE_CHROMIUM_FLAGS"]
+            )
+        with patch.dict(os.environ, {"QTWEBENGINE_CHROMIUM_FLAGS": ""}):
+            configure_chromium_flags(thin_scrollbars=False)
+            flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"]
+            self.assertNotIn("FluentOverlayScrollbar", flags)
+            self.assertIn("WebRTCPipeWireCapturer", flags)
+
+    def test_one_scrollbar_style_for_steed_pages(self):
+        web = Path(__file__).resolve().parents[1] / "ui" / "web"
+        root = (web / "root.css").read_text(encoding="utf-8")
+        self.assertIn("::-webkit-scrollbar-thumb", root)
+        self.assertIn("::-webkit-scrollbar-button { display: none", root)
+        # scrollbar-width/-color make Chromium skip the shared rules (only the
+        # tab strip hides its scrollbar on purpose).
+        for sheet in web.glob("*.css"):
+            if sheet.name == "tabs.css":
+                continue
+            text = sheet.read_text(encoding="utf-8")
+            for name in ("scrollbar-width:", "scrollbar-color:"):
+                self.assertNotIn(name, text, sheet.name)
+
 
 class BrowserTests(unittest.TestCase):
     def test_menu_categories_keep_shortcuts_and_profile_controls(self):

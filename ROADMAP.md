@@ -9,6 +9,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Scroll bars, plain glass tab — November 11, 2026.** One themed scroll bar
+for Steed's pages, menus and native panels; thin overlay scroll bars on
+websites (`thin_scrollbars` to turn off); the glass tab has no curved feet.
+Manual check: overlay scroll bars on a real desktop with GPU rendering.
+
 **Smooth glass panels, tab outline — November 11, 2026.** Glass menu panels
 draw a frosted snapshot of the browser behind them inside smooth rounded
 corners (no pixel-cut masks, no see-through windows needed on X11); the

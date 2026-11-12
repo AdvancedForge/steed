@@ -86,12 +86,12 @@ function groupChip(name, color, members, collapsed) {
 
 function vertical() { return ["left", "right"].includes(state.appearance.position); }
 
-// The glass bottom line opens under the current tab and its curved feet.
+// The glass bottom line opens under the current tab, between its side outlines.
 function placeGap() {
   const tab = document.querySelector(".tab.active"), root = document.documentElement.style;
   const box = tab ? tab.getBoundingClientRect() : null;
-  root.setProperty("--gap-from", box ? `${Math.round(box.left - 11)}px` : "0px");
-  root.setProperty("--gap-to", box ? `${Math.round(box.right + 11)}px` : "0px");
+  root.setProperty("--gap-from", box ? `${Math.round(box.left + 1)}px` : "0px");
+  root.setProperty("--gap-to", box ? `${Math.round(box.right - 1)}px` : "0px");
 }
 addEventListener("resize", placeGap);
 document.addEventListener("scroll", placeGap, true);

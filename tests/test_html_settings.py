@@ -15,6 +15,12 @@ from config import DEFAULT_SEARCH_ENGINE
 from ui.settings_dialog import DEFAULTS, SettingsDialog
 
 
+def themed(window):
+    """A dark (or custom) theme is applied, beyond the always-present scroll
+    bar rules."""
+    return "QWidget {background" in window.styleSheet()
+
+
 class HtmlSettingsTests(unittest.TestCase):
     setUpClass = classmethod(fixtures.TaskProfileTests.setUpClass.__func__)
     tearDownClass = classmethod(fixtures.TaskProfileTests.tearDownClass.__func__)
@@ -134,7 +140,7 @@ class HtmlSettingsTests(unittest.TestCase):
         for key, value in changes.items():
             self.assertEqual(self.config.get(key), value)
         self.assertEqual(self.config.get("custom_future_preference"), 42)
-        self.assertTrue(window.styleSheet())
+        self.assertTrue(themed(window))
         self.assertEqual(window.styleSheet(), second.styleSheet())
         self.assertEqual(self.profile.httpUserAgent(), "SyntheticSteed/1")
 
@@ -190,7 +196,7 @@ class HtmlSettingsTests(unittest.TestCase):
         self.assertEqual(self.config.get("home_page"), "https://second.example.test/")
         self.assertEqual(self.config.get("new_tab_page"), "steed:welcome")
         self.assertTrue(self.config.dark_mode)
-        self.assertTrue(first_window.styleSheet())
+        self.assertTrue(themed(first_window))
 
     def test_html_preview_reload_and_cancel_do_not_save_appearance(self):
         window, dialog = self.loaded(section="view")
@@ -202,7 +208,7 @@ class HtmlSettingsTests(unittest.TestCase):
             )
         )
         self.assertEqual(self.config.dark_mode, before)
-        self.assertFalse(window.styleSheet())
+        self.assertFalse(themed(window))
         self.click(dialog, "reset")
         self.wait_for(
             lambda: self.value(

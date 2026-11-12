@@ -15,19 +15,23 @@ from single_instance import InstanceServer, launch_urls, request_existing
 from webengine import prepare_engine_environment
 
 
-def configure_chromium_flags() -> None:
-    """Enable PipeWire capture without forcing Qt's graphics backend."""
+def configure_chromium_flags(thin_scrollbars: bool = True) -> None:
+    """Enable PipeWire capture without forcing Qt's graphics backend, and
+    (unless turned off) thin overlay scrollbars on websites that appear
+    while scrolling, like the ones on Steed's own pages."""
     flags = shlex.split(os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", ""))
     feature_prefix = "--enable-features="
+    wanted = ["WebRTCPipeWireCapturer"]
+    if thin_scrollbars:
+        wanted.append("FluentOverlayScrollbar")
     for index, flag in enumerate(flags):
         if flag.startswith(feature_prefix):
             features = flag.removeprefix(feature_prefix).split(",")
-            if "WebRTCPipeWireCapturer" not in features:
-                features.append("WebRTCPipeWireCapturer")
+            features += [name for name in wanted if name not in features]
             flags[index] = feature_prefix + ",".join(features)
             break
     else:
-        flags.append(feature_prefix + "WebRTCPipeWireCapturer")
+        flags.append(feature_prefix + ",".join(wanted))
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = shlex.join(flags)
 
 
@@ -59,7 +63,7 @@ def open_launch_request(urls) -> None:
 def main() -> int:
     """Create the browser and return the Qt event loop's exit code."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    configure_chromium_flags()
+    configure_chromium_flags(Config().get("thin_scrollbars", True) is not False)
     prepare_engine_environment()
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 

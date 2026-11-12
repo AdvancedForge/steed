@@ -192,9 +192,8 @@ button:hover:enabled { background: none; border-color: transparent; }
 :root.glass .horizontal:not(.pos-bottom) .tab.active::before, :root.glass .horizontal:not(.pos-bottom) .tab.active::after {
   display: block; content: ""; position: absolute; bottom: 0; width: 10px; height: 10px; pointer-events: none; border: 0; }
 :root.glass { --tab-fill: var(--join); --tab-edge: var(--glass-edge); }
-/* The feet carry the tab's outline down their curve into the bottom line. */
-:root.glass .horizontal:not(.pos-bottom) .tab.active::before { left: -11px; background: radial-gradient(circle at 0 0, transparent 9.2px, var(--tab-edge) 9.6px, var(--tab-edge) 10.3px, var(--tab-fill) 10.7px); }
-:root.glass .horizontal:not(.pos-bottom) .tab.active::after { right: -11px; background: radial-gradient(circle at 100% 0, transparent 9.2px, var(--tab-edge) 9.6px, var(--tab-edge) 10.3px, var(--tab-fill) 10.7px); }
+/* No curved feet on glass tabs: the sides run straight into the bottom line. */
+:root.glass .horizontal:not(.pos-bottom) .tab.active::before, :root.glass .horizontal:not(.pos-bottom) .tab.active::after { display: none; }
 :root.glass .horizontal:not(.pos-bottom) .tail { align-self: center; }
 @media (prefers-reduced-motion: reduce) { :root.glass .tab { transition: none; } }
 
