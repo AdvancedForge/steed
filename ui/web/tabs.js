@@ -108,6 +108,11 @@ function render(next) {
   const glow = /^#[0-9a-fA-F]{6}$/.test(next.chrome?.glow || "") ? next.chrome.glow : "";
   document.documentElement.classList.toggle("glass", !!next.chrome?.glass);
   document.documentElement.classList.toggle("strip-chosen", (next.chrome?.chosen || []).includes("strip"));
+  // Frosted glass over the New Tab picture (a JPEG Steed made).
+  const frost = /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(next.chrome?.frost || "") ? next.chrome.frost : "";
+  document.documentElement.classList.toggle("frost", !!frost);
+  if (frost) document.documentElement.style.setProperty("--frost", `url("${frost}")`);
+  else document.documentElement.style.removeProperty("--frost");
   if (glow) document.documentElement.style.setProperty("--glow", glow);
   else document.documentElement.style.removeProperty("--glow");
   // A tab accent chosen in Tab appearance wins; otherwise the toolbar's.

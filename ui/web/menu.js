@@ -22,12 +22,14 @@ window.steedUI = {render(next) {
   document.getElementById('back').hidden = !next.back;
   const signature = JSON.stringify(next.rows); if (key === signature) return true; key = signature;
   const items = document.getElementById('items'); items.replaceChildren();
+  items.classList.toggle('marks', next.rows.some(row => row.checkable || row.checked));
   for (const row of next.rows) {
     if (row.separator) { items.append(document.createElement('hr')); continue; }
     const button = document.createElement('button'); button.disabled = !row.enabled; button.dataset.action = row.id; button.setAttribute('role', 'menuitem');
     for (const [cls, text] of [['mark', row.checked ? '✓' : ''], ['label', row.text], ['shortcut', row.shortcut], ['arrow', row.submenu ? '›' : '']]) { const span = document.createElement('span'); span.className = cls; span.textContent = text; button.append(span); }
     button.onclick = () => { clearTimeout(hover); command('activate', row.id, button); };
-    if (row.submenu || row.editor) button.onpointerenter = () => { clearTimeout(hover); hover = setTimeout(() => command('hover', row.id, button), 700); };
+    // Only sub-menus open on hover; anything else waits for a click.
+    if (row.submenu) button.onpointerenter = () => { clearTimeout(hover); hover = setTimeout(() => command("hover", row.id, button), 300); };
     button.onpointerleave = () => clearTimeout(hover);
     items.append(button);
   }

@@ -368,7 +368,7 @@ class HtmlMenuTests(unittest.TestCase):
         self.assertNotIn("synthetic-secret", self.value(host, "JSON.stringify(state)"))
         self.assertTrue(self.value(host, "state.children[0].has_value"))
 
-    def test_editor_hover_opens_downloads_but_hover_never_runs_commands(self):
+    def test_hover_opens_nothing_but_sub_menus_and_never_runs_commands(self):
         window = self.window()
         menu = window._show_html_menu(
             window._layout_menus["general"], window.mapToGlobal(QPoint(24, 24))
@@ -381,6 +381,13 @@ class HtmlMenuTests(unittest.TestCase):
         self.value(
             menu,
             f'document.querySelector({selector("data-action", token)}).dispatchEvent(new PointerEvent("pointerenter")); true',
+        )
+        QTest.qWait(1000)  # Longer than any hover delay: still nothing opened.
+        self.assertFalse(window._html_dialogs)
+        self.assertFalse(menu.closed)
+        self.value(
+            menu,
+            f"document.querySelector({selector('data-action', token)}).click(); true",
         )
         self.wait_for(lambda: bool(window._html_dialogs))
         host = window._html_dialogs[-1]

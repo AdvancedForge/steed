@@ -565,6 +565,59 @@ class SimpleNewTabTests(unittest.TestCase):
         styles.save("global", {**styles.get("global"), "pages_follow_photo": False})
         self.assertNotIn("--surface:", styles.css("global"))
 
+    def test_glass_bars_are_frosted_over_the_picture(self):
+        window = self.window
+        styles = window.profile_manager.registry.page_style
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: self.pages.photos.current() is not None)
+        self.loaded(tab)
+        self.assertNotIn("frost", window.tab_bar.chrome)  # Not without glass.
+        self.assertNotIn("border-image", window.address_bar.styleSheet())
+        window._set_bar("glass", True)
+        frost = window.tab_bar.chrome["frost"]
+        self.assertTrue(frost.startswith("data:image/jpeg;base64,"))
+        sheet = window.address_bar.styleSheet()
+        self.assertIn("border-image", sheet)
+        path = sheet.split('url("', 1)[1].split('")', 1)[0]
+        self.assertTrue(Path(path).is_file())
+        self.assertEqual(Path(path).parent, window.config.config_dir / "frost")
+        # A strip or toolbar colour chosen by hand wins over the picture.
+        styles.save(
+            "global", {**styles.get("global"), "chrome": {"toolbar": "#334455"}}
+        )
+        self.assertNotIn("frost", window.tab_bar.chrome)
+        self.assertNotIn("border-image", window.address_bar.styleSheet())
+
+    def test_sub_menus_open_beside_their_panel(self):
+        window = self.window
+        self.settle()
+        panel = window._show_html_menu(
+            window._layout_menus["general"], window.mapToGlobal(QPoint(40, 60))
+        )
+        self.wait(lambda: panel.surface._last_payload)
+        token = next(
+            key for key, action in panel.actions.items() if action.menu() is not None
+        )
+        sub = panel.actions[token].menu()
+        panel.command(
+            {
+                "context": panel.context,
+                "sequence": 1,
+                "action": "hover",
+                "id": token,
+                "x": 10,
+                "y": 40,
+            }
+        )
+        child = panel.child
+        self.assertIsNotNone(child)
+        self.assertIs(child.stack[0], sub)
+        self.assertIs(child.parent_menu, panel)
+        self.assertFalse(panel.closed)
+        self.assertFalse(child.geometry().intersects(panel.geometry()))
+        panel.close()  # Closing the panel closes its sub-menu too.
+        self.assertTrue(child.closed)
+
 
 if __name__ == "__main__":
     unittest.main()

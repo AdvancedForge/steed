@@ -745,7 +745,8 @@ class BrowserWindow(QMainWindow):
         self.auto_approval_notice = QLabel(
             "YOLO mode: agent requests auto-approved", self
         )
-        self.auto_approval_notice.setStyleSheet("color:#cc5500;font-weight:bold;")
+        # A warning pill in the status bar (bar_stylesheet styles it).
+        self.auto_approval_notice.setObjectName("WarningNotice")
         if self.profile_manager.registry._tasks is not None:
             self.profile_manager.registry._tasks.changed.connect(
                 self._refresh_auto_approval
@@ -1223,6 +1224,8 @@ class BrowserWindow(QMainWindow):
         # What the theme or photo gives (shown in Style), then the user's own.
         self.automatic_colors = browser_colors(toolbar, dark, accent, glass)
         colors = browser_colors(toolbar, dark, accent, glass, chosen)
+        if glass and not {"toolbar", "strip"} & set(chosen):
+            colors.update(self._frost(profile, colors, dark))
         self.tab_bar.set_chrome(
             colors["toolbar"], dark, glass, colors["accent"], colors, sorted(chosen)
         )
@@ -1241,6 +1244,55 @@ class BrowserWindow(QMainWindow):
         self.status_bar.setStyleSheet(bars)
         if hasattr(self, "layout_preferences"):
             self._apply_layout_text()
+
+    def _frost(self, profile, colors, dark):
+        """Frosted glass over the New Tab picture for the menu bar, tab strip
+        and toolbar: {"frost_menu", "frost_toolbar": file paths,
+        "frost_strip": a data URL}, or {} without a picture."""
+        import base64
+        import hashlib
+
+        from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
+
+        from ui.chrome_style import frost
+
+        found = self.profile_manager.registry.start_pages.background_image(profile)
+        if found is None:
+            return {}
+
+        def height(widget, shown=True):
+            if not shown:
+                return 0
+            return max(widget.height(), widget.sizeHint().height(), 1)
+
+        menu = height(self.menuBar(), not self.menuBar().isHidden())
+        strip, bar = height(self.tab_bar), height(self.address_bar)
+        key = (found[0], menu, strip, bar, colors["toolbar"], dark)
+        if getattr(self, "_frost_cache", (None,))[0] == key:
+            return self._frost_cache[1]
+        image = frost(found[1], colors["toolbar"], dark, menu + strip + bar)
+        folder = self.config.config_dir / "frost"
+        folder.mkdir(parents=True, exist_ok=True)
+        name = hashlib.sha1(repr(key).encode()).hexdigest()[:16]
+        result = {}
+        for part, top, size in (("menu", 0, menu), ("toolbar", menu + strip, bar)):
+            if size:
+                path = folder / f"{part}-{name}.png"
+                image.copy(0, top, image.width(), size).save(str(path))
+                result["frost_" + part] = path.as_posix()
+        data = QByteArray()
+        buffer = QBuffer(data)
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        image.copy(0, menu, image.width(), strip).save(buffer, "JPEG", 82)
+        result["frost_strip"] = "data:image/jpeg;base64," + base64.b64encode(
+            bytes(data)
+        ).decode("ascii")
+        # Earlier slices: no longer shown (stylesheets name the new files).
+        for old in folder.glob("*.png"):
+            if name not in old.name:
+                old.unlink(missing_ok=True)
+        self._frost_cache = (key, result)
+        return result
 
     # ---------- Manual layout ----------
 
@@ -1597,7 +1649,7 @@ class BrowserWindow(QMainWindow):
         if hasattr(self, "status_bar") and not self.isFullScreen():
             self.status_bar.setVisible(self._status_bar_wanted())
         if hasattr(self, "address_bar"):
-            self.address_bar.set_menu_badge("YOLO" if enabled else "")
+            self.address_bar.set_menu_badge("⚠ YOLO" if enabled else "")
             self.address_bar.menu_btn.setToolTip(
                 "Browser menu · unsafe agent auto-approval is enabled"
                 if enabled
