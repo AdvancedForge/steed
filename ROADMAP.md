@@ -9,6 +9,10 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Live glass cards, fading colours — November 11, 2026.** Hover cards show
+the current tab live and refresh other tabs' snapshots after loads; frosted
+with Liquid Glass. Photo colour changes fade over 0.4 s.
+
 **Your own photos — November 11, 2026.** New Tab photos can come from photos
 you add, a folder (shuffled, each once per round), or favourites; save the
 current photo, skip online ones for good, black & white style.

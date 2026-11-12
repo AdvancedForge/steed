@@ -683,8 +683,11 @@ the status bar hidden, its messages (not loading progress) show for a few
 seconds at the bottom left of the window.
 
 Hovering a tab shows one card: its title and site, its state (frozen,
-unloaded, kept loaded, pinned) and, for background tabs with previews on, a
-snapshot. Cards are all one width, as in Chrome; Settings → **Same width for
+unloaded, kept loaded, pinned) and, with previews on, a snapshot: live for
+the tab you are on, and for others as they were last shown (taken when you
+leave a tab and when a page finishes loading while shown). With Liquid Glass
+the card is frosted over what is behind it. When a new photo changes the
+browser's colours, they fade into the new ones instead of jumping. Cards are all one width, as in Chrome; Settings → **Same width for
 every tab card** off makes each as wide as its title.
 
 ### Search keywords and completing addresses
