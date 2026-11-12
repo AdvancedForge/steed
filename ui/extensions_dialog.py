@@ -195,6 +195,8 @@ class ExtensionsDialog(HtmlSettingsDialog):
         entry = self.selected()
         if entry is not None:
             self.extensions.set_enabled(self.profile, entry["id"], not entry["enabled"])
+            if not entry["enabled"]:  # Switched on: its background starts now.
+                self.extensions.watch_start(self.profile, entry["id"])
 
     def toggle_pin(self):
         entry = self.selected()

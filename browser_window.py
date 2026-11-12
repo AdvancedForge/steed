@@ -5655,6 +5655,33 @@ class BrowserWindow(QMainWindow):
             if reply != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+        # An extension just installed or switched on may still be starting its
+        # background; Qt WebEngine crashes if the profile goes before then.
+        # Wait for it (a second close goes ahead anyway).
+        extensions = getattr(self.profile_manager.registry, "extensions", None)
+        if (
+            extensions is not None
+            and self.profile_manager.registry.owners <= closing_owners
+            and not getattr(self, "_waited_for_extensions", False)
+        ):
+            starting = extensions.unsettled()
+            if starting:
+                self._waited_for_extensions = True
+                event.ignore()
+                self.status_bar.showMessage(
+                    f"Finishing setting up {', '.join(starting)}… Steed closes "
+                    "when it is ready (close again to quit now).",
+                    0,
+                )
+                extensions.settled.connect(
+                    lambda: (
+                        None
+                        if sip.isdeleted(self) or self._closing
+                        else QTimer.singleShot(0, self.close)
+                    ),
+                    Qt.ConnectionType.SingleShotConnection,
+                )
+                return
         # Let sites save state before their pages are destroyed below.
         from page_unload import run_unload_handlers_now
 

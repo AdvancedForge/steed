@@ -567,6 +567,27 @@ class WindowTests(WindowBase):
         finally:
             dialog.deleteLater()
 
+    def test_closing_waits_for_a_starting_background(self):
+        archive = self.root / "test.zip"
+        archive.write_bytes(zipped(write_extension(self.root / "source")))
+        settled = []
+        self.extensions.settled.connect(lambda: settled.append(True))
+        qt_id = self.extensions.install(self.name, archive)
+        self.wait(lambda: self.extensions.installed(self.name))
+        # Watched from its install until its background worker is active.
+        self.wait(lambda: self.extensions.unsettled() or settled)
+        self.wait(lambda: settled)
+        self.assertEqual(self.extensions.unsettled(), [])
+        self.assertEqual(self.extensions.settling, {})
+        # Closing while one is still starting waits, then closes by itself.
+        self.extensions.watch_start(self.name, qt_id)
+        self.assertEqual(self.extensions.unsettled(), ["Steed Test Extension"])
+        self.assertFalse(self.window.close())
+        self.assertTrue(self.window.isVisible())
+        self.assertIn("Finishing setting up", self.window.status_bar.currentMessage())
+        self.wait(lambda: not self.window.isVisible())
+        self.assertTrue(self.window._closing)
+
     def test_add_from_the_store_page_bar_and_follow_sync(self):
         import sync
 

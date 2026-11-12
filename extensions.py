@@ -43,6 +43,17 @@ STATE_FILE = "extensions.json"
 RESTORE_ATTEMPTS = 20
 RESTORE_INTERVAL_MS = 100
 MAX_DOWNLOAD = 200 << 20
+# A newly installed or switched-on extension's background worker can take a
+# while to register (Bitwarden's: about a minute without a GPU), and Qt
+# WebEngine 6.11 crashes if its profile goes before then. Steed checks once a
+# second until it is active (for at most SETTLE_LIMIT seconds).
+SETTLE_POLL_MS = 1000
+SETTLE_LIMIT = 120
+SETTLE_SCRIPT = (
+    "navigator.serviceWorker.getRegistration().then(r => {"
+    " window.__steedWorker = r && r.active ? r.active.state : 'waiting'; })"
+    ".catch(() => { window.__steedWorker = 'none'; }); window.__steedWorker || ''"
+)
 STORE = "https://chromewebstore.google.com/"
 STORE_DOWNLOAD = (
     "https://clients2.google.com/service/update2/crx?response=redirect"
@@ -460,6 +471,7 @@ class Extensions(QObject):
     failed = pyqtSignal(str, str)  # profile name, message
     downloaded = pyqtSignal(str, str, str, str)  # profile, store id, path, error
     updates_checked = pyqtSignal(str, str)  # profile name, summary
+    settled = pyqtSignal()  # No extension's background is still starting.
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -477,6 +489,11 @@ class Extensions(QObject):
 
         self.bridges = Bridges(self)
         self.changed.connect(self.bridges.sync)
+        # (profile, id) -> [started, hidden page asking its worker's state]
+        self.settling = {}
+        self._settle_timer = QTimer(self)
+        self._settle_timer.setInterval(SETTLE_POLL_MS)
+        self._settle_timer.timeout.connect(self._check_settling)
 
     def attach(self, name, profile, folder):
         manager = profile.extensionManager()
@@ -494,6 +511,7 @@ class Extensions(QObject):
         if name not in self.profiles:
             return
         busy = bool(self.installed(name))
+        self._stop_settling(name)
         self.bridges.close(name)
         if busy:
             settle_ports()
@@ -502,10 +520,83 @@ class Extensions(QObject):
     def close(self):
         """Before every profile goes (Steed quits): likewise."""
         busy = any(self.installed(name) for name in self.profiles)
+        self._stop_settling()
         self.bridges.close()
         if busy:
             settle_ports()
         self.profiles.clear()
+
+    # ---------- Backgrounds still starting ----------
+
+    def watch_start(self, name, extension_id):
+        """Watch a new or switched-on extension until its background is up."""
+        import time
+
+        self._drop_settle_page((name, extension_id))
+        self.settling[(name, extension_id)] = [time.monotonic(), None]
+        self._settle_timer.start()
+
+    def unsettled(self):
+        """Names of extensions whose background is still starting."""
+        names = []
+        for name, extension_id in self.settling:
+            info = self._info(name, extension_id) if name in self.profiles else None
+            names.append(info.name() if info is not None else extension_id)
+        return names
+
+    def _check_settling(self):
+        import time
+
+        import webengine
+
+        for key, entry in list(self.settling.items()):
+            name, extension_id = key
+            if (
+                name not in self.profiles
+                or time.monotonic() - entry[0] > SETTLE_LIMIT
+                or self._info(name, extension_id) is None
+            ):
+                self._settled(key)
+                continue
+            if entry[1] is None:
+                entry[1] = webengine.Page(self.profiles[name][0], self)
+                # Its manifest: in the extension's origin, but runs nothing
+                # (its bridge page would talk to the background as Steed).
+                entry[1].setUrl(
+                    QUrl(f"chrome-extension://{extension_id}/manifest.json")
+                )
+                continue
+            webengine.run_script(
+                entry[1],
+                SETTLE_SCRIPT,
+                lambda state, key=key: state == "activated" and self._settled(key),
+                world=webengine.PAGE_WORLD,
+            )
+
+    def _settled(self, key):
+        self._drop_settle_page(key)
+        self.settling.pop(key, None)
+        if not self.settling:
+            self._settle_timer.stop()
+            self.settled.emit()
+
+    def _drop_settle_page(self, key):
+        entry = self.settling.get(key)
+        page = entry[1] if entry else None
+        if page is not None:
+            from PyQt6 import sip
+
+            if not sip.isdeleted(page):
+                sip.delete(page)
+            entry[1] = None
+
+    def _stop_settling(self, name=None):
+        """Pages before profiles: drop the hidden ones (of a profile, or all)."""
+        for key in [k for k in self.settling if name is None or k[0] == name]:
+            self._drop_settle_page(key)
+            self.settling.pop(key, None)
+        if not self.settling:
+            self._settle_timer.stop()
 
     def _manager(self, name):
         found = self.profiles.get(name)
@@ -678,6 +769,8 @@ class Extensions(QObject):
             state["updates"].pop(pending["store"], None)
         self._write(name, state)
         self.set_enabled(name, info.id(), pending["enabled"])
+        if pending["enabled"]:
+            self.watch_start(name, info.id())
 
     def _uninstalled(self, name, info):
         pending = self._pending.get(name, {}).get(info.id())

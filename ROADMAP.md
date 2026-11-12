@@ -9,6 +9,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Extension shutdown crash fixed — November 12, 2026.** Closing Steed while a
+just-installed extension's background was still registering crashed Qt
+WebEngine (reproduced with the official Bitwarden package and a bare Qt
+profile); Steed now watches new backgrounds until active and waits for them
+on close.
+
 **Passwords in web components — November 12, 2026.** Saving, filling,
 one-time codes and generated passwords reach sign-in forms inside open shadow
 roots (save/update prompts, TOTP and passkeys were already in place).
@@ -2450,10 +2456,12 @@ daily-use workflow; they do not automatically block the agent milestones.
 - **Password convenience — deferred:** automatic save prompts, updating existing
   entries, iframe/shadow-root forms, TOTP, and passkeys. Revisit when the user
   wants to improve the password workflow.
-- **Extensions:** per-profile import, enable/disable/remove, startup restoration,
-  and action popups. Investigate the official Bitwarden package crash on the
-  tested Qt 6.11 runtime before presenting it as supported. Start with Manifest
-  V3 and verify Qt's limits.
+- **Extensions:** per-profile import, enable/disable/remove, startup restoration
+  and action popups are in place. The Bitwarden crash (November 12, 2026) was
+  Qt WebEngine 6.11 crashing when a profile closes while a just-installed
+  extension's background worker is still registering; Steed now waits for it.
+  Bitwarden 2026.10.2 installs and runs. Manual check: sign in to Bitwarden
+  and fill a login on the desktop.
 - **Bookmarks B1 — implemented above:** per-profile search/folder labels, stable-ID
   editing and atomic HTML import/export. Hierarchical empty-folder management and
   sync remain optional follow-ups.
