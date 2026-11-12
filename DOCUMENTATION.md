@@ -980,8 +980,10 @@ the tab that played sound most recently.
 **View → Reader View** or **F9** shows the current page's article as plain,
 calm text over the tab: site name, title, author, an estimated reading time,
 then headings, paragraphs, lists, quotes, code and captions. **A− / A+** change
-the text size (14–30 px) and **Light / Sepia / Dark** the colours; both are
-remembered. **F9**, **Esc** or **Exit reader** returns to the page, as does
+the text size (14–30 px) and **Photo / Light / Sepia / Dark** the colours;
+both are remembered. **Photo** (the default) takes its colours from the New
+Tab photo and sets the text on a frosted card over a soft blur of it, with a
+glass toolbar (light or dark with the theme; plain colours without a photo). **F9**, **Esc** or **Exit reader** returns to the page, as does
 following a link in the tab.
 
 The article is found by a script in Steed's own script world (the page cannot

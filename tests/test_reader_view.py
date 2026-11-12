@@ -231,6 +231,54 @@ class ReaderTests(unittest.TestCase):
         self.assertFalse(self.window.config.get("reader_images"))
         self.wait(lambda: self.js(page, shown) == [])
 
+    def test_photo_theme_takes_the_new_tab_photos_colours(self):
+        from PyQt6.QtGui import QColor, QImage
+
+        pages = self.window.profile_manager.registry.start_pages
+        image = QImage(160, 90, QImage.Format.Format_RGB32)
+        image.fill(QColor("#2a6f97"))
+        with (
+            patch.object(pages, "theme_tint", return_value="#2a6f97"),
+            patch.object(pages, "background_image", return_value=("k", image)),
+        ):
+            tab = self.open()
+            panel = self.reader(tab)
+            self.assertEqual(panel.options()[0], "photo")  # The default.
+            look = panel.photo_look()
+            self.assertTrue(look["backdrop"].startswith("data:image/jpeg;base64,"))
+            background = QColor(look["palette"]["bg"])
+            self.assertGreater(background.blue(), background.red())  # Its hue.
+            page = panel.surface.page
+            self.wait(
+                lambda: self.js(
+                    page, "document.documentElement.classList.contains('reader-photo')"
+                )
+            )
+            self.assertEqual(
+                self.js(
+                    page,
+                    "getComputedStyle(document.documentElement)"
+                    ".getPropertyValue('--reader-bg').trim()",
+                ),
+                look["palette"]["bg"],
+            )
+        # Other themes keep their own colours and no photo.
+        panel.command(
+            {
+                "context": panel.context,
+                "sequence": panel.sequence + 1,
+                "action": "theme",
+                "theme": "sepia",
+            }
+        )
+        self.wait(
+            lambda: (
+                not self.js(
+                    page, "document.documentElement.classList.contains('reader-photo')"
+                )
+            )
+        )
+
     def test_controls_persist_and_f9_or_navigation_closes(self):
         tab = self.open()
         panel = self.reader(tab)
