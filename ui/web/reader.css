@@ -24,3 +24,15 @@ body { margin: 0; background: var(--reader-bg); color: var(--reader-ink); }
 .note-editor textarea { font: inherit; background: transparent; color: inherit; border: 1px solid var(--reader-rule); border-radius: 8px; padding: 8px; resize: vertical; }
 .note-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .note-actions button { background: transparent; color: var(--reader-ink); border: 1px solid var(--reader-rule); border-radius: 7px; padding: 5px 10px; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+
+/* Photo theme: the reading column on a soft, washed blur of the New Tab photo,
+   with a frosted toolbar; colours come from the photo (reader.js). */
+:root[data-reader="photo"] { --reader-accent: var(--reader-ink); }
+:root.reader-photo body { background: linear-gradient(color-mix(in srgb, var(--reader-bg) 72%, transparent),
+  color-mix(in srgb, var(--reader-bg) 72%, transparent)), var(--reader-photo) center / cover fixed, var(--reader-bg); }
+:root.reader-photo .reader-bar { background: color-mix(in srgb, var(--reader-bg) 70%, transparent);
+  backdrop-filter: blur(18px) saturate(160%); border-bottom-color: color-mix(in srgb, var(--reader-rule) 70%, transparent); }
+:root.reader-photo .reader { margin-top: 28px; margin-bottom: 48px; border-radius: 22px;
+  background: color-mix(in srgb, var(--reader-bg) 82%, transparent); backdrop-filter: blur(22px);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 30%, transparent) inset, 0 18px 50px #0000001f; }
+:root[data-reader="photo"] .reader a, :root[data-reader="photo"] .reader .site { color: var(--reader-accent); }

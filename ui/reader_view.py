@@ -33,7 +33,8 @@ IMAGE_SIGNATURES = (
 MAX_BLOCKS = 600
 MAX_TEXT = 20000
 MIN_ARTICLE = 400  # characters; less is not an article
-THEMES = ("light", "sepia", "dark")
+# "photo": colours from the New Tab photo, over a soft blur of it (default).
+THEMES = ("photo", "light", "sepia", "dark")
 FONT_SIZES = range(14, 31)
 EXTRACT = r"""(() => {
   const MAX_BLOCKS = 600, MAX_CHARS = 250000;
@@ -243,12 +244,55 @@ class ReaderPanel(QWidget):
 
     def options(self):
         config = self.window.config
-        theme = config.get("reader_theme", "light")
+        theme = config.get("reader_theme", "photo")
         size = config.get("reader_font_size", 19)
         return (
-            theme if theme in THEMES else "light",
+            theme if theme in THEMES else "photo",
             size if type(size) is int and size in FONT_SIZES else 19,
         )
+
+    def _dark(self):
+        manager = self.window.profile_manager
+        return manager.registry.page_style.dark(manager.current_profile_name)
+
+    def photo_look(self):
+        """The Photo theme: reading colours from the New Tab photo's colour,
+        and a soft blur of the photo behind the text (cached per photo)."""
+        from ui.chrome_style import mix
+
+        manager = self.window.profile_manager
+        profile = manager.current_profile_name
+        pages = manager.registry.start_pages
+        dark = self._dark()
+        tint = pages.theme_tint(profile) or ("#4a5568" if dark else "#c8ccd4")
+        base, ink = ("#0e1014", "#e4e8ef") if dark else ("#ffffff", "#1b2130")
+        background = mix(tint, base, 0.86 if dark else 0.9)
+        palette = {
+            "bg": background,
+            "ink": ink,
+            "muted": mix(ink, background, 0.42),
+            "rule": mix(tint, background, 0.6),
+            "accent": mix(tint, ink, 0.25),
+        }
+        found = pages.background_image(profile)
+        key = (found[0] if found else None, dark)
+        if getattr(self, "_backdrop", (None, None))[0] != key:
+            self._backdrop = (key, self._blurred(found[1]) if found else "")
+        return {"palette": palette, "backdrop": self._backdrop[1]}
+
+    @staticmethod
+    def _blurred(image):
+        """A small, heavily blurred JPEG of the photo (a data URL)."""
+        from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, Qt
+
+        smooth = Qt.TransformationMode.SmoothTransformation
+        keep = Qt.AspectRatioMode.KeepAspectRatioByExpanding
+        small = image.scaled(48, 27, keep, smooth).scaled(640, 360, keep, smooth)
+        data = QByteArray()
+        buffer = QBuffer(data)
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        small.save(buffer, "JPEG", 70)
+        return "data:image/jpeg;base64," + base64.b64encode(bytes(data)).decode()
 
     def publish(self):
         if self.disposed:
@@ -266,7 +310,8 @@ class ReaderPanel(QWidget):
                 "show_images": show,
                 "theme": theme,
                 "size": size,
-                "dark": theme == "dark",
+                "dark": theme == "dark" or (theme == "photo" and self._dark()),
+                **(self.photo_look() if theme == "photo" else {}),
                 "highlights": self.notes.highlights(self.notes_url),
             },
             force=True,

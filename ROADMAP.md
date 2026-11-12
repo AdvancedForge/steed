@@ -9,6 +9,9 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Photo reader theme — November 12, 2026.** Reader view's default Photo theme:
+photo-matched colours, a frosted reading card over a soft blur of the photo.
+
 **Compact mode, side glass tabs — November 11, 2026.** Compact mode floats the
 tabs and toolbar over the page (Ctrl+Shift+K); the glass picture now covers
 any bar layout, so side tabs are a frosted sidebar lined up with the page.

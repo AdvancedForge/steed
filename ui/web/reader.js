@@ -97,6 +97,16 @@ window.steedUI = {render(next) {
   if (context !== next.context) { context = next.context; sequence = 0; }
   document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
   document.documentElement.dataset.reader = next.theme;
+  // Photo theme: colours from the New Tab photo (checked hex), a blur of it.
+  const root = document.documentElement.style, palette = next.theme === 'photo' ? next.palette || {} : {};
+  for (const key of ['bg', 'ink', 'muted', 'rule', 'accent']) {
+    const value = palette[key];
+    if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) root.setProperty('--reader-' + key, value);
+    else root.removeProperty('--reader-' + key);
+  }
+  const backdrop = next.theme === 'photo' && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(next.backdrop || '') ? next.backdrop : '';
+  if (backdrop) root.setProperty('--reader-photo', `url("${backdrop}")`); else root.removeProperty('--reader-photo');
+  document.documentElement.classList.toggle('reader-photo', !!backdrop);
   document.documentElement.style.setProperty('--reader-size', next.size + 'px');
   for (const button of document.querySelectorAll('[data-theme]')) button.setAttribute('aria-checked', String(button.dataset.theme === next.theme));
   // One article per reader page; settings changes keep the reading position.
