@@ -213,3 +213,8 @@ button:hover:enabled { background: none; border-color: transparent; }
 :root.glass.frost .horizontal:not(.pos-bottom) .tab.active { background: var(--pane); border-color: var(--pane-edge);
   backdrop-filter: none; box-shadow: inset 0 1px 0 var(--pane-edge); }
 :root.glass.frost .tab:hover:not(.active) { background: color-mix(in srgb, var(--pane) 60%, transparent); border-color: transparent; box-shadow: none; }
+
+/* Side tabs over the picture: the current one in the toolbar's glass tint. */
+:root.glass.frost .vertical .tab.active { background: var(--pane); border-color: var(--pane-edge);
+  backdrop-filter: none; box-shadow: inset 0 1px 0 var(--pane-edge); }
+:root.glass .vertical .new-tab:hover:enabled { background: var(--glass-low, #ffffff1f); }

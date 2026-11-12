@@ -642,6 +642,15 @@ only opens sub-menus; everything else (Settings, Downloads, …) needs a click.
 Rows have no boxes, and the thin scrollbar sits on the left. With Liquid
 Glass both kinds of menu are rounded and see-through.
 
+### Compact mode
+
+**View → Compact Mode** (Ctrl+Shift+K, or Style → Browser bars) gives the page
+the whole window: the tab strip (when it is on top) and the toolbar float over
+the page instead, shown while the pointer is at the top edge or on them, or
+while you type an address (Ctrl+L), and hidden shortly after. The page does
+not move when they appear. Side tabs stay beside the page. With Liquid Glass
+and a New Tab photo the floating bars are frosted over the page itself.
+
 ### Scroll bars
 
 Steed's pages, menus and panels share one scroll bar: thin, rounded, in the
@@ -663,7 +672,8 @@ photo or image (and *Match the background* on), the picture becomes the
 background of the whole window: the menu bar, tab strip and toolbar show its
 top as frosted glass and the New Tab page shows the rest, lined up (redone
 when the window is resized; kept in `~/.custom_browser/frost/`). The current
-tab and the toolbar share one glass tint over it; its outline runs straight
+tab and the toolbar share one glass tint over it (side tabs, set in Style →
+Tabs & toolbar, become a frosted sidebar the same way); its outline runs straight
 down its sides into a fine line along the bottom of the tab strip. A toolbar or
 tab strip colour fixed in Browser colours turns this off. Glass menu panels
 paint the browser behind them (frosted inside their smooth rounded shape),

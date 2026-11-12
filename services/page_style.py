@@ -26,9 +26,11 @@ DEFAULTS = {
     "chrome": {},
     # Steed's own pages take their colours from the New Tab photo too.
     "pages_follow_photo": True,
+    # Compact mode: tabs and toolbar float over the page, shown at the top edge.
+    "compact": False,
 }
 # Added after styles were first saved; older saves lack them.
-LATER_SETTINGS = {"colors", "glass", "chrome", "pages_follow_photo"}
+LATER_SETTINGS = {"colors", "glass", "chrome", "pages_follow_photo", "compact"}
 # Every colour of the browser around pages (see ui.chrome_style.chrome_colors).
 CHROME_FIELDS = {
     "toolbar": "Toolbar and current tab",

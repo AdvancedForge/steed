@@ -9,6 +9,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Compact mode, side glass tabs — November 11, 2026.** Compact mode floats the
+tabs and toolbar over the page (Ctrl+Shift+K); the glass picture now covers
+any bar layout, so side tabs are a frosted sidebar lined up with the page.
+Manual check: compact mode's reveal at the top edge on a real desktop.
+
 **Live glass cards, fading colours — November 11, 2026.** Hover cards show
 the current tab live and refresh other tabs' snapshots after loads; frosted
 with Liquid Glass. Photo colour changes fade over 0.4 s.

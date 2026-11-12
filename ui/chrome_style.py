@@ -238,12 +238,13 @@ QMenu::item {{ border-radius: 8px; }}
 PANE_ALPHA = {True: 26, False: 77}
 
 
-def frost(image, width, height, chrome, dark, pane_top):
+def glass_canvas(image, width, height, regions, dark, panes=()):
     """The browser's bars as frosted glass over a picture that fills the
-    whole width x height window: its top `chrome` pixels, cropped exactly as
-    the New Tab page crops the rest (cover, centred), evenly blurred, toned
-    so text stays readable; from pane_top down (the toolbar) the light glass
-    tint the current tab has too, so the two read as one piece."""
+    whole width x height window, cropped as the New Tab page crops it (cover,
+    centred), evenly blurred and toned so text stays readable. regions:
+    {name: QRect} in window coordinates (a top bar, a side strip, bars over
+    the page in compact mode); returns {name: QImage}. Regions in panes (the
+    toolbar) get the light glass tint the current tab has too."""
     from math import ceil
 
     from PyQt6.QtCore import QRect, Qt
@@ -253,45 +254,49 @@ def frost(image, width, height, chrome, dark, pane_top):
     scale = max(width / image.width(), height / image.height())
     left = (image.width() * scale - width) / 2
     top = (image.height() * scale - height) / 2
-    margin = 32  # Blur from a little more than is shown: no hard bottom edge.
-    rows = chrome + margin
     source = QRect(
         int(left / scale),
         int(top / scale),
         max(1, ceil(width / scale)),
-        max(1, ceil(rows / scale)),
+        max(1, ceil(height / scale)),
     )
-    region = image.copy(source).scaled(width, rows, ignore, smooth)
+    canvas = image.copy(source).scaled(width, height, ignore, smooth)
     # The same factor both ways, so nothing smears into streaks.
-    blurred = region
-    for factor in (14, 4, 1):
-        blurred = blurred.scaled(
-            max(1, width // factor), max(1, rows // factor), ignore, smooth
+    for factor in (14, 4):
+        canvas = canvas.scaled(
+            max(1, width // factor), max(1, height // factor), ignore, smooth
         )
-    out = blurred.scaled(width, rows, ignore, smooth).copy(0, 0, width, chrome)
-    out = out.convertToFormat(QImage.Format.Format_RGB32)
-    probe = out.scaled(32, 4, ignore, smooth)
-    light = (
-        sum(probe.pixelColor(x, y).lightnessF() for x in range(32) for y in range(4))
-        / 128
+    canvas = canvas.scaled(width, height, ignore, smooth).convertToFormat(
+        QImage.Format.Format_RGB32
     )
-    painter = QPainter(out)
+    shown = [rect.intersected(canvas.rect()) for rect in regions.values()]
+    shown = [rect for rect in shown if not rect.isEmpty()]
+    samples = []
+    for rect in shown:
+        probe = canvas.copy(rect).scaled(16, 4, ignore, smooth)
+        samples += [
+            probe.pixelColor(x, y).lightnessF() for x in range(16) for y in range(4)
+        ]
+    light = sum(samples) / len(samples) if samples else 0.5
+    painter = QPainter(canvas)
     if dark:  # Light text: darken bright pictures.
         alpha = min(0.7, max(0.15, 1 - 0.3 / max(light, 0.01)))
-        painter.fillRect(out.rect(), QColor(0, 0, 0, int(alpha * 255)))
+        painter.fillRect(canvas.rect(), QColor(0, 0, 0, int(alpha * 255)))
     else:  # Dark text: lighten dark pictures.
         alpha = min(0.7, max(0.15, (0.78 - light) / max(1 - light, 0.01)))
-        painter.fillRect(out.rect(), QColor(255, 255, 255, int(alpha * 255)))
-    if pane_top < chrome:
-        painter.fillRect(
-            0,
-            pane_top,
-            width,
-            chrome - pane_top,
-            QColor(255, 255, 255, PANE_ALPHA[bool(dark)]),
-        )
+        painter.fillRect(canvas.rect(), QColor(255, 255, 255, int(alpha * 255)))
     painter.end()
-    return out
+    pieces = {}
+    for name, rect in regions.items():
+        piece = canvas.copy(rect)
+        if name in panes:
+            painter = QPainter(piece)
+            painter.fillRect(
+                piece.rect(), QColor(255, 255, 255, PANE_ALPHA[bool(dark)])
+            )
+            painter.end()
+        pieces[name] = piece
+    return pieces
 
 
 def blurred(pixmap, factor=12):
