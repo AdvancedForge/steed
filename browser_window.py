@@ -55,7 +55,12 @@ from site_settings import site_key
 from tab_manager import GROUP_COLORS, TabManager, TabState
 from ui import media_controls
 from ui.address_bar import AddressBar
-from ui.chrome_style import bar_stylesheet, browser_colors, menu_stylesheet
+from ui.chrome_style import (
+    bar_stylesheet,
+    browser_colors,
+    menu_stylesheet,
+    scrollbar_stylesheet,
+)
 from ui.devtools import DevToolsHost, DevToolsUnavailable
 from ui.find_bar import FindBar
 from ui.layout_dialog import LayoutDialog
@@ -1231,6 +1236,8 @@ class BrowserWindow(QMainWindow):
         )
         self.address_bar.apply_style(colors)
         bars = bar_stylesheet(colors)
+        # Scroll bars in dialogs and panels match the web pages' ones.
+        self.setStyleSheet(self.styleSheet() + scrollbar_stylesheet(colors))
         menus = menu_stylesheet(colors)
         for menu in (
             getattr(self, "browser_menu", None),

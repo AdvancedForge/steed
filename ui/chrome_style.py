@@ -307,3 +307,19 @@ def blurred(pixmap, factor=12):
             max(1, size.width() // step), max(1, size.height() // step), ignore, smooth
         )
     return small.scaled(size, ignore, smooth)
+
+
+def scrollbar_stylesheet(colors):
+    """Native scroll bars that match the web ones (root.css): thin, rounded,
+    in the browser's text colour, evenly inset, no arrows."""
+    ink = QColor(colors["ink"])
+    rgb = f"{ink.red()},{ink.green()},{ink.blue()}"
+    return f"""
+QScrollBar:vertical {{ background: transparent; width: 12px; margin: 4px 0; border: none; }}
+QScrollBar:horizontal {{ background: transparent; height: 12px; margin: 0 4px; border: none; }}
+QScrollBar::handle:vertical {{ background: rgba({rgb},62); border-radius: 2px; min-height: 36px; margin: 0 4px; }}
+QScrollBar::handle:horizontal {{ background: rgba({rgb},62); border-radius: 2px; min-width: 36px; margin: 4px 0; }}
+QScrollBar::handle:hover {{ background: rgba({rgb},107); }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; border: none; background: none; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+"""

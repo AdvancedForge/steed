@@ -635,6 +635,15 @@ only opens sub-menus; everything else (Settings, Downloads, …) needs a click.
 Rows have no boxes, and the thin scrollbar sits on the left. With Liquid
 Glass both kinds of menu are rounded and see-through.
 
+### Scroll bars
+
+Steed's pages, menus and panels share one scroll bar: thin, rounded, in the
+page's text colour, inset evenly from both sides, without arrows. Websites
+get thin overlay scroll bars that take no space and show while you scroll or
+point at them (sites that style their own keep theirs). To have websites use
+classic scroll bars, set `"thin_scrollbars": false` in
+`~/.custom_browser/config.json` and restart Steed.
+
 ### Liquid glass
 
 **View → Liquid Glass** (also the new tab's gear panel under *Look*, or the
@@ -647,8 +656,8 @@ photo or image (and *Match the background* on), the picture becomes the
 background of the whole window: the menu bar, tab strip and toolbar show its
 top as frosted glass and the New Tab page shows the rest, lined up (redone
 when the window is resized; kept in `~/.custom_browser/frost/`). The current
-tab and the toolbar share one glass tint over it; its outline runs down its
-curved feet into a fine line along the bottom of the tab strip. A toolbar or
+tab and the toolbar share one glass tint over it; its outline runs straight
+down its sides into a fine line along the bottom of the tab strip. A toolbar or
 tab strip colour fixed in Browser colours turns this off. Glass menu panels
 paint the browser behind them (frosted inside their smooth rounded shape),
 so they need no see-through windows from the desktop; the toolbar's native
