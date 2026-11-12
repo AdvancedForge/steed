@@ -317,8 +317,9 @@ class StartPages(QObject):
         self.photos = NewTabPhotos(registry.config.config_dir / "newtab", self)
         # Profiles whose customize panel stays open on the next render.
         self.keep_open = set()
-        # How far down the window New Tab pages start (glass: see render_simple).
-        self.canvas_offset = 0
+        # Where New Tab pages sit in the window, and its size (x, y, width,
+        # height): with glass the picture fills the window (render_simple).
+        self.canvas = None
         # Profiles that asked for a new photo now (their new tabs show it).
         self.photo_wanted = set()
         self._image_tints = {}
@@ -707,10 +708,14 @@ class StartPages(QObject):
         private = profile == "search"
         glass = styles.get(profile)["glass"]
         css = SIMPLE_CSS + root_css + background + (GLASS_CSS if glass else "")
-        if glass and self.canvas_offset > 0 and settings["background"] != "color":
-            # The picture fills the whole window: the bars above show its top
-            # (frosted), so the page shows it from where they end.
-            css += f"body::before {{ top: -{int(self.canvas_offset)}px; }}"
+        if glass and self.canvas and settings["background"] != "color":
+            # The picture fills the whole window: the bars show their part of
+            # it (frosted), so the page shows it from where it sits.
+            x, y, width, height = (int(value) for value in self.canvas)
+            css += (
+                f"body::before {{ left: -{x}px; top: -{y}px; width: {width}px;"
+                f" height: {height}px; right: auto; bottom: auto; }}"
+            )
         tint = self.theme_tint(profile)
         if tint:  # The page's highlights match the browser's.
             from ui.chrome_style import tint_colors

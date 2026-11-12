@@ -691,6 +691,12 @@ class BrowserWindow(QMainWindow):
         self.status_bar_action.triggered.connect(
             lambda checked: self._set_bar("status_bar", checked)
         )
+        self.compact_action = QAction("Compact Mode", self, checkable=True)
+        self.compact_action.setShortcut(QKeySequence("Ctrl+Shift+K"))
+        self.compact_action.triggered.connect(
+            lambda checked: self._set_bar("compact", checked)
+        )
+        self.addAction(self.compact_action)
         self.glass_action = QAction("Liquid Glass", self, checkable=True)
         self.glass_action.triggered.connect(
             lambda checked: self._set_bar("glass", checked)
@@ -699,6 +705,7 @@ class BrowserWindow(QMainWindow):
             view_menu.addAction(action)
             self.addAction(action)
         view_menu.addAction(self.glass_action)
+        view_menu.addAction(self.compact_action)
         general_menu.addAction("Customize New Tab…").triggered.connect(
             self._customize_new_tab
         )
@@ -1343,15 +1350,16 @@ class BrowserWindow(QMainWindow):
 
     def _frost(self, profile, colors, dark):
         """The New Tab picture as the background of the whole window: the
-        bars show its top (frosted), the New Tab page the rest, lined up.
-        {"frost_menu", "frost_toolbar": file paths, "frost_strip": a data
-        URL}, or {} without a picture."""
+        bars (above the page, beside it, or over it in compact mode) show it
+        frosted, the New Tab page the rest, lined up. {"frost_menu",
+        "frost_toolbar": file paths, "frost_strip": a data URL}, or {}
+        without a picture."""
         import base64
         import hashlib
 
-        from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
+        from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QRect
 
-        from ui.chrome_style import frost
+        from ui.chrome_style import glass_canvas
 
         pages = self.profile_manager.registry.start_pages
         found = pages.background_image(profile)
@@ -1359,42 +1367,52 @@ class BrowserWindow(QMainWindow):
             return {}
 
         def place(widget, shown=True):
-            if not shown or widget.isHidden():
-                return 0, 0
-            top = widget.mapTo(self, QPoint(0, 0)).y()
-            return top, max(widget.height(), 1)
+            if not shown or widget.isHidden() or widget.width() < 1:
+                return None
+            return QRect(widget.mapTo(self, QPoint(0, 0)), widget.size())
 
-        content = self.tab_container.mapTo(self, QPoint(0, 0)).y()
+        content = self.tab_container.mapTo(self, QPoint(0, 0))
         width = max(self.width(), 1)
-        height = max(content + self.tab_container.height(), content + 1)
-        menu = place(self.menuBar(), self.menuBar().isVisible())
-        strip, bar = place(self.tab_bar), place(self.address_bar)
-        # The New Tab page shifts its picture up by the bars' height.
-        if pages.canvas_offset != content:
+        height = max(content.y() + self.tab_container.height(), content.y() + 1)
+        regions = {
+            "menu": place(self.menuBar(), self.menuBar().isVisible()),
+            "strip": place(self.tab_bar),
+            "toolbar": place(self.address_bar),
+        }
+        regions = {name: rect for name, rect in regions.items() if rect is not None}
+        # The New Tab page shifts its picture by where it starts.
+        canvas = (content.x(), content.y(), width, height)
+        if pages.canvas != canvas:
             # Pages render with it from now on (style changes reload them);
             # after a resize, _resized shows open ones again.
-            pages.canvas_offset = content
+            pages.canvas = canvas
             self._canvas_moved = True
-        key = (found[0], width, height, content, menu, strip, bar, dark)
+        key = (
+            found[0],
+            canvas,
+            tuple((name, rect.getRect()) for name, rect in regions.items()),
+            dark,
+        )
         if getattr(self, "_frost_cache", (None,))[0] == key:
             return self._frost_cache[1]
-        image = frost(found[1], width, height, content, dark, bar[0])
+        pieces = glass_canvas(found[1], width, height, regions, dark, ("toolbar",))
         folder = self.config.config_dir / "frost"
         folder.mkdir(parents=True, exist_ok=True)
         name = hashlib.sha1(repr(key).encode()).hexdigest()[:16]
         result = {}
-        for part, (top, size) in (("menu", menu), ("toolbar", bar)):
-            if size:
+        for part in ("menu", "toolbar"):
+            if part in pieces:
                 path = folder / f"{part}-{name}.png"
-                image.copy(0, top, width, size).save(str(path))
+                pieces[part].save(str(path))
                 result["frost_" + part] = path.as_posix()
-        data = QByteArray()
-        buffer = QBuffer(data)
-        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        image.copy(0, strip[0], width, max(strip[1], 1)).save(buffer, "JPEG", 85)
-        result["frost_strip"] = "data:image/jpeg;base64," + base64.b64encode(
-            bytes(data)
-        ).decode("ascii")
+        if "strip" in pieces:
+            data = QByteArray()
+            buffer = QBuffer(data)
+            buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+            pieces["strip"].save(buffer, "JPEG", 85)
+            result["frost_strip"] = "data:image/jpeg;base64," + base64.b64encode(
+                bytes(data)
+            ).decode("ascii")
         # Earlier slices: no longer shown (stylesheets name the new files).
         for old in folder.glob("*.png"):
             if name not in old.name:
@@ -1473,6 +1491,9 @@ class BrowserWindow(QMainWindow):
             self.chrome_layout.insertWidget(index, self.tab_bar)
         if not getattr(self, "_was_fullscreen", False):
             self.tab_bar.show()
+        compact = getattr(self, "compact", None)
+        if compact is not None and compact.active and not compact.moving:
+            compact.resync()
 
     def _apply_layout_text(self):
         from ui.layout_panel import apply_chrome_font
@@ -6216,6 +6237,15 @@ class BrowserWindow(QMainWindow):
         self.menu_bar_action.setChecked(value["menu_bar"])
         self.status_bar_action.setChecked(value["status_bar"])
         self.glass_action.setChecked(value["glass"])
+        self.compact_action.setChecked(value["compact"])
+        if getattr(self, "compact", None) is None:
+            from ui.compact_mode import CompactChrome
+
+            self.compact = CompactChrome(self)
+        if self.compact.active != value["compact"]:
+            self.compact.enable(value["compact"])
+            # The page now starts higher or lower: redo the glass picture.
+            QTimer.singleShot(0, self._resized)
         if not self.isFullScreen():
             self.menuBar().setVisible(value["menu_bar"])
             self.status_bar.setVisible(self._status_bar_wanted())

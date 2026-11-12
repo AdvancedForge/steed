@@ -591,10 +591,12 @@ class SimpleNewTabTests(unittest.TestCase):
         self.assertTrue(Path(path).is_file())
         self.assertEqual(Path(path).parent, window.config.config_dir / "frost")
         # One picture behind the whole window: the page starts below the bars.
-        content = window.tab_container.mapTo(window, QPoint(0, 0)).y()
-        self.assertEqual(self.pages.canvas_offset, content)
+        content = window.tab_container.mapTo(window, QPoint(0, 0))
+        x, y, width, height = self.pages.canvas
+        self.assertEqual((x, y, width), (content.x(), content.y(), window.width()))
         self.assertIn(
-            f"body::before {{ top: -{content}px; }}",
+            f"body::before {{ left: -{x}px; top: -{y}px; width: {width}px;"
+            f" height: {height}px;",
             self.pages.render("global", "newtab").decode(),
         )
         from PyQt6.QtGui import QImage as Image
@@ -679,6 +681,58 @@ class SimpleNewTabTests(unittest.TestCase):
         tab.preview = None
         window._refresh_preview(tab)
         self.assertTrue(tab.preview)
+
+    def test_compact_mode_floats_the_bars_over_the_page(self):
+        window = self.window
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.loaded(tab)
+        layout = window.chrome_layout
+        self.assertGreater(window.tab_container.mapTo(window, QPoint(0, 0)).y(), 0)
+        window.compact_action.trigger()
+        self.settle()
+        compact = window.compact
+        self.assertTrue(compact.active)
+        self.assertTrue(window.compact_action.isChecked())
+        self.assertLess(layout.indexOf(window.address_bar), 0)
+        self.assertLess(layout.indexOf(window.tab_bar), 0)
+        self.assertFalse(compact.overlay.isVisible())
+        # The page has the whole window: it starts at the top.
+        self.assertEqual(window.tab_container.mapTo(window, QPoint(0, 0)).y(), 0)
+        # Typing an address (or pointing at the top) brings the bars back.
+        window.address_bar.focus_address()
+        self.wait(lambda: compact.overlay.isVisible())
+        self.assertEqual(compact.overlay.width(), window.chrome_column.width())
+        tab.setFocus()
+        compact.conceal()
+        self.assertFalse(compact.overlay.isVisible())
+        # Side tabs stay beside the page; only the toolbar floats.
+        appearance = dict(window.tab_bar.appearance)
+        window.tab_bar.appearance = {**appearance, "position": "left"}
+        window._place_tab_strip("left")
+        self.assertEqual(compact.moved, [window.address_bar])
+        self.assertGreaterEqual(window.chrome_row.indexOf(window.tab_bar), 0)
+        window.tab_bar.appearance = appearance
+        window._place_tab_strip("top")
+        self.assertEqual(compact.moved, [window.tab_bar, window.address_bar])
+        # Off: both are back above the page, in order.
+        window.compact_action.trigger()
+        self.settle()
+        self.assertFalse(compact.active)
+        self.assertEqual(layout.indexOf(window.tab_bar), 0)
+        self.assertEqual(layout.indexOf(window.address_bar), 1)
+        self.assertGreater(window.tab_container.mapTo(window, QPoint(0, 0)).y(), 0)
+
+    def test_compact_glass_bars_are_frosted_over_the_page(self):
+        window = self.window
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: self.pages.photos.current() is not None)
+        self.loaded(tab)
+        window._set_bar("glass", True)
+        window._set_bar("compact", True)
+        self.settle(0.6)
+        x, y, width, height = self.pages.canvas
+        self.assertEqual((x, y), (0, 0))  # The picture starts behind the bars.
+        self.assertTrue(window.tab_bar.chrome["frost"].startswith("data:image/jpeg"))
 
 
 if __name__ == "__main__":
