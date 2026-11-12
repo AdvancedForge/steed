@@ -748,6 +748,13 @@ unpacked folder, a `.zip` or a `.crx` file in Manage Extensions. Manifest V2
 extensions are refused (current Chrome no longer runs them either). The store's
 signature on a `.crx` is not checked.
 
+**Just installed.** A newly installed or switched-on extension's background
+can take a while to start (the official Bitwarden extension's took about a
+minute in testing), and Qt WebEngine 6.11 crashes if its profile closes before
+then. Steed checks each such background until it is active; closing the last
+window in the meantime shows "Finishing setting up …" and closes when it is
+ready (at most two minutes; closing again quits at once).
+
 **What works.** Qt WebEngine 6.11 runs content scripts, popups and background
 service workers, but gives extensions only part of Chrome's APIs (`alarms`,
 `declarativeNetRequest`, `i18n`, `management`, `offscreen`, `runtime`,
@@ -1118,10 +1125,10 @@ Desktop password managers' auto-type (for example
 [KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type))
 also works: window titles include the active hostname,
 so a window association such as `Custom Browser - * - accounts.google.com`
-can match the site. General extension support remains pending. Loading the
-unmodified official Bitwarden 2026.9.2 package crashed the tested Qt WebEngine
-6.11 runtime with both install and unpacked-load APIs, so it is not exposed as
-a supported password-manager option.
+can match the site. The official Bitwarden extension (2026.10.2, checked
+November 12, 2026) installs from the Chrome Web Store and runs; see
+Extensions for the one engine limit it hit (closing while its background was
+still starting), which Steed now works around.
 
 ### Passkeys
 
