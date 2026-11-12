@@ -44,11 +44,28 @@ CAPTURE_SCRIPT = """
 (() => {
     if (window.__steedLoginWatch) return;
     window.__steedLoginWatch = true;
+    // Inputs in the page and inside web components' (open) shadow roots,
+    // where some sign-in forms live; bounded on very large pages.
+    const deepInputs = root => {
+        const found = [], pending = [root];
+        let seen = 0;
+        while (pending.length && seen < 20000) {
+            const node = pending.shift();
+            node.querySelectorAll('input').forEach(el => found.push(el));
+            for (const el of node.querySelectorAll('*')) {
+                if (++seen >= 20000) break;
+                if (el.shadowRoot) pending.push(el.shadowRoot);
+            }
+        }
+        return found;
+    };
+    // The element really acted on, inside a shadow root if there is one.
+    const actual = e => (e.composedPath && e.composedPath()[0]) || e.target;
     const visible = el => el instanceof HTMLInputElement && !el.disabled &&
         el.getClientRects().length > 0;
     const record = root => {
         const scope = root && root.querySelectorAll ? root : document;
-        const inputs = Array.from(scope.querySelectorAll('input')).filter(visible);
+        const inputs = deepInputs(scope).filter(visible);
         const passwords = inputs.filter(el => el.type === 'password' && el.value);
         if (!passwords.length) return;
         const fresh = passwords.filter(el => (el.autocomplete || '').includes('new-password'));
@@ -71,17 +88,19 @@ CAPTURE_SCRIPT = """
     // also needs the user's own recent input.
     document.addEventListener('submit', e => {
         if (e.isTrusted && navigator.userActivation && navigator.userActivation.isActive)
-            record(e.target);
+            record(actual(e));
     }, true);
     document.addEventListener('click', e => {
         if (!e.isTrusted) return;
-        const button = e.target.closest &&
-            e.target.closest('button, input[type=submit], input[type=button], [role=button]');
+        const target = actual(e);
+        const button = target.closest &&
+            target.closest('button, input[type=submit], input[type=button], [role=button]');
         if (button) record(button.form || document);
     }, true);
     document.addEventListener('keydown', e => {
-        if (e.isTrusted && e.key === 'Enter' && e.target instanceof HTMLInputElement)
-            record(e.target.form || document);
+        const target = actual(e);
+        if (e.isTrusted && e.key === 'Enter' && target instanceof HTMLInputElement)
+            record(target.form || document);
     }, true);
 })();
 """
@@ -107,9 +126,26 @@ def take_script(expected, force):
     """Hand over a captured login once its form is gone (or on navigation)."""
     return _script(
         """
+    // Inputs in the page and inside web components' (open) shadow roots,
+    // where some sign-in forms live; bounded on very large pages.
+    const deepInputs = root => {
+        const found = [], pending = [root];
+        let seen = 0;
+        while (pending.length && seen < 20000) {
+            const node = pending.shift();
+            node.querySelectorAll('input').forEach(el => found.push(el));
+            for (const el of node.querySelectorAll('*')) {
+                if (++seen >= 20000) break;
+                if (el.shadowRoot) pending.push(el.shadowRoot);
+            }
+        }
+        return found;
+    };
+    // The element really acted on, inside a shadow root if there is one.
+    const actual = e => (e.composedPath && e.composedPath()[0]) || e.target;
     const capture = window.__steedLoginCapture;
     if (!capture) return null;
-    const present = Array.from(document.querySelectorAll('input[type=password]'))
+    const present = deepInputs(document).filter(el => el.type === 'password')
         .some(el => el.value === capture.password && el.getClientRects().length > 0);
     if (present && !ARGS.force) return {pending: true};
     window.__steedLoginCapture = null;
@@ -130,7 +166,24 @@ _FIELDS = """
             box.left < document.documentElement.scrollWidth &&
             box.top < document.documentElement.scrollHeight;
     };
-    const inputs = Array.from(document.querySelectorAll('input')).filter(visible);
+    // Inputs in the page and inside web components' (open) shadow roots,
+    // where some sign-in forms live; bounded on very large pages.
+    const deepInputs = root => {
+        const found = [], pending = [root];
+        let seen = 0;
+        while (pending.length && seen < 20000) {
+            const node = pending.shift();
+            node.querySelectorAll('input').forEach(el => found.push(el));
+            for (const el of node.querySelectorAll('*')) {
+                if (++seen >= 20000) break;
+                if (el.shadowRoot) pending.push(el.shadowRoot);
+            }
+        }
+        return found;
+    };
+    // The element really acted on, inside a shadow root if there is one.
+    const actual = e => (e.composedPath && e.composedPath()[0]) || e.target;
+    const inputs = deepInputs(document).filter(visible);
     const set = (el, value) => {
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
         el.focus();

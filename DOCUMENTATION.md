@@ -1088,6 +1088,8 @@ memory. Incognito never saves or fills passwords.
   fills a sign-up or change-password form and copies the password. Copied
   passwords and codes are marked as secret for clipboard managers and cleared
   from the clipboard after 30 seconds.
+- **Web components:** sign-in forms built inside web components (open shadow
+  roots) are saved and filled like any other.
 - **steed:passwords** (General → Passwords…): search; show a password (hidden
   again after 30 seconds); copy username, password or code; edit, add and delete
   logins; add a one-time-code secret (`otpauth://` link or base32); the
