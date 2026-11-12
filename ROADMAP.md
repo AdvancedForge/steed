@@ -9,6 +9,10 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Your own photos — November 11, 2026.** New Tab photos can come from photos
+you add, a folder (shuffled, each once per round), or favourites; save the
+current photo, skip online ones for good, black & white style.
+
 **Scroll bars, plain glass tab — November 11, 2026.** One themed scroll bar
 for Steed's pages, menus and native panels; thin overlay scroll bars on
 websites (`thin_scrollbars` to turn off); the glass tab has no curved feet.

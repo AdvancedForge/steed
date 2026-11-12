@@ -42,6 +42,11 @@ DEFAULT_SETTINGS = {
     "background": "photo",
     "color": "",
     "photo_every": "6h",
+    # Where photos come from (newtab_photo.SOURCES), the folder for "folder",
+    # and "color" or "grayscale".
+    "photo_source": "online",
+    "photo_folder": "",
+    "photo_style": "color",
     # The browser's toolbar and tabs take their colour from the background.
     "match_theme": True,
     # Customize inside the ☰ menu instead of its own gear button.
@@ -226,6 +231,20 @@ def clean_settings(value):
     match_theme = value.get("match_theme", True)
     if type(match_theme) is not bool:
         raise ValueError("Choose whether the browser matches the background")
+    from services.newtab_photo import SOURCES, STYLES
+
+    source = value.get("photo_source", "online")
+    folder = value.get("photo_folder", "")
+    style = value.get("photo_style", "color")
+    if source not in SOURCES or style not in STYLES:
+        raise ValueError("Choose where photos come from and how they look")
+    if (
+        not isinstance(folder, str)
+        or len(folder) > 4096
+        or "\x00" in folder
+        or (folder and not Path(folder).is_absolute())
+    ):
+        raise ValueError("Choose a folder of photos")
     gear_in_menu = value.get("gear_in_menu", False)
     if type(gear_in_menu) is not bool:
         raise ValueError("Choose where New Tab's settings button goes")
@@ -246,6 +265,9 @@ def clean_settings(value):
         "photo_every": every,
         "match_theme": match_theme,
         "gear_in_menu": gear_in_menu,
+        "photo_source": source,
+        "photo_folder": folder,
+        "photo_style": style,
     }
 
 
@@ -715,6 +737,7 @@ class StartPages(QObject):
             glass=glass,
             in_menu=in_menu,
             menu_available=has_menu,
+            photo=self.photos.current(),
         )
         if in_menu:
             menu, panel = newtab_menu(panel, open_=opened), ""
@@ -795,7 +818,7 @@ class StartPages(QObject):
 
     def set_from_page(self, profile, params):
         """A choice made in the new tab's customize panel (checked here)."""
-        from services.newtab_photo import PERIODS
+        from services.newtab_photo import PERIODS, SOURCES, STYLES
 
         allowed = {
             "background": BACKGROUNDS,
@@ -803,6 +826,8 @@ class StartPages(QObject):
             "photo_every": tuple(PERIODS),
             "match_theme": ("1", "0"),
             "gear_in_menu": ("1", "0"),
+            "photo_source": SOURCES,
+            "photo_style": STYLES,
         }
         changes = {}
         for key, value in params:
@@ -818,6 +843,9 @@ class StartPages(QObject):
                 raise ValueError("Not a choice the panel offers")
         if not changes:
             raise ValueError("Nothing chosen")
+        current = self.state(profile)["settings"]
+        if changes.get("photo_source") == "folder" and not current["photo_folder"]:
+            raise ValueError("Choose a folder of photos first")
         settings = {**self.state(profile)["settings"], **changes}
         self.keep_open.add(profile)
         self.configure(profile, settings)
@@ -830,8 +858,8 @@ class StartPages(QObject):
         if choice == "image" and settings["image"]:
             return (f'body {{ --newtab-image: url("{settings["image"]}"); }}', "", True)
         if choice == "photo":
+            self.refresh_photo(settings)
             photo = self.photos.current()
-            self.photos.refresh(settings["photo_every"])
             if photo is not None:
                 try:
                     data = base64.b64encode(photo["path"].read_bytes()).decode("ascii")
@@ -840,7 +868,9 @@ class StartPages(QObject):
                 if data:
                     author = escape(photo["author"] or "Unsplash")
                     credit = (
-                        f'<a class="credit" href="{escape(photo["page"])}">'
+                        ""  # Your own photos need no credit.
+                        if photo["source"] != "online"
+                        else f'<a class="credit" href="{escape(photo["page"])}">'
                         f"Photo: {author} · Unsplash</a>"
                         if photo["page"]
                         else f'<span class="credit">Photo: {author}</span>'
@@ -856,6 +886,16 @@ class StartPages(QObject):
         if color:
             return (f"body {{ --newtab-color: {color}; }}", "", _is_dark(color))
         return (FALLBACK_GRADIENT_DARK if dark else FALLBACK_GRADIENT, "", False)
+
+    def refresh_photo(self, settings, now=False):
+        """A new photo when one is due, from the source these settings choose."""
+        self.photos.refresh(
+            settings["photo_every"],
+            now=now,
+            source=settings["photo_source"],
+            folder=settings["photo_folder"],
+            style=settings["photo_style"],
+        )
 
     def news_section(self, profile):
         feed = self.state(profile)["settings"]["feed"]
@@ -876,7 +916,7 @@ SWATCHES = (
 
 
 def customize_panel(
-    settings, open_=False, glass=False, in_menu=False, menu_available=True
+    settings, open_=False, glass=False, in_menu=False, menu_available=True, photo=None
 ):
     """The gear's panel: links to Steed actions (the page runs no script).
     in_menu: a row inside the ☰ menu rather than its own button."""
@@ -899,6 +939,52 @@ def customize_panel(
         ' href="steed://action/newtab-image">Your image…</a></div>',
     ]
     if background == "photo":
+        source = settings["photo_source"]
+        parts.append('<h3>Photos from</h3><div class="choices">')
+        for value, label in (
+            ("online", "Online"),
+            ("mine", "Your photos"),
+            ("folder", "A folder"),
+            ("favourites", "Favourites"),
+        ):
+            if value == "folder" and not settings["photo_folder"]:
+                # No folder yet: choosing one comes first.
+                parts.append(
+                    '<a class="pill" href="steed://action/newtab-folder">A folder…</a>'
+                )
+                continue
+            parts.append(choice(label, "photo_source", value, source == value))
+        parts.append(
+            '</div><div class="choices photo-tools">'
+            '<a class="pill" href="steed://action/newtab-add-photos">Add photos…</a>'
+            '<a class="pill" href="steed://action/newtab-folder">'
+            + ("Change folder…" if settings["photo_folder"] else "Choose folder…")
+            + "</a>"
+        )
+        if photo is not None:
+            saved = photo["favourite"] or photo["source"] == "favourites"
+            parts.append(
+                '<span class="pill on">♥ Saved</span>'
+                if saved
+                else '<a class="pill" href="steed://action/newtab-favourite">'
+                "♡ Save this photo</a>"
+            )
+            if photo["source"] == "online":
+                parts.append(
+                    '<a class="pill" href="steed://action/newtab-block">'
+                    "Not this one</a>"
+                )
+        if settings["photo_folder"] and source == "folder":
+            parts.append(
+                f'<p class="folder">{escape(Path(settings["photo_folder"]).name)}</p>'
+            )
+        parts.append('</div><h3>Style</h3><div class="choices">')
+        style = settings["photo_style"]
+        parts.append(choice("Colour", "photo_style", "color", style == "color"))
+        parts.append(
+            choice("Black & white", "photo_style", "grayscale", style == "grayscale")
+        )
+        parts.append("</div>")
         parts.append('<h3>New photo</h3><div class="choices">')
         for value, label in (
             ("new_tab", "Every tab"),
@@ -1045,6 +1131,7 @@ body.glass .browser-menu .customize summary.row { color: inherit; }
 .swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
 .swatch.theme { background: linear-gradient(135deg, #dfe9ff, #f3e3f7); }
 .more { display: block; margin-top: 14px; font-size: 13px; color: var(--accent); }
+.photo-tools { margin-top: 8px; } .corner > .customize > .panel { max-height: calc(100vh - 90px); overflow-y: auto; } .panel .folder { width: 100%; margin: 2px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 """
 GEAR = (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'

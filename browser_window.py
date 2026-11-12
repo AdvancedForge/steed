@@ -6273,6 +6273,58 @@ class BrowserWindow(QMainWindow):
             # and leaves nothing to reload. The same address replaces it.
             self.navigation.navigate(tab, tab.url())
 
+    def _newtab_photo_action(self, profile, action):
+        """Your own photos, a folder, favourites and skipping online ones."""
+        pages = self.profile_manager.registry.start_pages
+        photos = pages.photos
+        settings = pages.state(profile)["settings"]
+        changes = None
+        if action == "newtab-add-photos":
+            paths, _ = QFileDialog.getOpenFileNames(
+                self,
+                "Add Photos",
+                "",
+                "Images (*.png *.jpg *.jpeg *.webp *.gif *.bmp)",
+            )
+            if not paths:
+                return
+            added = photos.add_photos(paths)
+            self.status_bar.showMessage(f"Added {added} photo(s).", 5000)
+            if added:
+                changes = {"photo_source": "mine"}
+        elif action == "newtab-folder":
+            folder = QFileDialog.getExistingDirectory(
+                self, "Folder of Photos", settings["photo_folder"]
+            )
+            if not folder:
+                return
+            if not photos.local_photos(folder):
+                self.status_bar.showMessage("That folder has no photos.", 6000)
+                return
+            changes = {"photo_source": "folder", "photo_folder": folder}
+        elif action == "newtab-favourite":
+            if photos.save_favourite() is not None:
+                self.status_bar.showMessage("Saved to Favourites.", 4000)
+                pages.keep_open.add(profile)
+                self._refresh_newtabs(force=True)
+            return
+        elif action == "newtab-block":
+            if photos.block_current():
+                self.status_bar.showMessage("That photo won't show again.", 4000)
+            pages.photo_wanted.add(profile)
+            pages.keep_open.add(profile)
+            pages.refresh_photo(settings, now=True)
+            return
+        if changes:
+            try:
+                pages.keep_open.add(profile)
+                pages.photo_wanted.add(profile)
+                settings = {**settings, **changes}
+                pages.configure(profile, settings)
+                pages.refresh_photo(settings, now=True)
+            except (ValueError, OSError) as error:
+                self.status_bar.showMessage(str(error), 6000)
+
     def _choose_newtab_image(self, profile):
         from services.start_pages import image_data
 
@@ -6381,10 +6433,15 @@ class BrowserWindow(QMainWindow):
             elif action == "newtab-photo":
                 pages.photo_wanted.add(profile)
                 pages.keep_open.add(profile)
-                pages.photos.refresh(
-                    pages.state(profile)["settings"]["photo_every"], now=True
-                )
+                pages.refresh_photo(pages.state(profile)["settings"], now=True)
                 self.status_bar.showMessage("Getting a new photo…", 4000)
+            elif action in (
+                "newtab-add-photos",
+                "newtab-folder",
+                "newtab-favourite",
+                "newtab-block",
+            ):
+                self._newtab_photo_action(profile, action)
             elif action == "newtab-image":
                 self._choose_newtab_image(profile)
             elif action == "refresh-news":

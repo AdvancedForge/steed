@@ -99,6 +99,27 @@ class StartPageDialog(HtmlSettingsDialog):
             self.photo_every.findData(settings["photo_every"])
         )
         page.addRow("New photo", self.photo_every)
+        self.photo_folder = settings["photo_folder"]
+        self.photo_source = QComboBox()
+        for value, text in (
+            ("online", "Online (Unsplash via Lorem Picsum)"),
+            ("mine", "Your photos"),
+            ("favourites", "Favourites"),
+            ("folder", "A folder"),
+        ):
+            if value != "folder" or self.photo_folder:
+                self.photo_source.addItem(text, value)
+        self.photo_source.setCurrentIndex(
+            max(0, self.photo_source.findData(settings["photo_source"]))
+        )
+        page.addRow("Photos from", self.photo_source)
+        self.photo_style = QComboBox()
+        self.photo_style.addItem("Colour", "color")
+        self.photo_style.addItem("Black & white", "grayscale")
+        self.photo_style.setCurrentIndex(
+            max(0, self.photo_style.findData(settings["photo_style"]))
+        )
+        page.addRow("Photo look", self.photo_style)
         colors = QHBoxLayout()
         self.color = settings["color"]
         self.color_button = QPushButton()
@@ -289,6 +310,9 @@ class StartPageDialog(HtmlSettingsDialog):
                     "background": self.background_choice.currentData(),
                     "color": self.color,
                     "photo_every": self.photo_every.currentData(),
+                    "photo_source": self.photo_source.currentData(),
+                    "photo_folder": self.photo_folder,
+                    "photo_style": self.photo_style.currentData(),
                     "match_theme": self.match_theme.isChecked(),
                     "gear_in_menu": self.gear_in_menu.isChecked(),
                 },
