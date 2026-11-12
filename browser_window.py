@@ -1239,16 +1239,46 @@ class BrowserWindow(QMainWindow):
             if menu is not None:
                 # Glass menus are rounded and see-through at the corners.
                 menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, glass)
+                menu.setProperty("steed_glass", glass)
+                if not menu.property("steed_rounded"):
+                    from ui.chrome_style import RoundedMenus
+
+                    if getattr(self, "_rounded_menus", None) is None:
+                        self._rounded_menus = RoundedMenus(self)
+                    menu.installEventFilter(self._rounded_menus)
+                    menu.setProperty("steed_rounded", True)
                 menu.setStyleSheet(menus)
         self.menuBar().setStyleSheet(bars)
         self.status_bar.setStyleSheet(bars)
         if hasattr(self, "layout_preferences"):
             self._apply_layout_text()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Glass bars show the picture at the window's size: redo them once
+        # the resizing stops.
+        if getattr(self, "_frost_cache", None) is not None:
+            timer = getattr(self, "_frost_timer", None)
+            if timer is None:
+                timer = self._frost_timer = QTimer(self)
+                timer.setSingleShot(True)
+                timer.setInterval(250)
+                timer.timeout.connect(self._resized)
+            timer.start()
+
+    def _resized(self):
+        if self._closing:
+            return
+        self._canvas_moved = False
+        self.apply_dark_mode()
+        if self._canvas_moved:
+            self._refresh_newtabs()
+
     def _frost(self, profile, colors, dark):
-        """Frosted glass over the New Tab picture for the menu bar, tab strip
-        and toolbar: {"frost_menu", "frost_toolbar": file paths,
-        "frost_strip": a data URL}, or {} without a picture."""
+        """The New Tab picture as the background of the whole window: the
+        bars show its top (frosted), the New Tab page the rest, lined up.
+        {"frost_menu", "frost_toolbar": file paths, "frost_strip": a data
+        URL}, or {} without a picture."""
         import base64
         import hashlib
 
@@ -1256,34 +1286,45 @@ class BrowserWindow(QMainWindow):
 
         from ui.chrome_style import frost
 
-        found = self.profile_manager.registry.start_pages.background_image(profile)
+        pages = self.profile_manager.registry.start_pages
+        found = pages.background_image(profile)
         if found is None:
             return {}
 
-        def height(widget, shown=True):
-            if not shown:
-                return 0
-            return max(widget.height(), widget.sizeHint().height(), 1)
+        def place(widget, shown=True):
+            if not shown or widget.isHidden():
+                return 0, 0
+            top = widget.mapTo(self, QPoint(0, 0)).y()
+            return top, max(widget.height(), 1)
 
-        menu = height(self.menuBar(), not self.menuBar().isHidden())
-        strip, bar = height(self.tab_bar), height(self.address_bar)
-        key = (found[0], menu, strip, bar, colors["toolbar"], dark)
+        content = self.tab_container.mapTo(self, QPoint(0, 0)).y()
+        width = max(self.width(), 1)
+        height = max(content + self.tab_container.height(), content + 1)
+        menu = place(self.menuBar(), self.menuBar().isVisible())
+        strip, bar = place(self.tab_bar), place(self.address_bar)
+        # The New Tab page shifts its picture up by the bars' height.
+        if pages.canvas_offset != content:
+            # Pages render with it from now on (style changes reload them);
+            # after a resize, _resized shows open ones again.
+            pages.canvas_offset = content
+            self._canvas_moved = True
+        key = (found[0], width, height, content, menu, strip, bar, dark)
         if getattr(self, "_frost_cache", (None,))[0] == key:
             return self._frost_cache[1]
-        image = frost(found[1], colors["toolbar"], dark, menu + strip + bar)
+        image = frost(found[1], width, height, content, dark, bar[0])
         folder = self.config.config_dir / "frost"
         folder.mkdir(parents=True, exist_ok=True)
         name = hashlib.sha1(repr(key).encode()).hexdigest()[:16]
         result = {}
-        for part, top, size in (("menu", 0, menu), ("toolbar", menu + strip, bar)):
+        for part, (top, size) in (("menu", menu), ("toolbar", bar)):
             if size:
                 path = folder / f"{part}-{name}.png"
-                image.copy(0, top, image.width(), size).save(str(path))
+                image.copy(0, top, width, size).save(str(path))
                 result["frost_" + part] = path.as_posix()
         data = QByteArray()
         buffer = QBuffer(data)
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        image.copy(0, menu, image.width(), strip).save(buffer, "JPEG", 82)
+        image.copy(0, strip[0], width, max(strip[1], 1)).save(buffer, "JPEG", 85)
         result["frost_strip"] = "data:image/jpeg;base64," + base64.b64encode(
             bytes(data)
         ).decode("ascii")
@@ -6209,14 +6250,18 @@ class BrowserWindow(QMainWindow):
         if not first and not wanted:
             return
         pages.photo_wanted.discard(self.profile_manager.current_profile_name)
+        self._refresh_newtabs(force=wanted)
+
+    def _refresh_newtabs(self, force=False):
+        """Show New Tab pages again (new picture or layout); without force,
+        leave a tab alone while its menu or panel is open or something is
+        typed in its search box."""
         for tab in self.tabs:
             if page_name(tab.url()) != "newtab":
                 continue
-            if wanted:  # Asked for: the panel reopens where it was (keep_open).
+            if force:  # Asked for: the panel reopens where it was (keep_open).
                 self._show_new_photo(tab)
                 continue
-            # Arrived on its own: leave a tab alone while its menu or panel is
-            # open or something is typed in its search box.
             webengine.run_script(
                 tab.page(),
                 "!!document.querySelector('details[open]')"

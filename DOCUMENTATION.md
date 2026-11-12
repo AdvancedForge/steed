@@ -643,10 +643,13 @@ become frosted pills lit by the accent colour (the current one, along the top,
 grows out of the toolbar with curved feet), the toolbar and address field
 get a glossy, lit-from-above finish, hover cards turn translucent, and the new
 tab's search box, buttons and panel become blurred glass. With a New Tab
-photo or image (and *Match the background* on), the menu bar, tab strip and
-toolbar become one pane of frosted glass over the top of that picture (kept
-in `~/.custom_browser/frost/`), unless you fixed a toolbar or tab strip
-colour in Browser colours. The new tab's search box, buttons and panel are
+photo or image (and *Match the background* on), the picture becomes the
+background of the whole window: the menu bar, tab strip and toolbar show its
+top as frosted glass and the New Tab page shows the rest, lined up (redone
+when the window is resized; kept in `~/.custom_browser/frost/`). The current
+tab and the toolbar share one glass tint over it. A toolbar or tab strip
+colour fixed in Browser colours turns this off. Glass menus are cut to a
+rounded shape, so no square corners show on any desktop. The new tab's search box, buttons and panel are
 blurred glass that bends the photo
 behind it slightly, with a slow sheen. With *Match the background* on, the
 glass takes the photo's colour too. Motion is reduced when the system asks
