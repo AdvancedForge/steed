@@ -195,3 +195,8 @@ button:hover:enabled { background: none; border-color: transparent; }
 :root.glass .horizontal:not(.pos-bottom) .tab.active::after { right: -11px; background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--join) 10px); }
 :root.glass .horizontal:not(.pos-bottom) .tail { align-self: center; }
 @media (prefers-reduced-motion: reduce) { :root.glass .tab { transition: none; } }
+
+/* Frosted glass: the New Tab picture, blurred, behind the whole strip. */
+:root.glass.frost body { background: var(--frost) center / 100% 100% no-repeat; }
+:root.glass.frost .horizontal:not(.pos-bottom) .tab.active {
+  background: linear-gradient(180deg, var(--glass-top), transparent 80%), color-mix(in srgb, var(--join) 70%, transparent); }

@@ -760,6 +760,33 @@ class StartPages(QObject):
             return self._image_tints[image]
         return None
 
+    def background_image(self, profile):
+        """(key, QImage) of the picture behind this profile's new tab (the
+        photo or your own image) when the browser follows it, or None."""
+        try:
+            settings = self.state(profile)["settings"]
+        except (ValueError, OSError):
+            return None
+        if settings["layout"] != "simple" or not settings["match_theme"]:
+            return None
+        from PyQt6.QtGui import QImage
+
+        if settings["background"] == "photo":
+            photo = self.photos.current()
+            if photo is None:
+                return None
+            image = QImage(str(photo["path"]))
+            key = f"photo:{photo['fetched']}"
+        elif settings["background"] == "image" and settings["image"]:
+            import base64
+            import hashlib
+
+            data = base64.b64decode(settings["image"].split(",", 1)[1])
+            image, key = QImage.fromData(data), hashlib.sha1(data).hexdigest()
+        else:
+            return None
+        return None if image.isNull() else (key, image)
+
     def set_from_page(self, profile, params):
         """A choice made in the new tab's customize panel (checked here)."""
         from services.newtab_photo import PERIODS

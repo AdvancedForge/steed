@@ -9,6 +9,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Frosted bars, quieter menus — November 11, 2026.** Glass bars are frosted
+over the New Tab picture; menu rows lose their boxes, the scrollbar is thin
+and on the left, sub-menus cascade beside their panel, and only sub-menus
+open on hover (Settings no longer pops up from a hover); YOLO mode shows as
+warning pills. Manual check: frosted bars on a real desktop at other window
+sizes.
+
 **Pages follow the photo, menus beside — November 10, 2026.** Steed's own
 pages take the New Tab photo's colours by default (Style can turn it off);
 New Tab ☰ sections open beside the menu; glass menus are rounded and

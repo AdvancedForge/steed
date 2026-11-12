@@ -541,7 +541,8 @@ class AddressBar(QWidget):
     def set_menu_badge(self, text: str) -> None:
         """Show a short label beside the menu icon (for example YOLO mode)."""
         self.menu_btn.setText(text)
-        self.menu_btn.setObjectName("TextButton" if text else "")
+        # A warning pill (styled as WarningBadge in chrome_style), not plain text.
+        self.menu_btn.setObjectName("WarningBadge" if text else "")
         self.menu_btn.style().unpolish(self.menu_btn)
         self.menu_btn.style().polish(self.menu_btn)
 

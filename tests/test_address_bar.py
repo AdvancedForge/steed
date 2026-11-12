@@ -108,7 +108,7 @@ class ToolbarStyleTests(unittest.TestCase):
             self.assertEqual(button.text(), "")
         self.bar.set_menu_badge("YOLO")
         self.assertEqual(self.bar.menu_btn.text(), "YOLO")
-        self.assertEqual(self.bar.menu_btn.objectName(), "TextButton")
+        self.assertEqual(self.bar.menu_btn.objectName(), "WarningBadge")
         self.bar.set_menu_badge("")
         self.assertEqual(self.bar.menu_btn.objectName(), "")
 

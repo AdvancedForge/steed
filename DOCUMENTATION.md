@@ -629,8 +629,11 @@ The ☰ menus (toolbar and New Tab) and their sections use the toolbar's
 colours, including colours taken from the new tab photo, and are compact:
 about Chrome's menu width, as tall as their items (long sections scroll).
 A section opened from the New Tab ☰ menu appears beside the menu (on its
-left when there is no room on the right), never over it. With Liquid Glass
-both kinds of menu are rounded and see-through.
+left when there is no room on the right), never over it, and a sub-menu
+(such as Extensions ›) opens as its own panel beside the section. Hovering
+only opens sub-menus; everything else (Settings, Downloads, …) needs a click.
+Rows have no boxes, and the thin scrollbar sits on the left. With Liquid
+Glass both kinds of menu are rounded and see-through.
 
 ### Liquid glass
 
@@ -639,7 +642,12 @@ Style page's Browser bars section) switches the profile to a glass look: tabs
 become frosted pills lit by the accent colour (the current one, along the top,
 grows out of the toolbar with curved feet), the toolbar and address field
 get a glossy, lit-from-above finish, hover cards turn translucent, and the new
-tab's search box, buttons and panel become blurred glass that bends the photo
+tab's search box, buttons and panel become blurred glass. With a New Tab
+photo or image (and *Match the background* on), the menu bar, tab strip and
+toolbar become one pane of frosted glass over the top of that picture (kept
+in `~/.custom_browser/frost/`), unless you fixed a toolbar or tab strip
+colour in Browser colours. The new tab's search box, buttons and panel are
+blurred glass that bends the photo
 behind it slightly, with a slow sheen. With *Match the background* on, the
 glass takes the photo's colour too. Motion is reduced when the system asks
 for it. Off by default; existing style settings are kept when it is added.

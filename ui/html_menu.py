@@ -26,6 +26,8 @@ class HtmlMenu(QDialog):
         self.sequence = 0
         self.stack = [menu]
         self.closed = False
+        # A sub-menu panel and the panel it came from.
+        self.child = self.parent_menu = None
         # Right-click menus have no settings section and open at the cursor.
         self.context_menu = context
         self.surface = HtmlSurface("menu", self, label="browser menu")
@@ -170,19 +172,10 @@ class HtmlMenu(QDialog):
             or action.isSeparator()
         ):
             return
-        if (
-            command.get("action") == "hover"
-            and action.menu() is None
-            and not action.property("steed_editor")
-        ):
+        # Hovering only opens sub-menus; everything else needs a click.
+        if command.get("action") == "hover" and action.menu() is None:
             return
         if command.get("action") not in ("hover", "activate"):
-            return
-        if action.menu() is not None:
-            self.stack.append(action.menu())
-            action.menu().aboutToShow.emit()
-            self._fit()
-            self.reload()
             return
         x, y = command.get("x"), command.get("y")
         if (
@@ -192,14 +185,36 @@ class HtmlMenu(QDialog):
         ):
             return
         point = self.surface.view.mapToGlobal(QPoint(int(x), int(y)))
+        if action.menu() is not None:
+            self._open_child(action.menu(), point.y())
+            return
         self.close()
+        if self.parent_menu is not None and not self.parent_menu.closed:
+            self.parent_menu.close()
         self.owner._menu_anchor = point
         try:
             action.trigger()
         finally:
             self.owner._menu_anchor = None
 
+    def _open_child(self, menu, top):
+        """A sub-menu opens as its own panel beside this one, never over it."""
+        if self.child is not None and not self.child.closed:
+            if self.child.stack[0] is menu:
+                return
+            self.child.close()
+        anchor = QPoint(self.geometry().right() + 4, top)
+        child = HtmlMenu(
+            menu, self.owner, anchor, context=self.context_menu, beside=self.geometry()
+        )
+        child.parent_menu = self
+        child.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.child = child
+        child.show()
+
     def done(self, result):
+        if self.child is not None and not self.child.closed:
+            self.child.close()
         if not self.closed:
             self.closed = True
             self.timer.stop()

@@ -292,6 +292,9 @@ class TabStrip(QWidget):
                 for key in ("ink", "muted", "border", "hover", "accent", "strip")
                 if isinstance(palette.get(key), str)
             }
+            frost = palette.get("frost_strip")
+            if isinstance(frost, str) and frost.startswith("data:image/jpeg;base64,"):
+                chrome["frost"] = frost
             chrome["chosen"] = list(chosen or [])
         if chrome != self.chrome:
             self.chrome = chrome
