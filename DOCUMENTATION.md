@@ -516,6 +516,13 @@ In the panel you can choose:
 
 - **Background**: a photo, a plain colour (swatches, or the theme's gradient),
   or your own image.
+- **Photos from**: *Online* (Unsplash photos via Lorem Picsum), *Your photos*
+  (**Add photos…** copies them, resized, into `~/.custom_browser/newtab/mine/`),
+  *A folder* (**Choose folder…**; read in place, so new photos in it join in)
+  or *Favourites* (**♡ Save this photo** keeps the one shown). Your own photos
+  are shown in a shuffled round, each once before any repeat. **Not this one**
+  skips an online photo for good.
+- **Style**: in colour or black & white.
 - **New photo**: for every new tab, every hour, every 6 hours or every day,
   or **New photo now**.
 - **Browser colours**: *Match the background* (the default) tints the tab
