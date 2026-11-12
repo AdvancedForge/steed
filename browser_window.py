@@ -1237,16 +1237,6 @@ class BrowserWindow(QMainWindow):
             *getattr(self, "_layout_menus", {}).values(),
         ):
             if menu is not None:
-                # Glass menus are rounded and see-through at the corners.
-                menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, glass)
-                menu.setProperty("steed_glass", glass)
-                if not menu.property("steed_rounded"):
-                    from ui.chrome_style import RoundedMenus
-
-                    if getattr(self, "_rounded_menus", None) is None:
-                        self._rounded_menus = RoundedMenus(self)
-                    menu.installEventFilter(self._rounded_menus)
-                    menu.setProperty("steed_rounded", True)
                 menu.setStyleSheet(menus)
         self.menuBar().setStyleSheet(bars)
         self.status_bar.setStyleSheet(bars)

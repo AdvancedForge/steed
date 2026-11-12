@@ -9,6 +9,11 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Smooth glass panels, tab outline — November 11, 2026.** Glass menu panels
+draw a frosted snapshot of the browser behind them inside smooth rounded
+corners (no pixel-cut masks, no see-through windows needed on X11); the
+current tab's outline follows its feet into the strip's bottom line.
+
 **One picture behind the window — November 11, 2026.** In glass mode the
 New Tab picture fills the whole window: the bars show its top (evenly
 blurred, toned for legibility) and the page the rest, aligned; the current

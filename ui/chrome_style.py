@@ -4,7 +4,7 @@ The toolbar stays native Qt so typing, focus, input methods and undo behave
 exactly like any text field; this module makes it look like the HTML tab strip.
 """
 
-from PyQt6.QtCore import QByteArray, QObject, QRectF, QSize, Qt
+from PyQt6.QtCore import QByteArray, QRectF, QSize, Qt
 from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -219,13 +219,16 @@ QMenu::indicator {{ width: 14px; height: 14px; left: 6px; }}
 
 
 def glass_menu(colors):
-    """Rounded, see-through menus (their windows are made translucent)."""
-    fill = QColor(colors.get("menu", colors["toolbar"]))
-    edge = "rgba(255,255,255,50)" if colors["dark"] else "rgba(255,255,255,230)"
+    """Native menus in glass mode: a lit, glossy panel. Square corners: a
+    rounded one needs a see-through window, which not every desktop draws
+    (the corners would show as a box)."""
+    fill = colors.get("menu", colors["toolbar"])
+    top = mix(fill, "#ffffff", 0.08 if colors["dark"] else 0.35)
+    edge = mix(fill, "#ffffff", 0.22 if colors["dark"] else 0.7)
     return f"""
 QMenu {{
-  background: rgba({fill.red()},{fill.green()},{fill.blue()},222);
-  border: 1px solid {edge}; border-radius: 12px; padding: 6px;
+  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {top}, stop:1 {fill});
+  border: 1px solid {edge}; padding: 6px;
 }}
 QMenu::item {{ border-radius: 8px; }}
 """
@@ -291,25 +294,16 @@ def frost(image, width, height, chrome, dark, pane_top):
     return out
 
 
-def round_window(widget, radius):
-    """Cut a popup window to a rounded shape, so no square corners show even
-    where the desktop cannot draw see-through windows."""
-    from PyQt6.QtGui import QPainterPath, QRegion
+def blurred(pixmap, factor=12):
+    """A frosted (heavily blurred) copy of a pixmap, the same size."""
+    from PyQt6.QtCore import Qt
 
-    path = QPainterPath()
-    path.addRoundedRect(QRectF(widget.rect()), radius, radius)
-    widget.setMask(QRegion(path.toFillPolygon().toPolygon()))
-
-
-class RoundedMenus(QObject):
-    """Keeps glass menus (marked steed_glass) cut to their rounded shape."""
-
-    def eventFilter(self, watched, event):
-        from PyQt6.QtCore import QEvent
-
-        if event.type() in (QEvent.Type.Show, QEvent.Type.Resize):
-            if watched.property("steed_glass"):
-                round_window(watched, 12)
-            else:
-                watched.clearMask()
-        return False
+    smooth = Qt.TransformationMode.SmoothTransformation
+    ignore = Qt.AspectRatioMode.IgnoreAspectRatio
+    size = pixmap.size()
+    small = pixmap
+    for step in (factor, factor // 3 or 1):
+        small = small.scaled(
+            max(1, size.width() // step), max(1, size.height() // step), ignore, smooth
+        )
+    return small.scaled(size, ignore, smooth)

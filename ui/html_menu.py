@@ -37,10 +37,13 @@ class HtmlMenu(QDialog):
         self.glass = bool(
             getattr(getattr(owner, "address_bar", None), "colors", {}).get("glass")
         )
+        self.backdrop = self.frosted = None
         if self.glass:
-            # Rounded, see-through glass drawn by the page itself.
-            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            self.setStyleSheet("QDialog, QDialog QWidget { background: transparent; }")
+            # Rounded glass without asking the desktop for see-through
+            # windows: paintEvent draws what is behind (a snapshot of the
+            # browser), frosted inside the rounded shape, and the page draws
+            # its tint over it.
+            self.setStyleSheet("QDialog QWidget { background: transparent; }")
             self.surface.transparent = True
             body.setContentsMargins(0, 0, 0, 0)
         else:
@@ -64,12 +67,49 @@ class HtmlMenu(QDialog):
         self.timer.start()
         self.publish()
 
+    def _snapshot(self):
+        """What the browser window shows behind this panel, and a frosted copy."""
+        from PyQt6.QtCore import QRect
+        from PyQt6.QtGui import QColor, QPainter, QPixmap
+
+        from ui.chrome_style import blurred
+
+        backdrop = QPixmap(self.size())
+        backdrop.fill(QColor(self._colors().get("menu", "#202020")))
+        owner = self.owner
+        area = QRect(owner.mapFromGlobal(self.pos()), self.size())
+        shown = area.intersected(owner.rect())
+        if not shown.isEmpty():
+            painter = QPainter(backdrop)
+            painter.drawPixmap(shown.topLeft() - area.topLeft(), owner.grab(shown))
+            painter.end()
+        self.backdrop, self.frosted = backdrop, blurred(backdrop)
+
+    def showEvent(self, event):
+        if self.glass:
+            self._snapshot()
+        super().showEvent(event)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if self.glass:
-            from ui.chrome_style import round_window
+        if self.glass and self.isVisible():
+            self._snapshot()
+            self.update()
 
-            round_window(self, 14)
+    def paintEvent(self, event):
+        if not self.glass or self.backdrop is None:
+            return super().paintEvent(event)
+        from PyQt6.QtCore import QRectF
+        from PyQt6.QtGui import QPainter, QPainterPath
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.drawPixmap(0, 0, self.backdrop)  # The corners: what is behind.
+        shape = QPainterPath()
+        shape.addRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 14, 14)
+        painter.setClipPath(shape)
+        painter.drawPixmap(0, 0, self.frosted)
+        painter.end()
 
     def _height(self, menu):
         """Just tall enough for the menu's rows (it scrolls past MAX_HEIGHT)."""

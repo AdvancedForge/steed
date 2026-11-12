@@ -86,6 +86,16 @@ function groupChip(name, color, members, collapsed) {
 
 function vertical() { return ["left", "right"].includes(state.appearance.position); }
 
+// The glass bottom line opens under the current tab and its curved feet.
+function placeGap() {
+  const tab = document.querySelector(".tab.active"), root = document.documentElement.style;
+  const box = tab ? tab.getBoundingClientRect() : null;
+  root.setProperty("--gap-from", box ? `${Math.round(box.left - 11)}px` : "0px");
+  root.setProperty("--gap-to", box ? `${Math.round(box.right + 11)}px` : "0px");
+}
+addEventListener("resize", placeGap);
+document.addEventListener("scroll", placeGap, true);
+
 function render(next) {
   const strip = $("strip"), list = $("tabs");
   const scroll = vertical() ? list.scrollTop : list.scrollLeft;
@@ -170,6 +180,7 @@ function render(next) {
   $("count").hidden = !look.tab_count;
   $("count").textContent = `${next.tabs.length} tab${next.tabs.length === 1 ? "" : "s"}`;
   if (vertical()) list.scrollTop = scroll; else list.scrollLeft = scroll;
+  placeGap();
   const active = list.querySelector(".tab.active");
   if (active && !dragged) active.scrollIntoView({block: "nearest", inline: "nearest"});
   if (focusedId) list.querySelector(`[data-id="${focusedId}"]`)?.focus();
@@ -248,6 +259,7 @@ $("tabs").addEventListener("wheel", event => {
   if (list.scrollWidth <= list.clientWidth) return;
   event.preventDefault();
   list.scrollLeft += Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+  placeGap();
 }, {passive: false});
 
 document.addEventListener("keydown", event => {

@@ -647,9 +647,12 @@ photo or image (and *Match the background* on), the picture becomes the
 background of the whole window: the menu bar, tab strip and toolbar show its
 top as frosted glass and the New Tab page shows the rest, lined up (redone
 when the window is resized; kept in `~/.custom_browser/frost/`). The current
-tab and the toolbar share one glass tint over it. A toolbar or tab strip
-colour fixed in Browser colours turns this off. Glass menus are cut to a
-rounded shape, so no square corners show on any desktop. The new tab's search box, buttons and panel are
+tab and the toolbar share one glass tint over it; its outline runs down its
+curved feet into a fine line along the bottom of the tab strip. A toolbar or
+tab strip colour fixed in Browser colours turns this off. Glass menu panels
+paint the browser behind them (frosted inside their smooth rounded shape),
+so they need no see-through windows from the desktop; the toolbar's native
+menus are glossy, square panels. The new tab's search box, buttons and panel are
 blurred glass that bends the photo
 behind it slightly, with a slow sheen. With *Match the background* on, the
 glass takes the photo's colour too. Motion is reduced when the system asks
