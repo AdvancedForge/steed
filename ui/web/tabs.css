@@ -191,8 +191,10 @@ button:hover:enabled { background: none; border-color: transparent; }
   box-shadow: inset 0 1px 0 var(--glass-shine), 0 -2px 12px var(--glass-shade); }
 :root.glass .horizontal:not(.pos-bottom) .tab.active::before, :root.glass .horizontal:not(.pos-bottom) .tab.active::after {
   display: block; content: ""; position: absolute; bottom: 0; width: 10px; height: 10px; pointer-events: none; border: 0; }
-:root.glass .horizontal:not(.pos-bottom) .tab.active::before { left: -11px; background: radial-gradient(circle at 0 0, transparent 9.5px, var(--join) 10px); }
-:root.glass .horizontal:not(.pos-bottom) .tab.active::after { right: -11px; background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--join) 10px); }
+:root.glass { --tab-fill: var(--join); --tab-edge: var(--glass-edge); }
+/* The feet carry the tab's outline down their curve into the bottom line. */
+:root.glass .horizontal:not(.pos-bottom) .tab.active::before { left: -11px; background: radial-gradient(circle at 0 0, transparent 9.2px, var(--tab-edge) 9.6px, var(--tab-edge) 10.3px, var(--tab-fill) 10.7px); }
+:root.glass .horizontal:not(.pos-bottom) .tab.active::after { right: -11px; background: radial-gradient(circle at 100% 0, transparent 9.2px, var(--tab-edge) 9.6px, var(--tab-edge) 10.3px, var(--tab-fill) 10.7px); }
 :root.glass .horizontal:not(.pos-bottom) .tail { align-self: center; }
 @media (prefers-reduced-motion: reduce) { :root.glass .tab { transition: none; } }
 
@@ -200,10 +202,14 @@ button:hover:enabled { background: none; border-color: transparent; }
 :root.glass.frost body { background: var(--frost) center / 100% 100% no-repeat; }
 /* The current tab and the toolbar share one glass tint over the picture
    (PANE_ALPHA in chrome_style.py), so they read as one piece. */
-:root.glass.frost { --pane: #ffffff4d; --pane-edge: #ffffffb3; }
+:root.glass.frost { --pane: #ffffff4d; --pane-edge: #ffffffb3; --tab-fill: var(--pane); --tab-edge: var(--pane-edge); }
 :root.glass.frost.native-dark { --pane: #ffffff1a; --pane-edge: #ffffff40; }
+/* The bottom line the outline runs into, open under the current tab and its
+   feet (tabs.js sets --gap-from and --gap-to). */
+:root.glass.frost body::after { content: ""; position: fixed; left: 0; right: 0; bottom: 0; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, var(--pane-edge) var(--gap-from, 0px), transparent var(--gap-from, 0px),
+    transparent var(--gap-to, 0px), var(--pane-edge) var(--gap-to, 0px)); }
+:root.glass.frost:has(.pos-bottom, .vertical) body::after { display: none; }
 :root.glass.frost .horizontal:not(.pos-bottom) .tab.active { background: var(--pane); border-color: var(--pane-edge);
   backdrop-filter: none; box-shadow: inset 0 1px 0 var(--pane-edge); }
-:root.glass.frost .horizontal:not(.pos-bottom) .tab.active::before { background: radial-gradient(circle at 0 0, transparent 9.5px, var(--pane) 10px); }
-:root.glass.frost .horizontal:not(.pos-bottom) .tab.active::after { background: radial-gradient(circle at 100% 0, transparent 9.5px, var(--pane) 10px); }
 :root.glass.frost .tab:hover:not(.active) { background: color-mix(in srgb, var(--pane) 60%, transparent); border-color: transparent; box-shadow: none; }

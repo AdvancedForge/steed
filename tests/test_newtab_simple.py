@@ -530,19 +530,27 @@ class SimpleNewTabTests(unittest.TestCase):
             window._layout_menus["tabs"], window.mapToGlobal(QPoint(300, 120))
         )
         self.assertTrue(popup.glass)
-        self.assertTrue(
+        # No see-through window needed (not every desktop draws one): the
+        # panel paints what is behind it, frosted inside its rounded shape.
+        self.assertFalse(
             popup.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         )
+        self.assertTrue(popup.mask().isEmpty())
         self.assertTrue(popup.surface.transparent)
+        self.assertEqual(popup.backdrop.size(), popup.size())
+        self.assertEqual(popup.frosted.size(), popup.size())
         self.wait(lambda: popup.surface._last_payload)
         self.assertIn('"glass": true', popup.surface._last_payload)
         popup.close()
-        self.assertTrue(
+        # Native glass menus: opaque, square, glossy (no box behind a curve).
+        sheet = window.browser_menu.styleSheet()
+        self.assertIn("qlineargradient", sheet)
+        self.assertNotIn("border-radius: 12px", sheet)
+        self.assertFalse(
             window.browser_menu.testAttribute(
                 Qt.WidgetAttribute.WA_TranslucentBackground
             )
         )
-        self.assertIn("border-radius: 12px", window.browser_menu.styleSheet())
 
     def test_steed_pages_follow_the_photo_unless_turned_off(self):
         styles = self.window.profile_manager.registry.page_style
@@ -593,13 +601,15 @@ class SimpleNewTabTests(unittest.TestCase):
         toolbar = Image(path)
         self.assertEqual(toolbar.width(), window.width())
         self.assertEqual(toolbar.height(), window.address_bar.height())
-        # Glass popups are cut to a rounded shape (no square corners).
+        # A glass panel's corners show the window behind it, not a box.
         self.settle()
         popup = window._show_html_menu(
             window._layout_menus["tabs"], window.mapToGlobal(QPoint(300, 120))
         )
-        self.assertFalse(popup.mask().isEmpty())
-        self.assertFalse(popup.mask().contains(QPoint(0, 0)))
+        self.wait(lambda: popup.surface._last_payload)
+        self.settle()
+        corner = popup.grab().toImage().pixelColor(1, 1)
+        self.assertEqual(corner, popup.backdrop.toImage().pixelColor(1, 1))
         popup.close()
         # A strip or toolbar colour chosen by hand wins over the picture.
         styles.save(
