@@ -1,7 +1,9 @@
-"""Tab hover previews: a small snapshot of a background tab, title and site.
+"""Tab hover previews: a small snapshot of a tab, its title and site.
 
-A tab's snapshot is taken when you switch away from it, kept as a small JPEG
-(about 15 KB), and shown when you hover the tab for a moment.
+A tab's snapshot is taken when you switch away from it and when a page
+finishes loading while it is shown, kept as a small JPEG (about 15 KB), and
+shown when you hover the tab for a moment; the tab you are on is snapshotted
+live. With Liquid Glass the card is frosted over what is behind it.
 """
 
 from urllib.parse import urlsplit
@@ -62,6 +64,8 @@ class TabPreview(QFrame):
             label.setParent(self.card)
         self.image.setParent(self.card)
         self.fixed_width = True
+        self.glass = False
+        self.frosted = None
         self.notes.setWordWrap(True)
         layout.addWidget(self.image)
         layout.addWidget(self.title)
@@ -70,9 +74,10 @@ class TabPreview(QFrame):
 
     def apply_style(self, colors):
         """The tab strip's colours, not the system's (often yellow) tooltips."""
-        if colors.get("glass"):  # Frosted: what is behind shows through.
+        self.glass = bool(colors.get("glass"))
+        if self.glass:  # Frosted: what is behind shows, blurred.
             fill = QColor(colors.get("card", colors["field"]))
-            alpha = 205 if colors["dark"] else 190
+            alpha = 150 if colors["dark"] else 140  # Lets the frost show.
             card = (
                 f"background: rgba({fill.red()},{fill.green()},{fill.blue()},{alpha});"
                 " border: 1px solid "
@@ -91,14 +96,17 @@ class TabPreview(QFrame):
             f" #TabPreviewMuted {{ color: {colors['muted']}; }}"
         )
 
-    def show_for(self, tab, point, notes=(), snapshot=True, fixed_width=True):
+    def show_for(
+        self, tab, point, notes=(), snapshot=True, fixed_width=True, live=None
+    ):
         """fixed_width: every card as wide as a snapshot (as in Chrome), so
         they do not change size from tab to tab; else as wide as the text."""
         self.fixed_width = fixed_width
         width = WIDTH + 20  # The snapshot and the card's margins.
         self.card.setMinimumWidth(width if fixed_width else 0)
         self.card.setMaximumWidth(width)
-        data = getattr(tab, "preview", None) if snapshot else None
+        # live: a fresh snapshot (the tab you are on), else the kept one.
+        data = (live or getattr(tab, "preview", None)) if snapshot else None
         pixmap = QPixmap()
         if data:
             pixmap.loadFromData(data, "JPEG")
@@ -119,4 +127,42 @@ class TabPreview(QFrame):
         self.card.adjustSize()
         self.adjustSize()
         self.move(point.x(), point.y() + 4)
+        self.frosted = self._frost() if self.glass else None
         self.show()
+        self.update()
+
+    def _frost(self):
+        """What the window shows behind the card, blurred."""
+        from PyQt6.QtCore import QRect
+
+        from ui.chrome_style import blurred
+
+        owner = self.parentWidget()
+        if owner is None:
+            return None
+        area = QRect(owner.mapFromGlobal(self.pos()), self.size())
+        shown = area.intersected(owner.rect())
+        if shown.isEmpty():
+            return None
+        backdrop = QPixmap(self.size())
+        backdrop.fill(QColor(0, 0, 0, 0))
+        from PyQt6.QtGui import QPainter
+
+        painter = QPainter(backdrop)
+        painter.drawPixmap(shown.topLeft() - area.topLeft(), owner.grab(shown))
+        painter.end()
+        return blurred(backdrop, 10)
+
+    def paintEvent(self, event):
+        if not self.glass or self.frosted is None:
+            return super().paintEvent(event)
+        from PyQt6.QtCore import QRectF
+        from PyQt6.QtGui import QPainter, QPainterPath
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        shape = QPainterPath()
+        shape.addRoundedRect(QRectF(self.card.geometry()), 14, 14)
+        painter.setClipPath(shape)
+        painter.drawPixmap(0, 0, self.frosted)
+        painter.end()

@@ -5,7 +5,8 @@
 .size-compact { --tab-max: 170px; }
 .size-wide { --tab-max: 280px; }
 html, body { height: 100%; overflow: hidden; }
-body { margin: 0; padding: 0; background: var(--strip-bg); font-size: 12.5px; line-height: 1.2; user-select: none; -webkit-user-select: none; }
+body { margin: 0; padding: 0; background: var(--strip-bg); font-size: 12.5px; line-height: 1.2; user-select: none; -webkit-user-select: none;
+  transition: background-color .42s ease; } /* Eases into a new photo's colours. */
 button { min-height: 0; padding: 0; border: 0; background: none; font-weight: 500; color: inherit; border-radius: 6px; }
 button:hover:enabled { background: none; border-color: transparent; }
 
@@ -138,7 +139,7 @@ button:hover:enabled { background: none; border-color: transparent; }
 .vertical .tab.drop-after::before { bottom: -2px; left: 4px; right: 4px; height: 3px; }
 .density-compact { --tab-min: 38px; }
 .density-compact .strip { padding-top: 3px; }
-@media (prefers-reduced-motion: reduce) { .tab { transition: none; } .favicon.loading { animation-duration: 2s; } }
+@media (prefers-reduced-motion: reduce) { body, .tab { transition: none; } .favicon.loading { animation-duration: 2s; } }
 
 /* Frozen or unloaded by the memory mode: dimmed until selected. */
 .tab.dormant .title, .tab.dormant .favicon { opacity: .55; }

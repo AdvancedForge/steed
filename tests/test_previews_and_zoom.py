@@ -97,13 +97,13 @@ class Tests(unittest.TestCase):
         self.assertIn(self.window.address_bar.colors["field"], preview.styleSheet())
         self.window.tab_bar.hover_ended.emit()
         self.assertFalse(preview.isVisible())
-        # The tab you are looking at: its title and site, no snapshot.
+        # The tab you are looking at: a live snapshot of it as it is now.
         self.window.tab_bar.tab_hovered.emit(
             self.window.tabs.index(second), QPoint(10, 10)
         )
         self.assertTrue(preview.isVisible())
         self.assertEqual(preview.title.text(), "normal-two")
-        self.assertFalse(preview.image.isVisible())
+        self.assertTrue(preview.image.isVisible())
         self.window.tab_bar.hover_ended.emit()
         # With previews off: still the card (the one description), no snapshot.
         self.window.config.set("tab_previews", False)

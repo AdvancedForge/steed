@@ -1234,7 +1234,20 @@ class BrowserWindow(QMainWindow):
         self.tab_bar.set_chrome(
             colors["toolbar"], dark, glass, colors["accent"], colors, sorted(chosen)
         )
-        self.address_bar.apply_style(colors)
+        previous = getattr(self, "_shown_colors", None)
+        self._shown_colors = colors
+        fade = (
+            previous is not None
+            and self.isVisible()
+            and previous.get("glass") == colors.get("glass")
+            and (previous["toolbar"], previous["accent"])
+            != (colors["toolbar"], colors["accent"])
+        )
+        if fade:  # A new photo's colours: ease into them.
+            self._fade_colors(previous, colors)
+        else:
+            self._fade_stop()
+            self.address_bar.apply_style(colors)
         bars = bar_stylesheet(colors)
         # Scroll bars in dialogs and panels match the web pages' ones.
         self.setStyleSheet(self.styleSheet() + scrollbar_stylesheet(colors))
@@ -1270,6 +1283,63 @@ class BrowserWindow(QMainWindow):
         self.apply_dark_mode()
         if self._canvas_moved:
             self._refresh_newtabs()
+
+    def _fade_colors(self, old, new, duration=420):
+        """Change the toolbar's colours smoothly from old to new (the tab
+        strip eases along with a CSS transition)."""
+        from PyQt6.QtCore import QEasingCurve, QVariantAnimation
+
+        from ui.chrome_style import mix
+
+        self._fade_stop()
+
+        def blend(amount):
+            mixed = dict(new)
+            for key, value in new.items():
+                before = old.get(key)
+                if (
+                    isinstance(value, str)
+                    and isinstance(before, str)
+                    and value.startswith("#")
+                    and before.startswith("#")
+                    and len(value) == len(before) == 7
+                ):
+                    mixed[key] = mix(before, value, amount)
+            return mixed
+
+        animation = QVariantAnimation(self)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setDuration(duration)
+        animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        def step(amount):
+            if not self._closing:
+                colors = blend(float(amount))
+                self.address_bar.apply_style(colors)
+                self.address_bar.colors = new  # The colours it is heading for.
+                bars = bar_stylesheet(colors)
+                self.menuBar().setStyleSheet(bars)
+                self.status_bar.setStyleSheet(bars)
+
+        def finished():
+            step(1.0)
+            if getattr(self, "_fade", None) is animation:
+                self._fade = None
+            animation.deleteLater()
+
+        animation.valueChanged.connect(step)
+        animation.finished.connect(finished)
+        self._fade = animation
+        self.address_bar.colors = new  # Readable at once; painting catches up.
+        animation.start()
+
+    def _fade_stop(self):
+        animation = getattr(self, "_fade", None)
+        if animation is not None:
+            animation.stop()
+            animation.deleteLater()
+            self._fade = None
 
     def _frost(self, profile, colors, dark):
         """The New Tab picture as the background of the whole window: the
@@ -2568,9 +2638,12 @@ class BrowserWindow(QMainWindow):
             notes.append("Kept loaded")
         if getattr(tab, "pinned", False):
             notes.append("Pinned")
-        snapshot = (
-            self.config.get("tab_previews", True) and index != self.current_tab_index
-        )
+        snapshot = self.config.get("tab_previews", True) and not tab.workspace_name
+        live = None
+        if snapshot and index == self.current_tab_index:
+            from ui.tab_preview import snapshot as take
+
+            live = take(tab)  # The tab you are on, as it is now.
         if getattr(self, "tab_preview", None) is None:
             self.tab_preview = TabPreview(self)
         self.tab_preview.apply_style(self.address_bar.colors)
@@ -2580,7 +2653,14 @@ class BrowserWindow(QMainWindow):
             notes=notes,
             snapshot=snapshot,
             fixed_width=self.config.get("tab_card_fixed_width", True),
+            live=live,
         )
+
+    def _refresh_preview(self, tab):
+        if not self._closing and tab in self.tabs and tab.isVisible():
+            from ui.tab_preview import snapshot
+
+            tab.preview = snapshot(tab) or getattr(tab, "preview", None)
 
     def _hide_tab_preview(self):
         preview = getattr(self, "tab_preview", None)
@@ -4044,6 +4124,9 @@ class BrowserWindow(QMainWindow):
     def _on_load_finished(self, tab: BrowserTab, ok: bool):
         if self._closing or tab not in self.tabs:
             return
+        if ok and self.config.get("tab_previews", True) and not tab.workspace_name:
+            # Keep its hover preview up to date once the page has painted.
+            QTimer.singleShot(800, lambda: self._refresh_preview(tab))
         upgraded = getattr(tab.page().site_compatibility, "upgraded", None)
         if upgraded is not None:
             tab.page().site_compatibility.upgraded = None

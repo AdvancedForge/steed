@@ -224,6 +224,7 @@ class SimpleNewTabTests(unittest.TestCase):
 
         self.assertEqual(card.card.width(), WIDTH + 20)
         window.config.set("tab_card_fixed_width", False)
+        window.config.set("tab_previews", False)  # Text only: as wide as it.
         window._show_tab_preview(window.tabs.index(tab), QPoint(10, 10))
         self.assertLess(card.card.width(), WIDTH + 20)
 
@@ -647,6 +648,37 @@ class SimpleNewTabTests(unittest.TestCase):
         self.assertFalse(child.geometry().intersects(panel.geometry()))
         panel.close()  # Closing the panel closes its sub-menu too.
         self.assertTrue(child.closed)
+
+    def test_colours_fade_cards_frost_and_previews_stay_fresh(self):
+        window = self.window
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: self.pages.photos.current() is not None)
+        self.loaded(tab)
+        self.settle()
+        # A new photo's colours: the toolbar eases into them.
+        old = dict(window.address_bar.colors)
+        target = {**old, "toolbar": "#204060", "accent": "#e0a030"}
+        window._fade_colors(old, target, duration=300)
+        self.assertEqual(window.address_bar.colors["toolbar"], "#204060")
+        self.settle(0.12)
+        middle = window.address_bar.styleSheet()
+        self.assertNotIn("#204060", middle.split("#SteedToolbar {", 1)[1][:80])
+        self.settle(0.5)
+        self.assertIn("background: #204060", window.address_bar.styleSheet())
+        self.assertIsNone(window._fade)
+        # The hover card: frosted over the window with Liquid Glass.
+        window._set_bar("glass", True)
+        self.settle()
+        window._show_tab_preview(window.tabs.index(tab), QPoint(40, 40))
+        card = window.tab_preview
+        self.assertTrue(card.glass)
+        self.assertIsNotNone(card.frosted)
+        self.assertEqual(card.frosted.size(), card.size())
+        self.assertTrue(card.image.isVisible())  # The tab you are on, live.
+        # A page that finishes loading while shown refreshes its preview.
+        tab.preview = None
+        window._refresh_preview(tab)
+        self.assertTrue(tab.preview)
 
 
 if __name__ == "__main__":
