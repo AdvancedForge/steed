@@ -12,6 +12,10 @@ Through it the stand-ins in extension_shim.js reach Steed:
   scripts, run by Steed in the tab, in a script world of the extension's own
   (ISOLATED) or the page's (MAIN). Steed's worlds have no chrome.* APIs.
 - commands and action.onClicked: shortcuts and toolbar clicks.
+- offscreen: Qt WebEngine's own offscreen documents end the browser, so
+  Steed opens one itself as a hidden page of the extension (OffscreenPage),
+  one per extension as in Chrome. Its speech recognition is answered by
+  Steed's dictation like a tab's.
 - Scripts Steed injects for an extension (in its own world) get a small
   chrome object: runtime.id/getURL/getManifest, runtime.sendMessage to the
   background (with sender.tab) and chrome.storage. They reach Steed through
@@ -216,6 +220,29 @@ class BridgePage(webengine.Page):
                 pass
 
 
+class OffscreenPage(webengine.Page):
+    """An extension's offscreen document, opened by Steed and never shown."""
+
+    def __init__(self, profile, name, bridges, parent=None):
+        super().__init__(profile, parent)
+        self.name, self.bridges = name, bridges
+
+    # Speech recognition is answered with this page standing in for a tab.
+    def page(self):
+        return self
+
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        from services.web_speech import PREFIX as SPEECH
+
+        if message.startswith(SPEECH):
+            windows = self.bridges.windows(self.name)
+            window = next((w for w in windows if w.isActiveWindow()), None) or (
+                windows[0] if windows else None
+            )
+            if window is not None:
+                window.web_speech.request(self, message)
+
+
 class Bridges(QObject):
     """Bridge pages and what they carry, for every profile's extensions."""
 
@@ -233,6 +260,7 @@ class Bridges(QObject):
         self.world_asks = {}  # Steed's ask -> (tab, extension id, world ask)
         self.world_listeners = []  # (tab, extension id) with onMessage listeners
         self.errors = {}  # (profile, extension id) -> recent errors, oldest first
+        self.offscreen = {}  # (profile, extension id) -> its OffscreenPage
 
     # -- pages
 
@@ -259,7 +287,8 @@ class Bridges(QObject):
             page.setUrl(QUrl(f"chrome-extension://{extension_id}/steed-bridge.html"))
         self._install_scripts(name)
 
-    def _drop(self, key):
+    def _drop(self, key, now=False):
+        self._close_offscreen(key, now=now)
         page = self.pages.pop(key, None)
         if page is not None:
             from PyQt6 import sip
@@ -276,8 +305,10 @@ class Bridges(QObject):
 
     def close(self, name=None):
         """Destroy bridge pages (all, or a profile's) before their profiles."""
-        for key in [k for k in self.pages if name is None or k[0] == name]:
-            self._drop(key)
+        for key in [
+            k for k in {*self.pages, *self.offscreen} if name is None or k[0] == name
+        ]:
+            self._drop(key, now=True)
 
     def manifest(self, entry) -> dict | None:
         try:
@@ -326,6 +357,8 @@ class Bridges(QObject):
             self._tabs_request(key, message)
         elif kind == "toWorld":
             self._to_world(key, message)
+        elif kind == "offscreen":
+            self._offscreen(key, message)
 
     def _answer(self, key, ask, value=None, error=None):
         message = {"type": "answer", "ask": ask, "value": value}
@@ -470,6 +503,76 @@ class Bridges(QObject):
         if message.get("active") is False and before in window.tabs:
             window._switch_tab(window.tabs.index(before))
         self._answer(key, ask, None)
+
+    # -- offscreen documents
+
+    def _offscreen(self, key, message):
+        name, extension_id = key
+        ask, op = message.get("ask"), message.get("op")
+        current = self.offscreen.get(key)
+        if op == "has":
+            self._answer(key, ask, current.url().toString() if current else None)
+        elif op == "close":
+            if current is None:
+                self._answer(key, ask, error="No current offscreen document.")
+                return
+            self._close_offscreen(key)
+            self._answer(key, ask, None)
+        elif op == "create":
+            url = self._allowed_url(extension_id, message.get("url"))
+            if url is None or not url.startswith("chrome-extension://"):
+                self._answer(
+                    key,
+                    ask,
+                    error="The offscreen document must be the extension's own page.",
+                )
+                return
+            if current is not None:
+                self._answer(
+                    key, ask, error="Only a single offscreen document may be created."
+                )
+                return
+            if not self.extensions.available(name):
+                self._answer(key, ask, error="Extensions are not available here.")
+                return
+            profile = self.extensions.profiles[name][0]
+            page = self.offscreen[key] = OffscreenPage(profile, name, self, self)
+
+            def loaded(ok):
+                page.loadFinished.disconnect(loaded)
+                if ok:
+                    self._answer(key, ask, None)
+                else:
+                    self._close_offscreen(key)
+                    self._answer(
+                        key, ask, error="The offscreen document could not be loaded."
+                    )
+
+            page.loadFinished.connect(loaded)
+            page.setUrl(QUrl(url))
+
+    def _close_offscreen(self, key, now=False):
+        page = self.offscreen.pop(key, None)
+        if page is None:
+            return
+        from PyQt6 import sip
+
+        if not sip.isdeleted(page):
+            for window in self.windows(key[0]):
+                speech = getattr(window, "_web_speech", None)
+                if speech is not None and speech.tab is page:
+                    speech.abort()
+            if now:  # Its profile is going: pages go first.
+                sip.delete(page)
+                return
+            # Deleting an extension page outright can end the extension's
+            # process (its other pages too): leave the page, then let it go.
+            page.loadFinished.connect(lambda _ok: page.deleteLater())
+            page.setUrl(QUrl("about:blank"))
+
+    def has_offscreen(self, name, extension_id):
+        page = self.offscreen.get((name, extension_id))
+        return page.url().toString() if page is not None else None
 
     # -- errors
 

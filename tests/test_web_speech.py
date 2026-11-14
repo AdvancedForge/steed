@@ -263,6 +263,101 @@ class WebSpeechTests(unittest.TestCase):
             popup.close()
         self.assertFalse(self.speech.active)
 
+    def test_an_extensions_offscreen_document_is_steeds_and_is_answered(self):
+        """Qt WebEngine's own offscreen documents end the browser: Steed opens
+        them itself, one per extension, and answers their speech recognition."""
+        import json
+
+        from test_extensions import write_extension
+
+        folder = write_extension(
+            Path(self.directory.name) / "recorder",
+            permissions=["offscreen", "storage"],
+            background={"service_worker": "bg.js"},
+        )
+        (folder / "bg.js").write_text("""
+chrome.runtime.onMessage.addListener((m, sender, reply) => {
+  if (m.run) {
+    (async () => {
+      const out = [], make = () => chrome.offscreen.createDocument(
+        {url: "off.html", reasons: ["USER_MEDIA"], justification: "listen"});
+      await make(); out.push("made");
+      try { await make(); out.push("twice"); } catch (e) { out.push("one only"); }
+      out.push("has " + await chrome.offscreen.hasDocument());
+      const found = await chrome.runtime.getContexts({contextTypes: ["OFFSCREEN_DOCUMENT"]});
+      out.push("contexts " + found.length + " " + found[0].documentUrl.split("/").pop());
+      reply(out.join(","));
+    })();
+    return true;
+  }
+  if (m.close) {
+    chrome.offscreen.closeDocument().then(async () =>
+      reply("closed, has " + await chrome.offscreen.hasDocument()));
+    return true;
+  }
+  if (m.log) chrome.storage.local.set({log: m.log});
+});
+""")
+        (folder / "off.html").write_text("<script src=off.js></script>")
+        (folder / "off.js").write_text("""
+const log = [], r = new webkitSpeechRecognition();
+const send = () => chrome.runtime.sendMessage({log});
+for (const t of ["start", "end"]) r.addEventListener(t, () => { log.push(t); send(); });
+r.onresult = (e) => { log.push("final:" + e.results[0][0].transcript); send(); };
+r.onerror = (e) => { log.push("error " + e.error); send(); };
+r.start();
+""")
+        (folder / "probe.html").write_text(
+            "<title>Speech</title><script src=probe.js></script>"
+        )
+        (folder / "probe.js").write_text(
+            "window.ran = '';"
+            "chrome.runtime.sendMessage({run: 1}, (r) => { window.ran = r; });"
+        )
+        name = self.window.profile_manager.current_profile_name
+        extensions = self.window.profile_manager.registry.extensions
+        extensions.install(name, folder)
+        self.wait(lambda: extensions.installed(name))
+        (entry,) = extensions.installed(name)
+        self.tab.setUrl(QUrl(f"chrome-extension://{entry['id']}/probe.html"))
+        self.wait(lambda: self.speech.active)
+        self.assertEqual(
+            self.asked, [(f"chrome-extension://{entry['id']}", "MediaAudioCapture")]
+        )
+        self.wait(lambda: self.run_js("window.ran"))
+        self.assertEqual(
+            self.run_js("window.ran"), "made,one only,has true,contexts 1 off.html"
+        )
+        self.speech._level(0.5)
+        self.pause()
+
+        def log():
+            self.run_js(
+                "chrome.storage.local.get('log', (v) => { window.got = v.log || []; }); 1"
+            )
+            return self.run_js("JSON.stringify(window.got || [])")
+
+        self.wait(lambda: json.loads(log())[-1:] == ["end"])
+        self.assertEqual(json.loads(log()), ["start", "final:hello world", "end"])
+        # Closing it; it can be opened again (and listening ends with it).
+        self.run_js(
+            "chrome.runtime.sendMessage({close: 1}, (r) => { window.shut = r; }); 1"
+        )
+        self.wait(lambda: self.run_js("window.shut || ''"))
+        self.assertEqual(self.run_js("window.shut"), "closed, has false")
+        bridges = extensions.bridges
+        self.assertIsNone(bridges.has_offscreen(name, entry["id"]))
+        self.run_js(
+            "window.ran = ''; chrome.runtime.sendMessage({run: 1}, (r) => { window.ran = r; }); 1"
+        )
+        self.wait(lambda: self.run_js("window.ran"))
+        self.wait(lambda: self.speech.active)
+        self.assertTrue(bridges.has_offscreen(name, entry["id"]))
+        # Switching the extension off closes it.
+        bridges.drop(name, entry["id"])
+        self.assertIsNone(bridges.has_offscreen(name, entry["id"]))
+        self.assertFalse(self.speech.active)
+
     def test_steed_dictation_in_progress_and_forged_requests(self):
         self.load()
         field_target = ("copy", None)
