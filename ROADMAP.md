@@ -9,6 +9,29 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Watches — November 14, 2026.** Right-click a page or selection → Watch This
+with Agent: Steed checks it in the background (the profile's sign-ins, a
+hidden muted page), compares the text of the chosen part, and when it changed
+asks the person's agent CLI (claude -p / codex exec, no browser access) whether
+it matches their words; desktop notification; steed:watches to manage.
+A watch can also say what to do when it fires ("then…"): the agent gets
+the task in the sidebar from the notification (or at once, if chosen), with
+the usual site permissions. Tabs → Organize Tabs with Agent (proposed groups
+and duplicates, applied only on request) and Compare Tabs with Agent (the
+ticked tabs' text as a draft for the person's question).
+Manual check: a real watch, organize and compare with Claude Code installed.
+Next: let agents propose watches from a chat (reviewed).
+
+**A calm start — November 14, 2026.** Welcome is a three-step tour (look,
+your things, your agent; skippable); one-time tips the first time the address
+bar, a website, a New Tab or the agent sidebar is reached; the New Tab ☰ menu
+opens its sections on hover but never a whole page; Customize New Tab is three
+picture tiles and the current choice, the rest under More options (kept open
+after a choice there); the agent sidebar's welcome has one main action;
+explanations fold to one line until pointed at; Settings → Everything lists
+every Steed page. Next: menus and buttons with more presence (icons, clearer
+primary actions), and a calmer pass over each management page's own text.
+
 **One theme — November 14, 2026.** Steed's pages match the browser's colours
 by default (photo, chosen browser colours, or the plain dark browser's own);
 the old per-profile "pages follow the photo" (off for some) is retired and

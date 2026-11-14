@@ -73,6 +73,7 @@ class ProfileRegistry(QObject):
         self._tasks = None
         self._agent_providers = None
         self._app_connections = None
+        self._watches = None
         self.site_permissions = SitePermissions(
             config.config_dir / "site_permissions.json"
         )
@@ -280,6 +281,15 @@ class ProfileRegistry(QObject):
                     self._tasks.changed.connect(window._refresh_auto_approval)
                     window._refresh_auto_approval()
         return self._tasks
+
+    @property
+    def watches(self):
+        """Pages Steed keeps an eye on for you (services.watches)."""
+        if self._watches is None:
+            from services.watches import WatchService
+
+            self._watches = WatchService(self)
+        return self._watches
 
     @property
     def agent_providers(self):
@@ -668,6 +678,8 @@ class ProfileRegistry(QObject):
             return
         self.set_agent_access(False)
         self.sharing.closed = True
+        if self._watches is not None:
+            self._watches.close()  # Its page goes before the profiles.
         if self._app_connections is not None:
             self._app_connections.close()
         if self._tasks is not None:

@@ -31,6 +31,7 @@ PAGES = {
     "agent-setup": "Agent setup",
     "adblock": "Ad blocking",
     "services": "Add a service",
+    "watches": "Watches",
 }
 
 SHARED_PAGES = frozenset(
@@ -46,6 +47,115 @@ SHARED_PAGES = frozenset(
         "services",
     )
 )
+
+
+class WatchesDialog(HtmlSettingsDialog):
+    """Pages Steed keeps an eye on, what you asked about, what last changed."""
+
+    def __init__(self, service, parent, open_url):
+        super().__init__(parent)
+        import time
+
+        from services.watches import INTERVAL_LABELS
+
+        self.time, self.labels = time, INTERVAL_LABELS
+        self.service, self.open_url = service, open_url
+        self.setWindowTitle("Watches")
+        body = QVBoxLayout(self)
+        body.addWidget(
+            QLabel(
+                "Right-click a page (or a part you selected) and choose Watch "
+                "with Agent. Steed looks in the background with your sign-ins."
+            )
+        )
+        self.items = QTableWidget(0, 5)
+        self.items.setHorizontalHeaderLabels(
+            ["Page", "Tell me", "Then", "How often", "Last news"]
+        )
+        self.items.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.items.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.items.itemDoubleClicked.connect(lambda _: self.open_selected())
+        body.addWidget(self.items)
+        row = QHBoxLayout()
+        for text, callback in (
+            ("Open", self.open_selected),
+            ("Look now", self.check_selected),
+            ("Pause or resume", self.pause_selected),
+            ("Remove", self.remove_selected),
+        ):
+            button = QPushButton(text)
+            button.clicked.connect(callback)
+            row.addWidget(button)
+        body.addLayout(row)
+        service.changed.connect(self.refresh)
+        self.finished.connect(lambda _: service.changed.disconnect(self.refresh))
+        self.refresh()
+
+    def refresh(self):
+        selected = self.selected()
+        self.items.setRowCount(0)
+        for watch in self.service.list():
+            row = self.items.rowCount()
+            self.items.insertRow(row)
+            when = (
+                self.time.strftime(
+                    "%b %d %H:%M", self.time.localtime(watch["last_change"])
+                )
+                if watch["last_change"]
+                else "Nothing yet"
+            )
+            news = watch["last_summary"] or when
+            if watch["paused"]:
+                news = "Paused" + (
+                    " (the page could not be read)"
+                    if watch.get("failures", 0) >= 5
+                    else ""
+                )
+            for column, value in enumerate(
+                (
+                    watch["title"],
+                    watch["instruction"] or "Any change",
+                    self.then_label(watch),
+                    self.labels.get(watch["every"], watch["every"]),
+                    news,
+                )
+            ):
+                item = QTableWidgetItem(value)
+                item.setData(Qt.ItemDataRole.UserRole, watch["id"])
+                self.items.setItem(row, column, item)
+            if watch["id"] == selected:
+                self.items.selectRow(row)
+
+    @staticmethod
+    def then_label(watch):
+        then = watch.get("then", "")
+        if not then:
+            return "Just tell me"
+        return then + (" (at once)" if watch.get("then_mode") == "now" else "")
+
+    def selected(self):
+        item = self.items.item(self.items.currentRow(), 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def _watch(self):
+        found = self.selected()
+        return next((w for w in self.service.list() if w["id"] == found), None)
+
+    def open_selected(self):
+        if watch := self._watch():
+            self.open_url(watch["url"])
+
+    def check_selected(self):
+        if watch := self._watch():
+            self.service.check_now(watch["id"])
+
+    def pause_selected(self):
+        if watch := self._watch():
+            self.service.pause(watch["id"], not watch["paused"])
+
+    def remove_selected(self):
+        if watch := self._watch():
+            self.service.remove(watch["id"])
 
 
 class HistoryDialog(HtmlSettingsDialog):
@@ -137,6 +247,8 @@ def controller(window, name, source_tab=None):
         return DataPanelController(registry.tasks, window)
     if name == "history":
         return HistoryDialog(window.history, window, open_url)
+    if name == "watches":
+        return WatchesDialog(registry.watches, window, open_url)
     if name == "cookies":
         from ui.cookie_dialog import CookieDialog
 

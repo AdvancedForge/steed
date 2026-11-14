@@ -3,7 +3,7 @@ const nodes = new Map(), $ = id => document.getElementById(id);
 const workspaceGroups = [
   ['Browse', [['history','History'],['bookmarks','Bookmarks'],['downloads','Downloads'],['cookies','Cookies'],['passwords','Passwords'],['library','Files']]],
   ['Customize', [['settings','Settings'],['style','Style'],['layout','Layout'],['newtab-settings','Start pages'],['tab-groups','Tab groups'],['adblock','Ad blocking'],['permissions','Website permissions']]],
-  ['Agents', [['agents','Conversations'],['tasks','Tasks & permissions'],['panels','Data panels'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
+  ['Agents', [['agents','Conversations'],['watches','Watches'],['tasks','Tasks & permissions'],['panels','Data panels'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
 ];
 function command(action, id, value, extra = {}) {
   if (!bridge || !state) return;

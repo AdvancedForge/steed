@@ -86,6 +86,7 @@ QWebEnginePermission = getattr(QtWebEngineCore, "QWebEnginePermission", None)
 
 # Enough to merge a redirect chain or a SPA's boot sequence into one write.
 TAB_SAVE_DEBOUNCE_MS = 750
+AGENT_CONNECT_MS = 60000  # A new chat's text waits this long to be sent.
 
 
 def reorder_menus(menubar, menus: dict, order) -> None:
@@ -477,6 +478,7 @@ class BrowserWindow(QMainWindow):
         else:
             self._new_tab(url=self._startup_page())
         self._newtab_hover_timer.start()
+        QTimer.singleShot(0, lambda: not self._closing and self._watch_alerts())
 
     def _initialize_profile(self, profile_name: str):
         if self.history is not None:
@@ -986,6 +988,12 @@ class BrowserWindow(QMainWindow):
         manage_groups_action = QAction("Manage Tab Groups...", self)
         manage_groups_action.triggered.connect(self._manage_tab_groups)
         group_menu.addAction(manage_groups_action)
+        organize_action = QAction("Organize Tabs with Agent…", self)
+        organize_action.triggered.connect(self.organize_tabs)
+        tabs_menu.addAction(organize_action)
+        compare_action = QAction("Compare Tabs with Agent…", self)
+        compare_action.triggered.connect(self.compare_tabs)
+        tabs_menu.addAction(compare_action)
         view_cookies_action = QAction("View Cookies...", self)
         view_cookies_action.triggered.connect(self._view_cookies)
         cookies_menu.addAction(view_cookies_action)
@@ -2051,7 +2059,119 @@ class BrowserWindow(QMainWindow):
         action = QAction(label, menu)
         action.triggered.connect(lambda: self.ask_agent(tab, **{kind: value}))
         menu.insertAction(first, action)
+        if tab.url().scheme() in ("http", "https"):
+            watch = QAction(
+                "Watch This with Agent…"
+                if selection
+                else "Watch This Page with Agent…",
+                menu,
+            )
+            watch.triggered.connect(lambda: self.watch_page(tab))
+            menu.insertAction(first, watch)
         menu.insertSeparator(first)
+
+    def watch_page(self, tab):
+        """Keep an eye on this page (or the selected part) for you."""
+        from services.watches import SELECTION_PATH
+
+        if self._closing or self.profile_manager.current_profile_name == "search":
+            return
+        if tab not in self.tabs or tab.url().scheme() not in ("http", "https"):
+            return
+
+        def located(found):
+            if sip.isdeleted(tab) or self._closing:
+                return
+            from ui.watch_dialog import WatchDialog
+
+            part = found if isinstance(found, dict) else None
+            text = part["text"] if part else None
+
+            def page_text(value):
+                if sip.isdeleted(tab) or self._closing:
+                    return
+                dialog = WatchDialog(
+                    self.profile_manager.registry.watches,
+                    tab.url().toString(),
+                    self.profile_manager.current_profile_name,
+                    tab.title(),
+                    part["selector"] if part else None,
+                    value if isinstance(value, str) else "",
+                    selected=text,
+                    parent=self,
+                )
+                dialog.watched.connect(
+                    lambda watch: self.status_bar.showMessage(
+                        f"Watching {watch['title']}. Settings → Everything → Watches.",
+                        6000,
+                    )
+                )
+                self._present_dialog(dialog, modal=False)
+
+            if text is not None:
+                page_text(text)
+            else:
+                webengine.run_script(
+                    tab.page(),
+                    "document.body ? document.body.innerText : ''",
+                    page_text,
+                    world=webengine.STEED_WORLD,
+                )
+
+        webengine.run_script(
+            tab.page(), SELECTION_PATH, located, world=webengine.STEED_WORLD
+        )
+
+    def _watch_alerts(self):
+        """One desktop notification per watch that fires, for all windows."""
+        registry = self.profile_manager.registry
+        if getattr(registry, "_watch_notifier", None) is not None:
+            return
+        from ui.desktop_notify import DesktopNotifier
+
+        notifier = registry._watch_notifier = DesktopNotifier(registry)
+
+        def window_for(watch):
+            owner = registry.last_active_owner or next(iter(registry.owners), None)
+            window = owner.parent() if owner is not None else None
+            if window is None or sip.isdeleted(window) or window._closing:
+                return None
+            return window
+
+        def act(watch, summary):
+            from services.watches import then_prompt
+
+            window = window_for(watch)
+            if window is not None:
+                window.agent_message(then_prompt(watch, summary), send=True)
+                window.raise_()
+                window.activateWindow()
+
+        def fired(watch, summary):
+            def open_it():
+                window = window_for(watch)
+                if window is not None:
+                    window._new_tab(url=watch["url"])
+                    window.raise_()
+                    window.activateWindow()
+
+            if not watch.get("then"):
+                notifier.notify(watch["title"], summary, on_click=open_it)
+            elif watch.get("then_mode") == "now":
+                act(watch, summary)
+                notifier.notify(
+                    watch["title"],
+                    f"{summary} Your agent is on it: {watch['then']}",
+                    on_click=open_it,
+                )
+            else:
+                notifier.notify(
+                    watch["title"],
+                    f"{summary} Click to have your agent start on: {watch['then']}",
+                    on_click=lambda: act(watch, summary),
+                )
+
+        registry.watches.fired.connect(fired)
 
     def ask_agent(
         self, tab, *, selection="", link="", page="", question="", send=False
@@ -2077,6 +2197,16 @@ class BrowserWindow(QMainWindow):
         else:
             parts.append(source)
         text = "\n\n".join(parts) + ("" if send else "\n\n")
+        return self.agent_message(text, send=send)
+
+    def agent_message(self, text, *, send=False):
+        """Open the agent sidebar on a conversation (the one shown, else any
+        connected one, else a new chat) with text: as a draft for you to
+        finish, or sent. A new chat is still starting, so the text waits
+        there as a draft and is sent once the agent is connected."""
+        if self._closing or self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Agents are not available in incognito.", 5000)
+            return None
         self._toggle_agent_sidebar(True)
         sidebar = self.agent_sidebar
         if sidebar is None:
@@ -2085,18 +2215,20 @@ class BrowserWindow(QMainWindow):
         service = self.profile_manager.registry.tasks
         task = sidebar._task_id
         if task not in service.external_tasks:
-            # The conversation you were in, else any connected one, else a new chat.
             task = next(
                 (t for t in providers.chats if t in service.external_tasks), None
             )
         if task is None:
             sidebar.start_chat()
             task = sidebar._task_id
-            send = False  # It is still starting: leave it as a draft.
-        if task is None:
-            return None
+            if task is None:
+                return None
+            sidebar.set_draft(text)
+            if send:
+                self._send_when_ready(task, text)
+            return task
         sidebar.select_task(task)
-        if send and task in service.external_tasks:
+        if send:
             try:
                 service.send_message(task, text)
                 return task
@@ -2104,6 +2236,27 @@ class BrowserWindow(QMainWindow):
                 self.status_bar.showMessage(str(error), 5000)
         sidebar.set_draft(text)
         return task
+
+    def _send_when_ready(self, task, text, waited=0):
+        """Send text to a chat that is still connecting (up to a minute);
+        if it never connects, the text stays in the chat as a draft."""
+        if self._closing:
+            return
+        service = self.profile_manager.registry.tasks
+        if task not in service.external_tasks:
+            if waited < AGENT_CONNECT_MS:
+                QTimer.singleShot(
+                    250, lambda: self._send_when_ready(task, text, waited + 250)
+                )
+            return
+        try:
+            service.send_message(task, text)
+        except (ValueError, OSError, RuntimeError) as error:
+            self.status_bar.showMessage(str(error), 5000)
+            return
+        sidebar = self.agent_sidebar
+        if sidebar is not None and sidebar._task_id == task:
+            sidebar.set_draft("")
 
     def _agent_alerts(self):
         """One desktop notifier for every window: an agent replied or needs
@@ -2171,6 +2324,16 @@ class BrowserWindow(QMainWindow):
         providers.requested.connect(requested)
 
     def _toggle_agent_sidebar(self, visible):
+        if visible:
+            from ui import tips
+
+            QTimer.singleShot(
+                800,
+                lambda: (
+                    not self._closing
+                    and tips.offer(self, "agent", getattr(self, "agent_sidebar", None))
+                ),
+            )
         if self.agent_tab is not None and visible:
             tab = self.agent_tab
             self._return_agent_sidebar(tab)
@@ -2673,7 +2836,6 @@ class BrowserWindow(QMainWindow):
             if lumen.level(self.config) == "full":
                 lumen.Dissolve(self.tab_container, self.tab_container.grab())
         self.current_tab_index = index
-        from time import monotonic
 
         for touched in (previous, self.tabs[index]):
             if touched is not None:
@@ -2745,6 +2907,10 @@ class BrowserWindow(QMainWindow):
         self._refresh_live_control()
         self._update_loading_indicator()
         self._refresh_light()
+        # A tip about the page left behind goes with it.
+        tip = getattr(self, "_tip", None)
+        if tip is not None and not sip.isdeleted(tip) and previous is not cur:
+            tip.dismiss()
         # One card or two (split view): the corners follow once laid out.
         QTimer.singleShot(0, self._place_card_corners)
 
@@ -4394,7 +4560,6 @@ class BrowserWindow(QMainWindow):
             self._update_loading_indicator()
 
     def _on_load_started(self, tab):
-        from time import monotonic
 
         tab.is_loading = True
         tab.load_started_at = monotonic()
@@ -4798,6 +4963,15 @@ class BrowserWindow(QMainWindow):
             )
         if ok and getattr(self, "_lumen", False):
             self._read_theme_color(tab)
+        if ok and tab is self._current_browser_tab():
+            from ui import tips
+
+            if page_name(tab.url()) == "newtab":
+                QTimer.singleShot(1200, lambda: tips.offer(self, "customize"))
+            elif tab.url().scheme() in ("http", "https"):
+                QTimer.singleShot(
+                    1500, lambda: tips.offer(self, "dictation", self.address_bar)
+                )
         if tab == self.tabs[self.current_tab_index]:
             self._update_history_buttons()
             if ok or not getattr(tab, "quiet_stop", False):
@@ -5136,7 +5310,6 @@ class BrowserWindow(QMainWindow):
         """Freeze, then unload, tabs left in the background."""
         if self._closing:
             return
-        from time import monotonic
 
         freeze = self._memory["tab_freeze_minutes"] * 60
         discard = self._memory["tab_discard_minutes"] * 60
@@ -5717,6 +5890,10 @@ class BrowserWindow(QMainWindow):
         # Connected while the window is still being built.
         if sip.isdeleted(self) or getattr(self, "_closing", True) or new is None:
             return
+        if new is self.address_bar.address_input:
+            from ui import tips
+
+            tips.offer(self, "address", self.address_bar)
         split = getattr(self, "split_tab", None)
         if split is not None and split in self.tabs and split.isAncestorOf(new):
             self._switch_tab(self.tabs.index(split))
@@ -6168,6 +6345,31 @@ class BrowserWindow(QMainWindow):
             self.tab_bar.move_tab(index, min(position + offset, len(self.tabs) - 1))
         self._sync_tab_group_labels()
         self._save_current_tabs()
+
+    def organize_tabs(self):
+        """Your agent proposes groups and spots duplicates; you apply it."""
+        if self._closing or self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Agents are not available in incognito.", 5000)
+            return
+        from ui.tab_organizer import OrganizeDialog
+
+        tabs = [t for t in self.tabs if t.url().scheme() in ("http", "https")]
+        if len(tabs) < 2:
+            self.status_bar.showMessage("Open a few web pages to organize.", 5000)
+            return
+        self._present_dialog(OrganizeDialog(self, tabs), modal=False)
+
+    def compare_tabs(self):
+        """The text of the tabs you pick, in a message to your agent."""
+        if self._closing or self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Agents are not available in incognito.", 5000)
+            return
+        from ui.compare_tabs import CompareDialog
+
+        if sum(t.url().scheme() in ("http", "https") for t in self.tabs) < 2:
+            self.status_bar.showMessage("Open two or more web pages to compare.", 5000)
+            return
+        self._present_dialog(CompareDialog(self), modal=False)
 
     def _manage_tab_groups(self):
         return self._open_management("tab-groups")
@@ -6683,6 +6885,9 @@ class BrowserWindow(QMainWindow):
                 or not self.isActiveWindow()
             ):
                 return
+            # Sections (General, Tabs…) open on hover; pages wait for a click.
+            if value != "summary" and value not in self._layout_menus:
+                value = None
             key = (tab, value) if isinstance(value, str) else None
             if key != self._newtab_hover:
                 self._newtab_hover, self._newtab_hover_since = key, monotonic()
@@ -7011,7 +7216,6 @@ class BrowserWindow(QMainWindow):
         self.apply_dark_mode()
         # A burst of changes (a photo, its colours, a style) reloads Steed's
         # pages once; pages that start loading after it are already current.
-        from time import monotonic
 
         self._steed_changed_at = monotonic()
         timer = getattr(self, "_steed_pages_timer", None)
@@ -7089,7 +7293,6 @@ class BrowserWindow(QMainWindow):
         for that load to end (reloading mid-load is what used to make New
         Tabs reload over and over), and a runaway is stopped."""
         from collections import deque
-        from time import monotonic
 
         if self._closing or sip.isdeleted(tab) or tab not in self.tabs:
             return
@@ -7140,6 +7343,8 @@ class BrowserWindow(QMainWindow):
         photos = pages.photos
         settings = pages.state(profile)["settings"]
         changes = None
+        if action in ("newtab-add-photos", "newtab-folder"):
+            pages.keep_more.add(profile)  # Chosen under More options.
         if action == "newtab-add-photos":
             paths, _ = QFileDialog.getOpenFileNames(
                 self,
@@ -7287,6 +7492,8 @@ class BrowserWindow(QMainWindow):
                 self._toggle_agent_sidebar(True)
             elif action == "library":
                 self._open_file_library()
+            elif action == "import":
+                self._open_import()
             elif action == "start":
                 if not self.profile_manager.is_search_profile():
                     self.config.set("welcome_completed", True)

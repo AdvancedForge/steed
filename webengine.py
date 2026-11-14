@@ -415,6 +415,17 @@ def find_text(page, text, *, backward=False, case_sensitive=False, callback=None
         page.findText(text, flags, callback)
 
 
+def background_page(profile, parent):
+    """A page nobody sees, in a profile (so its logins apply), for reading a
+    site in the background: muted, asking for nothing, opening nothing."""
+    page = QWebEnginePage(profile, parent)
+    page.setAudioMuted(True)
+    page.permissionRequested.connect(lambda permission: permission.deny())
+    page.newWindowRequested.connect(lambda request: None)
+    page.setLifecycleState(QWebEnginePage.LifecycleState.Active)
+    return page
+
+
 def view_for(page):
     """The widget showing a page, or None (pages can exist without one)."""
     return QWebEngineView.forPage(page) if page is not None else None

@@ -81,6 +81,7 @@ WORKSPACES = (
     "agent-setup",
     "adblock",
     "services",
+    "watches",
 )
 
 
@@ -317,6 +318,7 @@ class StartPages(QObject):
         self.photos = NewTabPhotos(registry.config.config_dir / "newtab", self)
         # Profiles whose customize panel stays open on the next render.
         self.keep_open = set()
+        self.keep_more = set()  # …with More options open too.
         # Where New Tab pages sit in the window, and its size (x, y, width,
         # height): with glass the picture fills the window (render_simple).
         self.canvas = None
@@ -602,29 +604,9 @@ class StartPages(QObject):
         if name == "newtab" and state["settings"]["layout"] == "simple":
             return self.render_simple(profile, state["settings"], root_css)
         if name == "welcome":
-            body = '<section class="hero"><h1>Welcome to Steed.</h1><p>A quiet place to browse, organize your work, and collaborate with agents.</p></section><div class="cards">'
-            for heading, text, action, label in (
-                (
-                    "Make it yours",
-                    "Start with search, or add bookmarks, an image and a news feed. Each profile keeps its own space.",
-                    "customize",
-                    "Customize New Tab",
-                ),
-                (
-                    "Bring your agent",
-                    "Chat with an external agent in the sidebar or a tab. Connect when you are ready; browsing works on its own.",
-                    "agents",
-                    "Open agent setup",
-                ),
-                (
-                    "Keep files close",
-                    "Enable folders once so agents can work with your files without uploading them again. You choose which folders to share.",
-                    "library",
-                    "Choose folders",
-                ),
-            ):
-                body += f'<section class="card"><h2>{heading}</h2><p>{text}</p><a class="button secondary" href="steed://action/{action}">{label}</a></section>'
-            body += '</div><section class="finish"><a class="button" href="steed://action/start">Start browsing</a><p>Ctrl+T · New tab &nbsp; Ctrl+F · Find &nbsp; Ctrl+D · Bookmark</p></section>'
+            body = welcome_steps(
+                state["settings"]["background"], styles.get(profile)["glass"]
+            )
         else:
             settings = state["settings"]
             body = '<section class="hero"><h1>Your space.</h1><p>Pick up where you left off, or start somewhere new.</p></section>'
@@ -667,7 +649,7 @@ class StartPages(QObject):
         css = (
             Path(__file__).resolve().parents[1] / "ui" / "assets" / "start_page.css"
         ).read_text(encoding="utf-8")
-        css += root_css + PAGES_CSS
+        css += root_css + PAGES_CSS + (ONBOARD_CSS if name == "welcome" else "")
         background = ""
         if name == "newtab" and "image" in state["settings"]["modules"]:
             image = state["settings"]["image"]
@@ -696,7 +678,11 @@ class StartPages(QObject):
             menu=newtab_menu() if styles.get(profile)["newtab_menu"] else "",
             profile=escape(profile_label + private_note),
             body_class=(
-                "minimal" if name == "newtab" and state["settings"]["minimal"] else ""
+                "minimal"
+                if name == "newtab" and state["settings"]["minimal"]
+                else "onboarding"
+                if name == "welcome"
+                else ""
             )
             + background,
         ).encode()
@@ -723,10 +709,12 @@ class StartPages(QObject):
             in_menu=in_menu,
             menu_available=has_menu,
             photo=self.photos.current(),
+            more_open=profile in self.keep_more,
         )
         if in_menu:
             menu, panel = newtab_menu(panel, open_=opened), ""
         self.keep_open.discard(profile)
+        self.keep_more.discard(profile)
         return (
             Template(SIMPLE_PAGE)
             .substitute(
@@ -871,6 +859,8 @@ class StartPages(QObject):
             raise ValueError("Choose a folder of photos first")
         settings = {**self.state(profile)["settings"], **changes}
         self.keep_open.add(profile)
+        if set(changes) & MORE_OPTIONS:
+            self.keep_more.add(profile)
         self.configure(profile, settings)
 
     def _background(self, settings, dark):
@@ -938,10 +928,80 @@ SWATCHES = (
 )  # fmt: skip
 
 
+# Choices kept under "More options" (it stays open after one of them).
+MORE_OPTIONS = {
+    "photo_source",
+    "photo_style",
+    "photo_every",
+    "match_theme",
+    "layout",
+    "gear_in_menu",
+}
+
+
+def welcome_steps(background, glass):
+    """Getting started in three calm steps, one idea each: the look, your
+    things from another browser, your agent. No script: the address's
+    #fragment picks the step (and survives the page being shown again)."""
+
+    def tile(label, href, kind, on):
+        state = " on" if on else ""
+        return (
+            f'<a class="tile {kind}{state}" aria-pressed="{str(bool(on)).lower()}"'
+            f' href="{href}"><span class="tile-art"></span><span>{label}</span></a>'
+        )
+
+    return (
+        '<div class="onboard">'
+        '<ol class="steps" aria-label="Getting started">'
+        '<li><a href="#look">Look</a></li><li><a href="#bring">Your things</a></li>'
+        '<li><a href="#agent">Agent</a></li></ol>'
+        '<section id="look" class="step"><h1>Welcome to Steed.</h1>'
+        "<p>First, how should it look? You can change it any time.</p>"
+        '<div class="tiles">'
+        + tile(
+            "Photo",
+            "steed://action/newtab-set?background=photo",
+            "photo",
+            background == "photo",
+        )
+        + tile(
+            "Colour",
+            "steed://action/newtab-set?background=color",
+            "colour",
+            background == "color",
+        )
+        + tile(
+            "Liquid glass",
+            f"steed://action/newtab-set?glass={'0' if glass else '1'}",
+            "glass",
+            glass,
+        )
+        + '</div><div class="actions"><a class="button" href="#bring">Next</a></div></section>'
+        '<section id="bring" class="step"><h1>Bring your things.</h1>'
+        "<p>Bookmarks, history and passwords from another browser.</p>"
+        '<div class="actions"><a class="button" href="steed://action/import">Import…</a>'
+        '<a class="button secondary" href="#agent">Not now</a></div></section>'
+        '<section id="agent" class="step"><h1>Meet your agent.</h1>'
+        "<p>Codex, Claude Code or another agent works beside you, only with what you allow.</p>"
+        '<div class="actions"><a class="button" href="steed://action/agents">Open the agent panel</a>'
+        '<a class="button secondary" href="steed://action/start">Start browsing</a></div></section>'
+        '<a class="skip" href="steed://action/start">Skip the tour</a></div>'
+    )
+
+
 def customize_panel(
-    settings, open_=False, glass=False, in_menu=False, menu_available=True, photo=None
+    settings,
+    open_=False,
+    glass=False,
+    in_menu=False,
+    menu_available=True,
+    photo=None,
+    more_open=False,
 ):
     """The gear's panel: links to Steed actions (the page runs no script).
+    Calm first: the background as three tiles, what goes with the one
+    chosen, and glass; everything else under More options.
     in_menu: a row inside the ☰ menu rather than its own button."""
     from urllib.parse import quote
 
@@ -953,76 +1013,52 @@ def customize_panel(
             f"{label}</a>"
         )
 
+    def tile(label, href, kind, current):
+        on = " on" if current else ""
+        return (
+            f'<a class="tile {kind}{on}" aria-pressed="{str(bool(current)).lower()}"'
+            f' href="{href}"><span class="tile-art"></span><span>{label}</span></a>'
+        )
+
     background = settings["background"]
     parts = [
-        '<h2>Background</h2><div class="choices">',
-        choice("Photo", "background", "photo", background == "photo"),
-        choice("Colour", "background", "color", background == "color"),
-        f'<a class="pill{" on" if background == "image" else ""}"'
-        ' href="steed://action/newtab-image">Your image…</a></div>',
+        '<div class="tiles">',
+        tile(
+            "Photo",
+            "steed://action/newtab-set?background=photo",
+            "photo",
+            background == "photo",
+        ),
+        tile(
+            "Colour",
+            "steed://action/newtab-set?background=color",
+            "colour",
+            background == "color",
+        ),
+        tile(
+            "Your image", "steed://action/newtab-image", "image", background == "image"
+        ),
+        "</div>",
     ]
     if background == "photo":
-        source = settings["photo_source"]
-        parts.append('<h3>Photos from</h3><div class="choices">')
-        for value, label in (
-            ("online", "Online"),
-            ("mine", "Your photos"),
-            ("folder", "A folder"),
-            ("favourites", "Favourites"),
-        ):
-            if value == "folder" and not settings["photo_folder"]:
-                # No folder yet: choosing one comes first.
-                parts.append(
-                    '<a class="pill" href="steed://action/newtab-folder">A folder…</a>'
-                )
-                continue
-            parts.append(choice(label, "photo_source", value, source == value))
         parts.append(
-            '</div><div class="choices photo-tools">'
-            '<a class="pill" href="steed://action/newtab-add-photos">Add photos…</a>'
-            '<a class="pill" href="steed://action/newtab-folder">'
-            + ("Change folder…" if settings["photo_folder"] else "Choose folder…")
-            + "</a>"
+            '<div class="choices quick">'
+            '<a class="pill primary" href="steed://action/newtab-photo">New photo</a>'
         )
         if photo is not None:
             saved = photo["favourite"] or photo["source"] == "favourites"
             parts.append(
                 '<span class="pill on">♥ Saved</span>'
                 if saved
-                else '<a class="pill" href="steed://action/newtab-favourite">'
-                "♡ Save this photo</a>"
+                else '<a class="pill" href="steed://action/newtab-favourite">♡ Save</a>'
             )
             if photo["source"] == "online":
                 parts.append(
-                    '<a class="pill" href="steed://action/newtab-block">'
-                    "Not this one</a>"
+                    '<a class="pill" href="steed://action/newtab-block">Skip this one</a>'
                 )
-        if settings["photo_folder"] and source == "folder":
-            parts.append(
-                f'<p class="folder">{escape(Path(settings["photo_folder"]).name)}</p>'
-            )
-        parts.append('</div><h3>Style</h3><div class="choices">')
-        style = settings["photo_style"]
-        parts.append(choice("Colour", "photo_style", "color", style == "color"))
-        parts.append(
-            choice("Black & white", "photo_style", "grayscale", style == "grayscale")
-        )
         parts.append("</div>")
-        parts.append('<h3>New photo</h3><div class="choices">')
-        for value, label in (
-            ("new_tab", "Every tab"),
-            ("hourly", "Hourly"),
-            ("6h", "6 hours"),
-            ("daily", "Daily"),
-        ):
-            parts.append(
-                choice(label, "photo_every", value, settings["photo_every"] == value)
-            )
-        parts.append(
-            '<a class="pill" href="steed://action/newtab-photo">New photo now</a></div>'
-        )
     if background == "color":
-        parts.append('<h3>Colour</h3><div class="swatches">')
+        parts.append('<div class="swatches">')
         parts.append(
             f'<a class="swatch theme{" on" if not settings["color"] else ""}"'
             ' href="steed://action/newtab-set?color=" title="Follow the theme"'
@@ -1036,24 +1072,75 @@ def customize_panel(
                 f' href="steed://action/newtab-set?color={quote(color, safe="")}"></a>'
             )
         parts.append("</div>")
+    parts.append('<div class="choices look">')
+    parts.append(choice("Liquid glass", "glass", "0" if glass else "1", glass))
+    parts.append("</div>")
+
+    more = []
+    if background == "photo":
+        source = settings["photo_source"]
+        more.append('<h3>Photos from</h3><div class="choices">')
+        for value, label in (
+            ("online", "Online"),
+            ("mine", "Your photos"),
+            ("folder", "A folder"),
+            ("favourites", "Favourites"),
+        ):
+            if value == "folder" and not settings["photo_folder"]:
+                # No folder yet: choosing one comes first.
+                more.append(
+                    '<a class="pill" href="steed://action/newtab-folder">A folder…</a>'
+                )
+                continue
+            more.append(choice(label, "photo_source", value, source == value))
+        more.append(
+            '<a class="pill" href="steed://action/newtab-add-photos">Add photos…</a>'
+        )
+        if settings["photo_folder"]:
+            more.append(
+                '<a class="pill" href="steed://action/newtab-folder">Change folder…</a>'
+            )
+        more.append("</div>")
+        if settings["photo_folder"] and source == "folder":
+            more.append(
+                f'<p class="folder">{escape(Path(settings["photo_folder"]).name)}</p>'
+            )
+        style = settings["photo_style"]
+        more.append('<h3>Photo</h3><div class="choices">')
+        more.append(choice("Colour", "photo_style", "color", style == "color"))
+        more.append(
+            choice("Black & white", "photo_style", "grayscale", style == "grayscale")
+        )
+        more.append('</div><h3>A new one</h3><div class="choices">')
+        for value, label in (
+            ("new_tab", "Every tab"),
+            ("hourly", "Hourly"),
+            ("6h", "Every 6 hours"),
+            ("daily", "Daily"),
+        ):
+            more.append(
+                choice(label, "photo_every", value, settings["photo_every"] == value)
+            )
+        more.append("</div>")
     match = settings["match_theme"]
-    parts.append('<h2>Browser colours</h2><div class="choices">')
-    parts.append(choice("Match the background", "match_theme", "1", match))
-    parts.append(choice("Theme colours", "match_theme", "0", not match))
-    parts.append('</div><h2>Look</h2><div class="choices">')
-    for value, label in (("1", "Liquid glass"), ("0", "Solid")):
-        parts.append(choice(label, "glass", value, glass == (value == "1")))
-    parts.append('</div><h2>Layout</h2><div class="choices">')
-    parts.append(choice("Simple", "layout", "simple", settings["layout"] == "simple"))
-    parts.append(
-        choice("Classic", "layout", "classic", settings["layout"] == "classic")
-    )
+    more.append('<h3>Browser colours</h3><div class="choices">')
+    more.append(choice("From the background", "match_theme", "1", match))
+    more.append(choice("Steed's own", "match_theme", "0", not match))
+    more.append('</div><h3>Layout</h3><div class="choices">')
+    more.append(choice("Simple", "layout", "simple", settings["layout"] == "simple"))
+    more.append(choice("Classic", "layout", "classic", settings["layout"] == "classic"))
+    more.append("</div>")
     if menu_available:
-        parts.append('</div><h3>Settings button</h3><div class="choices">')
-        parts.append(choice("Own button", "gear_in_menu", "0", not in_menu))
-        parts.append(choice("In the ☰ menu", "gear_in_menu", "1", in_menu))
+        more.append('<h3>This button</h3><div class="choices">')
+        more.append(choice("On its own", "gear_in_menu", "0", not in_menu))
+        more.append(choice("In the ☰ menu", "gear_in_menu", "1", in_menu))
+        more.append("</div>")
+    more.append(
+        '<a class="more" href="steed://action/customize">All New Tab settings…</a>'
+    )
     parts.append(
-        '</div><a class="more" href="steed://action/customize">More options…</a>'
+        f'<details class="more-options"{" open" if more_open else ""}>'
+        "<summary>More options</summary>" + "".join(more) + "</details>"
     )
     summary = (
         '<summary class="row">' + GEAR + "Customize New Tab</summary>"
@@ -1238,6 +1325,29 @@ body { font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif); font-
 .corner .icon, .browser-menu > summary { transition: background-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
 .corner .icon:hover, .browser-menu > summary:hover { transform: scale(1.08); }
 html:not([data-effects=minimal]) body::before { transition: background-image .9s ease; }
+/* Customize: calm first, the rest under More options. */
+.panel { width: 320px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.panel a.tile { display: flex; flex-direction: column; gap: 6px; align-items: stretch; text-align: center;
+  text-decoration: none; color: inherit; font-size: 13px; font-weight: 500; padding: 0; background: none; }
+.panel a.tile:hover { background: none; }
+.tile-art { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px; border: 2px solid transparent;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 12%, transparent);
+  transition: border-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
+.tile:hover .tile-art { transform: translateY(-2px); }
+.tile.on .tile-art { border-color: var(--accent); }
+.tile.photo .tile-art { background: var(--newtab-image, linear-gradient(135deg, #577590, #f3722c)) center / cover; }
+.tile.colour .tile-art { background: conic-gradient(from 200deg, #1f3a5f, #2f5d50, #8a6d1f, #7a2e2e, #5b3a6b, #1f3a5f); }
+.tile.image .tile-art { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink) 10%, transparent) 0 6px, transparent 6px 12px); }
+.quick, .look, .swatches { margin-top: 12px; }
+.panel .pill.primary, .browser-menu .panel .pill.primary { background: var(--accent); color: var(--bg); border-color: transparent; font-weight: 600; }
+.more-options { margin-top: 14px; border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding-top: 10px; }
+.more-options > summary { cursor: pointer; list-style: none; color: var(--muted); font-size: 13px; font-weight: 500; }
+.more-options > summary::-webkit-details-marker { display: none; }
+.more-options > summary::after { content: "›"; margin-left: 6px; display: inline-block; transition: transform .2s; }
+.more-options[open] > summary::after { transform: rotate(90deg); }
+.more-options h3 { margin: 12px 0 6px; }
 @keyframes mark-in { from { opacity: 0; transform: translateY(18px) scale(.97); letter-spacing: .02em; filter: blur(8px); } }
 @keyframes field-in { from { opacity: 0; transform: translateY(14px) scaleX(.9); } }
 @keyframes fade-in { from { opacity: 0; } }
@@ -1249,6 +1359,38 @@ html[data-effects=full] body::before { animation: fade-in .7s both, drift 60s 0.
 html[data-effects=balanced] .wordmark, html[data-effects=balanced] .search { animation: fade-in .35s both; }
 .panel h3, .panel h2 { text-transform: none; letter-spacing: 0; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+"""
+
+# Welcome: one step at a time (the #fragment chooses; #look first).
+ONBOARD_CSS = """
+body.onboarding header nav, body.onboarding .browser-menu, body.onboarding footer { display: none; }
+.onboard { max-width: 620px; margin: 6vh auto 0; padding: 0 24px; }
+.steps { list-style: none; display: flex; gap: 8px; padding: 0; margin: 0 0 36px; }
+.steps a { display: block; padding: 6px 14px; border-radius: 999px; color: var(--muted); text-decoration: none;
+  font-size: 13px; font-weight: 600; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.onboard:not(:has(.step:target)) .steps li:nth-child(1) a,
+.onboard:has(#look:target) .steps li:nth-child(1) a, .onboard:has(#bring:target) .steps li:nth-child(2) a,
+.onboard:has(#agent:target) .steps li:nth-child(3) a { color: var(--ink); background: var(--soft); border-color: transparent; }
+.step { display: none; }
+.step:target, .onboard:not(:has(.step:target)) #look { display: block; }
+.step h1 { margin: 0 0 10px; }
+.step p { font-size: 17px; max-width: 46ch; }
+.step .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 26px 0 8px; max-width: 520px; }
+.step .tile { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 14px; }
+.step .tile-art { display: block; aspect-ratio: 4 / 3; border-radius: 16px; border: 2px solid transparent;
+  background: var(--surface); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
+  transition: border-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
+.step .tile:hover .tile-art { transform: translateY(-3px); }
+.step .tile.on .tile-art { border-color: var(--accent); }
+.step .tile.photo .tile-art { background: linear-gradient(160deg, #f3a66b, #6a4c93 60%, #1d3557); }
+.step .tile.colour .tile-art { background: conic-gradient(from 200deg, #1f3a5f, #2f5d50, #8a6d1f, #7a2e2e, #5b3a6b, #1f3a5f); }
+.step .tile.glass .tile-art { background: linear-gradient(135deg, color-mix(in srgb, #fff 35%, transparent), color-mix(in srgb, #fff 8%, transparent)),
+  linear-gradient(160deg, #577590, #f3722c); }
+.step .actions { display: flex; gap: 10px; margin-top: 26px; flex-wrap: wrap; }
+.onboard .skip { display: inline-block; margin-top: 40px; color: var(--muted); font-size: 13px; }
+@keyframes step-in { from { opacity: 0; transform: translateY(10px); } }
+html:not([data-effects=minimal]) .step:target, html:not([data-effects=minimal]) .onboard:not(:has(.step:target)) #look {
+  animation: step-in .45s cubic-bezier(.22, 1, .36, 1); }
 """
 
 # Lumen for Welcome and the classic start pages: the same type, lit cards
