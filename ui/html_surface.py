@@ -243,6 +243,9 @@ class HtmlSurface(QWidget):
             style = manager.registry.page_style
             profile = manager.current_profile_name
             state["root_css"] = style.css(profile)
+            from ui.lumen import level
+
+            state["effects"] = level(getattr(owner, "config", None) or Config())
             # Settings may preview its unsaved global dark-mode preference.
             if style.get(profile)["theme"] != "system" or "dark" not in state:
                 state["dark"] = style.dark(profile)
@@ -256,7 +259,9 @@ class HtmlSurface(QWidget):
         generation = self.generation
 
         self.page.runJavaScript(
-            "(() => { let s = document.getElementById('steed-root-overrides');"
+            "(() => { document.documentElement.dataset.effects = "
+            + json.dumps(state.get("effects", "full"))
+            + "; let s = document.getElementById('steed-root-overrides');"
             "if (!s) { s = document.createElement('style'); s.id = 'steed-root-overrides';"
             "s.nonce = document.querySelector('style[nonce]').nonce;"
             "document.head.append(s); } s.textContent = "

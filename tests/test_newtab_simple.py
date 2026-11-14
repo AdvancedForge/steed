@@ -113,6 +113,10 @@ class SimpleNewTabTests(unittest.TestCase):
 
     def loaded(self, tab):
         """Wait until the tab's page has committed and finished loading."""
+        # Steed reloads its pages shortly after a change (coalesced).
+        timer = getattr(self.window, "_steed_pages_timer", None)
+        if timer is not None:
+            self.wait(lambda: not timer.isActive() and not tab.is_loading)
         self.wait(
             lambda: (
                 tab.history().count() > 0
@@ -299,26 +303,25 @@ class SimpleNewTabTests(unittest.TestCase):
         )
         self.assertIsNone(self.pages.theme_tint("global"))
 
-    def test_new_photo_now_reloads_the_open_new_tab(self):
+    def test_new_photo_now_changes_the_open_new_tab_in_place(self):
         tab = self.window._new_tab(url="steed:newtab", return_tab=True)
         self.wait(lambda: self.pages.photos.current() is not None)
         fetched = self.pages.photos.current()["fetched"]
         self.loaded(tab)
         self.wait(lambda: self.js(tab, "!!document.querySelector('.credit')"))
+        live = "document.getElementById('steed-live').textContent"
         asked = len(Picsum.asked)
-        self.js(tab, "window.steedMark = 1")
+        self.js(
+            tab,
+            "window.steedMark = 1;"
+            " document.getElementById('steed-live').textContent = 'stale'; true",
+        )
         self.window._start_page_action(tab, QUrl("steed://action/newtab-photo"))
         self.wait(lambda: len(Picsum.asked) >= asked + 2)
-        self.wait(
-            lambda: (
-                not tab.page().isLoading()
-                and self.js(tab, "window.steedMark === undefined")
-            )
-        )
-        self.assertGreater(self.pages.photos.current()["fetched"], fetched)
-        # The reloaded page keeps the panel open where the choice was made.
-        self.loaded(tab)
-        self.assertTrue(self.js(tab, "document.querySelector('.customize').open"))
+        self.wait(lambda: self.pages.photos.current()["fetched"] > fetched)
+        # The picture changes on the open page; the page itself stays.
+        self.wait(lambda: self.js(tab, live) != "stale")
+        self.assertEqual(self.js(tab, "window.steedMark"), 1)
 
     def test_liquid_glass_mode(self):
         window, pages = self.window, self.pages
@@ -439,24 +442,26 @@ class SimpleNewTabTests(unittest.TestCase):
         self.wait(lambda: self.run_in(popup.surface.page, script) == colors["menu"])
         popup.close()
 
-    def test_a_photo_arriving_leaves_a_busy_new_tab_alone(self):
+    def test_a_photo_arriving_changes_a_busy_new_tab_without_disturbing_it(self):
         tab = self.window._new_tab(url="steed:newtab", return_tab=True)
         self.wait(lambda: self.pages.photos.current() is not None)
         self.loaded(tab)
         self.wait(lambda: self.js(tab, "!!document.querySelector('.credit')"))
         self.js(
             tab,
-            "window.steedMark = 1; document.querySelector('.browser-menu').open = true; true",
+            "window.steedMark = 1; document.querySelector('.browser-menu').open = true;"
+            " document.getElementById('steed-live').textContent = 'stale'; true",
         )
         self.pages.photos.changed.emit(True)
-        end = time.monotonic() + 1
-        while time.monotonic() < end:
-            self.app.processEvents()
-            time.sleep(0.01)
-        self.assertEqual(self.js(tab, "window.steedMark"), 1)  # Not reloaded.
-        self.js(tab, "document.querySelector('.browser-menu').open = false; true")
-        self.pages.photos.changed.emit(True)
-        self.wait(lambda: self.js(tab, "window.steedMark === undefined"))
+        self.wait(
+            lambda: (
+                self.js(tab, "document.getElementById('steed-live').textContent")
+                != "stale"
+            )
+        )
+        # Not reloaded: the open menu and the page's state are as they were.
+        self.assertEqual(self.js(tab, "window.steedMark"), 1)
+        self.assertTrue(self.js(tab, "document.querySelector('.browser-menu').open"))
 
     def test_every_browser_colour_can_be_fixed_and_kept(self):
         window, pages = self.window, self.pages

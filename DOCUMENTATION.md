@@ -515,7 +515,14 @@ down for hours in November 2026), Steed asks Wikimedia Commons for one of its
 featured landscape photos instead, credited with the photographer and its
 licence, and goes there first for the next half hour. If neither answers,
 *New photo now* shows one of your last 12 photos (kept in
-`~/.custom_browser/newtab/recent/`) and says so. Steed keeps the current photo in
+`~/.custom_browser/newtab/recent/`) and says so. A new photo (and the colours
+taken from it) changes open New Tabs in place, cross-fading; they are never
+reloaded for it, so what you typed or opened stays. Steed reloads its own
+pages only when their layout or settings change, once per burst of changes,
+never a tab still loading (it waits) or one that began loading after the
+change, and at most four times in ten seconds per tab; if that limit is ever
+reached it stops and writes what asked to `~/.custom_browser/reload_loops.log`.
+Closing a tab reloads nothing unless a page lists recently closed tabs. Steed keeps the current photo in
 `~/.custom_browser/newtab/` and fetches the next in the background, so a new
 tab never waits; until the first arrives, or offline, a soft gradient shows.
 Picsum is only contacted while a profile uses the photo background. The gear
