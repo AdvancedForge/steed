@@ -12,6 +12,9 @@
 // - permissions: answered from the extension's own manifest.
 // - notifications: the web Notification API.
 // - menus, scripting, side panel, badges: succeed without effect.
+// - offscreen: Qt WebEngine's own offscreen documents end the whole browser
+//   (6.11), so Steed opens the document itself, as a hidden page of the
+//   extension. Pages' calls are made by the background.
 // Existing APIs are never replaced.
 (() => {
   const chrome = globalThis.chrome;
@@ -760,6 +763,38 @@
       });
     const tabFor = (id) => (id ? tabOf(id) || { id, windowId: 1 } : undefined);
 
+    // Offscreen documents, opened by Steed (see extension_bridge).
+    if (chrome.offscreen) {
+      const steedOffscreen = {
+        createDocument: (...args) =>
+          settle(args, ([params = {}]) =>
+            askSteed({ type: "offscreen", op: "create", url: String(params.url || ""), reasons: params.reasons || [] }),
+          ),
+        closeDocument: (...args) => settle(args, () => askSteed({ type: "offscreen", op: "close" })),
+        hasDocument: (...args) => settle(args, () => askSteed({ type: "offscreen", op: "has" }).then(Boolean)),
+      };
+      for (const [name, value] of Object.entries(steedOffscreen)) replace(chrome.offscreen, name, value);
+    }
+    const nativeContexts = chrome.runtime.getContexts ? chrome.runtime.getContexts.bind(chrome.runtime) : null;
+    replace(chrome.runtime, "getContexts", (...args) =>
+      settle(args, async ([filter = {}]) => {
+        const found = nativeContexts
+          ? ((await nativeContexts(filter)) || []).filter((c) => c.contextType !== "OFFSCREEN_DOCUMENT")
+          : [];
+        const types = filter.contextTypes;
+        if (!types || types.includes("OFFSCREEN_DOCUMENT")) {
+          const url = await askSteed({ type: "offscreen", op: "has" });
+          if (url && (!filter.documentUrls || filter.documentUrls.includes(url))) {
+            found.push({
+              contextType: "OFFSCREEN_DOCUMENT", contextId: "steed-offscreen", documentUrl: url,
+              documentOrigin: location.origin, tabId: -1, windowId: -1, frameId: -1, incognito: false,
+            });
+          }
+        }
+        return found;
+      }),
+    );
+
     const onclicks = new Map();
     let menuIds = 0;
     const plain = (props = {}) => {
@@ -892,8 +927,8 @@
       listTabs();
     });
     // Pages' calls of these, made here.
-    const callable = { contextMenus: true, action: true, scripting: true, runtime: true };
-    const runtimeCalls = new Set(["openOptionsPage"]);
+    const callable = { contextMenus: true, action: true, scripting: true, runtime: true, offscreen: true };
+    const runtimeCalls = new Set(["openOptionsPage", "getContexts"]);
 
     // Popups and other extension pages ask here.
     chrome.runtime.onMessage.addListener((message, sender, respond) => {
@@ -981,6 +1016,12 @@
     };
     own("scripting", scripting);
     replace(chrome.runtime, "openOptionsPage", call("runtime", "openOptionsPage"));
+    replace(chrome.runtime, "getContexts", call("runtime", "getContexts"));
+    if (chrome.offscreen) {
+      for (const name of ["createDocument", "closeDocument", "hasDocument"]) {
+        replace(chrome.offscreen, name, call("offscreen", name));
+      }
+    }
     const reportPage = (message, source, line) => {
       try {
         chrome.runtime.sendMessage({ __steed: "error", message: String(message).slice(0, 2000), source, line }).catch(() => {});

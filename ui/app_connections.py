@@ -39,9 +39,7 @@ class AppConnectionsDialog(HtmlSettingsDialog):
         self.resize(720, 620)
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Sign in once, then choose what agents may do with each account. Allowed "
-            "app-only tasks do not repeat permission prompts. Browsing, file access and "
-            "code execution have separate permissions. Credentials stay in your desktop keyring."
+            "Sign in once, then choose what agents may do with each account. Browsing, files and running code are asked about separately. Sign-ins stay in your desktop keyring."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
@@ -62,10 +60,7 @@ class AppConnectionsDialog(HtmlSettingsDialog):
         self.access_panel = QWidget()
         self.access_layout = QVBoxLayout(self.access_panel)
         self.access_notice = QLabel(
-            "Allow these actions without asking for each task. Applies to all connected "
-            "agents, across profiles. Each app-only task keeps exact destinations, a "
-            "10-minute limit and at most 1,000 operations. Turning access off stops matching "
-            "tasks and clears matching saved approvals."
+            "Allow these without asking each time, for every connected agent and profile. Each task is still limited to the exact destinations, 10 minutes and 1,000 operations. Turning one off stops tasks using it and forgets its saved approvals."
         )
         self.access_notice.setWordWrap(True)
         self.access_layout.addWidget(self.access_notice)
@@ -100,7 +95,7 @@ class AppConnectionsDialog(HtmlSettingsDialog):
         self.setup_panel.hide()
         layout.addWidget(self.setup_panel)
         setup_help = QLabel(
-            "Import the provider's desktop app configuration once. Steed remembers it in your keyring for future account connections."
+            "Import the provider's app settings once; Steed keeps them in your keyring."
         )
         setup_help.setWordWrap(True)
         setup_layout.addWidget(setup_help)

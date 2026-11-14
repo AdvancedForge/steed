@@ -873,6 +873,12 @@ content scripts:
   `tabs.update` (to navigate) and the tab events work for those tabs. Messages
   and ports from content scripts carry `sender.tab` and `sender.frameId`,
   which Qt leaves out. Popups ask the background. Tab ids last one page load.
+- **offscreen**: Qt's own offscreen documents end the whole browser (a crash
+  in Qt WebEngine 6.11), so Steed opens the document itself as a hidden page
+  of the extension: `offscreen.createDocument`, `closeDocument`,
+  `hasDocument` and `runtime.getContexts` (for `OFFSCREEN_DOCUMENT`) work as in
+  Chrome, one document per extension, from the background or the extension's
+  pages. It closes when the extension is switched off or removed.
 - **storage.sync**: Qt's fails on every call; Steed keeps it in local storage
   (it does not travel between computers).
 - **permissions**: answered from the extension's manifest (no prompts).
@@ -1376,7 +1382,8 @@ script answers instead:
 - Sites get the standard events and results: interim results when they ask,
   one phrase ending after a pause, or a final result per phrase in continuous
   mode until they stop. The page's language goes to an online service.
-- Extensions' pages work too, in a tab or in their toolbar popup; the
+- Extensions' pages work too: in a tab, in their toolbar popup, or in an
+  offscreen document (how extensions listen from the background); the
   microphone question names the extension.
 - Only the top page of an `https://` site (or `localhost`) is answered; frames
   inside a page and plain `http://` sites get the standard

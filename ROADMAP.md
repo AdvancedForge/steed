@@ -35,8 +35,8 @@ explanations fold to one line until pointed at; Settings → Everything lists
 every Steed page. Menus regrouped with icons (ticks replace icons when on);
 one filled main action per button row in dialogs; shorter intros on the
 busiest management pages; the agent dock is titled Agents.
-Next: the remaining long explanations on agent pages (Task Permissions,
-App Connections).
+Task Permissions and App Connections explanations rewritten in plain words
+with their limits kept (approvals, 10 minutes, 1,000 operations, isolation).
 
 **One theme — November 14, 2026.** Steed's pages match the browser's colours
 by default (photo, chosen browser colours, or the plain dark browser's own);
@@ -96,7 +96,9 @@ end it; top frames of secure sites only. Checked with tests and a real model
 on a voice-search page; manual check: a real site's voice button with a
 microphone. Extension pages (tabs and toolbar popups) are answered too, the
 prompt naming the extension; popups stay open while it asks.
-Next: extension background pages (no window to listen in).
+Offscreen documents (how extensions listen from the background) are opened by
+Steed itself, which also fixes a crash: Qt WebEngine 6.11's own
+chrome.offscreen.createDocument ended the browser.
 
 **Dictation — November 13, 2026.** `Ctrl+Shift+Space` push-to-talk
 anywhere in Steed (tap or hold, Escape cancels) with a listening pill showing
