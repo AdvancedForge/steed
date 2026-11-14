@@ -9,6 +9,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Dictation — November 13, 2026.** `Ctrl+Shift+Space` push-to-talk
+anywhere in Steed (tap or hold, Escape cancels) with a listening pill showing
+live words; the text goes into the focused page field (inputs, textareas,
+rich editors, shadow roots, same-origin frames), Steed's own fields or the
+agent message, else the clipboard. Engines: open models on this computer
+(Moonshine, Whisper, Parakeet through sherpa-onnx in a separate worker,
+downloaded on demand) or any OpenAI-compatible transcription service with the
+key in the keyring. Websites' SpeechRecognition no longer crashes the tab.
+Checked with a real model, real speech audio and the real microphone; manual
+check: dictate with a microphone on the desktop. Next: give websites a
+working SpeechRecognition backed by Steed's dictation (behind the microphone
+permission), and an extension-facing API.
+
 **Ask your agent from anywhere — November 13, 2026.** Right-click a
 selection, link or page to draft a question to your agent with that context;
 "@ question" in the address bar sends one about the page; desktop

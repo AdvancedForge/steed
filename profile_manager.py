@@ -484,6 +484,16 @@ class ProfileRegistry(QObject):
         self.profiles[name] = profile
         self.passwords.install(profile)
         self.passkeys.install(profile)
+        from services.dictation import SPEECH_GUARD
+
+        webengine.add_profile_script(
+            profile,
+            "steed-speech-guard",
+            SPEECH_GUARD,
+            world=webengine.PAGE_WORLD,
+            when="start",
+            frames=True,
+        )
         import privacy
 
         privacy.install_fingerprint_guard(

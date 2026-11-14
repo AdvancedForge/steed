@@ -411,6 +411,16 @@ def view_for(page):
     return QWebEngineView.forPage(page) if page is not None else None
 
 
+def view_around(widget):
+    """The web view a widget belongs to (keyboard focus sits in a child of the
+    view), or None."""
+    while widget is not None:
+        if isinstance(widget, QWebEngineView):
+            return widget
+        widget = widget.parentWidget()
+    return None
+
+
 _FAILURES = {
     "denied": QWebEngineUrlRequestJob.Error.RequestDenied,
     "not_found": QWebEngineUrlRequestJob.Error.UrlNotFound,

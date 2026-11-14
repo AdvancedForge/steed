@@ -400,6 +400,8 @@ class BrowserWindow(QMainWindow):
         self.settings_dialog = None
         self._menu_anchor = None
         self._html_menu = None
+        self._dictation = None
+        self._dictation_dialog = None
         self._html_dialogs = []
         self._newtab_hover = None
         self._newtab_hover_opened = False
@@ -595,6 +597,17 @@ class BrowserWindow(QMainWindow):
         import_action = QAction("Import from Another Browser…", self)
         import_action.triggered.connect(self._open_import)
         general_menu.addAction(import_action)
+        dictation_menu = general_menu.addMenu("Dictation")
+        self.dictate_action = QAction("Dictate", self)
+        # The window's key filter handles the keys (tap to toggle, or hold).
+        self.dictate_action.setShortcut(QKeySequence("Ctrl+Shift+Space"))
+        self.dictate_action.triggered.connect(lambda: self.dictation.toggle())
+        dictation_menu.addAction(self.dictate_action)
+        dictation_settings_action = QAction("Dictation Settings…", self)
+        dictation_settings_action.triggered.connect(
+            lambda: self.open_dictation_settings()
+        )
+        dictation_menu.addAction(dictation_settings_action)
         self.extensions_menu = general_menu.addMenu("Extensions")
         self.extensions_menu.aboutToShow.connect(self._fill_extensions_menu)
         clear_action = QAction("Clear Browsing Data…", self)
@@ -2412,6 +2425,15 @@ class BrowserWindow(QMainWindow):
     def eventFilter(self, watched, event):
         kind = event.type()
         if (
+            kind in self._KEY_EVENTS
+            and isinstance(watched, QWidget)
+            and not sip.isdeleted(self)
+            and not self._closing
+            and watched.window() is self
+            and self._dictation_key(event)
+        ):
+            return True
+        if (
             kind in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease)
             and event.button()
             in (Qt.MouseButton.BackButton, Qt.MouseButton.ForwardButton)
@@ -2427,6 +2449,71 @@ class BrowserWindow(QMainWindow):
                     self._go_forward()
             return True
         return super().eventFilter(watched, event)
+
+    _KEY_EVENTS = (
+        QEvent.Type.ShortcutOverride,
+        QEvent.Type.KeyPress,
+        QEvent.Type.KeyRelease,
+    )
+
+    def _dictation_key(self, event):
+        """Ctrl+Shift+Space: tap to start/finish, or hold while talking; Esc
+        cancels. True when the key was dictation's."""
+        key = event.key()
+        modifiers = event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier
+        controller = self._dictation
+        if key == Qt.Key.Key_Space:
+            if event.type() == QEvent.Type.KeyRelease:
+                if controller is None or controller.pressed_at is None:
+                    return False
+                controller.key_released(event.isAutoRepeat())
+                return True
+            wanted = (
+                Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+            )
+            if modifiers != wanted:
+                return False
+            # Accepting the override turns the shortcut into a key press here.
+            event.accept()
+            if event.type() == QEvent.Type.KeyPress:
+                self.dictation.key_pressed(event.isAutoRepeat())
+            return True
+        if (
+            key == Qt.Key.Key_Escape
+            and event.type() == QEvent.Type.KeyPress
+            and controller is not None
+            and controller.busy
+        ):
+            controller.cancel()
+            return True
+        return False
+
+    @property
+    def dictation(self):
+        if self._dictation is None:
+            from ui.dictation import WindowDictation
+
+            self._dictation = WindowDictation(self)
+        return self._dictation
+
+    def open_dictation_settings(self, note=""):
+        from ui.dictation_dialog import DictationDialog
+
+        dialog = self._dictation_dialog
+        host = None
+        if dialog is not None and not sip.isdeleted(dialog):
+            host = getattr(dialog, "_html_host", None)
+        if host is not None and not sip.isdeleted(host) and not host.closed:
+            dialog.note.setText(note)
+            dialog.note.setVisible(bool(note))
+            host.raise_()
+            host.activateWindow()
+            return host
+        dialog = DictationDialog(self.config, self, note)
+        self._dictation_dialog = dialog
+        host = self._present_dialog(dialog, modal=False)
+        host.finished.connect(lambda _: dialog.deleteLater())
+        return host
 
     def _update_history_buttons(self):
         """Back/forward follow the current tab's history after every navigation."""
@@ -5837,6 +5924,8 @@ class BrowserWindow(QMainWindow):
             return
         self._closing = True
         self._newtab_hover_timer.stop()
+        if self._dictation is not None:
+            self._dictation.cancel()
         if self._html_menu is not None:
             self._html_menu.close()
         for host in list(self._html_dialogs):
