@@ -347,6 +347,34 @@ class FeatureTests(unittest.TestCase):
         sharing.target_removed("work", original)
         self.assertFalse(sharing.local("work", "example.org"))
 
+    def test_global_deletion_spares_sites_kept_local(self):
+        sharing, store = self.sharing()
+        original = cookie()
+        sharing.global_added(original)
+        sharing.target_added("work", original)  # Inherited, unchanged.
+        sharing.mark_local("work", "example.org")  # Its site kept separate.
+        sharing.global_removed(original)
+        # Deleting writes an expired copy; the kept site gets no write at all.
+        self.assertEqual(store.setCookie.call_count, 1)
+        store.deleteCookie.assert_not_called()
+        # Another profile's inherited copy (no local choice) still goes.
+        other, other_store = self.sharing_named("home")
+        other.global_added(original)
+        other.target_added("home", original)
+        other.global_removed(original)
+        self.assertEqual(other_store.setCookie.call_count, 2)
+        expired = other_store.setCookie.call_args[0][0]
+        self.assertEqual(expired.expirationDate().toSecsSinceEpoch(), 1)  # Expired.
+
+    def sharing_named(self, name):
+        sharing = CookieSharing(self.config, Mock())
+        profile = Mock()
+        directory = self.config.profiles_dir / name
+        directory.mkdir()
+        sharing.register(name, profile, directory, True)
+        sharing.enable(name)
+        return sharing, profile.cookieStore.return_value
+
     def test_local_deletion_does_not_resurrect(self):
         sharing, store = self.sharing()
         original = cookie()

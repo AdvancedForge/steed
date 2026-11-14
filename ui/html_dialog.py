@@ -188,6 +188,17 @@ class HtmlDialog(QDialog):
         super().showEvent(event)
         if hasattr(self, "surface") and not self.closed:
             self.publish()
+        # A dialog of its own (not a page in a tab) arrives like menus do.
+        colors = getattr(getattr(self.owner, "address_bar", None), "colors", {})
+        if (
+            self.isWindow()
+            and colors.get("glide")
+            and not getattr(self, "_arrived", False)
+        ):
+            from ui.lumen import open_window
+
+            self._arrived = True
+            open_window(self)
 
     def reload(self):
         self.context = token_hex(16)

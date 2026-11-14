@@ -47,6 +47,15 @@ def site_of(url):
     return host.removeprefix("www.")
 
 
+def steed_page(url):
+    """ "newtab" for steed:newtab (or steed://newtab/), else ""."""
+    parts = urlsplit(url)
+    if parts.scheme != "steed":
+        return ""
+    name = (parts.hostname or parts.path.strip("/").split("/")[0]).lower()
+    return name if name.isidentifier() and len(name) <= 32 else ""
+
+
 def icon_data(icon, size=32):
     """A small PNG data URL, or "" for an empty icon."""
     if icon is None or icon.isNull():
@@ -161,6 +170,8 @@ class TabStrip(QWidget):
                 "audible": False,
                 "muted": False,
                 "site": "",
+                # A Steed page's name (newtab, settings…): it gets Steed's icon.
+                "page": "",
                 "pinned": False,
                 # "active", "frozen" or "unloaded" (memory modes).
                 "lifecycle": "active",
@@ -208,6 +219,7 @@ class TabStrip(QWidget):
             update["lifecycle"] = values["lifecycle"]
         if "url" in values:
             update["site"] = site_of(values["url"])
+            update["page"] = steed_page(values["url"])
         self._update(index, **update)
 
     def set_current_tab(self, index: int) -> None:
@@ -317,6 +329,8 @@ class TabStrip(QWidget):
 
     def refresh(self) -> None:
         """Coalesce bursts of tab changes into one render."""
+        if getattr(self.surface, "disposed", False):
+            return  # The window is closing: nothing more to show.
         if not self._timer.isActive():
             self._timer.start()
 
@@ -370,6 +384,8 @@ class TabStrip(QWidget):
             self.setFixedHeight(max(base, min(rows, base * 4)))
 
     def _publish(self):
+        if getattr(self.surface, "disposed", False):
+            return
         groups = group_palette(self.records, self.group_colors)
         sites = ordered_colors(r["site"] for r in self.records)
         tabs = []

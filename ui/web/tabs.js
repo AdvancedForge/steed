@@ -19,6 +19,37 @@ function element(tag, className, text) {
   return node;
 }
 
+// 24×24 stroke icons in the toolbar's style (chrome_style.ICONS).
+const GLYPHS = {
+  newtab: '<path d="M12 3.5l1.9 5.2 5.6 1.8-5.6 1.8L12 17.5l-1.9-5.2-5.6-1.8 5.6-1.8z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>',
+  steed: '<path d="M6.5 20V11a5.5 5.5 0 0 1 11 0v9"/><path d="M4.5 20h4M15.5 20h4"/><path d="M9.5 9.5h.01M14.5 9.5h.01M8.8 14h.01M15.2 14h.01"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
+  history: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  bookmarks: '<path d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/>',
+  downloads: '<path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 19h14"/>',
+  passwords: '<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l3 3M14 9l2 2"/>',
+  cookies: '<path d="M20 12.5A8 8 0 1 1 11.5 4a3 3 0 0 0 4 4 3 3 0 0 0 4.5 4.5z"/><path d="M9 10h.01M8 15h.01M13 14h.01"/>',
+  style: '<path d="M4 20c4 0 5-2 5-4a3 3 0 0 1 3-3l7-8-2-2-8 7a3 3 0 0 1-3 3c-2 0-2 3-2 7z"/>',
+  agents: '<path d="M5 6h14v9H9l-4 3.5z"/><path d="M9.5 10.5h.01M14.5 10.5h.01"/>',
+  library: '<path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>',
+  permissions: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/>',
+  apps: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
+  globe: '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.5 2.5 3.5 5.2 3.5 8s-1 5.5-3.5 8c-2.5-2.5-3.5-5.2-3.5-8s1-5.5 3.5-8z"/>',
+};
+GLYPHS.welcome = GLYPHS.steed;
+GLYPHS.files = GLYPHS.library;
+GLYPHS.access = GLYPHS.permissions;
+GLYPHS.panels = GLYPHS.apps;
+
+function glyph(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  // Fixed markup from GLYPHS above, never page text.
+  svg.innerHTML = GLYPHS[name] || GLYPHS.globe;
+  return svg;
+}
+
 function favicon(tab) {
   const holder = element("span", "favicon");
   if (tab.loading) { holder.classList.add("loading"); return holder; }
@@ -27,8 +58,10 @@ function favicon(tab) {
     image.src = tab.icon; image.alt = "";
     holder.append(image);
   } else if (state.appearance.favicons) {
-    holder.classList.add("letter");
-    holder.textContent = (tab.site || tab.title || "•").trim().charAt(0).toUpperCase();
+    // No icon: Steed's pages get their own, other sites a quiet globe.
+    const steed = !!tab.page;
+    holder.classList.add("glyph", steed ? "steed" : "site");
+    holder.append(glyph(steed ? (GLYPHS[tab.page] ? tab.page : "steed") : "globe"));
   } else {
     holder.hidden = true;
   }

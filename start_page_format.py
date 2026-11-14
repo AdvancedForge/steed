@@ -38,7 +38,12 @@ class PageDefinition:
 
     def candidate(self, state):
         if self.page == "style":
-            return clean_style({**state, **self.document["style"]})
+            patch = self.document["style"]
+            merged = {**state, **patch}
+            if isinstance(patch.get("lumen"), dict):
+                # Lumen patches change only the keys they name.
+                merged["lumen"] = {**state.get("lumen", {}), **patch["lumen"]}
+            return clean_style(merged)
         result = deepcopy(state)
         key = "html" if self.page == "newtab" else "welcome_html"
         result[key] = self.document.get("html", "")

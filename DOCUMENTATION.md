@@ -510,7 +510,12 @@ loaded or reloaded afterwards. Incognito windows run none.
 
 By default a new tab shows just **Steed** and an empty search box over a photo
 that changes every six hours: free Unsplash photos from Lorem Picsum, with the
-photographer credited at the bottom left. Steed keeps the current photo in
+photographer credited at the bottom left. When Picsum does not answer (it was
+down for hours in November 2026), Steed asks Wikimedia Commons for one of its
+featured landscape photos instead, credited with the photographer and its
+licence, and goes there first for the next half hour. If neither answers,
+*New photo now* shows one of your last 12 photos (kept in
+`~/.custom_browser/newtab/recent/`) and says so. Steed keeps the current photo in
 `~/.custom_browser/newtab/` and fetches the next in the background, so a new
 tab never waits; until the first arrives, or offline, a soft gradient shows.
 Picsum is only contacted while a profile uses the photo background. The gear
@@ -621,10 +626,15 @@ it, behind the tabs and toolbar, is a soft field of light in the browser's
 colours. The bars have no backgrounds or borders of their own: the buttons
 and a capsule address field rest on the light.
 
-- **The light follows the site.** It takes the colour of the current site's
-  icon (or, on Steed's own pages, your accent turned a little), and flows
-  from one colour to the next as you switch tabs. With a New Tab photo,
-  everything starts from the photo's colours.
+- **The light follows the site.** It takes the colour the site declares
+  (its `theme-color`), or else its icon's (on Steed's own pages, your accent
+  turned a little), and flows from one colour to the next as you switch
+  tabs. With a New Tab photo, everything starts from the photo's colours.
+- **Cards.** The page is a card; in split view each side is one, and docked
+  panels such as the agent sidebar are cards beside it.
+- **Tab icons.** Steed's own pages have their own icons (New Tab, Welcome,
+  Settings, History, Downloads, Passwords…); sites without an icon show a
+  quiet globe.
 - **Motion that answers you.** The current tab sits in a lit capsule that
   glides to the tab you pick; new tabs grow into place; switching tabs
   cross-fades the pages; toolbar buttons fade a capsule in under the
@@ -638,6 +648,16 @@ and a capsule address field rest on the light.
   share the type, lit cards that catch a soft light under the pointer, round
   buttons and springy switches, titles that settle as you scroll, and one
   entrance as a page opens.
+
+**Style → Light and page** changes the look itself: the light's strength
+and whether it follows sites, the page's corners, the space around it and
+its shadow, the typeface (Mona Sans or your desktop's) and how wide titles
+are. Your agent can change all of it too, with your review: a style
+proposal's `lumen` part (strength, fixed light colours, card, type — see
+the style guide agents are given) for what Steed draws itself, and its
+`css` for everything drawn in HTML (tabs, menus, Steed's pages), using the
+documented selectors and tokens such as `--steed-font`, `--stride` and
+`#lit`.
 
 **Settings → View → Motion and light** sets how much of this runs:
 *Full* (everything above), *Balanced* (the same look; colours fade but

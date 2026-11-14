@@ -28,9 +28,76 @@ DEFAULTS = {
     "pages_follow_photo": True,
     # Compact mode: tabs and toolbar float over the page, shown at the top edge.
     "compact": False,
+    # Lumen, Steed's look (ui/lumen.py): see LUMEN_FIELDS.
+    "lumen": {},
 }
 # Added after styles were first saved; older saves lack them.
-LATER_SETTINGS = {"colors", "glass", "chrome", "pages_follow_photo", "compact"}
+LATER_SETTINGS = {"colors", "glass", "chrome", "pages_follow_photo", "compact", "lumen"}
+# Every part of Lumen that is drawn natively (the light around the page, the
+# page card, the typeface); what is not set takes these. Everything drawn in
+# HTML (tabs, menus, Steed's pages) is styled through "css" as well.
+LUMEN_DEFAULTS = {
+    "light": 100,
+    "follow_site": True,
+    "light_colors": {},
+    "card_radius": 12,
+    "card_margin": 6,
+    "card_shadow": 100,
+    "font": "mona",
+    "titles": "expanded",
+}
+LUMEN_FIELDS = {
+    "light": "Strength of the light around the page, 0 (flat) to 200 percent",
+    "follow_site": "The light takes the current site's colour",
+    "light_colors": "Fixed light colours (hex): base, left, right, below",
+    "card_radius": "Rounding of the page's corners, 0 to 28 pixels",
+    "card_margin": "Space around the page, 0 to 24 pixels (0: edge to edge)",
+    "card_shadow": "Strength of the page's shadow, 0 to 200 percent",
+    "font": "mona (Steed's Mona Sans) or system (the desktop's font)",
+    "titles": "Title width: expanded, semi (semi-expanded) or normal",
+}
+LUMEN_RANGES = {
+    "light": (0, 200),
+    "card_radius": (0, 28),
+    "card_margin": (0, 24),
+    "card_shadow": (0, 200),
+}
+LUMEN_CHOICES = {"font": ("mona", "system"), "titles": ("expanded", "semi", "normal")}
+LIGHT_COLORS = ("base", "left", "right", "below")
+
+
+def lumen_settings(value):
+    """A style's Lumen settings, every field present and checked."""
+    if not isinstance(value, dict) or set(value) - set(LUMEN_DEFAULTS):
+        raise ValueError("Use the published Lumen settings: " + ", ".join(LUMEN_FIELDS))
+    merged = {**LUMEN_DEFAULTS, **value}
+    for key, (low, high) in LUMEN_RANGES.items():
+        if type(merged[key]) is not int or not low <= merged[key] <= high:
+            raise ValueError(
+                f"Lumen {key} must be a whole number from {low} to {high}."
+            )
+    for key, choices in LUMEN_CHOICES.items():
+        if merged[key] not in choices:
+            raise ValueError(f"Lumen {key} must be one of: " + ", ".join(choices))
+    if type(merged["follow_site"]) is not bool:
+        raise ValueError("Lumen follow_site must be true or false.")
+    colors = merged["light_colors"]
+    if (
+        not isinstance(colors, dict)
+        or set(colors) - set(LIGHT_COLORS)
+        or any(
+            not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color)
+            for color in colors.values()
+        )
+    ):
+        raise ValueError(
+            "Lumen light_colors takes six-digit hex colours for: "
+            + ", ".join(LIGHT_COLORS)
+        )
+    merged["light_colors"] = {key: color.lower() for key, color in colors.items()}
+    return merged
+
+
 # Every colour of the browser around pages (see ui.chrome_style.chrome_colors).
 CHROME_FIELDS = {
     "toolbar": "Toolbar and current tab",
@@ -89,12 +156,33 @@ def style_guide():
             ".table-wrap": "Scrollable results tables",
             ".table-paging": "Previous/next result controls",
             'body[data-page="cookies"]': "Example: style only the Cookies page",
+            "html.lumen body": "Tab strip: the light behind the tabs (its own HTML)",
+            ".tab": "A tab; .tab.active the current one, .tab.entering a new one",
+            "#lit": "The lit capsule that glides behind the current tab",
+            ".favicon.glyph": "A tab's drawn icon (.steed: Steed's pages, .site: no icon)",
+            "html.glass body, nav button": "Browser menus (rows are nav button)",
+            ".wordmark": "The New Tab's name",
+            ".hero h1": "Welcome's headline",
         },
         "tokens": {
             "--shadow": "Card shadow; e.g. none",
             "--card": "New Tab cards; follows --surface",
             "--hover": "New Tab hover; follows --soft",
+            "--steed-font": "Text typeface (Style → lumen.font sets it)",
+            "--steed-title-font": "Titles (lumen.titles)",
+            "--steed-display-font": "The largest titles and the New Tab's name",
+            "--stride": "Steed's easing for movement",
+            "--spring": "Steed's easing for switches and presses",
+            "--lift": "The lit top edge of cards",
         },
+        "lumen": dict(LUMEN_FIELDS),
+        "lumen_defaults": dict(LUMEN_DEFAULTS),
+        "lumen_note": (
+            "lumen covers what Steed draws natively: the light around the page,"
+            " the page card and the typeface. Patch only the keys you change,"
+            ' e.g. {"lumen": {"light": 150, "card_radius": 18}}. Motion'
+            " (Full, Balanced, Minimal) is the person's own setting in Settings."
+        ),
         "palette_keys": "In style.colors, omit the leading --. Use other tokens through the css field.",
         "limits": "16,000 CSS characters; no HTML tags, external fonts, network requests or native permissions.",
         "precedence": "Base light/dark palette, accent, colors overrides, then custom CSS. Colors apply to both base themes; empty colors restores the base palette.",
@@ -103,6 +191,32 @@ def style_guide():
             "css": ".search { border-radius: 24px; }",
         },
     }
+
+
+FONTS = {
+    "mona": '"Mona Sans", system-ui, sans-serif',
+    "system": "system-ui, sans-serif",
+}
+TITLE_FONTS = {
+    "expanded": ('"Mona Sans SemiExpanded"', '"Mona Sans Expanded"'),
+    "semi": ('"Mona Sans SemiExpanded"', '"Mona Sans SemiExpanded"'),
+    "normal": ('"Mona Sans"', '"Mona Sans"'),
+}
+
+
+def lumen_css(value):
+    """The typeface as tokens every Steed page and HTML part uses
+    (--steed-font, --steed-title-font, --steed-display-font, --steed-radius)."""
+    lumen = lumen_settings(value.get("lumen", {}))
+    if lumen["font"] == "system":
+        body = title = display = FONTS["system"]
+    else:
+        body = FONTS["mona"]
+        title, display = (f"{name}, {body}" for name in TITLE_FONTS[lumen["titles"]])
+    return (
+        f":root {{ --steed-font: {body}; --steed-title-font: {title};"
+        f" --steed-display-font: {display}; --steed-radius: {lumen['card_radius']}px; }}\n"
+    )
 
 
 def clean_style(value):
@@ -137,8 +251,11 @@ def clean_style(value):
         value["css"].encode("utf-8")
     except UnicodeError as error:
         raise ValueError("Use valid Unicode text in the stylesheet.") from error
+    # Only what differs from Lumen's defaults is kept.
+    lumen = lumen_settings(value["lumen"])
     return {
         **value,
+        "lumen": {k: v for k, v in lumen.items() if v != LUMEN_DEFAULTS[k]},
         "colors": dict(value["colors"]),
         "chrome": {key: color.lower() for key, color in value["chrome"].items()},
     }
@@ -229,6 +346,7 @@ class PageStyle(QObject):
         )
         return (
             (accent if value["accent"] != DEFAULTS["accent"] else "")
+            + lumen_css(value)
             + self._photo_css(profile, value)
             + (':root, :root[data-theme="dark"] {' + colors + "}\n" if colors else "")
             + value["css"]

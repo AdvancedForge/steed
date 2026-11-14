@@ -17,8 +17,11 @@ LEVELS = ("full", "balanced", "minimal")
 # The window's own parts let the light through (the dark theme's window
 # stylesheet would paint them all one grey).
 WINDOW_STYLE = (
-    "QMainWindow, #SteedCentral, #SteedColumn, #SteedContent, #SteedPages"
+    "QMainWindow, #SteedCentral, #SteedColumn, #SteedContent, #SteedPages,"
+    ' QDockWidget[lumenCard="true"], QDockWidget[lumenCard="true"] > QWidget'
     " { background: transparent; }"
+    ' QDockWidget[lumenCard="true"]::title { background: transparent;'
+    " padding: 6px 12px; text-align: left; }"
 )
 CARD_RADIUS = 12
 CARD_MARGIN = 6
@@ -30,10 +33,6 @@ HOVER_MS, OPEN_MS, LIGHT_MS = 140, 240, 420
 def level(config):
     value = config.get("visual_effects", "full")
     return value if value in LEVELS else "full"
-
-
-def moving(config):
-    return level(config) != "minimal"
 
 
 def site_color(icon):
@@ -66,6 +65,34 @@ def site_color(icon):
     return QColor.fromRgbF(red / weight, green / weight, blue / weight).name()
 
 
+def theme_color(value):
+    """A page's declared theme colour as #rrggbb, or None when missing,
+    invalid, or too grey to light anything (white and black bars)."""
+    import re
+
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    css = re.fullmatch(
+        r"\s*rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})(?:[\s,/]+([\d.]+%?))?\s*\)\s*",
+        value,
+    )
+    if css:  # CSS rgb()/rgba(), which QColor does not read.
+        red, green, blue = (min(255, int(part)) for part in css.groups()[:3])
+        alpha = css.group(4)
+        opacity = 1.0
+        if alpha:
+            opacity = float(alpha[:-1]) / 100 if alpha.endswith("%") else float(alpha)
+        color = QColor(red, green, blue, round(max(0.0, min(1.0, opacity)) * 255))
+    else:
+        color = QColor(value.strip())
+    if not color.isValid() or color.alpha() < 128:
+        return None
+    _, saturation, lightness, _ = color.getHslF()
+    if saturation < 0.18 or not 0.12 < lightness < 0.9:
+        return None
+    return color.name()
+
+
 class Light:
     """The field behind the chrome: a base colour and three soft glows placed
     as fractions of the window, so every part of the window (Qt bars, the
@@ -76,7 +103,7 @@ class Light:
         self.glows = [(x, y, r, QColor(c)) for x, y, r, c in glows]
 
     @classmethod
-    def of(cls, colors, site=None):
+    def of(cls, colors, site=None, style=None):
         """The field for a window: a deepened base, lit from the top left by
         the browser's accent and from the top right (and faintly from below
         the page) by the site's colour."""
@@ -105,19 +132,27 @@ class Light:
             color.setAlphaF(alpha)
             return color
 
+        # Style → Lumen: stronger or softer light, and fixed colours.
+        style = style or {}
+        scale = style.get("light", 100) / 100
+        strength = tuple(min(1.0, s * scale) for s in strength)
+        fixed = style.get("light_colors", {})
+        if "base" in fixed:
+            base = QColor(fixed["base"])
         return cls(
             base,
             [
-                (0.1, -0.3, 0.42, tinted(accent, strength[0])),
-                (0.8, -0.34, 0.5, tinted(site, strength[1])),
-                (0.5, 1.2, 0.8, tinted(site, strength[2])),
+                (0.1, -0.3, 0.42, tinted(fixed.get("left", accent), strength[0])),
+                (0.8, -0.34, 0.5, tinted(fixed.get("right", site), strength[1])),
+                (0.5, 1.2, 0.8, tinted(fixed.get("below", site), strength[2])),
             ],
         )
 
     @classmethod
-    def flat(cls, colors):
+    def flat(cls, colors, style=None):
         """Minimal effects: the base colour alone."""
-        return cls(colors["toolbar"], [(0.5, 0.5, 0.5, QColor(0, 0, 0, 0))] * 3)
+        base = (style or {}).get("light_colors", {}).get("base", colors["toolbar"])
+        return cls(base, [(0.5, 0.5, 0.5, QColor(0, 0, 0, 0))] * 3)
 
     def key(self):
         """What the field looks like, to the 8-bit colour."""
@@ -212,7 +247,7 @@ class CardCorner(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        r = CARD_RADIUS
+        r = self.width()
         x = 0 if "l" in self.corner else -r
         y = 0 if "t" in self.corner else -r
         curve = QPainterPath()
@@ -258,6 +293,17 @@ class LightAnimator(QObject):
         self.window.light_changed()
 
 
+def apply_font(app, choice):
+    """Style → Lumen font: Steed's typeface, or the desktop's own."""
+    if not hasattr(app, "desktop_font"):
+        app.desktop_font = None
+    if choice == "system":
+        if app.desktop_font is not None and app.font() != app.desktop_font:
+            app.setFont(app.desktop_font)
+    else:
+        apply_ui_font(app)
+
+
 def apply_ui_font(app):
     """Steed's typeface for every native part, at the desktop's size, a
     touch heavier than regular so small text stays crisp."""
@@ -266,6 +312,10 @@ def apply_ui_font(app):
     from webengine import UI_FONT
 
     if UI_FONT not in QFontDatabase.families():
+        return
+    if getattr(app, "desktop_font", None) is None:
+        app.desktop_font = QFont(app.font())
+    if app.font().family() == UI_FONT:
         return
     font = QFont(app.font())
     font.setFamily(UI_FONT)
@@ -329,7 +379,9 @@ class Glide(QObject):
         if button not in self.levels:
             self.levels[button] = [0.0, None]
             button.installEventFilter(self)
-            button.destroyed.connect(lambda *_: self.levels.pop(button, None))
+            # Holds the table itself: this can run after the helper is gone.
+            levels = self.levels
+            button.destroyed.connect(lambda *_: levels.pop(button, None))
 
     def attach_field(self, field):
         from PyQt6.QtWidgets import QGraphicsDropShadowEffect

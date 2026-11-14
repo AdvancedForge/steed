@@ -47,5 +47,5 @@ html.motion nav button, html.motion footer button { transition: background-color
 html.motion nav button:active:enabled { transform: scale(.985); }
 @keyframes rows-in { from { opacity: 0; transform: translateY(-3px); } }
 html.motion nav { animation: rows-in .24s cubic-bezier(.22, 1, .36, 1); }
-body { font-family: "Mona Sans", system-ui, sans-serif; }
+body { font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif); }
 @media (prefers-reduced-motion: reduce) { html.motion nav, html.motion nav button { animation: none; transition: none; } }

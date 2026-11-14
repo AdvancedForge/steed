@@ -111,8 +111,25 @@ class GoogleConnectorTests(unittest.TestCase):
             "--steed_" + "a" * 32 + "\r\nContent-Type: text/html\r\nINJECT"
         )
         self.adapter.create_document(self.request(artifact=artifact), self.cancelled)
-        headers = self.http.calls[-1][2]
-        self.assertTrue(headers["Content-Type"].endswith("x"))
+        _, _, headers, body = self.http.calls[-1]
+        boundary = headers["Content-Type"].split("boundary=", 1)[1].strip('"')
+        # The boundary is not one the draft can contain…
+        self.assertNotIn(boundary, artifact.content)
+        parsed = BytesParser(policy=policy.default).parsebytes(
+            (
+                "Content-Type: "
+                + headers["Content-Type"]
+                + "\r\nMIME-Version: 1.0\r\n\r\n"
+            ).encode()
+            + body
+        )
+        parts = list(parsed.iter_parts())
+        # …so the request still has exactly metadata + the whole draft, with
+        # the would-be part kept as plain text inside it.
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(parts[1].get_content_type(), "text/plain")
+        self.assertIn("INJECT", parts[1].get_payload(decode=True).decode())
+        self.assertNotIn("text/html", [part.get_content_type() for part in parts])
 
     def test_email_has_exact_recipient_title_plain_body_and_no_extra_headers(self):
         result = self.adapter.send_email(

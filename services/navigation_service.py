@@ -27,6 +27,28 @@ ZOOM_LEVELS = (
 )
 
 
+def local_address(text: str) -> bool:
+    """This computer or the local network (a router, a printer, a dev
+    server): reached over plain http, as other browsers do."""
+    import ipaddress
+
+    host = text.split("/", 1)[0].rsplit("@", 1)[-1]
+    if host.startswith("["):
+        host = host[1 : host.find("]")] if "]" in host else host[1:]
+    else:
+        host = host.split(":", 1)[0]
+    host = host.lower().rstrip(".")
+    if host == "localhost" or host.endswith(
+        (".localhost", ".local", ".lan", ".home.arpa")
+    ):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
+
+
 class NavigationService(QObject):
     """Accept engine pages or views; address parsing belongs only to user browsing."""
 
@@ -43,9 +65,7 @@ class NavigationService(QObject):
         ):
             return QUrl(text)
         if " " not in text and ("." in text or text.startswith(("localhost", "["))):
-            scheme = (
-                "http" if text.startswith(("localhost", "127.", "[::1]")) else "https"
-            )
+            scheme = "http" if local_address(text) else "https"
             return QUrl(f"{scheme}://{text}")
         return QUrl(f"{search_engine}{quote(text, safe='')}")
 

@@ -604,8 +604,15 @@ class LayoutDialogTests(unittest.TestCase):
         self.assertEqual(self._last().density, "compact")
 
     def test_only_save_exposes_the_edited_layout(self):
+        saved = self.preferences.density
         self.dialog.density.setCurrentIndex(0)
+        # The edit is previewed and held in the dialog's working copy…
         self.assertEqual(self.dialog.preferences.density, "compact")
+        self.assertEqual(self._last().density, "compact")
+        # …while the saved layout the dialog was opened on is untouched.
+        self.assertIsNot(self.dialog.preferences, self.preferences)
+        self.assertEqual(self.preferences.density, saved)
+        self.assertNotEqual(saved, "compact")
 
 
 class LayoutWindowHarness(QMainWindow):

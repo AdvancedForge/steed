@@ -257,3 +257,100 @@ class DownloadExtrasTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeRequest(__import__("PyQt6.QtCore", fromlist=["QObject"]).QObject):
+    from PyQt6.QtCore import pyqtSignal as _signal
+
+    receivedBytesChanged = _signal()
+    totalBytesChanged = _signal()
+    stateChanged = _signal()
+    isPausedChanged = _signal()
+
+    def __init__(self, url):
+        super().__init__()
+        self._url = QUrl(url)
+        self.accepted = False
+
+    def page(self):
+        return None
+
+    def url(self):
+        return self._url
+
+    def suggestedFileName(self):
+        return "secret-report.pdf"
+
+    def isSavePageDownload(self):
+        return False
+
+    def setDownloadDirectory(self, path):
+        self.directory = path
+
+    def setDownloadFileName(self, name):
+        self.name = name
+
+    def accept(self):
+        self.accepted = True
+
+    def receivedBytes(self):
+        return 10
+
+    def totalBytes(self):
+        return 10
+
+    def state(self):
+        from PyQt6.QtWebEngineCore import QWebEngineDownloadRequest
+
+        return QWebEngineDownloadRequest.DownloadState.DownloadCompleted
+
+    def isPaused(self):
+        return False
+
+    def interruptReasonString(self):
+        return ""
+
+
+class PrivateDownloadTests(unittest.TestCase):
+    """Incognito downloads are listed while the session lasts and never
+    written to the download history on disk."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = application()
+
+    def test_incognito_downloads_never_reach_the_history_file(self):
+        import json
+
+        from download_manager import DownloadManager
+
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        folder = Path(directory.name)
+
+        class Config:
+            config_dir = folder
+
+        manager = DownloadManager(
+            Config(), destination_picker=lambda name, parent=None: str(folder / name)
+        )
+        requests = [
+            FakeRequest("https://private.example/secret-report.pdf"),
+            FakeRequest("https://public.example/notes.pdf"),
+        ]
+        # The stand-ins outlive the manager here; their end means nothing.
+        self.addCleanup(lambda: [r.destroyed.disconnect() for r in requests])
+        manager.handle(requests[0], "search")
+        manager.handle(requests[1], "global")
+        self.assertEqual(len(manager.records), 2)  # Both shown this session.
+        saved = json.loads((folder / "downloads.json").read_text())
+        self.assertEqual(
+            [r["url"] for r in saved], ["https://public.example/notes.pdf"]
+        )
+        self.assertNotIn("private.example", (folder / "downloads.json").read_text())
+        # A fresh start (next session) knows only the regular one.
+        again = DownloadManager(Config())
+        self.assertEqual(
+            [r.url for r in again.records.values()],
+            ["https://public.example/notes.pdf"],
+        )
