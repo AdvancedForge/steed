@@ -24,15 +24,30 @@ DEFAULTS = {
     "colors": {},
     # Browser colours fixed by the user; the rest follow the theme or photo.
     "chrome": {},
-    # Steed's own pages take their colours from the New Tab photo too.
-    "pages_follow_photo": True,
+    # Steed's own pages take the browser's colours: the New Tab photo's, or
+    # the browser colours fixed in Style.
+    "pages_match_browser": True,
     # Compact mode: tabs and toolbar float over the page, shown at the top edge.
     "compact": False,
     # Lumen, Steed's look (ui/lumen.py): see LUMEN_FIELDS.
     "lumen": {},
 }
 # Added after styles were first saved; older saves lack them.
-LATER_SETTINGS = {"colors", "glass", "chrome", "pages_follow_photo", "compact", "lumen"}
+LATER_SETTINGS = {
+    "colors",
+    "glass",
+    "chrome",
+    "pages_match_browser",
+    "compact",
+    "lumen",
+}
+# Settings that were replaced: dropped from older saves, never an error.
+# (pages_follow_photo became pages_match_browser, on for everyone.)
+RETIRED_SETTINGS = {"pages_follow_photo"}
+# The dark browser's own colours (browser_window.apply_dark_mode), for pages
+# that match it when there is no photo.
+DARK_TOOLBAR = "#1e1e1e"
+DARK_ACCENT = "#8caaff"
 # Every part of Lumen that is drawn natively (the light around the page, the
 # page card, the typeface); what is not set takes these. Everything drawn in
 # HTML (tabs, menus, Steed's pages) is styled through "css" as well.
@@ -291,6 +306,8 @@ class PageStyle(QObject):
             value = self.private if self.private is not None else value
         elif isinstance(overrides, dict):
             value = overrides.get(self._key(profile), value)
+        if isinstance(value, dict):
+            value = {k: v for k, v in value.items() if k not in RETIRED_SETTINGS}
         try:
             if (
                 isinstance(value, dict)
@@ -353,22 +370,34 @@ class PageStyle(QObject):
         )
 
     def _photo_css(self, profile, value):
-        """The New Tab photo's colours for Steed's pages, unless turned off
-        or the page colours were chosen by hand."""
+        """The browser's colours for Steed's pages (the New Tab photo's, or
+        the toolbar and accent fixed in Style), unless turned off; page
+        colours chosen by hand still win (they come after)."""
         pages = getattr(self.registry, "start_pages", None)
-        if not value["pages_follow_photo"] or not hasattr(pages, "theme_tint"):
+        if not value["pages_match_browser"] or not hasattr(pages, "theme_tint"):
             return ""
         from PyQt6 import sip
 
         if sip.isdeleted(pages):  # Shutting down: pages render no more.
             return ""
-        tint = pages.theme_tint(profile)
-        if not tint:
-            return ""
         from ui.chrome_style import mix, tint_colors
 
         dark = self.dark(profile)
-        accent = value["chrome"].get("accent") or tint_colors(tint, dark)[1]
+        photo = pages.theme_tint(profile)
+        tint = photo or value["chrome"].get("toolbar")
+        if not tint:
+            if not dark:  # The light pages already match the light browser.
+                accent = value["chrome"].get("accent")
+                return (
+                    f':root, :root[data-theme="dark"] {{ --accent: {accent}; }}\n'
+                    if accent
+                    else ""
+                )
+            tint = DARK_TOOLBAR  # The dark browser's own neutral.
+        accent = value["chrome"].get("accent") or (
+            tint_colors(tint, dark)[1] if photo else DARK_ACCENT if dark else None
+        )
+        accent = accent or tint_colors(tint, dark)[1]
         if dark:
             ink, base = "#e8edf6", "#101010"
             shades = {"bg": 0.84, "surface": 0.74, "soft": 0.6, "border": 0.55}

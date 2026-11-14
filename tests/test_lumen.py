@@ -302,7 +302,7 @@ class WindowTests(unittest.TestCase):
         QApplication.sendEvent(bar.address_input, QEvent(QEvent.Type.FocusIn))
         self.wait(lambda: glide.glow.blurRadius() > 20)
 
-    def test_glass_keeps_its_own_look_and_fullscreen_is_edge_to_edge(self):
+    def test_glass_floats_the_card_and_fullscreen_and_compact_are_edge_to_edge(self):
         window = self.window
         window._enter_fullscreen()
         self.assertEqual(self.margins(), 0)
@@ -311,12 +311,17 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(self.margins(), lumen.CARD_MARGIN)
         styles = window.profile_manager.registry.page_style
         profile = window.profile_manager.current_profile_name
+        # Liquid glass: the card floats over the frosted photo (the strip has
+        # its own frost), not over the light.
         styles.save(profile, {**styles.get(profile), "glass": True})
         window.apply_dark_mode()
-        self.assertFalse(window._lumen)
-        self.assertEqual(self.margins(), 0)
-        self.assertIsNone(window.light)
+        self.assertTrue(window._lumen)
+        self.assertEqual(self.margins(), lumen.CARD_MARGIN)
+        self.assertTrue(all(g[3].alpha() == 0 for g in window.light.glows))
         self.assertNotIn("light", window.tab_bar.chrome)
+        # Compact mode is all page: edge to edge.
+        window._set_bar("compact", True)
+        self.wait(lambda: self.margins() == 0)
 
     def test_the_window_follows_the_lumen_settings(self):
         window = self.window

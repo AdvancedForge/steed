@@ -9,6 +9,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**One theme — November 14, 2026.** Steed's pages match the browser's colours
+by default (photo, chosen browser colours, or the plain dark browser's own);
+the old per-profile "pages follow the photo" (off for some) is retired and
+migrated without touching other style choices. Liquid glass and Lumen are one
+look: the page card floats over the frosted photo. Compact mode has no card.
+
 **New Tab reload storm fixed — November 14, 2026.** Many open New Tabs
 could reload over and over (a change arriving while tabs loaded asked them
 to reload again after loading; closing any tab reloaded every Steed page).

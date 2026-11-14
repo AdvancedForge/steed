@@ -585,7 +585,7 @@ class SimpleNewTabTests(unittest.TestCase):
         css = styles.css("global")
         self.assertLess(css.index("--bg: #"), css.index("--bg: #123456"))
         self.assertTrue(css.endswith("p{}"))
-        styles.save("global", {**styles.get("global"), "pages_follow_photo": False})
+        styles.save("global", {**styles.get("global"), "pages_match_browser": False})
         self.assertNotIn("--surface:", styles.css("global"))
 
     def test_glass_bars_are_frosted_over_the_picture(self):

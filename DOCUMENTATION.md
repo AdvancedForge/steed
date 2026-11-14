@@ -670,8 +670,18 @@ documented selectors and tokens such as `--steed-font`, `--stride` and
 *Full* (everything above), *Balanced* (the same look; colours fade but
 nothing cross-fades, so no snapshot is kept), or *Minimal* (flat colours,
 no motion, nothing extra in memory). Your desktop's reduce-motion setting
-is always followed. Liquid glass keeps its own look (the photo through
-frosted bars), and a fullscreen video always fills the screen edge to edge.
+is always followed. With liquid glass the page
+card floats over the frosted photo instead of the light, so bars, page edges
+and the New Tab are one picture. Compact mode and fullscreen video are edge
+to edge.
+
+**One theme by default.** Everything takes its colours from one place: the
+New Tab photo (with *Match the background*), or else the browser colours set
+in Style, or else Steed's own. The bars, the light, menus, the New Tab and
+Steed's pages (Settings, History, Downloads…) all follow it — *Style → Steed's
+pages match the browser's colours* is on for everyone (it replaced the older
+"pages take their colours from the photo"). Colours you choose by hand for
+pages or the browser still win, and the matching can be turned off.
 
 ### Browser colours
 
