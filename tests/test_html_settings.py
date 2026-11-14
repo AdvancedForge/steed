@@ -84,7 +84,7 @@ class HtmlSettingsTests(unittest.TestCase):
                 dialog,
                 "[...document.querySelectorAll('[data-section]')].map(n => n.textContent)",
             ),
-            ["General", "Profile", "Tabs", "View", "Cookies", "Agents"],
+            ["General", "Profile", "Tabs", "View", "Cookies", "Agents", "Everything"],
         )
         self.assertEqual(set(dialog.state["preferences"]), set(DEFAULTS))
         before = self.config.config_file.read_bytes()

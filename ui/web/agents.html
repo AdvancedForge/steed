@@ -16,14 +16,14 @@
     <div id="unsafe" class="notice warning" role="status" hidden><strong>YOLO mode is on</strong><span>Steed automatically approves agent requests for all profiles this run.</span></div>
     <div class="task-picker" id="task-picker" hidden><label for="tasks">Conversation</label><select id="tasks"></select></div>
     <main id="welcome" class="welcome">
-      <div class="welcome-symbol" aria-hidden="true">↗</div>
-      <span class="eyebrow">A space to collaborate</span>
       <h2>Your agent,<br>beside your work.</h2>
-      <p id="welcome-copy">Start a conversation, delegate a task, and keep browsing while your agent works.</p>
-      <button id="welcome-start" class="primary" data-action="new_chat">Start a <span id="welcome-agent">Codex</span> chat <span aria-hidden="true">↗</span></button>
-      <button id="continue-session" data-action="continue_session">Continue a Claude Code session</button>
-      <button id="setup" data-action="setup">Connect another agent</button>
-      <div id="welcome-note" class="welcome-note">Only messages you send are shared. You choose when an agent can access your browser.</div>
+      <p id="welcome-copy">Ask for anything. It keeps working while you browse.</p>
+      <button id="welcome-start" class="primary" data-action="new_chat">Start a <span id="welcome-agent">Codex</span> chat</button>
+      <details id="more-ways" class="more-ways"><summary>Other ways to start</summary>
+        <button id="continue-session" data-action="continue_session">Continue a Claude Code session</button>
+        <button id="setup" data-action="setup">Connect another agent</button>
+      </details>
+      <div id="welcome-note" class="welcome-note">Only what you send is shared.</div>
     </main>
     <section id="activity" class="activity" aria-label="Agent activity" hidden>
       <div class="activity-heading"><span id="activity-dot" class="dot" aria-hidden="true"></span><strong id="activity-title" role="status" aria-live="polite"></strong><span id="connection" class="connection-badge"></span></div>

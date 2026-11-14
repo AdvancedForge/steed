@@ -40,6 +40,7 @@ GLYPHS.welcome = GLYPHS.steed;
 GLYPHS.files = GLYPHS.library;
 GLYPHS.access = GLYPHS.permissions;
 GLYPHS.panels = GLYPHS.apps;
+GLYPHS.watches = '<path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>';
 
 function glyph(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");

@@ -114,15 +114,13 @@ class PhotoSourceTests(unittest.TestCase):
         pixel = stored.pixelColor(10, 10)
         self.assertEqual(pixel.red(), pixel.green())
         self.assertEqual(pixel.green(), pixel.blue())
-        self.assertIn(
-            "♡ Save this photo", self.pages.render("global", "newtab").decode()
-        )
+        self.assertIn("♡ Save<", self.pages.render("global", "newtab").decode())
         self.assertIsNotNone(self.photos.save_favourite())
         self.assertTrue(self.photos.current()["favourite"])
         self.assertEqual(len(list(self.photos.favourites_folder.glob("*.jpg"))), 1)
         html = self.pages.render("global", "newtab").decode()
         self.assertIn("♥ Saved", html)
-        self.assertNotIn("Not this one", html)  # Only online photos are skipped.
+        self.assertNotIn("Skip this one", html)  # Only online photos are skipped.
         self.assertFalse(self.photos.block_current())
         settings = self.use(photo_source="favourites", photo_style="color")
         self.pages.refresh_photo(settings, now=True)
@@ -134,7 +132,7 @@ class PhotoSourceTests(unittest.TestCase):
         )
         self.assertTrue(self.photos.block_current())
         self.assertEqual(json.loads(self.photos.blocked_path.read_text()), ["42"])
-        self.assertIn("Not this one", self.pages.render("global", "newtab").decode())
+        self.assertIn("Skip this one", self.pages.render("global", "newtab").decode())
 
     def test_choices_are_checked(self):
         settings = self.pages.state("global")["settings"]

@@ -37,7 +37,18 @@ DEFAULTS = {
     "translate_service": "",
     "translate_language": "",
 }
-SECTIONS = ("general", "profile", "tabs", "view", "cookies", "agents")
+SECTIONS = ("general", "profile", "tabs", "view", "cookies", "agents", "everything")
+# Settings → Everything: the pages it opens (each in a new tab), and
+# Dictation, which is a dialog.
+DIRECTORY = frozenset(
+    (
+        "history", "bookmarks", "downloads", "tab-groups", "library", "passwords",
+        "cookies", "permissions", "adblock", "access", "style", "layout",
+        "newtab-settings", "welcome", "agents", "agent-setup", "tasks",
+        "connections", "services", "panels", "apps", "userscripts", "memory",
+        "features", "dictation", "watches",
+    )
+)  # fmt: skip
 
 
 class SettingsDialog(QDialog):
@@ -380,6 +391,7 @@ class SettingsDialog(QDialog):
             "confirm": {"review"},
             "cancel_review": set(),
             "open": {"destination"},
+            "open_page": {"page"},
         }
         if (
             self._closed
@@ -447,6 +459,14 @@ class SettingsDialog(QDialog):
                 self._confirm(command["review"])
             elif action == "cancel_review":
                 self._review = None
+            elif action == "open_page":
+                page = command["page"]
+                if page not in DIRECTORY or self.window is None:
+                    raise ValueError("That is not a Steed page.")
+                if page == "dictation":
+                    self.window.open_dictation_settings()
+                else:
+                    self.window._new_tab(url="steed:" + page)
             elif action == "open":
                 method = (
                     {

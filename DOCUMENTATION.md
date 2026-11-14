@@ -209,8 +209,25 @@ profile. Existing Default data remains an ordinary profile you can rename or
 archive through Profile; it is not deleted. Older Default startup selections
 become Global, while other explicitly selected profiles are preserved.
 
-`steed:welcome` introduces browsing, agent setup and enabled folders. Choose
-**Start browsing** to complete onboarding. General → Welcome to Steed reopens it.
+`steed:welcome` is a short tour in three steps, one idea each: how Steed looks
+(photo or colour, liquid glass on or off — applied as you choose), bringing
+your bookmarks, history and passwords from another browser, and meeting your
+agent. Every step can be skipped; **Start browsing** (or *Skip the tour*)
+completes it, and Settings → Everything → Welcome takes it again. After that,
+Steed teaches as you go: the first time you reach the address bar, a website,
+a New Tab or the agent sidebar, a small tip says one useful thing, once
+("Got it", or it fades after a while; never twice, never over the tour).
+
+Steed starts calm: in the New Tab's ☰ menu, pointing at a section (General,
+Tabs…) opens its panel, while pages (Settings, Style, Customize) wait for a
+click; Customize New Tab shows the background as three pictures (photo, colour,
+your image) and what goes with the one chosen, with the rest under *More
+options*; the agent sidebar shows one way to start (others under *Other ways
+to start*); Settings and Steed's full pages show each explanation as one
+quiet line that opens when you point at the setting, and Settings shows its
+Save bar only when something changed. **Settings → Everything** lists every
+Steed page, grouped (browsing, privacy and security, look, agents, more),
+each a click away.
 `steed:newtab` is both the initial Home and New Tab address. Change them separately
 in **General → Settings**; Home uses the first setting, while Ctrl+T uses the
 second. Saved sessions continue to restore normally. The earlier double-colon
@@ -1232,6 +1249,52 @@ search: only the first 5 characters of each password's SHA-1 hash are sent
 (padded, so the answer's size gives nothing away), and the matching happens
 here. Logins found in breaches show how often; change those passwords. Results
 last until the page closes.
+
+### Watches
+
+Ask Steed to keep an eye on a page for you. Right-click a page — or select the
+part you care about first (a price, a status, a list of replies) — and choose
+**Watch This with Agent…**. Say what matters in your own words ("tell me when
+it's under $50", "when grades are posted"; empty means any change) and how
+often to look (15 minutes to daily).
+
+Steed reads the page in the background on that schedule, in the same profile,
+so your sign-ins apply, and compares the text (only the selected part, if you
+chose one — clocks and ads elsewhere on the page don't count). When it
+changed and you said what matters, it asks your agent (Claude Code, else
+Codex; Settings key `watch_agent` picks one) with just the before and after
+text, run once from its command line with no browser access, whether this is
+what you asked about. If it is, or if you asked for any change (or no agent
+is installed), a desktop notification says what happened; clicking it opens
+the page. **Watches** (Settings → Everything, or `steed:watches`) lists them
+with their last news; pause, look now or remove them there. A page that
+cannot be read five times in a row is paused. Incognito pages are never
+watched. Watches live in `~/.custom_browser/watches.json` (with the last text
+seen, to compare with).
+
+**Then…** (optional) says what your agent should do when the watch fires:
+"add it to my cart", "email me a summary", "book the earliest slot". By
+default the notification says what happened and what will be done, and
+clicking it starts the agent; tick **Start without asking me first** to have it
+start at once (the notification then says it is on it). Either way the agent
+gets a new message in the sidebar — which watch fired, what changed, and what
+you asked for — and still asks your permission before it reads or acts on a
+site, as in any conversation. The Watches page shows each watch's action.
+
+### Organize and compare tabs with your agent
+
+**Tabs → Organize Tabs with Agent…** sends your agent the window's web pages
+(only their titles and addresses, numbered) and shows the groups it proposes,
+plus any duplicates. Nothing changes until you choose **Apply**: the tabs join
+named tab groups (pinned tabs stay put), and duplicates are closed if
+**Close duplicates** stays ticked. It uses the same agent command line as
+watches (Claude Code, else Codex; `watch_agent` picks one).
+
+**Tabs → Compare Tabs with Agent…** lists the window's web pages with the
+current tab (and the split-view tab) ticked; tick two to six. Their visible
+text (up to about 24,000 characters in all) goes into a draft message in the
+agent sidebar, ready for your question ("which one fits a small kitchen?").
+Only the tabs you tick are shared, and nothing is sent until you send it.
 
 ### Dictation
 

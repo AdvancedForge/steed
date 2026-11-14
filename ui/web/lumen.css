@@ -88,3 +88,26 @@ input[type=range] { width: min(360px, 100%); }
 .brand-mark { font-size: 0; }
 .brand-mark svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9;
   stroke-linecap: round; stroke-linejoin: round; }
+/* Settings → Everything: every Steed page, grouped. */
+.directory-group { margin: 22px 0 10px; font-size: 14px; color: var(--muted); font-weight: 600; }
+.directory { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.directory-item { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left;
+  padding: 14px 16px; border-radius: 16px; background: var(--surface); box-shadow: var(--lift);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent); }
+.directory-item strong { font-size: 13.5px; font-weight: 650; }
+.directory-item small { font-size: 12px; color: var(--muted); font-weight: 450; }
+.directory-item:hover:enabled { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); transform: translateY(-1px); }
+/* Calm by default: explanations show as one quiet line and open up when
+   the setting is pointed at or focused. Nothing is removed. */
+.settings-card .help, .toggle-row small, .workspace-page .form-group:has(> .control) > .form-label {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+:is(.settings-card, .toggle-row, .form-group):is(:hover, :focus-within) :is(.help, small, .form-label) {
+  -webkit-line-clamp: unset; }
+body.settings-clean .settings-footer { display: none; }
+/* The agent panel's welcome: one main action, the rest a click away. */
+.welcome h2 { font-size: clamp(24px, 4.4vw, 30px); }
+.more-ways { width: 100%; max-width: 360px; }
+.more-ways > summary { cursor: pointer; list-style: none; color: var(--muted); font-size: 13px; padding: 6px 0; }
+.more-ways > summary::-webkit-details-marker { display: none; }
+.more-ways[open] > summary { margin-bottom: 6px; }
+.more-ways button { width: 100%; margin-top: 6px; }
