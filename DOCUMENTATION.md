@@ -4707,6 +4707,32 @@ the sidebar; text from subagents is not shown as the reply. A failed turn, an ex
 or an MCP connection failure stops the chat and cancels its task without retrying.
 Checked with Claude Code 2.1.312 and a synthetic offline runtime.
 
+#### Continuing a Claude Code session
+
+**Continue a Claude Code session** (on the sidebar's welcome) lists your saved
+Claude Code sessions (from `~/.claude/projects`: title, folder, last used;
+Steed's own private chats are left out). **Continue here** goes on with the
+chosen one in the sidebar, with its history: Steed runs
+`claude --resume <id> --fork-session` in the session's own folder, so it
+continues as a copy (a session still open in a terminal is left as it is) and
+that copy is saved in Claude Code's history too, unlike new Steed chats.
+Claude Code's own tools ask you in Steed as in any Claude Code chat, and
+browser access still needs Steed's approval.
+
+#### ACP agents
+
+Agents that speak the [Agent Client Protocol](https://agentclientprotocol.com)
+can chat in the sidebar too. **Conversation & settings → ACP agents…** keeps a
+list of them: a name and the command that starts the agent in ACP mode (for
+example `gemini --experimental-acp`). Each then appears under **Agent for new
+chats**. Steed starts the command in a private folder, speaks ACP version 1
+over its standard input and output, and gives it Steed's MCP server bound to
+the chat's task, so browser access goes through Steed's approvals. Steed offers
+the agent no file system or terminal of its own (those requests are refused);
+the agent's permission requests appear as approval prompts (Allow once, Allow
+for this chat, Deny). An agent that needs signing in must be signed in from a
+terminal first. Only add commands you trust: they run as you.
+
 #### Codex connection troubleshooting
 
 Restart Steed after updating this checkout and start a **new** Codex chat. Ended

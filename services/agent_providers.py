@@ -61,6 +61,45 @@ class AgentProviders(QObject):
         self.flush_timer.setInterval(100)
         self.flush_timer.timeout.connect(self._flush)
 
+    def acp_agents(self):
+        """ACP agents set up in Agents → ACP Agents (config "acp_agents")."""
+        from services.acp_provider import clean_agent
+
+        config = getattr(self.registry, "config", None)
+        found = []
+        for entry in (config.get("acp_agents", []) if config else []) or []:
+            try:
+                found.append(clean_agent(entry))
+            except ValueError:
+                continue
+        return found
+
+    def _acp_factory(self, agent):
+        if not isinstance(agent, str) or not agent.startswith("acp:"):
+            return None
+        entry = next(
+            (a for a in self.acp_agents() if "acp:" + a["name"] == agent), None
+        )
+        if entry is None:
+            return None
+        from services.acp_provider import AcpProvider
+
+        return lambda parent: AcpProvider(
+            parent, name=entry["name"], command=entry["command"]
+        )
+
+    def agent_choices(self):
+        """[(key, name)] of every agent a new chat can use."""
+        return [(key, AGENT_NAMES[key]) for key in ("codex", "claude")] + [
+            ("acp:" + a["name"], a["name"]) for a in self.acp_agents()
+        ]
+
+    def agent_label(self, agent):
+        """The name shown for an agent key (built-in or an ACP agent)."""
+        if agent in AGENT_NAMES:
+            return AGENT_NAMES[agent]
+        return agent.removeprefix("acp:")
+
     @property
     def factory(self):
         """The Codex runtime factory, kept for callers that replace it."""
@@ -70,12 +109,21 @@ class AgentProviders(QObject):
     def factory(self, value):
         self.factories["codex"] = value
 
-    def new_chat(self, model=None, agent="codex"):
+    def new_chat(self, model=None, agent="codex", resume=None):
+        """Start a chat; resume: a Claude Code session id to continue."""
         require_owner_thread(self)
         self.service._usable()
-        if agent not in self.factories:
+        factory = self.factories.get(agent) or self._acp_factory(agent)
+        if factory is None:
             raise ValueError("Choose a supported agent")
-        name = AGENT_NAMES.get(agent, agent)
+        name = self.agent_label(agent)
+        session = None
+        if resume is not None:
+            from services.claude_sessions import find_session
+
+            session = find_session(resume) if agent == "claude" else None
+            if session is None:
+                raise ValueError("That Claude Code session is no longer available.")
         if model is not None and (
             not isinstance(model, str)
             or re.fullmatch(r"[A-Za-z0-9._\[\]-]{1,100}", model) is None
@@ -90,7 +138,9 @@ class AgentProviders(QObject):
                 "Cancel an existing agent chat before starting another (limit: two)."
             )
         self.registry.set_agent_access(True)
-        task = self.service._create(f"{name} conversation")
+        task = self.service._create(
+            f"{name}: {session['title']}"[:200] if session else f"{name} conversation"
+        )
         directory = tempfile.TemporaryDirectory(prefix="steed-codex-")
         gateway = self.registry.agent_gateway
         token = None
@@ -106,9 +156,11 @@ class AgentProviders(QObject):
                     "task_binding": token,
                 },
             )
-            driver = self.factories[agent](self)
+            driver = factory(self)
             driver.model = model
             driver.expected_task_id = task.task_id
+            if session is not None:
+                driver.resume = (session["id"], session["cwd"])
             chat = {
                 "driver": driver,
                 "directory": directory,
@@ -269,7 +321,8 @@ class AgentProviders(QObject):
         if chat is None:
             return
         bound = getattr(chat["driver"], "bound_task_id", None) == task_id
-        if bound and task_id not in self.service.external_tasks and attempt < 20:
+        attempts = getattr(chat["driver"], "connect_attempts", 20)
+        if bound and task_id not in self.service.external_tasks and attempt < attempts:
             # The runtime can report its MCP server before the gateway's Qt
             # callback records the connection; wait briefly, never assume it.
             QTimer.singleShot(100, lambda: self._ready(task_id, attempt + 1))

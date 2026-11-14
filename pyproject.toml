@@ -6,3 +6,9 @@ extend-exclude = [".venv", ".worker-bundles"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
+
+[tool.pyright]
+# The project's own virtual environment (PyQt6 and the rest).
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.10"

@@ -9,6 +9,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Continue Claude Code sessions, ACP agents — November 13, 2026.** The agent
+sidebar can continue a saved Claude Code session (resumed as a fork in its
+folder) and chat with any Agent Client Protocol agent set up in ACP agents
+(stdio JSON-RPC, Steed's MCP server bound to the task, approvals in Steed, no
+file system or terminal offered). Checked with synthetic runtimes; manual
+check: continue a real session and try a real ACP agent such as Gemini CLI.
+
 **Calmer management pages — November 13, 2026.** The pages rendered from
 dialogs (cookies, downloads, bookmarks, history, files, connections, tasks,
 layout, start pages, tab groups, permissions, agent setup, ad blocking,

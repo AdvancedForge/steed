@@ -108,11 +108,24 @@ window.steedUI = {render(next) {
   visible("options", next.available);
   if (!next.available) $("options").open = false;
   visible("model-control", next.has_provider);
-  const agent = next.new_agent || "codex";
+  // Every agent a new chat can use (Codex, Claude Code and ACP agents).
+  const agents = Object.fromEntries((next.agents || []).map(a => [a.id, a]));
+  for (const [id, entry] of Object.entries(AGENTS)) if (!agents[id] && !next.agents) agents[id] = {id, ...entry};
+  const agent = agents[next.new_agent] ? next.new_agent : "codex";
+  const known = JSON.stringify(Object.keys(agents));
+  if ($("agent").dataset.known !== known) {
+    $("agent").replaceChildren(...Object.values(agents).map(entry => {
+      const option = document.createElement("option");
+      option.value = entry.id; option.textContent = entry.name;
+      return option;
+    }));
+    $("agent").dataset.known = known;
+    $("model").dataset.agent = "";
+  }
   $("agent").value = agent;
-  text("welcome-agent", AGENTS[agent].name);
+  text("welcome-agent", agents[agent].name);
   if ($("model").dataset.agent !== agent) {
-    $("model").replaceChildren(...AGENTS[agent].models.map(([value, label]) => {
+    $("model").replaceChildren(...agents[agent].models.map(([value, label]) => {
       const option = document.createElement("option");
       option.value = value; option.textContent = label;
       return option;

@@ -17,7 +17,14 @@ assert disallowed == [
     f"mcp__{server_name}__steed_conversation_reply",
     f"mcp__{server_name}__steed_conversation_wait",
 ], disallowed
-assert "--no-session-persistence" in arguments
+if mode == "resume":
+    # Continuing a saved session: as a copy, in its own folder.
+    assert "--no-session-persistence" not in arguments
+    resumed = arguments[arguments.index("--resume") + 1]
+    assert "--fork-session" in arguments
+else:
+    assert "--no-session-persistence" in arguments
+    resumed = None
 model = (
     arguments[arguments.index("--model") + 1] if "--model" in arguments else "default"
 )
@@ -242,5 +249,9 @@ for line in sys.stdin:
                 }
             )
             reply("Synthetic reply: " + text)
+        elif mode == "resume":
+            import os
+
+            reply(f"Resumed {resumed} in {os.getcwd()}: {text}")
         else:
             reply("Synthetic reply: " + text)
