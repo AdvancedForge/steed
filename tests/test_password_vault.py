@@ -44,7 +44,9 @@ class VaultTests(unittest.TestCase):
         self.assertEqual(login.origin, "https://example.org")
         raw = self.path.read_text()
         self.assertNotIn("s3cret-PASSWORD", raw)
-        self.assertNotIn("ada", raw)
+        # Not the short name itself: random ciphertext can contain "ada".
+        self.assertNotIn('"ada"', raw)
+        self.assertNotIn("example.org", raw)
         self.assertEqual(json.loads(raw)["kdf"], "keyring")
         self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
         again = self.vault()
