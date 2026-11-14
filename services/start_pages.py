@@ -888,7 +888,7 @@ class StartPages(QObject):
                         ""  # Your own photos need no credit.
                         if photo["source"] != "online"
                         else f'<a class="credit" href="{escape(photo["page"])}">'
-                        f"Photo: {author} · Unsplash</a>"
+                        f"Photo: {author} · {escape(photo.get('provider') or 'Unsplash')}</a>"
                         if photo["page"]
                         else f'<span class="credit">Photo: {author}</span>'
                     )
@@ -1218,8 +1218,8 @@ REFRACT_SVG = (
 # in, one entrance as the page opens, and (Full effects) a slow drift of the
 # photo. Pure CSS: the page runs no script.
 LUMEN_CSS = """
-body { font-family: "Mona Sans", system-ui, sans-serif; font-weight: 450; -webkit-font-smoothing: antialiased; }
-.wordmark { font-family: "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif; font-weight: 800; letter-spacing: -.035em; font-size: clamp(64px, 10vw, 112px); }
+body { font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif); font-weight: 450; -webkit-font-smoothing: antialiased; }
+.wordmark { font-family: var(--steed-display-font, "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif); font-weight: 800; letter-spacing: -.035em; font-size: clamp(64px, 10vw, 112px); }
 .search { height: 58px; border-radius: 29px; border: 1px solid color-mix(in srgb, #fff 16%, transparent);
   background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 78%, transparent), color-mix(in srgb, var(--surface) 62%, transparent));
   backdrop-filter: blur(22px) saturate(1.4);
@@ -1240,15 +1240,16 @@ html[data-effects=full] .search { animation: field-in .8s .12s cubic-bezier(.22,
 html[data-effects=full] .corner, html[data-effects=full] .credit { animation: fade-in .8s .3s both; }
 html[data-effects=full] body::before { animation: fade-in .7s both, drift 60s 0.7s ease-in-out infinite alternate; will-change: transform; }
 html[data-effects=balanced] .wordmark, html[data-effects=balanced] .search { animation: fade-in .35s both; }
+.panel h3, .panel h2 { text-transform: none; letter-spacing: 0; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 """
 
 # Lumen for Welcome and the classic start pages: the same type, lit cards
 # that answer the pointer with a lift, and capsule buttons.
 PAGES_CSS = """
-body { font-family: "Mona Sans", system-ui, sans-serif; font-weight: 450; -webkit-font-smoothing: antialiased; }
-h1, h2, .brand { font-family: "Mona Sans SemiExpanded", "Mona Sans", system-ui, sans-serif; font-weight: 700; letter-spacing: -.01em; }
-.hero h1 { font-family: "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif; font-weight: 800; letter-spacing: -.03em;
+body { font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif); font-weight: 450; -webkit-font-smoothing: antialiased; }
+h1, h2, .brand { font-family: var(--steed-title-font, "Mona Sans SemiExpanded", "Mona Sans", system-ui, sans-serif); font-weight: 700; letter-spacing: -.01em; }
+.hero h1 { font-family: var(--steed-display-font, "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif); font-weight: 800; letter-spacing: -.03em;
   font-size: clamp(40px, 6.4vw, 72px); line-height: 1.02; }
 .eyebrow { text-transform: none; letter-spacing: 0; }
 .card { border-radius: 20px; border-color: color-mix(in srgb, var(--border) 70%, transparent);

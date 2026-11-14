@@ -9,6 +9,24 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Lumen round 2 and fixes — November 13, 2026.** Lumen is editable on the
+Style page (Light and page) and through reviewed agent style proposals
+(`lumen`: light strength and colours, card radius/margin/shadow, typeface,
+title width; font tokens for CSS); the agent sidebar and other docked panels
+and each side of split view are cards; the light uses sites' theme-color;
+dialogs arrive with motion. Tab icons: Steed's pages get their own glyphs and
+icon-less sites a globe instead of a letter. New photo now: no false "Error
+loading page", a message when the photo service is down (it was answering
+HTTP 522), the last 12 photos kept to show instead, and a fetch timeout.
+Addresses on the local network (192.168.x, 10.x, *.local…) open over http.
+Test audit (1,982 tests): ~85–90% genuine behaviour checks; a mutation spot
+check caught 6 of 12 planted bugs; the misses (address parsing, incognito
+download history, cookie deletion for sites kept local, Balanced effects)
+now have tests that catch them, and weak or misnamed tests were
+strengthened. Left: ~46 tests of connector planning documents
+(test_default_connector_profiles.py) could shrink to a schema check; fixed
+sleeps in test_password_assistant.py could become event waits.
+
 **Lumen, Steed's look — November 13, 2026.** The page floats as a card in a
 field of light coloured by the current site (its icon) and the browser's
 accent; bars without backgrounds; the light flows between tabs; lit capsule

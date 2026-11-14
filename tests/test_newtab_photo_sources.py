@@ -196,3 +196,207 @@ class PhotoSourceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PhotoServiceDownTests(unittest.TestCase):
+    """New photo now while the photo service does not answer (tests point it
+    at a closed port): a recent photo instead, and a message either way."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = application()
+
+    def setUp(self):
+        from services.newtab_photo import NewTabPhotos
+
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.photos = NewTabPhotos(Path(self.directory.name))
+        self.messages, self.changed = [], []
+        self.photos.failed.connect(self.messages.append)
+        self.photos.changed.connect(self.changed.append)
+
+    def wait(self, predicate):
+        end = time.monotonic() + WAIT_SECONDS
+        while time.monotonic() < end:
+            self.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        self.fail("Timed out")
+
+    def remember(self, name, color):
+        image = QImage(64, 36, QImage.Format.Format_RGB32)
+        image.fill(QColor(color))
+        path = Path(self.directory.name) / f"{name}.jpg"
+        image.save(str(path), "JPEG")
+        data = path.read_bytes()
+        self.photos._remember(data, {"id": name, "author": f"Ann {name}"}, color)
+        return data
+
+    def test_a_recent_photo_is_shown_and_you_are_told(self):
+        shown = self.remember("11", "#ff0000")
+        self.remember("22", "#0000ff")
+        self.photos._saved(shown, {"id": "11"}, keep=False)
+        self.changed.clear()
+        self.photos.refresh(now=True)
+        self.wait(lambda: self.messages)
+        self.assertIn("recent photos", self.messages[0])
+        self.assertEqual(self.photos.current()["id"], "22")  # Not the same one.
+        self.assertEqual(self.photos.current()["author"], "Ann 22")
+        self.assertEqual(self.changed, [False])
+        self.assertFalse(self.photos.fetching)
+
+    def test_without_recent_photos_it_says_to_try_later(self):
+        self.photos.refresh(now=True)
+        self.wait(lambda: self.messages)
+        self.assertIn("Try again", self.messages[0])
+        self.assertIsNone(self.photos.current())
+        # A due refresh nobody asked for fails quietly.
+        self.messages.clear()
+        self.photos.refresh()
+        self.wait(lambda: not self.photos.fetching)
+        self.assertEqual(self.messages, [])
+
+    def test_only_the_newest_photos_are_kept(self):
+        from services import newtab_photo
+
+        with patch.object(newtab_photo, "RECENT_KEPT", 2):
+            for index, name in enumerate(("1", "2", "3")):
+                self.remember(name, "#00ff00")
+                time.sleep(0.01 * (index + 1))
+        kept = sorted(p.stem for p in self.photos.recent_folder.glob("*.jpg"))
+        self.assertEqual(kept, ["2", "3"])
+        self.assertFalse((self.photos.recent_folder / "1.json").exists())
+
+
+class CommonsFallbackTests(unittest.TestCase):
+    """When Picsum does not answer, a featured landscape from Wikimedia
+    Commons (a local stand-in here), credited with its author and licence."""
+
+    @classmethod
+    def setUpClass(cls):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        cls.app = application()
+        image = QImage(64, 36, QImage.Format.Format_RGB32)
+        image.fill(QColor("#3070c0"))
+        folder = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(folder.cleanup)
+        path = Path(folder.name) / "p.jpg"
+        image.save(str(path), "JPEG")
+        jpeg = path.read_bytes()
+
+        class Commons(BaseHTTPRequestHandler):
+            agents = []
+
+            def do_GET(self):
+                Commons.agents.append(self.headers.get("User-Agent"))
+                if self.path.startswith("/api"):
+                    host = f"http://{self.headers['Host']}"
+                    pages = {
+                        "1": {
+                            "pageid": 1,
+                            "imageinfo": [
+                                {
+                                    "mime": "image/jpeg",
+                                    "width": 4000,
+                                    "height": 2400,
+                                    "thumburl": host + "/image.jpg",
+                                    "descriptionurl": "https://commons.wikimedia.org/wiki/File:Glen.jpg",
+                                    "extmetadata": {
+                                        "Artist": {
+                                            "value": '<a href="x">Ann <b>Lee</b></a>'
+                                        },
+                                        "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                                    },
+                                }
+                            ],
+                        },
+                        "2": {
+                            "pageid": 2,
+                            "imageinfo": [
+                                {  # A panorama: skipped.
+                                    "mime": "image/jpeg",
+                                    "width": 9000,
+                                    "height": 1500,
+                                    "thumburl": host + "/image.jpg",
+                                    "descriptionurl": "https://commons.wikimedia.org/wiki/File:P.jpg",
+                                }
+                            ],
+                        },
+                    }
+                    body = json.dumps({"query": {"pages": pages}}).encode()
+                else:
+                    body = jpeg
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        cls.Commons = Commons
+        cls.server = HTTPServer(("127.0.0.1", 0), Commons)
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        cls.addClassCleanup(cls.server.server_close)
+        cls.addClassCleanup(cls.server.shutdown)
+
+    def setUp(self):
+        from services import newtab_photo
+
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        port = self.server.server_port
+        # Test-only: the stand-in's thumbnails are http on 127.0.0.1.
+        self.host = patch.object(
+            newtab_photo, "COMMONS_URL", f"http://127.0.0.1:{port}/api?{{letter}}"
+        )
+        self.host.start()
+        self.addCleanup(self.host.stop)
+        self.photos = newtab_photo.NewTabPhotos(Path(self.directory.name))
+        self.messages = []
+        self.photos.failed.connect(self.messages.append)
+
+    def wait(self, predicate):
+        end = time.monotonic() + WAIT_SECONDS
+        while time.monotonic() < end:
+            self.app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.01)
+        self.fail("Timed out")
+
+    def test_a_commons_photo_is_shown_with_its_credit(self):
+        from services import newtab_photo
+
+        with patch.object(newtab_photo, "_trusted_image", lambda url: True):
+            self.photos.refresh(now=True)
+            self.wait(lambda: not self.photos.fetching)
+        found = self.photos.current()
+        self.assertEqual(found["id"], "commons:1")
+        self.assertEqual(found["author"], "Ann Lee")
+        self.assertEqual(found["provider"], "Wikimedia Commons, CC BY-SA 4.0")
+        self.assertEqual(
+            found["page"], "https://commons.wikimedia.org/wiki/File:Glen.jpg"
+        )
+        self.assertEqual(self.messages, [])
+        self.assertIn("Steed", self.Commons.agents[0])
+        # Picsum failed just now: the next photo asks Commons first.
+        self.assertGreater(self.photos.picsum_failed, 0)
+        self.photos.refresh(now=True)
+        self.assertEqual(self.photos.source_now, "commons")
+        self.wait(lambda: not self.photos.fetching)
+
+    def test_images_only_come_from_wikimedia_over_https(self):
+        from services.newtab_photo import _trusted_image
+
+        self.assertTrue(_trusted_image("https://upload.wikimedia.org/a.jpg"))
+        self.assertFalse(_trusted_image("http://upload.wikimedia.org/a.jpg"))
+        self.assertFalse(_trusted_image("https://wikimedia.org.evil.example/a.jpg"))
+        self.photos.refresh(now=True)  # The stand-in's own (http) images: refused.
+        self.wait(lambda: not self.photos.fetching)
+        self.assertIsNone(self.photos.current())
+        self.assertIn("Try again", self.messages[0])

@@ -29,6 +29,7 @@ def application():
 
         photos.LIST_URL = "http://127.0.0.1:9/list?page={page}"
         photos.IMAGE_URL = "http://127.0.0.1:9/id/{id}.jpg"
+        photos.COMMONS_URL = "http://127.0.0.1:9/commons?{letter}"
         QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         _application = QApplication.instance() or QApplication(["steed-tests"])
         from ui.lumen import apply_ui_font

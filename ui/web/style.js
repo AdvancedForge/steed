@@ -37,10 +37,31 @@ function guide() {
   const note = document.createElement('p'); note.className = 'hint'; note.textContent = state.guide.precedence;
   target.append(table, note);
 }
+// Lumen: the fields shown here; fixed light colours (set by an agent or the
+// style's JSON) are kept as they are.
+const LUMEN_RANGES = ['light', 'card_radius', 'card_margin', 'card_shadow'];
+const LUMEN_UNITS = {light: '%', card_shadow: '%', card_radius: ' px', card_margin: ' px'};
+let lumenKept = {};
+function fillLumen(value) {
+  const all = {...(state?.guide?.lumen_defaults || {}), ...(value || {})};
+  lumenKept = {light_colors: all.light_colors || {}};
+  for (const key of LUMEN_RANGES) { const node = $('lumen-' + key); if (node && all[key] !== undefined) { node.value = all[key]; showLumen(key); } }
+  if (all.follow_site !== undefined) $('lumen-follow_site').checked = all.follow_site;
+  if (all.font) $('lumen-font').value = all.font;
+  if (all.titles) $('lumen-titles').value = all.titles;
+}
+function showLumen(key) { $('lumen-' + key + '-value').textContent = $('lumen-' + key).value + LUMEN_UNITS[key]; }
+for (const key of LUMEN_RANGES) $('lumen-' + key).addEventListener('input', () => showLumen(key));
+function collectLumen() {
+  const value = {...lumenKept, follow_site: $('lumen-follow_site').checked, font: $('lumen-font').value, titles: $('lumen-titles').value};
+  for (const key of LUMEN_RANGES) value[key] = Number($('lumen-' + key).value);
+  return value;
+}
 function fill(values) {
   colors = {...values.colors}; chrome = {...(values.chrome || {})};
   for (const [key, value] of Object.entries(values)) {
     if (key === 'colors' || key === 'chrome') continue;
+    if (key === 'lumen') { fillLumen(value); continue; }
     const node = $(key); if (typeof value === 'boolean') node.checked = value; else node.value = value;
   }
   if (state) { paletteFields(); chromeFields(); }
@@ -100,7 +121,7 @@ window.steedUI = {render(next) {
 }};
 $('save').onclick = () => {
   const values = {};
-  for (const [key, value] of Object.entries(state.defaults)) values[key] = key === 'colors' ? {...colors} : key === 'chrome' ? {...chrome} : typeof value === 'boolean' ? $(key).checked : typeof value === 'number' ? Number($(key).value) : $(key).value;
+  for (const [key, value] of Object.entries(state.defaults)) values[key] = key === 'colors' ? {...colors} : key === 'chrome' ? {...chrome} : key === 'lumen' ? collectLumen() : typeof value === 'boolean' ? $(key).checked : typeof value === 'number' ? Number($(key).value) : $(key).value;
   command('save', {values, all_profiles: $('all_profiles').checked});
 };
 $('reset').onclick = () => fill(state.defaults);

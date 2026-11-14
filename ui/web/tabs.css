@@ -227,7 +227,7 @@ button:hover:enabled { background: none; border-color: transparent; }
 @property --light-3 { syntax: "<color>"; inherits: true; initial-value: transparent; }
 :root { --stride: cubic-bezier(.22, 1, .36, 1); }
 html.lumen body {
-  font-family: "Mona Sans", system-ui, sans-serif;
+  font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif);
   background:
     radial-gradient(circle var(--r1) at var(--x1) var(--y1), var(--light-1), color-mix(in srgb, var(--light-1) 45%, transparent) 55%, transparent),
     radial-gradient(circle var(--r2) at var(--x2) var(--y2), var(--light-2), color-mix(in srgb, var(--light-2) 45%, transparent) 55%, transparent),
@@ -258,3 +258,10 @@ html.lumen .style-underline #lit, html.lumen .style-minimal #lit { display: none
 @keyframes tab-in { from { opacity: 0; max-width: 0; min-width: 0; transform: scale(.94); } }
 html.lumen.motion .tab.entering { animation: tab-in .34s var(--stride); }
 @media (prefers-reduced-motion: reduce) { html.lumen .tab { animation: none !important; transition: none !important; } }
+
+/* Tabs without an icon: Steed's pages get their own glyph, other sites a
+   quiet globe (never a letter). */
+.favicon.glyph svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round; }
+.favicon.glyph.steed { color: var(--tab-accent); }
+.favicon.glyph.site { color: var(--muted); }

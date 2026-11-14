@@ -1,7 +1,8 @@
 """The new tab page's background photo: one that changes now and then.
 
-Photos come from Lorem Picsum (free Unsplash photos, credited on the page), or
-from your own: photos you add (copied into <config>/newtab/mine/), a folder you
+Photos come from Lorem Picsum (free Unsplash photos, credited on the page);
+when it does not answer, from Wikimedia Commons' featured landscape photos
+(credited with their author and licence); or from your own: photos you add (copied into <config>/newtab/mine/), a folder you
 choose (read in place) or your favourites (<config>/newtab/favourites/). Local
 photos are shown in a shuffled order, each once before any repeats. Steed keeps
 the current one in <config>/newtab/ (shared by all profiles) and gets the next
@@ -20,6 +21,19 @@ from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkReques
 LIST_URL = "https://picsum.photos/v2/list?page={page}&limit=100"
 IMAGE_URL = "https://picsum.photos/id/{id}/1920/1080.jpg"
 MAX_BYTES = 5 << 20
+COMMONS_URL = (
+    "https://commons.wikimedia.org/w/api.php?action=query&format=json"
+    "&generator=categorymembers&gcmtitle=Category:Featured_pictures_of_landscapes"
+    "&gcmtype=file&gcmlimit=40&gcmsort=sortkey&gcmstartsortkeyprefix={letter}"
+    "&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1920"
+    "&iiextmetadatafilter=Artist|LicenseShortName"
+)
+# Wikimedia asks programs to say who they are.
+USER_AGENT = b"Steed/1.0 (desktop browser; New Tab photos)"
+FETCH_TIMEOUT_MS = 8000
+# After Picsum fails, go to Commons first for this long.
+PICSUM_REST_SECONDS = 1800
+RECENT_KEPT = 12
 # How often it changes: seconds (0: a new one for each new tab).
 PERIODS = {"new_tab": 0, "hourly": 3600, "6h": 6 * 3600, "daily": 24 * 3600}
 DEFAULT_PERIOD = "6h"
@@ -30,6 +44,15 @@ IMAGE_TYPES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 MAX_LOCAL_BYTES = 40 << 20
 MAX_LOCAL_PIXELS = 80_000_000
 MAX_FILES = 5000  # Read at most this many files from a folder.
+
+
+def _trusted_image(url) -> bool:
+    """Commons photos are fetched only from Wikimedia, over https."""
+    found = QUrl(str(url))
+    host = found.host()
+    return found.scheme() == "https" and (
+        host == "wikimedia.org" or host.endswith(".wikimedia.org")
+    )
 
 
 def theme_color(image) -> str | None:
@@ -78,12 +101,18 @@ class NewTabPhotos(QObject):
     """changed(first) when a new photo is ready; first: there was none."""
 
     changed = pyqtSignal(bool)
+    # An online photo could not be fetched; the message says what was shown
+    # instead (a recent photo) or that nothing changed.
+    failed = pyqtSignal(str)
 
     def __init__(self, folder: Path, parent=None):
         super().__init__(parent)
         self.folder = Path(folder)
         self.network = None
         self.fetching = False
+        self.asked = False  # The current fetch was asked for (New photo now).
+        self.picsum_failed = 0.0  # When Picsum last did not answer.
+        self.sources = []  # Online sources still to try for this photo.
 
     @property
     def image_path(self):
@@ -92,6 +121,11 @@ class NewTabPhotos(QObject):
     @property
     def info_path(self):
         return self.folder / "photo.json"
+
+    @property
+    def recent_folder(self):
+        """The last few online photos, shown again when the service is down."""
+        return self.folder / "recent"
 
     @property
     def mine_folder(self):
@@ -157,6 +191,7 @@ class NewTabPhotos(QObject):
             if str(info.get("page", "")).startswith("https://")
             else "",
             "fetched": float(info.get("fetched", 0) or 0),
+            "provider": str(info.get("provider") or "Unsplash")[:60],
         }
 
     def due(self, period: str, source="online", folder="", style="color") -> bool:
@@ -190,10 +225,24 @@ class NewTabPhotos(QObject):
             return
         self.style = style
         self.fetching = True
+        self.asked = now
         if self.network is None:
             self.network = QNetworkAccessManager(self)
-        url = LIST_URL.format(page=random.randint(1, 10))
-        self._get(url, self._listed)
+        rested = time.time() - self.picsum_failed > PICSUM_REST_SECONDS
+        self.sources = ["picsum", "commons"] if rested else ["commons", "picsum"]
+        self._next_source()
+
+    def _next_source(self):
+        """Ask the next online source, or give up when none answered."""
+        if not self.sources:
+            self._give_up()
+            return
+        source = self.source_now = self.sources.pop(0)
+        if source == "picsum":
+            self._get(LIST_URL.format(page=random.randint(1, 10)), self._listed)
+        else:
+            letter = random.choice("ABCDEFGHIJKLMNOPRSTUVW")
+            self._get(COMMONS_URL.format(letter=letter), self._commons_listed)
 
     def _get(self, url, done):
         request = QNetworkRequest(QUrl(url))
@@ -201,6 +250,9 @@ class NewTabPhotos(QObject):
             QNetworkRequest.Attribute.RedirectPolicyAttribute,
             QNetworkRequest.RedirectPolicy.NoLessSafeRedirectPolicy,
         )
+        # A service that stops answering must not block the next try.
+        request.setTransferTimeout(FETCH_TIMEOUT_MS)
+        request.setRawHeader(b"User-Agent", USER_AGENT)
         reply = self.network.get(request)
         reply.downloadProgress.connect(
             lambda received, total: (
@@ -215,9 +267,74 @@ class NewTabPhotos(QObject):
         data = bytes(reply.readAll() or b"") if ok else b""
         reply.deleteLater()
         if not ok:
-            self.fetching = False
+            self._failed()
             return
         done(data)
+
+    def _failed(self):
+        """This source did not answer: try the next one."""
+        if getattr(self, "source_now", None) == "picsum":
+            self.picsum_failed = time.time()
+        self._next_source()
+
+    def _give_up(self):
+        """No photo service answered: show a recent photo instead when one
+        was asked for, and say so."""
+        self.fetching = False
+        if not self.asked:
+            return
+        self.asked = False
+        if self._show_recent():
+            self.failed.emit(
+                "The photo service isn't answering, so here's one of your recent photos."
+            )
+        else:
+            self.failed.emit(
+                "The photo service isn't answering. Try again in a little while."
+            )
+
+    def _show_recent(self):
+        current = self._info().get("id")
+        choices = [
+            path
+            for path in self.recent_folder.glob("*.jpg")
+            if path.stem != current and path.with_suffix(".json").is_file()
+        ]
+        if not choices:
+            return False
+        chosen = random.choice(choices)
+        try:
+            info = json.loads(chosen.with_suffix(".json").read_text("utf-8"))
+            image = chosen.read_bytes()
+        except (OSError, ValueError):
+            return False
+        if not isinstance(info, dict) or not image.startswith(b"\xff\xd8"):
+            return False
+        self._saved(image, info, keep=False)
+        return True
+
+    def _remember(self, image, chosen, color):
+        """Keep this photo among the recent ones (the newest RECENT_KEPT)."""
+        folder = self.recent_folder
+        folder.mkdir(parents=True, exist_ok=True)
+        name = str(chosen["id"])
+        (folder / f"{name}.jpg").write_bytes(image)
+        (folder / f"{name}.json").write_text(
+            json.dumps(
+                {
+                    "id": name,
+                    "author": str(chosen.get("author", ""))[:100],
+                    "url": str(chosen.get("url", "")),
+                    "provider": str(chosen.get("provider", "Unsplash"))[:60],
+                    "color": color,
+                }
+            ),
+            "utf-8",
+        )
+        kept = sorted(folder.glob("*.jpg"), key=lambda p: p.stat().st_mtime)
+        for old in kept[:-RECENT_KEPT]:
+            old.unlink(missing_ok=True)
+            old.with_suffix(".json").unlink(missing_ok=True)
 
     def _listed(self, data):
         try:
@@ -231,7 +348,7 @@ class NewTabPhotos(QObject):
         blocked = set(self.blocked()) | {self._info().get("id")}
         photos = [p for p in photos if str(p["id"]) not in blocked] or photos
         if not photos:
-            self.fetching = False
+            self._failed()
             return
         chosen = random.choice(photos)
         grayscale = getattr(self, "style", "color") == "grayscale"
@@ -240,10 +357,64 @@ class NewTabPhotos(QObject):
             lambda image: self._saved(image, chosen),
         )
 
-    def _saved(self, image, chosen):
+    def _commons_listed(self, data):
+        """Featured landscape photos on Wikimedia Commons: a wide JPEG, with
+        its author and licence for the credit."""
+        import re
+        from html import unescape
+
+        try:
+            pages = json.loads(data)["query"]["pages"].values()
+        except (ValueError, KeyError, TypeError, AttributeError):
+            self._failed()
+            return
+        blocked = set(self.blocked()) | {self._info().get("id")}
+        photos = []
+        for page in pages:
+            try:
+                info = page["imageinfo"][0]
+                ratio = info["width"] / info["height"]
+                url, described = info["thumburl"], info["descriptionurl"]
+            except (KeyError, IndexError, TypeError, ZeroDivisionError):
+                continue
+            if (
+                info.get("mime") != "image/jpeg"
+                or not 1.3 <= ratio <= 2.1
+                or info["width"] < 1600
+                or not _trusted_image(url)
+                or not str(described).startswith("https://commons.wikimedia.org/")
+            ):
+                continue
+            meta = info.get("extmetadata", {})
+            artist = unescape(
+                re.sub(r"<[^>]+>", "", str(meta.get("Artist", {}).get("value", "")))
+            )
+            licence = str(meta.get("LicenseShortName", {}).get("value", ""))[:40]
+            identifier = "commons:" + str(page.get("pageid", ""))
+            if identifier in blocked:
+                continue
+            photos.append(
+                {
+                    "id": identifier,
+                    "author": " ".join(artist.split())[:80] or "Wikimedia Commons",
+                    "url": described,
+                    "provider": "Wikimedia Commons"
+                    + (f", {licence}" if licence else ""),
+                    "image": url,
+                }
+            )
+        if not photos:
+            self._failed()
+            return
+        chosen = random.choice(photos)
+        self._get(chosen["image"], lambda image: self._saved(image, chosen))
+
+    def _saved(self, image, chosen, keep=True):
         self.fetching = False
         if not image.startswith(b"\xff\xd8"):
-            return  # Not a JPEG.
+            self._failed()  # Not a JPEG.
+            return
+        self.asked = False
         first = self.current() is None
         from PyQt6.QtGui import QImage
 
@@ -252,11 +423,17 @@ class NewTabPhotos(QObject):
         temporary.write_bytes(image)
         temporary.replace(self.image_path)
         color = theme_color(QImage.fromData(image, "JPEG"))
+        if keep:
+            try:
+                self._remember(image, chosen, color)
+            except OSError:
+                pass
         self._write_info(
             {
                 "id": str(chosen["id"]),
                 "author": str(chosen.get("author", ""))[:100],
                 "page": str(chosen.get("url", "")),
+                "provider": str(chosen.get("provider", "Unsplash"))[:60],
                 "fetched": time.time(),
                 "color": color,
                 "source": "online",

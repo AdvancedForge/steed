@@ -8,12 +8,12 @@
    reduce-motion setting) stops all of it. */
 :root { --stride: cubic-bezier(.22, 1, .36, 1); --spring: cubic-bezier(.34, 1.45, .64, 1);
   --lift: inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent);
-  font-family: "Mona Sans", system-ui, sans-serif; font-weight: 450; }
+  font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif); font-weight: 450; }
 :root:not([data-theme=dark]) { --lift: inset 0 1px 0 #fff, 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent); }
 body { font-family: inherit; -webkit-font-smoothing: antialiased; }
 /* The wide cuts are families of their own. */
-h1, h2, .dialog-header h1 { font-family: "Mona Sans SemiExpanded", "Mona Sans", system-ui, sans-serif; font-weight: 700; letter-spacing: -.01em; }
-.welcome h2, .section-heading h2 { font-family: "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif; font-weight: 800; letter-spacing: -.02em; }
+h1, h2, .dialog-header h1 { font-family: var(--steed-title-font, "Mona Sans SemiExpanded", "Mona Sans", system-ui, sans-serif); font-weight: 700; letter-spacing: -.01em; }
+.welcome h2, .section-heading h2 { font-family: var(--steed-display-font, "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif); font-weight: 800; letter-spacing: -.02em; }
 strong, b { font-weight: 650; }
 /* Labels speak in sentence case. */
 .eyebrow, #scope, th, #workspace-nav h2, h1.menu-title, header h1 { text-transform: none; letter-spacing: 0; }
@@ -81,3 +81,6 @@ button.control.toggle::before { transition: background-color .22s var(--stride),
 /* The agent panel's welcome: one line of label, no eyebrow over the title. */
 .welcome .eyebrow { display: none; }
 .welcome .primary { justify-content: center; gap: .32em; }
+/* Sliders and checks in the accent colour. */
+input[type=range], input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
+input[type=range] { width: min(360px, 100%); }
