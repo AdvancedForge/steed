@@ -4707,6 +4707,23 @@ the sidebar; text from subagents is not shown as the reply. A failed turn, an ex
 or an MCP connection failure stops the chat and cancels its task without retrying.
 Checked with Claude Code 2.1.312 and a synthetic offline runtime.
 
+#### Asking your agent from anywhere
+
+- **Right-click a page** → **Ask Agent About Selection** (with text selected),
+  **Ask Agent About Link** (on a link) or **Ask Agent About This Page**. The
+  sidebar opens on your current conversation (or any connected one, or starts
+  a new chat) with a draft: the selection quoted, the page's title and address,
+  and room for your question. Nothing is sent until you press Send.
+- **Type `@` in the address bar**, then a question (`@ summarize this`), and
+  press Enter: it goes straight to your agent with the page's title and address
+  (not its contents; the agent asks for page access as usual).
+- **Desktop notifications**: when an agent finishes a reply or needs your
+  approval while Steed is not in front (or that conversation is not showing),
+  a notification says so; clicking it brings the conversation up. Turn them off
+  with `"agent_notifications": false` in `~/.custom_browser/config.json`.
+
+Incognito windows have no agents, so none of these appear there.
+
 #### Continuing a Claude Code session
 
 **Continue a Claude Code session** (on the sidebar's welcome) lists your saved
