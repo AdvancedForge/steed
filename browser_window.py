@@ -1040,6 +1040,7 @@ class BrowserWindow(QMainWindow):
 
     def setup_ui(self):
         central = QWidget()
+        central.setObjectName("SteedCentral")
         self.setCentralWidget(central)
         # Side tab strips sit beside the whole browser column, so the column
         # (address bar, bars, page) lives inside a horizontal row.
@@ -1047,6 +1048,7 @@ class BrowserWindow(QMainWindow):
         self.chrome_row.setContentsMargins(0, 0, 0, 0)
         self.chrome_row.setSpacing(0)
         self.chrome_column = QWidget(central)
+        self.chrome_column.setObjectName("SteedColumn")
         layout = QVBoxLayout(self.chrome_column)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -1151,6 +1153,7 @@ class BrowserWindow(QMainWindow):
         self._live_tasks = None
         # Tab container
         self.tab_container = QWidget()
+        self.tab_container.setObjectName("SteedPages")
         self.tab_container.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -1176,6 +1179,7 @@ class BrowserWindow(QMainWindow):
         self.passkey_bar = PasskeyBar(self)
         layout.addWidget(self.passkey_bar)
         self.content_area = QSplitter(Qt.Orientation.Horizontal)
+        self.content_area.setObjectName("SteedContent")
         self.content_area.setChildrenCollapsible(False)
         self.content_area.addWidget(self.tab_container)
         layout.addWidget(self.content_area, 1)
@@ -1258,6 +1262,11 @@ class BrowserWindow(QMainWindow):
         # What the theme or photo gives (shown in Style), then the user's own.
         self.automatic_colors = browser_colors(toolbar, dark, accent, glass)
         colors = browser_colors(toolbar, dark, accent, glass, chosen)
+        # Lumen, Steed's look, unless liquid glass (the photo) is chosen.
+        colors["lumen"] = not glass
+        from ui import lumen
+
+        colors["glide"] = not glass and lumen.level(self.config) != "minimal"
         if glass and not {"toolbar", "strip"} & set(chosen):
             colors.update(self._frost(profile, colors, dark))
         self.tab_bar.set_chrome(
@@ -1289,8 +1298,144 @@ class BrowserWindow(QMainWindow):
                 menu.setStyleSheet(menus)
         self.menuBar().setStyleSheet(bars)
         self.status_bar.setStyleSheet(bars)
+        self._apply_lumen(colors)
         if hasattr(self, "layout_preferences"):
             self._apply_layout_text()
+
+    # ---------- Lumen: the page as a card in the light ----------
+
+    def _apply_lumen(self, colors):
+        from ui import lumen
+
+        on = bool(colors.get("lumen"))
+        self._lumen = on
+        if on:
+            self.setStyleSheet(self.styleSheet() + lumen.WINDOW_STYLE)
+        if not hasattr(self, "_card_corners"):
+            self._card_corners = [
+                lumen.CardCorner(self, corner) for corner in ("tl", "tr", "bl", "br")
+            ]
+            self._light_animator = lumen.LightAnimator(self)
+        self._card_shown(on and not getattr(self, "_was_fullscreen", False))
+        if not on:
+            self.light = None
+            self.tab_bar.set_light(None)
+            self.update()
+            return
+        self._refresh_light(animate=False)
+
+    def _card_shown(self, shown):
+        """The page as a floating card (Lumen), or edge to edge."""
+        from ui import lumen
+
+        margin = lumen.CARD_MARGIN if shown else 0
+        self.content_area.setContentsMargins(margin, 0, margin, margin)
+        for corner in getattr(self, "_card_corners", ()):
+            corner.setVisible(shown)
+        if shown:
+            self._place_card_corners()
+
+    def _refresh_light(self, animate=True):
+        """Light the window in the current site's colour (its icon's), or the
+        browser's accent; it flows there unless motion is off."""
+        if not getattr(self, "_lumen", False) or getattr(self, "_closing", False):
+            return
+        from ui import lumen
+
+        colors = self._shown_colors
+        effects = lumen.level(self.config)
+        if effects == "minimal":
+            target = lumen.Light.flat(colors)
+        else:
+            tab = self._current_browser_tab()
+            site = None
+            if tab is not None and tab.url().scheme() in ("http", "https"):
+                site = lumen.site_color(tab.icon())
+            target = lumen.Light.of(colors, site)
+        if not target.same(self._light_animator.goal):
+            self._light_animator.go(
+                target, animate=animate and effects != "minimal" and self.isVisible()
+            )
+        self.tab_bar.set_light(
+            {
+                **target.css(),
+                "origin": [self.tab_bar.x(), self.tab_bar.mapTo(self, QPoint()).y()],
+                "size": [self.width(), self.height()],
+                "motion": effects != "minimal",
+            }
+        )
+
+    def light_changed(self):
+        """The light moved on a step: repaint everything outside the page."""
+        from PyQt6.QtGui import QRegion
+
+        card = self._card_rect()
+        self.update(
+            QRegion(self.rect()).subtracted(QRegion(card.adjusted(16, 16, -16, -16)))
+        )
+        for corner in getattr(self, "_card_corners", ()):
+            corner.update()
+
+    def _card_rect(self):
+        area = self.content_area
+        inner = area.contentsRect()
+        return QRect(area.mapTo(self, inner.topLeft()), inner.size())
+
+    def _place_card_corners(self):
+        from ui.lumen import CARD_RADIUS
+
+        card = self._card_rect()
+        for corner in getattr(self, "_card_corners", ()):
+            x = card.left() if "l" in corner.corner else card.right() + 1 - CARD_RADIUS
+            y = card.top() if "t" in corner.corner else card.bottom() + 1 - CARD_RADIUS
+            corner.move(x, y)
+            corner.raise_()
+
+    def paintEvent(self, event):
+        light = getattr(self, "light", None)
+        if light is None or not getattr(self, "_lumen", False):
+            return super().paintEvent(event)
+        from PyQt6.QtCore import QRectF
+        from PyQt6.QtGui import QPainter
+
+        painter = QPainter(self)
+        self.paint_backdrop(painter, QRectF(event.rect()))
+        painter.end()
+
+    def paint_backdrop(self, painter, rect, origin=None):
+        """The light, and the page card's shadow and rim, into rect; the
+        painter's (0, 0) is `origin` in the window (corner pieces paint
+        their bit of the same picture)."""
+        from PyQt6.QtCore import QPointF, QRectF
+        from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
+
+        from ui.lumen import CARD_RADIUS
+
+        origin = origin or QPointF(0, 0)
+        self.light.paint(painter, rect, self.size(), origin)
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setClipRect(rect)
+        painter.translate(-origin)
+        card = QRectF(self._card_rect())
+        dark = bool(self._shown_colors.get("dark"))
+        for step, alpha in enumerate(
+            (46, 30, 19, 11, 6, 3) if dark else (22, 14, 8, 4, 2)
+        ):
+            shade = QPainterPath()
+            grown = card.adjusted(-step, -step + 1, step, step + 2)
+            shade.addRoundedRect(grown, CARD_RADIUS + step, CARD_RADIUS + step)
+            painter.setPen(QPen(QColor(0, 0, 0, alpha), 1.2))
+            painter.drawPath(shade)
+        rim = QPainterPath()
+        rim.addRoundedRect(
+            card.adjusted(-0.5, -0.5, 0.5, 0.5), CARD_RADIUS + 0.5, CARD_RADIUS + 0.5
+        )
+        painter.setPen(
+            QPen(QColor(255, 255, 255, 26) if dark else QColor(20, 30, 50, 30), 1)
+        )
+        painter.drawPath(rim)
+        painter.restore()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -2359,6 +2504,16 @@ class BrowserWindow(QMainWindow):
             and not getattr(previous, "workspace_name", None)
         ):
             self.tabs[index].agent_source = previous
+        if (
+            previous is not None
+            and previous is not self.tabs[index]
+            and previous.isVisible()
+            and getattr(self, "_lumen", False)
+        ):
+            from ui import lumen
+
+            if lumen.level(self.config) == "full":
+                lumen.Dissolve(self.tab_container, self.tab_container.grab())
         self.current_tab_index = index
         from time import monotonic
 
@@ -2427,9 +2582,17 @@ class BrowserWindow(QMainWindow):
         self.status_bar.showMessage(f"Tab {index + 1} of {len(self.tabs)}")
         self._refresh_live_control()
         self._update_loading_indicator()
+        self._refresh_light()
 
     def eventFilter(self, watched, event):
         kind = event.type()
+        if (
+            kind in (QEvent.Type.Resize, QEvent.Type.Move)
+            and watched is getattr(self, "content_area", None)
+            and getattr(self, "_lumen", False)
+        ):
+            self._place_card_corners()
+            QTimer.singleShot(0, self._refresh_light)
         if (
             kind in self._KEY_EVENTS
             and isinstance(watched, QWidget)
@@ -3879,6 +4042,8 @@ class BrowserWindow(QMainWindow):
     def _on_tab_icon(self, tab, icon):
         if not self._closing and tab in self.tabs:
             self.tab_bar.set_tab_icon(self.tabs.index(tab), icon)
+            if tab is self._current_browser_tab():
+                self._refresh_light()
 
     def _on_tab_audio(self, tab):
         if not self._closing and tab in self.tabs:
@@ -6082,6 +6247,7 @@ class BrowserWindow(QMainWindow):
         if self.statusBar():
             self.statusBar().setVisible(False)
         self.loading_indicator.hide()
+        self._card_shown(False)  # The video fills the screen, edge to edge.
 
         self.showFullScreen()
 
@@ -6091,6 +6257,7 @@ class BrowserWindow(QMainWindow):
         self._was_fullscreen = False
 
         self.showNormal()
+        self._card_shown(getattr(self, "_lumen", False))
 
         if self._saved_window_state is not None:
             self.setWindowState(self._saved_window_state)

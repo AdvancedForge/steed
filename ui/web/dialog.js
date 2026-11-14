@@ -172,7 +172,7 @@ window.steedUI = {render(next) {
   $('workspace-nav').hidden = !next.workspace;
   $('workspace-picker').hidden = !next.workspace;
   $('scope').hidden = !next.workspace;
-  $('scope').textContent = next.shared ? 'Browser-wide · viewing ' + (next.profile === 'search' ? 'Incognito' : next.profile) : next.profile === 'search' ? 'Incognito · temporary session' : 'Profile · ' + next.profile;
+  $('scope').textContent = next.shared ? 'Browser-wide, viewing ' + (next.profile === 'search' ? 'Incognito' : `the ${next.profile} profile`) : next.profile === 'search' ? 'Incognito, a temporary session' : `The ${next.profile} profile`;
   if (next.workspace && $('workspace-nav').dataset.page !== next.workspace) {
     const nav = $('workspace-nav'); nav.replaceChildren(); nav.dataset.page = next.workspace;
     $('workspace-picker').replaceChildren();

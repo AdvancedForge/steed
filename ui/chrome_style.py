@@ -135,7 +135,45 @@ def toolbar_stylesheet(colors, density="comfortable"):
 }}
 #SteedToolbar QLineEdit:hover {{ border-color: {colors["border"]}; }}
 #SteedToolbar QLineEdit:focus {{ border: 2px solid {colors["accent"]}; padding: {2 if compact else 4}px 11px; }}
-""" + (glass_toolbar(colors, radius) if colors.get("glass") else "")
+""" + (
+        glass_toolbar(colors, radius)
+        if colors.get("glass")
+        else lumen_toolbar(colors, button)
+        if colors.get("lumen")
+        else ""
+    )
+
+
+def lumen_toolbar(colors, button):
+    """Lumen: no bar at all, the buttons and a capsule field resting on the
+    window's light (lumen.py paints it)."""
+    dark = colors["dark"]
+    if dark:
+        field, edge, hover, pressed = (
+            "rgba(0,0,0,64)",
+            "rgba(255,255,255,20)",
+            "rgba(255,255,255,22)",
+            "rgba(255,255,255,36)",
+        )
+    else:
+        field, edge, hover, pressed = (
+            "rgba(255,255,255,165)",
+            "rgba(255,255,255,235)",
+            "rgba(255,255,255,120)",
+            "rgba(255,255,255,190)",
+        )
+    return f"""
+#SteedToolbar {{ background: transparent; border: none; }}
+#SteedToolbar QWidget {{ background: transparent; }}
+#SteedToolbar QPushButton:hover:enabled {{ background: {"transparent" if colors.get("glide") else hover}; }}
+#SteedToolbar QPushButton:pressed {{ background: {"transparent" if colors.get("glide") else pressed}; }}
+#SteedToolbar QLineEdit {{
+  background: {field}; border: 1px solid {edge}; border-radius: {button // 2 + 2}px;
+  padding-left: 14px; padding-right: 14px;
+}}
+#SteedToolbar QLineEdit:hover {{ border-color: {colors["border"]}; }}
+#SteedToolbar QLineEdit:focus {{ border: 2px solid {colors["accent"]}; padding-left: 13px; padding-right: 13px; }}
+"""
 
 
 def frost_rule(selector, path):
@@ -200,7 +238,11 @@ QStatusBar QLabel#WarningNotice {{
   border-radius: 9px; padding: 1px 10px; margin: 2px 6px;
 }}
 QSizeGrip {{ background: transparent; }}
-"""
+""" + (
+        "QMenuBar, QStatusBar { background: transparent; border: none; }"
+        if colors.get("lumen")
+        else ""
+    )
 
 
 def menu_stylesheet(colors):

@@ -9,6 +9,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Lumen, Steed's look — November 13, 2026.** The page floats as a card in a
+field of light coloured by the current site (its icon) and the browser's
+accent; bars without backgrounds; the light flows between tabs; lit capsule
+tabs with a gliding highlight and growing new tabs; cross-fading tab switches;
+animated toolbar hovers and an accent glow on the address field; frosted
+menus that rise in; Mona Sans bundled (static cuts, via a private fontconfig
+file) with expanded titles; Steed's pages restyled (sentence-case labels,
+pointer light on cards, spring switches, scroll-driven title settling, one
+entrance per page); a Motion and light setting (Full, Balanced, Minimal).
+Manual check: hover, tab switching and menus on a real desktop, and a light
+theme. Next: site theme-color as well as icons, the agent sidebar and
+dialogs in the same language, light around split view.
+
 **Websites' speech recognition — November 13, 2026.** SpeechRecognition and
 webkitSpeechRecognition are answered by Steed's dictation engine: the site's
 microphone permission, standard event order, interim and continuous results,

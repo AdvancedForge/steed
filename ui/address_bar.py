@@ -529,6 +529,7 @@ class AddressBar(QWidget):
         """Repaint the toolbar to match the tab strip's colours."""
         self.colors = colors
         self.setStyleSheet(toolbar_stylesheet(colors, self.density))
+        self._apply_glide(colors)
         self.completer.popup().setStyleSheet(popup_stylesheet(colors))
         for name, button in self.buttons.items():
             if name == "extensions":
@@ -537,6 +538,23 @@ class AddressBar(QWidget):
                 button.setIcon(icon(BUTTON_ICONS[name], colors["ink"]))
                 button.setIconSize(QSize(18, 18))
         self._update_site_icon()
+
+    def _apply_glide(self, colors) -> None:
+        """Lumen motion on the toolbar (none in Minimal effects or glass)."""
+        from ui.lumen import Glide
+
+        glide = getattr(self, "glide", None)
+        if not colors.get("glide"):
+            if glide is not None:
+                glide.detach()
+            return
+        if glide is None:
+            glide = self.glide = Glide(self)
+        glide.attach_field(self.address_input)
+        glide.set_colors(colors)
+        for button in self.findChildren(QPushButton):
+            if button.objectName() != "WarningBadge":
+                glide.attach(button)
 
     def set_menu_badge(self, text: str) -> None:
         """Show a short label beside the menu icon (for example YOLO mode)."""

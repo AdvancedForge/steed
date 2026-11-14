@@ -1,0 +1,83 @@
+
+/* ---- Lumen: Steed's look for its own pages ----
+   One family (Mona Sans) with its width as the voice: titles set wide and
+   heavy, text at a crisp medium. Radii follow hierarchy (cards 18, fields 12,
+   buttons and switches round). Light, not lines: cards are lifted by a lit
+   top edge and catch a soft light under the pointer. One entrance per page;
+   motion answers what you do. data-effects="minimal" (or the desktop's
+   reduce-motion setting) stops all of it. */
+:root { --stride: cubic-bezier(.22, 1, .36, 1); --spring: cubic-bezier(.34, 1.45, .64, 1);
+  --lift: inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent);
+  font-family: "Mona Sans", system-ui, sans-serif; font-weight: 450; }
+:root:not([data-theme=dark]) { --lift: inset 0 1px 0 #fff, 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent); }
+body { font-family: inherit; -webkit-font-smoothing: antialiased; }
+/* The wide cuts are families of their own. */
+h1, h2, .dialog-header h1 { font-family: "Mona Sans SemiExpanded", "Mona Sans", system-ui, sans-serif; font-weight: 700; letter-spacing: -.01em; }
+.welcome h2, .section-heading h2 { font-family: "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif; font-weight: 800; letter-spacing: -.02em; }
+strong, b { font-weight: 650; }
+/* Labels speak in sentence case. */
+.eyebrow, #scope, th, #workspace-nav h2, h1.menu-title, header h1 { text-transform: none; letter-spacing: 0; }
+#scope { font-size: 12.5px; font-weight: 500; }
+th { font-size: 12px; font-weight: 600; }
+#workspace-nav h2 { font-size: 12px; font-weight: 600; }
+
+/* ---- Surfaces ---- */
+.form-group:has(> h2:not(:empty)), .settings-card, .profile-row, .card, .activity {
+  border-radius: 18px; border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow: var(--lift); position: relative; isolation: isolate; }
+/* The pointer's light (lumen.js sets --mx/--my on the card under it). */
+:root:not([data-effects=minimal]) :is(.form-group:has(> h2:not(:empty)), .settings-card, .profile-row, .card)::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0;
+  background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%);
+  transition: opacity .3s var(--stride); }
+:root:not([data-effects=minimal]) :is(.form-group, .settings-card, .profile-row, .card).lit::after { opacity: 1; }
+.table-wrap { border-radius: 16px; box-shadow: var(--lift); }
+
+/* ---- Controls ---- */
+button.control, .table-paging button, .settings-footer button, .inline-actions button, .footer-buttons button, .welcome button {
+  border-radius: 999px; }
+button { transition: background-color .16s var(--stride), border-color .16s var(--stride), transform .3s var(--spring), box-shadow .2s var(--stride); }
+button:active:enabled { transform: scale(.965); transition-duration: .08s; }
+button.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent), 0 6px 18px -8px var(--accent); }
+input, textarea, select { border-radius: 12px; transition: border-color .16s var(--stride), box-shadow .25s var(--stride); }
+input:focus, textarea:focus, select:focus, input[type="text"]:focus-visible {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent), 0 0 24px -6px var(--accent); }
+/* Switches settle with a little spring. */
+input[role="switch"]::after { transition: left .34s var(--spring), background-color .2s; }
+input[role="switch"] { transition: background-color .22s var(--stride), border-color .22s var(--stride); }
+button.control.toggle::before { transition: background-color .22s var(--stride), background-position .34s var(--spring); }
+
+/* ---- Navigation ---- */
+#workspace-nav button, .settings-nav button { border-radius: 12px; transition: background-color .16s var(--stride), color .16s, padding-left .3s var(--stride); }
+#workspace-nav button:hover:enabled, .settings-nav button:hover:enabled { padding-left: 16px; }
+#workspace-nav button[aria-current=page]::before { border-radius: 3px; box-shadow: 0 0 12px var(--accent); }
+
+/* ---- Headers that settle as you scroll (scroll-driven, no script) ---- */
+@supports (animation-timeline: scroll()) {
+  :root:not([data-effects=minimal]) .workspace-page .dialog-header h1 {
+    transform-origin: left center; animation: title-settle linear both; animation-timeline: scroll(root); animation-range: 0 140px; }
+  :root:not([data-effects=minimal]) .section-heading h2 {
+    transform-origin: left bottom; animation: title-settle linear both; animation-timeline: scroll(nearest); animation-range: 0 160px; }
+  @keyframes title-settle { to { transform: scale(.82); opacity: .9; } }
+}
+
+/* ---- One entrance per page ---- */
+@keyframes page-in { from { opacity: 0; transform: translateY(12px); } }
+@keyframes title-in { from { opacity: 0; transform: translateY(6px); letter-spacing: .02em; } }
+:root[data-effects=full] main, :root[data-effects=full] .settings-content { animation: page-in .55s var(--stride) both; }
+:root[data-effects=full] .dialog-header > div, :root[data-effects=full] .welcome { animation: title-in .5s var(--stride) both; }
+:root[data-effects=full] #controls > .form-group:nth-child(-n+6) { animation: page-in .5s var(--stride) both; }
+:root[data-effects=full] #controls > .form-group:nth-child(2) { animation-delay: 40ms; }
+:root[data-effects=full] #controls > .form-group:nth-child(3) { animation-delay: 80ms; }
+:root[data-effects=full] #controls > .form-group:nth-child(4) { animation-delay: 120ms; }
+:root[data-effects=full] #controls > .form-group:nth-child(n+5) { animation-delay: 160ms; }
+
+:root[data-effects=minimal] *, :root[data-effects=minimal] *::before, :root[data-effects=minimal] *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Section titles speak for themselves. */
+.section-heading .eyebrow { display: none; }
+/* The agent panel's welcome: one line of label, no eyebrow over the title. */
+.welcome .eyebrow { display: none; }
+.welcome .primary { justify-content: center; gap: .32em; }

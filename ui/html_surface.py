@@ -25,6 +25,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QLabel, QPushButton, QStackedLayout, QVBoxLayout, QWidget
 
 import webengine
+from config import Config
 
 
 class _NoNetwork(QWebEngineUrlRequestInterceptor):
@@ -171,6 +172,30 @@ class HtmlSurface(QWidget):
                 )
             html = html.replace(
                 "{{SCRIPT}}", (assets / f"{self.asset}.js").read_text(encoding="utf-8")
+            )
+            # Lumen: how much motion and light (Settings → View) for CSS,
+            # and the shared pointer light.
+            from ui.lumen import level
+
+            html = (
+                html.replace(
+                    '<html lang="en"',
+                    f'<html lang="en" data-effects="{level(Config())}"',
+                    1,
+                )
+                .replace(
+                    # After the page's own styles, so Lumen's rules win ties.
+                    "</style>",
+                    (assets / "lumen.css").read_text(encoding="utf-8") + "</style>",
+                    1,
+                )
+                .replace(
+                    "</body>",
+                    '<script nonce="{{NONCE}}">'
+                    + (assets / "lumen.js").read_text(encoding="utf-8")
+                    + "</script></body>",
+                    1,
+                )
             )
         except (OSError, UnicodeError):
             self._failed()

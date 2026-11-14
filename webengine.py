@@ -8,6 +8,7 @@ still use Qt WebEngine directly and keeps new ones from appearing.
 
 import os
 import re
+from pathlib import Path
 
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import (
@@ -42,10 +43,18 @@ GOOGLE_LOGIN_USER_AGENT = (
 ENGINE_ENVIRONMENT = {"LIBVA_MESSAGING_LEVEL": "1", "force_s3tc_enable": "true"}
 
 
+FONTS = Path(__file__).resolve().parent / "ui" / "assets" / "fonts"
+UI_FONT = "Mona Sans"
+
+
 def prepare_engine_environment() -> None:
     """Call before creating QApplication; keeps any value the user set."""
     for name, value in ENGINE_ENVIRONMENT.items():
         os.environ.setdefault(name, value)
+    # Steed's typeface for Qt and for pages, without installing it: the
+    # system's font setup plus the bundled folder.
+    if (FONTS / "fonts.conf").is_file():
+        os.environ.setdefault("FONTCONFIG_FILE", str(FONTS / "fonts.conf"))
 
 
 def google_login_user_agent(url: QUrl) -> bytes | None:

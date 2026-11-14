@@ -614,6 +614,38 @@ for example when memory runs out), its tab shows **This tab crashed** with
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
 
+### Lumen: Steed's look
+
+Steed's look is built on light. The page floats as a rounded card; around
+it, behind the tabs and toolbar, is a soft field of light in the browser's
+colours. The bars have no backgrounds or borders of their own: the buttons
+and a capsule address field rest on the light.
+
+- **The light follows the site.** It takes the colour of the current site's
+  icon (or, on Steed's own pages, your accent turned a little), and flows
+  from one colour to the next as you switch tabs. With a New Tab photo,
+  everything starts from the photo's colours.
+- **Motion that answers you.** The current tab sits in a lit capsule that
+  glides to the tab you pick; new tabs grow into place; switching tabs
+  cross-fades the pages; toolbar buttons fade a capsule in under the
+  pointer; the address field glows in the accent colour while you type;
+  menus are frosted, rounded panels that rise into place.
+- **Steed's typeface.** Mona Sans (SIL Open Font License, bundled in
+  `ui/assets/fonts/`) for everything, with its wide cuts for titles and the
+  New Tab's name. Steed adds the folder to its own font setup only; nothing is
+  installed on your system.
+- **Steed's pages.** Settings, the management pages, Welcome and the New Tab
+  share the type, lit cards that catch a soft light under the pointer, round
+  buttons and springy switches, titles that settle as you scroll, and one
+  entrance as a page opens.
+
+**Settings → View → Motion and light** sets how much of this runs:
+*Full* (everything above), *Balanced* (the same look; colours fade but
+nothing cross-fades, so no snapshot is kept), or *Minimal* (flat colours,
+no motion, nothing extra in memory). Your desktop's reduce-motion setting
+is always followed. Liquid glass keeps its own look (the photo through
+frosted bars), and a fullscreen video always fills the screen edge to edge.
+
 ### Browser colours
 
 **Style → Browser colours** lists every colour of the browser around pages:
@@ -1686,6 +1718,9 @@ Browser/
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
 │   ├── dictation.py       # Push-to-talk, the listening pill, inserting the words
+│   ├── lumen.py           # Steed's look: the light, the page card, chrome motion
+│   ├── web/lumen.css, web/lumen.js # The look of Steed's own pages, pointer light
+│   ├── assets/fonts/      # Mona Sans (OFL) and the font setup that adds it
 │   ├── dictation_dialog.py # Dictation Settings: engine, models, service, test
 │   ├── web_speech.py      # A website's speech recognition session
 │   ├── find_bar.py        # Debounced page search and match navigation
