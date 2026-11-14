@@ -24,7 +24,9 @@ def plain_label(text):
 
 
 class SitePermissionDialog(HtmlSettingsDialog):
-    def __init__(self, origin, feature, profile, *, private=False, parent=None):
+    def __init__(
+        self, origin, feature, profile, *, private=False, parent=None, who=None
+    ):
         super().__init__(parent)
         self.setWindowTitle("Website Permission")
         self.resize(470, 260)
@@ -32,7 +34,7 @@ class SitePermissionDialog(HtmlSettingsDialog):
         title, description = FEATURES[feature]
         layout.addWidget(
             plain_label(
-                f"{origin}\nRequests: {title}\n{description}\nProfile: {profile}"
+                f"{who or origin}\nRequests: {title}\n{description}\nProfile: {profile}"
             )
         )
         self.remember = QComboBox()

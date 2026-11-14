@@ -21,11 +21,7 @@ class SyncDialog(HtmlSettingsDialog):
         self.resize(620, 360)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Choose a folder that reaches your other computers (Syncthing, "
-            "Nextcloud, Dropbox or a USB stick). Steed keeps bookmarks, saved "
-            "groups, the reading list and search keywords in step through it, for "
-            "profiles with the same name on each computer. Nothing goes to a "
-            "Steed server."
+            "Pick a folder your other computers can reach (Syncthing, Nextcloud, Dropbox, a USB stick). Bookmarks, saved groups, the reading list and search keywords stay in step through it. Nothing goes to a Steed server."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)

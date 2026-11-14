@@ -43,11 +43,7 @@ class ClaudeSessionsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(
             QLabel(
-                "Pick up a Claude Code conversation here, with its history. It "
-                "continues as a copy in its own folder, so a session still open "
-                "in a terminal is left as it is; the copy is saved in Claude "
-                "Code's history too. Claude Code's tools ask you here, and "
-                "browser access still needs Steed's approval."
+                "Pick up a Claude Code conversation here, with its history. It continues as a copy, so a session still open in a terminal is left alone. Browser access still needs your approval."
             )
         )
         self.sessions = list_sessions()

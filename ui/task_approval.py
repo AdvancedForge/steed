@@ -390,6 +390,10 @@ class TaskApprovalQueue(QObject):
                             task.task_id
                         )
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.watches.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -425,6 +429,7 @@ class TaskApprovalQueue(QObject):
             from services.live_control import ControlRequest
             from services.recipe_proposals import RecipeProposal
             from services.start_page_proposals import PageProposal
+            from services.watch_proposals import WatchProposal
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
             from ui.customization_review import CustomizationReviewDialog
@@ -433,12 +438,14 @@ class TaskApprovalQueue(QObject):
             from ui.live_control_review import LiveControlDialog
             from ui.recipe_review import RecipeReviewDialog
             from ui.start_page_review import StartPageReviewDialog
+            from ui.watch_review import WatchReviewDialog
             from ui.worker_approval import WorkerApprovalDialog
 
             if (
                 not self.service.auto_approve_requests
                 and isinstance(
-                    grant, (PanelReceipt, PageProposal, CustomizationProposal)
+                    grant,
+                    (PanelReceipt, PageProposal, CustomizationProposal, WatchProposal),
                 )
                 and parent.profile_manager.is_search_profile()
             ):
@@ -457,6 +464,8 @@ class TaskApprovalQueue(QObject):
                     if isinstance(grant, PageProposal)
                     else CustomizationReviewDialog(self.service, grant, parent)
                     if isinstance(grant, CustomizationProposal)
+                    else WatchReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, WatchProposal)
                     else DataPanelReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PanelReceipt)
                     else LayoutReviewDialog(
@@ -512,7 +521,9 @@ class TaskApprovalQueue(QObject):
                     dialog.approve()
                     if dialog.result() != QDialog.DialogCode.Accepted:
                         dialog.decline()
-                elif isinstance(grant, (PageProposal, CustomizationProposal)):
+                elif isinstance(
+                    grant, (PageProposal, CustomizationProposal, WatchProposal)
+                ):
                     dialog.apply()
                     if dialog.result() != QDialog.DialogCode.Accepted:
                         dialog.decline()
@@ -542,6 +553,7 @@ class TaskApprovalQueue(QObject):
         from services.live_control import ControlRequest
         from services.recipe_proposals import RecipeProposal
         from services.start_page_proposals import PageProposal
+        from services.watch_proposals import WatchProposal
         from services.worker_store import WorkerReceipt
 
         return (
@@ -557,6 +569,7 @@ class TaskApprovalQueue(QObject):
                     PanelReceipt,
                     PageProposal,
                     CustomizationProposal,
+                    WatchProposal,
                 ),
             )
             else item.grant_id

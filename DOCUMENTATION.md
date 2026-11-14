@@ -361,6 +361,17 @@ existing scripts or apps and grant no browser data, files or network access.
 Receipts, retries, task cancellation and automatic mode work as for page
 proposals.
 
+Agents can **suggest a watch** when you ask for one in a chat ("tell me when
+tickets go on sale") with `steed_watch_capabilities`, `steed_watch_propose`
+(`url`, optional `title`, `instruction`, `every` of `15m`/`hourly`/`6h`/
+`daily`, and `then`) and `steed_watch_status`. Only `http(s)` pages are
+accepted. A review popup shows the page and lets you change what to tell you
+about, how often and the Then… action, pick the profile whose sign-ins it uses,
+and choose **Add watch**, **Decline** or **Later**. Only you can let a Then…
+action start without asking (automatic mode adds watches that ask first).
+Nothing is watched before you add it, and a proposal reads nothing from the
+browser. Pending suggestions are in **Task Permissions → Pages & Scripts**.
+
 Steed registers a host-based local URL scheme before application startup, following
 the [Qt URL-scheme documentation](https://doc.qt.io/qt-6/qwebengineurlscheme.html).
 Canonical engine URLs use `steed://newtab/` and `steed://welcome/` for reload and
@@ -654,8 +665,13 @@ and a capsule address field rest on the light.
   (its `theme-color`), or else its icon's (on Steed's own pages, your accent
   turned a little), and flows from one colour to the next as you switch
   tabs. With a New Tab photo, everything starts from the photo's colours.
-- **Cards.** The page is a card; in split view each side is one, and docked
-  panels such as the agent sidebar are cards beside it.
+- **Cards.** The page is a card; in split view each side is one (the side
+  you are on has a thin rim of the accent's light), and docked panels such as
+  the agent sidebar are cards beside it.
+- **Menus and buttons.** The browser menus keep related items together, with
+  icons for the ones people look for (a tick takes the icon's place on items
+  that are on). In dialogs, the main action is filled in the accent; Cancel,
+  Later and Decline stay quiet and removals are marked in red.
 - **Tab icons.** Steed's own pages have their own icons (New Tab, Welcome,
   Settings, History, Downloads, Passwords…); sites without an icon show a
   quiet globe.
@@ -1360,6 +1376,8 @@ script answers instead:
 - Sites get the standard events and results: interim results when they ask,
   one phrase ending after a pause, or a final result per phrase in continuous
   mode until they stop. The page's language goes to an online service.
+- Extensions' pages work too, in a tab or in their toolbar popup; the
+  microphone question names the extension.
 - Only the top page of an `https://` site (or `localhost`) is answered; frames
   inside a page and plain `http://` sites get the standard
   "service-not-allowed" error, as do sites when dictation is off or not set up

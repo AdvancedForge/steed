@@ -43,11 +43,7 @@ class FileLibraryDialog(HtmlSettingsDialog):
         self._executor = ThreadPoolExecutor(max_workers=1)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Add files once and reuse them across tasks. Enabling a folder gives "
-            "all connected agents full read/create/edit/remove access to everything "
-            "inside it, including future files and subfolders. Access persists across "
-            "tasks and restarts until disabled. This library is shared across regular "
-            "browser profiles; websites get no access. Imports are copies."
+            "Files you add once and reuse across tasks. An enabled folder gives every connected agent full access to everything in it (read, create, edit, remove) until you disable it. Websites get no access; imports are copies."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)

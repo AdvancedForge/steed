@@ -20,7 +20,10 @@ the usual site permissions. Tabs → Organize Tabs with Agent (proposed groups
 and duplicates, applied only on request) and Compare Tabs with Agent (the
 ticked tabs' text as a draft for the person's question).
 Manual check: a real watch, organize and compare with Claude Code installed.
-Next: let agents propose watches from a chat (reviewed).
+Agents now suggest watches from a chat (steed_watch_propose → a review
+popup: adjust, pick the profile, Add watch; only the person lets a then-action
+start without asking). Next: watches on pages behind a sign-in check prompt
+the person when the sign-in expires.
 
 **A calm start — November 14, 2026.** Welcome is a three-step tour (look,
 your things, your agent; skippable); one-time tips the first time the address
@@ -29,8 +32,11 @@ opens its sections on hover but never a whole page; Customize New Tab is three
 picture tiles and the current choice, the rest under More options (kept open
 after a choice there); the agent sidebar's welcome has one main action;
 explanations fold to one line until pointed at; Settings → Everything lists
-every Steed page. Next: menus and buttons with more presence (icons, clearer
-primary actions), and a calmer pass over each management page's own text.
+every Steed page. Menus regrouped with icons (ticks replace icons when on);
+one filled main action per button row in dialogs; shorter intros on the
+busiest management pages; the agent dock is titled Agents.
+Next: the remaining long explanations on agent pages (Task Permissions,
+App Connections).
 
 **One theme — November 14, 2026.** Steed's pages match the browser's colours
 by default (photo, chosen browser colours, or the plain dark browser's own);
@@ -79,8 +85,8 @@ file) with expanded titles; Steed's pages restyled (sentence-case labels,
 pointer light on cards, spring switches, scroll-driven title settling, one
 entrance per page); a Motion and light setting (Full, Balanced, Minimal).
 Manual check: hover, tab switching and menus on a real desktop, and a light
-theme. Next: site theme-color as well as icons, the agent sidebar and
-dialogs in the same language, light around split view.
+theme. Split view's current side carries a rim of the accent's light.
+Next: site theme-color as well as icons.
 
 **Websites' speech recognition — November 13, 2026.** SpeechRecognition and
 webkitSpeechRecognition are answered by Steed's dictation engine: the site's
@@ -88,8 +94,9 @@ microphone permission, standard event order, interim and continuous results,
 pause detection, no-speech/not-allowed/aborted errors, Escape and navigation
 end it; top frames of secure sites only. Checked with tests and a real model
 on a voice-search page; manual check: a real site's voice button with a
-microphone. Next: extension pages (needs a permission origin for
-chrome-extension:// and console routing from popups and backgrounds).
+microphone. Extension pages (tabs and toolbar popups) are answered too, the
+prompt naming the extension; popups stay open while it asks.
+Next: extension background pages (no window to listen in).
 
 **Dictation — November 13, 2026.** `Ctrl+Shift+Space` push-to-talk
 anywhere in Steed (tap or hold, Escape cancels) with a listening pill showing

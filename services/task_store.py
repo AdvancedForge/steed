@@ -34,6 +34,7 @@ from services.task_recovery import (
     RECOVERY_SCHEMA,
 )
 from services.task_workspace import WORKSPACE_SCHEMA, TaskWorkspace
+from services.watch_proposals import WATCH_SCHEMA
 from services.worker_store import WORKER_SCHEMA
 
 ACTIVE_STATUSES = frozenset({"created", "running"})
@@ -173,6 +174,7 @@ class TaskStore:
                 + PANEL_SCHEMA
                 + PAGE_SCHEMA
                 + CUSTOMIZATION_SCHEMA
+                + WATCH_SCHEMA
             )
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():

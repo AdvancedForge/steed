@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout
 
 from ui.html_dialog import place_popup
 from ui.html_surface import HtmlSurface
+from ui.menu_layout import ICONS, label
 
 # A compact popup: rows and separators in pixels (see menu.css).
 WIDTH, ROW, SEPARATOR, MAX_HEIGHT = 290, 31, 11, 560
@@ -168,7 +169,8 @@ class HtmlMenu(QDialog):
             rows.append(
                 {
                     "id": token,
-                    "text": action.text().replace("&", ""),
+                    "text": label(action),
+                    "icon": ICONS.get(label(action), ""),
                     "separator": action.isSeparator(),
                     "enabled": action.isEnabled(),
                     "checked": action.isChecked(),

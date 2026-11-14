@@ -33,10 +33,7 @@ class DictationDialog(QDialog):
         chosen = dictation.settings(config)
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Press Ctrl+Shift+Space anywhere in Steed and speak; press it again "
-            "to finish, or hold it while you talk. The words go where your "
-            "cursor is: a field on the page, the address bar or your agent "
-            'message. Say "new line" or "new paragraph" for breaks.'
+            "Press Ctrl+Shift+Space anywhere in Steed and speak; press it again to finish. The words go where your cursor is."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)

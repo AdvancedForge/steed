@@ -59,6 +59,20 @@ class PopupPage(webengine.Page):
         tab = self.window._new_tab(return_tab=True)
         return tab.page() if tab is not None else None
 
+    # Speech recognition from the popup: Steed answers it like a tab's
+    # (services.web_speech), with this page standing in for the tab.
+    def page(self):
+        return self
+
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        from services.web_speech import PREFIX
+
+        window = self.window
+        if not message.startswith(PREFIX):
+            super().javaScriptConsoleMessage(level, message, line, source)
+        elif window is not None and not getattr(window, "_closing", True):
+            window.web_speech.request(self, message)
+
 
 class ExtensionPopup(QFrame):
     def __init__(self, profile, url, title, parent=None):
@@ -95,11 +109,18 @@ class ExtensionPopup(QFrame):
         return True
 
     def _focus_moved(self, window):
+        # A question it asked (the microphone) keeps it open.
+        if QApplication.activeModalWidget() is not None:
+            return
         if self._elsewhere(window):
             self.close()
 
     def event(self, event):
-        if event.type() == QEvent.Type.WindowDeactivate and self.isVisible():
+        if (
+            event.type() == QEvent.Type.WindowDeactivate
+            and self.isVisible()
+            and QApplication.activeModalWidget() is None
+        ):
             if self._elsewhere(QApplication.focusWindow()):
                 self.close()
         return super().event(event)
@@ -109,6 +130,9 @@ class ExtensionPopup(QFrame):
             QApplication.instance().focusWindowChanged.disconnect(self._focus_moved)
         except TypeError:
             pass
+        speech = getattr(self.page.window, "_web_speech", None)
+        if speech is not None and speech.tab is self.page:
+            speech.abort()
         # Pages go before their profile; this one goes with the popup.
         self.view.setPage(None)
         self.page.deleteLater()

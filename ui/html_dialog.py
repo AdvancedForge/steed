@@ -38,6 +38,8 @@ from PyQt6.QtWidgets import (
 from ui.html_surface import HtmlSurface
 from ui.interface_mode import native
 
+ROLES = ("quote", "note")
+
 
 class HtmlPresentation:
     """Keep native controllers hidden while a maintained HTML host is visible."""
@@ -245,6 +247,10 @@ class HtmlDialog(QDialog):
         if widget.isHidden():
             return None
         node = {"id": self.token(widget), "enabled": widget.isEnabled()}
+        # A styling hint (dialog.css): "quote" for what is being acted on.
+        role = widget.property("role")
+        if role in ROLES:
+            node["role"] = role
         if isinstance(widget, QTabWidget):
             current = widget.currentWidget()
             node.update(
@@ -259,9 +265,13 @@ class HtmlDialog(QDialog):
         elif isinstance(widget, QAbstractButton):
             node.update(
                 kind="button",
-                text=widget.text().replace("&", ""),
+                text=widget.text()
+                .replace("&&", "\0")
+                .replace("&", "")
+                .replace("\0", "&"),
                 checkable=widget.isCheckable(),
                 checked=widget.isChecked(),
+                primary=bool(widget.property("primary")),
             )
         elif isinstance(widget, QLabel):
             from ui.panel_image import PanelImage

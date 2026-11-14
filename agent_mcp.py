@@ -27,6 +27,8 @@ READ_ONLY_COMMANDS = frozenset(
         "start_page.status",
         "customization.capabilities",
         "customization.status",
+        "watch.capabilities",
+        "watch.status",
         "grant.list",
         "browser.context",
         "browser.tabs",

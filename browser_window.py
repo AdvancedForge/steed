@@ -839,6 +839,11 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         agents_menu.addAction(self.agent_sidebar_action)
+        watches_action = QAction("Watches…", self)
+        watches_action.triggered.connect(
+            lambda: self._new_tab(url="steed:watches", return_tab=True)
+        )
+        agents_menu.addAction(watches_action)
         self.app_panel_action = QAction("App Panel", self)
         self.app_panel_action.setCheckable(True)
         self.app_panel_action.triggered.connect(self._toggle_app_panel)
@@ -1025,6 +1030,9 @@ class BrowserWindow(QMainWindow):
                 if action.menu() is not None:
                     register_actions(action.menu())
 
+        from ui.menu_layout import arrange
+
+        arrange(self._layout_menus)
         for menu in self._layout_menus.values():
             register_actions(menu)
         editors = {
@@ -1594,7 +1602,41 @@ class BrowserWindow(QMainWindow):
                 QPen(QColor(255, 255, 255, 26) if dark else QColor(20, 30, 50, 30), 1)
             )
             painter.drawPath(rim)
+        focused = self._focused_card()
+        if focused is not None:
+            # Split view: the side you are on glows in the accent.
+            accent = QColor(self._shown_colors.get("accent") or "#8caaff")
+            # Lit: a muted accent (a photo's) would vanish in the dark gap.
+            hue, saturation, value, _ = accent.getHsvF()
+            accent = QColor.fromHsvF(
+                max(hue, 0.0),
+                max(saturation, 0.5),
+                max(value, 0.95) if dark else min(value, 0.75),
+            )
+            for step, alpha in enumerate((235, 120, 60, 28, 12)):
+                glow = QPainterPath()
+                grown = focused.adjusted(
+                    -step - 0.5, -step - 0.5, step + 0.5, step + 0.5
+                )
+                glow.addRoundedRect(grown, radius + step + 0.5, radius + step + 0.5)
+                accent.setAlpha(alpha)
+                painter.setPen(QPen(accent, 1.6 if step == 0 else 1.2))
+                painter.drawPath(glow)
         painter.restore()
+
+    def _focused_card(self):
+        """In split view with cards, the current side's card (window
+        coordinates), else None."""
+        from PyQt6.QtCore import QRectF
+
+        if self.split_tab is None or not getattr(self, "_cards_on", False):
+            return None
+        if not 0 <= self.current_tab_index < len(self.tabs):
+            return None
+        tab = self.tabs[self.current_tab_index]
+        if not tab.isVisible() or tab.parentWidget() is not self.tab_container:
+            return None
+        return QRectF(QRect(tab.mapTo(self, QPoint()), tab.size()))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -2351,7 +2393,7 @@ class BrowserWindow(QMainWindow):
             except (OSError, ValueError, RuntimeError, sqlite3.Error):
                 self.agent_sidebar_action.setChecked(False)
                 QMessageBox.warning(
-                    self, "External Agents", "The agent sidebar could not be opened."
+                    self, "Agents", "The agent sidebar could not be opened."
                 )
                 return
             self.addDockWidget(self._sidebar_dock_area(), self.agent_sidebar)
@@ -2443,9 +2485,7 @@ class BrowserWindow(QMainWindow):
         if self.agent_tab in self.tabs:
             self._switch_tab(self.tabs.index(self.agent_tab))
             return self.agent_tab
-        return self._new_tab(
-            url="steed:agents", title="External Agents", return_tab=True
-        )
+        return self._new_tab(url="steed:agents", title="Agents", return_tab=True)
 
     def _embed_agent_sidebar(self, tab):
         self._toggle_agent_sidebar(True)
@@ -2464,7 +2504,7 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar.raise_()
         self._update_page_actions()
         self.agent_sidebar_action.setChecked(False)
-        self.tab_bar.set_tab_title(self.tabs.index(tab), "External Agents")
+        self.tab_bar.set_tab_title(self.tabs.index(tab), "Agents")
         self.address_bar.set_url("steed:agents")
 
     def _return_agent_sidebar(self, tab):
@@ -2911,8 +2951,10 @@ class BrowserWindow(QMainWindow):
         tip = getattr(self, "_tip", None)
         if tip is not None and not sip.isdeleted(tip) and previous is not cur:
             tip.dismiss()
-        # One card or two (split view): the corners follow once laid out.
+        # One card or two (split view): the corners follow once laid out,
+        # and the light marks the side you are on.
         QTimer.singleShot(0, self._place_card_corners)
+        self.update()
 
     def eventFilter(self, watched, event):
         kind = event.type()
@@ -5023,7 +5065,7 @@ class BrowserWindow(QMainWindow):
                 url = self.config.get("new_tab_page", NEW_TAB) or NEW_TAB
             title = tab.title() or "New Tab"
             if getattr(tab, "agent_panel", False):
-                title = "External Agents"
+                title = "Agents"
             elif tab.workspace_name:
                 title = tab.workspace_name.title()
             if not title or title == "about:blank":
@@ -5172,6 +5214,21 @@ class BrowserWindow(QMainWindow):
             lambda: self._closing,
         )
 
+    def _extension_name(self, origin):
+        """ "Name (extension)" for an extension's pages, else None."""
+        if origin.scheme() != "chrome-extension":
+            return None
+        try:
+            installed = self.profile_manager.registry.extensions.installed(
+                self.profile_manager.current_profile_name
+            )
+        except (AttributeError, ValueError, OSError):
+            return None
+        name = next(
+            (e.get("name") for e in installed if e.get("id") == origin.host()), None
+        )
+        return f"{name} (extension)" if name else None
+
     def _ask_permission(self, origin, feature, page=None):
         feature = feature.name
         if (
@@ -5200,6 +5257,7 @@ class BrowserWindow(QMainWindow):
                 context["profile"],
                 private=context["private"],
                 parent=self,
+                who=self._extension_name(origin),
             )
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return False

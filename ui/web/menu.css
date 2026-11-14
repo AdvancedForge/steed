@@ -4,7 +4,7 @@ body { box-sizing: border-box; height: 100vh; display: flex; flex-direction: col
   font-size: 13px; background: var(--surface); --line: color-mix(in srgb, var(--ink) 11%, transparent);
   --row-hover: color-mix(in srgb, var(--ink) 10%, transparent); }
 header { flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 10px 4px; }
-h1 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font-size: 14px; font-weight: 640; letter-spacing: -.005em; color: var(--ink); }
 /* The scrollbar sits on the left, thin and faint, out of the way of shortcuts and arrows. */
 /* The shared scrollbar (root.css), on the left: its track keeps the thumb
    as far from the panel's edge as from the rows. */
@@ -20,6 +20,12 @@ nav button, footer button { box-sizing: border-box; display: flex; align-items: 
   box-shadow: none; color: var(--ink); font: inherit; font-weight: 450; text-align: left; cursor: default; }
 nav button:hover:enabled, nav button:focus-visible, nav button.open { background: var(--row-hover); border: 0; outline: none; }
 nav button:disabled { opacity: .45; }
+/* Icons sit before the label; rows without one keep the same indent. */
+.icon { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round; opacity: .78; } nav:not(.icons) .icon { display: none; }
+nav button:hover:enabled .icon { opacity: 1; color: var(--accent); }
+/* With icons, a tick takes the icon's place. */
+nav.icons .mark { display: none; } nav button.checked .icon { opacity: 1; color: var(--accent); stroke-width: 2.2; }
 .mark { flex: none; width: 12px; color: var(--accent); font-size: 12px; } nav:not(.marks) .mark { display: none; }
 .label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .shortcut { flex: none; white-space: nowrap; color: var(--muted); font-size: 11px; }

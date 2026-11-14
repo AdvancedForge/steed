@@ -38,9 +38,7 @@ class TaskDialog(HtmlSettingsDialog):
         self.resize(800, 600)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Requests open automatically for approval. Existing profiles support "
-            "shared access; you can keep browsing while a task uses your sign-in. "
-            "File transfers require exact file and site permission. Task scripts are unavailable. Revoking access cancels the task."
+            "What your agents are doing and what they may do. Requests open for your approval as they come; revoking access cancels the task."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -1018,6 +1016,7 @@ class TaskDialog(HtmlSettingsDialog):
         self._page_rows = (
             self.service.start_pages.list(selected[0].task_id)
             + self.service.customizations.list(selected[0].task_id)
+            + self.service.watches.list(selected[0].task_id)
             if selected and not self.service.failure and not self.service._closed
             else []
         )
@@ -1038,8 +1037,10 @@ class TaskDialog(HtmlSettingsDialog):
 
     def review_page(self):
         from services.customization_proposals import CustomizationProposal
+        from services.watch_proposals import WatchProposal
         from ui.customization_review import CustomizationReviewDialog
         from ui.start_page_review import StartPageReviewDialog
+        from ui.watch_review import WatchReviewDialog
 
         row = self.page_requests.currentRow()
         if not 0 <= row < len(self._page_rows):
@@ -1049,6 +1050,8 @@ class TaskDialog(HtmlSettingsDialog):
             dialog = (
                 CustomizationReviewDialog
                 if isinstance(proposal, CustomizationProposal)
+                else WatchReviewDialog
+                if isinstance(proposal, WatchProposal)
                 else StartPageReviewDialog
             )(self.service, proposal, self)
             dialog.show()
