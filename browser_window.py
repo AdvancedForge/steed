@@ -132,6 +132,11 @@ class BrowserPage(QWebEnginePage):
             return
         if window is not None and message.startswith(PASSKEY_PREFIX):
             window.profile_manager.registry.passkeys.request(tab, message)
+            return
+        from services.web_speech import PREFIX as SPEECH_PREFIX
+
+        if window is not None and message.startswith(SPEECH_PREFIX):
+            window.web_speech.request(tab, message)
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
         kinds = QWebEnginePage.NavigationType
@@ -402,6 +407,7 @@ class BrowserWindow(QMainWindow):
         self._html_menu = None
         self._dictation = None
         self._dictation_dialog = None
+        self._web_speech = None
         self._html_dialogs = []
         self._newtab_hover = None
         self._newtab_hover_opened = False
@@ -2486,7 +2492,25 @@ class BrowserWindow(QMainWindow):
         ):
             controller.cancel()
             return True
+        speech = self._web_speech
+        if (
+            key == Qt.Key.Key_Escape
+            and event.type() == QEvent.Type.KeyPress
+            and speech is not None
+            and speech.active
+        ):
+            speech.abort()
+            return True
         return False
+
+    @property
+    def web_speech(self):
+        """Websites' speech recognition in this window's tabs."""
+        if self._web_speech is None:
+            from ui.web_speech import WebSpeech
+
+            self._web_speech = WebSpeech(self)
+        return self._web_speech
 
     @property
     def dictation(self):
@@ -5926,6 +5950,8 @@ class BrowserWindow(QMainWindow):
         self._newtab_hover_timer.stop()
         if self._dictation is not None:
             self._dictation.cancel()
+        if self._web_speech is not None:
+            self._web_speech.abort()
         if self._html_menu is not None:
             self._html_menu.close()
         for host in list(self._html_dialogs):

@@ -544,23 +544,6 @@ class WindowTests(unittest.TestCase):
             self.assertNotIn("sk-synthetic-key", path.read_text(errors="ignore"))
         dialog.deleteLater()
 
-    def test_sites_starting_speech_recognition_get_an_error_not_a_crash(self):
-        ended = []
-        self.tab.page().renderProcessTerminated.connect(
-            lambda *args: ended.append(args)
-        )
-        self.page(
-            "<title>Form</title><script>"
-            "const r = new (window.SpeechRecognition || "
-            "window.webkitSpeechRecognition)();"
-            "r.onerror = e => document.title = 'error ' + e.error;"
-            "r.onend = () => document.title += ' ended';"
-            "r.start();</script>"
-        )
-        self.wait(lambda: self.tab.title() == "error service-not-allowed ended")
-        self.assertEqual(self.run_js("1 + 1"), 2)
-        self.assertEqual(ended, [])
-
     def test_the_menu_opens_dictation_settings(self):
         host = self.window.open_dictation_settings("Download a speech model first")
         self.assertIs(self.window.open_dictation_settings("again"), host)

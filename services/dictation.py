@@ -62,34 +62,6 @@ DEFAULT_ONLINE_MODEL = "gpt-4o-mini-transcribe"
 MAX_SECONDS = 120
 KEYRING_ATTRIBUTES = {"application": "steed", "purpose": "dictation-api-key"}
 
-# The engine's own speech recognition has no service behind it, and starting it
-# ends the tab. Websites get the answer a browser without one gives instead.
-SPEECH_GUARD = r"""
-(function () {
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Recognition || !Recognition.prototype) return;
-  const message = "Speech recognition is not available here. Use Steed's " +
-    "dictation: Ctrl+Shift+Space.";
-  Recognition.prototype.start = function () {
-    const recognition = this;
-    setTimeout(function () {
-      let event;
-      try {
-        event = new SpeechRecognitionErrorEvent("error",
-          {error: "service-not-allowed", message: message});
-      } catch (error) {
-        event = new Event("error");
-        Object.defineProperty(event, "error", {value: "service-not-allowed"});
-        Object.defineProperty(event, "message", {value: message});
-      }
-      recognition.dispatchEvent(event);
-      recognition.dispatchEvent(new Event("end"));
-    }, 0);
-  };
-  Recognition.prototype.stop = Recognition.prototype.abort = function () {};
-})();
-"""
-
 
 def settings(config):
     """The dictation settings, checked (unknown values fall back)."""
@@ -412,7 +384,16 @@ class OnlineEngine(QObject):
         return self.busy
 
     def transcribe(
-        self, request_id, audio, rate, sample_format, channels, url, model, key
+        self,
+        request_id,
+        audio,
+        rate,
+        sample_format,
+        channels,
+        url,
+        model,
+        key,
+        language="",
     ):
         from PyQt6.QtNetwork import (
             QHttpMultiPart,
@@ -442,6 +423,14 @@ class OnlineEngine(QObject):
         model_part.setBody(model.encode())
         parts.append(audio_part)
         parts.append(model_part)
+        if language:
+            language_part = QHttpPart()
+            language_part.setHeader(
+                QNetworkRequest.KnownHeaders.ContentDispositionHeader,
+                'form-data; name="language"',
+            )
+            language_part.setBody(language.encode())
+            parts.append(language_part)
         request = QNetworkRequest(QUrl(url))
         if key:
             request.setRawHeader(b"Authorization", b"Bearer " + key.encode())
