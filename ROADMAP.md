@@ -9,6 +9,15 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Calmer management pages — November 13, 2026.** The pages rendered from
+dialogs (cookies, downloads, bookmarks, history, files, connections, tasks,
+layout, start pages, tab groups, permissions, agent setup, ad blocking,
+services) get a real page header, card sections, quiet buttons with
+destructive ones marked, switches for on/off buttons, tables that only break
+long values, empty states, and a clearer sidebar; Close buttons that repeat
+the header's ✕ are hidden on full pages. Welcome/classic pages get a round ☰
+and pill header links.
+
 **Extension shutdown crash fixed — November 12, 2026.** Closing Steed while a
 just-installed extension's background was still registering crashed Qt
 WebEngine (reproduced with the official Bitwarden package and a bare Qt

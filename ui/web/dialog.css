@@ -1,42 +1,138 @@
-body { background: var(--bg); } .dialog-header { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
-.dialog-header h1 { font-size: 18px; } #close { font-size: 24px; padding: 0 10px; }
-main { padding: 12px 18px 22px; } #error { background: var(--error-bg); color: var(--error); padding: 12px; border-radius: 8px; margin-bottom: 12px; }
-.form-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; } .form-group .form-group { width: 100%; }
-.control { max-width: 100%; } .form-label { white-space: pre-wrap; overflow-wrap: anywhere; width: 100%; color: var(--muted); font-size: 13px; }
-.control.image { display: block; max-height: 420px; object-fit: contain; margin: 12px auto; }
-input, textarea { color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font: inherit; }
-input[type=text], input[type=password], textarea, .table-wrap, .tabs { width: 100%; } textarea { min-height: 110px; resize: vertical; } textarea[readonly] { font: 12px/1.5 monospace; }
-.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; margin: 0; color: var(--ink); } input[type=checkbox] { accent-color: var(--accent); }
-.tabs > nav { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 12px; } .tabs > nav button[aria-selected=true] { color: var(--accent); background: var(--soft); border-color: var(--accent); }
-.table-wrap { overflow: auto; max-height: 340px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; } th { text-align: left; position: sticky; top: 0; background: var(--surface); } td, th { padding: 9px 11px; border-bottom: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 380px; }
-tr[aria-selected=true] { background: var(--soft); color: var(--accent); } tbody tr { cursor: pointer; } tbody tr:hover { background: var(--soft); } .row-button { min-height: 25px; padding: 0 7px; margin-right: 5px; }
-.row-count { font-size: 11px; color: var(--muted); margin: 8px; }
-.table-paging { display: flex; align-items: center; gap: 10px; padding: 6px; } .table-paging .row-count { flex: 1; }
-.dialog-main { min-width: 0; } #scope { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
-body.workspace-page { display: grid; grid-template-columns: 190px minmax(0, 1fr); }
-#workspace-nav { padding: 22px 12px; background: var(--surface); border-right: 1px solid var(--border); height: 100vh; position: sticky; top: 0; overflow: auto; }
-#workspace-nav h2 { color: var(--muted); font-size: 11px; text-transform: uppercase; margin: 18px 10px 8px; }
-#workspace-nav button { width: 100%; text-align: left; background: transparent; border-color: transparent; font-weight: 500; padding: 7px 12px; }
-#workspace-nav button[aria-current=page] { background: var(--soft); color: var(--accent); border-color: var(--border); }
-.workspace-page main { max-width: 1300px; margin: 0 auto; padding: 20px 28px; }
-.workspace-page .table-wrap { max-height: 65vh; }
-[data-footer=true] { position: sticky; bottom: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px; z-index: 2; }
-.compact-page .dialog-header { padding: 12px; gap: 8px; }
+/* Steed's management pages and dialogs (rendered from Qt dialogs by dialog.js).
+   One calm layout: a real page header, sections as cards, quiet buttons with
+   destructive ones marked, switches for on/off buttons, tidy tables. */
+body { background: var(--bg); --line: color-mix(in srgb, var(--border) 80%, transparent);
+  --row-hover: color-mix(in srgb, var(--soft) 70%, transparent); --page-width: 1040px; }
+
+/* ---- Header ---- */
+.dialog-header { position: sticky; top: 0; z-index: 3; display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 20px; padding: 16px 22px 12px; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(14px); border-bottom: 1px solid var(--line); }
+.dialog-header h1 { font-size: 20px; font-weight: 680; letter-spacing: -.4px; line-height: 1.2; }
+#scope { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 4px; }
+#close { flex: none; display: grid; place-items: center; width: 34px; height: 34px; min-height: 34px; padding: 0; border-radius: 50%;
+  border-color: transparent; background: transparent; color: var(--muted); font-size: 22px; font-weight: 400; line-height: 1; }
+#close:hover:enabled { background: var(--soft); color: var(--ink); border-color: transparent; }
+
+/* ---- Page body ---- */
+main { padding: 16px 22px 28px; }
+#error { background: var(--error-bg); color: var(--error); padding: 12px 14px; border-radius: 12px; margin-bottom: 14px; }
+.form-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 0; } .form-group .form-group { width: 100%; }
+.form-group > div { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.form-group h2 { width: 100%; font-size: 15px; font-weight: 650; letter-spacing: -.2px; margin: 0; }
+.form-group > h2:empty { display: none; }
+/* A section with a heading is a card. */
+.form-group:has(> h2:not(:empty)) { padding: 16px 18px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: var(--shadow); }
+.control { max-width: 100%; }
+.form-label { white-space: pre-wrap; overflow-wrap: break-word; width: 100%; max-width: 82ch; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.form-label:empty { display: none; }
+.control.image { display: block; max-height: 420px; object-fit: contain; margin: 12px auto; border-radius: 10px; }
+
+/* ---- Fields ---- */
+input, textarea, select { color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font: inherit; }
+input, textarea { padding: 9px 12px; }
+select { min-height: 38px; padding: 8px 12px; }
+input[type=text], input[type=password], input[type=number], textarea, .table-wrap, .tabs { width: 100%; }
+input[type=text], input[type=password], input[type=number] { min-height: 38px; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+textarea { min-height: 110px; resize: vertical; line-height: 1.5; } textarea[readonly] { font: 12px/1.55 ui-monospace, monospace; background: var(--bg); }
+.check { display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; font-weight: 500; margin: 0; color: var(--ink); }
+input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* ---- Buttons ---- */
+button.control, .table-paging button { min-height: 34px; padding: 6px 14px; border-radius: 10px; font-size: 13px; font-weight: 580;
+  background: transparent; border: 1px solid var(--border); color: var(--ink); }
+button.control:hover:enabled, .table-paging button:hover:enabled { background: var(--soft); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+button.control[data-tone=danger] { color: var(--error); border-color: color-mix(in srgb, var(--error) 35%, var(--border)); }
+button.control[data-tone=danger]:hover:enabled { background: var(--error-bg); border-color: var(--error); }
+button.control[data-tone=quiet] { border-color: transparent; color: var(--muted); }
+button.control:disabled { opacity: .45; }
+/* Full pages close with the header's ✕; their own Close buttons repeat it. */
+.workspace-page button.control[data-tone=close] { display: none; }
+/* On/off buttons: a switch and its label. */
+button.control.toggle { display: inline-flex; align-items: center; gap: 10px; border-color: transparent; padding-left: 4px; font-weight: 550; }
+button.control.toggle::before { content: ""; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent); transition: background .2s;
+  background-image: radial-gradient(circle at 10px 10px, #fff 7px, transparent 7.5px); }
+button.control.toggle[aria-pressed=true]::before { background-color: var(--accent);
+  background-image: radial-gradient(circle at 24px 10px, #fff 7px, transparent 7.5px); }
+button.control.toggle:hover:enabled { background: var(--row-hover); border-color: transparent; }
+
+/* ---- Tabs (sections of a page) ---- */
+.tabs > nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 12px; }
+.tabs > nav button { min-height: 30px; padding: 4px 12px; border-radius: 8px; border-color: transparent; background: transparent;
+  font-size: 13px; font-weight: 560; color: var(--muted); }
+.tabs > nav button:hover:enabled { background: var(--row-hover); color: var(--ink); border-color: transparent; }
+.tabs > nav button[aria-selected=true] { color: var(--ink); background: var(--soft); border-color: transparent; }
+
+/* ---- Tables ---- */
+.table-wrap { overflow: auto; max-height: 360px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); margin: 6px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; position: sticky; top: 0; z-index: 1; background: var(--surface); color: var(--muted); font-size: 11px;
+  font-weight: 650; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+td, th { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td { white-space: pre-wrap; overflow-wrap: break-word; }
+td.long { overflow-wrap: anywhere; min-width: 16ch; }
+tbody tr:last-child td { border-bottom: 0; }
+tr[aria-selected=true] { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+tbody tr { cursor: pointer; } tbody tr:hover { background: var(--row-hover); }
+tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.row-button { min-height: 24px; padding: 0 7px; margin-right: 6px; border-radius: 6px; font-size: 12px; }
+.row-count { font-size: 12px; color: var(--muted); margin: 8px 12px; }
+.table-paging { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-top: 1px solid var(--line); }
+.table-paging .row-count { flex: 1; }
+/* Nothing in it yet: a quiet empty state instead of a header over nothing. */
+.table-wrap.empty table { display: none; }
+.table-wrap.empty .table-paging { justify-content: center; border-top: 0; padding: 26px 12px; }
+.table-wrap.empty .row-count { flex: none; font-size: 13px; }
+
+/* ---- Footer (Save / Cancel) ---- */
+[data-footer=true] { position: sticky; bottom: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(14px); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; z-index: 2;
+  box-shadow: 0 10px 30px #0000002e; }
+
+/* ---- Full pages (with the sidebar) ---- */
+.dialog-main { min-width: 0; }
+body.workspace-page { display: grid; grid-template-columns: 216px minmax(0, 1fr); }
+#workspace-nav { padding: 18px 10px 24px; background: var(--surface); border-right: 1px solid var(--line); height: 100vh;
+  position: sticky; top: 0; overflow: auto; }
+#workspace-nav h2 { color: var(--muted); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin: 18px 12px 6px; }
+#workspace-nav h2:first-child { margin-top: 4px; }
+#workspace-nav button { position: relative; display: block; width: 100%; min-height: 32px; text-align: left; background: transparent;
+  border-color: transparent; border-radius: 8px; font-size: 13.5px; font-weight: 500; padding: 6px 12px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#workspace-nav button:hover:enabled { background: var(--row-hover); border-color: transparent; }
+#workspace-nav button[aria-current=page] { background: var(--soft); color: var(--accent); font-weight: 620; border-color: transparent; }
+#workspace-nav button[aria-current=page]::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px;
+  border-radius: 2px; background: var(--accent); }
+.workspace-page .dialog-header > div, .workspace-page main { width: 100%; max-width: var(--page-width); }
+/* The title lines up with the page below; the ✕ sits in the corner. */
+.workspace-page .dialog-header { display: block; padding: 22px 36px 14px; }
+.workspace-page .dialog-header > div { margin: 0 auto; }
+.workspace-page #close { position: absolute; top: 18px; right: 18px; }
+/* A footer left with nothing but its (hidden) Close button. */
+.workspace-page [data-footer=true]:not(:has(button.control:not([data-tone=close]), input, select, textarea, .form-label:not(:empty))) { display: none; }
+.workspace-page main { margin: 0 auto; padding: 18px 36px 40px; }
+.workspace-page .table-wrap { max-height: 62vh; }
+
+/* ---- Small popups (compact) ---- */
+.compact-page .dialog-header { padding: 12px 14px 10px; gap: 8px; }
 .compact-page .dialog-header h1 { font-size: 16px; }
-.compact-page main { padding: 10px 12px 18px; }
-.compact-page .form-group { gap: 7px; }
+.compact-page main { padding: 10px 14px 18px; }
+.compact-page .form-group { gap: 7px; margin: 10px 0; }
+.compact-page .form-group:has(> h2:not(:empty)) { padding: 12px 14px; }
 .compact-page .control { min-width: 0; }
-.compact-page button { padding: 7px 9px; font-size: 13px; }
+.compact-page button.control { padding: 6px 10px; font-size: 12.5px; }
 .compact-page .table-wrap { max-height: 45vh; }
+
 #workspace-picker { display: none; max-width: 100%; margin-top: 8px; }
-@media(max-width: 780px) {
+@media (max-width: 780px) {
   body.workspace-page { display: block; }
   .workspace-page #workspace-nav { display: none; }
   .workspace-page #workspace-picker { display: block; }
-  .workspace-page .dialog-header > div { min-width: 0; flex: 1; }
-  .workspace-page .dialog-header { padding: 12px; gap: 12px; }
-  .workspace-page main { padding: 12px; }
+  .workspace-page .dialog-header { padding: 14px 16px 10px; gap: 12px; }
+  .workspace-page main { padding: 12px 16px 24px; }
 }
-
-.form-group > div { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; } .form-group h2 { width: 100%; font-size: 16px; margin-top: 8px; }
