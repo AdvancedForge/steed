@@ -42,13 +42,16 @@ class CompareDialog(QDialog):
             "message you finish with your question."
         )
         intro.setWordWrap(True)
+        intro.setProperty("role", "note")
         layout.addWidget(intro)
         self.list = QListWidget()
         current = window._current_browser_tab()
         for tab in window.tabs:
             if tab.url().scheme() not in ("http", "https"):
                 continue
-            item = QListWidgetItem(tab.title() or tab.url().toString())
+            host = tab.url().host().removeprefix("www.")
+            title = tab.title() or host
+            item = QListWidgetItem(f"{title} ({host})" if host not in title else title)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             chosen = tab is current or tab is window.split_tab
             item.setCheckState(
@@ -62,6 +65,7 @@ class CompareDialog(QDialog):
         layout.addWidget(self.status)
         buttons = QHBoxLayout()
         self.go = QPushButton("Compare")
+        self.go.setProperty("primary", True)
         self.go.clicked.connect(self.compare)
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)

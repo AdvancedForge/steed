@@ -378,7 +378,12 @@ class WindowTests(unittest.TestCase):
         left, right = window._cards()
         self.assertGreaterEqual(right.left() - left.right(), lumen.CARD_MARGIN)
         self.assertEqual(sum(c.isVisible() for c in window._card_corners), 8)
+        # The side you are on is lit; switching sides moves the light.
+        self.assertEqual(window._focused_card().toRect(), left)
+        window._switch_tab(window.tabs.index(second))
+        self.wait(lambda: window._focused_card().toRect() == right)
         window.close_split_view()
+        self.assertIsNone(window._focused_card())
         self.wait(lambda: len(window._cards()) == 1)
         self.assertEqual(sum(c.isVisible() for c in window._card_corners), 4)
         from PyQt6.QtCore import Qt

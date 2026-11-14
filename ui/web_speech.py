@@ -26,6 +26,10 @@ TICK_MS = 150
 MICROPHONE = SimpleNamespace(name="MediaAudioCapture")
 
 
+# Secure pages answered: websites, and extension pages (their tabs and popups).
+SECURE = ("https", "chrome-extension")
+
+
 class WebSpeech(QObject):
     def __init__(self, window):
         super().__init__(window)
@@ -84,7 +88,7 @@ class WebSpeech(QObject):
         session = message["session"]
         url = tab.url()
         local = url.host() in ("localhost", "127.0.0.1", "::1")
-        if url.scheme() != "https" and not (url.scheme() == "http" and local):
+        if url.scheme() not in SECURE and not (url.scheme() == "http" and local):
             self._send(tab, url, session, "error", error="not-allowed")
             self._send(tab, url, session, "end")
             return

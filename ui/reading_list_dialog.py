@@ -21,8 +21,7 @@ class ReadingListDialog(HtmlSettingsDialog):
         self.resize(680, 460)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Pages saved with Save to Reading List. Read Offline shows the article "
-            "text kept when you saved it, even without a connection."
+            "Pages you saved to read later. Read Offline shows the text kept when you saved it."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)

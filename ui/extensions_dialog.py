@@ -27,10 +27,7 @@ class ExtensionsDialog(HtmlSettingsDialog):
         self.resize(700, 500)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Chrome extensions (Manifest V3) for this profile. Qt WebEngine "
-            "supports only part of Chrome's extension features, so some do not "
-            "work. Extensions from the Chrome Web Store sync with your other "
-            "computers when sync is on."
+            "Chrome extensions for this profile. Some Chrome features are missing here, so a few extensions may not work."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)

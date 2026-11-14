@@ -105,11 +105,7 @@ class LayoutDialog(HtmlSettingsDialog):
         self._updating = False
 
         layout = QVBoxLayout(self)
-        notice = QLabel(
-            "Changes appear immediately and are kept when you click Save. "
-            "Cancel restores the saved layout. These settings change the "
-            "appearance of the browser only."
-        )
+        notice = QLabel("Changes show right away. Save keeps them; Cancel goes back.")
         notice.setWordWrap(True)
         layout.addWidget(notice)
 

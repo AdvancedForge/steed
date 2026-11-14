@@ -1,7 +1,7 @@
 """Watch with Agent: what to keep an eye on, what matters, how often, and
 optionally what your agent should then do about it."""
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -38,14 +38,15 @@ class WatchDialog(QDialog):
         self.selector, self.text = selector, text
         self.setWindowTitle("Watch with Agent")
         layout = QVBoxLayout(self)
-        what = (
-            f"“{' '.join(selected.split())[:80]}” on {title}"
+        watched = QLabel(
+            f"“{' '.join(selected.split())[:160]}”\n{title}"
             if selected
-            else title or url
+            else f"{title or url}\n{QUrl(url).host()}"
         )
-        intro = QLabel(f"Keep an eye on {what}.")
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
+        watched.setTextFormat(Qt.TextFormat.PlainText)
+        watched.setWordWrap(True)
+        watched.setProperty("role", "quote")
+        layout.addWidget(watched)
         layout.addWidget(QLabel("What should Steed tell you about?"))
         self.instruction = QLineEdit()
         self.instruction.setPlaceholderText(
@@ -83,12 +84,14 @@ class WatchDialog(QDialog):
             "Steed will tell you about any change."
         )
         note.setWordWrap(True)
+        note.setProperty("role", "note")
         layout.addWidget(note)
         self.status = QLabel("")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         buttons = QHBoxLayout()
         watch = QPushButton("Watch")
+        watch.setProperty("primary", True)
         watch.clicked.connect(self.save)
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)

@@ -30,7 +30,7 @@ class AgentSidebar(QDockWidget):
     setup_requested = pyqtSignal()
 
     def __init__(self, service, parent=None, *, providers=None):
-        super().__init__("External Agents", parent)
+        super().__init__("Agents", parent)
         self.service = service
         self.browser_window = parent
         self.providers = providers

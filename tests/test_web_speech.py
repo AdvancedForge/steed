@@ -201,6 +201,68 @@ class WebSpeechTests(unittest.TestCase):
         self.wait(lambda: self.tab.title() == "frame service-not-allowed")
         self.assertEqual(self.asked, [])
 
+    def test_extension_pages_and_popups_are_answered(self):
+        from test_extensions import write_extension
+
+        from ui.extension_popup import ExtensionPopup
+
+        folder = write_extension(Path(self.directory.name) / "talker")
+        # Extension pages allow no inline scripts: the page's script is a file.
+        script = PAGE.split("<script>", 1)[1].split("</script>", 1)[0]
+        (folder / "talk.js").write_text(script)
+        (folder / "talk.html").write_text(
+            "<title>Speech</title><script src=talk.js></script>"
+        )
+        name = self.window.profile_manager.current_profile_name
+        extensions = self.window.profile_manager.registry.extensions
+        extensions.install(name, folder)
+        self.wait(lambda: extensions.installed(name))
+        (entry,) = extensions.installed(name)
+        url = f"chrome-extension://{entry['id']}/talk.html"
+        self.tab.setUrl(QUrl(url))
+        self.wait(lambda: self.tab.title() == "Speech")
+        self.run_js("recognition.start(); 1")
+        self.wait(lambda: self.speech.active)
+        self.assertEqual(
+            self.asked, [(f"chrome-extension://{entry['id']}", "MediaAudioCapture")]
+        )
+        # Asked by name, not by its id.
+        self.assertEqual(
+            self.window._extension_name(QUrl(f"chrome-extension://{entry['id']}")),
+            "Steed Test Extension (extension)",
+        )
+        self.speech._level(0.5)
+        self.pause()
+        self.assertIn("result 0 final:hello world", self.wait_log("end"))
+        # Its toolbar popup too, standing in for a tab.
+        popup = ExtensionPopup(
+            self.tab.page().profile(), url, "Talker", parent=self.window
+        )
+        try:
+            popup.show()
+            self.wait(lambda: popup.view.title() == "Speech")
+            done = []
+            popup.page.runJavaScript("recognition.start(); 1", done.append)
+            self.wait(lambda: self.speech.active)
+            self.assertIs(self.speech.tab, popup.page)
+            self.speech._level(0.5)
+            self.pause()
+
+            def log():
+                result = []
+                popup.page.runJavaScript("log", result.append)
+                self.wait(lambda: result)
+                return result[0]
+
+            self.wait(lambda: (log() or [None])[-1] == "end")
+            self.assertIn("result 0 final:hello world", log())
+            # Closing the popup while it listens ends the session.
+            popup.page.runJavaScript("recognition.start(); 1")
+            self.wait(lambda: self.speech.active)
+        finally:
+            popup.close()
+        self.assertFalse(self.speech.active)
+
     def test_steed_dictation_in_progress_and_forged_requests(self):
         self.load()
         field_target = ("copy", None)

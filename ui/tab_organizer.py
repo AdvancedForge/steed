@@ -104,6 +104,7 @@ class OrganizeDialog(QDialog):
             else "Install Claude Code or Codex to have an agent organize your tabs."
         )
         self.status.setWordWrap(True)
+        self.status.setProperty("role", "quote")
         layout.addWidget(self.status)
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(["Group", "Tab"])
@@ -116,6 +117,7 @@ class OrganizeDialog(QDialog):
         layout.addWidget(self.close_duplicates)
         buttons = QHBoxLayout()
         self.apply_button = QPushButton("Apply")
+        self.apply_button.setProperty("primary", True)
         self.apply_button.setEnabled(False)
         self.apply_button.clicked.connect(self.apply)
         cancel = QPushButton("Cancel")
@@ -140,10 +142,14 @@ class OrganizeDialog(QDialog):
             self.status.setText("The agent's answer had no plan. Try again later.")
             return
         self.plan = plan
+        # Each group's name once, beside its first tab.
         rows = [
-            (name, self.tabs[i].title() or self.tabs[i].url().toString())
+            (
+                name if n == 0 else "",
+                self.tabs[i].title() or self.tabs[i].url().toString(),
+            )
             for name, members in plan["groups"]
-            for i in members
+            for n, i in enumerate(members)
         ]
         self.table.setRowCount(len(rows))
         for row, (name, title) in enumerate(rows):

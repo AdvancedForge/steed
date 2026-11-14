@@ -23,9 +23,7 @@ class SearchKeywordsDialog(HtmlSettingsDialog):
         self.resize(720, 460)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Type a keyword, a space and your search in the address bar: "
-            "“w steed” searches Wikipedia. Your own keywords add to these or "
-            "replace a built-in one with the same keyword."
+            "Type a keyword, a space and your search in the address bar: “w steed” searches Wikipedia."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)

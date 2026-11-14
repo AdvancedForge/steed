@@ -22,9 +22,7 @@ class SessionHistoryDialog(HtmlSettingsDialog):
         self.resize(720, 460)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Steed records this profile's open windows every 10 minutes when they "
-            "change, and each window you close while others stay open. Open brings "
-            "an entry back in new windows; its tabs load when you select them."
+            "Your windows, saved every 10 minutes and whenever you close one. Open brings an entry back; its tabs load as you select them."
         )
         notice.setWordWrap(True)
         notice.setTextFormat(Qt.TextFormat.PlainText)

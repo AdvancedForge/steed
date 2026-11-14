@@ -50,6 +50,7 @@ from services.task_recovery import (
 )
 from services.task_store import ACTIVE_STATUSES, TERMINAL_STATUSES, TaskStore
 from services.task_workspace import MAX_FILE_BYTES, TaskWorkspace
+from services.watch_proposals import WatchProposals
 from services.worker_manager import WorkerManager
 
 # A waiting call must answer within the adapter's 35 s reply limit.
@@ -126,6 +127,7 @@ class TaskService(QObject):
         self.data_panels = DataPanels(self)
         self.start_pages = StartPageProposals(self)
         self.customizations = CustomizationProposals(self)
+        self.watches = WatchProposals(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -148,6 +150,13 @@ class TaskService(QObject):
                 ),
                 "start_page.status": lambda task_id, request_id: self._layout_action(
                     self.start_pages.get, task_id, request_id
+                ),
+                "watch.capabilities": self._watch_capabilities,
+                "watch.propose": lambda task_id, **arguments: self._layout_action(
+                    lambda: self.watches.propose(task_id, **arguments)
+                ),
+                "watch.status": lambda task_id, request_id: self._layout_action(
+                    self.watches.get, task_id, request_id
                 ),
                 "customization.capabilities": self._customization_capabilities,
                 "customization.propose": lambda task_id, source, request_id: (
@@ -747,6 +756,13 @@ class TaskService(QObject):
         self._usable()
         self._active(task_id)
         return {"available": self.start_pages.available, **capabilities()}
+
+    def _watch_capabilities(self, task_id):
+        from services.watch_proposals import capabilities
+
+        self._usable()
+        self._active(task_id)
+        return {"available": self.watches.available, **capabilities()}
 
     def _customization_capabilities(self, task_id):
         from services.customization_proposals import capabilities
@@ -2800,6 +2816,7 @@ class TaskService(QObject):
         self.data_panels.cancel_task(task_id, interrupted=status == "interrupted")
         self.start_pages.cancel_task(task_id, interrupted=status == "interrupted")
         self.customizations.cancel_task(task_id, interrupted=status == "interrupted")
+        self.watches.cancel_task(task_id, interrupted=status == "interrupted")
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):

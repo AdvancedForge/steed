@@ -49,7 +49,7 @@ function build(node) {
 function tone(text) {
   const label = String(text || '').replace(/[.…]+$/, '').trim();
   if (/^close$/i.test(label)) return 'close';
-  if (/^cancel$/i.test(label)) return 'quiet';
+  if (/^(cancel|later|not now|decline|skip)$/i.test(label)) return 'quiet';
   if (/^(delete|remove|clear|revoke|deny|forget|reset|disconnect|ungroup|cancel (task|selected))/i.test(label)) return 'danger';
   return '';
 }
@@ -59,6 +59,7 @@ function update(entry, node) {
   element.className = 'control ' + (node.kind === 'group' ? 'form-group' : node.kind === 'label' ? 'form-label' : node.kind === 'table' ? 'table-wrap' : node.kind);
   if (node.kind === 'table') element.classList.toggle('empty', !node.count);
   element.disabled = !node.enabled;
+  if (node.role) element.dataset.role = node.role; else delete element.dataset.role;
   if (node.kind === 'image') {
     if (element.src !== node.value) element.src = node.value;
     element.alt = node.text;
@@ -67,7 +68,7 @@ function update(entry, node) {
     element.textContent = node.text;
     if (node.status) { element.setAttribute('role', 'status'); element.setAttribute('aria-live', 'polite'); }
     if (node.checkable) { element.setAttribute('aria-pressed', node.checked); element.classList.add('toggle'); }
-    if (node.kind === 'button') element.dataset.tone = tone(node.text);
+    if (node.kind === 'button') { element.dataset.tone = tone(node.text); element.dataset.primary = !!node.primary; }
   } else if (['input','text','number'].includes(node.kind)) {
     if (document.activeElement !== element && element.value !== String(node.value)) element.value = node.value;
     element.readOnly = !!node.readonly; element.placeholder = node.secret && node.has_value ? 'Stored value unchanged; type to replace' : node.placeholder || '';
@@ -162,6 +163,18 @@ function update(entry, node) {
     if (restoreFocus) [...body.children].find(row => row.dataset.row === focusedRow)?.focus();
   }
 }
+// One main action per row of buttons: the one marked primary, else, beside a
+// Cancel (or Later), the first button that neither warns nor stays quiet.
+function emphasize() {
+  const rows = new Set([...document.querySelectorAll('#controls button.control:not(.toggle)')].map(button => button.parentElement));
+  for (const row of rows) {
+    const buttons = [...row.children].filter(child => child.matches('button.control:not(.toggle)'));
+    const marked = buttons.find(button => button.dataset.primary === 'true');
+    const quiet = buttons.some(button => ['quiet', 'close'].includes(button.dataset.tone));
+    const main = marked || (quiet && buttons.length > 1 ? buttons.find(button => !button.dataset.tone) : null);
+    for (const button of buttons) button.classList.toggle('primary', button === main);
+  }
+}
 window.steedUI = {render(next) {
   if (context !== next.context) { context = next.context; sequence = 0; nodes.clear(); $('controls').replaceChildren(); }
   state = next; document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
@@ -189,6 +202,7 @@ window.steedUI = {render(next) {
   if (document.activeElement !== $('workspace-picker')) $('workspace-picker').value = next.workspace;
   $('title').textContent = next.title; $('error').textContent = next.error; $('error').hidden = !next.error;
   seen = new Set(); children($('controls'), next.children);
+  emphasize();
   for (const [id, entry] of nodes) if (!seen.has(id)) { entry.list?.remove(); nodes.delete(id); }
   return true;
 }};

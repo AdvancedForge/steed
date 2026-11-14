@@ -222,6 +222,29 @@ TOOLS = (
         ("request_id",),
     ),
     tool(
+        "watch.capabilities",
+        "Discover how to propose a watch: Steed checks a web page in the background (with the person's sign-ins) and notifies them when it changes the way they asked, optionally starting a follow-up task for you. Returns intervals, limits and an example. Nothing about existing watches is disclosed.",
+    ),
+    tool(
+        "watch.propose",
+        'Propose a watch when the person wants to know when a page changes ("tell me when tickets go on sale", "when the price drops under $50"). url: the http(s) page; instruction: what matters, in their words (empty: any change); every: 15m, hourly, 6h or daily; then: optional follow-up for you when it fires. The person reviews and adds it; nothing is watched before that and no access is granted. Identical retries return the original receipt.',
+        {
+            "url": string(2048),
+            "request_id": string(64),
+            "title": string(200),
+            "instruction": string(400),
+            "every": {**string(), "enum": ["15m", "hourly", "6h", "daily"]},
+            "then": string(400),
+        },
+        ("url", "request_id"),
+    ),
+    tool(
+        "watch.status",
+        "Poll this task's watch proposal. applied means the person added the watch; denied means they declined.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "start_page.status",
         "Poll this task's page proposal receipt. An applied state means the user enabled it; no agent approval command exists. Use a fresh request ID for the next reviewed edit.",
         {"request_id": string(64)},

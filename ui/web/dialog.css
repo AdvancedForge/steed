@@ -48,6 +48,8 @@ button.control:hover:enabled, .table-paging button:hover:enabled { background: v
 button.control[data-tone=danger] { color: var(--error); border-color: color-mix(in srgb, var(--error) 35%, var(--border)); }
 button.control[data-tone=danger]:hover:enabled { background: var(--error-bg); border-color: var(--error); }
 button.control[data-tone=quiet] { border-color: transparent; color: var(--muted); }
+button.control.primary { background: var(--accent); border-color: transparent; color: var(--bg); padding: 6px 18px; }
+button.control.primary:hover:enabled { background: var(--accent-hover, var(--accent)); border-color: transparent; }
 button.control:disabled { opacity: .45; }
 /* Full pages close with the header's ✕; their own Close buttons repeat it. */
 .workspace-page button.control[data-tone=close] { display: none; }
@@ -136,3 +138,10 @@ body.workspace-page { display: grid; grid-template-columns: 216px minmax(0, 1fr)
   .workspace-page .dialog-header { padding: 14px 16px 10px; gap: 12px; }
   .workspace-page main { padding: 12px 16px 24px; }
 }
+
+/* What a dialog acts on (a watched price, a page), set apart from its
+   instructions; and the quiet small print under a form. */
+.control[data-role=quote] { margin: 4px 0 14px; padding: 12px 16px; border-radius: 12px; font-size: 15px; font-weight: 560;
+  color: var(--ink); background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent); white-space: pre-line; }
+.control[data-role=note] { color: var(--muted); font-size: 12.5px; }
