@@ -68,7 +68,12 @@ class AskAgentTests(unittest.TestCase):
             "<title>Tide pools</title><p>Anemones and crabs.</p>",
             QUrl("https://example.org/tides"),
         )
-        self.wait(lambda: self.tab.title() == "Tide pools")
+        self.wait(
+            lambda: (
+                self.tab.title() == "Tide pools"
+                and self.tab.url().toString() == "https://example.org/tides"
+            )
+        )
         self.sidebar = FakeSidebar()
         self.toggle = patch.object(
             self.window, "_toggle_agent_sidebar", side_effect=self.show_sidebar
