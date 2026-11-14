@@ -296,8 +296,19 @@ class TabStrip(QWidget):
             if isinstance(frost, str) and frost.startswith("data:image/jpeg;base64,"):
                 chrome["frost"] = frost
             chrome["chosen"] = list(chosen or [])
+        if self.chrome.get("light"):
+            chrome["light"] = self.chrome["light"]
         if chrome != self.chrome:
             self.chrome = chrome
+            self.refresh()
+
+    def set_light(self, light: dict | None) -> None:
+        """Lumen: the window's light field ({"base", "glows", "origin",
+        "size", "motion"}), which the strip paints behind its tabs."""
+        if light != self.chrome.get("light"):
+            self.chrome = {**self.chrome, "light": light}
+            if light is None:
+                self.chrome.pop("light")
             self.refresh()
 
     @property

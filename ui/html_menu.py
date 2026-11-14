@@ -34,9 +34,10 @@ class HtmlMenu(QDialog):
         self.surface.command.connect(self.command)
         self.surface.reloading.connect(self.reload)
         body = QVBoxLayout(self)
-        self.glass = bool(
-            getattr(getattr(owner, "address_bar", None), "colors", {}).get("glass")
-        )
+        chrome = getattr(getattr(owner, "address_bar", None), "colors", {})
+        # Lumen menus are the same rounded, frosted panels as liquid glass.
+        self.glass = bool(chrome.get("glass") or chrome.get("lumen"))
+        self.motion = bool(chrome.get("glide"))
         self.backdrop = self.frosted = None
         if self.glass:
             # Rounded glass without asking the desktop for see-through
@@ -89,6 +90,10 @@ class HtmlMenu(QDialog):
         if self.glass:
             self._snapshot()
         super().showEvent(event)
+        if self.motion:
+            from ui.lumen import open_window
+
+            open_window(self)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -183,6 +188,7 @@ class HtmlMenu(QDialog):
                 "rows": rows,
                 "colors": self._colors(),
                 "glass": self.glass,
+                "motion": self.motion,
                 "dark": self.owner.profile_manager.registry.page_style.dark(
                     self.owner.profile_manager.current_profile_name
                 ),

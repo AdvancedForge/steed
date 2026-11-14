@@ -31,6 +31,9 @@ def application():
         photos.IMAGE_URL = "http://127.0.0.1:9/id/{id}.jpg"
         QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         _application = QApplication.instance() or QApplication(["steed-tests"])
+        from ui.lumen import apply_ui_font
+
+        apply_ui_font(_application)
         _application.setQuitOnLastWindowClosed(False)
     return _application
 

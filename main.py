@@ -73,6 +73,9 @@ def main() -> int:
     )
 
     app = QApplication(sys.argv)
+    from ui.lumen import apply_ui_font
+
+    apply_ui_font(app)
     app.setApplicationName("Custom Browser")
     app.setOrganizationName("CustomBrowser")
 

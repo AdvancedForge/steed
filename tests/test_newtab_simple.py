@@ -523,7 +523,16 @@ class SimpleNewTabTests(unittest.TestCase):
         )
         self.assertFalse(popup.geometry().intersects(beside))
         self.assertLess(popup.x(), beside.left())
-        self.assertFalse(popup.glass)
+        # Lumen menus are frosted, rounded panels too; with Minimal effects,
+        # plain ones.
+        self.assertTrue(popup.glass)
+        popup.close()
+        window.config.set("visual_effects", "minimal")
+        window.apply_dark_mode()
+        popup = window._show_html_menu(
+            window._layout_menus["tabs"], window.mapToGlobal(QPoint(300, 120))
+        )
+        self.assertFalse(popup.motion)
         popup.close()
         window._set_bar("glass", True)
         self.settle()  # Switching reloads Steed's pages, which closes popups.

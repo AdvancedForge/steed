@@ -602,7 +602,7 @@ class StartPages(QObject):
         if name == "newtab" and state["settings"]["layout"] == "simple":
             return self.render_simple(profile, state["settings"], root_css)
         if name == "welcome":
-            body = '<section class="hero"><span class="eyebrow">YOUR BROWSER, YOUR WORKSPACE</span><h1>Welcome to Steed.</h1><p>A quiet place to browse, organize your work, and collaborate with agents.</p></section><div class="cards">'
+            body = '<section class="hero"><h1>Welcome to Steed.</h1><p>A quiet place to browse, organize your work, and collaborate with agents.</p></section><div class="cards">'
             for heading, text, action, label in (
                 (
                     "Make it yours",
@@ -667,7 +667,7 @@ class StartPages(QObject):
         css = (
             Path(__file__).resolve().parents[1] / "ui" / "assets" / "start_page.css"
         ).read_text(encoding="utf-8")
-        css += root_css
+        css += root_css + PAGES_CSS
         background = ""
         if name == "newtab" and "image" in state["settings"]["modules"]:
             image = state["settings"]["image"]
@@ -685,8 +685,11 @@ class StartPages(QObject):
                 / "start_page.html"
             ).read_text(encoding="utf-8")
         )
+        from ui.lumen import level
+
         return template.substitute(
             theme=theme,
+            effects=level(self.registry.config),
             title=title,
             css=css,
             body=body,
@@ -707,7 +710,15 @@ class StartPages(QObject):
         menu = newtab_menu() if styles.get(profile)["newtab_menu"] else ""
         private = profile == "search"
         glass = styles.get(profile)["glass"]
-        css = SIMPLE_CSS + root_css + background + (GLASS_CSS if glass else "")
+        from ui.lumen import level
+
+        css = (
+            SIMPLE_CSS
+            + root_css
+            + background
+            + (GLASS_CSS if glass else "")
+            + LUMEN_CSS
+        )
         if glass and self.canvas and settings["background"] != "color":
             # The picture fills the whole window: the bars show their part of
             # it (frosted), so the page shows it from where it sits.
@@ -752,6 +763,7 @@ class StartPages(QObject):
             .substitute(
                 panel=panel,
                 theme="dark" if dark else "light",
+                effects=level(self.registry.config),
                 css=css,
                 scrim=" ".join(
                     name for name, on in (("scrim", scrim), ("glass", glass)) if on
@@ -1202,8 +1214,62 @@ REFRACT_SVG = (
     ' xChannelSelector="R" yChannelSelector="G"/></filter></svg>'
 )
 
+# Lumen for the New Tab: the name set wide and heavy, a lit capsule to type
+# in, one entrance as the page opens, and (Full effects) a slow drift of the
+# photo. Pure CSS: the page runs no script.
+LUMEN_CSS = """
+body { font-family: "Mona Sans", system-ui, sans-serif; font-weight: 450; -webkit-font-smoothing: antialiased; }
+.wordmark { font-family: "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif; font-weight: 800; letter-spacing: -.035em; font-size: clamp(64px, 10vw, 112px); }
+.search { height: 58px; border-radius: 29px; border: 1px solid color-mix(in srgb, #fff 16%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 78%, transparent), color-mix(in srgb, var(--surface) 62%, transparent));
+  backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent), 0 18px 50px -18px #000a;
+  transition: box-shadow .4s cubic-bezier(.22, 1, .36, 1), border-color .3s, transform .5s cubic-bezier(.22, 1, .36, 1); }
+.search:focus-within { border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 26%, transparent), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent),
+    0 0 60px -10px var(--accent), 0 18px 50px -18px #000a; transform: translateY(-1px) scale(1.01); }
+.search input { font-weight: 500; }
+.corner .icon, .browser-menu > summary { transition: background-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
+.corner .icon:hover, .browser-menu > summary:hover { transform: scale(1.08); }
+@keyframes mark-in { from { opacity: 0; transform: translateY(18px) scale(.97); letter-spacing: .02em; filter: blur(8px); } }
+@keyframes field-in { from { opacity: 0; transform: translateY(14px) scaleX(.9); } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes drift { from { transform: scale(1.0) translate3d(0, 0, 0); } to { transform: scale(1.07) translate3d(-1.2%, -.8%, 0); } }
+html[data-effects=full] .wordmark { animation: mark-in .9s cubic-bezier(.22, 1, .36, 1) both; }
+html[data-effects=full] .search { animation: field-in .8s .12s cubic-bezier(.22, 1, .36, 1) both; }
+html[data-effects=full] .corner, html[data-effects=full] .credit { animation: fade-in .8s .3s both; }
+html[data-effects=full] body::before { animation: fade-in .7s both, drift 60s 0.7s ease-in-out infinite alternate; will-change: transform; }
+html[data-effects=balanced] .wordmark, html[data-effects=balanced] .search { animation: fade-in .35s both; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+"""
+
+# Lumen for Welcome and the classic start pages: the same type, lit cards
+# that answer the pointer with a lift, and capsule buttons.
+PAGES_CSS = """
+body { font-family: "Mona Sans", system-ui, sans-serif; font-weight: 450; -webkit-font-smoothing: antialiased; }
+h1, h2, .brand { font-family: "Mona Sans SemiExpanded", "Mona Sans", system-ui, sans-serif; font-weight: 700; letter-spacing: -.01em; }
+.hero h1 { font-family: "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif; font-weight: 800; letter-spacing: -.03em;
+  font-size: clamp(40px, 6.4vw, 72px); line-height: 1.02; }
+.eyebrow { text-transform: none; letter-spacing: 0; }
+.card { border-radius: 20px; border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent);
+  transition: transform .45s cubic-bezier(.22, 1, .36, 1), box-shadow .45s cubic-bezier(.22, 1, .36, 1), border-color .3s; }
+.card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent), 0 22px 44px -24px color-mix(in srgb, var(--accent) 60%, #000); }
+button, .button { border-radius: 999px; transition: transform .3s cubic-bezier(.34, 1.45, .64, 1), background-color .2s; }
+button:active, .button:active { transform: scale(.965); }
+.search { border-radius: 22px; }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+html[data-effects=full] .hero { animation: rise .7s cubic-bezier(.22, 1, .36, 1) both; }
+html[data-effects=full] .cards > * { animation: rise .7s cubic-bezier(.22, 1, .36, 1) both; }
+html[data-effects=full] .cards > :nth-child(2) { animation-delay: .06s; }
+html[data-effects=full] .cards > :nth-child(3) { animation-delay: .12s; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+"""
+
 SIMPLE_PAGE = (
-    '<!doctype html><html lang="en" data-theme="$theme"><head><meta charset="utf-8">'
+    '<!doctype html><html lang="en" data-theme="$theme" data-effects="$effects">'
+    '<head><meta charset="utf-8">'
     '<meta name="viewport" content="width=device-width, initial-scale=1">'
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';'
     " style-src 'unsafe-inline'; img-src data:; form-action steed:; base-uri 'none';"

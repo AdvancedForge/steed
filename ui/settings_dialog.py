@@ -28,6 +28,7 @@ DEFAULTS = {
     "search_suggestions": True,
     "address_autocomplete": True,
     "tab_previews": True,
+    "visual_effects": "full",
     "tab_card_fixed_width": True,
     "auto_zoom_small_text": True,
     "strip_tracking": True,
@@ -242,6 +243,8 @@ class SettingsDialog(QDialog):
             raise ValueError("Choose one of the supported cookie sharing modes.")
         if values["devtools_side"] not in ("right", "bottom", "window"):
             raise ValueError("Choose where Developer Tools open.")
+        if values["visual_effects"] not in ("full", "balanced", "minimal"):
+            raise ValueError("Choose how much motion and light Steed shows.")
         from page_translation import check_settings
 
         check_settings(

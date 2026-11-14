@@ -41,3 +41,11 @@ html.glass body { border-radius: 14px; border: 1px solid #ffffff2b;
   box-shadow: inset 0 1px 0 #ffffff38; --line: #ffffff17; --row-hover: #ffffff1c; }
 html.glass nav button { border-radius: 9px; }
 html.glass[data-theme="light"] body { border-color: #ffffffcc; box-shadow: inset 0 1px 0 #fff; --line: #0000000f; --row-hover: #ffffff80; }
+
+/* Lumen: rows answer the pointer with a soft fade and nudge. */
+html.motion nav button, html.motion footer button { transition: background-color .14s cubic-bezier(.22, 1, .36, 1), transform .2s cubic-bezier(.22, 1, .36, 1); }
+html.motion nav button:active:enabled { transform: scale(.985); }
+@keyframes rows-in { from { opacity: 0; transform: translateY(-3px); } }
+html.motion nav { animation: rows-in .24s cubic-bezier(.22, 1, .36, 1); }
+body { font-family: "Mona Sans", system-ui, sans-serif; }
+@media (prefers-reduced-motion: reduce) { html.motion nav, html.motion nav button { animation: none; transition: none; } }

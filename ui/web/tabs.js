@@ -1,6 +1,11 @@
 const $ = id => document.getElementById(id);
 const ACCENTS = {blue: "#3b6fe0", purple: "#8b5cf6", green: "#1b998b", orange: "#e07b1a", pink: "#d6457a", slate: "#5c6f84"};
 let bridge = null, state = null, dragged = null, focusedId = null;
+// Lumen: tabs seen in the last render (new ones grow in) and the light that
+// slides behind the current tab.
+let knownTabs = null, litFrom = null;
+const lit = Object.assign(document.createElement("div"), {id: "lit"});
+lit.setAttribute("aria-hidden", "true");
 
 function command(action, values = {}) {
   if (!bridge || !state) return;
@@ -123,6 +128,7 @@ function render(next) {
   document.documentElement.classList.toggle("frost", !!frost);
   if (frost) document.documentElement.style.setProperty("--frost", `url("${frost}")`);
   else document.documentElement.style.removeProperty("--frost");
+  applyLight(next.chrome?.light);
   if (glow) document.documentElement.style.setProperty("--glow", glow);
   else document.documentElement.style.removeProperty("--glow");
   // A tab accent chosen in Tab appearance wins; otherwise the toolbar's.
@@ -174,7 +180,15 @@ function render(next) {
     button.setAttribute("aria-label", "New tab"); button.title = "New tab (Ctrl+T)";
     nodes.push(button);
   }
+  const lumen = document.documentElement.classList.contains("lumen");
+  if (lumen && knownTabs) {
+    for (const node of nodes.flatMap(n => n.classList.contains("tab") ? [n] : [...n.querySelectorAll(".tab")])) {
+      if (!knownTabs.has(node.dataset.id)) node.classList.add("entering");
+    }
+  }
+  knownTabs = new Set(next.tabs.map(tab => tab.id));
   list.replaceChildren(...nodes);
+  if (lumen) list.append(lit);
   list.setAttribute("aria-orientation", vertical() ? "vertical" : "horizontal");
   $("new-end").hidden = look.new_tab_button !== "end";
   $("count").hidden = !look.tab_count;
@@ -184,7 +198,45 @@ function render(next) {
   const active = list.querySelector(".tab.active");
   if (active && !dragged) active.scrollIntoView({block: "nearest", inline: "nearest"});
   if (focusedId) list.querySelector(`[data-id="${focusedId}"]`)?.focus();
+  if (lumen) placeLit(active);
   reportHeight();
+}
+
+// The window's light field, the same one lumen.py paints around the page:
+// glows are [x, y, radius] as shares of the window and #AARRGGBB colours.
+function applyLight(light) {
+  const root = document.documentElement;
+  const valid = light && /^#[0-9a-fA-F]{6}$/.test(light.base) && Array.isArray(light.glows)
+    && light.glows.length === 3 && Array.isArray(light.origin) && Array.isArray(light.size);
+  root.classList.toggle("lumen", !!valid);
+  root.classList.toggle("motion", !!valid && !!light.motion);
+  if (!valid) return;
+  const [ox, oy] = light.origin.map(Number), [w, h] = light.size.map(Number);
+  const reach = Math.max(w, h);
+  root.style.setProperty("--light-base", light.base);
+  light.glows.forEach(([x, y, r, color], i) => {
+    const n = i + 1;
+    const css = /^#[0-9a-fA-F]{8}$/.test(color) ? `#${color.slice(3)}${color.slice(1, 3)}` : "transparent";
+    root.style.setProperty(`--x${n}`, `${x * w - ox}px`);
+    root.style.setProperty(`--y${n}`, `${y * h - oy}px`);
+    root.style.setProperty(`--r${n}`, `${Math.max(1, r * reach)}px`);
+    root.style.setProperty(`--light-${n}`, css);
+  });
+}
+
+// The lit capsule behind the current tab glides from the last one.
+function placeLit(active) {
+  if (!active || active.classList.contains("pinned") && !active.offsetWidth) { lit.hidden = true; return; }
+  lit.hidden = false;
+  const box = {left: `${active.offsetLeft}px`, top: `${active.offsetTop}px`,
+    width: `${active.offsetWidth}px`, height: `${active.offsetHeight}px`};
+  Object.assign(lit.style, box);
+  const moved = litFrom && litFrom.id !== active.dataset.id;
+  if (moved && document.documentElement.classList.contains("motion")
+      && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    lit.animate([litFrom.box, box], {duration: 320, easing: "cubic-bezier(.22, 1, .36, 1)"});
+  }
+  litFrom = {id: active.dataset.id, box};
 }
 
 function reportHeight() {
