@@ -43,6 +43,7 @@ AGENT_NAMES = {"codex": "Codex", "claude": "Claude Code"}
 class AgentProviders(QObject):
     changed = pyqtSignal()
     requested = pyqtSignal(str, str, object)
+    replied = pyqtSignal(str)  # task id: its agent finished a reply
 
     def __init__(self, registry, parent=None, *, factory=CodexProvider, factories=None):
         super().__init__(parent)
@@ -93,6 +94,10 @@ class AgentProviders(QObject):
         return [(key, AGENT_NAMES[key]) for key in ("codex", "claude")] + [
             ("acp:" + a["name"], a["name"]) for a in self.acp_agents()
         ]
+
+    def agent_label_for(self, task_id):
+        """The agent's name for a chat's task."""
+        return self.agent_names.get(task_id, "Your agent")
 
     def agent_label(self, agent):
         """The name shown for an agent key (built-in or an ACP agent)."""
@@ -501,6 +506,7 @@ class AgentProviders(QObject):
             chat["items"].clear()
             self.states[task_id] = f"{chat['agent']} ready"
             self.changed.emit()
+            self.replied.emit(task_id)
             # Let the provider consume the rest of its notification batch first.
             QTimer.singleShot(0, lambda: self._next(task_id))
         except (ValueError, RuntimeError, sqlite3.Error):

@@ -293,6 +293,9 @@ class BrowserTab(QWebEngineView):
                 menu, self.page(), self.lastContextMenuRequest()
             )
         if self.browser_window is not None and not self.workspace_name:
+            self.browser_window._add_ask_agent_item(
+                menu, self, self.lastContextMenuRequest()
+            )
             self.browser_window._add_extension_menu_items(
                 menu, self, self.lastContextMenuRequest()
             )
@@ -1710,6 +1713,143 @@ class BrowserWindow(QMainWindow):
             if visible:
                 self.data_panels_dock.raise_()
 
+    # ---------- Asking your agent from anywhere ----------
+
+    def _add_ask_agent_item(self, menu, tab, request):
+        """Ask Agent About … (selection, link or page) in the page menu."""
+        if self.profile_manager.current_profile_name == "search":
+            return
+        selection = (request.selectedText() or "").strip() if request else ""
+        link = request.linkUrl() if request else QUrl()
+        if selection:
+            label, kind, value = "Ask Agent About Selection", "selection", selection
+        elif link.isValid() and link.scheme() in ("http", "https"):
+            label, kind, value = "Ask Agent About Link", "link", link.toString()
+        else:
+            label, kind, value = "Ask Agent About This Page", "page", ""
+        first = menu.actions()[0] if menu.actions() else None
+        action = QAction(label, menu)
+        action.triggered.connect(lambda: self.ask_agent(tab, **{kind: value}))
+        menu.insertAction(first, action)
+        menu.insertSeparator(first)
+
+    def ask_agent(
+        self, tab, *, selection="", link="", page="", question="", send=False
+    ):
+        """Bring your agent in on what you are looking at: the page's title and
+        address, plus a selection or link if given. Drafts the message in the
+        sidebar for you to finish and send; with send (a typed "@" question)
+        it goes at once. Nothing else from the page is shared."""
+        if self._closing or self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Agents are not available in incognito.", 5000)
+            return None
+        title = (tab.title() or "").strip() if tab in self.tabs else ""
+        address = tab.url().toString() if tab in self.tabs else ""
+        parts = [question] if question else []
+        source = f"On the page “{title}”" if title else "On the page"
+        if address and not address.startswith("steed:"):
+            source += f" ({address})"
+        if selection:
+            quoted = "\n".join("> " + line for line in selection[:4000].splitlines())
+            parts.append(f"{source}:\n{quoted}")
+        elif link:
+            parts.append(f"About this link: {link}\n{source}")
+        else:
+            parts.append(source)
+        text = "\n\n".join(parts) + ("" if send else "\n\n")
+        self._toggle_agent_sidebar(True)
+        sidebar = self.agent_sidebar
+        if sidebar is None:
+            return None
+        providers = self.profile_manager.registry.agent_providers
+        service = self.profile_manager.registry.tasks
+        task = sidebar._task_id
+        if task not in service.external_tasks:
+            # The conversation you were in, else any connected one, else a new chat.
+            task = next(
+                (t for t in providers.chats if t in service.external_tasks), None
+            )
+        if task is None:
+            sidebar.start_chat()
+            task = sidebar._task_id
+            send = False  # It is still starting: leave it as a draft.
+        if task is None:
+            return None
+        sidebar.select_task(task)
+        if send and task in service.external_tasks:
+            try:
+                service.send_message(task, text)
+                return task
+            except (ValueError, OSError, RuntimeError) as error:
+                self.status_bar.showMessage(str(error), 5000)
+        sidebar.set_draft(text)
+        return task
+
+    def _agent_alerts(self):
+        """One desktop notifier for every window: an agent replied or needs
+        you while Steed is not in front (or that conversation is not shown)."""
+        registry = self.profile_manager.registry
+        if getattr(registry, "_agent_notifier", None) is not None:
+            return
+        from ui.desktop_notify import DesktopNotifier
+
+        notifier = registry._agent_notifier = DesktopNotifier(registry)
+        providers = registry.agent_providers
+
+        def showing(task):
+            for window in QApplication.topLevelWidgets():
+                if (
+                    isinstance(window, BrowserWindow)
+                    and not window._closing
+                    and window.isActiveWindow()
+                    and window.agent_sidebar is not None
+                    and window.agent_sidebar.isVisible()
+                    and window.agent_sidebar._task_id == task
+                ):
+                    return True
+            return False
+
+        def bring_up(task):
+            windows = [
+                w
+                for w in QApplication.topLevelWidgets()
+                if isinstance(w, BrowserWindow) and not w._closing and w.isVisible()
+            ]
+            if not windows:
+                return
+            window = windows[0]
+            window.showNormal()
+            window.raise_()
+            window.activateWindow()
+            window._toggle_agent_sidebar(True)
+            if window.agent_sidebar is not None:
+                window.agent_sidebar.refresh()
+                window.agent_sidebar.select_task(task)
+
+        def alert(task, title, body):
+            if self.config.get("agent_notifications", True) and not showing(task):
+                notifier.notify(title, body, on_click=lambda: bring_up(task))
+
+        def replied(task):
+            name = providers.agent_label_for(task)
+            try:
+                messages = registry.tasks.messages.read(task)["messages"]
+            except (KeyError, ValueError, OSError, sqlite3.Error):
+                messages = []
+            last = next(
+                (m["text"] for m in reversed(messages) if m.get("role") == "agent"), ""
+            )
+            alert(task, f"{name} replied", " ".join(last.split())[:200])
+
+        def requested(task, _request, payload):
+            name = (payload or {}).get("agent") or providers.agent_label_for(task)
+            alert(
+                task, f"{name} needs your approval", "Open Steed to allow or deny it."
+            )
+
+        providers.replied.connect(replied)
+        providers.requested.connect(requested)
+
     def _toggle_agent_sidebar(self, visible):
         if self.agent_tab is not None and visible:
             tab = self.agent_tab
@@ -1732,6 +1872,7 @@ class BrowserWindow(QMainWindow):
                 )
                 return
             self.addDockWidget(self._sidebar_dock_area(), self.agent_sidebar)
+            self._agent_alerts()
             if (
                 self.data_panels_dock is not None
                 and not self.data_panels_dock.isFloating()
@@ -2392,6 +2533,11 @@ class BrowserWindow(QMainWindow):
 
     def _navigate_tab_to_url(self, tab: BrowserTab, url_text: str):
         if tab not in self.tabs or self._closing:
+            return
+        if url_text.startswith("@") and url_text[1:].strip():
+            # "@ question": ask your agent about this page instead.
+            self.ask_agent(tab, question=url_text[1:].strip(), send=True)
+            self.address_bar.set_url(display_url(tab.url()))
             return
         tab.workspace_exit_token = None
         self._take_back_tab(tab)

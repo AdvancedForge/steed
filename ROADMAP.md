@@ -9,6 +9,12 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Ask your agent from anywhere — November 13, 2026.** Right-click a
+selection, link or page to draft a question to your agent with that context;
+"@ question" in the address bar sends one about the page; desktop
+notifications (D-Bus) when an agent replies or needs approval while you are
+elsewhere, clicking through to the conversation.
+
 **Continue Claude Code sessions, ACP agents — November 13, 2026.** The agent
 sidebar can continue a saved Claude Code session (resumed as a fork in its
 folder) and chat with any Agent Client Protocol agent set up in ACP agents
