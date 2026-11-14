@@ -44,18 +44,30 @@ function build(node) {
   element.dataset.control = node.id; entry.element = element;
   return entry;
 }
+// How a button reads: destructive ones warn, Close/Cancel stay quiet (and
+// Close is hidden on full pages, whose header closes the tab).
+function tone(text) {
+  const label = String(text || '').replace(/[.…]+$/, '').trim();
+  if (/^close$/i.test(label)) return 'close';
+  if (/^cancel$/i.test(label)) return 'quiet';
+  if (/^(delete|remove|clear|revoke|deny|forget|reset|disconnect|ungroup|cancel (task|selected))/i.test(label)) return 'danger';
+  return '';
+}
 function update(entry, node) {
   const element = entry.element;
   element.dataset.footer = !!node.footer;
   element.className = 'control ' + (node.kind === 'group' ? 'form-group' : node.kind === 'label' ? 'form-label' : node.kind === 'table' ? 'table-wrap' : node.kind);
+  if (node.kind === 'table') element.classList.toggle('empty', !node.count);
   element.disabled = !node.enabled;
   if (node.kind === 'image') {
     if (element.src !== node.value) element.src = node.value;
     element.alt = node.text;
   } else if (node.kind === 'label' || node.kind === 'button') {
-    element.textContent = (node.checkable ? (node.checked ? '✓ ' : '○ ') : '') + node.text;
+    // Checkable buttons are drawn as switches (dialog.css), not "✓ text".
+    element.textContent = node.text;
     if (node.status) { element.setAttribute('role', 'status'); element.setAttribute('aria-live', 'polite'); }
-    if (node.checkable) element.setAttribute('aria-pressed', node.checked);
+    if (node.checkable) { element.setAttribute('aria-pressed', node.checked); element.classList.add('toggle'); }
+    if (node.kind === 'button') element.dataset.tone = tone(node.text);
   } else if (['input','text','number'].includes(node.kind)) {
     if (document.activeElement !== element && element.value !== String(node.value)) element.value = node.value;
     element.readOnly = !!node.readonly; element.placeholder = node.secret && node.has_value ? 'Stored value unchanged; type to replace' : node.placeholder || '';
@@ -131,12 +143,15 @@ function update(entry, node) {
           if (row.expandable) { const button = document.createElement('button'); button.textContent = row.expanded ? '−' : '+'; button.className = 'row-button'; button.onclick = event => { event.stopPropagation(); send('expand'); }; td.append(button); }
           if (node.reorder) for (const [label, direction] of [['↑', -1], ['↓', 1]]) { const button = document.createElement('button'); button.className = 'row-button'; button.textContent = label; button.onclick = event => { event.stopPropagation(); send('move', direction); }; td.append(button); }
         }
-        td.append(document.createTextNode(text)); tr.append(td);
+        td.append(document.createTextNode(text));
+        // Only genuinely long values (addresses, paths) may break mid-word.
+        if (/\S{28,}/.test(text)) td.classList.add('long');
+        tr.append(td);
       });
       body.append(tr);
     });
     const paging = document.createElement('div'); paging.className = 'table-paging';
-    const count = document.createElement('span'); count.className = 'row-count'; count.textContent = node.count ? 'Showing ' + (node.offset + 1) + '–' + (node.offset + node.rows.length) + ' of ' + node.count : 'No results';
+    const count = document.createElement('span'); count.className = 'row-count'; count.textContent = node.count ? 'Showing ' + (node.offset + 1) + '–' + (node.offset + node.rows.length) + ' of ' + node.count : 'Nothing here yet';
     paging.append(count);
     if (node.count > 500) for (const [label, direction] of [['Previous', -1], ['Next', 1]]) {
       const button = document.createElement('button'); button.textContent = label;
