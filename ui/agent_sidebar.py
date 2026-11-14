@@ -118,13 +118,19 @@ class AgentSidebar(QDockWidget):
         self._error = ""
         self.refresh()
 
+    def _agent_choices(self):
+        choices = getattr(self.providers, "agent_choices", None)
+        if choices is None:
+            return [("codex", "Codex"), ("claude", "Claude Code")]
+        return choices()
+
     def set_model(self, model):
-        if model in _AGENT_MODELS[self._new_agent]:
+        if model in _AGENT_MODELS.get(self._new_agent, (None,)):
             self._new_model = model
             self._publish()
 
     def set_agent(self, agent):
-        if agent in _AGENT_MODELS and agent != self._new_agent:
+        if agent in dict(self._agent_choices()) and agent != self._new_agent:
             self._new_agent = agent
             self._new_model = None
             self._publish()
@@ -147,6 +153,8 @@ class AgentSidebar(QDockWidget):
         }
         operations = {
             "new_chat": self.start_chat,
+            "continue_session": self.continue_session,
+            "acp_agents": self.manage_acp_agents,
             "setup": self.setup_requested.emit,
             "requests": self.show_requests,
             "permissions": lambda: self.open_details("Permissions"),
@@ -228,6 +236,17 @@ class AgentSidebar(QDockWidget):
             draft_version=self._draft_versions.get(self._task_id, 0),
             new_model=self._new_model,
             new_agent=self._new_agent,
+            agents=[
+                {
+                    "id": key,
+                    "name": name,
+                    "models": [
+                        [model or "", model.title() if model else f"{name} default"]
+                        for model in _AGENT_MODELS.get(key, (None,))
+                    ],
+                }
+                for key, name in self._agent_choices()
+            ],
             send_result=dict(self._send_result),
             error=self._error,
             dark=bool(
@@ -603,6 +622,35 @@ class AgentSidebar(QDockWidget):
         except _ERRORS as error:
             self._error = str(error)
             self._publish()
+
+    def continue_session(self):
+        """Pick a saved Claude Code session and go on with it here."""
+        if self._private or self.providers is None or not self.state.get("available"):
+            return
+        from ui.agent_sessions import ClaudeSessionsDialog
+
+        dialog = ClaudeSessionsDialog(self.providers, self.browser_window)
+        dialog.started.connect(
+            lambda task_id: (self.refresh(), self.select_task(task_id))
+        )
+        present = getattr(self.browser_window, "_present_dialog", None)
+        if present is not None:
+            present(dialog, modal=False)
+        else:
+            dialog.show()
+
+    def manage_acp_agents(self):
+        from ui.agent_sessions import AcpAgentsDialog
+
+        dialog = AcpAgentsDialog(self.browser_window.config, self.browser_window)
+        dialog.finished.connect(lambda _: self._publish())
+        present = getattr(self.browser_window, "_present_dialog", None)
+        if present is not None:
+            host = present(dialog, modal=False)
+            # The list of agents for new chats follows what was added.
+            host.finished.connect(lambda _: self._publish())
+        else:
+            dialog.show()
 
     def delegate_tabs(self):
         from PyQt6.QtWidgets import QInputDialog

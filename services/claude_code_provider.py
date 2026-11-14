@@ -56,6 +56,8 @@ class ClaudeCodeProvider(AgentProvider):
         self.command = command
         self.environment = environment
         self.model = model
+        # (session id, folder) to continue a saved Claude Code session.
+        self.resume = None
         self.model_info = None
         self.process = QProcess(self)
         self.process.setReadChannel(QProcess.ProcessChannel.StandardOutput)
@@ -103,6 +105,11 @@ class ClaudeCodeProvider(AgentProvider):
             )
             return
         self.cwd = str(Path(binding_file).parent)
+        if self.resume is not None:
+            # A saved session is found by its folder; continue it there, as
+            # a copy (--fork-session), so a session still open in a terminal
+            # is never written to twice. The copy is kept in its history.
+            self.cwd = str(self.resume[1])
         server = {
             "type": "stdio",
             "command": sys.executable,
@@ -124,7 +131,11 @@ class ClaudeCodeProvider(AgentProvider):
             "stream-json",
             "--verbose",
             "--include-partial-messages",
-            "--no-session-persistence",
+            *(
+                ["--resume", self.resume[0], "--fork-session"]
+                if self.resume is not None
+                else ["--no-session-persistence"]
+            ),
             "--permission-prompt-tool",
             "stdio",
             "--mcp-config",

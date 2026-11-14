@@ -90,3 +90,4 @@ summary::-webkit-details-marker { display: none; }
 @keyframes progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(430%); } }
 @media (prefers-reduced-motion: reduce) { *, *::after { animation: none !important; } }
 @media (min-width: 650px) { .welcome { align-items: center; text-align: center; } .welcome h2 { font-size: 40px; } .message { max-width: 78%; } }
+.link-button { min-height: 0; padding: 4px 0; border: 0; background: none; color: var(--accent); font-size: 12px; font-weight: 600; } .link-button:hover:enabled { background: none; text-decoration: underline; }
