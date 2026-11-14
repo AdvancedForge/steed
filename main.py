@@ -99,6 +99,9 @@ def main() -> int:
         window._new_tab(url)
 
     code = app.exec()
+    from services.dictation import stop_shared
+
+    stop_shared()
     # Before the application goes: see qt_cleanup.
     from qt_cleanup import release_leftovers
 

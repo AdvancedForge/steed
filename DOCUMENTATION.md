@@ -16,6 +16,7 @@ for current progress and remaining work.
 - [Find in page and zoom](#find-in-page-and-zoom)
 - [Website permissions](#website-permissions)
 - [Passwords](#passwords)
+- [Dictation](#dictation)
 - [Profiles and stored data](#profiles-and-stored-data)
 - [Tabs and groups](#tabs-and-groups)
 - [Cookies and global sharing](#cookies-and-global-sharing)
@@ -374,6 +375,8 @@ There is no general-purpose HTML app capability bridge in this milestone.
 - `Ctrl+-`: Zoom out
 - `Ctrl+0`: Reset zoom to 100%
 - `Ctrl+Shift+L`: Fill the current site's saved login
+- `Ctrl+Shift+Space`: Dictate — tap to start and again to finish, or hold while
+  talking; `Escape` cancels ([Dictation](#dictation))
 - `Ctrl+,`: Settings
 - `Ctrl+Q`: Close the window
 
@@ -1161,6 +1164,62 @@ search: only the first 5 characters of each password's SHA-1 hash are sent
 here. Logins found in breaches show how often; change those passwords. Results
 last until the page closes.
 
+### Dictation
+
+Speak instead of typing, anywhere in Steed. Press `Ctrl+Shift+Space` (or
+**General → Dictation → Dictate**) and talk; press it again to finish, or hold
+it while you talk and let go. A pill at the bottom of the window shows the
+microphone level and, on this computer, the words as they are recognized;
+`Escape` cancels. The text goes where the cursor was:
+
+- a field on a page (text boxes, search boxes, rich editors such as mail and
+  documents, fields inside web components and same-site frames) — inserted at
+  the cursor with a space where needed, through the page's own editing so undo
+  and the site's input handling work;
+- Steed's own fields: the address bar, find bar, and the agent sidebar's
+  message box;
+- anywhere else (or a password field, which is never filled): it is copied and
+  Steed says to paste it with `Ctrl+V`.
+
+Say "new line" or "new paragraph" for breaks (single-line fields get a space).
+
+**Dictation Settings** (same menu) chooses how speech becomes text:
+
+- **On this computer** (default) — private, offline. Choose a model; it is
+  downloaded once from the [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)
+  releases into `~/.custom_browser/dictation-models/`:
+
+  | Model | Size | Good for |
+  | --- | --- | --- |
+  | Moonshine base (default) | 111 MB | English, fast and accurate |
+  | Moonshine tiny | 30 MB | English on slower computers |
+  | Whisper base | 208 MB | ~100 languages (set a language code or leave blank) |
+  | Parakeet 0.6B v3 | 487 MB | Best accuracy, 25 European languages |
+
+  This needs the speech engine package once:
+  `.venv/bin/python -m pip install -r requirements-dictation.txt`.
+  The model runs in a separate process (`dictation_worker.py`) so the browser
+  never stutters; on an i3-1315U, Moonshine base writes down a 4-second
+  sentence in about 0.2 s.
+- **An online service** — anything that accepts OpenAI's
+  `/v1/audio/transcriptions` request: OpenAI (`gpt-4o-mini-transcribe`,
+  `whisper-1`), Groq (`https://api.groq.com/openai/v1/audio/transcriptions`,
+  `whisper-large-v3-turbo`), or your own server (Speaches, LocalAI,
+  whisper.cpp's server; plain `http://` is allowed only for `localhost`). The
+  API key is kept in the desktop keyring (Secret Service), never in Steed's
+  files. Private (search-profile) windows always dictate on this computer.
+- **Off**.
+
+**Test microphone** records four seconds and shows what was heard. Audio is
+only held in memory while you speak and while it is transcribed; nothing is
+saved. Steed uses the system's default microphone (choose it in the desktop's
+sound settings).
+
+Websites' own speech recognition (`SpeechRecognition`) is not available in
+Qt WebEngine — starting it used to end the tab. Sites now get the standard
+"service-not-allowed" error instead and can fall back to typing; use
+`Ctrl+Shift+Space` in their fields.
+
 ## Profiles and stored data
 
 - Ordinary profiles have separate cookies, tabs, and web storage; application preferences are shared
@@ -1600,12 +1659,17 @@ Browser/
 │   ├── connector_policy.py # Exact connector/tool/effect/destination permissions
 │   ├── connector_store.py  # Durable app receipts and interrupted-write recovery
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
+│   ├── dictation.py        # Microphone, model downloads, local/online engines
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
 ├── agent_mcp.py            # Optional stdio/HTTP adapter into the running browser
 ├── requirements-mcp.txt    # Optional official MCP SDK dependency
+├── dictation_worker.py     # On-device speech recognizer process (sherpa-onnx)
+├── requirements-dictation.txt # Optional on-device dictation engine
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
+│   ├── dictation.py       # Push-to-talk, the listening pill, inserting the words
+│   ├── dictation_dialog.py # Dictation Settings: engine, models, service, test
 │   ├── find_bar.py        # Debounced page search and match navigation
 │   ├── tab_strip.py       # Customizable HTML tab strip (web/tabs.*)
 │   ├── cookie_dialog.py   # Cookie viewer

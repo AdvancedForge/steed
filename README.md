@@ -23,6 +23,7 @@ browsing profiles and a built-in password manager.
 - A persistent agent file library: add files once and enable full folder access.
 - Reviewed agent dashboards with forms, reports, images and linked files/account tables.
 - Reusable instruction buttons with a selected agent and message preview.
+- Dictation anywhere (`Ctrl+Shift+Space`), on-device with open models or through a transcription service.
 
 ## Quick start
 
