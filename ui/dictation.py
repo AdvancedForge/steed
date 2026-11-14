@@ -109,10 +109,11 @@ class ListeningPill(QWidget):
         self.levels = [0.0] * 9
         self.state = "listening"
         self.text = ""
+        self.hint = None
         self.hide()
 
-    def show_state(self, state, text=""):
-        self.state, self.text = state, text
+    def show_state(self, state, text="", hint=None):
+        self.state, self.text, self.hint = state, text, hint
         self.place()
         self.show()
         self.raise_()
@@ -162,7 +163,8 @@ class ListeningPill(QWidget):
                 painter.setOpacity(1.0 if index == phase else 0.35)
                 painter.drawEllipse(QRectF(24 + index * 12, 19.5, 7, 7))
             painter.setOpacity(1.0)
-        words = self.text or self.HINTS.get(self.state, "")
+        hint = self.hint if self.hint is not None else self.HINTS.get(self.state, "")
+        words = self.text or hint
         muted = QColor(text)
         if not self.text:
             muted.setAlpha(170)
@@ -196,6 +198,7 @@ class WindowDictation(QObject):
         self.target = None
         self.chosen = {}
         self.key = ""
+        self.problem = ""
         self.live = QTimer(self)
         self.live.setInterval(LIVE_INTERVAL_MS)
         self.live.timeout.connect(self._live_decode)
@@ -216,8 +219,10 @@ class WindowDictation(QObject):
     def message(self, text, timeout=6000):
         self.window.status_bar.showMessage(text, timeout)
 
-    def ready(self):
-        """The chosen engine can run now; otherwise say what is missing."""
+    def ready(self, quiet=False):
+        """The chosen engine can run now; otherwise say what is missing (in
+        self.problem when quiet, for a website's request)."""
+        self.problem = ""
         chosen = dictation.settings(self.window.config)
         if (
             self.window.profile_manager.is_search_profile()
@@ -226,10 +231,15 @@ class WindowDictation(QObject):
             # Private windows never send audio away.
             chosen["engine"] = "local"
         if chosen["engine"] == "off":
-            self.message("Dictation is off. Turn it on in Dictation Settings.")
+            self.problem = "Dictation is off. Turn it on in Dictation Settings."
+            if not quiet:
+                self.message(self.problem)
             return None
         if chosen["engine"] == "local":
             if not dictation.local_available():
+                self.problem = "Set up dictation in Dictation Settings first."
+                if quiet:
+                    return None
                 self.window.open_dictation_settings(
                     "Dictating on this computer needs one more package. Run "
                     ".venv/bin/python -m pip install -r requirements-dictation.txt "
@@ -240,6 +250,9 @@ class WindowDictation(QObject):
                 "models", self.window.config.config_dir / "dictation-models"
             )
             if not models.installed(chosen["model"]):
+                self.problem = "Download a speech model in Dictation Settings first."
+                if quiet:
+                    return None
                 self.window.open_dictation_settings(
                     "Download a speech model first (once), then press "
                     "Ctrl+Shift+Space again."

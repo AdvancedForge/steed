@@ -9,6 +9,15 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Websites' speech recognition — November 13, 2026.** SpeechRecognition and
+webkitSpeechRecognition are answered by Steed's dictation engine: the site's
+microphone permission, standard event order, interim and continuous results,
+pause detection, no-speech/not-allowed/aborted errors, Escape and navigation
+end it; top frames of secure sites only. Checked with tests and a real model
+on a voice-search page; manual check: a real site's voice button with a
+microphone. Next: extension pages (needs a permission origin for
+chrome-extension:// and console routing from popups and backgrounds).
+
 **Dictation — November 13, 2026.** `Ctrl+Shift+Space` push-to-talk
 anywhere in Steed (tap or hold, Escape cancels) with a listening pill showing
 live words; the text goes into the focused page field (inputs, textareas,
@@ -18,9 +27,8 @@ agent message, else the clipboard. Engines: open models on this computer
 downloaded on demand) or any OpenAI-compatible transcription service with the
 key in the keyring. Websites' SpeechRecognition no longer crashes the tab.
 Checked with a real model, real speech audio and the real microphone; manual
-check: dictate with a microphone on the desktop. Next: give websites a
-working SpeechRecognition backed by Steed's dictation (behind the microphone
-permission), and an extension-facing API.
+check: dictate with a microphone on the desktop. Websites' speech
+recognition followed (above).
 
 **Ask your agent from anywhere — November 13, 2026.** Right-click a
 selection, link or page to draft a question to your agent with that context;

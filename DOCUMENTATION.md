@@ -1215,10 +1215,26 @@ only held in memory while you speak and while it is transcribed; nothing is
 saved. Steed uses the system's default microphone (choose it in the desktop's
 sound settings).
 
-Websites' own speech recognition (`SpeechRecognition`) is not available in
-Qt WebEngine — starting it used to end the tab. Sites now get the standard
-"service-not-allowed" error instead and can fall back to typing; use
-`Ctrl+Shift+Space` in their fields.
+**Websites' voice buttons.** Sites that use the browser's speech recognition
+(`SpeechRecognition` / `webkitSpeechRecognition` — voice search, voice notes,
+language apps) work in Steed and use the same engine as your dictation. Qt
+WebEngine has none of its own (starting it used to end the tab), so Steed's
+script answers instead:
+
+- The first time, the site asks for the **microphone** like any other site
+  request; the answer can be remembered in Website Permissions.
+- The pill shows "‹site› is listening…" with the words as they come; `Escape`
+  stops it. Leaving or closing the page ends it.
+- Sites get the standard events and results: interim results when they ask,
+  one phrase ending after a pause, or a final result per phrase in continuous
+  mode until they stop. The page's language goes to an online service.
+- Only the top page of an `https://` site (or `localhost`) is answered; frames
+  inside a page and plain `http://` sites get the standard
+  "service-not-allowed" error, as do sites when dictation is off or not set up
+  (Steed says what to set up). While you dictate with `Ctrl+Shift+Space`,
+  sites get "audio-capture".
+
+Extension pages (popups, options and background pages) don't get this yet.
 
 ## Profiles and stored data
 
@@ -1660,6 +1676,7 @@ Browser/
 │   ├── connector_store.py  # Durable app receipts and interrupted-write recovery
 │   ├── page_inspection.js  # Fixed isolated-world DOM reader and mutation checks
 │   ├── dictation.py        # Microphone, model downloads, local/online engines
+│   ├── web_speech.py       # Page script for websites' SpeechRecognition
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
 ├── agent_mcp.py            # Optional stdio/HTTP adapter into the running browser
@@ -1670,6 +1687,7 @@ Browser/
 │   ├── address_bar.py     # Address bar widget
 │   ├── dictation.py       # Push-to-talk, the listening pill, inserting the words
 │   ├── dictation_dialog.py # Dictation Settings: engine, models, service, test
+│   ├── web_speech.py      # A website's speech recognition session
 │   ├── find_bar.py        # Debounced page search and match navigation
 │   ├── tab_strip.py       # Customizable HTML tab strip (web/tabs.*)
 │   ├── cookie_dialog.py   # Cookie viewer
