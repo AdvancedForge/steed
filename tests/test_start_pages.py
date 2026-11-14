@@ -59,6 +59,12 @@ class StartPageTests(unittest.TestCase):
         return results[0]
 
     def loaded(self, tab):
+        # Steed reloads its pages shortly after a change (coalesced): first
+        # let any such reload start and finish.
+        window = getattr(tab, "browser_window", None)
+        timer = getattr(window, "_steed_pages_timer", None)
+        if timer is not None:
+            self.wait(lambda: not timer.isActive() and not tab.is_loading)
         try:
             self.wait(
                 lambda: (

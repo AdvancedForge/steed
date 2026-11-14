@@ -9,6 +9,19 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**New Tab reload storm fixed — November 14, 2026.** Many open New Tabs
+could reload over and over (a change arriving while tabs loaded asked them
+to reload again after loading; closing any tab reloaded every Steed page).
+Now: photos and their colours update open New Tabs in place (cross-fade,
+nothing typed is lost); Steed's own reloads are coalesced, skip pages that
+began loading after the change, wait for a loading tab, are capped per tab
+and logged (reload_loops.log) if the cap trips; closing a tab reloads only a
+page that lists closed tabs. Open Steed pages (Settings, management pages,
+sidebar, dialogs) take colour and Motion changes live. Settings and the agent
+panel show Steed's horseshoe instead of an "S". Tests: 46 checks of connector
+planning documents removed (the documents stay); fixed waits in the password
+assistant tests kept (they prove something does not happen).
+
 **Lumen round 2 and fixes — November 13, 2026.** Lumen is editable on the
 Style page (Light and page) and through reviewed agent style proposals
 (`lumen`: light strength and colours, card radius/margin/shadow, typeface,

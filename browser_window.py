@@ -1307,8 +1307,31 @@ class BrowserWindow(QMainWindow):
         self.menuBar().setStyleSheet(bars)
         self.status_bar.setStyleSheet(bars)
         self._apply_lumen(colors)
+        self._restyle_surfaces()
         if hasattr(self, "layout_preferences"):
             self._apply_layout_text()
+
+    def _restyle_surfaces(self):
+        """Steed's open HTML parts (pages in tabs, the agent sidebar, dialogs,
+        Settings) take new colours, style and motion now, not when reopened.
+        (Each publishes only if something changed.)"""
+        if getattr(self, "_closing", False):
+            return
+        for tab in getattr(self, "tabs", ()):
+            controller = getattr(tab, "workspace_controller", None)
+            if tab.workspace_name and controller is not None:
+                # Settings names it _publish; the other pages publish.
+                update = getattr(controller, "publish", None) or getattr(
+                    controller, "_publish", None
+                )
+                if update is not None:
+                    update()
+        for host in getattr(self, "_html_dialogs", ()):
+            if not sip.isdeleted(host) and not host.closed:
+                host.publish()
+        sidebar = getattr(self, "agent_sidebar", None)
+        if sidebar is not None and not sip.isdeleted(sidebar):
+            sidebar._publish()
 
     # ---------- Lumen: the page as a card in the light ----------
 
@@ -2544,7 +2567,8 @@ class BrowserWindow(QMainWindow):
         profile_name = self.profile_manager.current_profile_name
         if remember:
             self.closed_tabs.push(profile_name, state, index)
-            self._start_page_changed(profile_name)
+            if self._closed_tabs_shown(profile_name):
+                self._start_page_changed(profile_name)
         self.tab_bar.remove_tab(index)
         self._dispose_tab(tab)
         self.current_tab_index = (
@@ -2586,7 +2610,8 @@ class BrowserWindow(QMainWindow):
             self._sync_tab_group_labels()
             self._save_current_tabs()
         self.restore_tab_action.setEnabled(self.closed_tabs.available(profile))
-        self._start_page_changed(profile)
+        if self._closed_tabs_shown(profile):
+            self._start_page_changed(profile)
 
     def _on_tab_moved(self, from_idx: int, to_idx: int):
         tab = self.tabs.pop(from_idx)
@@ -2693,6 +2718,8 @@ class BrowserWindow(QMainWindow):
         self._refresh_live_control()
         self._update_loading_indicator()
         self._refresh_light()
+        # One card or two (split view): the corners follow once laid out.
+        QTimer.singleShot(0, self._place_card_corners)
 
     def eventFilter(self, watched, event):
         kind = event.type()
@@ -4340,7 +4367,10 @@ class BrowserWindow(QMainWindow):
             self._update_loading_indicator()
 
     def _on_load_started(self, tab):
+        from time import monotonic
+
         tab.is_loading = True
+        tab.load_started_at = monotonic()
         tab.load_progress = 0
         self._clear_crash_panel(tab)
         self._navigation_event(tab, "onBeforeNavigate")
@@ -4716,6 +4746,10 @@ class BrowserWindow(QMainWindow):
                     return
         tab.is_loading = False
         self.tab_bar.set_tab_state(self.tabs.index(tab), loading=False)
+        waiting = getattr(tab, "reload_when_loaded", None)
+        if waiting:  # A reload asked for while it loaded: now, once.
+            tab.reload_when_loaded = None
+            QTimer.singleShot(0, lambda: self._reload_steed_page(tab, waiting))
         tab.load_succeeded = ok
         if ok:
             self._navigation_event(tab, "onDOMContentLoaded")
@@ -6930,28 +6964,55 @@ class BrowserWindow(QMainWindow):
             return WELCOME
         return home
 
+    def _closed_tabs_shown(self, profile):
+        """Whether a Steed page lists recently closed tabs (the classic New
+        Tab's Recent section): only then does closing a tab change a page."""
+        try:
+            settings = self.profile_manager.registry.start_pages.state(profile)[
+                "settings"
+            ]
+        except (OSError, ValueError):
+            return False
+        return settings.get("layout") != "simple" and "recent" in settings.get(
+            "modules", []
+        )
+
     def _start_page_changed(self, profile):
         if self._closing or profile != self.profile_manager.current_profile_name:
             return
         self._refresh_address_sources()
         self.apply_dark_mode()
+        # A burst of changes (a photo, its colours, a style) reloads Steed's
+        # pages once; pages that start loading after it are already current.
+        from time import monotonic
+
+        self._steed_changed_at = monotonic()
+        timer = getattr(self, "_steed_pages_timer", None)
+        if timer is None:
+            timer = self._steed_pages_timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(120)
+            timer.timeout.connect(self._reload_steed_pages)
+        timer.start()
+
+    def _reload_steed_pages(self):
+        if self._closing:
+            return
         for tab in self.tabs:
             if page_name(tab.url()) is not None:
-                self.navigation.navigate(tab, tab.url())  # See _newtab_photo_changed.
+                self._reload_steed_page(tab, "start page changed")
 
     def _newtab_photo_changed(self, first):
-        """The first photo arrived (or one asked for with New photo now): show
-        it on open new tabs. Others wait for the next new tab, so nobody's
-        typing is interrupted. The browser's colours follow the photo."""
+        """A new photo arrived: open New Tabs cross-fade to it in place, and
+        the browser's colours follow it."""
         if self._closing:
             return
         self.apply_dark_mode()
         pages = self.profile_manager.registry.start_pages
         wanted = self.profile_manager.current_profile_name in pages.photo_wanted
-        if not first and not wanted:
-            return
         pages.photo_wanted.discard(self.profile_manager.current_profile_name)
-        self._refresh_newtabs(force=wanted)
+        # In place on every open New Tab: nothing typed or open is lost.
+        self._refresh_newtabs(force=wanted or first)
 
     def _newtab_photo_failed(self, message):
         """New photo now could not reach the photo service."""
@@ -6959,28 +7020,92 @@ class BrowserWindow(QMainWindow):
             self.status_bar.showMessage(message, 8000)
 
     def _refresh_newtabs(self, force=False):
-        """Show New Tab pages again (new picture or layout); without force,
-        leave a tab alone while its menu or panel is open or something is
-        typed in its search box."""
+        """A new picture (or its colours) on open New Tabs: changed in place,
+        cross-fading, never reloaded, so what is typed or open stays.
+        force: also when the tab is not the builtin page (it reloads)."""
+        pages = self.profile_manager.registry.start_pages
+        profile = self.profile_manager.current_profile_name
+        try:
+            css, credit, scrim = pages.live_parts(profile)
+        except (OSError, ValueError):
+            return
+        script = (
+            "(() => { const s = document.getElementById('steed-live');"
+            " const c = document.getElementById('steed-credit');"
+            " if (!s || !c) return false;"
+            f" s.textContent = {json.dumps(css)}; c.innerHTML = {json.dumps(credit)};"
+            f" document.body.classList.toggle('scrim', {json.dumps(bool(scrim))});"
+            " return true; })()"
+        )
         for tab in self.tabs:
             if page_name(tab.url()) != "newtab":
                 continue
-            if force:  # Asked for: the panel reopens where it was (keep_open).
-                self._show_new_photo(tab)
-                continue
             webengine.run_script(
                 tab.page(),
-                "!!document.querySelector('details[open]')"
-                " || !!document.getElementById('query')?.value",
-                lambda busy, tab=tab: busy is not True and self._show_new_photo(tab),
-                world=webengine.PAGE_WORLD,
+                script,
+                lambda done, tab=tab: (
+                    done is True or not force or self._show_new_photo(tab)
+                ),
+                world=webengine.STEED_WORLD,
             )
 
     def _show_new_photo(self, tab):
         if not self._closing and tab in self.tabs and page_name(tab.url()) == "newtab":
-            # Not reload(): a reload during the tab's first load cancels it
-            # and leaves nothing to reload. The same address replaces it.
-            self.navigation.navigate(tab, tab.url())
+            self._reload_steed_page(tab, "photo")
+
+    # Steed reloads its own pages (a layout or setting changed) at most this
+    # often per tab; more is a loop, which is stopped and logged.
+    STEED_RELOADS = (4, 10.0)  # reloads, seconds
+
+    def _reload_steed_page(self, tab, reason):
+        """Show a Steed page again from scratch. A tab still loading waits
+        for that load to end (reloading mid-load is what used to make New
+        Tabs reload over and over), and a runaway is stopped."""
+        from collections import deque
+        from time import monotonic
+
+        if self._closing or sip.isdeleted(tab) or tab not in self.tabs:
+            return
+        changed = getattr(self, "_steed_changed_at", 0.0)
+        if (
+            reason == "start page changed"
+            and getattr(tab, "load_started_at", -1.0) >= changed
+        ):
+            return  # It began loading after the change: it shows it already.
+        if getattr(tab, "is_loading", False):
+            tab.reload_when_loaded = reason
+            return
+        recent = getattr(tab, "steed_reloads", None)
+        if recent is None:
+            recent = tab.steed_reloads = deque(maxlen=self.STEED_RELOADS[0])
+        now = monotonic()
+        if len(recent) == recent.maxlen and now - recent[0] < self.STEED_RELOADS[1]:
+            self._log_reload_loop(tab, reason)
+            return
+        recent.append(now)
+        # Not reload(): a reload during the tab's first load cancels it and
+        # leaves nothing to reload. The same address replaces it.
+        self.navigation.navigate(tab, tab.url())
+
+    def _log_reload_loop(self, tab, reason):
+        """Say once what kept reloading a Steed page, for fixing it."""
+        if getattr(tab, "reload_loop_logged", False):
+            return
+        tab.reload_loop_logged = True
+        import time
+        import traceback
+
+        self.status_bar.showMessage(
+            "Steed stopped reloading this page repeatedly.", 6000
+        )
+        try:
+            with open(self.config.config_dir / "reload_loops.log", "a") as log:
+                log.write(
+                    f"{time.strftime('%Y-%m-%d %H:%M:%S')} {page_name(tab.url())}"
+                    f" ({reason})\n" + "".join(traceback.format_stack(limit=12)) + "\n"
+                )
+        except OSError:
+            pass
 
     def _newtab_photo_action(self, profile, action):
         """Your own photos, a folder, favourites and skipping online ones."""

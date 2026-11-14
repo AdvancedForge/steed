@@ -706,19 +706,57 @@ class StartPages(QObject):
         changes now and then, a colour, or your own image."""
         styles = self.registry.page_style
         dark = styles.dark(profile)
-        background, credit, scrim = self._background(settings, dark)
         menu = newtab_menu() if styles.get(profile)["newtab_menu"] else ""
         private = profile == "search"
         glass = styles.get(profile)["glass"]
         from ui.lumen import level
 
-        css = (
-            SIMPLE_CSS
-            + root_css
-            + background
-            + (GLASS_CSS if glass else "")
-            + LUMEN_CSS
+        css = SIMPLE_CSS + root_css + (GLASS_CSS if glass else "") + LUMEN_CSS
+        live, credit, scrim = self.live_parts(profile, settings)
+        has_menu = bool(menu)
+        in_menu = has_menu and settings["gear_in_menu"]
+        opened = profile in self.keep_open
+        panel = customize_panel(
+            settings,
+            open_=opened,
+            glass=glass,
+            in_menu=in_menu,
+            menu_available=has_menu,
+            photo=self.photos.current(),
         )
+        if in_menu:
+            menu, panel = newtab_menu(panel, open_=opened), ""
+        self.keep_open.discard(profile)
+        return (
+            Template(SIMPLE_PAGE)
+            .substitute(
+                panel=panel,
+                theme="dark" if dark else "light",
+                effects=level(self.registry.config),
+                css=css,
+                live=live,
+                scrim=" ".join(
+                    name for name, on in (("scrim", scrim), ("glass", glass)) if on
+                ),
+                svg=REFRACT_SVG if glass else "",
+                menu=menu,
+                note='<span class="note">Incognito · nothing is saved</span>'
+                if private
+                else "",
+                credit=credit,
+            )
+            .encode()
+        )
+
+    def live_parts(self, profile, settings=None):
+        """What changes on an open New Tab without reloading it: the picture,
+        its credit, and the colours taken from it. (css, credit HTML, scrim)"""
+        if settings is None:
+            settings = self.state(profile)["settings"]
+        styles = self.registry.page_style
+        dark = styles.dark(profile)
+        glass = styles.get(profile)["glass"]
+        css, credit, scrim = self._background(settings, dark)
         if glass and self.canvas and settings["background"] != "color":
             # The picture fills the whole window: the bars show their part of
             # it (frosted), so the page shows it from where it sits.
@@ -744,39 +782,7 @@ class StartPages(QObject):
                     f" --border: {accent}66;"
                     f" --soft: color-mix(in srgb, {accent} 28%, {toolbar}); }}"
                 )
-        has_menu = bool(menu)
-        in_menu = has_menu and settings["gear_in_menu"]
-        opened = profile in self.keep_open
-        panel = customize_panel(
-            settings,
-            open_=opened,
-            glass=glass,
-            in_menu=in_menu,
-            menu_available=has_menu,
-            photo=self.photos.current(),
-        )
-        if in_menu:
-            menu, panel = newtab_menu(panel, open_=opened), ""
-        self.keep_open.discard(profile)
-        return (
-            Template(SIMPLE_PAGE)
-            .substitute(
-                panel=panel,
-                theme="dark" if dark else "light",
-                effects=level(self.registry.config),
-                css=css,
-                scrim=" ".join(
-                    name for name, on in (("scrim", scrim), ("glass", glass)) if on
-                ),
-                svg=REFRACT_SVG if glass else "",
-                menu=menu,
-                note='<span class="note">Incognito · nothing is saved</span>'
-                if private
-                else "",
-                credit=credit,
-            )
-            .encode()
-        )
+        return css, credit, scrim
 
     def theme_tint(self, profile) -> str | None:
         """The colour the browser takes from this profile's new tab background
@@ -1231,6 +1237,7 @@ body { font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif); font-
 .search input { font-weight: 500; }
 .corner .icon, .browser-menu > summary { transition: background-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
 .corner .icon:hover, .browser-menu > summary:hover { transform: scale(1.08); }
+html:not([data-effects=minimal]) body::before { transition: background-image .9s ease; }
 @keyframes mark-in { from { opacity: 0; transform: translateY(18px) scale(.97); letter-spacing: .02em; filter: blur(8px); } }
 @keyframes field-in { from { opacity: 0; transform: translateY(14px) scaleX(.9); } }
 @keyframes fade-in { from { opacity: 0; } }
@@ -1275,13 +1282,14 @@ SIMPLE_PAGE = (
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';'
     " style-src 'unsafe-inline'; img-src data:; form-action steed:; base-uri 'none';"
     " object-src 'none'\">"
-    '<title>New Tab</title><style>$css</style></head><body class="$scrim">$svg'
+    '<title>New Tab</title><style>$css</style><style id="steed-live">$live</style>'
+    '</head><body class="$scrim">$svg'
     '<div class="corner">$panel$menu</div>'
     '<main class="simple"><h1 class="wordmark">Steed</h1>'
     '<form class="search" action="steed://action/search" method="get">'
     '<label class="sr-only" for="query">Search or enter a web address</label>'
     '<input id="query" name="q" autocomplete="off" maxlength="4096" autofocus required>'
-    "</form></main>$credit$note</body></html>"
+    '</form></main><span id="steed-credit">$credit</span>$note</body></html>'
 )
 
 
