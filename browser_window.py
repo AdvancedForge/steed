@@ -1271,7 +1271,9 @@ class BrowserWindow(QMainWindow):
         self.automatic_colors = browser_colors(toolbar, dark, accent, glass)
         colors = browser_colors(toolbar, dark, accent, glass, chosen)
         # Lumen, Steed's look, unless liquid glass (the photo) is chosen.
-        colors["lumen"] = not glass
+        # Lumen: the page as a card; with liquid glass it floats over the
+        # frosted photo instead of the light.
+        colors["lumen"] = True
         from ui import lumen
 
         colors["glide"] = not glass and lumen.level(self.config) != "minimal"
@@ -1352,9 +1354,20 @@ class BrowserWindow(QMainWindow):
         if not hasattr(self, "_card_corners"):
             self._card_corners = []
             self._light_animator = lumen.LightAnimator(self)
-        self._card_shown(on and not getattr(self, "_was_fullscreen", False))
+        # Compact mode is all page (the bars float over it): no card there.
+        compact = getattr(getattr(self, "compact", None), "active", False)
+        self._card_shown(
+            on and not compact and not getattr(self, "_was_fullscreen", False)
+        )
         if not on:
             self.light = None
+            self.tab_bar.set_light(None)
+            self.update()
+            return
+        if colors.get("glass"):
+            # The frosted picture is the backdrop; the tab strip has its own.
+            self._light_animator.goal = None
+            self.light = lumen.Light.flat(colors)
             self.tab_bar.set_light(None)
             self.update()
             return
@@ -1395,7 +1408,11 @@ class BrowserWindow(QMainWindow):
     def _refresh_light(self, animate=True):
         """Light the window in the current site's colour (its icon's), or the
         browser's accent; it flows there unless motion is off."""
-        if not getattr(self, "_lumen", False) or getattr(self, "_closing", False):
+        if (
+            not getattr(self, "_lumen", False)
+            or getattr(self, "_closing", False)
+            or self._shown_colors.get("glass")
+        ):
             return
         from ui import lumen
 
@@ -1539,7 +1556,12 @@ class BrowserWindow(QMainWindow):
         origin = origin or QPointF(0, 0)
         radius = self.card_radius
         shadow = getattr(self, "_lumen_style", {}).get("card_shadow", 100) / 100
-        self.light.paint(painter, rect, self.size(), origin)
+        frosted = getattr(self, "_glass_backdrop", None)
+        if self._shown_colors.get("glass") and frosted is not None:
+            painter.fillRect(rect, QColor(self._shown_colors["toolbar"]))
+            painter.drawImage(rect, frosted, rect.translated(origin))
+        else:
+            self.light.paint(painter, rect, self.size(), origin)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setClipRect(rect)
@@ -1676,6 +1698,9 @@ class BrowserWindow(QMainWindow):
             "toolbar": place(self.address_bar),
         }
         regions = {name: rect for name, rect in regions.items() if rect is not None}
+        # Lumen: the whole window behind the page card (its margins and
+        # corners show the same frosted picture as the bars).
+        regions["window"] = QRect(0, 0, width, height)
         # The New Tab page shifts its picture by where it starts.
         canvas = (content.x(), content.y(), width, height)
         if pages.canvas != canvas:
@@ -1690,8 +1715,10 @@ class BrowserWindow(QMainWindow):
             dark,
         )
         if getattr(self, "_frost_cache", (None,))[0] == key:
+            self._glass_backdrop = self._frost_cache[2]
             return self._frost_cache[1]
         pieces = glass_canvas(found[1], width, height, regions, dark, ("toolbar",))
+        self._glass_backdrop = pieces.get("window")
         folder = self.config.config_dir / "frost"
         folder.mkdir(parents=True, exist_ok=True)
         name = hashlib.sha1(repr(key).encode()).hexdigest()[:16]
@@ -1713,7 +1740,7 @@ class BrowserWindow(QMainWindow):
         for old in folder.glob("*.png"):
             if name not in old.name:
                 old.unlink(missing_ok=True)
-        self._frost_cache = (key, result)
+        self._frost_cache = (key, result, self._glass_backdrop)
         return result
 
     # ---------- Manual layout ----------
