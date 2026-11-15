@@ -86,8 +86,12 @@ class WindowTests(unittest.TestCase):
 
     def test_a_listed_page_is_stopped_with_a_way_back_and_a_way_on(self):
         self.tab.setUrl(QUrl("https://bank-login.test/signin"))
-        self.wait(lambda: self.tab.title() == "Dangerous site")
-        self.assertEqual(self.tab.url().toString(), "steed://safety/warning")
+        self.wait(
+            lambda: (
+                self.tab.title() == "Dangerous site"
+                and self.tab.url().toString() == "steed://safety/warning"
+            )
+        )
         html = []
         self.tab.page().toHtml(html.append)
         self.wait(lambda: html)
