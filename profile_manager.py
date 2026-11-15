@@ -88,6 +88,16 @@ class ProfileRegistry(QObject):
         self.downloads = DownloadManager(
             config, self, destination_picker=choose_download_destination
         )
+        from services.safe_browsing import SafeBrowsing
+
+        self.safe_browsing = SafeBrowsing(config, self)
+        self.downloads.checker = self.safe_browsing.check
+        from services import updates
+
+        self.updates = updates.Updates(config, self, project=updates.PROJECT)
+        import download_manager
+
+        self.downloads.confirm_program = download_manager.confirm_program
         self.passwords = PasswordService(config, self)
         from passkeys import Passkeys
 
@@ -173,6 +183,7 @@ class ProfileRegistry(QObject):
         self.downloads.attach(profile, "search")
         self.adblock.attach(profile)
         self.search_profile = profile
+        self._spell_profile(profile)
         self.prepare_inspection("search", profile)
 
     def reset_search_profile(self):
@@ -281,6 +292,33 @@ class ProfileRegistry(QObject):
                     self._tasks.changed.connect(window._refresh_auto_approval)
                     window._refresh_auto_approval()
         return self._tasks
+
+    @property
+    def spellcheck(self):
+        """Spell check dictionaries and switching (services.spellcheck)."""
+        if getattr(self, "_spellcheck", None) is None:
+            from services.spellcheck import Spellcheck
+
+            self._spellcheck = Spellcheck(self)
+            self._spellcheck.ready.connect(lambda _: self.apply_spellcheck())
+        return self._spellcheck
+
+    def apply_spellcheck(self):
+        """Every profile, as Settings → General → Spell check says; a missing
+        dictionary is downloaded first (then applied)."""
+        from services.spellcheck import installed
+
+        language = self.config.get("spellcheck_language", "") or ""
+        profiles = [*self.profiles.values()]
+        if getattr(self, "search_profile", None) is not None:
+            profiles.append(self.search_profile)
+        self.spellcheck.apply(profiles, language)
+        if (
+            language
+            and not installed(language, self.spellcheck.where)
+            and self.spellcheck.wanted != language
+        ):
+            self.spellcheck.fetch(language)
 
     @property
     def watches(self):
@@ -492,6 +530,7 @@ class ProfileRegistry(QObject):
         if override:
             profile.setHttpUserAgent(override)
         self.profiles[name] = profile
+        self._spell_profile(profile)
         self.passwords.install(profile)
         self.passkeys.install(profile)
         from services import web_speech
@@ -613,6 +652,14 @@ class ProfileRegistry(QObject):
         if snapshot is not None:
             QTimer.singleShot(SNAPSHOT_SETTLE_MS, snapshot.refresh)
 
+    def _spell_profile(self, profile):
+        from services.spellcheck import folder, installed
+
+        language = self.config.get("spellcheck_language", "") or ""
+        if language and installed(language, folder()):
+            profile.setSpellCheckEnabled(True)
+            profile.setSpellCheckLanguages([language])
+
     def get(self, name):
         if name == "search":
             return self.search_profile
@@ -680,6 +727,8 @@ class ProfileRegistry(QObject):
         self.sharing.closed = True
         if self._watches is not None:
             self._watches.close()  # Its page goes before the profiles.
+        self.safe_browsing.close()
+        self.updates.close()
         if self._app_connections is not None:
             self._app_connections.close()
         if self._tasks is not None:

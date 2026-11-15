@@ -145,7 +145,12 @@ class BrowserTests(unittest.TestCase):
         self.assertIn(self.window.reload_action, menus["Tabs"].actions())
         self.assertIn(self.window.find_action, menus["View"].actions())
         self.assertIn(self.window.agent_sidebar_action, menus["Agents"].actions())
-        self.assertIn(self.window.file_library_action, menus["Agents"].actions())
+        setup = next(
+            a.menu()
+            for a in menus["Agents"].actions()
+            if a.text() == "Access and Setup"
+        )
+        self.assertIn(self.window.file_library_action, setup.actions())
         profiles = menus["Profile"]
         self.assertIn(
             self.window.profile_shortcuts_menu.menuAction(), profiles.actions()

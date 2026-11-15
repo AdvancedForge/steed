@@ -10,7 +10,7 @@ from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 from utils import load_json, save_json
 
 logger = logging.getLogger(__name__)
-HISTORY_LIMIT = 1000
+HISTORY_LIMIT = 10000  # Months of browsing; one entry per page.
 
 
 @dataclass(frozen=True)

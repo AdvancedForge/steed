@@ -12,7 +12,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-MAX_HISTORY = 1000
+MAX_HISTORY = 10000
 MAX_TABS = 200
 # (browser name, configuration folder below the home folder)
 CHROMIUM_FAMILY = (

@@ -6,6 +6,15 @@ import os
 from pathlib import Path
 
 
+def icon(project: Path) -> str:
+    """Steed's own icon when the checkout has it, else the generic one."""
+    found = project / "ui" / "assets" / "steed.svg"
+    text = str(found)
+    if found.is_file() and not any(c in text for c in "\n\r"):
+        return text
+    return "web-browser"
+
+
 def desktop_entry(project: Path) -> str:
     launcher = str(project / "steed")
     if any(character in launcher for character in "\n\r="):
@@ -25,9 +34,11 @@ def desktop_entry(project: Path) -> str:
         "Name=Steed\n"
         "Comment=Browse the web with separate profiles and built-in passwords\n"
         f'Exec="{argument}" %U\n'
-        "Icon=web-browser\n"
+        f"Icon={icon(project)}\n"
         "Terminal=false\n"
         "Categories=Network;WebBrowser;\n"
+        "MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;"
+        "application/xhtml+xml;\n"
         "Keywords=browser;web;internet;\n"
         "StartupNotify=false\n"
     )

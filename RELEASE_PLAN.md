@@ -33,7 +33,7 @@ agents can directly control Steed after sign-in alone.
 
 - Browser essentials: profiles/incognito, navigation, history suggestions,
   session/group restoration, downloads, ad blocking, find, zoom, website
-  permissions, KeePassXC integration and a terminal-free checkout launcher.
+  permissions, the built-in password vault and a terminal-free checkout launcher.
 - Agent infrastructure: local authenticated MCP transports, scoped task grants
   and remembered choices, native Codex conversations, explicit live-tab sharing,
   Take Back, bounded DOM reads/native actions and separately approved viewport
@@ -124,9 +124,9 @@ checks with no unexplained data-loss, shutdown or recurring startup failure.
   access. Provide useful network/certificate/renderer error and recovery UI.
 - Test adblock list updates/errors, cosmetic rules, exceptions and performance
   on representative sites. Confirm find/zoom/history and password fill in real use.
-- Support OS-opened HTTP/HTTPS URLs and a default-browser registration flow if
-  claiming use as a main browser. The current launcher does not forward URLs into
-  an existing instance; the process lock currently only rejects a second launch.
+- OS-opened HTTP/HTTPS URLs and local files reach the running instance, and
+  Settings → General registers Steed as the default browser (done; needs a
+  check on GNOME, KDE and a minimal window manager).
 
 Acceptance: a published compatibility matrix and complete ordinary-user journeys,
 with unsupported behavior honestly surfaced. Avoid claiming every site works.
@@ -219,7 +219,7 @@ maintainers can reproduce, fix and distribute an urgent problem.
 2. **Everyday completeness:** bookmarks and import/export, external URL handling,
    default-browser flow and usable browser-data migration. Decide which print/PDF,
    per-site zoom, broader accessibility and other daily workflows are supported.
-3. **Passwords:** finish real KeePassXC acceptance and reliable failure feedback.
+3. **Passwords:** finish real-site acceptance of the built-in vault and reliable failure feedback.
    Advanced save/update, frames, TOTP/passkeys remain deferred; either implement
    required stable workflows later or publish a clear supported subset. Generic
    extensions/Bitwarden should remain unadvertised until their engine crash and

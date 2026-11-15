@@ -42,7 +42,16 @@ for current progress and remaining work.
 
 Requires Python 3.10 or later and a graphical desktop session. Dependencies use PyQt6 and PyQt6-WebEngine 6.11.0 with Qt 6.11.x. Linux x86-64 wheels require glibc 2.34 or later; ARM64 wheels require glibc 2.39 or later.
 
-From the project directory, create a virtual environment if one does not already exist:
+The quickest way, from the project directory:
+
+```bash
+./install.sh             # .venv, packages, and Steed in your applications menu
+./install.sh --default   # the same, and Steed becomes your default browser
+./install.sh --update    # later: the newest Steed (git pull), then the same
+```
+
+Nothing is installed outside the folder except the menu entry. Or do the same by
+hand: create a virtual environment if one does not already exist:
 
 ```bash
 python3 -m venv .venv
@@ -81,9 +90,17 @@ from the new location. To remove the menu entry, delete `steed.desktop` from
 
 Launching Steed again while it is running opens a new window in the running
 browser instead of a second copy; `./steed https://example.org` opens the link
-as a tab in the most recently used window. Only HTTP/HTTPS addresses are passed
-on, through a private socket in your runtime directory. Run the installer again
-to add link arguments (`%U`) to an existing menu entry. If the running browser
+as a tab in the most recently used window, and `./steed page.html` opens a
+local file. Only HTTP/HTTPS addresses and existing local pages, PDFs, images
+and text files are passed on,
+through a private socket in your runtime directory.
+
+**Default browser.** Settings → General → **Make Steed your default browser**
+registers Steed's menu entry for web links and HTML files (writing it first if
+needed) and makes it the default with `xdg-settings` (or `xdg-mime` where the
+desktop has no `xdg-settings`). Links from other apps, and HTML files opened
+from a file manager, then open in Steed. The menu entry uses Steed's own icon
+(`ui/assets/steed.svg`). If the running browser
 does not answer within two seconds, a warning is shown instead.
 
 ### Graphics troubleshooting
@@ -169,6 +186,15 @@ storage, built-in AI). Each missing one says why: newer than this engine (a Qt
 WebEngine upgrade brings it), left out of Qt WebEngine on Linux (an upgrade will
 not), or missing from the PyPI engine (`build_codecs.py`). **Check again**
 repeats the test, for example after swapping the engine and restarting.
+
+### Knowing about updates
+
+Once a day (Settings → General → **Check for updates**, on by default) Steed
+runs `git fetch` in its folder and asks PyPI for the newest Qt WebEngine. If
+there is something new, the status bar says so once, and `steed:features` →
+**Updates** shows it (with **Check now**). Nothing is installed by itself:
+`./install.sh --update` brings the newest Steed, and the engine is upgraded as
+below. The check sends nothing about your browsing.
 
 ### Upgrading Qt WebEngine
 
@@ -303,6 +329,12 @@ Bookmarks** searches names/addresses/folders, filters by folder, and edits names
 addresses and folder labels while preserving bookmark IDs. Type a new folder name
 when saving/editing; an empty folder means Unfiled. Changes from another window
 refresh the manager. New Tab shows the first 24 bookmarks with **Manage all**.
+
+**Bookmarks bar.** View → **Bookmarks Bar** (`Ctrl+Shift+B`) shows your
+bookmarks under the toolbar in every window, in the order you keep them; a
+folder is one button that opens its bookmarks, and what does not fit goes
+under **»**. Click opens in the current tab, middle-click or `Ctrl`+click in a
+new one. Off until you turn it on; incognito windows show none.
 Press **Ctrl+Shift+O** to open the manager directly.
 Type in its search field and press **Enter** to open the first matching bookmark;
 the current folder filter applies. If nothing matches, the manager stays open.
@@ -312,7 +344,7 @@ Select a bookmark and click **Open**, or double-click it, to open a new tab in
 the current profile. Use **Edit…** to change its details. If the profile has
 changed while the manager was open, reopen the manager before opening a link.
 
-**Import HTML…** merges a UTF-8 browser bookmark export (up to 8 MiB and 2,000
+**Import HTML…** merges a UTF-8 browser bookmark export (up to 8 MiB and 10,000
 entries per profile). Existing links keep their names/folders; duplicate and invalid
 links are counted. Only HTTP(S) addresses without embedded credentials are accepted.
 HTML is parsed as inert data; scripts and external entities are never executed or
@@ -383,6 +415,10 @@ There is no general-purpose HTML app capability bridge in this milestone.
 ### Keyboard Shortcuts
 
 - `Ctrl+T`: New tab
+- `Ctrl+N`: New window (of the current profile); `Ctrl+Shift+N`: incognito window
+- `Ctrl+P`: Print the page (a page's own Print button opens the same dialog)
+- `F11`: Full screen
+- `Ctrl+U`: The page's source, in a new tab
 - `Ctrl+W`: Close current tab; closing a window's last tab closes the window (and
   quits Steed if it was the last one, keeping its tabs for next start)
 - `Alt+Left` / `Alt+Right`, or the mouse's back/forward side buttons: Back / Forward
@@ -406,7 +442,8 @@ There is no general-purpose HTML app capability bridge in this milestone.
 - `Ctrl+Shift+Space`: Dictate — tap to start and again to finish, or hold while
   talking; `Escape` cancels ([Dictation](#dictation))
 - `Ctrl+,`: Settings
-- `Ctrl+Q`: Close the window
+- `Ctrl+Shift+W`: Close the window
+- `Ctrl+Q`: Quit Steed (every window saves its tabs first)
 
 ### Menu Options
 
@@ -605,6 +642,15 @@ Settings → General:
   HTTPS, Steed loads it unencrypted after all (the status bar says so) and
   remembers the site until it quits. Local addresses, IP addresses and
   addresses with a port are left alone.
+- **Warn about dangerous sites** (on, Settings → General): pages on public
+  lists of phishing sites (OpenPhish, PhishTank and others) and sites that have
+  recently served malware (abuse.ch URLhaus), from the
+  [malware-filter](https://gitlab.com/malware-filter) project, are stopped with
+  a warning page: **Go back**, or **Visit this site anyway** (until Steed quits).
+  Downloads from them are refused. The lists are downloaded whole about twice a
+  day into `~/.custom_browser/safe_browsing/`, so checking a page sends nothing
+  anywhere. This is not Google Safe Browsing: new phishing sites can take hours
+  to be listed.
 - **Resist fingerprinting** (off): pages see common hardware values (4 cores,
   8 GB, no plugins), a generic graphics card name, and canvas images with tiny
   changes (stable for a site until Steed quits), so they cannot recognize this
@@ -641,6 +687,12 @@ Chromium could read as something wider: clearing the malformed origin
 `https://www.127.0.0.1` was measured to clear another site's storage too.
 
 ### Saving pages
+
+**General → Print…** (Ctrl+P) opens the system print dialog (printers, page
+range, and Print to File for a PDF); a page's own Print button opens the same
+dialog. Right-click a selection → **Search … for "…"** searches it with your
+search engine in a tab beside the page; **Open Link in New Window** opens a real
+window.
 
 **View → Save Page As…** (Ctrl+S) saves the page as one file (`.mhtml`, with
 its images and styles, opened again by Steed or Chrome), as HTML with a folder
@@ -827,7 +879,7 @@ space). **Complete addresses as you type** in Settings turns it off.
 Edge, Vivaldi and Firefox profiles on this computer (including Snap and Flatpak
 installs, by each browser's own profile names) and imports into the current
 profile: **bookmarks** (top folders become labels; existing addresses are
-skipped; the 2,000-bookmark limit applies), **history** (the latest 1,000 web
+skipped; the 10,000-bookmark limit applies), **history** (the latest 10,000 web
 pages) and, from Firefox, **open tabs**, which become a saved group "Open tabs
 from Firefox" (Tabs → Saved Groups). Chromium keeps open tabs in an
 undocumented binary format, so they are not imported. Steed reads copies of the
@@ -1180,13 +1232,24 @@ switching profiles clears the query. Searches refresh after page navigation.
 
 Zoom applies to the active tab, from 25% to 500%. Use the View menu or the
 shortcuts above. The percentage beside the address bar resets zoom when clicked.
-New tabs start at 100%; zoom levels are not saved across restart.
+Each site keeps its zoom (in the profile's `site_settings.json`, so it lasts
+across restarts; incognito forgets it); a page with no zoom of its own opens at
+100%.
+
+### Spell check
+
+Settings → General → **Spell check**: choose a language and Steed downloads
+its dictionary once from Chromium's dictionary repository (under 2 MB, into
+`~/.custom_browser/dictionaries/`); misspelled words in text fields are then
+underlined in every profile, and right-clicking one offers corrections at the
+top of the menu. Off by default (no download until you choose). What you type
+is checked on this computer only.
 
 ### Address Suggestions
 
 Type part of a visited URL or page title in the address bar, choose a suggestion
 with the arrow keys, and press Enter. Clicking a suggestion also opens it.
-Successful HTTP/HTTPS visits are stored newest first, with up to 1,000 unique
+Successful HTTP/HTTPS visits are stored newest first, with up to 10,000 unique
 URLs per profile. Ordinary profile history survives restarts and is shared by
 windows using that profile. Incognito suggestions stay in memory and do not
 include ordinary profile history. Local files and URLs containing embedded
@@ -1520,6 +1583,10 @@ Existing profiles are migrated conservatively: pre-existing cookies remain local
 
 Open **General → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history.
 
+Files that run programs when opened (`.AppImage`, `.sh`, `.deb`, `.rpm`, `.run`,
+`.desktop`, `.jar`, `.exe` and others) are saved only after you choose **Save**
+in a warning; downloads from sites on the dangerous-site lists are refused.
+
 While anything downloads, a **↓ 42%** button in the address bar shows overall
 progress (or **↓ …** while sizes are unknown) and opens Downloads; it reads
 **↓ Done** for 30 seconds after the last one finishes, and the status bar names
@@ -1573,6 +1640,9 @@ connection setup; opening them does not grant browser access.
 
 Choose **Save changes** to apply the preference draft, or **Cancel** to discard it.
 Dark appearance previews inside settings first; Save updates open browser windows.
+**Dark websites** (Settings → View) shows websites dark even when they have no
+dark look of their own (Chromium's automatic dark mode); open tabs change when
+you save.
 Independent changes from another settings window are merged. If the same setting
 was changed to a different value, Save stops and keeps the draft; **Reload saved
 values** explicitly discards preference edits and reloads saved values.

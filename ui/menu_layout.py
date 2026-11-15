@@ -6,9 +6,11 @@ them. Anything not named here keeps its place at the end, before Exit.
 """
 
 from PyQt6 import sip
+from PyQt6.QtWidgets import QMenu
 
 GROUPS = {
     "general": (
+        ("Print…",),
         ("Settings…", "Customize New Tab…", "Layout Settings…"),
         ("Passwords…", "Fill Login", "Downloads…", "Dictation", "Extensions"),
         (
@@ -28,7 +30,13 @@ GROUPS = {
         ),
     ),
     "tabs": (
-        ("New Tab", "Restore Closed Tab", "Reopen Closed Window", "Close Tab"),
+        (
+            "New Tab",
+            "New Window",
+            "Restore Closed Tab",
+            "Reopen Closed Window",
+            "Close Tab",
+        ),
         ("Back", "Forward", "Reload", "Home"),
         ("Next Tab", "Previous Tab"),
         ("Tab Groups", "Saved Groups", "Save All Tabs as Group…", "Session History…"),
@@ -54,6 +62,7 @@ GROUPS = {
             "Play or Pause Media",
             "Mini Player",
         ),
+        ("Full Screen", "Bookmarks Bar", "View Page Source"),
         ("Save Page As…", "Take Screenshot", "Close Split View", "App Panel"),
         (
             "Page Style…",
@@ -68,17 +77,27 @@ GROUPS = {
         ("Memory & Performance…", "Engine & Features…", "Developer Tools"),
     ),
     "agents": (
-        ("Agent Sidebar", "Agent Chat Tab", "Data Panels", "Watches…", "Website Chats"),
-        (
-            "Access & Permissions…",
-            "Task Permissions…",
-            "App Connections…",
-            "Agent File Library…",
-        ),
-        ("Enable Local Agent Access", "Agent Connection Setup…"),
+        ("Agent Sidebar", "Agent Chat Tab", "Watches…", "Website Chats", "Data Panels"),
     ),
 }
-LAST = ("Exit",)
+# Items gathered into a sub-menu at the end: what sets agents up and what
+# they may do, out of the way of everyday use.
+SUBMENUS = {
+    "agents": (
+        "Access and Setup",
+        (
+            ("Agent Connection Setup…", "Enable Local Agent Access"),
+            (
+                "Access & Permissions…",
+                "Task Permissions…",
+                "App Connections…",
+                "Agent File Library…",
+            ),
+            ("Approve All Agent Requests (unsafe)",),
+        ),
+    ),
+}
+LAST = ("Close Window", "Quit Steed")
 
 # Icons (drawn in menu.js) for the items people look for.
 ICONS = {
@@ -97,6 +116,10 @@ ICONS = {
     "Organize Tabs with Agent…": "spark",
     "Compare Tabs with Agent…": "columns",
     "Settings…": "gear",
+    "Print…": "print",
+    "New Window": "window",
+    "Full Screen": "expand",
+    "Bookmarks Bar": "bookmarks",
     "Customize New Tab…": "brush",
     "Layout Settings…": "layout",
     "Passwords…": "key",
@@ -107,7 +130,7 @@ ICONS = {
     "Ad Blocking…": "shield",
     "Website Permissions…": "lock",
     "Clear Browsing Data…": "trash",
-    "Exit": "exit",
+    "Quit Steed": "exit",
     "Find in Page…": "search",
     "Command Palette…": "command",
     "Zoom In": "zoom-in",
@@ -123,6 +146,7 @@ ICONS = {
     "Watches…": "eye",
     "Website Chats": "chat",
     "Access & Permissions…": "lock",
+    "Access and Setup": "gear",
     "New Profile…": "user",
     "Switch Profile…": "users",
     "Browsing History…": "clock",
@@ -152,9 +176,21 @@ def arrange(menus):
             if members:
                 ordered.append(members)
                 placed.update(id(a) for a in members)
+        sub = None
+        if name in SUBMENUS:
+            title, sub_groups = SUBMENUS[name]
+            sub = QMenu(title, menu)
+            for index, group in enumerate(sub_groups):
+                members = [by_label[text] for text in group if text in by_label]
+                if members and index and sub.actions():
+                    sub.addSeparator()
+                sub.addActions(members)
+                placed.update(id(a) for a in members)
         rest = [a for a in actions if id(a) not in placed and label(a) not in LAST]
         last = [a for a in actions if id(a) not in placed and label(a) in LAST]
         ordered += [group for group in (rest, last) if group]
+        if sub is not None and sub.actions():
+            ordered.append([sub.menuAction()])
         for action in menu.actions():
             menu.removeAction(action)
         for index, group in enumerate(ordered):

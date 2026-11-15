@@ -979,7 +979,8 @@ def welcome_steps(background, glass):
         )
         + '</div><div class="actions"><a class="button" href="#bring">Next</a></div></section>'
         '<section id="bring" class="step"><h1>Bring your things.</h1>'
-        "<p>Bookmarks, history and passwords from another browser.</p>"
+        "<p>Bookmarks and history from another browser, and your passwords "
+        "from a file you export there.</p>"
         '<div class="actions"><a class="button" href="steed://action/import">Import…</a>'
         '<a class="button secondary" href="#agent">Not now</a></div></section>'
         '<section id="agent" class="step"><h1>Meet your agent.</h1>'

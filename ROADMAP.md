@@ -9,6 +9,21 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Everyday basics and trust — November 14, 2026.** After an audit of what
+would put people off Steed: printing (Ctrl+P and pages' Print buttons), New
+Window (Ctrl+N), Quit (Ctrl+Q quits; Ctrl+Shift+W closes a window), full
+screen (F11), page source (Ctrl+U), links' "new window" opening one, Search
+for a selection, dark websites, a bookmarks bar, spell check with Chromium's
+dictionaries, warnings for phishing and malware sites (public lists, nothing
+sent) and for downloads that run programs, history and bookmarks up to
+10,000, default-browser registration and local files from other apps,
+`install.sh` (install, update, default), daily update checks for Steed and the
+engine, protected streaming with an existing Widevine module (Chrome,
+Chromium or Firefox), Steed's own icon, honest import and welcome wording, an
+Agents menu with setup under Access and Setup, and a README for everyday use
+first. Manual checks: printing to a real printer, default browser on GNOME
+and KDE, Netflix in Steed, spell check underlining on a real site.
+
 **Watches — November 14, 2026.** Right-click a page or selection → Watch This
 with Agent: Steed checks it in the background (the profile's sign-ins, a
 hidden muted page), compares the text of the chosen part, and when it changed

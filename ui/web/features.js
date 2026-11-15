@@ -13,11 +13,18 @@ const CODECS = {
   pypi: ['Without H.264/AAC', 'This is the PyPI engine, which cannot play H.264 video or AAC audio, so many MP4 videos and GIFs do not play. Run .venv/bin/python build_codecs.py check to add them.'],
   replaced: ['Codec build replaced', 'A Python package update put back the engine without H.264/AAC. Run .venv/bin/python build_codecs.py install (or build, for a new version), then restart Steed.'],
 };
+const DRM = {
+  chrome: ['Available', ''],
+  firefox: ['Available', ''],
+  '': ['Not available', 'Netflix, Spotify, Disney+ and other protected video need Google\'s Widevine module, which Steed cannot include. Install Google Chrome, Chromium or Firefox and play one protected video there once; Steed then uses the same module after a restart.'],
+};
 function engine(data) {
   const [label, advice] = CODECS[data.codecs] || CODECS.pypi;
+  const [drm, drmAdvice] = DRM[data.drm] || DRM[''];
   $('engine').replaceChildren(stat(data.qt, 'Qt WebEngine'), stat(data.chromium, 'Chromium features'),
-    stat(data.security, 'Chromium security fixes'), stat(label, 'Video codecs'));
-  $('codecs').textContent = advice; $('codecs').hidden = !advice;
+    stat(data.security, 'Chromium security fixes'), stat(label, 'Video codecs'), stat(drm, 'Protected streaming'));
+  const notes = [advice, drmAdvice].filter(Boolean).join(' ');
+  $('codecs').textContent = notes; $('codecs').hidden = !notes;
 }
 function features(list) {
   const target = $('features'); target.replaceChildren();
@@ -49,7 +56,10 @@ window.steedUI = {render(next) {
   document.documentElement.dataset.theme = next.dark ? 'dark' : 'light';
   engine(next.engine); features(next.features);
   $('check').disabled = next.checking;
+  const u = next.updates || {};
+  $('updates').textContent = u.summary || (u.error ? u.error : u.checked ? 'Steed and its engine are up to date.' : u.enabled ? 'Checked once a day.' : 'Update checks are off (Settings → General).');
   return true;
 }};
 $('check').onclick = () => command('check');
+$('check-updates').onclick = () => command('updates');
 new QWebChannel(qt.webChannelTransport, channel => { bridge = channel.objects.interface; bridge.ready(STEED_GENERATION); });

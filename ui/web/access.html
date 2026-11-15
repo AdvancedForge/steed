@@ -5,7 +5,7 @@
 <body><main class="access-shell">
 <header><span class="eyebrow">STEED:ACCESS</span><h1>Access &amp; permissions</h1><p>Choose how much agents and your own pages may do: nothing, ask each time, or everything — or set each capability yourself.</p></header>
 <div id="error" role="alert" hidden></div><div id="notice" role="status" hidden></div>
-<p id="yolo" class="warning" role="status" hidden>YOLO mode is on for this browser run (Agents menu): every agent request is approved, except capabilities set to Never here.</p>
+<p id="yolo" class="warning" role="status" hidden>Approve All Agent Requests is on for this browser run (Agents → Access and Setup): every agent request is approved, except capabilities set to Never here.</p>
 <div id="areas"></div>
 <section><h2>For page authors</h2><pre class="code">// In your custom New Tab page (Customize New Tab → HTML)
 const tabs = await (await fetch("steed://newtab/api/tabs")).json();

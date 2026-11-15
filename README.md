@@ -1,85 +1,60 @@
 # Steed
 
-A Python desktop browser built with PyQt6 and Qt WebEngine. Originally developed
-for a Framework 12 laptop, Steed currently targets Linux desktop use with separate
-browsing profiles and a built-in password manager.
+A browser for every day that can become whatever you need.
 
-## Highlights
+Steed is a Linux desktop browser (Python, PyQt6 and Qt WebEngine). Out of the
+box it is a calm, ordinary browser: tabs, profiles, passwords, bookmarks,
+history. Underneath it is a sandbox. Restyle every page, rearrange the browser,
+add your own scripts and panel apps, and, if AI is part of how you work, bring
+your agent into the browser to watch pages, sort tabs, compare products, fill
+in forms and run whole workflows, always with your approval. Nothing of that
+is in your way until you go looking for it.
 
-- Separate profiles and an incognito search profile.
-- Global starts fresh installs; Welcome and editable HTML New Tab pages are built in.
-- Searchable profile bookmarks with folders and HTML import/export.
-- Start-page sections, background images and optional news feeds.
-- Saved tab sessions, tab groups, and recently closed tab restoration.
-- Address suggestions from per-profile browsing history.
-- Find in page with match counts and per-tab page zoom.
-- Cookie controls, a global-cookie baseline, downloads, and ad blocking.
-- A built-in password manager: save prompts, autofill (including embedded frames), one-time codes, a generator and CSV import.
-- A desktop launcher, HTML settings/profile workspace, dark mode, and familiar shortcuts.
-- `steed:style` for shared page CSS, profile themes, hidden bars and loading progress.
-- HTML agent chats in a sidebar or tab, private live browsing, takeover and Take Back.
-- A reviewed JSON chatbot relay, with manual exchange or an explicitly enabled chat tab.
-- Screenshot-guided browser click/type/key and optional unsafe agent auto-approval.
-- A persistent agent file library: add files once and enable full folder access.
-- Reviewed agent dashboards with forms, reports, images and linked files/account tables.
-- Reusable instruction buttons with a selected agent and message preview.
-- Lumen, Steed's look: the page as a card in light that takes each site's colour, with motion throughout (Settings → View → Motion and light).
-- Dictation anywhere (`Ctrl+Shift+Space`), on-device with open models or through a transcription service.
+## Everyday browsing
+
+- Profiles kept apart, an incognito profile, and per-site permissions.
+- Tab groups, saved groups, session history, sleeping tabs, split view.
+- A built-in password manager (encrypted vault, generator, breach check,
+  passkeys) and bookmark, history and password import.
+- Printing, spell check, a bookmarks bar, reader view, translation, dictation
+  (`Ctrl+Shift+Space`), dark websites, ad and tracker blocking, warnings for
+  phishing and malware sites, Chrome (Manifest V3) extensions.
+
+## Make it yours
+
+- Lumen, Steed's look: the page floats in light that takes each site's colour.
+  Motion, light, fonts, corners and colours are all settings.
+- `steed:style` for themes and CSS on any site; user scripts and panel apps;
+  editable New Tab and Welcome pages; a rearrangeable toolbar and menus.
+
+## Bring your AI
+
+- An agent sidebar for Claude Code, Codex or any Agent Client Protocol agent,
+  and local MCP access for other clients.
+- Ask about a page or selection, watch a page and act when it changes,
+  organize or compare tabs, hand a tab to your agent and take it back.
+- You review what agents ask to do and choose what each may do (or, for agents
+  you trust, let Steed approve for you).
 
 ## Quick start
 
-Requires Python 3.10+ and a graphical desktop. From the project directory:
+Requires Python 3.10+ and a Linux desktop. From the project directory:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-./steed
+./install.sh            # or ./install.sh --default to make it your default browser
 ```
 
-To launch from your Linux applications menu without keeping a terminal open:
+Then open Steed from your applications menu (or run `./steed`). Later,
+`./install.sh --update` brings the newest version; Steed tells you when there
+is one.
 
-```bash
-.venv/bin/python install_launcher.py
-```
+## Good to know
 
-Then open **Steed** from the applications menu. Passwords are kept in Steed's own
-encrypted vault; see [Passwords](DOCUMENTATION.md#passwords).
-
-## Project status and documentation
-
-Browser essentials are implemented and covered by automated checks. Remaining
-manual checks are tracked in the roadmap; the user has authorized proceeding.
-Optional local MCP access over stdio or authenticated HTTP lets external agents
-browse approved sites alongside your tabs, with task permissions, watch/handoff,
-file transfers and retained drafts/receipts. Agent-built Python packages can generate
-attachments and compose approved app tools in an isolated local worker after
-exact-package/environment approval. An optional document bundle adds PDF, XLSX and
-image generation. Users share selected input files and export results from
-Task Permissions. Explicitly delegated live tabs keep normal website scripts and
-page state; restricted task pages remain available. Generic extensions remain planned.
-Use **Agents → Agent Connection Setup** for copyable client settings.
-Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) to message a connected task;
-choose **New Codex Chat** for automatic message delivery after signing into
-Codex CLI. Other external clients use the
-[conversation tools](DOCUMENTATION.md#external-agent-conversation-sidebar).
-Google Docs/Gmail connections keep credentials in the desktop keyring and offer
-persistent account access switches. Real-account acceptance remains pending.
-Agents can propose connector recipes for REST reads, creates and sends,
-including typed/fixed GraphQL reads, continuation pages and reviewed multi-step writes;
-Steed owns OAuth sign-in or token setup, execution, permission switches and revocation.
-[Recipe setup](DOCUMENTATION.md#agent-designed-connector-recipes) describes this
-format, per-action payload reviews and limits. See
-[agent setup](DOCUMENTATION.md#local-agent-access-mcp) and
-[Google setup](DOCUMENTATION.md#google-app-connections), plus
-[local worker requirements](DOCUMENTATION.md#running-an-agent-built-local-worker).
-Install the optional bundle with `.venv/bin/python install_worker_bundle.py`.
-Website and agent prompts offer one-time or saved approvals, with explicit
-site/action/profile scope and separate screens to remove saved choices.
-Users and external agents can customize `steed:newtab` and `steed:welcome`;
-agent changes use native review. Generic extension support remains planned.
-
-- [DOCUMENTATION.md](DOCUMENTATION.md): installation, usage, configuration,
-  troubleshooting, development checks, and technical design.
-- [ROADMAP.md](ROADMAP.md): current progress, remaining browser checks, and future
-  milestones.
-- [RELEASE_PLAN.md](RELEASE_PLAN.md): public beta and stable-release gates.
+- Linux only, run from this folder (no package yet).
+- The PyPI engine cannot play H.264/AAC video; `build_codecs.py` builds one that
+  can ([details](DOCUMENTATION.md#installation)). Netflix-style protected video
+  works when Chrome, Chromium or Firefox has already installed Google's Widevine
+  module (see `steed:features`).
+- [DOCUMENTATION.md](DOCUMENTATION.md): using and configuring Steed, plus its
+  design. [ROADMAP.md](ROADMAP.md): progress and what is next.
+  [RELEASE_PLAN.md](RELEASE_PLAN.md): the road to a public release.

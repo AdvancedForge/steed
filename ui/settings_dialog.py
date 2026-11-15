@@ -17,6 +17,10 @@ DEFAULTS = {
     "search_engine": DEFAULT_SEARCH_ENGINE,
     "restore_tabs_on_startup": True,
     "dark_mode": False,
+    "dark_pages": False,
+    "spellcheck_language": "",
+    "safe_browsing": True,
+    "check_updates": True,
     "user_agent_override": "",
     "google_login_compatibility": True,
     "global_cookie_sharing_mode": "on_switch",
@@ -83,6 +87,12 @@ class SettingsDialog(QDialog):
         self._review = None
         self._error = ""
         self._notice = ""
+        try:
+            import default_browser
+
+            self._default_browser = default_browser.is_default()
+        except OSError:
+            self._default_browser = False
         self._closed = False
         self._profiles = []
         self._default_pin = None
@@ -141,6 +151,7 @@ class SettingsDialog(QDialog):
             "private": self.manager.is_search_profile() if self.manager else False,
             "review": dict(self._review) if self._review else None,
             "window_links": self.manager is not None,
+            "default_browser": self._default_browser,
         }
 
     def _publish(self):
@@ -392,6 +403,7 @@ class SettingsDialog(QDialog):
             "cancel_review": set(),
             "open": {"destination"},
             "open_page": {"page"},
+            "make_default": set(),
         }
         if (
             self._closed
@@ -459,6 +471,14 @@ class SettingsDialog(QDialog):
                 self._confirm(command["review"])
             elif action == "cancel_review":
                 self._review = None
+            elif action == "make_default":
+                import default_browser
+
+                try:
+                    self._notice = default_browser.make_default()
+                except OSError as error:
+                    raise ValueError(str(error)) from None
+                self._default_browser = default_browser.is_default()
             elif action == "open_page":
                 page = command["page"]
                 if page not in DIRECTORY or self.window is None:

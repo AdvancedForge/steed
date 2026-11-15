@@ -32,6 +32,11 @@ def configure_chromium_flags(thin_scrollbars: bool = True) -> None:
             break
     else:
         flags.append(feature_prefix + ",".join(wanted))
+    # Protected streaming with Firefox's Widevine module (see widevine.py).
+    if not any(flag.startswith("--widevine-path=") for flag in flags):
+        import widevine
+
+        flags += widevine.flags()
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = shlex.join(flags)
 
 
@@ -52,10 +57,7 @@ def open_launch_request(urls) -> None:
         for url in urls:
             target._new_tab(url)
     else:
-        before = len(target._child_windows)
-        target._pop_out_profile_named(target.profile_manager.current_profile_name)
-        if len(target._child_windows) > before:
-            target = target._child_windows[-1]
+        target = target.new_window()
     target.raise_()
     target.activateWindow()
 

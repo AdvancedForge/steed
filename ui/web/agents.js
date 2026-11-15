@@ -68,7 +68,7 @@ window.steedUI = {render(next) {
   // No agent yet: connecting one is the way to start.
   if (!next.has_provider && next.available) $("more-ways").open = true;
   text("welcome-copy", next.private ? "Agent conversations are unavailable in private browsing. Switch to a regular profile to continue." : next.available ? "Ask for anything. It keeps working while you browse." : "Agent conversations are unavailable. Open connection setup from the Agents menu to check your connection.");
-  text("welcome-note", next.yolo ? "YOLO mode automatically approves Steed requests. Turn it off in the Agents menu to review access." : "Only what you send is shared. You choose what it may do.");
+  text("welcome-note", next.yolo ? "Agent requests are approved automatically. Turn it off in Agents → Access and Setup to review access." : "Only what you send is shared. You choose what it may do.");
   visible("new-chat", next.available && next.has_provider);
   visible("task-picker", next.available && next.tasks.length > 0);
   const taskOptions = JSON.stringify(next.tasks);

@@ -22,6 +22,7 @@ class FeaturesPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.surface)
         self.surface.command.connect(self.command)
+        window.profile_manager.registry.updates.changed.connect(self.publish)
         self.check()
 
     def check(self):
@@ -49,6 +50,11 @@ class FeaturesPage(QWidget):
                 "engine": engine_features.engine_summary(),
                 "features": self.features,
                 "checking": self.probe is not None,
+                "updates": {
+                    **registry.updates.state,
+                    "summary": registry.updates.summary(),
+                    "enabled": registry.updates.enabled,
+                },
                 "dark": registry.page_style.dark(
                     self.window.profile_manager.current_profile_name
                 ),
@@ -65,6 +71,8 @@ class FeaturesPage(QWidget):
         self.sequence = sequence
         if command.get("action") == "check":
             self.check()
+        elif command.get("action") == "updates":
+            self.window.profile_manager.registry.updates.check()
         self.publish()
 
     def dispose(self):
