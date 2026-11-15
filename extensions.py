@@ -482,6 +482,8 @@ class Extensions(QObject):
         # name -> id -> {"store", "enabled", "build", "reinstall"}
         self._pending = {}
         self._downloads = {}  # (name, store id) -> "user", "sync" or "update"
+        # Store downloads in the temporary folder, deleted once used.
+        self._temporary = set()
         self._checks = {}  # name -> store ids still being checked
         self._network = None
         self.auto_update = QTimer(self)
@@ -734,6 +736,21 @@ class Extensions(QObject):
 
         Finishes with changed or failed. The extension keeps its id, so an
         update keeps its data."""
+        try:
+            return self._install(name, path, store=store, enabled=enabled)
+        finally:
+            self.discard_download(path)
+
+    def discard_download(self, path):
+        """Delete a store download once it is installed, kept or declined."""
+        if str(path) in self._temporary:
+            self._temporary.discard(str(path))
+            try:
+                Path(path).unlink()
+            except OSError:
+                pass
+
+    def _install(self, name, path, *, store=None, enabled=True):
         if self._manager(name) is None:
             raise ValueError("Incognito windows have no extensions.")
         path = Path(path)
@@ -960,6 +977,7 @@ class Extensions(QObject):
             ) as handle:
                 handle.write(data)
             path = handle.name
+            self._temporary.add(path)
         if purpose == "user":
             self.downloaded.emit(name, extension_id, path, error)
             return
@@ -977,6 +995,8 @@ class Extensions(QObject):
                 self.install(name, path, store=extension_id, enabled=wanted["enabled"])
             except (OSError, ValueError) as problem:
                 self.failed.emit(name, str(problem))
+        else:
+            self.discard_download(path)
 
     # -- updates
 
@@ -1032,10 +1052,12 @@ class Extensions(QObject):
         """Install an update, unless it asks for more than before."""
         entry = self.from_store(name, store)
         if entry is None:
+            self.discard_download(path)
             return
         try:
             new = inspect(path)
         except (OSError, ValueError) as error:
+            self.discard_download(path)
             self.failed.emit(name, str(error))
             return
         old = self.details(entry) or {"permissions": []}
@@ -1045,6 +1067,7 @@ class Extensions(QObject):
         waiting = self.folder(name) / UPDATES
         waiting.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, waiting / f"{store}.crx")
+        self.discard_download(path)
         state = self.state(name)
         state["updates"][store] = new["version"]
         self._write(name, state)

@@ -561,6 +561,26 @@ const dnr = chrome.declarativeNetRequest;
         self.assertEqual(self.tab.title(), "ads,moved|1")
         self.assertEqual(page(), {"ad": "ad.txt", "old": "new.txt", "kept": "kept.txt"})
 
+    def test_store_downloads_do_not_pile_up_in_the_temporary_folder(self):
+        import tempfile as temporary
+
+        for content in (b"not an extension", None):
+            with temporary.NamedTemporaryFile(suffix=".crx", delete=False) as handle:
+                handle.write(content or b"x")
+            path = handle.name
+            self.extensions._temporary.add(path)
+            if content:
+                with self.assertRaises((ValueError, OSError)):
+                    self.extensions.install(self.name, path)
+            else:
+                self.extensions.discard_download(path)  # Declined.
+            self.assertFalse(Path(path).exists())
+        # Files Steed did not download are never deleted.
+        mine = Path(self.directory.name) / "mine.crx"
+        mine.write_bytes(b"x")
+        self.extensions.discard_download(mine)
+        self.assertTrue(mine.exists())
+
     def test_installs_from_an_older_steed_are_built_again(self):
         entry = self.install()
         installed = Path(entry["path"])

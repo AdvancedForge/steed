@@ -98,6 +98,9 @@ class ExtensionInstaller(QObject):
             self.say(error)
         elif profile == self.profile:
             self.add_path(path, store=extension_id)
+        # Installed or not, the download is no longer needed.
+        if path:
+            self.extensions.discard_download(path)
 
     def _failed(self, profile, message):
         if profile == self.profile:
