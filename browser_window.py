@@ -461,6 +461,9 @@ def unique_keys(*keys):
 class BrowserWindow(QMainWindow):
     """Main browser window."""
 
+    # A site app's window (site_apps.py); set per window in __init__.
+    app_url = None
+
     def __init__(
         self,
         profile_name: str | None = None,
@@ -2031,7 +2034,9 @@ class BrowserWindow(QMainWindow):
                 else self.chrome_layout.indexOf(self.content_area) + 1
             )
             self.chrome_layout.insertWidget(index, self.tab_bar)
-        if not getattr(self, "_was_fullscreen", False) and not self.app_url:
+        if not getattr(self, "_was_fullscreen", False) and not getattr(
+            self, "app_url", None
+        ):
             self.tab_bar.show()
         compact = getattr(self, "compact", None)
         if compact is not None and compact.active and not compact.moving:
