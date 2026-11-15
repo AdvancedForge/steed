@@ -205,6 +205,79 @@ class WindowTests(unittest.TestCase):
             self.window._new_tab(return_tab=True).settings().testAttribute(dark)
         )
 
+    def test_the_bookmarks_bar(self):
+        from ui.bookmarks_bar import items_of
+
+        self.assertEqual(
+            items_of(
+                [
+                    {"title": "A", "url": "https://a.test/"},
+                    {"title": "Docs", "url": "https://d.test/", "folder": "Work"},
+                    {"title": "B", "url": "https://b.test/"},
+                    {"title": "Qt", "url": "https://q.test/", "folder": "Work"},
+                    {"title": "", "url": ""},
+                ]
+            ),
+            [
+                ("link", "A", "https://a.test/"),
+                (
+                    "folder",
+                    "Work",
+                    [("Docs", "https://d.test/"), ("Qt", "https://q.test/")],
+                ),
+                ("link", "B", "https://b.test/"),
+            ],
+        )
+        bar = self.window.bookmarks_bar
+        self.assertFalse(bar.isVisible())  # Off until you want it.
+        pages = self.window.profile_manager.registry.start_pages
+        name = self.window.profile_manager.current_profile_name
+        pages.add_bookmark(name, "https://a.test/", "A")
+        self.window.bookmarks_bar_action.trigger()
+        self.assertTrue(bar.isVisible())
+        self.assertTrue(self.window.config.get("bookmarks_bar"))
+        self.wait(lambda: [b.text() for b in bar.buttons] == ["A"])
+        pages.add_bookmark(name, "https://b.test/", "B", folder="Work")
+        self.wait(lambda: [b.text() for b in bar.buttons] == ["A", "Work ▾"])
+        with patch.object(self.window, "_navigate_tab_to_url") as went:
+            bar.buttons[0].click()
+        went.assert_called_once_with(self.tab, "https://a.test/")
+        before = len(self.window.tabs)
+        bar.opened.emit("https://a.test/", True)
+        self.assertEqual(len(self.window.tabs), before + 1)
+        self.window.bookmarks_bar_action.trigger()
+        self.assertFalse(bar.isVisible())
+
+    def test_spell_check_follows_the_setting(self):
+        from services import spellcheck
+
+        registry = self.window.profile_manager.registry
+        folder = Path(self.directory.name) / "dicts"
+        folder.mkdir()
+        with patch.object(spellcheck, "folder", return_value=folder):
+            spell = registry.spellcheck
+            spell.where = folder
+            with patch.object(spell, "fetch") as fetch:
+                self.window.config.set("spellcheck_language", "en-GB")
+                registry.apply_spellcheck()
+                fetch.assert_called_once_with("en-GB")  # Not here yet: download.
+            (folder / "en-GB.bdic").write_bytes(b"BDic")
+            registry.apply_spellcheck()
+            profile = registry.profiles[
+                self.window.profile_manager.current_profile_name
+            ]
+            self.assertTrue(profile.isSpellCheckEnabled())
+            self.assertEqual(profile.spellCheckLanguages(), ["en-GB"])
+            self.window.config.set("spellcheck_language", "")
+            registry.apply_spellcheck()
+            self.assertFalse(profile.isSpellCheckEnabled())
+        self.assertEqual(
+            spellcheck.newest(
+                ["en-US-10-1.bdic", "en-US-10-2.bdic", "en-USX-1-1.bdic"], "en-US"
+            ),
+            "en-US-10-2.bdic",
+        )
+
     def test_agent_setup_is_one_submenu(self):
         labels = [a.text() for a in self.window._layout_menus["agents"].actions()]
         self.assertEqual(labels[0], "Agent Sidebar")

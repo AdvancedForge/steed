@@ -55,6 +55,14 @@ def prepare_engine_environment() -> None:
     # system's font setup plus the bundled folder.
     if (FONTS / "fonts.conf").is_file():
         os.environ.setdefault("FONTCONFIG_FILE", str(FONTS / "fonts.conf"))
+    # Spell check dictionaries (services.spellcheck); read when the engine starts.
+    from services import spellcheck
+
+    try:
+        spellcheck.folder().mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    os.environ.setdefault("QTWEBENGINE_DICTIONARIES_PATH", str(spellcheck.folder()))
 
 
 def google_login_user_agent(url: QUrl) -> bytes | None:

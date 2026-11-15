@@ -8,6 +8,9 @@ function command(action, id, button) {
 const ICONS = {
   plus: 'M12 5v14M5 12h14',
   check: 'M5 12.5l4.5 4.5L19 7.5',
+  print: 'M7 9V4h10v5M7 17H5v-6h14v6h-2M7 14h10v6H7z',
+  window: 'M4 5h16v14H4zM4 9h16',
+  expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   undo: 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
   close: 'M6 6l12 12M18 6 6 18',
   back: 'M15 18l-6-6 6-6',

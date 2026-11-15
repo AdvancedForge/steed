@@ -16,8 +16,9 @@ is in your way until you go looking for it.
 - Tab groups, saved groups, session history, sleeping tabs, split view.
 - A built-in password manager (encrypted vault, generator, breach check,
   passkeys) and bookmark, history and password import.
-- Printing, reader view, translation, dictation (`Ctrl+Shift+Space`), dark
-  websites, ad and tracker blocking, Chrome (Manifest V3) extensions.
+- Printing, spell check, a bookmarks bar, reader view, translation, dictation
+  (`Ctrl+Shift+Space`), dark websites, ad and tracker blocking, warnings for
+  phishing and malware sites, Chrome (Manifest V3) extensions.
 
 ## Make it yours
 
@@ -32,20 +33,20 @@ is in your way until you go looking for it.
   and local MCP access for other clients.
 - Ask about a page or selection, watch a page and act when it changes,
   organize or compare tabs, hand a tab to your agent and take it back.
-- Every agent request is reviewed; you choose what each agent may do.
+- You review what agents ask to do and choose what each may do (or, for agents
+  you trust, let Steed approve for you).
 
 ## Quick start
 
 Requires Python 3.10+ and a Linux desktop. From the project directory:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-./steed
+./install.sh            # or ./install.sh --default to make it your default browser
 ```
 
-Add Steed to your applications menu with `.venv/bin/python install_launcher.py`,
-and make it your default browser in **Settings → General**.
+Then open Steed from your applications menu (or run `./steed`). Later,
+`./install.sh --update` brings the newest version; Steed tells you when there
+is one.
 
 ## Good to know
 

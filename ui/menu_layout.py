@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import QMenu
 
 GROUPS = {
     "general": (
+        ("Print…",),
         ("Settings…", "Customize New Tab…", "Layout Settings…"),
         ("Passwords…", "Fill Login", "Downloads…", "Dictation", "Extensions"),
         (
@@ -29,7 +30,13 @@ GROUPS = {
         ),
     ),
     "tabs": (
-        ("New Tab", "Restore Closed Tab", "Reopen Closed Window", "Close Tab"),
+        (
+            "New Tab",
+            "New Window",
+            "Restore Closed Tab",
+            "Reopen Closed Window",
+            "Close Tab",
+        ),
         ("Back", "Forward", "Reload", "Home"),
         ("Next Tab", "Previous Tab"),
         ("Tab Groups", "Saved Groups", "Save All Tabs as Group…", "Session History…"),
@@ -55,6 +62,7 @@ GROUPS = {
             "Play or Pause Media",
             "Mini Player",
         ),
+        ("Full Screen", "Bookmarks Bar", "View Page Source"),
         ("Save Page As…", "Take Screenshot", "Close Split View", "App Panel"),
         (
             "Page Style…",
@@ -89,7 +97,7 @@ SUBMENUS = {
         ),
     ),
 }
-LAST = ("Exit",)
+LAST = ("Close Window", "Quit Steed")
 
 # Icons (drawn in menu.js) for the items people look for.
 ICONS = {
@@ -108,6 +116,10 @@ ICONS = {
     "Organize Tabs with Agent…": "spark",
     "Compare Tabs with Agent…": "columns",
     "Settings…": "gear",
+    "Print…": "print",
+    "New Window": "window",
+    "Full Screen": "expand",
+    "Bookmarks Bar": "bookmarks",
     "Customize New Tab…": "brush",
     "Layout Settings…": "layout",
     "Passwords…": "key",
@@ -118,7 +130,7 @@ ICONS = {
     "Ad Blocking…": "shield",
     "Website Permissions…": "lock",
     "Clear Browsing Data…": "trash",
-    "Exit": "exit",
+    "Quit Steed": "exit",
     "Find in Page…": "search",
     "Command Palette…": "command",
     "Zoom In": "zoom-in",

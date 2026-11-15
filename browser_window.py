@@ -2,6 +2,7 @@
 
 import json
 import logging
+import secrets
 import sqlite3
 from pathlib import Path
 from time import monotonic
@@ -143,6 +144,20 @@ class BrowserPage(QWebEnginePage):
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
         kinds = QWebEnginePage.NavigationType
         window = getattr(self.parent(), "browser_window", None)
+        # Dangerous sites (services.safe_browsing): a warning instead.
+        if window is not None and url.scheme() == "steed" and url.host() == "safety":
+            tab = self.parent()
+            QTimer.singleShot(0, lambda: window._safety_action(tab, url))
+            return False
+        if window is not None and url.scheme() in ("http", "https"):
+            danger = window.profile_manager.registry.safe_browsing.check(url)
+            if danger in ("phishing", "malware"):
+                if is_main_frame:
+                    tab = self.parent()
+                    QTimer.singleShot(
+                        0, lambda: window._show_safety_warning(tab, url, danger)
+                    )
+                return False
         if (
             is_main_frame
             and window is not None
@@ -325,6 +340,22 @@ class BrowserTab(QWebEngineView):
             menu.addAction("Inspect").triggered.connect(
                 lambda: self.browser_window._inspect_page_element(self)
             )
+        # Spelling suggestions, at the very top.
+        request = self.lastContextMenuRequest()
+        if request is not None and request.misspelledWord():
+            first = menu.actions()[0] if menu.actions() else None
+            suggestions = request.spellCheckerSuggestions()[:6]
+            for word in suggestions:
+                fix = QAction(word, menu)
+                fix.triggered.connect(
+                    lambda _=False, w=word: self.page().replaceMisspelledWord(w)
+                )
+                menu.insertAction(first, fix)
+            if not suggestions:
+                none = QAction("No spelling suggestions", menu)
+                none.setEnabled(False)
+                menu.insertAction(first, none)
+            menu.insertSeparator(first)
         if self.browser_window is not None:
             self.browser_window._show_html_menu(menu, event.globalPos(), context=True)
         else:
@@ -415,6 +446,8 @@ class BrowserWindow(QMainWindow):
         self.profile_manager = ProfileManager(self.config, profile_name, self)
         self.config = self.profile_manager.config
         self.download_manager = self.profile_manager.registry.downloads
+        self.download_manager.blocked.connect(self._download_blocked)
+        self.profile_manager.registry.updates.changed.connect(self._updates_known)
         self.adblock = self.profile_manager.registry.adblock
         self.navigation = self.profile_manager.registry.navigation
         self.tab_manager = None
@@ -511,6 +544,9 @@ class BrowserWindow(QMainWindow):
             self.history.changed.disconnect(self._refresh_address_history)
         self.history = self.profile_manager.registry.get_history(profile_name)
         self.history.changed.connect(self._refresh_address_history)
+        QTimer.singleShot(
+            0, lambda: not self._closing and self._refresh_bookmarks_bar()
+        )
         self._refresh_address_history()
         if self.cookie_manager is not None:
             self.cookie_manager.close()
@@ -817,6 +853,14 @@ class BrowserWindow(QMainWindow):
         self.full_screen_action.setShortcut(QKeySequence("F11"))
         self.full_screen_action.triggered.connect(self.toggle_full_screen)
         view_menu.addAction(self.full_screen_action)
+        self.bookmarks_bar_action = QAction("Bookmarks Bar", self)
+        self.bookmarks_bar_action.setCheckable(True)
+        self.bookmarks_bar_action.setChecked(
+            bool(self.config.get("bookmarks_bar", False))
+        )
+        self.bookmarks_bar_action.setShortcut(QKeySequence("Ctrl+Shift+B"))
+        self.bookmarks_bar_action.toggled.connect(self.show_bookmarks_bar)
+        view_menu.addAction(self.bookmarks_bar_action)
         source_action = QAction("View Page Source", self)
         source_action.setShortcut(QKeySequence("Ctrl+U"))
         source_action.triggered.connect(self.view_source)
@@ -1202,6 +1246,12 @@ class BrowserWindow(QMainWindow):
             self.browser_menu.addMenu(menu)
         self.address_bar.menu_btn.setMenu(self.browser_menu)
         layout.addWidget(self.address_bar)
+        from ui.bookmarks_bar import BookmarksBar
+
+        self.bookmarks_bar = BookmarksBar(self.chrome_column)
+        self.bookmarks_bar.opened.connect(self._open_bookmark)
+        self.bookmarks_bar.setVisible(bool(self.config.get("bookmarks_bar", False)))
+        layout.addWidget(self.bookmarks_bar)
         self.loading_indicator = QProgressBar()
         self.loading_indicator.setRange(0, 100)
         self.loading_indicator.setAccessibleName("Page loading progress")
@@ -1267,6 +1317,10 @@ class BrowserWindow(QMainWindow):
         # Permission and download signals are connected per tab in _new_tab
 
     def apply_dark_mode(self):
+        self._style_bookmarks_bar()
+        self._apply_dark_mode()
+
+    def _apply_dark_mode(self):
         styles = self.profile_manager.registry.page_style
         colors = styles.get(self.profile_manager.current_profile_name)["colors"]
         if colors:
@@ -2749,6 +2803,62 @@ class BrowserWindow(QMainWindow):
             QMessageBox.warning(self, "Profile in use", str(error))
             return
         self._open_window(profile)
+
+    def show_bookmarks_bar(self, shown):
+        """Every window's bookmarks bar, on or off (kept for next time)."""
+        self.config.set("bookmarks_bar", bool(shown))
+        for window in QApplication.topLevelWidgets():
+            if isinstance(window, BrowserWindow) and not window._closing:
+                bar = getattr(window, "bookmarks_bar", None)
+                if bar is None:
+                    continue
+                bar.setVisible(bool(shown))
+                window.bookmarks_bar_action.blockSignals(True)
+                window.bookmarks_bar_action.setChecked(bool(shown))
+                window.bookmarks_bar_action.blockSignals(False)
+                window._refresh_bookmarks_bar()
+
+    def _style_bookmarks_bar(self):
+        """Quiet buttons in the toolbar's own colours, like its other parts."""
+        bar = getattr(self, "bookmarks_bar", None)
+        colors = getattr(getattr(self, "address_bar", None), "colors", None) or {}
+        if bar is None:
+            return
+        ink = colors.get("ink", "palette(text)")
+        hover = colors.get("hover", "palette(midlight)")
+        bar.setStyleSheet(
+            "#BookmarksBar { background: transparent; }"
+            f"#BookmarksBar QToolButton {{ background: transparent; border: none;"
+            f" border-radius: 8px; padding: 3px 9px; color: {ink}; font-size: 12.5px; }}"
+            f"#BookmarksBar QToolButton:hover {{ background: {hover}; }}"
+            "#BookmarksBar QToolButton:disabled { color: palette(mid); }"
+            "#BookmarksBar QToolButton::menu-indicator { image: none; width: 0; }"
+        )
+
+    def _refresh_bookmarks_bar(self):
+        self._style_bookmarks_bar()
+        bar = getattr(self, "bookmarks_bar", None)
+        if (
+            bar is None
+            or not bar.isVisible()
+            or self.profile_manager.is_search_profile()
+        ):
+            if bar is not None and self.profile_manager.is_search_profile():
+                bar.set_bookmarks([])
+            return
+        try:
+            bookmarks = self.profile_manager.registry.start_pages.state(
+                self.profile_manager.current_profile_name
+            ).get("bookmarks", [])
+        except (OSError, ValueError, KeyError, TypeError):
+            bookmarks = []
+        bar.set_bookmarks(bookmarks)
+
+    def _open_bookmark(self, url, new_tab):
+        if new_tab or not self.tabs:
+            self._new_tab(url=url)
+        else:
+            self._navigate_tab_to_url(self.tabs[self.current_tab_index], url)
 
     def new_window(self):
         """A new window of this profile, starting with a New Tab."""
@@ -7347,6 +7457,64 @@ class BrowserWindow(QMainWindow):
                 tab.workspace_controller.publish()
         self._start_page_changed(self.profile_manager.current_profile_name)
 
+    def _show_safety_warning(self, tab, url, danger):
+        from services.safe_browsing import warning_page
+
+        if self._closing or tab not in self.tabs:
+            return
+        token = secrets.token_hex(16)
+        tab.safety = (token, url)
+        tab.setHtml(warning_page(url, danger, token), QUrl("steed://safety/warning"))
+
+    def _safety_action(self, tab, url):
+        if self._closing or tab not in self.tabs:
+            return
+        query = dict(parse_qsl(url.query(QUrl.ComponentFormattingOption.FullyEncoded)))
+        if url.path() == "/back":
+            if tab.history().canGoBack():
+                tab.back()
+            else:
+                tab.setUrl(QUrl(self.config.get("new_tab_page", NEW_TAB) or NEW_TAB))
+        elif url.path() == "/proceed":
+            token, target = getattr(tab, "safety", (None, None))
+            # Only the warning shown in this tab can let its own site through.
+            if token is None or query.get("token") != token:
+                return
+            tab.safety = (None, None)
+            self.profile_manager.registry.safe_browsing.allow(target)
+            tab.setUrl(target)
+
+    def _updates_known(self):
+        summary = self.profile_manager.registry.updates.summary()
+        if summary and not self._closing and self.isActiveWindow():
+            told = getattr(self.profile_manager.registry, "_updates_told", "")
+            if told != summary:
+                self.profile_manager.registry._updates_told = summary
+                self.status_bar.showMessage(summary + " (steed:features)", 15000)
+
+    def _download_blocked(self, name, danger):
+        from services.safe_browsing import REASONS
+
+        if not self._closing and self.isActiveWindow():
+            QMessageBox.warning(
+                self,
+                "Download stopped",
+                f"Steed did not download “{name}”: the site is listed as "
+                f"{REASONS.get(danger, 'dangerous')}.",
+            )
+
+    def _spellcheck_failed(self, why):
+        if not self._closing and self.isActiveWindow():
+            self.status_bar.showMessage(f"Spell check: {why}", 8000)
+
+    def _spellcheck_ready(self, language):
+        from services.spellcheck import LANGUAGES
+
+        if not self._closing and self.isActiveWindow():
+            self.status_bar.showMessage(
+                f"Spell check is on ({LANGUAGES.get(language, language)}).", 5000
+            )
+
     def _settings_applied(self):
         try:
             self.profile_manager.refresh_settings()
@@ -7377,6 +7545,16 @@ class BrowserWindow(QMainWindow):
             if side != self.devtools.side:
                 self.devtools.set_side(side)
             self.apply_dark_mode()
+            registry = self.profile_manager.registry
+            if self.config.get("spellcheck_language") or (
+                getattr(registry, "_spellcheck", None) is not None
+            ):
+                spell = registry.spellcheck
+                if not getattr(self, "_spell_hooked", False):
+                    self._spell_hooked = True
+                    spell.failed.connect(self._spellcheck_failed)
+                    spell.ready.connect(self._spellcheck_ready)
+                registry.apply_spellcheck()
             dark_pages = bool(self.config.get("dark_pages", False))
             for tab in self.tabs:
                 webengine.set_options(tab.settings(), dark_pages=dark_pages)
@@ -7409,6 +7587,7 @@ class BrowserWindow(QMainWindow):
         if self._closing or profile != self.profile_manager.current_profile_name:
             return
         self._refresh_address_sources()
+        self._refresh_bookmarks_bar()
         self.apply_dark_mode()
         # A burst of changes (a photo, its colours, a style) reloads Steed's
         # pages once; pages that start loading after it are already current.

@@ -9,6 +9,26 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 
 MAX_MESSAGE = 64 * 1024
 MAX_URLS = 20
+# Local files a browser opens: pages, documents, images and plain text.
+FILE_TYPES = {
+    ".html",
+    ".htm",
+    ".xhtml",
+    ".shtml",
+    ".mhtml",
+    ".mht",
+    ".svg",
+    ".pdf",
+    ".xml",
+    ".txt",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".avif",
+    ".bmp",
+}
 
 
 def server_name(config_dir) -> str:
@@ -39,7 +59,7 @@ def launch_urls(arguments) -> list[str]:
         else:
             continue
         try:
-            if path.is_file():
+            if path.suffix.lower() in FILE_TYPES and path.is_file():
                 urls.append(QUrl.fromLocalFile(str(path.resolve())).toString())
         except OSError:
             continue

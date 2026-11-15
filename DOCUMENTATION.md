@@ -42,7 +42,16 @@ for current progress and remaining work.
 
 Requires Python 3.10 or later and a graphical desktop session. Dependencies use PyQt6 and PyQt6-WebEngine 6.11.0 with Qt 6.11.x. Linux x86-64 wheels require glibc 2.34 or later; ARM64 wheels require glibc 2.39 or later.
 
-From the project directory, create a virtual environment if one does not already exist:
+The quickest way, from the project directory:
+
+```bash
+./install.sh             # .venv, packages, and Steed in your applications menu
+./install.sh --default   # the same, and Steed becomes your default browser
+./install.sh --update    # later: the newest Steed (git pull), then the same
+```
+
+Nothing is installed outside the folder except the menu entry. Or do the same by
+hand: create a virtual environment if one does not already exist:
 
 ```bash
 python3 -m venv .venv
@@ -82,7 +91,8 @@ from the new location. To remove the menu entry, delete `steed.desktop` from
 Launching Steed again while it is running opens a new window in the running
 browser instead of a second copy; `./steed https://example.org` opens the link
 as a tab in the most recently used window, and `./steed page.html` opens a
-local file. Only HTTP/HTTPS addresses and existing local files are passed on,
+local file. Only HTTP/HTTPS addresses and existing local pages, PDFs, images
+and text files are passed on,
 through a private socket in your runtime directory.
 
 **Default browser.** Settings → General → **Make Steed your default browser**
@@ -176,6 +186,15 @@ storage, built-in AI). Each missing one says why: newer than this engine (a Qt
 WebEngine upgrade brings it), left out of Qt WebEngine on Linux (an upgrade will
 not), or missing from the PyPI engine (`build_codecs.py`). **Check again**
 repeats the test, for example after swapping the engine and restarting.
+
+### Knowing about updates
+
+Once a day (Settings → General → **Check for updates**, on by default) Steed
+runs `git fetch` in its folder and asks PyPI for the newest Qt WebEngine. If
+there is something new, the status bar says so once, and `steed:features` →
+**Updates** shows it (with **Check now**). Nothing is installed by itself:
+`./install.sh --update` brings the newest Steed, and the engine is upgraded as
+below. The check sends nothing about your browsing.
 
 ### Upgrading Qt WebEngine
 
@@ -310,6 +329,12 @@ Bookmarks** searches names/addresses/folders, filters by folder, and edits names
 addresses and folder labels while preserving bookmark IDs. Type a new folder name
 when saving/editing; an empty folder means Unfiled. Changes from another window
 refresh the manager. New Tab shows the first 24 bookmarks with **Manage all**.
+
+**Bookmarks bar.** View → **Bookmarks Bar** (`Ctrl+Shift+B`) shows your
+bookmarks under the toolbar in every window, in the order you keep them; a
+folder is one button that opens its bookmarks, and what does not fit goes
+under **»**. Click opens in the current tab, middle-click or `Ctrl`+click in a
+new one. Off until you turn it on; incognito windows show none.
 Press **Ctrl+Shift+O** to open the manager directly.
 Type in its search field and press **Enter** to open the first matching bookmark;
 the current folder filter applies. If nothing matches, the manager stays open.
@@ -617,6 +642,15 @@ Settings → General:
   HTTPS, Steed loads it unencrypted after all (the status bar says so) and
   remembers the site until it quits. Local addresses, IP addresses and
   addresses with a port are left alone.
+- **Warn about dangerous sites** (on, Settings → General): pages on public
+  lists of phishing sites (OpenPhish, PhishTank and others) and sites that have
+  recently served malware (abuse.ch URLhaus), from the
+  [malware-filter](https://gitlab.com/malware-filter) project, are stopped with
+  a warning page: **Go back**, or **Visit this site anyway** (until Steed quits).
+  Downloads from them are refused. The lists are downloaded whole about twice a
+  day into `~/.custom_browser/safe_browsing/`, so checking a page sends nothing
+  anywhere. This is not Google Safe Browsing: new phishing sites can take hours
+  to be listed.
 - **Resist fingerprinting** (off): pages see common hardware values (4 cores,
   8 GB, no plugins), a generic graphics card name, and canvas images with tiny
   changes (stable for a site until Steed quits), so they cannot recognize this
@@ -1202,6 +1236,15 @@ Each site keeps its zoom (in the profile's `site_settings.json`, so it lasts
 across restarts; incognito forgets it); a page with no zoom of its own opens at
 100%.
 
+### Spell check
+
+Settings → General → **Spell check**: choose a language and Steed downloads
+its dictionary once from Chromium's dictionary repository (under 2 MB, into
+`~/.custom_browser/dictionaries/`); misspelled words in text fields are then
+underlined in every profile, and right-clicking one offers corrections at the
+top of the menu. Off by default (no download until you choose). What you type
+is checked on this computer only.
+
 ### Address Suggestions
 
 Type part of a visited URL or page title in the address bar, choose a suggestion
@@ -1539,6 +1582,10 @@ Existing profiles are migrated conservatively: pre-existing cookies remain local
 ## Downloads and ad blocking
 
 Open **General → Downloads** (`Ctrl+J`) for progress, cancellation, supported pause/resume, file opening, and history. Incognito downloads are excluded from disk history.
+
+Files that run programs when opened (`.AppImage`, `.sh`, `.deb`, `.rpm`, `.run`,
+`.desktop`, `.jar`, `.exe` and others) are saved only after you choose **Save**
+in a warning; downloads from sites on the dangerous-site lists are refused.
 
 While anything downloads, a **↓ 42%** button in the address bar shows overall
 progress (or **↓ …** while sizes are unknown) and opens Downloads; it reads

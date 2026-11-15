@@ -2,6 +2,7 @@
 
 import atexit
 import os
+from pathlib import Path
 
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, Qt
@@ -34,6 +35,19 @@ def application():
         photos.LIST_URL = "http://127.0.0.1:9/list?page={page}"
         photos.IMAGE_URL = "http://127.0.0.1:9/id/{id}.jpg"
         photos.COMMONS_URL = "http://127.0.0.1:9/commons?{letter}"
+        # Nor dangerous-site lists; and a program download is kept without
+        # asking (test_safety asks).
+        import download_manager
+        import services.safe_browsing as safety
+
+        safety.BASE = "http://127.0.0.1:9/"
+        safety.LISTS = {kind: safety.BASE + kind for kind in safety.LISTS}
+        download_manager.confirm_program = lambda name, parent: True
+        # Nor ask GitHub or PyPI about updates.
+        import services.updates as updates
+
+        updates.PYPI = "http://127.0.0.1:9/{name}"
+        updates.PROJECT = Path("/nonexistent-steed-checkout")
         QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         _application = QApplication.instance() or QApplication(["steed-tests"])
         from ui.lumen import apply_ui_font

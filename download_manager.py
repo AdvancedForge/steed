@@ -34,13 +34,65 @@ class DownloadRecord:
 RETRYABLE = ("DownloadInterrupted", "Interrupted", "DownloadCancelled")
 
 
+# Files that run programs (or install them) when opened.
+PROGRAM_TYPES = {
+    ".appimage",
+    ".run",
+    ".sh",
+    ".bash",
+    ".bin",
+    ".deb",
+    ".rpm",
+    ".flatpakref",
+    ".snap",
+    ".desktop",
+    ".jar",
+    ".py",
+    ".pl",
+    ".exe",
+    ".msi",
+    ".bat",
+    ".cmd",
+    ".ps1",
+    ".vbs",
+    ".scr",
+    ".apk",
+    ".dmg",
+    ".pkg",
+    ".command",
+}
+
+
+def runs_programs(name: str) -> bool:
+    return Path(name).suffix.lower() in PROGRAM_TYPES
+
+
+def confirm_program(name, parent) -> bool:
+    from PyQt6.QtWidgets import QMessageBox
+
+    answer = QMessageBox.warning(
+        parent,
+        "Download a program?",
+        f"“{name}” can run programs on your computer. Only keep it if you "
+        "trust where it came from.",
+        QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel,
+        QMessageBox.StandardButton.Cancel,
+    )
+    return answer == QMessageBox.StandardButton.Save
+
+
 class DownloadManager(QObject):
     changed = pyqtSignal()
     finished = pyqtSignal(str)  # download id, when one completes
+    blocked = pyqtSignal(str, str)  # file name, why (a listed dangerous site)
 
     def __init__(self, config, parent=None, *, destination_picker=None):
         super().__init__(parent)
         self.destination_picker = destination_picker
+        # url -> "phishing"/"malware"/None (services.safe_browsing), and
+        # (file name, parent) -> True to keep a file that can run programs.
+        self.checker = None
+        self.confirm_program = None
         self.history_file = config.config_dir / "downloads.json"
         self.records = {}
         self.requests = {}
@@ -81,6 +133,19 @@ class DownloadManager(QObject):
         view = webengine.view_for(request.page())
         parent = view.window() if view else None
         suggested = Path(request.suggestedFileName()).name or "download"
+        danger = self.checker(request.url()) if self.checker is not None else None
+        program = runs_programs(suggested) and request.isSavePageDownload() is not True
+        if danger or (
+            program
+            and self.confirm_program is not None
+            and not self.confirm_program(suggested, parent)
+        ):
+            request.cancel()
+            request.deleteLater()
+            if danger:
+                self.blocked.emit(suggested, danger)
+            self.changed.emit()
+            return
         retry = self.retries.pop((profile, request.url().toString()), None)
         if request.isSavePageDownload() is True:
             # View → Save Page As… already chose where.
