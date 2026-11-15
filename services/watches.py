@@ -42,15 +42,23 @@ SETTLE_MS = 2500
 JUDGE_TIMEOUT_MS = 120000
 TICK_MS = 60000
 
-# Reads the watched part (a CSS path from the selection) or the page's text.
+# Reads the watched part (a CSS path from the selection) or the page's text,
+# where the page ended up, and whether it asks for a password.
 EXTRACT = r"""
 (function (selector) {
   let found = null;
   if (selector) { try { found = document.querySelector(selector); } catch (error) {} }
   const source = found || (selector ? null : document.body);
-  return source ? source.innerText : null;
+  const password = [...document.querySelectorAll("input[type=password]")]
+    .some((field) => field.offsetParent !== null);
+  return {text: source ? source.innerText : null, password, url: location.href};
 })(%s)
 """
+# Addresses that are sign-in pages.
+SIGN_IN = re.compile(
+    r"(^|[/._-])(log-?in|sign-?in|auth|sso|oauth|session|account/login|cas)([/._?-]|$)",
+    re.IGNORECASE,
+)
 
 # Where the selection is: a CSS path to the element that holds it.
 SELECTION_PATH = r"""
@@ -123,6 +131,7 @@ class WatchService(QObject):
 
     changed = pyqtSignal()
     fired = pyqtSignal(dict, str)  # the watch, what to say
+    signed_out = pyqtSignal(dict)  # the watch, which now meets a sign-in page
 
     def __init__(self, registry):
         super().__init__(registry)
@@ -268,14 +277,29 @@ class WatchService(QObject):
             world=webengine.STEED_WORLD,
         )
 
-    def _got(self, text):
+    def _got(self, found):
         watch = self.current
         self._end_page()
         if watch is None or self.closed:
             return
+        found = found if isinstance(found, dict) else {}
+        if self._signed_out(watch, found):
+            # The page wants a sign-in: keep what was seen, say so once.
+            watch["failures"] = 0
+            first = not watch.get("signed_out")
+            watch["signed_out"] = True
+            self._save()
+            if first:
+                self.signed_out.emit(dict(watch))
+            self._next()
+            return
+        text = found.get("text")
         if not isinstance(text, str):
             self._failure(watch)
             return
+        if watch.get("signed_out"):
+            watch["signed_out"] = False
+        watch.setdefault("password", bool(found.get("password")))
         text = clean_text(text)
         watch["failures"] = 0
         before, watch["last_text"] = watch["last_text"], text
@@ -293,6 +317,20 @@ class WatchService(QObject):
             self._ask_agent(watch, before, text)
             return
         self._fire(watch, change_summary(before, text))
+
+    @staticmethod
+    def _signed_out(watch, found):
+        """Sent to a sign-in page, or a password field that was not there before."""
+        landed = QUrl(found.get("url") or "")
+        watched = QUrl(watch["url"])
+        if landed.isValid() and (
+            landed.host() != watched.host() or landed.path() != watched.path()
+        ):
+            if SIGN_IN.search(landed.host() + landed.path()):
+                return True
+        if found.get("password") and watch.get("password") is False:
+            return True
+        return False
 
     def _read_failed(self, why):
         watch = self.current

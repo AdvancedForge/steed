@@ -22,8 +22,9 @@ ticked tabs' text as a draft for the person's question).
 Manual check: a real watch, organize and compare with Claude Code installed.
 Agents now suggest watches from a chat (steed_watch_propose → a review
 popup: adjust, pick the profile, Add watch; only the person lets a then-action
-start without asking). Next: watches on pages behind a sign-in check prompt
-the person when the sign-in expires.
+start without asking). A watched page that starts asking for a sign-in is
+reported once ("Sign in again"), never as a change, and watching resumes
+from the last text once readable.
 
 **A calm start — November 14, 2026.** Welcome is a three-step tour (look,
 your things, your agent; skippable); one-time tips the first time the address
@@ -86,7 +87,6 @@ pointer light on cards, spring switches, scroll-driven title settling, one
 entrance per page); a Motion and light setting (Full, Balanced, Minimal).
 Manual check: hover, tab switching and menus on a real desktop, and a light
 theme. Split view's current side carries a rim of the accent's light.
-Next: site theme-color as well as icons.
 
 **Websites' speech recognition — November 13, 2026.** SpeechRecognition and
 webkitSpeechRecognition are answered by Steed's dictation engine: the site's
@@ -99,6 +99,19 @@ prompt naming the extension; popups stay open while it asks.
 Offscreen documents (how extensions listen from the background) are opened by
 Steed itself, which also fixes a crash: Qt WebEngine 6.11's own
 chrome.offscreen.createDocument ended the browser.
+
+**Extension API crash audit — November 14, 2026.** Every function of the
+APIs Qt WebEngine gives extensions natively (64 calls, one Steed process
+each) was called from a background worker. Three failed: declarativeNetRequest
+updateSessionRules ended the browser, updateDynamicRules never finished, and
+i18n.getMessage in the background ended its worker (then Steed at exit).
+Checking static rulesets against real traffic showed the engine applies no
+declarativeNetRequest rules at all (content blockers did nothing). Steed now
+keeps and applies packaged, dynamic and session rules itself
+(extension_rules.py, indexed by domain: 500 requests against 52,000 rules in
+well under 2 s), answers getMessage from the extension's locales, and
+rebuilds extensions installed with older stand-ins at startup.
+Manual check: uBlock Origin Lite from the Chrome Web Store on a real site.
 
 **Dictation — November 13, 2026.** `Ctrl+Shift+Space` push-to-talk
 anywhere in Steed (tap or hold, Escape cancels) with a listening pill showing

@@ -304,15 +304,21 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(built["background"], {"service_worker": eb.BACKGROUND_NAME})
         self.assertEqual(
             (self.root / "built" / eb.BACKGROUND_NAME).read_text(),
-            f'importScripts("/{eb.SHIM_NAME}");\n',
+            f'importScripts("/{eb.MESSAGES_NAME}", "/{eb.SHIM_NAME}");\n',
         )
         self.assertEqual(built["content_scripts"][0]["js"][0], eb.SHIM_NAME)
         page = (self.root / "built" / "p.html").read_text()
         self.assertTrue(page.startswith(f'<html><head><script src="/{eb.SHIM_NAME}">'))
         self.assertTrue((self.root / "built" / eb.SHIM_NAME).is_file())
         for kind, expected in (
-            ("module", 'import "/steed-shim.js";\nimport "/bg.js";\n'),
-            (None, 'importScripts("/steed-shim.js", "/bg.js");\n'),
+            (
+                "module",
+                'import "/steed-messages.js";\nimport "/steed-shim.js";\nimport "/bg.js";\n',
+            ),
+            (
+                None,
+                'importScripts("/steed-messages.js", "/steed-shim.js", "/bg.js");\n',
+            ),
         ):
             folder = write_extension(
                 self.root / f"worker-{kind}",

@@ -161,6 +161,14 @@ class CollabTests(unittest.TestCase):
             self.registry.watches.fired.emit({**watch, "then": ""}, "$44.")
             self.assertEqual(notify.call_args.args[1], "$44.")
             message.assert_not_called()
+            # Signed out: one notice that opens the page to sign in.
+            with patch.object(BrowserWindow, "_new_tab") as opened:
+                self.registry.watches.signed_out.emit(watch)
+                self.assertEqual(
+                    notify.call_args.args[0], "Sign in again to keep watching Kettle"
+                )
+                notify.call_args.kwargs["on_click"]()
+                opened.assert_called_once_with(url="https://shop.test/k")
         with self.assertRaises(ValueError):
             self.registry.watches.add(
                 "https://shop.test/k", "global", "K", then="x", then_mode="later"

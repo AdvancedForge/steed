@@ -105,6 +105,8 @@ class WatchesDialog(HtmlSettingsDialog):
                 else "Nothing yet"
             )
             news = watch["last_summary"] or when
+            if watch.get("signed_out"):
+                news = "Sign in again (the page asks you to)"
             if watch["paused"]:
                 news = "Paused" + (
                     " (the page could not be read)"

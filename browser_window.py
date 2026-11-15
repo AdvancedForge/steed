@@ -2215,6 +2215,23 @@ class BrowserWindow(QMainWindow):
 
         registry.watches.fired.connect(fired)
 
+        def signed_out(watch):
+            def open_it():
+                window = window_for(watch)
+                if window is not None:
+                    window._new_tab(url=watch["url"])
+                    window.raise_()
+                    window.activateWindow()
+
+            notifier.notify(
+                f"Sign in again to keep watching {watch['title']}",
+                "The page now asks you to sign in. Steed keeps looking and picks "
+                "up where it left off once you do.",
+                on_click=open_it,
+            )
+
+        registry.watches.signed_out.connect(signed_out)
+
     def ask_agent(
         self, tab, *, selection="", link="", page="", question="", send=False
     ):

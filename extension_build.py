@@ -24,9 +24,14 @@ import struct
 import zipfile
 from pathlib import Path
 
+from PyQt6.QtCore import QLocale
+
 SHIM = Path(__file__).with_name("extension_shim.js")
 SHIM_NAME = "steed-shim.js"
 BACKGROUND_NAME = "steed-background.js"
+# The extension's messages, for the stand-in i18n.getMessage in its background
+# (Qt WebEngine's ends the background worker there).
+MESSAGES_NAME = "steed-messages.js"
 BRIDGE_PAGE = "steed-bridge.html"
 # The bridge page: a hidden page of the extension that Steed loads to reach
 # its background. Steed reads what it logs and calls __steedBridge to send.
@@ -326,6 +331,33 @@ def _add_shim_to_page(path: Path):
     path.write_text(text, "utf-8")
 
 
+def locale_messages(folder: Path, manifest: dict, ui_locale: str = "") -> dict:
+    """The messages getMessage would use: the default locale's, then the UI
+    language's, then the exact UI locale's, each overriding the one before."""
+    default = manifest.get("default_locale")
+    if not isinstance(default, str) or not default:
+        return {}
+    ui_locale = ui_locale or QLocale.system().name()
+    order = [default, ui_locale.split("_")[0], ui_locale]
+    found = {}
+    for locale in dict.fromkeys(order):
+        try:
+            raw = json.loads(
+                (folder / "_locales" / locale / "messages.json").read_text("utf-8-sig")
+            )
+        except (OSError, ValueError):
+            continue
+        if isinstance(raw, dict):
+            found.update(
+                {
+                    str(key).lower(): value
+                    for key, value in raw.items()
+                    if isinstance(value, dict) and isinstance(value.get("message"), str)
+                }
+            )
+    return found
+
+
 def build(source: Path, destination: Path, sites: list[str] | None = None) -> None:
     """The copy Steed installs: the shim added, sites narrowed if chosen."""
     shutil.copytree(source, destination)
@@ -333,6 +365,12 @@ def build(source: Path, destination: Path, sites: list[str] | None = None) -> No
     if sites is not None:
         manifest = limit_to_sites(manifest, sites)
     shutil.copyfile(SHIM, destination / SHIM_NAME)
+    (destination / MESSAGES_NAME).write_text(
+        "globalThis.__steedMessages = "
+        + json.dumps(locale_messages(destination, manifest))
+        + ";\n",
+        "utf-8",
+    )
     # The stand-ins' tab list lives in the background, so every extension
     # gets one; its own worker (if any) runs after the stand-ins.
     background = manifest.get("background")
@@ -341,12 +379,18 @@ def build(source: Path, destination: Path, sites: list[str] | None = None) -> No
     if isinstance(worker, str):
         worker = "/" + worker.lstrip("/")
         if background.get("type") == "module":
-            wrapper = f'import "/{SHIM_NAME}";\nimport "{worker}";\n'
+            wrapper = (
+                f'import "/{MESSAGES_NAME}";\nimport "/{SHIM_NAME}";\n'
+                f'import "{worker}";\n'
+            )
         else:
-            wrapper = f'importScripts("/{SHIM_NAME}", {json.dumps(worker)});\n'
+            wrapper = (
+                f'importScripts("/{MESSAGES_NAME}", "/{SHIM_NAME}", '
+                f"{json.dumps(worker)});\n"
+            )
     else:
         background = {}
-        wrapper = f'importScripts("/{SHIM_NAME}");\n'
+        wrapper = f'importScripts("/{MESSAGES_NAME}", "/{SHIM_NAME}");\n'
     (destination / BACKGROUND_NAME).write_text(wrapper, "utf-8")
     manifest["background"] = {**background, "service_worker": BACKGROUND_NAME}
     for script in manifest.get("content_scripts", []) or []:

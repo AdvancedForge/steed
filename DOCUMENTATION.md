@@ -879,6 +879,30 @@ content scripts:
   `hasDocument` and `runtime.getContexts` (for `OFFSCREEN_DOCUMENT`) work as in
   Chrome, one document per extension, from the background or the extension's
   pages. It closes when the extension is switched off or removed.
+- **declarativeNetRequest** (content blockers' network rules): Qt WebEngine
+  6.11 stores rules but never applies them, `updateDynamicRules` never
+  finishes and `updateSessionRules` ends the whole browser. Steed keeps all
+  three kinds itself (`extension_rules.py`) and applies them in the profile's
+  request filter, ahead of ad blocking: the extension's packaged rulesets (read
+  when it is switched on, in the background, filed by domain so tens of
+  thousands of rules stay fast; `updateEnabledRulesets`, `getEnabledRulesets`,
+  `updateStaticRules` and `getDisabledRuleIds` work), dynamic rules and session
+  rules. Conditions: `urlFilter`
+  (`||`, `|`, `^`, `*`) or `regexFilter`; request and initiator domains and
+  their exclusions; resource types (all but `main_frame` by default); methods;
+  first or third party. Actions: block, allow, allowAllRequests (everything on
+  a page whose address matches), upgradeScheme, redirect (url, extensionPath,
+  regexSubstitution, transform with query parameters) and setting request
+  headers. Response headers and appended or removed request headers are
+  skipped (a request filter cannot change them). Dynamic rules are kept in
+  `steed_rules.json` in the profile's extension folder until the extension
+  removes them or is uninstalled (ruleset choices in `steed_rulesets.json`);
+  session rules last until Steed quits or the extension is switched off.
+- **i18n.getMessage in the background**: Qt's ends the background worker;
+  Steed answers it from the extension's own `_locales` (the default locale,
+  then the language, then the exact locale), with placeholders and `$1`–`$9`.
+- **Older installs**: when Steed's stand-ins change, extensions installed with
+  an older Steed are built again at startup, keeping their id and data.
 - **storage.sync**: Qt's fails on every call; Steed keeps it in local storage
   (it does not travel between computers).
 - **permissions**: answered from the extension's manifest (no prompts).
@@ -1290,7 +1314,12 @@ what you asked about. If it is, or if you asked for any change (or no agent
 is installed), a desktop notification says what happened; clicking it opens
 the page. **Watches** (Settings → Everything, or `steed:watches`) lists them
 with their last news; pause, look now or remove them there. A page that
-cannot be read five times in a row is paused. Incognito pages are never
+cannot be read five times in a row is paused. When a watched page starts
+asking you to sign in (it sends Steed to a sign-in address, or shows a
+password field it did not have before), Steed does not count that as a change:
+one notification says to sign in again (clicking it opens the page), the
+Watches page shows "Sign in again", and watching picks up from the last text
+seen once the page is readable again. Incognito pages are never
 watched. Watches live in `~/.custom_browser/watches.json` (with the last text
 seen, to compare with).
 

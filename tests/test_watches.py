@@ -28,9 +28,23 @@ class Shop(BaseHTTPRequestHandler):
     price = "59"
     cookie = None
     broken = False
+    signed_out = None  # "redirect" or "form" while the session has expired
 
     def do_GET(self):
         Shop.cookie = self.headers.get("Cookie")
+        if Shop.signed_out == "redirect" and self.path == "/kettle":
+            self.send_response(302)
+            self.send_header("Location", "/account/login?next=/kettle")
+            self.end_headers()
+            return
+        if Shop.signed_out == "form" or self.path.startswith("/account/login"):
+            body = b"<title>Sign in</title><form><input name=u><input type=password></form>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if Shop.broken:
             self.send_response(500)
             self.end_headers()
@@ -79,7 +93,7 @@ class WatchTests(unittest.TestCase):
         cls.server.server_close()
 
     def setUp(self):
-        Shop.price, Shop.broken = "59", False
+        Shop.price, Shop.broken, Shop.signed_out = "59", False, None
         self.directory = tempfile.TemporaryDirectory()
         keep_directory(self.directory)
         self.home = patch("pathlib.Path.home", return_value=Path(self.directory.name))
@@ -145,6 +159,29 @@ class WatchTests(unittest.TestCase):
             Shop.price = "61"
             self.look(part)
         self.assertEqual(self.fired, ["“$59” is now “$61”."])
+
+    def test_a_sign_in_page_is_reported_once_and_watching_resumes(self):
+        signed = []
+        self.service.signed_out.connect(lambda watch: signed.append(watch["title"]))
+        watch = self.service.add(self.url, "global", "Kettle", "", "#price", "")
+        with patch.object(agent_once, "agent_commands", return_value={}):
+            self.look(watch)  # The first look: what the page is like.
+            self.assertFalse(self.service.list()[0]["password"])
+            for mode in ("redirect", "form", "redirect"):
+                Shop.signed_out = mode
+                self.look(watch)
+            # Told once, never as a change, and never counted as a failure.
+            self.assertEqual(signed, ["Kettle"])
+            self.assertEqual(self.fired, [])
+            stored = self.service.list()[0]
+            self.assertTrue(stored["signed_out"])
+            self.assertEqual(stored["failures"], 0)
+            self.assertEqual(stored["last_text"], "Price: $59")
+            # Signed in again: back to watching, and changes count from before.
+            Shop.signed_out, Shop.price = None, "45"
+            self.look(watch)
+        self.assertFalse(self.service.list()[0]["signed_out"])
+        self.assertEqual(self.fired, ["“$59” is now “$45”."])
 
     def test_unreadable_pages_pause_after_five_tries_and_incognito_is_refused(self):
         watch = self.service.add(self.url, "global", "Kettle", "", "#nowhere", "x")

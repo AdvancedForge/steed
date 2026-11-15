@@ -15,6 +15,10 @@
 // - offscreen: Qt WebEngine's own offscreen documents end the whole browser
 //   (6.11), so Steed opens the document itself, as a hidden page of the
 //   extension. Pages' calls are made by the background.
+// - declarativeNetRequest dynamic and session rules: Qt's never finish (or
+//   end the browser), so Steed keeps and applies them (extension_rules.py).
+// - i18n.getMessage in the background: Qt's ends the worker; answered from
+//   the extension's messages (steed-messages.js, written when installing).
 // Existing APIs are never replaced.
 (() => {
   const chrome = globalThis.chrome;
@@ -58,6 +62,31 @@
       return undefined;
     }
     return result;
+  };
+
+  // chrome.i18n.getMessage from the extension's messages, as Chrome reads them:
+  // $name$ placeholders, $1-$9 substitutions, $$ for a dollar sign.
+  const getMessage = (name, substitutions) => {
+    const key = String(name ?? "");
+    const ui = (chrome.i18n && chrome.i18n.getUILanguage ? chrome.i18n.getUILanguage() : "en").replace("-", "_");
+    const predefined = {
+      "@@extension_id": chrome.runtime.id, "@@ui_locale": ui, "@@bidi_dir": "ltr",
+      "@@bidi_reversed_dir": "rtl", "@@bidi_start_edge": "left", "@@bidi_end_edge": "right",
+    };
+    if (Object.hasOwn(predefined, key)) return predefined[key];
+    const entry = (globalThis.__steedMessages || {})[key.toLowerCase()];
+    if (!entry || typeof entry.message !== "string") return "";
+    const values = substitutions === undefined || substitutions === null
+      ? [] : (Array.isArray(substitutions) ? substitutions : [substitutions]).map(String);
+    const numbered = (text) => text.replace(/\$(\d)/g, (_, digit) => values[Number(digit) - 1] ?? "");
+    const placeholders = Object.fromEntries(
+      Object.entries(entry.placeholders || {}).map(([k, v]) => [k.toLowerCase(), String((v && v.content) ?? "")]),
+    );
+    return entry.message
+      .split("$$")
+      .map((part) => numbered(part.replace(/\$([A-Za-z0-9_@]+)\$/g, (whole, n) =>
+        Object.hasOwn(placeholders, n.toLowerCase()) ? numbered(placeholders[n.toLowerCase()]) : whole)))
+      .join("$");
   };
 
   const stubs = new Set();
@@ -775,6 +804,32 @@
       };
       for (const [name, value] of Object.entries(steedOffscreen)) replace(chrome.offscreen, name, value);
     }
+    // Network rules, kept and applied by Steed.
+    if (chrome.declarativeNetRequest) {
+      const rules = chrome.declarativeNetRequest;
+      for (const scope of ["Dynamic", "Session"]) {
+        const key = scope.toLowerCase();
+        replace(rules, `update${scope}Rules`, (...args) =>
+          settle(args, ([options = {}]) =>
+            askSteed({ type: "rules", op: "update", scope: key, options: JSON.parse(JSON.stringify(options)) }),
+          ),
+        );
+        replace(rules, `get${scope}Rules`, (...args) =>
+          settle(args, ([filter]) => askSteed({ type: "rules", op: "get", scope: key, filter: filter || null })),
+        );
+      }
+      // Packaged rulesets: which are on, and rules switched off in them.
+      const sets = { getEnabledRulesets: "enabled", updateEnabledRulesets: "updateEnabled",
+        updateStaticRules: "updateStatic", getDisabledRuleIds: "disabled" };
+      for (const [method, op] of Object.entries(sets)) {
+        replace(rules, method, (...args) =>
+          settle(args, ([options]) =>
+            askSteed({ type: "rules", scope: "static", op, options: options ? JSON.parse(JSON.stringify(options)) : null }),
+          ),
+        );
+      }
+    }
+    if (chrome.i18n) replace(chrome.i18n, "getMessage", getMessage);
     const nativeContexts = chrome.runtime.getContexts ? chrome.runtime.getContexts.bind(chrome.runtime) : null;
     replace(chrome.runtime, "getContexts", (...args) =>
       settle(args, async ([filter = {}]) => {
@@ -927,7 +982,9 @@
       listTabs();
     });
     // Pages' calls of these, made here.
-    const callable = { contextMenus: true, action: true, scripting: true, runtime: true, offscreen: true };
+    const callable = {
+      contextMenus: true, action: true, scripting: true, runtime: true, offscreen: true, declarativeNetRequest: true,
+    };
     const runtimeCalls = new Set(["openOptionsPage", "getContexts"]);
 
     // Popups and other extension pages ask here.
@@ -1017,6 +1074,14 @@
     own("scripting", scripting);
     replace(chrome.runtime, "openOptionsPage", call("runtime", "openOptionsPage"));
     replace(chrome.runtime, "getContexts", call("runtime", "getContexts"));
+    if (chrome.declarativeNetRequest) {
+      for (const name of [
+        "updateDynamicRules", "getDynamicRules", "updateSessionRules", "getSessionRules",
+        "getEnabledRulesets", "updateEnabledRulesets", "updateStaticRules", "getDisabledRuleIds",
+      ]) {
+        replace(chrome.declarativeNetRequest, name, call("declarativeNetRequest", name));
+      }
+    }
     if (chrome.offscreen) {
       for (const name of ["createDocument", "closeDocument", "hasDocument"]) {
         replace(chrome.offscreen, name, call("offscreen", name));
