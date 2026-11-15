@@ -712,6 +712,13 @@ class SimpleNewTabTests(unittest.TestCase):
         self.assertFalse(compact.overlay.isVisible())
         # The page has the whole window: it starts at the top.
         self.assertEqual(window.tab_container.mapTo(window, QPoint(0, 0)).y(), 0)
+        # Even while a page loads (the loading bar takes no room).
+        tab.is_loading = True
+        window._update_loading_indicator()
+        self.settle()
+        self.assertFalse(window.loading_indicator.isVisible())
+        self.assertEqual(window.tab_container.mapTo(window, QPoint(0, 0)).y(), 0)
+        tab.is_loading = False
         # Typing an address (or pointing at the top) brings the bars back.
         window.address_bar.focus_address()
         self.wait(lambda: compact.overlay.isVisible())

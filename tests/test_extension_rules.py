@@ -228,6 +228,64 @@ class MatchingTests(unittest.TestCase):
             store.match("p", request("https://s.test/banner7/a.gif")), ("block",)
         )
 
+    def test_rules_are_filed_by_whole_words_without_missing_any(self):
+        from extension_rules import Index, _bounded_word
+
+        self.assertEqual(_bounded_word("/ads/banner", False, False), "ads")
+        self.assertIsNone(
+            _bounded_word("adserver", False, False)
+        )  # Could be inside a word.
+        self.assertIsNone(_bounded_word("ad*server", False, False))
+        self.assertEqual(_bounded_word("tracker.js", True, False), "tracker")
+        self.assertEqual(_bounded_word("/Pixel.gif", False, True), "pixel")  # Longest.
+        rules = [
+            Rule(
+                {
+                    "id": 1,
+                    "action": {"type": "block"},
+                    "condition": {"urlFilter": "/ads/"},
+                },
+                "e",
+            ),
+            Rule(
+                {
+                    "id": 2,
+                    "action": {"type": "block"},
+                    "condition": {"urlFilter": "adserver"},
+                },
+                "e",
+            ),
+            Rule(
+                {
+                    "id": 3,
+                    "action": {"type": "block"},
+                    "condition": {
+                        "initiatorDomains": ["news.test"],
+                        "resourceTypes": ["script"],
+                    },
+                },
+                "e",
+            ),
+        ]
+        index = Index(rules)
+        self.assertEqual(list(index.by_word), ["ads"])
+        self.assertEqual(index.generic, [rules[1]])
+        self.assertEqual(list(index.by_initiator), ["news.test"])
+
+        def found(url, initiator=""):
+            return {
+                r.id
+                for r in index.candidates(
+                    QUrl(url).host(), url=url, initiators=(initiator,)
+                )
+            }
+
+        self.assertIn(1, found("https://x.test/ads/top.js"))
+        self.assertNotIn(1, found("https://x.test/downloads/top.js"))
+        self.assertIn(2, found("https://myadserver.test/x"))  # Tried everywhere.
+        self.assertIn(3, found("https://cdn.test/a.js", "www.news.test"))
+        self.assertNotIn(3, found("https://cdn.test/a.js", "other.test"))
+
     def test_bad_rules_are_refused_whole(self):
         from extension_rules import ExtensionRules
 
@@ -502,6 +560,26 @@ const dnr = chrome.declarativeNetRequest;
         self.wait(lambda: "|" in self.tab.title())
         self.assertEqual(self.tab.title(), "ads,moved|1")
         self.assertEqual(page(), {"ad": "ad.txt", "old": "new.txt", "kept": "kept.txt"})
+
+    def test_store_downloads_do_not_pile_up_in_the_temporary_folder(self):
+        import tempfile as temporary
+
+        for content in (b"not an extension", None):
+            with temporary.NamedTemporaryFile(suffix=".crx", delete=False) as handle:
+                handle.write(content or b"x")
+            path = handle.name
+            self.extensions._temporary.add(path)
+            if content:
+                with self.assertRaises((ValueError, OSError)):
+                    self.extensions.install(self.name, path)
+            else:
+                self.extensions.discard_download(path)  # Declined.
+            self.assertFalse(Path(path).exists())
+        # Files Steed did not download are never deleted.
+        mine = Path(self.directory.name) / "mine.crx"
+        mine.write_bytes(b"x")
+        self.extensions.discard_download(mine)
+        self.assertTrue(mine.exists())
 
     def test_installs_from_an_older_steed_are_built_again(self):
         entry = self.install()

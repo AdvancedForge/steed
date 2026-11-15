@@ -7674,6 +7674,7 @@ class BrowserWindow(QMainWindow):
             self.compact = CompactChrome(self)
         if self.compact.active != value["compact"]:
             self.compact.enable(value["compact"])
+            self._update_loading_indicator()
             # The page now starts higher or lower: redo the glass picture.
             QTimer.singleShot(0, self._resized)
         if not self.isFullScreen():
@@ -7711,8 +7712,12 @@ class BrowserWindow(QMainWindow):
             and not getattr(tab, "agent_panel", False)
         )
         self.loading_indicator.setValue(tab.load_progress if tab is not None else 0)
+        # Compact mode floats the bars over the page: a bar in the layout
+        # would push the page down a few pixels on every load.
+        compact = getattr(self, "compact", None)
+        floating = compact is not None and compact.active
         self.loading_indicator.setVisible(
-            bool(enabled and active and not self.isFullScreen())
+            bool(enabled and active and not self.isFullScreen() and not floating)
         )
 
     def _appearance_changed(self):
