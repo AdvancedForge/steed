@@ -958,9 +958,9 @@ apart; before a page has finished loading it falls back to address and
 title.
 
 Tested with real store extensions: Dark Reader darkens pages; uBlock Origin
-Lite starts and its popup works, but cannot block, because Qt WebEngine does
-not apply `declarativeNetRequest` rules (Steed's own ad blocking does that
-job). A test checks the engine's API list, so it is updated when Qt changes.
+Lite starts and its popup works. Qt WebEngine does not apply
+`declarativeNetRequest` rules, so Steed applies them itself (above); blocking
+with uBlock Origin Lite on a real site still needs a desktop check. A test checks the engine's API list, so it is updated when Qt changes.
 
 **Managing.** Manage Extensions shows each extension's icon, version, source
 and permissions; **Switch Off/On** and **Remove** manage them. **Pin to
