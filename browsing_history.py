@@ -37,6 +37,12 @@ class BrowsingHistory(QObject):
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(750)
         self._save_timer.timeout.connect(self.flush)
+        from services.page_memory import PageMemory
+
+        # What pages said (services.page_memory), forgotten with the history.
+        self.memory = PageMemory(
+            path.with_name("read_pages.sqlite") if path is not None else None
+        )
         raw = load_json(path, []) if path is not None else []
         if isinstance(raw, list):
             for item in reversed(raw[:limit]):
@@ -88,6 +94,7 @@ class BrowsingHistory(QObject):
         if self._closed:
             return
         self._entries.clear()
+        self.memory.forget(0)
         self._changed()
         self.flush()
 
@@ -95,6 +102,7 @@ class BrowsingHistory(QObject):
         """Forget pages visited at or after since (0: everything); their URLs."""
         if self._closed:
             return []
+        self.memory.forget(since)
         gone = [u for u, e in self._entries.items() if since <= 0 or e.time >= since]
         for url in gone:
             del self._entries[url]
@@ -122,4 +130,5 @@ class BrowsingHistory(QObject):
 
     def close(self) -> None:
         self.flush()
+        self.memory.close()
         self._closed = True

@@ -321,6 +321,15 @@ class ProfileRegistry(QObject):
             self.spellcheck.fetch(language)
 
     @property
+    def routines(self):
+        """Agent tasks on a schedule (services.routines)."""
+        if getattr(self, "_routines", None) is None:
+            from services.routines import Routines
+
+            self._routines = Routines(self)
+        return self._routines
+
+    @property
     def watches(self):
         """Pages Steed keeps an eye on for you (services.watches)."""
         if self._watches is None:
@@ -728,6 +737,8 @@ class ProfileRegistry(QObject):
         if self._watches is not None:
             self._watches.close()  # Its page goes before the profiles.
         self.safe_browsing.close()
+        if getattr(self, "_routines", None) is not None:
+            self._routines.close()  # Its page goes before the profiles.
         self.updates.close()
         if self._app_connections is not None:
             self._app_connections.close()

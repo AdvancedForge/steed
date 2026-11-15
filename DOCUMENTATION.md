@@ -419,6 +419,16 @@ There is no general-purpose HTML app capability bridge in this milestone.
 - `Ctrl+P`: Print the page (a page's own Print button opens the same dialog)
 - `F11`: Full screen
 - `Ctrl+U`: The page's source, in a new tab
+- `Ctrl+;`: Follow a link with the keyboard (letters appear on everything you
+  can click; type one); `Ctrl+Shift+;` opens the chosen link in a new tab
+- `Ctrl+Shift+U`: Read the selection or the article aloud (again: stop)
+- `Ctrl+Shift+F`: Search what you've read
+
+Every shortcut can be changed: **General → Keyboard Shortcuts…** lists every
+command with its shortcut; **Change…** (press the new keys), **No shortcut**,
+**Steed's own** and **Reset all**. A shortcut given to one command is taken
+from the command that had it (the page says which). Changes apply to every
+window and are kept in `config.json` (`shortcuts`).
 - `Ctrl+W`: Close current tab; closing a window's last tab closes the window (and
   quits Steed if it was the last one, keeping its tabs for next start)
 - `Alt+Left` / `Alt+Right`, or the mouse's back/forward side buttons: Back / Forward
@@ -685,6 +695,37 @@ Steed asks Chromium for this through a hidden Developer Tools page (Storage
 clearDataForOrigin), without visiting the sites. It never sends an address
 Chromium could read as something wider: clearing the malformed origin
 `https://www.127.0.0.1` was measured to clear another site's storage too.
+
+### Read aloud
+
+**View → Read Aloud** (`Ctrl+Shift+U`) reads the selection, or else the page's
+article (as reader view finds it), with the desktop's voices
+(speech-dispatcher), sentence by sentence. A bar at the bottom shows the
+sentence being read, with **Pause**, **Slower**, **Faster** (kept for next
+time) and **Stop**. Nothing leaves the computer.
+
+### Site apps
+
+**Tabs → Install This Site as an App…** puts the site in your applications
+menu, with its icon, and opens it in its own window: no tab strip or address
+bar, just the site. Links to other sites, and windows or tabs it opens, go to
+a normal Steed window; the app window is not part of saved sessions. Starting
+it from the menu runs `steed --app=<address>` (into the running Steed if there
+is one). **Tabs → Site Apps…** lists them to open or remove (removing takes
+the menu entry away). Kept in `site_apps.json`; menu entries are
+`steed-app-*.desktop` in `~/.local/share/applications/`.
+
+### Search what you've read
+
+With **Remember what I read** on (Settings → General; off by default), Steed
+keeps the text of web pages you finish loading in a full-text index on this
+computer (`read_pages.sqlite` beside the profile's history, the newest 5,000
+pages). Never kept: incognito pages, pages with a password field (sign-ins),
+and sites you list under **Never remember these sites**. **History → Search
+What You've Read…** (`Ctrl+Shift+F`) finds pages by any words in them, with
+where the words are and when you read it; **Open**, or **Ask Agent About
+These**, which drafts a message to your agent with the pages' text (you send
+it). Clearing browsing history (all of it or a time range) clears this too.
 
 ### Saving pages
 
@@ -1358,6 +1399,19 @@ search: only the first 5 characters of each password's SHA-1 hash are sent
 (padded, so the answer's size gives nothing away), and the matching happens
 here. Logins found in breaches show how often; change those passwords. Results
 last until the page closes.
+
+### Routines
+
+**Agents → Routines…**: things your agent does on a schedule, such as a
+morning brief. A routine has a name, what to ask, when (every day at a time on
+the days you choose, or every 1–12 hours), and up to five pages to read first.
+At its time Steed reads those pages in the background with the profile's
+sign-ins, starts a new conversation in the agent sidebar with your request and
+the pages' text, and shows a notification; the agent's answer raises the usual
+"replied" notification. Anything more the agent wants to do in the browser
+still asks for your permission. **Run now** runs one at once. Steed must be
+running; a run missed while it was closed happens once at the next start, if
+within a day. Kept in `routines.json`; never in incognito.
 
 ### Watches
 

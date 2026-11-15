@@ -53,10 +53,16 @@ def open_launch_request(urls) -> None:
         return
     active = QApplication.activeWindow()
     target = active if active in windows else windows[-1]
+    from site_apps import APP_PREFIX
+
+    apps = [u.removeprefix(APP_PREFIX) for u in urls if u.startswith(APP_PREFIX)]
+    urls = [u for u in urls if not u.startswith(APP_PREFIX)]
+    for app in apps:
+        target = target.open_site_app(app)
     if urls:
         for url in urls:
             target._new_tab(url)
-    else:
+    elif not apps:
         target = target.new_window()
     target.raise_()
     target.activateWindow()
@@ -98,10 +104,23 @@ def main() -> int:
     app._instance_server = InstanceServer(config.config_dir)
     app._instance_server.open_requested.connect(open_launch_request)
 
-    window = BrowserWindow()
-    window.show()
-    for url in urls:
-        window._new_tab(url)
+    from site_apps import APP_PREFIX
+
+    apps = [u.removeprefix(APP_PREFIX) for u in urls if u.startswith(APP_PREFIX)]
+    urls = [u for u in urls if not u.startswith(APP_PREFIX)]
+    if apps and not urls:
+        # Opened from an app's menu entry: just the app.
+        window = BrowserWindow(app_url=apps[0])
+        window.show()
+        for app in apps[1:]:
+            window.open_site_app(app)
+    else:
+        window = BrowserWindow()
+        window.show()
+        for url in urls:
+            window._new_tab(url)
+        for app in apps:
+            window.open_site_app(app)
 
     code = app.exec()
     from services.dictation import stop_shared

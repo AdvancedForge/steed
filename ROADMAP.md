@@ -9,6 +9,18 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**A day in Steed — November 14, 2026.** For people already using Steed daily,
+what still sent them elsewhere: Read Aloud (desktop voices), link hints for
+keyboard browsing (Ctrl+;), site apps (a site in its own window and
+applications-menu entry), your own keyboard shortcuts for every command,
+Search What You've Read (opt-in local full-text index of pages read, cleared
+with history, handed to the agent on request), and Routines (the agent on a
+schedule, with signed-in pages read first, each run a new conversation).
+Manual checks: a real voice, a site app from the desktop menu, a morning
+routine with a real agent. Next: agents proposing routines (reviewed, like
+watches), and a "what did I read about X" agent tool over the index (with
+permission).
+
 **Everyday basics and trust — November 14, 2026.** After an audit of what
 would put people off Steed: printing (Ctrl+P and pages' Print buttons), New
 Window (Ctrl+N), Quit (Ctrl+Q quits; Ctrl+Shift+W closes a window), full

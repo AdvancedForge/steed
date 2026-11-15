@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QMenu
 GROUPS = {
     "general": (
         ("Print…",),
-        ("Settings…", "Customize New Tab…", "Layout Settings…"),
+        ("Settings…", "Customize New Tab…", "Layout Settings…", "Keyboard Shortcuts…"),
         ("Passwords…", "Fill Login", "Downloads…", "Dictation", "Extensions"),
         (
             "Import from Another Browser…",
@@ -41,6 +41,7 @@ GROUPS = {
         ("Next Tab", "Previous Tab"),
         ("Tab Groups", "Saved Groups", "Save All Tabs as Group…", "Session History…"),
         ("Bookmark This Page…", "Manage Bookmarks…"),
+        ("Install This Site as an App…", "Site Apps…"),
         ("Organize Tabs with Agent…", "Compare Tabs with Agent…"),
     ),
     "view": (
@@ -52,10 +53,13 @@ GROUPS = {
             "Command Palette…",
             "Search Tabs…",
             "Search History…",
+            "Follow a Link with the Keyboard",
+            "Open a Link in a New Tab with the Keyboard",
         ),
         ("Zoom In", "Zoom Out", "Reset Zoom (100%)"),
         (
             "Reader View",
+            "Read Aloud",
             "Translate Page",
             "Save to Reading List",
             "Reading List…",
@@ -76,8 +80,18 @@ GROUPS = {
         ),
         ("Memory & Performance…", "Engine & Features…", "Developer Tools"),
     ),
+    "cookies": (
+        ("Browsing History…", "Search What You've Read…", "Clear Browsing History…"),
+    ),
     "agents": (
-        ("Agent Sidebar", "Agent Chat Tab", "Watches…", "Website Chats", "Data Panels"),
+        (
+            "Agent Sidebar",
+            "Agent Chat Tab",
+            "Routines…",
+            "Watches…",
+            "Website Chats",
+            "Data Panels",
+        ),
     ),
 }
 # Items gathered into a sub-menu at the end: what sets agents up and what
@@ -117,6 +131,7 @@ ICONS = {
     "Compare Tabs with Agent…": "columns",
     "Settings…": "gear",
     "Print…": "print",
+    "Keyboard Shortcuts…": "keyboard",
     "New Window": "window",
     "Full Screen": "expand",
     "Bookmarks Bar": "bookmarks",
@@ -136,6 +151,7 @@ ICONS = {
     "Zoom In": "zoom-in",
     "Zoom Out": "zoom-out",
     "Reader View": "book",
+    "Read Aloud": "speaker",
     "Translate Page": "translate",
     "Take Screenshot": "camera",
     "Save Page As…": "save",
@@ -144,12 +160,14 @@ ICONS = {
     "Agent Sidebar": "spark",
     "Agent Chat Tab": "chat",
     "Watches…": "eye",
+    "Routines…": "clock",
     "Website Chats": "chat",
     "Access & Permissions…": "lock",
     "Access and Setup": "gear",
     "New Profile…": "user",
     "Switch Profile…": "users",
     "Browsing History…": "clock",
+    "Search What You've Read…": "search",
     "View Cookies…": "cookie",
 }
 

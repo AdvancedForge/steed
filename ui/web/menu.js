@@ -8,6 +8,8 @@ function command(action, id, button) {
 const ICONS = {
   plus: 'M12 5v14M5 12h14',
   check: 'M5 12.5l4.5 4.5L19 7.5',
+  keyboard: 'M3 7h18v10H3zM7 10h.01M11 10h.01M15 10h.01M8 14h8',
+  speaker: 'M4 9h4l5-4v14l-5-4H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12',
   print: 'M7 9V4h10v5M7 17H5v-6h14v6h-2M7 14h10v6H7z',
   window: 'M4 5h16v14H4zM4 9h16',
   expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
