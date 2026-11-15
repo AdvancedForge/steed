@@ -1009,6 +1009,7 @@ class TaskDialog(HtmlSettingsDialog):
             self.service.start_pages.list(selected[0].task_id)
             + self.service.customizations.list(selected[0].task_id)
             + self.service.watches.list(selected[0].task_id)
+            + self.service.routines.list(selected[0].task_id)
             if selected and not self.service.failure and not self.service._closed
             else []
         )
@@ -1029,8 +1030,10 @@ class TaskDialog(HtmlSettingsDialog):
 
     def review_page(self):
         from services.customization_proposals import CustomizationProposal
+        from services.routine_proposals import RoutineProposal
         from services.watch_proposals import WatchProposal
         from ui.customization_review import CustomizationReviewDialog
+        from ui.routines_dialog import RoutineReviewDialog
         from ui.start_page_review import StartPageReviewDialog
         from ui.watch_review import WatchReviewDialog
 
@@ -1044,6 +1047,8 @@ class TaskDialog(HtmlSettingsDialog):
                 if isinstance(proposal, CustomizationProposal)
                 else WatchReviewDialog
                 if isinstance(proposal, WatchProposal)
+                else RoutineReviewDialog
+                if isinstance(proposal, RoutineProposal)
                 else StartPageReviewDialog
             )(self.service, proposal, self)
             dialog.show()

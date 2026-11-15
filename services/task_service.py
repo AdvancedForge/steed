@@ -37,6 +37,7 @@ from services.layout_proposals import LayoutProposals
 from services.page_actions import action_arguments, scroll_arguments, wait_arguments
 from services.page_inspector import PageInspectionError
 from services.recipe_proposals import RecipeProposals
+from services.routine_proposals import RoutineProposals
 from services.start_page_proposals import StartPageProposals
 from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
@@ -128,6 +129,10 @@ class TaskService(QObject):
         self.start_pages = StartPageProposals(self)
         self.customizations = CustomizationProposals(self)
         self.watches = WatchProposals(self)
+        self.routines = RoutineProposals(self)
+        from services.reading_access import ReadingAccess
+
+        self.reading = ReadingAccess(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -150,6 +155,19 @@ class TaskService(QObject):
                 ),
                 "start_page.status": lambda task_id, request_id: self._layout_action(
                     self.start_pages.get, task_id, request_id
+                ),
+                "reading.search": lambda task_id, **arguments: self._layout_action(
+                    lambda: self.reading.search(task_id, **arguments)
+                ),
+                "reading.status": lambda task_id, request_id: self._layout_action(
+                    self.reading.status, task_id, request_id
+                ),
+                "routine.capabilities": self._routine_capabilities,
+                "routine.propose": lambda task_id, **arguments: self._layout_action(
+                    lambda: self.routines.propose(task_id, **arguments)
+                ),
+                "routine.status": lambda task_id, request_id: self._layout_action(
+                    self.routines.get, task_id, request_id
                 ),
                 "watch.capabilities": self._watch_capabilities,
                 "watch.propose": lambda task_id, **arguments: self._layout_action(
@@ -756,6 +774,13 @@ class TaskService(QObject):
         self._usable()
         self._active(task_id)
         return {"available": self.start_pages.available, **capabilities()}
+
+    def _routine_capabilities(self, task_id):
+        from services.routine_proposals import capabilities
+
+        self._usable()
+        self._active(task_id)
+        return {"available": self.routines.available, **capabilities()}
 
     def _watch_capabilities(self, task_id):
         from services.watch_proposals import capabilities
@@ -2817,6 +2842,8 @@ class TaskService(QObject):
         self.start_pages.cancel_task(task_id, interrupted=status == "interrupted")
         self.customizations.cancel_task(task_id, interrupted=status == "interrupted")
         self.watches.cancel_task(task_id, interrupted=status == "interrupted")
+        self.routines.cancel_task(task_id, interrupted=status == "interrupted")
+        self.reading.cancel_task(task_id, interrupted=status == "interrupted")
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):

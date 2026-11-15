@@ -17,6 +17,7 @@ from services.customization_proposals import CUSTOMIZATION_SCHEMA
 from services.data_panels import PANEL_SCHEMA
 from services.layout_proposals import LAYOUT_SCHEMA
 from services.recipe_proposals import RECIPE_SCHEMA
+from services.routine_proposals import ROUTINE_SCHEMA
 from services.start_page_proposals import PAGE_SCHEMA
 from services.task_artifacts import (
     MAX_TASK_ARTIFACT_BYTES,
@@ -175,6 +176,7 @@ class TaskStore:
                 + PAGE_SCHEMA
                 + CUSTOMIZATION_SCHEMA
                 + WATCH_SCHEMA
+                + ROUTINE_SCHEMA
             )
         # No engine sessions are restored or commands replayed after a restart.
         for task in self.list_tasks():

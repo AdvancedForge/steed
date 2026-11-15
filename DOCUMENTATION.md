@@ -727,6 +727,15 @@ where the words are and when you read it; **Open**, or **Ask Agent About
 These**, which drafts a message to your agent with the pages' text (you send
 it). Clearing browsing history (all of it or a time range) clears this too.
 
+Your agent can search it too (`steed_reading_search` and
+`steed_reading_status`), as Agents → Access & Permissions → **Search what
+you've read** allows: **Ask** (the default) shows you the words it wants to
+search for, with **Allow**, **Deny** and **Always allow searches**; **Always**
+answers at once; **Never** refuses. An answer has the matching pages' titles,
+addresses, when you read them, a snippet and up to 3,000 characters of each;
+it is kept in memory only, not in the task's records. Nothing is searchable
+unless Remember what I read is on, and never in incognito.
+
 ### Saving pages
 
 **General → Print…** (Ctrl+P) opens the system print dialog (printers, page
@@ -1412,6 +1421,14 @@ the pages' text, and shows a notification; the agent's answer raises the usual
 still asks for your permission. **Run now** runs one at once. Steed must be
 running; a run missed while it was closed happens once at the next start, if
 within a day. Kept in `routines.json`; never in incognito.
+
+Agents can suggest a routine when you ask for something regular ("every
+weekday morning, tell me what's on my calendar"): `steed_routine_capabilities`,
+`steed_routine_propose` (name, ask, `daily` at a time on days 0–6 or `hours`
+every 1–12 hours, up to five pages) and `steed_routine_status`. A review popup
+shows it in the routine editor, where you can change anything, then **Add
+routine**, **Decline** or **Later**; nothing runs before you add it. Pending
+suggestions are in Task Permissions → Pages & Scripts.
 
 ### Watches
 

@@ -219,3 +219,54 @@ class RoutinesDialog(HtmlSettingsDialog):
         routine = self.selected()
         if routine is not None:
             self.service.remove(routine["id"])
+
+
+class RoutineReviewDialog(RoutineEditor):
+    """An agent's proposed routine: change it if you like, then add or decline."""
+
+    def __init__(self, service, proposal, parent=None):
+        manager = getattr(parent, "profile_manager", None)
+        profile = manager.current_profile_name if manager else "global"
+        super().__init__(service.profiles.routines, profile, proposal.routine, parent)
+        self.task_service, self.proposal = service, proposal
+        self.task_id = proposal.task_id
+        self.request_key = proposal.request_key
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setWindowTitle("Your agent suggests a routine")
+        buttons = {b.text(): b for b in self.findChildren(QPushButton)}
+        buttons["Save"].setText("Add routine")
+        buttons["Cancel"].setText("Later")
+        decline = QPushButton("Decline")
+        decline.clicked.connect(self.decline)
+        row = self.layout().itemAt(self.layout().count() - 1).layout()
+        row.insertWidget(1, decline)
+
+    def save(self):
+        self.apply()
+
+    def apply(self):
+        from services.routines import check
+
+        try:
+            routine = check(self.values())
+            self.task_service.routines.resolve(
+                self.task_id,
+                self.proposal.request_id,
+                approve=True,
+                profile=self.profile,
+                routine=routine,
+            )
+        except (ValueError, KeyError) as error:
+            self.status.setText(str(error) or "This suggestion is no longer available.")
+            return
+        self.accept()
+
+    def decline(self):
+        try:
+            self.task_service.routines.resolve(
+                self.task_id, self.proposal.request_id, approve=False
+            )
+        except (ValueError, KeyError):
+            self.status.setText("This suggestion is no longer available.")
+            return
+        self.accept()

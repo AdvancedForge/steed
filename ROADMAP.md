@@ -17,9 +17,11 @@ Search What You've Read (opt-in local full-text index of pages read, cleared
 with history, handed to the agent on request), and Routines (the agent on a
 schedule, with signed-in pages read first, each run a new conversation).
 Manual checks: a real voice, a site app from the desktop menu, a morning
-routine with a real agent. Next: agents proposing routines (reviewed, like
-watches), and a "what did I read about X" agent tool over the index (with
-permission).
+routine with a real agent. Agents now suggest routines (reviewed in the
+routine editor, like watches) and can search what you've read
+(steed_reading_search) under a new Access & Permissions capability, "Search
+what you've read" (Ask by default: the words are shown first). Next: a real
+agent asked "find that article I read about X".
 
 **Everyday basics and trust — November 14, 2026.** After an audit of what
 would put people off Steed: printing (Ctrl+P and pages' Print buttons), New
