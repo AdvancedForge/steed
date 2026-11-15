@@ -50,21 +50,33 @@ def check(routine):
                 raise ValueError
         except ValueError:
             raise ValueError("Write the time as hours:minutes, like 08:30.") from None
-        days = sorted(
-            {int(d) for d in routine.get("days", range(7)) if 0 <= int(d) < 7}
-        )
+        try:
+            raw = list(routine.get("days", range(7)))[:7]
+            days = sorted({int(d) for d in raw if 0 <= int(d) < 7})
+        except (TypeError, ValueError):
+            raise ValueError(
+                "Days are numbers from 0 (Monday) to 6 (Sunday)."
+            ) from None
         if not days:
             raise ValueError("Choose at least one day.")
         found.update(at=f"{hour:02d}:{minute:02d}", days=days)
     elif kind == "hours":
-        every = int(routine.get("every", 4))
+        try:
+            every = int(routine.get("every", 4))
+        except (TypeError, ValueError):
+            every = 0
         if every not in EVERY_HOURS:
             raise ValueError("Choose how many hours apart.")
         found["every"] = every
     else:
         raise ValueError("Choose when the routine runs.")
     pages = []
-    for page in routine.get("pages", [])[:MAX_PAGES]:
+    listed = routine.get("pages", [])
+    if not isinstance(listed, list):
+        raise ValueError("Pages are a list of web addresses.")
+    if len(listed) > MAX_PAGES:
+        raise ValueError(f"A routine reads at most {MAX_PAGES} pages.")
+    for page in listed:
         url = QUrl(str(page).strip())
         if url.scheme() in ("http", "https") and url.host():
             pages.append(url.toString())

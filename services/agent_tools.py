@@ -239,6 +239,43 @@ TOOLS = (
         ("url", "request_id"),
     ),
     tool(
+        "reading.search",
+        "Search the pages the person has read (when they turned on Remember what I read) by words in them: for \"that article I read last week about tides\". Returns matching pages' title, url, when read, a snippet and up to 3,000 characters of text, newest relevance first. The person's Access & Permissions decide: it may answer at once, wait for their approval (state awaiting_approval: poll reading.status), or be refused.",
+        {"query": string(300), "request_id": string(64), "limit": integer(1, 10)},
+        ("query", "request_id"),
+    ),
+    tool(
+        "reading.status",
+        "Poll a reading.search request: answered (with results), awaiting_approval or denied.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
+        "routine.capabilities",
+        "Discover how to propose a routine: something you do for the person on a schedule (a morning brief, a weekly summary). Each run starts a new conversation with you containing their ask and the text of up to five pages read with their sign-ins. Returns the schedule format, limits and an example.",
+    ),
+    tool(
+        "routine.propose",
+        'Propose a routine when the person wants something done regularly ("every weekday morning, tell me what\'s on my calendar"). name; ask: what you should do each run; kind: daily (at HH:MM on days 0=Mon..6=Sun) or hours (every 1, 2, 3, 4, 6, 8 or 12 hours); pages: up to five http(s) pages to read first. The person reviews, can change it, and adds it; nothing runs before that and no access is granted. Identical retries return the original receipt.',
+        {
+            "request_id": string(64),
+            "name": string(80),
+            "ask": string(4000),
+            "kind": {**string(), "enum": ["daily", "hours"]},
+            "at": string(5),
+            "days": {"type": "array", "items": integer(0, 6), "maxItems": 7},
+            "every": integer(1, 12),
+            "pages": {"type": "array", "items": string(2048), "maxItems": 5},
+        },
+        ("request_id", "name", "ask"),
+    ),
+    tool(
+        "routine.status",
+        "Poll this task's routine proposal. applied means the person added the routine; denied means they declined.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "watch.status",
         "Poll this task's watch proposal. applied means the person added the watch; denied means they declined.",
         {"request_id": string(64)},

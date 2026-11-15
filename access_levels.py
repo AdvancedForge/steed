@@ -48,6 +48,12 @@ AGENT_CAPABILITIES = {
         "help": "Use app connections you set up, such as reading or sending mail.",
         "actions": {"connector", "app"},
     },
+    "reading": {
+        "label": "Search what you've read",
+        "help": "Search the text of pages you read (with Remember what I read "
+        "on) and get the matching pages' text.",
+        "actions": set(),
+    },
     "profiles": {
         "label": "Your signed-in profiles",
         "help": "Work in your own profiles, with their cookies and sign-ins, "

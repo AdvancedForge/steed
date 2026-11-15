@@ -394,6 +394,14 @@ class TaskApprovalQueue(QObject):
                         (task, proposal)
                         for proposal in self.service.watches.pending(task.task_id)
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.routines.pending(task.task_id)
+                    )
+                    pending.extend(
+                        (task, request)
+                        for request in self.service.reading.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -427,7 +435,9 @@ class TaskApprovalQueue(QObject):
             from services.data_panels import PanelReceipt
             from services.layout_proposals import LayoutProposal
             from services.live_control import ControlRequest
+            from services.reading_access import ReadingRequest
             from services.recipe_proposals import RecipeProposal
+            from services.routine_proposals import RoutineProposal
             from services.start_page_proposals import PageProposal
             from services.watch_proposals import WatchProposal
             from services.worker_store import WorkerReceipt
@@ -436,7 +446,9 @@ class TaskApprovalQueue(QObject):
             from ui.data_panels import DataPanelReviewDialog
             from ui.layout_review import LayoutReviewDialog
             from ui.live_control_review import LiveControlDialog
+            from ui.reading_review import ReadingReviewDialog
             from ui.recipe_review import RecipeReviewDialog
+            from ui.routines_dialog import RoutineReviewDialog
             from ui.start_page_review import StartPageReviewDialog
             from ui.watch_review import WatchReviewDialog
             from ui.worker_approval import WorkerApprovalDialog
@@ -445,7 +457,14 @@ class TaskApprovalQueue(QObject):
                 not self.service.auto_approve_requests
                 and isinstance(
                     grant,
-                    (PanelReceipt, PageProposal, CustomizationProposal, WatchProposal),
+                    (
+                        PanelReceipt,
+                        PageProposal,
+                        CustomizationProposal,
+                        WatchProposal,
+                        RoutineProposal,
+                        ReadingRequest,
+                    ),
                 )
                 and parent.profile_manager.is_search_profile()
             ):
@@ -466,6 +485,10 @@ class TaskApprovalQueue(QObject):
                     if isinstance(grant, CustomizationProposal)
                     else WatchReviewDialog(self.service, grant, parent)
                     if isinstance(grant, WatchProposal)
+                    else RoutineReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, RoutineProposal)
+                    else ReadingReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, ReadingRequest)
                     else DataPanelReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PanelReceipt)
                     else LayoutReviewDialog(
@@ -522,7 +545,14 @@ class TaskApprovalQueue(QObject):
                     if dialog.result() != QDialog.DialogCode.Accepted:
                         dialog.decline()
                 elif isinstance(
-                    grant, (PageProposal, CustomizationProposal, WatchProposal)
+                    grant,
+                    (
+                        PageProposal,
+                        CustomizationProposal,
+                        WatchProposal,
+                        RoutineProposal,
+                        ReadingRequest,
+                    ),
                 ):
                     dialog.apply()
                     if dialog.result() != QDialog.DialogCode.Accepted:
@@ -551,7 +581,9 @@ class TaskApprovalQueue(QObject):
         from services.data_panels import PanelReceipt
         from services.layout_proposals import LayoutProposal
         from services.live_control import ControlRequest
+        from services.reading_access import ReadingRequest
         from services.recipe_proposals import RecipeProposal
+        from services.routine_proposals import RoutineProposal
         from services.start_page_proposals import PageProposal
         from services.watch_proposals import WatchProposal
         from services.worker_store import WorkerReceipt
@@ -570,6 +602,8 @@ class TaskApprovalQueue(QObject):
                     PageProposal,
                     CustomizationProposal,
                     WatchProposal,
+                    RoutineProposal,
+                    ReadingRequest,
                 ),
             )
             else item.grant_id
