@@ -16,6 +16,8 @@ is in your way until you go looking for it.
 - Tab groups, saved groups, session history, sleeping tabs, split view.
 - A built-in password manager (encrypted vault, generator, breach check,
   passkeys) and bookmark, history and password import.
+- Site apps (a site in its own window), read aloud, keyboard link hints,
+  search inside pages you've read, and your own shortcuts for everything.
 - Printing, spell check, a bookmarks bar, reader view, translation, dictation
   (`Ctrl+Shift+Space`), dark websites, ad and tracker blocking, warnings for
   phishing and malware sites, Chrome (Manifest V3) extensions.
@@ -31,6 +33,8 @@ is in your way until you go looking for it.
 
 - An agent sidebar for Claude Code, Codex or any Agent Client Protocol agent,
   and local MCP access for other clients.
+- Routines: your agent on a schedule ("every morning, read my inbox and
+  calendar and tell me what matters").
 - Ask about a page or selection, watch a page and act when it changes,
   organize or compare tabs, hand a tab to your agent and take it back.
 - You review what agents ask to do and choose what each may do (or, for agents

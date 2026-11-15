@@ -48,6 +48,14 @@ def launch_urls(arguments) -> list[str]:
     for argument in arguments:
         if len(urls) >= MAX_URLS:
             break
+        from site_apps import APP_PREFIX, launch_app
+
+        app = launch_app(argument)
+        if app is None and argument.startswith(APP_PREFIX):
+            app = launch_app("--app=" + argument.removeprefix(APP_PREFIX))
+        if app is not None:
+            urls.append(APP_PREFIX + app)
+            continue
         url = QUrl(argument)
         if url.scheme() in ("http", "https") and url.host():
             urls.append(url.toString())

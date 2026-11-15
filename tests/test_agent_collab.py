@@ -122,6 +122,21 @@ class CollabTests(unittest.TestCase):
                 self.service.external_tasks.discard("new-task")
         send.assert_called_once_with("new-task", "Check the kettle.")
         self.assertEqual(self.sidebar.drafts[-1], "")
+        # A routine's run: a new conversation, even with one open.
+        self.service.external_tasks.add("open-task")
+        self.sidebar._task_id = "open-task"
+        self.sidebar.start_chat = lambda: setattr(self.sidebar, "_task_id", "fresh")
+        with patch.object(self.window, "_send_when_ready") as later:
+            self.assertEqual(
+                self.window.agent_message("Brief", send=True, new_chat=True), "fresh"
+            )
+        later.assert_called_once_with("fresh", "Brief")
+        # No agent could start one: nothing is sent to the open conversation.
+        self.sidebar._task_id = "open-task"
+        self.sidebar.start_chat = lambda: None
+        self.assertIsNone(self.window.agent_message("Brief", send=True, new_chat=True))
+        self.service.external_tasks.discard("open-task")
+        del self.sidebar.start_chat  # Back to the stand-in's own.
         # Without send, it is only a draft.
         self.sidebar._task_id = None
         self.window.agent_message("Compare these.")

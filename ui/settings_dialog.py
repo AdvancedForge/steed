@@ -21,6 +21,8 @@ DEFAULTS = {
     "spellcheck_language": "",
     "safe_browsing": True,
     "check_updates": True,
+    "remember_pages": False,
+    "remember_pages_except": "",
     "user_agent_override": "",
     "google_login_compatibility": True,
     "global_cookie_sharing_mode": "on_switch",

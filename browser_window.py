@@ -140,10 +140,34 @@ class BrowserPage(QWebEnginePage):
 
         if window is not None and message.startswith(SPEECH_PREFIX):
             window.web_speech.request(tab, message)
+            return
+        from ui.link_hints import PREFIX as HINTS_PREFIX
+        from ui.link_hints import parse as hinted
+
+        if window is not None and message.startswith(HINTS_PREFIX):
+            url = hinted(message)
+            if url:
+                QTimer.singleShot(0, lambda: window.open_in_background(tab, url))
 
     def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
         kinds = QWebEnginePage.NavigationType
         window = getattr(self.parent(), "browser_window", None)
+        if (
+            window is not None
+            and window.app_url
+            and is_main_frame
+            and navigation_type == kinds.NavigationTypeLinkClicked
+            and url.scheme() in ("http", "https")
+        ):
+            from site_apps import site_key
+
+            home = site_key(QUrl(window.app_url))
+            here = site_key(url)
+            if here != home and not here.endswith("." + home):
+                QTimer.singleShot(
+                    0, lambda: window.regular_window()._new_tab(url=url.toString())
+                )
+                return False
         # Dangerous sites (services.safe_browsing): a warning instead.
         if window is not None and url.scheme() == "steed" and url.host() == "safety":
             tab = self.parent()
@@ -365,6 +389,10 @@ class BrowserTab(QWebEngineView):
     def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> "BrowserTab":
         kinds = QWebEnginePage.WebWindowType
         window = self.browser_window
+        if window.app_url:
+            # A site app opens other windows and tabs in a normal window.
+            regular = window.regular_window()
+            return regular._new_tab(return_tab=True) if regular is not None else None
         if window_type == kinds.WebBrowserWindow:
             # "Open Link in New Window" (and shift-click): a real window.
             opened = window._open_window(
@@ -433,10 +461,18 @@ def unique_keys(*keys):
 class BrowserWindow(QMainWindow):
     """Main browser window."""
 
+    # A site app's window (site_apps.py); set per window in __init__.
+    app_url = None
+
     def __init__(
-        self, profile_name: str | None = None, restore_states: list | None = None
+        self,
+        profile_name: str | None = None,
+        restore_states: list | None = None,
+        app_url: str | None = None,
     ):
         super().__init__()
+        # A site app's window (site_apps.py): one site, no tabs or address bar.
+        self.app_url = app_url
         self.browser_window_id = uuid4().hex
         # The window that opened this one; None for the application's root window.
         self._opener = None
@@ -530,7 +566,9 @@ class BrowserWindow(QMainWindow):
         # Initialize profile and managers
         self._initialize_profile(self.profile_manager.current_profile_name)
         # Restore or create initial tab
-        if restore_states is not None:
+        if app_url:
+            self._new_tab(url=app_url)
+        elif restore_states is not None:
             self._restore_states(restore_states)
         elif self.config.get("restore_tabs_on_startup", True):
             self._restore_tabs(reopen_windows=True)
@@ -538,6 +576,8 @@ class BrowserWindow(QMainWindow):
             self._new_tab(url=self._startup_page())
         self._newtab_hover_timer.start()
         QTimer.singleShot(0, lambda: not self._closing and self._watch_alerts())
+        if app_url:
+            self._enter_app_mode()
 
     def _initialize_profile(self, profile_name: str):
         if self.history is not None:
@@ -650,6 +690,10 @@ class BrowserWindow(QMainWindow):
         focus_address_action.setShortcut(QKeySequence("Ctrl+L"))
         focus_address_action.triggered.connect(lambda: self.address_bar.focus_address())
         view_menu.addAction(focus_address_action)
+        read_action = QAction("Search What You've Read…", self)
+        read_action.setShortcut(QKeySequence("Ctrl+Shift+F"))
+        read_action.triggered.connect(self.search_what_you_read)
+        cookies_menu.addAction(read_action)
         history_action = cookies_menu.addAction("Browsing History…")
         history_action.setShortcut(QKeySequence("Ctrl+H"))
         history_action.triggered.connect(lambda: self._open_management("history"))
@@ -842,6 +886,9 @@ class BrowserWindow(QMainWindow):
         new_window_action.setShortcut(QKeySequence("Ctrl+N"))
         new_window_action.triggered.connect(self.new_window)
         tabs_menu.addAction(new_window_action)
+        keys_action = QAction("Keyboard Shortcuts…", self)
+        keys_action.triggered.connect(self.edit_shortcuts)
+        general_menu.addAction(keys_action)
         print_action = QAction("Print…", self)
         print_action.setShortcut(QKeySequence("Ctrl+P"))
         print_action.triggered.connect(
@@ -861,6 +908,18 @@ class BrowserWindow(QMainWindow):
         self.bookmarks_bar_action.setShortcut(QKeySequence("Ctrl+Shift+B"))
         self.bookmarks_bar_action.toggled.connect(self.show_bookmarks_bar)
         view_menu.addAction(self.bookmarks_bar_action)
+        hints_action = QAction("Follow a Link with the Keyboard", self)
+        hints_action.setShortcut(QKeySequence("Ctrl+;"))
+        hints_action.triggered.connect(lambda: self.link_hints(new_tab=False))
+        view_menu.addAction(hints_action)
+        hints_tab_action = QAction("Open a Link in a New Tab with the Keyboard", self)
+        hints_tab_action.setShortcut(QKeySequence("Ctrl+Shift+;"))
+        hints_tab_action.triggered.connect(lambda: self.link_hints(new_tab=True))
+        view_menu.addAction(hints_tab_action)
+        read_aloud_action = QAction("Read Aloud", self)
+        read_aloud_action.setShortcut(QKeySequence("Ctrl+Shift+U"))
+        read_aloud_action.triggered.connect(self.read_aloud)
+        view_menu.addAction(read_aloud_action)
         source_action = QAction("View Page Source", self)
         source_action.setShortcut(QKeySequence("Ctrl+U"))
         source_action.triggered.connect(self.view_source)
@@ -930,6 +989,9 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         agents_menu.addAction(self.agent_sidebar_action)
+        routines_action = QAction("Routines…", self)
+        routines_action.triggered.connect(self.manage_routines)
+        agents_menu.addAction(routines_action)
         watches_action = QAction("Watches…", self)
         watches_action.triggered.connect(
             lambda: self._new_tab(url="steed:watches", return_tab=True)
@@ -1084,6 +1146,12 @@ class BrowserWindow(QMainWindow):
         manage_groups_action = QAction("Manage Tab Groups...", self)
         manage_groups_action.triggered.connect(self._manage_tab_groups)
         group_menu.addAction(manage_groups_action)
+        install_app_action = QAction("Install This Site as an App…", self)
+        install_app_action.triggered.connect(self.install_site_app)
+        tabs_menu.addAction(install_app_action)
+        site_apps_action = QAction("Site Apps…", self)
+        site_apps_action.triggered.connect(self.manage_site_apps)
+        tabs_menu.addAction(site_apps_action)
         organize_action = QAction("Organize Tabs with Agent…", self)
         organize_action.triggered.connect(self.organize_tabs)
         tabs_menu.addAction(organize_action)
@@ -1124,6 +1192,9 @@ class BrowserWindow(QMainWindow):
         from ui.menu_layout import arrange
 
         arrange(self._layout_menus)
+        import shortcuts
+
+        shortcuts.apply(self)
         for menu in self._layout_menus.values():
             register_actions(menu)
         editors = {
@@ -1963,7 +2034,9 @@ class BrowserWindow(QMainWindow):
                 else self.chrome_layout.indexOf(self.content_area) + 1
             )
             self.chrome_layout.insertWidget(index, self.tab_bar)
-        if not getattr(self, "_was_fullscreen", False):
+        if not getattr(self, "_was_fullscreen", False) and not getattr(
+            self, "app_url", None
+        ):
             self.tab_bar.show()
         compact = getattr(self, "compact", None)
         if compact is not None and compact.active and not compact.moving:
@@ -2355,6 +2428,25 @@ class BrowserWindow(QMainWindow):
 
         registry.watches.signed_out.connect(signed_out)
 
+        def routine_ran(routine, text):
+            window = window_for(routine)
+            if window is None:
+                return
+            if window.agent_message(text, send=True, new_chat=True) is None:
+                notifier.notify(
+                    f"Routine “{routine['name']}” could not start",
+                    "No agent is set up. Agents → Access and Setup → "
+                    "Agent Connection Setup.",
+                )
+                return
+            notifier.notify(
+                f"Routine “{routine['name']}” is running",
+                "Your agent's answer will be in the agent sidebar.",
+                on_click=lambda: (window.raise_(), window.activateWindow()),
+            )
+
+        registry.routines.ran.connect(routine_ran)
+
     def ask_agent(
         self, tab, *, selection="", link="", page="", question="", send=False
     ):
@@ -2381,11 +2473,12 @@ class BrowserWindow(QMainWindow):
         text = "\n\n".join(parts) + ("" if send else "\n\n")
         return self.agent_message(text, send=send)
 
-    def agent_message(self, text, *, send=False):
+    def agent_message(self, text, *, send=False, new_chat=False):
         """Open the agent sidebar on a conversation (the one shown, else any
-        connected one, else a new chat) with text: as a draft for you to
-        finish, or sent. A new chat is still starting, so the text waits
-        there as a draft and is sent once the agent is connected."""
+        connected one, else a new chat; new_chat: always a new one) with
+        text: as a draft for you to finish, or sent. A new chat is still
+        starting, so the text waits there as a draft and is sent once the
+        agent is connected."""
         if self._closing or self.profile_manager.current_profile_name == "search":
             self.status_bar.showMessage("Agents are not available in incognito.", 5000)
             return None
@@ -2395,16 +2488,17 @@ class BrowserWindow(QMainWindow):
             return None
         providers = self.profile_manager.registry.agent_providers
         service = self.profile_manager.registry.tasks
-        task = sidebar._task_id
-        if task not in service.external_tasks:
+        task = None if new_chat else sidebar._task_id
+        if not new_chat and task not in service.external_tasks:
             task = next(
                 (t for t in providers.chats if t in service.external_tasks), None
             )
         if task is None:
+            before = sidebar._task_id
             sidebar.start_chat()
             task = sidebar._task_id
-            if task is None:
-                return None
+            if task is None or (new_chat and task == before):
+                return None  # No agent could start a chat.
             sidebar.set_draft(text)
             if send:
                 self._send_when_ready(task, text)
@@ -2804,6 +2898,44 @@ class BrowserWindow(QMainWindow):
             return
         self._open_window(profile)
 
+    def link_hints(self, new_tab=False):
+        """Letters on the links you can see; typing one follows it."""
+        from ui.link_hints import script
+
+        if self._closing or not self.tabs:
+            return
+        tab = self.tabs[self.current_tab_index]
+        tab.setFocus()
+
+        def shown(count):
+            if not count:
+                self.status_bar.showMessage("No links to follow here.", 3000)
+
+        webengine.run_script(
+            tab.page(), script(new_tab), shown, world=webengine.STEED_WORLD
+        )
+
+    def open_in_background(self, tab, url):
+        """A new tab beside tab, leaving tab in front."""
+        if self._closing:
+            return
+        index = self.tabs.index(tab) + 1 if tab in self.tabs else None
+        current = self.tabs[self.current_tab_index] if self.tabs else None
+        self._new_tab(url=url, index=index)
+        if current in self.tabs:
+            self._switch_tab(self.tabs.index(current))
+
+    def read_aloud(self):
+        """Read the selection or the article aloud; again stops it."""
+        from ui.read_aloud import ReadAloud
+
+        if getattr(self, "_read_aloud", None) is None:
+            self._read_aloud = ReadAloud(self)
+        if self._read_aloud.active:
+            self._read_aloud.stop()
+        elif self.tabs:
+            self._read_aloud.start(self.tabs[self.current_tab_index])
+
     def show_bookmarks_bar(self, shown):
         """Every window's bookmarks bar, on or off (kept for next time)."""
         self.config.set("bookmarks_bar", bool(shown))
@@ -2860,6 +2992,133 @@ class BrowserWindow(QMainWindow):
         else:
             self._navigate_tab_to_url(self.tabs[self.current_tab_index], url)
 
+    # -- site apps (site_apps.py)
+
+    def _enter_app_mode(self):
+        """One site, no tab strip or address bar; the site's name and icon."""
+        self.tab_bar.hide()
+        self.address_bar.hide()
+        self.bookmarks_bar.hide()
+        tab = self.tabs[0] if self.tabs else None
+        if tab is None:
+            return
+        tab.iconChanged.connect(
+            lambda icon: not icon.isNull() and self.setWindowIcon(icon)
+        )
+
+    def regular_window(self):
+        """A normal window of this profile (opened if there is none)."""
+        profile = self.profile_manager.current_profile_name
+        for window in QApplication.topLevelWidgets():
+            if (
+                isinstance(window, BrowserWindow)
+                and not window._closing
+                and not window.app_url
+                and window.isVisible()
+                and window.profile_manager.current_profile_name == profile
+            ):
+                return window
+        return self._open_window(profile)
+
+    def open_site_app(self, url):
+        """A site app's window, in this profile."""
+        return self._open_window(
+            self.profile_manager.current_profile_name, states=None, app_url=url
+        )
+
+    def install_site_app(self):
+        """Tabs → Install This Site as an App…"""
+        from site_apps import SiteApps
+
+        if self._closing or not self.tabs:
+            return
+        tab = self.tabs[self.current_tab_index]
+        url = tab.url()
+        if url.scheme() not in ("http", "https"):
+            self.status_bar.showMessage("Only websites can be installed as apps.", 5000)
+            return
+        name, ok = QInputDialog.getText(
+            self,
+            "Install as App",
+            "Name in your applications menu:",
+            text=(tab.title() or url.host())[:80],
+        )
+        if not ok:
+            return
+        try:
+            app = SiteApps(self.config.config_dir).install(
+                url.toString(), name, tab.icon()
+            )
+        except (ValueError, OSError) as error:
+            QMessageBox.warning(self, "Install as App", str(error))
+            return
+        self.open_site_app(app["url"])
+        self.status_bar.showMessage(
+            f"{app['name']} is in your applications menu.", 6000
+        )
+
+    def _remember_page(self, tab):
+        """Keep the page's text for Search What You've Read (page_memory)."""
+        from services.page_memory import READ, excluded
+
+        if (
+            self._closing
+            or tab not in self.tabs
+            or tab.workspace_name
+            or self.profile_manager.is_search_profile()
+            or self.history is None
+            or tab.url().scheme() not in ("http", "https")
+        ):
+            return
+        sites = [
+            s.strip().lower()
+            for s in str(self.config.get("remember_pages_except", "")).split(",")
+            if s.strip()
+        ]
+        url = tab.url()
+        if excluded(url.host(), sites):
+            return
+        history = self.history
+
+        def got(raw):
+            try:
+                data = json.loads(raw) if isinstance(raw, str) else {}
+            except ValueError:
+                return
+            if (
+                sip.isdeleted(tab)
+                or tab.url() != url
+                or not isinstance(data, dict)
+                or data.get("password")  # Sign-in pages are not kept.
+            ):
+                return
+            history.memory.remember(url.toString(), tab.title(), data.get("text") or "")
+
+        webengine.run_script(tab.page(), READ, got, world=webengine.STEED_WORLD)
+
+    def search_what_you_read(self):
+        from ui.read_search_dialog import ReadSearchDialog
+
+        self._present_dialog(ReadSearchDialog(self), modal=False)
+
+    def manage_routines(self):
+        from ui.routines_dialog import RoutinesDialog
+
+        if self.profile_manager.is_search_profile():
+            self.status_bar.showMessage("Routines do not run in incognito.", 5000)
+            return
+        self._present_dialog(RoutinesDialog(self), modal=False)
+
+    def edit_shortcuts(self):
+        from ui.shortcuts_dialog import ShortcutsDialog
+
+        self._present_dialog(ShortcutsDialog(self), modal=False)
+
+    def manage_site_apps(self):
+        from ui.site_apps_dialog import SiteAppsDialog
+
+        self._present_dialog(SiteAppsDialog(self), modal=False)
+
     def new_window(self):
         """A new window of this profile, starting with a New Tab."""
         return self._open_window(self.profile_manager.current_profile_name, states=[])
@@ -2909,9 +3168,11 @@ class BrowserWindow(QMainWindow):
         tab.printFinished.connect(finished)
         tab.print(printer)
 
-    def _open_window(self, profile, states=None):
+    def _open_window(self, profile, states=None, app_url=None):
         """Open a window this one owns; states restores specific tabs."""
-        win = BrowserWindow(profile_name=profile, restore_states=states)
+        win = BrowserWindow(
+            profile_name=profile, restore_states=states, app_url=app_url
+        )
         win._opener = self
         # Free a closed pop-out now instead of when its opener closes.
         win.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
@@ -5204,6 +5465,8 @@ class BrowserWindow(QMainWindow):
     def _on_load_finished(self, tab: BrowserTab, ok: bool):
         if self._closing or tab not in self.tabs:
             return
+        if ok and self.config.get("remember_pages", False):
+            QTimer.singleShot(2500, lambda: self._remember_page(tab))
         if ok and self.config.get("tab_previews", True) and not tab.workspace_name:
             # Keep its hover preview up to date once the page has painted.
             QTimer.singleShot(800, lambda: self._refresh_preview(tab))
@@ -5294,7 +5557,12 @@ class BrowserWindow(QMainWindow):
         self._save_current_tabs()
 
     def _save_current_tabs(self):
-        if self._restoring_tabs or self.profile_manager.is_search_profile():
+        # A site app's window is not part of the profile's session.
+        if (
+            self._restoring_tabs
+            or self.app_url
+            or self.profile_manager.is_search_profile()
+        ):
             return
         states = []
         if self._normalize_groups():
@@ -6465,6 +6733,8 @@ class BrowserWindow(QMainWindow):
 
     def _record_session(self, kind):
         """Snapshot every window of this profile, or this window as closed."""
+        if self.app_url and kind == "closed":
+            return None
         history = self._session_history()
         if history is None or history.private:
             return None
