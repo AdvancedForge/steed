@@ -360,7 +360,13 @@ def engine_summary() -> dict:
         codecs = "replaced"
     else:
         codecs = "pypi"
-    return {**webengine.versions(), "codecs": codecs}
+    import widevine
+
+    return {
+        **webengine.versions(),
+        "codecs": codecs,
+        "drm": widevine.find()["source"],
+    }
 
 
 def results(raw) -> list[dict]:

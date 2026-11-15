@@ -59,6 +59,8 @@ window.steedUI = {render(next) {
     }
     version = next.draft_version;
   }
+  text('default-status', next.default_browser ? 'Steed opens links from other apps.' : 'Open links from other apps in Steed.');
+  $('make-default').hidden = !!next.default_browser;
   show('error', !!next.error); text('error', next.error);
   show('notice', !!next.notice); text('notice', next.notice);
   show('external', next.external_changes); show('private', next.private);

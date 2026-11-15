@@ -490,6 +490,8 @@ class AddressBar(QWidget):
             if matches(words, title, url):
                 add("bookmark", title or url, url)
         for entry in self.history_entries:
+            if len(rows) >= MAX_SUGGESTIONS:  # Long histories: enough found.
+                break
             if matches(words, entry.title, entry.url):
                 add("history", entry.title or entry.url, entry.url)
         for kind, title, url, key, hint in rows[:MAX_SUGGESTIONS]:

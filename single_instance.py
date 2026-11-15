@@ -22,12 +22,27 @@ def server_name(config_dir) -> str:
 
 
 def launch_urls(arguments) -> list[str]:
-    """Keep only web addresses; other arguments are never forwarded."""
+    """Web addresses and existing local files (a page or document opened from
+    a file manager or another app); other arguments are never forwarded."""
     urls = []
     for argument in arguments:
+        if len(urls) >= MAX_URLS:
+            break
         url = QUrl(argument)
-        if url.scheme() in ("http", "https") and url.host() and len(urls) < MAX_URLS:
+        if url.scheme() in ("http", "https") and url.host():
             urls.append(url.toString())
+            continue
+        if url.scheme() == "file":
+            path = Path(url.toLocalFile())
+        elif "://" not in argument and not argument.startswith("-"):
+            path = Path(argument).expanduser()
+        else:
+            continue
+        try:
+            if path.is_file():
+                urls.append(QUrl.fromLocalFile(str(path.resolve())).toString())
+        except OSError:
+            continue
     return urls
 
 

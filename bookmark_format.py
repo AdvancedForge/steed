@@ -4,7 +4,7 @@ from html import escape
 from html.parser import HTMLParser
 
 MAX_BOOKMARK_HTML_BYTES = 8 * 1024 * 1024
-MAX_BOOKMARKS = 2000
+MAX_BOOKMARKS = 10000
 
 
 def bookmark_name(value, *, optional=False):

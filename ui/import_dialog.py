@@ -1,4 +1,5 @@
-"""General → Import from Another Browser…: bookmarks, history and open tabs."""
+"""General → Import from Another Browser…: bookmarks, history and open tabs,
+and how to bring passwords (browsers only hand them out as an exported file)."""
 
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -34,11 +35,20 @@ class ImportDialog(HtmlSettingsDialog):
             self.source.addItem(f"{source['browser']} — {source['name']}")
         layout.addWidget(self.source)
         self.bookmarks = QCheckBox("Bookmarks (duplicates are skipped)")
-        self.history = QCheckBox("History (the latest 1,000 pages)")
+        self.history = QCheckBox("History (the latest 10,000 pages)")
         self.tabs = QCheckBox("Open tabs, as a saved group (Firefox)")
         for box in (self.bookmarks, self.history, self.tabs):
             box.setChecked(True)
             layout.addWidget(box)
+        passwords = QLabel(
+            "Passwords: other browsers keep them locked, so export them as a file "
+            "first (Chrome: Password Manager → Settings → Export passwords; "
+            "Firefox: about:logins → ⋯ → Export Passwords), then choose Import on "
+            "Steed's Passwords page. Delete the exported file afterwards."
+        )
+        passwords.setWordWrap(True)
+        passwords.setProperty("role", "note")
+        layout.addWidget(passwords)
         self.status = QLabel(
             ""
             if self.sources
@@ -49,7 +59,13 @@ class ImportDialog(HtmlSettingsDialog):
         layout.addWidget(self.status)
         row = QHBoxLayout()
         row.addStretch(1)
+        open_passwords = QPushButton("Open Passwords")
+        open_passwords.clicked.connect(
+            lambda: (self.window._new_tab(url="steed:passwords"), self.accept())
+        )
+        row.addWidget(open_passwords)
         self.import_button = QPushButton("Import")
+        self.import_button.setProperty("primary", True)
         self.import_button.setEnabled(bool(self.sources))
         self.import_button.clicked.connect(self.run)
         close = QPushButton("Close")

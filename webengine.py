@@ -125,6 +125,7 @@ _OPTIONS = {
     "canvas_acceleration": _WEB.Accelerated2dCanvasEnabled,
     "images": _WEB.AutoLoadImages,
     "media_needs_gesture": _WEB.PlaybackRequiresUserGesture,
+    "dark_pages": _WEB.ForceDarkMode,
 }
 PAGE_OPTIONS = tuple(_OPTIONS)
 

@@ -5,7 +5,7 @@ import logging
 import sqlite3
 from pathlib import Path
 from time import monotonic
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, quote
 from uuid import uuid4
 
 from PyQt6 import QtWebEngineCore, sip
@@ -275,6 +275,13 @@ class BrowserTab(QWebEngineView):
             insecure_content=False,
             local_files_reach_web=False,
             screen_capture=True,
+            dark_pages=bool(window is not None and window.config.get("dark_pages")),
+        )
+        # A page's own Print button (window.print()).
+        self.printRequested.connect(
+            lambda: (
+                self.browser_window is not None and self.browser_window.print_page(self)
+            )
         )
 
         if initial_qurl is not None and initial_qurl.isValid():
@@ -304,7 +311,11 @@ class BrowserTab(QWebEngineView):
                 menu, self.page(), self.lastContextMenuRequest()
             )
         if self.browser_window is not None and not self.workspace_name:
+            # Search goes first, above the agent's items.
             self.browser_window._add_ask_agent_item(
+                menu, self, self.lastContextMenuRequest()
+            )
+            self.browser_window._add_search_item(
                 menu, self, self.lastContextMenuRequest()
             )
             self.browser_window._add_extension_menu_items(
@@ -321,7 +332,22 @@ class BrowserTab(QWebEngineView):
             menu.popup(event.globalPos())
 
     def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> "BrowserTab":
-        return self.browser_window._new_tab(return_tab=True)
+        kinds = QWebEnginePage.WebWindowType
+        window = self.browser_window
+        if window_type == kinds.WebBrowserWindow:
+            # "Open Link in New Window" (and shift-click): a real window.
+            opened = window._open_window(
+                window.profile_manager.current_profile_name, states=[]
+            )
+            # Its first tab takes the link (the engine loads it there).
+            return opened.tabs[0] if opened is not None and opened.tabs else None
+        if window_type == kinds.WebBrowserBackgroundTab:
+            current = window.tabs[window.current_tab_index] if window.tabs else None
+            tab = window._new_tab(return_tab=True)
+            if current in window.tabs:
+                window._switch_tab(window.tabs.index(current))
+            return tab
+        return window._new_tab(return_tab=True)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -769,9 +795,32 @@ class BrowserWindow(QMainWindow):
         recover_layout.triggered.connect(self._recover_layout)
         view_menu.addAction(recover_layout)
         general_menu.addSeparator()
-        exit_action = QAction("Exit", self)
+        exit_action = QAction("Quit Steed", self)
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
-        exit_action.triggered.connect(self.close)
+        exit_action.triggered.connect(self.quit_steed)
+        close_window_action = QAction("Close Window", self)
+        close_window_action.setShortcut(QKeySequence("Ctrl+Shift+W"))
+        close_window_action.triggered.connect(self.close)
+        general_menu.addAction(close_window_action)
+        new_window_action = QAction("New Window", self)
+        new_window_action.setShortcut(QKeySequence("Ctrl+N"))
+        new_window_action.triggered.connect(self.new_window)
+        tabs_menu.addAction(new_window_action)
+        print_action = QAction("Print…", self)
+        print_action.setShortcut(QKeySequence("Ctrl+P"))
+        print_action.triggered.connect(
+            lambda: self.tabs and self.print_page(self.tabs[self.current_tab_index])
+        )
+        general_menu.addAction(print_action)
+        self.full_screen_action = QAction("Full Screen", self)
+        self.full_screen_action.setCheckable(True)
+        self.full_screen_action.setShortcut(QKeySequence("F11"))
+        self.full_screen_action.triggered.connect(self.toggle_full_screen)
+        view_menu.addAction(self.full_screen_action)
+        source_action = QAction("View Page Source", self)
+        source_action.setShortcut(QKeySequence("Ctrl+U"))
+        source_action.triggered.connect(self.view_source)
+        view_menu.addAction(source_action)
         access_action = QAction("Access && Permissions…", self)
         access_action.triggered.connect(
             lambda: self._new_tab(url="steed:access", return_tab=True)
@@ -780,14 +829,12 @@ class BrowserWindow(QMainWindow):
         task_action = QAction("Task Permissions...", self)
         task_action.triggered.connect(self._open_tasks)
         agents_menu.addAction(task_action)
-        self.auto_approval_action = QAction(
-            "YOLO mode: auto-approve agent requests (unsafe)", self
-        )
+        self.auto_approval_action = QAction("Approve All Agent Requests (unsafe)", self)
         self.auto_approval_action.setCheckable(True)
         self.auto_approval_action.toggled.connect(self._toggle_auto_approval)
         agents_menu.addAction(self.auto_approval_action)
         self.auto_approval_notice = QLabel(
-            "YOLO mode: agent requests auto-approved", self
+            "Agent requests approved automatically", self
         )
         # A warning pill in the status bar (bar_stylesheet styles it).
         self.auto_approval_notice.setObjectName("WarningNotice")
@@ -2085,6 +2132,28 @@ class BrowserWindow(QMainWindow):
 
     # ---------- Asking your agent from anywhere ----------
 
+    def _add_search_item(self, menu, tab, request):
+        """Search <engine> for "the selection", in a tab beside this one."""
+        selection = " ".join((request.selectedText() or "").split()) if request else ""
+        if not selection:
+            return
+        shown = selection if len(selection) <= 30 else selection[:29] + "…"
+        action = QAction(
+            f"Search {search_engine_name(self.config)} for “{shown}”", menu
+        )
+        engine = self.config.get("search_engine", DEFAULT_SEARCH_ENGINE)
+        target = engine + quote(selection[:1000], safe="")
+        action.triggered.connect(
+            lambda: (
+                self._new_tab(url=target, index=self.tabs.index(tab) + 1)
+                if tab in self.tabs
+                else self._new_tab(url=target)
+            )
+        )
+        first = menu.actions()[0] if menu.actions() else None
+        menu.insertAction(first, action)
+        menu.insertSeparator(first)
+
     def _add_ask_agent_item(self, menu, tab, request):
         """Ask Agent About … (selection, link or page) in the page menu."""
         if self.profile_manager.current_profile_name == "search":
@@ -2461,7 +2530,7 @@ class BrowserWindow(QMainWindow):
         if hasattr(self, "status_bar") and not self.isFullScreen():
             self.status_bar.setVisible(self._status_bar_wanted())
         if hasattr(self, "address_bar"):
-            self.address_bar.set_menu_badge("⚠ YOLO" if enabled else "")
+            self.address_bar.set_menu_badge("⚠ Auto-approve" if enabled else "")
             self.address_bar.menu_btn.setToolTip(
                 "Browser menu · unsafe agent auto-approval is enabled"
                 if enabled
@@ -2474,7 +2543,7 @@ class BrowserWindow(QMainWindow):
             and QMessageBox.warning(
                 self,
                 "Enable unsafe agent auto-approval?",
-                "YOLO mode automatically approves Steed requests from every connected agent, "
+                "This automatically approves Steed requests from every connected agent, "
                 "across profiles, for this browser run. Agents can take control of tabs, "
                 "send or change account data, run generated packages and apply page/layout changes "
                 "without another approval. This may be unsafe: websites and agent output can "
@@ -2680,6 +2749,55 @@ class BrowserWindow(QMainWindow):
             QMessageBox.warning(self, "Profile in use", str(error))
             return
         self._open_window(profile)
+
+    def new_window(self):
+        """A new window of this profile, starting with a New Tab."""
+        return self._open_window(self.profile_manager.current_profile_name, states=[])
+
+    def quit_steed(self):
+        """Close every window (each saves its tabs as it closes)."""
+        for window in list(QApplication.topLevelWidgets()):
+            if isinstance(window, BrowserWindow) and not window._closing:
+                window.close()
+
+    def toggle_full_screen(self, *_):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
+        self.full_screen_action.setChecked(self.isFullScreen())
+
+    def view_source(self):
+        tab = self.tabs[self.current_tab_index] if self.tabs else None
+        if tab is None or tab.url().scheme() not in ("http", "https", "file"):
+            return
+        source = self._new_tab(return_tab=True, index=self.tabs.index(tab) + 1)
+        if source is not None:
+            source.setUrl(QUrl("view-source:" + tab.url().toString()))
+
+    def print_page(self, tab):
+        """The system print dialog for a tab (Ctrl+P, or the page's own
+        Print button)."""
+        from PyQt6.QtPrintSupport import QPrintDialog, QPrinter
+
+        if self._closing or tab not in self.tabs:
+            return
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        dialog = QPrintDialog(printer, self)
+        dialog.setWindowTitle(f"Print {tab.title() or 'page'}")
+        if dialog.exec() != QPrintDialog.DialogCode.Accepted or tab not in self.tabs:
+            return
+        # The printer must outlive the job, which finishes later.
+        tab._printer = printer
+
+        def finished(ok):
+            tab.printFinished.disconnect(finished)
+            tab._printer = None
+            if not ok:
+                self.status_bar.showMessage("The page could not be printed.", 5000)
+
+        tab.printFinished.connect(finished)
+        tab.print(printer)
 
     def _open_window(self, profile, states=None):
         """Open a window this one owns; states restores specific tabs."""
@@ -7259,6 +7377,9 @@ class BrowserWindow(QMainWindow):
             if side != self.devtools.side:
                 self.devtools.set_side(side)
             self.apply_dark_mode()
+            dark_pages = bool(self.config.get("dark_pages", False))
+            for tab in self.tabs:
+                webengine.set_options(tab.settings(), dark_pages=dark_pages)
             self._start_page_changed(self.profile_manager.current_profile_name)
 
     def _startup_page(self):

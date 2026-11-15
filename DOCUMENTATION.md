@@ -81,9 +81,16 @@ from the new location. To remove the menu entry, delete `steed.desktop` from
 
 Launching Steed again while it is running opens a new window in the running
 browser instead of a second copy; `./steed https://example.org` opens the link
-as a tab in the most recently used window. Only HTTP/HTTPS addresses are passed
-on, through a private socket in your runtime directory. Run the installer again
-to add link arguments (`%U`) to an existing menu entry. If the running browser
+as a tab in the most recently used window, and `./steed page.html` opens a
+local file. Only HTTP/HTTPS addresses and existing local files are passed on,
+through a private socket in your runtime directory.
+
+**Default browser.** Settings → General → **Make Steed your default browser**
+registers Steed's menu entry for web links and HTML files (writing it first if
+needed) and makes it the default with `xdg-settings` (or `xdg-mime` where the
+desktop has no `xdg-settings`). Links from other apps, and HTML files opened
+from a file manager, then open in Steed. The menu entry uses Steed's own icon
+(`ui/assets/steed.svg`). If the running browser
 does not answer within two seconds, a warning is shown instead.
 
 ### Graphics troubleshooting
@@ -312,7 +319,7 @@ Select a bookmark and click **Open**, or double-click it, to open a new tab in
 the current profile. Use **Edit…** to change its details. If the profile has
 changed while the manager was open, reopen the manager before opening a link.
 
-**Import HTML…** merges a UTF-8 browser bookmark export (up to 8 MiB and 2,000
+**Import HTML…** merges a UTF-8 browser bookmark export (up to 8 MiB and 10,000
 entries per profile). Existing links keep their names/folders; duplicate and invalid
 links are counted. Only HTTP(S) addresses without embedded credentials are accepted.
 HTML is parsed as inert data; scripts and external entities are never executed or
@@ -383,6 +390,10 @@ There is no general-purpose HTML app capability bridge in this milestone.
 ### Keyboard Shortcuts
 
 - `Ctrl+T`: New tab
+- `Ctrl+N`: New window (of the current profile); `Ctrl+Shift+N`: incognito window
+- `Ctrl+P`: Print the page (a page's own Print button opens the same dialog)
+- `F11`: Full screen
+- `Ctrl+U`: The page's source, in a new tab
 - `Ctrl+W`: Close current tab; closing a window's last tab closes the window (and
   quits Steed if it was the last one, keeping its tabs for next start)
 - `Alt+Left` / `Alt+Right`, or the mouse's back/forward side buttons: Back / Forward
@@ -406,7 +417,8 @@ There is no general-purpose HTML app capability bridge in this milestone.
 - `Ctrl+Shift+Space`: Dictate — tap to start and again to finish, or hold while
   talking; `Escape` cancels ([Dictation](#dictation))
 - `Ctrl+,`: Settings
-- `Ctrl+Q`: Close the window
+- `Ctrl+Shift+W`: Close the window
+- `Ctrl+Q`: Quit Steed (every window saves its tabs first)
 
 ### Menu Options
 
@@ -642,6 +654,12 @@ Chromium could read as something wider: clearing the malformed origin
 
 ### Saving pages
 
+**General → Print…** (Ctrl+P) opens the system print dialog (printers, page
+range, and Print to File for a PDF); a page's own Print button opens the same
+dialog. Right-click a selection → **Search … for "…"** searches it with your
+search engine in a tab beside the page; **Open Link in New Window** opens a real
+window.
+
 **View → Save Page As…** (Ctrl+S) saves the page as one file (`.mhtml`, with
 its images and styles, opened again by Steed or Chrome), as HTML with a folder
 of its files, or as PDF. Screenshots are under View → Take Screenshot.
@@ -827,7 +845,7 @@ space). **Complete addresses as you type** in Settings turns it off.
 Edge, Vivaldi and Firefox profiles on this computer (including Snap and Flatpak
 installs, by each browser's own profile names) and imports into the current
 profile: **bookmarks** (top folders become labels; existing addresses are
-skipped; the 2,000-bookmark limit applies), **history** (the latest 1,000 web
+skipped; the 10,000-bookmark limit applies), **history** (the latest 10,000 web
 pages) and, from Firefox, **open tabs**, which become a saved group "Open tabs
 from Firefox" (Tabs → Saved Groups). Chromium keeps open tabs in an
 undocumented binary format, so they are not imported. Steed reads copies of the
@@ -1180,13 +1198,15 @@ switching profiles clears the query. Searches refresh after page navigation.
 
 Zoom applies to the active tab, from 25% to 500%. Use the View menu or the
 shortcuts above. The percentage beside the address bar resets zoom when clicked.
-New tabs start at 100%; zoom levels are not saved across restart.
+Each site keeps its zoom (in the profile's `site_settings.json`, so it lasts
+across restarts; incognito forgets it); a page with no zoom of its own opens at
+100%.
 
 ### Address Suggestions
 
 Type part of a visited URL or page title in the address bar, choose a suggestion
 with the arrow keys, and press Enter. Clicking a suggestion also opens it.
-Successful HTTP/HTTPS visits are stored newest first, with up to 1,000 unique
+Successful HTTP/HTTPS visits are stored newest first, with up to 10,000 unique
 URLs per profile. Ordinary profile history survives restarts and is shared by
 windows using that profile. Incognito suggestions stay in memory and do not
 include ordinary profile history. Local files and URLs containing embedded
@@ -1573,6 +1593,9 @@ connection setup; opening them does not grant browser access.
 
 Choose **Save changes** to apply the preference draft, or **Cancel** to discard it.
 Dark appearance previews inside settings first; Save updates open browser windows.
+**Dark websites** (Settings → View) shows websites dark even when they have no
+dark look of their own (Chromium's automatic dark mode); open tabs change when
+you save.
 Independent changes from another settings window are merged. If the same setting
 was changed to a different value, Save stops and keeps the draft; **Reload saved
 values** explicitly discards preference edits and reloads saved values.

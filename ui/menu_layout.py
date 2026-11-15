@@ -6,6 +6,7 @@ them. Anything not named here keeps its place at the end, before Exit.
 """
 
 from PyQt6 import sip
+from PyQt6.QtWidgets import QMenu
 
 GROUPS = {
     "general": (
@@ -68,14 +69,24 @@ GROUPS = {
         ("Memory & Performance…", "Engine & Features…", "Developer Tools"),
     ),
     "agents": (
-        ("Agent Sidebar", "Agent Chat Tab", "Data Panels", "Watches…", "Website Chats"),
+        ("Agent Sidebar", "Agent Chat Tab", "Watches…", "Website Chats", "Data Panels"),
+    ),
+}
+# Items gathered into a sub-menu at the end: what sets agents up and what
+# they may do, out of the way of everyday use.
+SUBMENUS = {
+    "agents": (
+        "Access and Setup",
         (
-            "Access & Permissions…",
-            "Task Permissions…",
-            "App Connections…",
-            "Agent File Library…",
+            ("Agent Connection Setup…", "Enable Local Agent Access"),
+            (
+                "Access & Permissions…",
+                "Task Permissions…",
+                "App Connections…",
+                "Agent File Library…",
+            ),
+            ("Approve All Agent Requests (unsafe)",),
         ),
-        ("Enable Local Agent Access", "Agent Connection Setup…"),
     ),
 }
 LAST = ("Exit",)
@@ -123,6 +134,7 @@ ICONS = {
     "Watches…": "eye",
     "Website Chats": "chat",
     "Access & Permissions…": "lock",
+    "Access and Setup": "gear",
     "New Profile…": "user",
     "Switch Profile…": "users",
     "Browsing History…": "clock",
@@ -152,9 +164,21 @@ def arrange(menus):
             if members:
                 ordered.append(members)
                 placed.update(id(a) for a in members)
+        sub = None
+        if name in SUBMENUS:
+            title, sub_groups = SUBMENUS[name]
+            sub = QMenu(title, menu)
+            for index, group in enumerate(sub_groups):
+                members = [by_label[text] for text in group if text in by_label]
+                if members and index and sub.actions():
+                    sub.addSeparator()
+                sub.addActions(members)
+                placed.update(id(a) for a in members)
         rest = [a for a in actions if id(a) not in placed and label(a) not in LAST]
         last = [a for a in actions if id(a) not in placed and label(a) in LAST]
         ordered += [group for group in (rest, last) if group]
+        if sub is not None and sub.actions():
+            ordered.append([sub.menuAction()])
         for action in menu.actions():
             menu.removeAction(action)
         for index, group in enumerate(ordered):
