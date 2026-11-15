@@ -9,6 +9,29 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Real-world shakedown — November 15, 2026.** The last rounds checked against
+the real services, in a scratch profile (deleted afterwards):
+- uBlock Origin Lite from the Chrome Web Store installs, its background runs,
+  and its six default rulesets load (18,951 rules). Ad scripts are swapped for
+  its stand-ins and trackers blocked; on cnn.com and theverge.com 13–16
+  requests per page were blocked or swapped. Matching was too slow with its
+  real rules (4–13 ms a request); rules are now also filed by a whole word of
+  their pattern and by the sites they apply on, down to about 0.2 ms (about
+  1 ms on a first page load, while patterns compile), with every filed rule
+  still found (5,046 checked).
+- The real phishing and malware lists (18,241 and 1,772 domains) download; a
+  listed domain shows the warning page and is never requested.
+- The update check finds Qt WebEngine 6.140.0 on PyPI and new commits on the
+  GitHub repository (tested on a clone set two commits back).
+- Spell check downloads the real en-US dictionary; right-clicking "sentense"
+  in a real page offers "sentence" first.
+- A site app's desktop entry launches the app window (no tab strip or address
+  bar) on the site.
+- A Widevine-protected stream (Shaka Player's Sintel demo) plays decrypted with
+  Chromium's Widevine module.
+Still manual: printing to a printer, Read Aloud with a real voice, default
+browser on the desktop, and the agent features with a real agent.
+
 **A day in Steed — November 14, 2026.** For people already using Steed daily,
 what still sent them elsewhere: Read Aloud (desktop voices), link hints for
 keyboard browsing (Ctrl+;), site apps (a site in its own window and

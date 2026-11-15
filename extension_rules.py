@@ -137,6 +137,34 @@ def _domains(value, field):
 
 # The longest plain run in a urlFilter: a request without it cannot match.
 _RUNS = re.compile(r"[A-Za-z0-9%_-]{3,}")
+# An address's words, as the index files rules under them.
+_WORDS = re.compile(r"[a-z0-9%_-]{3,}")
+
+
+def _bounded_word(body, anchored_start, anchored_end):
+    """The longest word in a urlFilter that must be a whole word of any
+    address it matches (separators on both sides, not *), lower case; or
+    None. Such a rule is looked up by that word instead of tried on every
+    request."""
+    best = None
+    for match in _RUNS.finditer(body):
+        before = body[match.start() - 1] if match.start() else None
+        after = body[match.end()] if match.end() < len(body) else None
+        left = (before is None and anchored_start) or (
+            before is not None
+            and before not in "*"
+            and not before.isalnum()
+            and before not in "%_-"
+        )
+        right = (after is None and anchored_end) or (
+            after is not None
+            and after not in "*"
+            and not after.isalnum()
+            and after not in "%_-"
+        )
+        if left and right and (best is None or len(match.group()) > len(best)):
+            best = match.group()
+    return best.lower() if best else None
 
 
 class Rule:
@@ -180,9 +208,15 @@ class Rule:
         self._pattern = False  # Not compiled yet.
         self.regex = regex_text if isinstance(regex_text, str) else None
         # A quick test before any regular expression, and an index key.
-        self.token, self.key = None, None
+        self.token, self.key, self.word = None, None, None
         if isinstance(url_text, str):
             body = url_text[2:] if url_text.startswith("||") else url_text
+            body = body.removeprefix("|")
+            anchored_end = body.endswith("|")
+            body = body.removesuffix("|")
+            self.word = _bounded_word(
+                body, url_text.startswith(("||", "|")), anchored_end
+            )
             runs = _RUNS.findall(body)
             if runs:
                 token = max(runs, key=len)
@@ -367,24 +401,39 @@ def _transform(url, transform):
 
 
 class Index:
-    """A profile's rules from switched-on extensions, filed by domain."""
+    """A profile's rules from switched-on extensions, filed by domain, else
+    by a whole word of their pattern; the rest are tried on every request."""
 
     def __init__(self, rules):
-        self.by_domain, self.generic, self.count = {}, [], 0
+        self.by_domain, self.by_word, self.by_initiator = {}, {}, {}
+        self.generic, self.count = [], 0
         for rule in rules:
             self.count += 1
             keys = rule.keys()
-            if not keys:
+            if keys:
+                for key in keys:
+                    self.by_domain.setdefault(key, []).append(rule)
+            elif rule.word:
+                self.by_word.setdefault(rule.word, []).append(rule)
+            elif rule.initiators:
+                for key in rule.initiators:
+                    self.by_initiator.setdefault(key, []).append(rule)
+            else:
                 self.generic.append(rule)
-            for key in keys:
-                self.by_domain.setdefault(key, []).append(rule)
 
-    def candidates(self, *hosts):
+    def candidates(self, *hosts, url="", initiators=()):
         found = {}
+        for host in initiators:
+            for part in suffixes(host) if host else []:
+                for rule in self.by_initiator.get(part, ()):
+                    found[id(rule)] = rule
         for host in hosts:
             for part in suffixes(host) if host else []:
                 for rule in self.by_domain.get(part, ()):
                     found[id(rule)] = rule
+        for word in set(_WORDS.findall(url.lower())):
+            for rule in self.by_word.get(word, ()):
+                found[id(rule)] = rule
         for rule in self.generic:
             found[id(rule)] = rule
         return found.values()
@@ -686,7 +735,9 @@ class ExtensionRules:
             }
         best, headers = {}, {}
         hosts = (request["host"], page["host"] if page else "")
-        for rule in index.candidates(*hosts):
+        urls = request["url"] + " " + (page["url"] if page else "")
+        initiators = (request["initiator"], page["host"] if page else "")
+        for rule in index.candidates(*hosts, url=urls, initiators=initiators):
             if rule.kind == "allowAllRequests":
                 hit = (page is not None and rule.matches(page)) or rule.matches(request)
             else:
