@@ -8,6 +8,7 @@ from PyQt6.QtCore import QObject, QUrl, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PyQt6.QtWebEngineCore import QWebEngineUrlRequestInterceptor
 
+import extension_rules
 from utils import load_json, save_json
 
 SOURCES = (
@@ -63,8 +64,12 @@ class FilterInterceptor(QWebEngineUrlRequestInterceptor):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service
+        self.profile = parent
 
     def interceptRequest(self, info):
+        # Extensions' network rules (extension_rules) come first, as in Chrome.
+        if self.profile is not None and extension_rules.apply(self.profile, info):
+            return
         request_url = info.requestUrl()
         scheme = request_url.scheme()
         if not self.service.applies_now() or scheme not in ("http", "https"):

@@ -30,6 +30,9 @@ from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 from extension_build import (
+    MESSAGES_NAME,
+    SHIM,
+    SHIM_NAME,
     build,
     clean_site,
     crx_zip,
@@ -500,6 +503,7 @@ class Extensions(QObject):
         if manager is None:
             return
         self.profiles[name] = (profile, Path(folder))
+        profile.steed_rules = (self.bridges.rules, name)
         manager.installFinished.connect(lambda info, n=name: self._installed(n, info))
         manager.uninstallFinished.connect(
             lambda info, n=name: self._uninstalled(n, info)
@@ -515,7 +519,9 @@ class Extensions(QObject):
         self.bridges.close(name)
         if busy:
             settle_ports()
-        self.profiles.pop(name, None)
+        profile = self.profiles.pop(name, (None,))[0]
+        if profile is not None:
+            profile.steed_rules = None
 
     def close(self):
         """Before every profile goes (Steed quits): likewise."""
@@ -637,6 +643,36 @@ class Extensions(QObject):
         if wanted & set(installed):
             self.changed.emit(name)
         self.reconcile(name)
+        self._refresh_builds(name)
+
+    def _refresh_builds(self, name):
+        """Build again (keeping id and data) extensions installed with an older
+        Steed: their stand-ins (extension_shim.js) are out of date."""
+        try:
+            current = SHIM.read_bytes()
+        except OSError:
+            return
+        state = self.state(name)
+        for entry in self.installed(name):
+            if entry["id"] in self._pending.get(name, {}):
+                continue
+            folder = Path(entry["path"])
+            try:
+                fresh = (folder / SHIM_NAME).read_bytes() == current and (
+                    folder / MESSAGES_NAME
+                ).is_file()
+            except OSError:
+                fresh = False
+            if fresh or not self.source(name, entry["id"]).is_dir():
+                continue
+            self._deploy(
+                name,
+                entry["id"],
+                store=next(
+                    (s for s, q in state["ids"].items() if q == entry["id"]), None
+                ),
+                enabled=entry["enabled"],
+            )
 
     def _info(self, name, extension_id):
         manager = self._manager(name)
@@ -814,6 +850,7 @@ class Extensions(QObject):
             state["store"].pop(store, None)
             state["updates"].pop(store, None)
         self._write(name, state)
+        self.bridges.rules.forget(name, extension_id)
         if info is not None:
             self.bridges.drop(name, info.id())
             self._manager(name).uninstallExtension(info)

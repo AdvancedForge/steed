@@ -261,6 +261,9 @@ class Bridges(QObject):
         self.world_listeners = []  # (tab, extension id) with onMessage listeners
         self.errors = {}  # (profile, extension id) -> recent errors, oldest first
         self.offscreen = {}  # (profile, extension id) -> its OffscreenPage
+        from extension_rules import ExtensionRules
+
+        self.rules = ExtensionRules(extensions)
 
     # -- pages
 
@@ -276,6 +279,7 @@ class Bridges(QObject):
                 wanted[entry["id"]] = entry
         for key in [k for k in self.pages if k[0] == name and k[1] not in wanted]:
             self._drop(key)
+        self.rules.set_active(name, wanted)
         for extension_id in wanted:
             key = (name, extension_id)
             if key in self.pages:
@@ -359,6 +363,8 @@ class Bridges(QObject):
             self._to_world(key, message)
         elif kind == "offscreen":
             self._offscreen(key, message)
+        elif kind == "rules":
+            self._rules(key, message)
 
     def _answer(self, key, ask, value=None, error=None):
         message = {"type": "answer", "ask": ask, "value": value}
@@ -503,6 +509,48 @@ class Bridges(QObject):
         if message.get("active") is False and before in window.tabs:
             window._switch_tab(window.tabs.index(before))
         self._answer(key, ask, None)
+
+    # -- network rules (declarativeNetRequest's dynamic and session rules)
+
+    def _rules(self, key, message):
+        name, extension_id = key
+        ask, scope = message.get("ask"), message.get("scope")
+        if scope == "static":
+            self._rulesets(key, message)
+            return
+        if scope not in ("dynamic", "session"):
+            self._answer(key, ask, error="Unknown rule scope.")
+            return
+        try:
+            if message.get("op") == "update":
+                self.rules.update(name, extension_id, scope, message.get("options"))
+                self._answer(key, ask, None)
+            else:
+                filter_ = message.get("filter")
+                ids = filter_.get("ruleIds") if isinstance(filter_, dict) else None
+                self._answer(key, ask, self.rules.get(name, extension_id, scope, ids))
+        except (ValueError, OSError) as error:
+            self._answer(key, ask, error=str(error))
+
+    def _rulesets(self, key, message):
+        name, extension_id = key
+        ask, op, options = message.get("ask"), message.get("op"), message.get("options")
+        try:
+            if op == "enabled":
+                value = self.rules.enabled(name, extension_id)
+            elif op == "updateEnabled":
+                value = self.rules.update_enabled(name, extension_id, options)
+            elif op == "updateStatic":
+                value = self.rules.update_static(name, extension_id, options)
+            elif op == "disabled":
+                value = self.rules.disabled_rules(
+                    name, extension_id, (options or {}).get("rulesetId")
+                )
+            else:
+                raise ValueError("Unknown ruleset request.")
+            self._answer(key, ask, value)
+        except (ValueError, OSError) as error:
+            self._answer(key, ask, error=str(error))
 
     # -- offscreen documents
 
