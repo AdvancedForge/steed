@@ -3548,7 +3548,7 @@ Missing or malformed catalog entries are skipped; unavailable or changed selecti
 require reopening the picker. Discovery reads at most 50 matching regular files,
 rejects symlinks and special files, and performs no network requests.
 
-The [starter connector handoff](connectors/HANDOFF.md) assigns service data and
+The [starter connector handoff](docs/history/connectors-handoff-2026-10.md) assigns service data and
 fixtures to another contributor. The reviewed starter branch is now integrated:
 the picker offers **Todoist, GitLab.com, Asana, Raindrop.io and Microsoft 365**.
 Microsoft 365 uses a supplied delegated token; native OAuth remains deferred.
@@ -4021,7 +4021,7 @@ transform support but adds an executable adapter trust boundary and ongoing sand
 compatibility work. Existing attachment workers have no connector credential or
 network access. No generated Python would run inside the browser under either design.
 The user chose declarative request plans first on October 3, 2026. Implementation
-continues in that direction. See the [connector implementation handoff](connectors/HANDOFF.md)
+continues in that direction. See the [connector implementation handoff](docs/history/connectors-handoff-2026-10.md)
 for independently owned provider recipes and verified current-runtime subsets.
 The framework work owns shared catalog discovery and plan execution; service
 contributors do not edit the shared broker or UI.

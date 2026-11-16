@@ -9,6 +9,9 @@ from unittest.mock import patch
 
 from services.local_worker import run_worker, worker_command
 
+# The real home folder, read before tests patch Path.home.
+REAL_HOME = Path(os.path.expanduser("~"))
+
 
 class LocalWorkerTests(unittest.TestCase):
     def execute(self, source, *, timeout=3, cancel=None):
@@ -38,7 +41,7 @@ from pathlib import Path
 from steed_worker import call
 assert 'STEED_SECRET' not in os.environ
 assert not Path({str(canary)!r}).exists()
-assert not Path('/home/coolguy/.custom_browser').exists()
+assert not Path({str(REAL_HOME / ".custom_browser")!r}).exists()
 assert not Path('/run/user').exists()
 assert not Path('/proc/1/root/home').exists()
 for attempt in [

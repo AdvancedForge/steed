@@ -508,7 +508,7 @@ bookmark/download tasks or begin the deferred HTML bridge.
 ### Next work from this checkpoint
 
 1. Create a fresh branch/worktree from published main; read the active October 13
-   roadmap and [daily workflow guide](DOCUMENTATION.md#daily-browser-access-and-permission-diagnostics).
+   roadmap and [daily workflow guide](../../DOCUMENTATION.md#daily-browser-access-and-permission-diagnostics).
    Native/generic clients need a fresh chat or reconnect to load all 85 tools.
    Do not rerun the old N5 acceptance agenda or restart completed small tasks.
 2. Address real desktop/site failures using exact public error codes, active
@@ -706,7 +706,7 @@ Logs: `/tmp/steed-continued-engineering-full.log`, `/tmp/steed-panel-library-fin
 
 Current checkpoint adds Global startup, editable `steed:newtab`/`steed:welcome`,
 and native sealed-workspace/image plus reusable linked-library panels.
-Read [the page guide](DOCUMENTATION.md#welcome-new-tab-and-bookmarks) and the newest
+Read [the page guide](../../DOCUMENTATION.md#welcome-new-tab-and-bookmarks) and the newest
 roadmap entry. `services/start_pages.py` owns profile-local settings/bookmarks/HTML;
 `services/news_feed.py` performs optional bounded cookie-free feed reads. URL-scheme
 registration occurs before QApplication. BrowserPage intercepts only maintained
@@ -796,7 +796,7 @@ Main includes the persistent file library and bounded discovery, open-shadow
 observation, reviewed static API headers, explicit identity-label alternatives,
 and the simplified agent sidebar. Branch from the current tip of `main`, not an
 older chat-only checkpoint. Read `AGENTS.md`, the top of `ROADMAP.md`, and
-[library instructions](DOCUMENTATION.md#persistent-agent-file-library) first.
+[library instructions](../../DOCUMENTATION.md#persistent-agent-file-library) first.
 Historical roadmap checkpoints describe earlier milestones; the current-work
 section and this handoff take precedence for the next engineering scope.
 
@@ -922,9 +922,9 @@ or granting permissions. Keep every menu and the address field reachable.
 Run serially from that checkout, using its own environment or this compatible one:
 
 ```bash
-QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu PYTHONPATH=tests:. /home/coolguy/Scripts/Python/Browser/.venv/bin/python -m unittest test_layout_preferences test_browser_layout -v
-/home/coolguy/Scripts/Python/Browser/.venv/bin/python -m ruff check .
-/home/coolguy/Scripts/Python/Browser/.venv/bin/python -m ruff format --check .
+QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu PYTHONPATH=tests:. .venv/bin/python -m unittest test_layout_preferences test_browser_layout -v
+.venv/bin/python -m ruff check .
+.venv/bin/python -m ruff format --check .
 ```
 
 Run the complete suite with maintained worker bundles; record missing dependency

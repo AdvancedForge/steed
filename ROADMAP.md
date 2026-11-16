@@ -1501,7 +1501,7 @@ synthetic profiles; no real accounts or external model calls were used. Logs:
 Native inputs and comparison tables are delivered above; richer sources/components
 follow with existing message/permission/receipt controls. HTML/JavaScript hosting stays deferred rather
 than excluded. See [usage](DOCUMENTATION.md#native-data-panels--implemented-first-milestone)
-and [the continuation plan](ENGINEERING_HANDOFF.md#native-data-panels--decision-and-continuation).
+and [the continuation plan](docs/history/engineering-handoff-2026-10.md#native-data-panels--decision-and-continuation).
 
 **Accessible form hints (implemented and accepted).**
 Rendered-DOM targets now expose bounded descriptions, author-declared required/
@@ -1588,7 +1588,7 @@ Ruff lint/format and whitespace pass. Light/dark 640×520 previews were inspecte
 No real accounts or profiles were used. Logs: `/tmp/steed-layout-fixes-full.log`,
 `/tmp/steed-layout-fixes-focused-final.log`, `/tmp/steed-layout-fixes-startup.log`.
 Original findings and subsequent scopes are retained in
-[the engineering handoff](ENGINEERING_HANDOFF.md#configurable-layout-review-and-continuation).
+[the engineering handoff](docs/history/engineering-handoff-2026-10.md#configurable-layout-review-and-continuation).
 Portable layouts/proposals and native action panels are delivered as L2/L3 above.
 
 **Codex access discovery and reported model (implemented and validated).**
@@ -1854,7 +1854,7 @@ adds image/workspace sources and richer data bindings; the next shared connector
 is typed query/POST reads. Deeper accessible semantics and supported shadow-control
 input remain separate follow-ups. Further agents work on their own branches and
 submit milestones for maintainer review.
-See [ENGINEERING_HANDOFF.md](ENGINEERING_HANDOFF.md) for ownership, ordered scopes,
+See [the October engineering hand-off](docs/history/engineering-handoff-2026-10.md) for ownership, ordered scopes,
 acceptance checks and the review procedure. Release gates remain reference work
 in RELEASE_PLAN.md. Continue connector work under the posted PR instructions.
 Cloud-agent transport/pairing needs a separate product decision. Google shared
@@ -2191,7 +2191,7 @@ establishes those results. Password improvements remain deferred at the user's r
   sign-in and API semantics still require separate acceptance.
 
 - **Parallel connector handoff — published implementation scope:**
-  [priority list and ownership](connectors/HANDOFF.md) identifies Todoist,
+  [priority list and ownership](docs/history/connectors-handoff-2026-10.md) identifies Todoist,
   owner-pinned GitHub and GitLab.com starter subsets that execute through unchanged
   v2 recipes. Four synthetic wire-shape compatibility checks passed; Microsoft reads
   are a conditional bearer-token subset, not verified integrated OAuth. Notion,

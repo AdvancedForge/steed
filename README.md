@@ -2,6 +2,13 @@
 
 A browser for every day that can become whatever you need.
 
+> **Early preview.** Steed is a personal project under active development:
+> Linux only, run from source, not yet packaged or security-reviewed for
+> general use. See [Good to know](#good-to-know) and the
+> [release plan](RELEASE_PLAN.md).
+
+![The New Tab page](docs/screenshots/new-tab.jpg)
+
 Steed is a Linux desktop browser (Python, PyQt6 and Qt WebEngine). Out of the
 box it is a calm, ordinary browser: tabs, profiles, passwords, bookmarks,
 history. Underneath it is a sandbox. Restyle every page, rearrange the browser,
@@ -21,6 +28,8 @@ is in your way until you go looking for it.
 - Printing, spell check, a bookmarks bar, reader view, translation, dictation
   (`Ctrl+Shift+Space`), dark websites, ad and tracker blocking, warnings for
   phishing and malware sites, Chrome (Manifest V3) extensions.
+
+![Split view](docs/screenshots/split-view.jpg)
 
 ## Make it yours
 
@@ -62,3 +71,8 @@ is one.
 - [DOCUMENTATION.md](DOCUMENTATION.md): using and configuring Steed, plus its
   design. [ROADMAP.md](ROADMAP.md): progress and what is next.
   [RELEASE_PLAN.md](RELEASE_PLAN.md): the road to a public release.
+
+## Licence
+
+Steed is free software under the [GNU General Public License v3](LICENSE)
+(PyQt6, which it is built on, is licensed under the GPL v3).
