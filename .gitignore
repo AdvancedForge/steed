@@ -5,3 +5,8 @@ __pycache__/
 .worker-bundles/
 client_secret_*.apps.googleusercontent.com.json
 .venv-upgrade/
+
+# Local tools and runtime leftovers
+.claude/
+*.pid
+.goosehints

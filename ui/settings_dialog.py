@@ -21,6 +21,7 @@ DEFAULTS = {
     "spellcheck_language": "",
     "safe_browsing": True,
     "check_updates": True,
+    "open_again": "front",
     "remember_pages": False,
     "remember_pages_except": "",
     "user_agent_override": "",

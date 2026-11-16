@@ -113,13 +113,22 @@ class LaunchRequestTests(unittest.TestCase):
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.home_patch.stop()
 
-    def test_urls_open_as_tabs_and_a_bare_launch_opens_a_window(self):
+    def test_urls_open_as_tabs_and_a_bare_launch_follows_the_setting(self):
         before = len(self.window.tabs)
         main.open_launch_request(["https://example.org/"])
         self.assertEqual(len(self.window.tabs), before + 1)
+        # By default: your window, in front; nothing new opens.
+        main.open_launch_request([])
+        self.assertEqual(self.window._child_windows, [])
+        self.assertEqual(len(self.window.tabs), before + 1)
+        self.window.config.set("open_again", "tab")
+        main.open_launch_request([])
+        self.assertEqual(len(self.window.tabs), before + 2)
+        self.window.config.set("open_again", "window")
         main.open_launch_request([])
         self.assertEqual(len(self.window._child_windows), 1)
         self.assertTrue(self.window._child_windows[0].isVisible())
+        self.window._child_windows[0].close()
 
 
 if __name__ == "__main__":

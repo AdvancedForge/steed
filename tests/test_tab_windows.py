@@ -80,7 +80,7 @@ class TabWindowTests(unittest.TestCase):
         root._pop_out_profile_named(root.profile_manager.current_profile_name)
         child = root._child_windows[-1]
         child._new_tab(url="about:blank#child")
-        root.close()
+        root.quit_steed()  # Ctrl+Q
         self.settle()
         tab_manager._OPEN.clear()
         restarted = self.root()
@@ -89,6 +89,22 @@ class TabWindowTests(unittest.TestCase):
         self.assertEqual(len(reopened), 1)
         self.assertIn("about:blank#child", self.urls(reopened[0]))
         self.assertNotIn("about:blank#child", self.urls(restarted))
+
+    def test_closing_the_first_window_leaves_the_other_and_only_it_returns(self):
+        root = self.root()
+        root._new_tab(url="about:blank#root")
+        root._pop_out_profile_named(root.profile_manager.current_profile_name)
+        child = root._child_windows[-1]
+        child._new_tab(url="about:blank#child")
+        root.close()
+        self.settle()
+        self.assertTrue(child.isVisible() and not child._closing)
+        child.close()  # Now the last window: kept for next time.
+        self.settle()
+        tab_manager._OPEN.clear()
+        restarted = self.root()
+        self.assertIn("about:blank#child", self.urls(restarted))
+        self.assertNotIn("about:blank#root", self.urls(restarted))
 
     def test_old_single_list_sessions_still_load(self):
         root = self.root()

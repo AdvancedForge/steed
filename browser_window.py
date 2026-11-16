@@ -3124,10 +3124,16 @@ class BrowserWindow(QMainWindow):
         return self._open_window(self.profile_manager.current_profile_name, states=[])
 
     def quit_steed(self):
-        """Close every window (each saves its tabs as it closes)."""
-        for window in list(QApplication.topLevelWidgets()):
-            if isinstance(window, BrowserWindow) and not window._closing:
-                window.close()
+        """Close every window; all of them come back at the next start."""
+        windows = [
+            w
+            for w in QApplication.topLevelWidgets()
+            if isinstance(w, BrowserWindow) and not w._closing
+        ]
+        for window in windows:
+            window._keep_session = True
+        for window in windows:
+            window.close()
 
     def toggle_full_screen(self, *_):
         if self.isFullScreen():
@@ -7022,15 +7028,8 @@ class BrowserWindow(QMainWindow):
         # "will closing this window cancel live downloads?" That is true exactly
         # when every owner is being closed; otherwise the remaining window keeps
         # them running and there is nothing to confirm.
+        # Closing a window closes only that window (windows it opened stay).
         closing_owners = {self.profile_manager}
-        self._child_windows = [w for w in self._child_windows if not sip.isdeleted(w)]
-        pending_windows = list(self._child_windows)
-        while pending_windows:
-            child = pending_windows.pop()
-            if sip.isdeleted(child):
-                continue
-            closing_owners.add(child.profile_manager)
-            pending_windows.extend(child._child_windows)
         if (
             self.profile_manager.registry.owners <= closing_owners
             and self.download_manager.active()
@@ -7114,27 +7113,26 @@ class BrowserWindow(QMainWindow):
         self._save_current_tabs()
         # Before leaving the session: a window closed while others stay open
         # can be reopened; quitting records the whole session once more.
+        others_open = self.tab_manager is not None and self.tab_manager.others_open()
         self._record_session(
-            "closed_window"
-            if self.tab_manager is not None
-            and self.tab_manager.others_open()
-            and not self._keep_session
-            else "snapshot"
+            "closed_window" if others_open and not self._keep_session else "snapshot"
         )
         self.config.update(
             {"window_width": self.width(), "window_height": self.height()}
         )
 
+        # Windows this one opened carry on by themselves.
         for win in list(self._child_windows):
-            if not sip.isdeleted(win):
-                # Closing with their opener is quitting, not discarding them.
-                win._keep_session = True
-                win.close()
+            if not sip.isdeleted(win) and win._opener is self:
+                win._opener = None
+        self._child_windows = []
         if (
             self.tab_manager is not None
             and not self.profile_manager.is_search_profile()
         ):
-            self.tab_manager.release(keep=self._keep_session or self._opener is None)
+            # Kept for next start when quitting, or when it is the profile's
+            # last window; otherwise it is a closed window (Reopen Closed Window).
+            self.tab_manager.release(keep=self._keep_session or not others_open)
 
         from ui.task_watch import TaskWatchDialog
 
