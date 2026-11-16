@@ -9,6 +9,13 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Side branches folded in — November 16, 2026.** Main is the only branch. Work
+that never reached it is now merged: the agent card says why a chat stopped
+(error, ended or disconnected) and when the agent last reported; a turn cut
+off mid-way is recorded as interrupted with its partial reply, not as a
+cancellation; and Notion, Linear and Dropbox are packaged typed POST read
+profiles in the connector picker.
+
 **Real-world shakedown — November 15, 2026.** The last rounds checked against
 the real services, in a scratch profile (deleted afterwards):
 - uBlock Origin Lite from the Chrome Web Store installs, its background runs,
