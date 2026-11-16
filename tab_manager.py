@@ -263,7 +263,7 @@ class TabManager(QObject):
     def others_open(self) -> bool:
         """Whether another live window already shows this profile."""
         return any(
-            key != self.window_id and not key.startswith("saved:")
+            key != self.window_id and not key.startswith(("saved:", "kept:"))
             for key in self._windows()
         )
 
@@ -287,7 +287,7 @@ class TabManager(QObject):
         """First window of a profile: own the first saved window, hold the rest."""
         windows = self.get_saved_windows()
         open_windows = self._windows()
-        for key in [k for k in open_windows if k.startswith("saved:")]:
+        for key in [k for k in open_windows if k.startswith(("saved:", "kept:"))]:
             del open_windows[key]
         for index, states in enumerate(windows[1:], 1):
             open_windows[f"saved:{index}"] = states
@@ -308,7 +308,19 @@ class TabManager(QObject):
         window, the file keeps the tabs as the session to restore.
         """
         windows = self._windows()
-        drop = not keep and self.others_open()
+        if keep:
+            # Quitting: the entry stays (in its place, no longer a live
+            # window), so windows that close after this one still write it
+            # into the session to restore.
+            if self.window_id in windows:
+                renamed = {
+                    (f"kept:{key}" if key == self.window_id else key): value
+                    for key, value in windows.items()
+                }
+                windows.clear()
+                windows.update(renamed)
+            return
+        drop = self.others_open()
         windows.pop(self.window_id, None)
         if drop:
             self._write()
