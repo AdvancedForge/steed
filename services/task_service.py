@@ -2031,6 +2031,12 @@ class TaskService(QObject):
         self._usable()
         return self._finish_task(task_id, "cancelled")
 
+    def interrupt_task(self, task_id):
+        """Record work cut off by shutdown or lost transport, not a user cancel."""
+        require_owner_thread(self)
+        self._usable()
+        return self._finish_task(task_id, "interrupted")
+
     def _usable(self):
         if self._closed or self.failure:
             raise RuntimeError("Task services are unavailable")

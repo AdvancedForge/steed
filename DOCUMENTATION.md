@@ -4984,6 +4984,22 @@ button. Light/dark appearance follows the browser; details stay under
 Conversation & settings. Messages remain plain text, including code or markup
 returned by an agent.
 
+When a native chat stops, the card says why: **Codex chat stopped after an
+error**, **Codex chat ended** (its conversation or task was closed) or **Codex
+disconnected** (Steed shut the connection down). Each keeps the saved messages
+visible and points at starting a new chat; none replays a queued message or
+resumes a turn. When the runtime has reported anything, the card ends with **Last
+agent update HH:MM:SS**, a transport fact only. Messages the agent never read
+from a stopped chat show as **N unread message(s); this chat has stopped**.
+
+A turn cut off mid-way (shutdown, dropped connection or protocol failure) is
+recorded as **interrupted**, not as a cancellation: `TaskService.interrupt_task`
+keeps the partial reply, which is marked **interrupted before finishing**, and
+the card says nothing was resent or replayed and no permission was restored. A
+chat that failed before any turn was sent is still recorded as cancelled.
+Interrupted tasks stay available to **Continue previous work?**, which copies
+material into a new task with fresh grants; nothing is ever resumed.
+
 The card also shows **Model: … (reported by Codex)**, using the resolved model and
 provider returned by the running App Server thread. A reported model reroute
 updates the name and shows the previous model for that turn. **Model for new

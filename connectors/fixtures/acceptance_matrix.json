@@ -36,7 +36,7 @@
   },
   "tasks": [
     {
-      "provider": "todoist",
+      "provider": "asana",
       "tasks": [
         {
           "task": "read_context",
@@ -54,36 +54,85 @@
             "not_applied",
             "blocked"
           ],
-          "evidence": "tests/test_default_connector_profiles.py: read_task selects only id and content."
+          "evidence": "tests/test_default_connector_profiles.py: read_project and read_task project only reviewed fields."
         },
         {
           "task": "write_draft",
-          "readiness": "ready",
+          "readiness": "not_applicable",
           "phases": [
             "write",
             "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "connectors/recipes/asana.json ships reads only, and its token review omits the opt-in write fields.",
+          "smallest_missing_behavior": "A reviewed create-task write with the documented opt-in fields and a token that carries write scope."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "not_applicable",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "There is nothing to confirm while the template writes nothing.",
+          "smallest_missing_behavior": "Depends on write_draft."
+        }
+      ]
+    },
+    {
+      "provider": "dropbox",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
           ],
           "attempts": 1,
           "outcomes": [
             "succeeded",
             "not_applied",
-            "uncertain",
             "blocked"
           ],
-          "evidence": "tests/test_default_connector_profiles.py: create_task is reviewed before dispatch and an uncertain create is never resent."
+          "evidence": "tests/test_default_connector_profiles.py: list_folder pages through the documented /continue cursor request and stops after three pages.",
+          "note": "One tool ships: a folder listing. A single item read is not expressible yet, because the engine refuses a path destination and Dropbox documents metadata by path only."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "not_applicable",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "connectors/recipes/dropbox.json ships reads only.",
+          "smallest_missing_behavior": "A reviewed upload write with Dropbox's documented upload-session routes."
         },
         {
           "task": "confirm_result",
-          "readiness": "ready",
+          "readiness": "not_applicable",
           "phases": [
             "receipt"
           ],
-          "attempts": 1,
+          "attempts": 0,
           "outcomes": [
-            "succeeded",
-            "not_applied"
+            "not_applicable"
           ],
-          "evidence": "tests/test_default_connector_profiles.py: the returned task id is read back with read_task."
+          "evidence": "There is nothing to confirm while the template writes nothing.",
+          "smallest_missing_behavior": "Depends on write_draft."
         }
       ]
     },
@@ -193,7 +242,7 @@
       ]
     },
     {
-      "provider": "asana",
+      "provider": "linear",
       "tasks": [
         {
           "task": "read_context",
@@ -211,7 +260,8 @@
             "not_applied",
             "blocked"
           ],
-          "evidence": "tests/test_default_connector_profiles.py: read_project and read_task project only reviewed fields."
+          "evidence": "tests/test_default_connector_profiles.py: read_viewer and read_team send fixed reviewed documents and never an agent-authored query.",
+          "note": "Identity is the documented viewer query, so connecting already performs the first read."
         },
         {
           "task": "write_draft",
@@ -224,8 +274,110 @@
           "outcomes": [
             "not_applicable"
           ],
-          "evidence": "connectors/recipes/asana.json ships reads only, and its token review omits the opt-in write fields.",
-          "smallest_missing_behavior": "A reviewed create-task write with the documented opt-in fields and a token that carries write scope."
+          "evidence": "connectors/recipes/linear.json ships read tools only, and mutations are out of scope for a fixed-document contract.",
+          "smallest_missing_behavior": "A reviewed mutation document contract with Linear's documented issueCreate input fields."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "not_applicable",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "There is nothing to confirm while the template writes nothing.",
+          "smallest_missing_behavior": "Depends on write_draft."
+        }
+      ]
+    },
+    {
+      "provider": "microsoft365",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "connectors/recipes/microsoft365-read.json ships first-page reads only, and the worksheet marks pagination as pending.",
+          "note": "Only the first page is reviewed, so more_available true is a real stopping point, not a complete list."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "not_applicable",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "The Microsoft 365 starter is read-only.",
+          "smallest_missing_behavior": "A reviewed write with the delegated scopes Microsoft Graph requires for the target operation."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "not_applicable",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "There is nothing to confirm while the template writes nothing.",
+          "smallest_missing_behavior": "Depends on write_draft."
+        }
+      ]
+    },
+    {
+      "provider": "notion",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: query_data_source sends the pinned Notion-Version header and selects only the results array.",
+          "note": "Reads are POST queries, so the read context is a typed read-only POST."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "not_applicable",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 0,
+          "outcomes": [
+            "not_applicable"
+          ],
+          "evidence": "connectors/recipes/notion.json ships one read tool and pins a read-capable integration.",
+          "smallest_missing_behavior": "A reviewed create-page write for one data source property set, with an integration token that carries write capability."
         },
         {
           "task": "confirm_result",
@@ -293,6 +445,58 @@
       ]
     },
     {
+      "provider": "todoist",
+      "tasks": [
+        {
+          "task": "read_context",
+          "readiness": "ready",
+          "phases": [
+            "install",
+            "connect",
+            "enable",
+            "read",
+            "disconnect"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: read_task selects only id and content."
+        },
+        {
+          "task": "write_draft",
+          "readiness": "ready",
+          "phases": [
+            "write",
+            "receipt"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied",
+            "uncertain",
+            "blocked"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: create_task is reviewed before dispatch and an uncertain create is never resent."
+        },
+        {
+          "task": "confirm_result",
+          "readiness": "ready",
+          "phases": [
+            "receipt"
+          ],
+          "attempts": 1,
+          "outcomes": [
+            "succeeded",
+            "not_applied"
+          ],
+          "evidence": "tests/test_default_connector_profiles.py: the returned task id is read back with read_task."
+        }
+      ]
+    },
+    {
       "provider": "zotero",
       "tasks": [
         {
@@ -342,75 +546,9 @@
           "smallest_missing_behavior": "Depends on write_draft."
         }
       ]
-    },
-    {
-      "provider": "microsoft365",
-      "tasks": [
-        {
-          "task": "read_context",
-          "readiness": "ready",
-          "phases": [
-            "install",
-            "connect",
-            "enable",
-            "read",
-            "disconnect"
-          ],
-          "attempts": 1,
-          "outcomes": [
-            "succeeded",
-            "not_applied",
-            "blocked"
-          ],
-          "evidence": "connectors/recipes/microsoft365-read.json ships first-page reads only, and the worksheet marks pagination as pending.",
-          "note": "Only the first page is reviewed, so more_available true is a real stopping point, not a complete list."
-        },
-        {
-          "task": "write_draft",
-          "readiness": "not_applicable",
-          "phases": [
-            "write",
-            "receipt"
-          ],
-          "attempts": 0,
-          "outcomes": [
-            "not_applicable"
-          ],
-          "evidence": "The Microsoft 365 starter is read-only.",
-          "smallest_missing_behavior": "A reviewed write with the delegated scopes Microsoft Graph requires for the target operation."
-        },
-        {
-          "task": "confirm_result",
-          "readiness": "not_applicable",
-          "phases": [
-            "receipt"
-          ],
-          "attempts": 0,
-          "outcomes": [
-            "not_applicable"
-          ],
-          "evidence": "There is nothing to confirm while the template writes nothing.",
-          "smallest_missing_behavior": "Depends on write_draft."
-        }
-      ]
     }
   ],
   "deferred": [
-    {
-      "provider": "notion",
-      "reason": "A data-source query is a POST that needs an integration token and a real database, so it is a gated case, not a starter task.",
-      "gated_case": "notion_data_source_query_gated"
-    },
-    {
-      "provider": "linear",
-      "reason": "Every Linear read is a POST GraphQL query, so identity and context are gated cases rather than reviewed recipes.",
-      "gated_case": "linear_graphql_viewer_gated"
-    },
-    {
-      "provider": "dropbox",
-      "reason": "Identity and folder reads are POST routes with a documented continuation, so they are gated cases.",
-      "gated_case": "dropbox_account_and_folder_reads_gated"
-    },
     {
       "provider": "figma",
       "reason": "Figma file reads need a personal access token header and an empirical body bound, so the documented cases stay ungated-free of a shared POST-read contract and no starter task is claimed.",

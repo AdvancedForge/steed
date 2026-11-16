@@ -1,0 +1,81 @@
+{
+ "version": 8,
+ "name": "dropbox",
+ "origin": "https://api.dropboxapi.com",
+ "authentication": {
+  "type": "bearer"
+ },
+ "identity": {
+  "method": "POST",
+  "path": "/2/users/get_current_account",
+  "request": {},
+  "subject": "/account_id",
+  "label": "/name/display_name"
+ },
+ "tools": [
+  {
+   "name": "list_folder",
+   "description": "Read up to three documented pages of one Dropbox folder",
+   "method": "POST",
+   "effect": "read",
+   "path": "/2/files/list_folder",
+   "destination": "account",
+   "inputs": {
+    "path": {
+     "type": "string",
+     "max_length": 512
+    },
+    "recursive": {
+     "type": "boolean",
+     "default": false
+    },
+    "include_deleted": {
+     "type": "boolean",
+     "default": false
+    },
+    "limit": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 2000,
+     "default": 2000
+    }
+   },
+   "request": {
+    "path": {
+     "$bind": "input.path"
+    },
+    "recursive": {
+     "$bind": "input.recursive"
+    },
+    "include_deleted": {
+     "$bind": "input.include_deleted"
+    },
+    "limit": {
+     "$bind": "input.limit"
+    },
+    "cursor": null
+   },
+   "response": [
+    {
+     "label": "entries",
+     "pointer": "/entries"
+    }
+   ],
+   "pagination": {
+    "cursor": "/cursor",
+    "parameter": "cursor",
+    "max_pages": 3,
+    "location": "body",
+    "has_more": "/has_more",
+    "continuation": {
+     "path": "/2/files/list_folder/continue",
+     "request": {
+      "cursor": {
+       "$bind": "cursor"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

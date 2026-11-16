@@ -1,0 +1,101 @@
+{
+  "provider": "dropbox",
+  "status": "packaged",
+  "note": "Synthetic responses for the packaged Dropbox profile. Field names come from the official API specification repository; every value is synthetic, no credential appears here, and nothing has been sent to a live account.",
+  "origin": "https://api.dropboxapi.com",
+  "authentication": {
+    "type": "bearer",
+    "documented_route_auth": "The account route is declared auth = user, so app credentials are not accepted."
+  },
+  "references": [
+    "https://github.com/dropbox/dropbox-api-spec/blob/main/users.stone",
+    "https://github.com/dropbox/dropbox-api-spec/blob/main/files.stone"
+  ],
+  "identity": {
+    "/2/users/get_current_account": {
+      "account_id": "dbid-fixture-account",
+      "name": {
+        "display_name": "Fixture Dropbox User",
+        "given_name": "Fixture",
+        "surname": "User",
+        "familiar_name": "Fixture",
+        "abbreviated_name": "FD"
+      },
+      "email": "fixture@example.test",
+      "email_verified": true,
+      "disabled": false,
+      "profile_photo_url": null
+    }
+  },
+  "post_routes": {
+    "/2/files/list_folder": {
+      "entries": [
+        {
+          ".tag": "folder",
+          "name": "Reports",
+          "path_lower": "/reports",
+          "path_display": "/Reports",
+          "id": "id:fixture-folder"
+        }
+      ],
+      "cursor": "FIXTURE-CURSOR-2",
+      "has_more": true
+    },
+    "/2/files/list_folder/continue": {
+      "entries": [
+        {
+          ".tag": "file",
+          "name": "notes.md",
+          "path_lower": "/reports/notes.md",
+          "path_display": "/Reports/notes.md",
+          "id": "id:fixture-file"
+        }
+      ],
+      "cursor": "",
+      "has_more": false
+    },
+    "/2/files/get_metadata": {
+      ".tag": "file",
+      "name": "notes.md",
+      "path_lower": "/reports/notes.md",
+      "path_display": "/Reports/notes.md",
+      "id": "id:fixture-file",
+      "size": 42
+    }
+  },
+  "empty_folder": {
+    "entries": [],
+    "cursor": "",
+    "has_more": false
+  },
+  "created": {
+    "entries": [],
+    "cursor": "",
+    "has_more": false
+  },
+  "errors": {
+    "/2/files/list_folder": {
+      "400": "BadInputError",
+      "401": "AuthError, with the error field in the body",
+      "429": "RateLimitError, with a retry-after header or retry_after field",
+      "5xx": "InternalServerError"
+    },
+    "/2/files/list_folder/continue": {
+      "409": "reset, documented as an invalid or expired cursor, which means list_folder must be called again for a new cursor"
+    },
+    "/2/users/get_current_account": {
+      "401": "AuthError, with the error field in the body"
+    }
+  },
+  "engine_bounds": [
+    "The engine bounds a reviewed string input to 512 characters, so the path input is capped at 512 even though Dropbox documents longer paths.",
+    "list_folder limit is bounded to the documented 1–2000 range, and pages are capped at the engine maximum of three.",
+    "The documented error body shape is unverified: error_summary appears in no readable official source.",
+    "The engine refuses a path-like destination, so read_metadata cannot ship: Dropbox documents get_metadata by path and offers no id-keyed metadata route, so a single item read waits for a reviewed id destination rule."
+  ],
+  "notes": [
+    "list_folder/continue takes only the returned cursor, and returns the same entries, cursor and has_more fields.",
+    "email is documented as unreliable without email_verified, so the account label is name.display_name and never email.",
+    "profile_photo_url is documented as nullable and country is absent from the plain account variant, so neither is projected."
+  ]
+}

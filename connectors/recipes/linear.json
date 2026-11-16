@@ -1,0 +1,65 @@
+{
+ "version": 8,
+ "name": "linear",
+ "origin": "https://api.linear.app",
+ "authentication": {
+  "type": "bearer"
+ },
+ "identity": {
+  "method": "POST",
+  "path": "/graphql",
+  "request": {
+   "query": "query Me {\n  viewer {\n    id\n    name\n    email\n  }\n}"
+  },
+  "subject": "/data/viewer/id",
+  "label": "/data/viewer/name"
+ },
+ "tools": [
+  {
+   "name": "read_viewer",
+   "description": "Read the authenticated Linear user with the reviewed viewer query",
+   "method": "POST",
+   "effect": "read",
+   "path": "/graphql",
+   "destination": "account",
+   "query": {
+    "operation": "Viewer",
+    "document": "query Viewer {\n  viewer {\n    id\n    name\n    email\n  }\n}",
+    "variables": {},
+    "data_pointer": "/data",
+    "errors_pointer": "/errors"
+   },
+   "response": [
+    {
+     "label": "viewer",
+     "pointer": "/viewer"
+    }
+   ]
+  },
+  {
+   "name": "read_team",
+   "description": "Read one Linear team by its exact team ID",
+   "method": "POST",
+   "effect": "read",
+   "path": "/graphql",
+   "destination": "resource_id",
+   "query": {
+    "operation": "TeamById",
+    "document": "query TeamById($id: String!) {\n  team(id: $id) {\n    id\n    key\n    name\n  }\n}",
+    "variables": {
+     "id": {
+      "$bind": "destination"
+     }
+    },
+    "data_pointer": "/data",
+    "errors_pointer": "/errors"
+   },
+   "response": [
+    {
+     "label": "team",
+     "pointer": "/team"
+    }
+   ]
+  }
+ ]
+}

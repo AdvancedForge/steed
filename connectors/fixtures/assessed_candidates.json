@@ -95,11 +95,13 @@
       "paging": "start_cursor query parameter with next_cursor and has_more; querying a data source is a POST read",
       "errors": "HTTP status codes with a documented code and message body",
       "host": "api.notion.com",
-      "status": "gated",
-      "gate": "A first read is now expressible: main carries reviewed non-secret static headers, so the required Notion-Version header can be sent, and reviewed identity label alternatives, so a documented null name falls back to a reviewed pointer. What remains is listing a data source, which is a POST read with a request object, and any write.",
-      "capabilities": [
-        "post_reads"
-      ]
+      "status": "packaged",
+      "gate": "Ships the read-only data source query with a pinned Notion-Version header. Still gated: any write, and reading a data source the integration cannot see, which Notion answers as 404.",
+      "capabilities": [],
+      "shipped": {
+        "recipe": "connectors/recipes/notion.json",
+        "note": "A typed read-only POST contract now expresses the data source query: a pinned Notion-Version static header, a bounded page_size input, and body-location pagination on start_cursor and next_cursor."
+      }
     },
     {
       "name": "Slack",
@@ -142,11 +144,13 @@
       "paging": "cursor inside a POST request object",
       "errors": "HTTP status codes with an RPC error envelope",
       "host": "api.dropboxapi.com",
-      "status": "gated",
-      "gate": "Reads are POST requests carrying request objects, which the read contract does not support. Wait for framework support; do not build credential-bearing arbitrary requests.",
-      "capabilities": [
-        "post_reads"
-      ]
+      "status": "packaged",
+      "gate": "Ships the account identity POST and one folder listing that follows the documented /continue cursor route. Still gated: uploads, and any listing beyond three pages.",
+      "capabilities": [],
+      "shipped": {
+        "recipe": "connectors/recipes/dropbox.json",
+        "note": "A typed read-only POST contract now expresses both routes: the Void-argument account identity POST and a folder listing with bounded inputs and the documented /continue cursor request."
+      }
     },
     {
       "name": "Linear",
@@ -157,11 +161,13 @@
       "paging": "cursor variables inside a POST body",
       "errors": "HTTP status codes with an errors array",
       "host": "api.linear.app",
-      "status": "gated",
-      "gate": "Reads are GraphQL POSTs with variables and an application-level errors array, which the current format cannot express. Do not disguise a read as a write tool.",
-      "capabilities": [
-        "post_reads"
-      ]
+      "status": "packaged",
+      "gate": "Ships two fixed reviewed query documents with the documented errors array as an application-level contract. Still gated: mutations, and any paged query, because a fixed document cannot bind a returned cursor.",
+      "capabilities": [],
+      "shipped": {
+        "recipe": "connectors/recipes/linear.json",
+        "note": "A fixed reviewed GraphQL document contract now expresses both reads, with the documented errors array as an application-level contract instead of a status code."
+      }
     },
     {
       "name": "Raindrop.io",

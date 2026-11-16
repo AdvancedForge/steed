@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Shared framework capabilities that the gated service families need, grouped so the runtime owner can size one capability instead of eighteen service exceptions. Each group lists the services that need it, the documented requirement per service, and the minimal synthetic contract that would let a framework-side wire test prove the capability without a live account. Nothing here is a connector instruction: no connector may work around these limits.",
+  "note": "Shared framework capabilities that the gated service families need, grouped so the runtime owner can size one capability instead of eighteen service exceptions. Each group lists the services that need it, the documented requirement per service, and the minimal synthetic contract that would let a framework-side wire test prove the capability without a live account. Nothing here is a connector instruction: no connector may work around these limits. A delivered group keeps its documented requirements as the record of what shipped, and its requirements carry empty blocks lists so it drops off the queue.",
   "groups": [
     {
       "id": "static_headers",
@@ -680,7 +680,7 @@
     {
       "id": "post_reads",
       "title": "Reads that are POST requests with request objects",
-      "engine_limit": "Reads are GET only and writes are single POSTs whose bodies are reviewed flat bindings or templates, so an RPC or GraphQL read cannot be expressed at all.",
+      "engine_limit": "Delivered on main: a typed read-only POST carries reviewed bounded inputs in an exact request body, follows a cursor inside that body through a documented continuation route, and may fix one reviewed GraphQL document whose errors array is surfaced as an application-level failure instead of a successful read.",
       "services": [
         "Dropbox",
         "Linear",
@@ -691,27 +691,22 @@
           "service": "Dropbox",
           "documented": "RPC-style endpoints are POST /2/... with a JSON request object such as {\"path\": ...} or {\"cursor\": ...}.",
           "reference": "https://www.dropbox.com/developers/documentation/http/documentation",
-          "blocks": [
-            "identity",
-            "lists"
-          ]
+          "blocks": [],
+          "delivered_by": "connectors/recipes/dropbox.json"
         },
         {
           "service": "Linear",
           "documented": "Queries and mutations are POST /graphql with a query string, variables and an application-level errors array.",
           "reference": "https://linear.app/developers/graphql",
-          "blocks": [
-            "identity",
-            "lists"
-          ]
+          "blocks": [],
+          "delivered_by": "connectors/recipes/linear.json"
         },
         {
           "service": "Notion",
           "documented": "Querying a data source is POST /v1/data_sources/{data_source_id}/query with an optional body and start_cursor in and next_cursor out, so the paging itself already matches the reviewed cursor contract while the request shape does not.",
           "reference": "https://developers.notion.com/reference/query-a-data-source",
-          "blocks": [
-            "lists"
-          ]
+          "blocks": [],
+          "delivered_by": "connectors/recipes/notion.json"
         }
       ],
       "fixture_contract": {
@@ -739,8 +734,16 @@
         ]
       },
       "unblocks": [
-        "a Dropbox file listing subset",
-        "a Linear issue listing subset"
+        "a Dropbox folder listing subset, shipped as connectors/recipes/dropbox.json",
+        "a Linear viewer and single-team read subset, shipped as connectors/recipes/linear.json",
+        "a Notion data source query subset, shipped as connectors/recipes/notion.json"
+      ],
+      "status": "delivered",
+      "distinct_from": "This is a request-shape capability, not authentication, not a header and not pagination. A typed POST read is still reviewed like a write: the body is fixed in the recipe, the agent supplies values only, and an unreviewed field never reaches the wire.",
+      "still_missing": [
+        "A mutation contract, so no Linear or Notion write ships yet.",
+        "A GET query-shaping input, so Microsoft 365 $select and Figma depth remain blocked; see the query_inputs group.",
+        "Pages beyond the engine maximum of three, and cursors a fixed GraphQL document cannot bind."
       ]
     },
     {

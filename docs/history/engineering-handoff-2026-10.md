@@ -548,6 +548,25 @@ changes were never implemented. No broader engineering was started.
 
 ### What is saved
 
+- **Interrupted-chat recovery implemented on `engineering/agent-recovery`:**
+  shutdowns and runtime failures during a turn now record `interrupted` rather
+  than a user cancellation, partial replies are kept and labelled, and the
+  sidebar states that nothing was resent, replayed or restored. The existing
+  recovery picker and fresh grants are reused unchanged. 41 provider checks plus
+  task-message and recovery checks pass; browser-based modules still need a
+  display-capable run.
+- **Agent connection clarity implemented on `engineering/agent-recovery`:** the
+  sidebar explains *why* a native chat stopped (error, ended, disconnected)
+  instead of one generic message, shows the exact last-update time reported by
+  the runtime, and no longer implies unread messages are still queued after a
+  chat stops. Values come from a new `AgentProviders.connection()` report;
+  nothing is inferred about model state, replayed or auto-resumed. 36
+  `test_agent_providers` checks pass in 13.540 seconds after installing `mcp`
+  into this session environment; browser-based sidebar/gateway/task-service
+  modules remain headless-GLX blocked here, so broad acceptance is still
+  outstanding. Next in the queue below: interrupted-chat recovery, then
+  session/profile/library friction.
+
 - **Downloads search and Copy Path complete:** `ui/download_dialog.py` filters
   filename/profile/destination using literal case-insensitive matching. Refresh
   restores selection by download ID; filtering a row out clears it rather than
