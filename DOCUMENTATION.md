@@ -88,8 +88,13 @@ Keep the checkout and `.venv` in place; if you move them, run the installer agai
 from the new location. To remove the menu entry, delete `steed.desktop` from
 `${XDG_DATA_HOME:-$HOME/.local/share}/applications/`.
 
-Launching Steed again while it is running opens a new window in the running
-browser instead of a second copy; `./steed https://example.org` opens the link
+Launching Steed again while it is running never starts a second copy. What it
+does is Settings → General → **When Steed is opened again**: show the window
+you were using (the default), open a new window, or open a new tab in your
+window (`Ctrl+N` always opens a new window). Closing a window closes only that
+window; windows opened from it stay open. A window closed while others stay
+open can be brought back with Tabs → Reopen Closed Window; when the last window
+closes, or you quit with `Ctrl+Q`, every window comes back at the next start. `./steed https://example.org` opens the link
 as a tab in the most recently used window, and `./steed page.html` opens a
 local file. Only HTTP/HTTPS addresses and existing local pages, PDFs, images
 and text files are passed on,
@@ -453,7 +458,7 @@ window and are kept in `config.json` (`shortcuts`).
   talking; `Escape` cancels ([Dictation](#dictation))
 - `Ctrl+,`: Settings
 - `Ctrl+Shift+W`: Close the window
-- `Ctrl+Q`: Quit Steed (every window saves its tabs first)
+- `Ctrl+Q`: Quit Steed (every window comes back at the next start)
 
 ### Menu Options
 

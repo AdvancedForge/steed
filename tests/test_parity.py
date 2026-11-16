@@ -147,6 +147,27 @@ class WindowTests(unittest.TestCase):
         self.window.quit_steed()
         self.wait(lambda: not self.windows())
 
+    def test_closing_a_window_leaves_the_windows_it_opened(self):
+        second = self.window.new_window()
+        incognito = second._open_window("search")
+        self.window.close()
+        self.wait(lambda: self.window._closing)
+        self.app.processEvents()
+        self.assertTrue(second.isVisible() and not second._closing)
+        self.assertTrue(incognito.isVisible() and not incognito._closing)
+        self.assertIsNone(second._opener)  # On its own now.
+        second.close()
+        self.assertTrue(incognito.isVisible() and not incognito._closing)
+
+    def test_quitting_keeps_every_window_for_next_time(self):
+        second = self.window.new_window()
+        with patch.object(type(self.window.tab_manager), "release") as released:
+            self.window.quit_steed()
+            self.wait(lambda: not self.windows())
+        self.assertTrue(all(c.kwargs.get("keep") for c in released.call_args_list))
+        self.assertGreaterEqual(len(released.call_args_list), 2)
+        self.assertTrue(second._closing)
+
     def test_print_full_screen_and_page_source(self):
         from PyQt6.QtPrintSupport import QPrintDialog
 

@@ -421,8 +421,12 @@ class TaskProfileTests(unittest.TestCase):
         self.assertTrue(sip.isdeleted(child))
         window._pop_out_profile_named("work")
         self.assertEqual(len(window._child_windows), 1)
+        second = window._child_windows[0]
+        self.windows.append(second)
+        # Closing its opener leaves it open, on its own.
         window.close()
-        self.assertTrue(window._child_windows[0].isHidden())
+        self.assertFalse(second.isHidden())
+        self.assertIsNone(second._opener)
 
     def test_unknown_profiles_paths_and_other_profile_sessions_are_denied(self):
         task = self.command("task.create", objective="Invalid profile")

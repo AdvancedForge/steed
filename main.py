@@ -51,8 +51,12 @@ def open_launch_request(urls) -> None:
     ]
     if not windows:
         return
+    # The window you used last (not a site app's), else any.
+    regular = [w for w in windows if not w.app_url] or windows
+    owner = windows[0].profile_manager.registry.last_active_owner
+    last = owner.parent() if owner is not None else None
     active = QApplication.activeWindow()
-    target = active if active in windows else windows[-1]
+    target = active if active in regular else last if last in regular else regular[-1]
     from site_apps import APP_PREFIX
 
     apps = [u.removeprefix(APP_PREFIX) for u in urls if u.startswith(APP_PREFIX)]
@@ -63,7 +67,15 @@ def open_launch_request(urls) -> None:
         for url in urls:
             target._new_tab(url)
     elif not apps:
-        target = target.new_window()
+        # Opening Steed while it runs (Settings → General → "When Steed is
+        # opened again"): your window in front, a new window, or a new tab.
+        choice = target.config.get("open_again", "front")
+        if choice == "window":
+            target = target.new_window()
+        elif choice == "tab":
+            target._new_tab()
+        if target.isMinimized():
+            target.showNormal()
     target.raise_()
     target.activateWindow()
 
