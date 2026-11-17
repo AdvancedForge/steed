@@ -28,6 +28,23 @@ class PieceTests(unittest.TestCase):
         self.assertIn("newtab-set?glass=0", welcome_steps("photo", glass=True))
         self.assertNotIn("<script", page)
 
+    def test_welcome_shows_what_is_chosen(self):
+        page = welcome_steps("color", glass=True)
+        chosen = page.split('class="tile colour on"')[1].split("</a>")[0]
+        self.assertIn("Chosen", chosen)
+        self.assertEqual(page.count("Chosen"), 1)
+        self.assertIn('class="switch on" role="switch" aria-checked="true"', page)
+        self.assertIn('aria-checked="false"', welcome_steps("photo", glass=False))
+
+    def test_actions_come_from_welcome_on_any_step(self):
+        from PyQt6.QtCore import QUrl
+
+        from services.start_pages import action_page
+
+        self.assertEqual(action_page(QUrl("steed://welcome/#bring")), "welcome")
+        self.assertEqual(action_page(QUrl("steed://newtab/")), "newtab")
+        self.assertIsNone(action_page(QUrl("https://example.com/#bring")))
+
     def test_customize_shows_little_until_more_options(self):
         settings = {
             "background": "photo",
@@ -109,6 +126,25 @@ class TipTests(unittest.TestCase):
         self.assertIsNone(tips.offer(window, "address"))  # Never again.
         self.assertIsNotNone(tips.offer(window, "dictation"))
         self.assertIsNone(tips.offer(window, "no-such-tip"))
+
+    def test_welcome_choices_and_links_work_on_every_step(self):
+        from PyQt6.QtCore import QUrl
+
+        window = self.window
+        tab = window._new_tab(url="steed:welcome", return_tab=True)
+        self.wait(lambda: tab.url().host() == "welcome")
+        tab.setUrl(QUrl("steed://welcome/#bring"))  # "Next", within the page.
+        self.wait(lambda: tab.url().fragment() == "bring")
+        pages = window.profile_manager.registry.start_pages
+        profile = window.profile_manager.current_profile_name
+        window._start_page_action(
+            tab, QUrl("steed://action/newtab-set?background=color")
+        )
+        self.assertEqual(pages.state(profile)["settings"]["background"], "color")
+        window._start_page_action(tab, QUrl("steed://action/agents"))
+        self.wait(lambda: window.agent_sidebar is not None)
+        window._start_page_action(tab, QUrl("steed://action/start"))
+        self.assertTrue(window.config.get("welcome_completed"))
 
     def test_no_tips_over_the_welcome_tour_or_in_tests(self):
         from ui import tips

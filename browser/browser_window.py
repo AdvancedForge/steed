@@ -56,6 +56,7 @@ from services.site_permissions import FEATURES
 from services.start_pages import (
     NEW_TAB,
     WELCOME,
+    action_page,
     display_url,
     page_name,
     workspace_name,
@@ -218,12 +219,12 @@ class BrowserPage(QWebEnginePage):
             window = getattr(tab, "browser_window", None)
             if (
                 window is not None
-                and page_name(self.url()) is not None
+                and action_page(self.url()) is not None
                 and navigation_type
                 == QWebEnginePage.NavigationType.NavigationTypeLinkClicked
                 and not window.profile_manager.registry.start_pages.state(
                     window.profile_manager.current_profile_name
-                )["html" if page_name(self.url()) == "newtab" else "welcome_html"]
+                )["html" if action_page(self.url()) == "newtab" else "welcome_html"]
             ):
                 QTimer.singleShot(
                     0, lambda: window._navigate_tab_to_url(tab, url.toString())
@@ -235,7 +236,7 @@ class BrowserPage(QWebEnginePage):
             if (
                 window is not None
                 and is_main_frame
-                and page_name(self.url()) is not None
+                and action_page(self.url()) is not None
                 and navigation_type
                 in (
                     QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
@@ -243,7 +244,7 @@ class BrowserPage(QWebEnginePage):
                 )
                 and not window.profile_manager.registry.start_pages.state(
                     window.profile_manager.current_profile_name
-                )["html" if page_name(self.url()) == "newtab" else "welcome_html"]
+                )["html" if action_page(self.url()) == "newtab" else "welcome_html"]
             ):
                 QTimer.singleShot(0, lambda: window._start_page_action(tab, url))
             if is_main_frame:
@@ -8095,12 +8096,12 @@ class BrowserWindow(QMainWindow):
         return self._open_management("bookmarks")
 
     def _start_page_action(self, tab, url):
-        if self._closing or tab not in self.tabs or page_name(tab.url()) is None:
+        if self._closing or tab not in self.tabs or action_page(tab.url()) is None:
             return
         pages = self.profile_manager.registry.start_pages
         profile = self.profile_manager.current_profile_name
         if pages.state(profile)[
-            "html" if page_name(tab.url()) == "newtab" else "welcome_html"
+            "html" if action_page(tab.url()) == "newtab" else "welcome_html"
         ]:
             return
         if url.userInfo() or url.port() != -1 or url.hasFragment():
@@ -8118,7 +8119,7 @@ class BrowserWindow(QMainWindow):
             self._restore_closed_tab(params[0][1])
         elif action == "menu" and len(params) == 1 and params[0][0] == "name":
             self._newtab_menu_at(tab, params[0][1])
-        elif action == "newtab-set" and params and page_name(tab.url()) == "newtab":
+        elif action == "newtab-set" and params:
             if params in ([("glass", "1")], [("glass", "0")]):
                 pages.keep_open.add(profile)
                 self._set_bar("glass", params[0][1] == "1")
