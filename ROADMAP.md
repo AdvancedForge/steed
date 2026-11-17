@@ -9,6 +9,24 @@ including the [planned architecture](DOCUMENTATION.md#planned-architecture).
 
 ## Current work — October 25, 2026
 
+**Agents page round — November 16, 2026.** From using Steed's sidebar to talk
+to Claude Code:
+- Chats: the five most recent, newest first, named by their first message, with
+  agent and time; the rest behind **N more**. Wide, they stand in a column on
+  the left; narrow, they fold behind **Chats**.
+- Closing Steed (or turning agent access off) records a chat as interrupted
+  with the reason, never as a cancellation; the card says **Chat closed**.
+- **Keep Claude Code chats so they can continue after Steed closes** (on by
+  default): chats are saved by Claude Code in their own folder, and a closed
+  one offers **Continue this chat**, resuming the same session with its earlier
+  messages shown above. Codex chats are not kept yet.
+- The session picker shows what you said last and a short id, so copies are
+  told apart, and selects nothing for you.
+- **Allow all commands for this chat** on Claude Code's command prompts.
+- The page: full-height conversation, Markdown replies (built from text nodes,
+  never HTML), a growing message box where Enter sends, a round Send button,
+  a closed-chat bar instead of a dead composer, agent-neutral wording.
+
 **Side branches folded in — November 16, 2026.** Main is the only branch. Work
 that never reached it is now merged: the agent card says why a chat stopped
 (error, ended or disconnected) and when the agent last reported; a turn cut

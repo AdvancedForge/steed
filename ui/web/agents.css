@@ -1,0 +1,116 @@
+/* Agents: a rail of chats and one conversation. Narrow (the sidebar), the
+   rail folds behind "Chats"; wide (a tab), it stands on the left like any
+   chat app. Rules are scoped under .workspace so the shared page styles and
+   Lumen (which come later) do not undo them. */
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh; min-height: 0; max-width: none; margin: 0; position: relative; }
+.workspace .rail { display: flex; flex-direction: column; min-height: 0; background: var(--surface);
+  border-bottom: 1px solid var(--border); z-index: 2; }
+.workspace .rail-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 14px; }
+.workspace .rail-head .brand { margin-right: auto; gap: 9px; }
+.workspace .rail-head .brand-mark { width: 30px; height: 30px; border-radius: 10px; }
+.workspace h1 { font-size: 16px; }
+.workspace .icon-button { display: grid; place-items: center; width: 34px; min-height: 34px; padding: 0; border-radius: 11px; }
+.workspace .icon-button svg, .workspace .send svg { width: 18px; height: 18px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.workspace .chats-toggle { min-height: 32px; padding: 4px 12px; border-radius: 999px; font-size: 12.5px; }
+.workspace .chats-toggle[aria-expanded=true] { background: var(--soft); border-color: var(--accent); }
+/* Narrow: the rail body drops down over the conversation. */
+.workspace .rail-body { display: none; flex-direction: column; min-height: 0; overflow: auto; padding: 0 10px 10px; }
+.workspace.chats-open .rail-body { display: flex; position: absolute; top: 54px; left: 0; right: 0; max-height: min(78dvh, 640px);
+  background: var(--surface); border-bottom: 1px solid var(--border); box-shadow: 0 18px 30px -18px #0006; }
+
+/* The chat list. */
+.workspace .task-picker { padding: 4px 0 0; }
+.workspace .chat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.workspace .chat-row { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 11px; cursor: pointer;
+  border: 1px solid transparent; outline: none; }
+.workspace .chat-row:hover { background: var(--soft); }
+.workspace .chat-row:focus-visible { border-color: var(--accent); }
+.workspace .chat-row.current { background: var(--soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.workspace .chat-title { font-size: 13px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace .chat-meta { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace .chat-row.live .chat-title::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px;
+  border-radius: 50%; background: var(--green); vertical-align: 1px; }
+.workspace .more-chats { align-self: flex-start; margin: 4px 10px 0; font-size: 12px; }
+.workspace .options { margin-top: 10px; border-top: 1px solid var(--border); background: transparent; }
+.workspace .options summary { padding: 12px 10px 8px; font-size: 12px; }
+.workspace .options-content { padding: 0 10px 10px; max-height: none; min-height: 0; }
+.workspace #model-control select { margin-bottom: 8px; }
+.workspace #model-control .link-button { margin-bottom: 4px; }
+
+/* The conversation column. */
+.workspace .chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.workspace .chat > * { flex: none; }
+.workspace .conversation { flex: 1 1 auto; min-height: 0; }
+.workspace .messages { padding: 18px 16px 8px; }
+.workspace .notice, .workspace .attention { margin: 10px 16px 0; }
+.workspace .activity { margin: 10px 16px 0; padding: 7px 12px; border-radius: 14px; }
+
+/* Messages: the person's in a bubble on the right, the agent's as text. */
+.workspace .message { margin: 0 0 18px; max-width: 100%; }
+.workspace .message.user { margin-left: auto; max-width: min(88%, 620px); }
+.workspace .message-heading { font-size: 11.5px; font-weight: 600; margin: 0 2px 4px; }
+.workspace .message.user .message-heading span:first-child { display: none; }
+.workspace .message.user .message-body { padding: 9px 13px; border-radius: 16px 16px 5px 16px; background: var(--soft); border: 0; }
+.workspace .message.agent .message-body { padding: 0 2px; border: 0; border-radius: 0; background: none; box-shadow: none;
+  white-space: normal; font-size: 13.5px; line-height: 1.6; }
+.workspace .message.earlier { opacity: .72; }
+.workspace .message-body p { margin: 0 0 .7em; }
+.workspace .message-body > :last-child { margin-bottom: 0; }
+.workspace .message-body :is(h3, h4, h5, h6) { margin: 1em 0 .4em; font-size: 14px; }
+.workspace .message-body :is(ul, ol) { margin: 0 0 .7em; padding-left: 1.4em; }
+.workspace .message-body li + li { margin-top: .2em; }
+.workspace .message-body code { font: 12px/1.4 ui-monospace, "JetBrains Mono", monospace; padding: 1px 5px; border-radius: 6px;
+  background: var(--soft); }
+.workspace .message-body pre { margin: 0 0 .8em; padding: 10px 12px; border-radius: 10px; background: var(--soft); overflow: auto;
+  white-space: pre; font: 12px/1.5 ui-monospace, "JetBrains Mono", monospace; }
+.workspace .message-body .table { overflow-x: auto; margin: 0 0 .8em; }
+.workspace .message-body table { border-collapse: collapse; font-size: 12.5px; }
+.workspace .message-body :is(th, td) { padding: 5px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.workspace .message-body th { background: var(--soft); font-weight: 600; }
+.workspace .message-body .link { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.workspace .continued { display: flex; align-items: center; gap: 10px; margin: 6px 0 20px; color: var(--muted); font-size: 11.5px; }
+.workspace .continued::before, .workspace .continued::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+/* Composer: the text grows with what is written; Send sits inside it. */
+.workspace .compose { padding: 8px 16px 12px; }
+.workspace .composer-box { display: flex; align-items: flex-end; gap: 6px; padding: 6px 6px 6px 4px; border-radius: 18px; }
+.workspace .composer-box textarea { min-height: 38px; max-height: 220px; padding: 9px 10px; resize: none; line-height: 1.45; }
+.workspace .send { flex: none; display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0; border-radius: 50%;
+  border: 0; background: var(--soft); color: var(--muted); box-shadow: none; }
+.workspace .send.ready { background: var(--accent); color: var(--surface); }
+.workspace .send.ready:hover:enabled { background: var(--accent-hover); }
+.workspace .send:disabled { opacity: .5; }
+.workspace .task-actions { align-items: center; margin-top: 4px; padding: 0 6px; }
+.workspace .task-actions .hint { margin-right: auto; color: var(--muted); font-size: 11px; }
+
+/* A closed chat: what can happen next. */
+.workspace .ended { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px 14px;
+  border-top: 1px solid var(--border); }
+.workspace .ended button:not(.text-button) { border-radius: 999px; padding: 7px 16px; }
+.workspace .ended .text-button { margin-left: auto; font-size: 12px; }
+
+/* Nothing open yet. */
+.workspace .welcome { flex: 1 1 auto; justify-content: center; align-items: flex-start; text-align: left; gap: 10px; padding: 28px 22px; }
+.workspace .welcome h2 { font-size: clamp(22px, 4vw, 28px); margin: 0; }
+.workspace .welcome .start-row { display: flex; gap: 8px; width: 100%; max-width: 380px; margin-top: 6px; }
+.workspace .welcome .start-row .primary { flex: 1; width: auto; max-width: none; margin: 0; }
+.workspace .welcome .agent-pick { width: auto; max-width: 48%; border-radius: 999px; padding: 8px 12px; }
+.workspace .welcome .more-ways { display: flex; flex-wrap: wrap; gap: 4px 16px; max-width: 380px; }
+.workspace .welcome .more-ways button { width: auto; margin: 0; border-radius: 0; font-size: 12.5px; }
+
+/* Wide: the rail stands on the left. */
+@media (min-width: 760px) {
+  .workspace { grid-template-columns: 272px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .workspace .rail { border-bottom: 0; border-right: 1px solid var(--border); }
+  .workspace .chats-toggle { display: none; }
+  .workspace .rail-body, .workspace.chats-open .rail-body { display: flex; position: static; flex: 1; max-height: none; box-shadow: none; border: 0; }
+  .workspace .options { margin-top: auto; }
+  /* A readable column, centred, however wide the tab. */
+  .workspace .chat > :not(.conversation, .welcome), .workspace .messages { width: 100%; max-width: 820px; margin-left: auto; margin-right: auto; }
+  .workspace .chat > .notice, .workspace .chat > .attention, .workspace .chat > .activity { width: calc(100% - 32px); }
+  .workspace .messages { padding: 26px 20px 10px; }
+  .workspace .welcome { align-items: center; text-align: center; }
+  .workspace .welcome .more-ways { justify-content: center; }
+}

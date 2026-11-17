@@ -55,6 +55,28 @@ def _clean(text):
     return text if len(text) <= TITLE_LIMIT else text[: TITLE_LIMIT - 1] + "…"
 
 
+def _last_prompt(record):
+    if (
+        record.get("type") != "user"
+        or record.get("isSidechain")
+        or record.get("isMeta")
+    ):
+        return ""
+    content = (record.get("message") or {}).get("content")
+    # Tool results are user records too; only what the person typed counts.
+    if isinstance(content, list) and not any(
+        isinstance(b, dict) and b.get("type") == "text" for b in content
+    ):
+        return ""
+    return _clean(_prompt_text(record.get("message")))
+
+
+def kept_by_steed(cwd):
+    """Chats Steed keeps (Settings → Agents) live in agent_chats/<task>; they
+    continue from the sidebar, not from this list."""
+    return Path(cwd).parent.name == "agent_chats"
+
+
 def read_session(path):
     """{"id", "title", "cwd", "updated"} for one session file, or None."""
     path = Path(path)
@@ -72,7 +94,7 @@ def read_session(path):
         updated = path.stat().st_mtime
     except OSError:
         return None
-    cwd, prompt, title = "", "", ""
+    cwd, prompt, title, last = "", "", "", ""
     for record in _records(head.decode("utf-8", "replace")):
         if not cwd and isinstance(record.get("cwd"), str):
             cwd = record["cwd"]
@@ -85,14 +107,19 @@ def read_session(path):
             prompt = _clean(_prompt_text(record.get("message")))
         if record.get("type") == "ai-title":
             title = _clean(record.get("aiTitle", "")) or title
+        last = _last_prompt(record) or last
     for record in _records(tail.decode("utf-8", "replace")):
         if record.get("type") == "ai-title":
             title = _clean(record.get("aiTitle", "")) or title
+        last = _last_prompt(record) or last
     if not cwd or not Path(cwd).is_absolute():
         return None
     return {
         "id": path.stem,
         "title": title or prompt or "Untitled session",
+        # Copies share their original's title; what was said last tells
+        # them apart.
+        "last": last,
         "cwd": cwd,
         "updated": updated,
     }
@@ -120,7 +147,7 @@ def list_sessions(root=None, limit=MAX_SESSIONS):
     sessions = []
     for _, path in sorted(files, reverse=True):
         found = read_session(path)
-        if found is not None:
+        if found is not None and not kept_by_steed(found["cwd"]):
             sessions.append(found)
         if len(sessions) >= limit:
             break

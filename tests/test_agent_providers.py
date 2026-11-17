@@ -370,8 +370,8 @@ class AgentProviderTests(unittest.TestCase):
         self.assertEqual(self.manager.connection(task)["live"], False)
         self.sidebar.refresh()
         activity = self.sidebar.state["activity"]
-        self.assertEqual(activity["title"], "Codex disconnected")
-        self.assertIn("Nothing was resent", activity["hint"])
+        self.assertEqual(activity["title"], "Chat closed")
+        self.assertIn("Steed closed this chat", activity["hint"])
         self.assertIn(
             "Cut off by shutdown", [m["text"] for m in self.sidebar.state["messages"]]
         )
@@ -418,8 +418,8 @@ class AgentProviderTests(unittest.TestCase):
         self.manager._stop(task)
         self.sidebar.refresh()
         activity = self.sidebar.state["activity"]
-        self.assertEqual(activity["title"], "Turn interrupted")
-        self.assertIn("choose another conversation", activity["hint"])
+        self.assertEqual(activity["title"], "Chat interrupted")
+        self.assertIn("Start a new chat", activity["hint"])
         self.assertFalse(self.sidebar.state["active"])
 
     def test_a_failed_start_without_a_turn_is_not_called_interrupted(self):
@@ -440,8 +440,8 @@ class AgentProviderTests(unittest.TestCase):
         self.assertIsInstance(connection["reported_at"], float)
         self.sidebar.refresh()
         activity = self.sidebar.state["activity"]
-        self.assertIn("stopped after an error", activity["title"])
-        self.assertIn("Nothing was resent", activity["hint"])
+        self.assertEqual("Stopped after an error", activity["title"])
+        self.assertIn("Start a new chat", activity["hint"])
         self.assertEqual(self.service.store.get(task).status, "interrupted")
         self.assertIn("Last agent update", activity["hint"])
         self.assertIn("this chat has stopped", self.sidebar.state["status"])
@@ -454,14 +454,16 @@ class AgentProviderTests(unittest.TestCase):
         self.assertEqual(self.manager.connection(ended)["reason"], "ended")
         self.sidebar.select_task(ended)
         self.sidebar.refresh()
-        self.assertEqual(self.sidebar.state["activity"]["title"], "Codex chat ended")
-        self.assertIn("start a new chat", self.sidebar.state["activity"]["hint"])
+        self.assertEqual(self.sidebar.state["activity"]["title"], "Chat ended")
+        self.assertIn("Start a new chat", self.sidebar.state["activity"]["hint"])
         closed = self.chat()
         self.manager.close()
         self.assertEqual(self.manager.connection(closed)["reason"], "closed")
         self.sidebar.select_task(closed)
         self.sidebar.refresh()
-        self.assertEqual(self.sidebar.state["activity"]["title"], "Codex disconnected")
+        self.assertEqual(self.sidebar.state["activity"]["title"], "Chat closed")
+        # Steed closing an idle chat is not a cancellation either.
+        self.assertEqual(self.service.store.get(closed).status, "interrupted")
 
     def test_live_chat_reports_the_last_runtime_update_time(self):
         task = self.chat()
@@ -580,10 +582,8 @@ class AgentProviderTests(unittest.TestCase):
         for mode in ("model-unreported", "model-invalid"):
             with self.subTest(mode=mode):
                 task = self.chat(mode)
-                self.assertEqual(
-                    self.sidebar.state["activity"]["model"],
-                    "Model: not reported by the agent",
-                )
+                # Nothing is shown rather than a guess from the selection.
+                self.assertEqual(self.sidebar.state["activity"]["model"], "")
                 self.send("Still connected")
                 self.complete(task)
                 self.assertIn(task, self.manager.chats)
@@ -622,9 +622,7 @@ class AgentProviderTests(unittest.TestCase):
         self.send("Synthetic turn")
         self.complete(task)
         self.assertIsNone(self.manager.model_info(task))
-        self.assertEqual(
-            self.sidebar.state["activity"]["model"], "Model: not reported by the agent"
-        )
+        self.assertEqual(self.sidebar.state["activity"]["model"], "")
         self.assertIn(task, self.manager.chats)
 
     def test_new_turn_does_not_inherit_the_previous_turns_reroute(self):

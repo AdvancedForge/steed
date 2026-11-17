@@ -2031,11 +2031,14 @@ class TaskService(QObject):
         self._usable()
         return self._finish_task(task_id, "cancelled")
 
-    def interrupt_task(self, task_id):
-        """Record work cut off by shutdown or lost transport, not a user cancel."""
+    def interrupt_task(self, task_id, reason=""):
+        """Record work cut off by shutdown or lost transport, not a user cancel.
+
+        reason "closed": Steed closed the chat (quitting, or agent access
+        turned off) while it was idle or mid-turn."""
         require_owner_thread(self)
         self._usable()
-        return self._finish_task(task_id, "interrupted")
+        return self._finish_task(task_id, "interrupted", reason=reason)
 
     def _usable(self):
         if self._closed or self.failure:
@@ -2825,7 +2828,7 @@ class TaskService(QObject):
         self.store.record_event(task_id, "session.closed", {"session_id": session_id})
         self.changed.emit()
 
-    def _finish_task(self, task_id, status="completed"):
+    def _finish_task(self, task_id, status="completed", reason=""):
         self._active(task_id)
         for (owner, _), request in self.control_requests.items():
             if owner == task_id and request.state == "requested":
@@ -2855,7 +2858,7 @@ class TaskService(QObject):
             for session_id, owner in list(self._sessions.items()):
                 if owner == task_id:
                     self._close_session(task_id, session_id)
-            result = self.store.transition(task_id, status)
+            result = self.store.transition(task_id, status, reason=reason)
         finally:
             self._discard_sessions(task_id)
         self.changed.emit()

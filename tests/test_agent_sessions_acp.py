@@ -108,6 +108,22 @@ class SessionListTests(unittest.TestCase):
         )
         self.assertIsNone(sessions.find_session(SECOND.replace("a", "b"), self.root))
 
+    def test_copies_are_told_apart_by_what_was_said_last(self):
+        write_session(
+            self.root / "-work",
+            FIRST,
+            str(self.work),
+            [
+                ("title", "Shared title"),
+                ("user", "Start here"),
+                ("user", [{"type": "tool_result", "content": "not typed"}]),
+                ("user", "The last thing I asked"),
+            ],
+        )
+        (found,) = sessions.list_sessions(self.root)
+        self.assertEqual(found["title"], "Shared title")
+        self.assertEqual(found["last"], "The last thing I asked")
+
 
 class ChatTests(unittest.TestCase):
     setUpClass = classmethod(fixtures.TaskServiceTests.setUpClass.__func__)
@@ -125,13 +141,15 @@ class ChatTests(unittest.TestCase):
             config=self.config,
         )
 
+        self.claude_mode = "resume"
+
         def claude(parent):
             return ClaudeCodeProvider(
                 parent,
                 command=[
                     sys.executable,
                     str(FIXTURES / "fake_claude_code.py"),
-                    "resume",
+                    self.claude_mode,
                 ],
             )
 
@@ -191,6 +209,78 @@ class ChatTests(unittest.TestCase):
         self.service.send_message(task, "and now?")
         (reply,) = self.replies(task, 1)
         self.assertEqual(reply, f"Resumed {FIRST} in {work}: and now?")
+
+    def test_a_kept_chat_continues_after_steed_closes_it(self):
+        root = Path(self.directory.name) / "projects"
+        self.config.config_dir = Path(self.directory.name) / "settings"
+        self.claude_mode = "keep"
+        with unittest.mock.patch.object(sessions, "projects_root", return_value=root):
+            first = self.manager.new_chat(agent="claude")
+            self.ready(first, "Claude Code")
+            self.service.send_message(first, "Remember the plan")
+            self.replies(first, 1)
+            saved = self.manager.saved_session(first)
+            folder = self.config.config_dir / "agent_chats" / first
+            self.assertEqual(saved["cwd"], str(folder))
+            self.assertTrue(folder.is_dir())
+            # Claude Code writes the session file; the fake runtime does not.
+            write_session(
+                root / "-kept", saved["session_id"], str(folder), [("user", "Hi")]
+            )
+            # Kept chats continue from the sidebar, not the session picker.
+            self.assertEqual(sessions.list_sessions(root), [])
+            self.manager.close()
+            self.assertEqual(self.service.store.get(first).status, "interrupted")
+            self.sidebar.select_task(first)
+            self.sidebar.refresh()
+            self.assertTrue(self.sidebar.state["ended"])
+            self.assertTrue(self.sidebar.state["can_continue"])
+            self.assertEqual(self.sidebar.state["activity"]["title"], "Chat closed")
+            self.assertIn("Continue this chat", self.sidebar.state["activity"]["hint"])
+
+            self.claude_mode = "continue"
+            self.sidebar.continue_chat()
+            second = self.sidebar.state["task_id"]
+            self.assertNotEqual(second, first)
+            self.ready(second, "Claude Code")
+            self.assertEqual(self.service.store.continuations(), {first: second})
+            # The same saved conversation, carried on rather than copied.
+            self.service.send_message(second, "Where were we?")
+            (reply,) = self.replies(second, 1)
+            self.assertEqual(
+                reply, f"Resumed {saved['session_id']} in {folder}: Where were we?"
+            )
+            self.sidebar.refresh()
+            earlier = [m["text"] for m in self.sidebar.state["earlier"]]
+            self.assertEqual(earlier[0], "Remember the plan")
+            # The list shows the chat once: as the one that carries it on.
+            ids = [chat["id"] for chat in self.sidebar.state["tasks"]]
+            self.assertIn(second, ids)
+            self.assertNotIn(first, ids)
+            self.assertEqual(
+                self.sidebar.state["tasks"][0]["title"], "Remember the plan"
+            )
+            # A chat continues once; the copy that carries it on is the live one.
+            self.assertIsNone(self.manager.continuable(first))
+            with self.assertRaises(ValueError):
+                self.manager.new_chat(continues=first)
+
+    def test_chats_are_not_kept_when_the_setting_is_off(self):
+        self.config.config_dir = Path(self.directory.name) / "settings"
+        self.config.set("keep_agent_chats", False)
+        self.claude_mode = "normal"
+        task = self.manager.new_chat(agent="claude")
+        self.ready(task, "Claude Code")
+        self.service.send_message(task, "Gone when closed")
+        self.replies(task, 1)
+        self.assertIsNone(self.manager.saved_session(task))
+        self.assertFalse((self.config.config_dir / "agent_chats").exists())
+        self.manager.close()
+        self.assertIsNone(self.manager.continuable(task))
+        self.sidebar.select_task(task)
+        self.sidebar.refresh()
+        self.assertFalse(self.sidebar.state["can_continue"])
+        self.assertIn("Start a new chat", self.sidebar.state["activity"]["hint"])
 
     def acp_chat(self, mode="normal"):
         self.config.set(

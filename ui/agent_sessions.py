@@ -47,15 +47,28 @@ class ClaudeSessionsDialog(QDialog):
             )
         )
         self.sessions = list_sessions()
-        self.table = QTableWidget(len(self.sessions), 3)
-        self.table.setHorizontalHeaderLabels(["Session", "Folder", "Last used"])
+        self.table = QTableWidget(len(self.sessions), 4)
+        self.table.setHorizontalHeaderLabels(
+            ["Session", "You said last", "Folder", "Last used"]
+        )
         for row, session in enumerate(self.sessions):
             for column, text in enumerate(
-                (session["title"], session["cwd"], _when(session["updated"]))
+                (
+                    f"{session['title']} · {session['id'][:8]}",
+                    session.get("last", ""),
+                    session["cwd"],
+                    _when(session["updated"]),
+                )
             ):
                 self.table.setItem(row, column, QTableWidgetItem(text))
-        if self.sessions:
-            self.table.selectRow(0)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # Nothing is chosen for you: the newest row is often the session
+        # still open in a terminal.
+        self.table.setCurrentCell(-1, -1)
+        self.table.itemSelectionChanged.connect(
+            lambda: self.go.setEnabled(self.table.currentRow() >= 0)
+        )
         self.table.itemDoubleClicked.connect(lambda _: self.continue_chosen())
         layout.addWidget(self.table)
         self.status = QLabel(
@@ -64,7 +77,7 @@ class ClaudeSessionsDialog(QDialog):
         layout.addWidget(self.status)
         buttons = QHBoxLayout()
         self.go = QPushButton("Continue here")
-        self.go.setEnabled(bool(self.sessions))
+        self.go.setEnabled(False)
         self.go.clicked.connect(self.continue_chosen)
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)

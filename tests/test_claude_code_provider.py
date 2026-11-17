@@ -102,7 +102,8 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         )
         activity = self.sidebar._activity(True)
         self.assertEqual(activity["title"], "Claude Code is ready")
-        self.assertIn("reported by Claude Code", activity["model"])
+        self.assertEqual(activity["model"], "Model: claude-default · Anthropic")
+        self.assertRegex(activity["hint"], r"^Last agent update [0-9:]+\.$")
 
     def test_selected_model_and_unstreamed_replies(self):
         task = self.chat("no-partial", model="haiku")
@@ -121,6 +122,8 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         for decision, expected in (
             ({"decision": "accept"}, "Permission allow (once)"),
             ({"decision": "acceptForSession"}, "Permission allow (session)"),
+            # Claude Code's own session rule for every command in this chat.
+            ({"decision": "acceptAllCommands"}, "Permission allow (all commands)"),
             ({"decision": "decline"}, "Permission deny (once)"),
         ):
             with self.subTest(decision=decision):
@@ -137,6 +140,9 @@ class ClaudeCodeProviderTests(unittest.TestCase):
                 self.assertEqual(payload["params"]["command"], "echo synthetic")
                 self.assertIn(
                     "acceptForSession", payload["params"]["availableDecisions"]
+                )
+                self.assertIn(
+                    "acceptAllCommands", payload["params"]["availableDecisions"]
                 )
                 self.assertEqual(self.manager.activity(task)["state"], "waiting")
                 self.manager.respond(task, request_id, decision)

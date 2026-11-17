@@ -1,5 +1,6 @@
 """HTML agent conversations backed by the existing Python task authority."""
 
+import re
 import sqlite3
 import time
 
@@ -24,35 +25,68 @@ _AGENT_MODELS = {
 }
 
 
-# A turn cut off by shutdown or a lost connection: recorded as interrupted,
-# never as a cancel the person did not ask for, and never resumed.
-INTERRUPTED_TURN = "Turn interrupted"
-INTERRUPTED_HINT = (
-    "This turn was cut off before the agent finished. Nothing was resent or "
-    "replayed and no permission was restored."
-)
-CONTINUE_HINT = (
-    "Saved messages are below; start a new chat or choose another conversation "
-    "to continue."
-)
+def ended_state(task_status, reason="", *, cut_off=False, can_continue=False):
+    """How a chat that is no longer live reads: (title, hint). Only reasons
+    Steed itself knows (an error, a closed conversation, Steed closing it);
+    nothing is inferred about the agent, and nothing is ever replayed."""
+    title = {
+        "closed": "Chat closed",
+        "failed": "Stopped after an error",
+        "ended": "Chat ended",
+    }.get(reason) or {
+        "interrupted": "Chat interrupted",
+        "cancelled": "Chat stopped",
+        "failed": "Stopped after an error",
+    }.get(task_status, "Chat ended")
+    hint = "Steed closed this chat. " if reason == "closed" else ""
+    hint += "The last reply was cut off. " if cut_off else ""
+    hint += (
+        "Continue this chat to pick up where it left off."
+        if can_continue
+        else "Messages are saved. Start a new chat to keep going."
+    )
+    return title, hint
 
 
-def stopped_state(name, reason):
-    """Why a native chat is no longer live: (title, guidance). Only reasons
-    Steed itself decided (an error, a closed conversation, the browser
-    closing); nothing is inferred about the agent."""
-    keep = "Saved messages stay below; start a new chat to continue."
+def count(number, word):
+    """ "1 message", "2 messages"."""
+    return f"{number} {word}{'' if number == 1 else 's'}"
+
+
+def continued_root(task_id, continued, limit=50):
+    """The first chat of a chain of continuations."""
+    earlier = {new: old for old, new in continued.items()}
+    for _ in range(limit):
+        if task_id not in earlier:
+            break
+        task_id = earlier[task_id]
+    return task_id
+
+
+def chat_choice(task, external, opener=None):
+    """One row of the chat list: what it was about, which agent, when."""
+    objective = " ".join(task.objective.split())
+    agent, _, title = objective.partition(": ")
+    if not title:
+        agent, title = "", objective
+    if title.endswith(" conversation"):
+        agent, title = agent or title.removesuffix(" conversation"), "Untitled chat"
+    if opener and title in ("Untitled chat", "Untitled session"):
+        # Markdown punctuation is not part of a title.
+        words = re.sub(r"[|#*`>_~]+", " ", opener).split()
+        title = " ".join(words) or title
+        title = title if len(title) <= 80 else title[:79] + "…"
+    live = external and task.status in ACTIVE_STATUSES
     return {
-        "failed": (
-            f"{name} chat stopped after an error",
-            f"The agent connection failed. {keep}",
-        ),
-        "ended": (f"{name} chat ended", f"This conversation was closed. {keep}"),
-        "closed": (
-            f"{name} disconnected",
-            f"The browser closed the agent connection. {keep}",
-        ),
-    }.get(reason, (f"{name} chat stopped", "Saved messages stay below."))
+        "id": task.task_id,
+        "title": title[:80],
+        "agent": agent,
+        "when": task.updated_at,
+        "live": live,
+        "status": "" if live or task.status in ACTIVE_STATUSES else task.status,
+        # Kept for anything that still shows one line.
+        "label": f"{title[:80]}{' · ' + agent if agent else ''}",
+    }
 
 
 def reported_at_text(connection):
@@ -196,6 +230,7 @@ class AgentSidebar(QDockWidget):
         operations = {
             "new_chat": self.start_chat,
             "continue_session": self.continue_session,
+            "continue_chat": self.continue_chat,
             "acp_agents": self.manage_acp_agents,
             "setup": self.setup_requested.emit,
             "requests": self.show_requests,
@@ -267,6 +302,10 @@ class AgentSidebar(QDockWidget):
             ),
             "summary": "",
             "activity": {"title": "", "hint": "", "model": "", "busy": False},
+            "ended": False,
+            "can_continue": False,
+            "agent_name": "",
+            "earlier": [],
         }
 
     def _publish(self):
@@ -350,18 +389,20 @@ class AgentSidebar(QDockWidget):
                 if t.task_id not in self.service.external_tasks
                 and t.task_id != self._task_id
             ]
-            self._choices = []
-            for task in reversed(records):
-                connected = (
-                    task.task_id in self.service.external_tasks
-                    and task.status in ACTIVE_STATUSES
+            # A chat that was continued is shown as the newer one.
+            continued = self.service.store.continuations() if records else {}
+            records.sort(key=lambda t: t.updated_at, reverse=True)
+            openers = self.service.messages.openers() if records else {}
+            self._choices = [
+                chat_choice(
+                    task,
+                    task.task_id in self.service.external_tasks,
+                    openers.get(continued_root(task.task_id, continued))
+                    or openers.get(task.task_id),
                 )
-                self._choices.append(
-                    {
-                        "id": task.task_id,
-                        "label": f"{'Connected' if connected else task.status} · {' '.join(task.objective.split())[:80]} · {task.task_id[:8]}",
-                    }
-                )
+                for task in records
+                if task.task_id not in continued or task.task_id == self._task_id
+            ]
             if self._task_id not in (t["id"] for t in self._choices):
                 if self._task_id is not None:
                     self._context += 1
@@ -429,9 +470,9 @@ class AgentSidebar(QDockWidget):
         if waiting:
             # Once the chat has stopped, nothing will read them: say so.
             status += (
-                f"\n{waiting} unread message(s); this chat has stopped"
+                f"\n{count(waiting, 'unread message')}; this chat has stopped"
                 if stopped
-                else f"\n{waiting} message(s) waiting for the agent to read"
+                else f"\n{count(waiting, 'message')} waiting for the agent to read"
             )
         elif any(
             m["role"] == "user" and m["state"] != "cleared"
@@ -439,6 +480,22 @@ class AgentSidebar(QDockWidget):
         ):
             status += "\nAgent fetched your sent messages"
         counts = self.service.messages.summary(task_id)
+        ended = {}
+        if task.status not in ACTIVE_STATUSES:
+            closing = self.service.store.recent_events(
+                task_id, limit=1, kinds=(f"task.{task.status}",)
+            )
+            ended = {
+                "reason": closing[-1].payload.get("reason", "") if closing else "",
+                "cut_off": any(
+                    m["state"] == "interrupted" for m in self._messages.values()
+                ),
+                "can_continue": bool(
+                    self.providers is not None
+                    and hasattr(self.providers, "continuable")
+                    and self.providers.continuable(task_id)
+                ),
+            }
         requests = (
             len(self.providers.chats.get(task_id, {}).get("requests", {}))
             if self.providers
@@ -457,16 +514,11 @@ class AgentSidebar(QDockWidget):
                 self.service.resumable.get(task_id),
             ),
             delivery=(
-                f"{waiting} message(s) waiting to be read"
+                f"{count(waiting, 'message')} waiting to be read"
                 if waiting and active
-                else f"{waiting} message(s) not read before the connection became unavailable"
+                else f"{count(waiting, 'message')} not read before the agent went away"
                 if waiting
-                else "Sent messages were read; this does not confirm completed work."
-                if any(
-                    m["role"] == "user" and m["state"] != "cleared"
-                    for m in self._messages.values()
-                )
-                else "Only messages you send are shared."
+                else ""
             ),
             failure=latest_failure(
                 self.service.store, task_id, self._dismissed_failures.get(task_id, 0)
@@ -491,12 +543,69 @@ class AgentSidebar(QDockWidget):
             can_cancel=task.status in ACTIVE_STATUSES,
             can_delegate=active and hasattr(self.browser_window, "delegate_tabs"),
             status=status,
-            summary=f"{counts['pending']} pending approval(s) · {counts['files']} file(s) · {counts['artifacts']} draft(s) · {counts['receipts']} app receipt(s)",
-            activity=self._activity(active, counts["pending"], task.status),
+            summary=", ".join(
+                (
+                    count(counts["pending"], "pending approval"),
+                    count(counts["files"], "file"),
+                    count(counts["artifacts"], "draft"),
+                    count(counts["receipts"], "app receipt"),
+                )
+            ),
+            activity=self._activity(active, counts["pending"], task.status, ended),
+            ended=task.status not in ACTIVE_STATUSES,
+            agent_name=(
+                self.providers.agent_name(task_id)
+                if self.providers is not None and hasattr(self.providers, "agent_name")
+                else None
+            )
+            or chat_choice(task, False)["agent"]
+            or "Agent",
+            can_continue=ended.get("can_continue", False),
+            earlier=self._earlier_messages(task_id),
         )
         self._state = state
 
-    def _activity(self, active, pending=0, task_status=""):
+    def _earlier_messages(self, task_id, limit=10):
+        """Messages of the chats this one continues, oldest first; shown
+        above its own, read-only."""
+        chain = []
+        for _ in range(limit):
+            link = self.service.store.recent_events(
+                task_id, limit=1, kinds=("conversation.continues",)
+            )
+            if not link:
+                break
+            task_id = link[-1].payload.get("task_id")
+            try:
+                self.service.store.get(task_id)
+            except (KeyError, ValueError):
+                break
+            chain.append(task_id)
+        earlier = []
+        for previous in reversed(chain):
+            rows, cursor = {}, 0
+            while True:
+                page = self.service.messages.read(previous, cursor)
+                for m in page["messages"]:
+                    rows[m["message_id"]] = m
+                cursor = page["cursor"]
+                if not page["has_more"]:
+                    break
+            earlier += [
+                {
+                    "id": f"{previous[:8]}-{m['message_id']}",
+                    "role": m["role"],
+                    "text": m["text"],
+                    "state": m["state"],
+                    "delivery": "",
+                }
+                for m in sorted(rows.values(), key=lambda m: m["created_sequence"])
+                if m["state"] != "cleared"
+            ]
+        return earlier
+
+    def _activity(self, active, pending=0, task_status="", ended=None):
+        ended = ended or {}
         model = (
             self.providers.model_info(self._task_id)
             if self.providers is not None and hasattr(self.providers, "model_info")
@@ -507,11 +616,11 @@ class AgentSidebar(QDockWidget):
             if model.get("provider"):
                 text += " · " + model["provider"]
             agent = model.get("agent", "the agent")
-            text += f" (reported by {agent})" if model["live"] else " (last reported)"
+            text += "" if model["live"] else " (last reported)"
             if model["source"] == "rerouted":
                 text += f"\n{agent} rerouted this turn from {model['from_model']}."
         else:
-            text = "Model: not reported by the agent"
+            text = ""
         report = (
             self.providers.activity(self._task_id)
             if self.providers is not None and hasattr(self.providers, "activity")
@@ -528,34 +637,22 @@ class AgentSidebar(QDockWidget):
             or "The agent"
         )
         title, hint = {
-            "connecting": (
-                f"Connecting to {name}…",
-                "Starting the agent and its Steed connection.",
-            ),
-            "sending": ("Sending…", f"Waiting for {name} to accept your message."),
-            "thinking": (
-                f"{name} is thinking…",
-                "Your message was accepted; the agent is preparing its next step.",
-            ),
+            "connecting": (f"Connecting to {name}…", ""),
+            "sending": ("Sending…", ""),
+            "thinking": (f"{name} is thinking…", ""),
             "working": (
                 f"{name} is working…",
-                "The agent is using tools. You can browse or queue a follow-up.",
+                "You can keep browsing or queue a follow-up.",
             ),
-            "replying": (
-                f"{name} is replying…",
-                "The reply is arriving below. Work continues until the agent finishes.",
-            ),
+            "replying": (f"{name} is replying…", ""),
             "waiting": (
                 f"{name} needs your input",
-                "Use Answer agent to answer a question or review a request.",
+                "Answer it with the button above the chat.",
             ),
-            "ready": (
-                f"{name} is ready",
-                "Send a message to continue this conversation.",
-            ),
+            "ready": (f"{name} is ready", ""),
             "external": (
                 "External agent connected",
-                "Messages queue in Steed; this client must fetch them. Its working state is not reported.",
+                "Messages wait in Steed until it fetches them. Steed can't see what it is doing.",
             ),
             "history": (
                 "Conversation ended",
@@ -569,17 +666,18 @@ class AgentSidebar(QDockWidget):
             ),
         )
         if report and report["queued"]:
-            hint += f" {report['queued']} follow-up message(s) queued."
+            queued = count(report["queued"], "follow-up message")
+            hint = f"{hint} {queued} queued.".strip()
         if pending and active and not (report and report["state"] == "waiting"):
             title = "Approval requested"
-            hint = "Review the pending access or action request. The agent may continue other work."
+            hint = "Review it with the button above the chat. The agent may keep working meanwhile."
             state = "approval"
         resume_until = self.service.resumable.get(self._task_id)
         if not report and not active and task_status in ACTIVE_STATUSES:
             title = "Agent disconnected"
-            hint = "Your conversation and draft are kept. Use Connection setup to reconnect your client; messages are not resent automatically."
+            hint = "Reconnect it from Connection setup. Your messages and draft are kept, and nothing is resent."
             if resume_until is not None:
-                title = "Agent disconnected · waiting for it to return"
+                title = "Agent disconnected, waiting for it to return"
                 hint = (
                     "Its access ended at the disconnect. The agent's next call reconnects and resumes this task until "
                     + time.strftime("%H:%M", time.localtime(resume_until))
@@ -590,17 +688,17 @@ class AgentSidebar(QDockWidget):
             if self.providers is not None and hasattr(self.providers, "connection")
             else None
         )
-        reason = (connection or {}).get("reason", "")
+        reason = (connection or {}).get("reason", "") or ended.get("reason", "")
         detail = (connection or {}).get("detail", "")
-        interrupted = task_status == "interrupted"
-        if not report and not active and (reason or detail or interrupted):
-            if interrupted and not reason:
-                title, hint = INTERRUPTED_TURN, f"{INTERRUPTED_HINT} {CONTINUE_HINT}"
-            else:
-                title, guidance = stopped_state(name, reason)
-                hint = f"{detail} {guidance}" if detail else guidance
-                if interrupted:
-                    hint += f" {INTERRUPTED_HINT}"
+        if not report and not active and (reason or task_status not in ACTIVE_STATUSES):
+            title, hint = ended_state(
+                task_status,
+                reason,
+                cut_off=ended.get("cut_off", False),
+                can_continue=ended.get("can_continue", False),
+            )
+            if reason == "failed" and detail:
+                hint = f"{detail} {hint}"
         stamp = reported_at_text(connection)
         if stamp:
             hint = (hint + " " if hint else "") + f"Last agent update {stamp}."
@@ -681,6 +779,23 @@ class AgentSidebar(QDockWidget):
             task_id = self.providers.new_chat(
                 model=self._new_model, agent=self._new_agent
             )
+            self.refresh()
+            self.select_task(task_id)
+        except _ERRORS as error:
+            self._error = str(error)
+            self._publish()
+
+    def continue_chat(self):
+        """Carry on a closed chat whose Claude Code conversation was saved."""
+        if (
+            self._private
+            or self.providers is None
+            or not self.state.get("can_continue")
+            or self._task_id is None
+        ):
+            return
+        try:
+            task_id = self.providers.new_chat(continues=self._task_id)
             self.refresh()
             self.select_task(task_id)
         except _ERRORS as error:
