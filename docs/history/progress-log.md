@@ -16,8 +16,8 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 - The intermittent startup exit did not occur in 85 starts; recorded in the
   verification record, not claimed fixed.
 - The agents page was checked end to end with a live (synthetic) chat.
-- CI (lint, formatting, tests) and a security policy in `.github/`; the
-  release plan's outdated claims refreshed.
+- A security policy (`.github/SECURITY.md`); the release plan's outdated
+  claims refreshed.
 
 **A tidier repository — November 16, 2026.** The browser modules moved into
 `browser/` and optional requirements into `requirements/`, leaving 13 files at

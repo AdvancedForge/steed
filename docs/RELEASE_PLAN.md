@@ -46,9 +46,9 @@ agents can directly control Steed after sign-in alone.
   between tab and sidebar. Instructions/context have an explicit preview and
   copy/native-paste handoff. This does not connect their cloud models to MCP.
 - Validation (November 16, 2026): **2,128 tests pass** on Qt 6.11.2, and
-  startup/render/shutdown passes; CI runs lint, formatting and the suite on every
-  push. Eight packaged app connections ship (Todoist, GitLab.com, Microsoft 365
-  read, Notion, Asana, Dropbox, Linear, Raindrop.io) plus three templates.
+  startup/render/shutdown passes. Eight packaged app connections ship (Todoist,
+  GitLab.com, Microsoft 365 read, Notion, Asana, Dropbox, Linear, Raindrop.io)
+  plus three templates.
 
 Automated synthetic checks do not prove live provider consent, broad website
 compatibility, desktop graphics reliability, resistance to malicious pages or a
@@ -92,10 +92,9 @@ are documented. Test the packaged sandbox, not just checkout Python.
 
 ### 3. Automated release gates and desktop reliability
 
-- CI runs lint, formatting and the unit/regression suite on every push
-  (`.github/workflows/ci.yml`). Still to add: startup smoke, migration checks and
-  reproducible packaging; pin a known-good release environment and test
-  dependency updates.
+- Add CI for lint/format, Linux unit/regression tests, startup smoke, migration
+  checks and reproducible packaging. No CI workflow exists yet. Pin a
+  known-good release environment and test dependency updates.
 - Investigate the intermittent native startup exits with crash diagnostics and
   repeated serial runs; determine whether they are confined to offscreen/GPU
   test environments. Retrying alone is not an acceptance criterion.
