@@ -169,6 +169,12 @@ def clean_app(item):
     return {"id": identity, "name": name, "html": clean_html(item.get("html", ""))}
 
 
+def action_page(url):
+    """The start page a link was clicked on. Welcome moves between its steps
+    with #look, #bring and #agent, so the #fragment does not matter here."""
+    return page_name(url.adjusted(QUrl.UrlFormattingOption.RemoveFragment))
+
+
 def page_name(url):
     if (
         url.scheme() == "steed"
@@ -946,9 +952,11 @@ def welcome_steps(background, glass):
 
     def tile(label, href, kind, on):
         state = " on" if on else ""
+        chosen = '<span class="chosen">Chosen</span>' if on else ""
         return (
             f'<a class="tile {kind}{state}" aria-pressed="{str(bool(on)).lower()}"'
-            f' href="{href}"><span class="tile-art"></span><span>{label}</span></a>'
+            f' href="{href}"><span class="tile-art"></span>'
+            f'<span class="tile-label">{label}{chosen}</span></a>'
         )
 
     return (
@@ -958,6 +966,7 @@ def welcome_steps(background, glass):
         '<li><a href="#agent">Agent</a></li></ol>'
         '<section id="look" class="step"><h1>Welcome to Steed.</h1>'
         "<p>First, how should it look? You can change it any time.</p>"
+        '<h2 class="choice">Background</h2>'
         '<div class="tiles">'
         + tile(
             "Photo",
@@ -971,13 +980,16 @@ def welcome_steps(background, glass):
             "colour",
             background == "color",
         )
-        + tile(
-            "Liquid glass",
-            f"steed://action/newtab-set?glass={'0' if glass else '1'}",
-            "glass",
-            glass,
-        )
-        + '</div><div class="actions"><a class="button" href="#bring">Next</a></div></section>'
+        + "</div>"
+        # Glass is on or off with either background, so it is a switch.
+        + f'<a class="switch{" on" if glass else ""}" role="switch"'
+        f' aria-checked="{str(bool(glass)).lower()}"'
+        f' href="steed://action/newtab-set?glass={"0" if glass else "1"}">'
+        '<span class="switch-text"><strong>Liquid glass</strong>'
+        "<span>See-through bars and panels over the page</span></span>"
+        '<span class="track"><span class="knob"></span></span>'
+        f'<span class="state">{"On" if glass else "Off"}</span></a>'
+        + '<div class="actions"><a class="button" href="#bring">Next</a></div></section>'
         '<section id="bring" class="step"><h1>Bring your things.</h1>'
         "<p>Bookmarks and history from another browser, and your passwords "
         "from a file you export there.</p>"
@@ -1365,8 +1377,8 @@ html[data-effects=balanced] .wordmark, html[data-effects=balanced] .search { ani
 # Welcome: one step at a time (the #fragment chooses; #look first).
 ONBOARD_CSS = """
 body.onboarding header nav, body.onboarding .browser-menu, body.onboarding footer { display: none; }
-.onboard { max-width: 620px; margin: 6vh auto 0; padding: 0 24px; }
-.steps { list-style: none; display: flex; gap: 8px; padding: 0; margin: 0 0 36px; }
+.onboard { max-width: 620px; margin: 3vh auto 0; padding: 0 24px 40px; }
+.steps { list-style: none; display: flex; gap: 8px; padding: 0; margin: 0 0 26px; }
 .steps a { display: block; padding: 6px 14px; border-radius: 999px; color: var(--muted); text-decoration: none;
   font-size: 13px; font-weight: 600; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 .onboard:not(:has(.step:target)) .steps li:nth-child(1) a,
@@ -1376,13 +1388,38 @@ body.onboarding header nav, body.onboarding .browser-menu, body.onboarding foote
 .step:target, .onboard:not(:has(.step:target)) #look { display: block; }
 .step h1 { margin: 0 0 10px; }
 .step p { font-size: 17px; max-width: 46ch; }
-.step .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 26px 0 8px; max-width: 520px; }
+.step h2.choice { margin: 20px 0 0; font-size: 14px; color: var(--muted); font-weight: 600; }
+.step .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 12px 0 8px; max-width: 360px; }
 .step .tile { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 14px; }
-.step .tile-art { display: block; aspect-ratio: 4 / 3; border-radius: 16px; border: 2px solid transparent;
+.step .tile-label { display: flex; align-items: center; gap: 8px; }
+.step .chosen { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  background: var(--accent); color: var(--bg); }
+.step .tile-art { display: block; aspect-ratio: 16 / 9; border-radius: 16px; border: 2px solid transparent;
   background: var(--surface); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
   transition: border-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
 .step .tile:hover .tile-art { transform: translateY(-3px); }
-.step .tile.on .tile-art { border-color: var(--accent); }
+/* The chosen background: a ring in the accent colour and a check. */
+.step .tile .tile-art { position: relative; }
+.step .tile.on .tile-art { border-color: var(--bg);
+  box-shadow: 0 0 0 3px var(--accent), 0 14px 30px -18px var(--accent); }
+.step .tile.on .tile-art::after { content: "✓"; position: absolute; top: 10px; right: 10px; display: grid;
+  place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--bg);
+  font-size: 15px; font-weight: 800; }
+.step .tile:not(.on) .tile-art { opacity: .78; }
+.step .tile:not(.on):hover .tile-art { opacity: 1; }
+.step .switch { display: flex; align-items: center; gap: 14px; max-width: 360px; margin-top: 18px; padding: 12px 16px;
+  border-radius: 16px; text-decoration: none; color: var(--ink); background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.step .switch-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.step .switch-text span { font-size: 13px; color: var(--muted); }
+.step .track { position: relative; width: 44px; height: 26px; border-radius: 999px; flex: none;
+  background: color-mix(in srgb, var(--ink) 18%, transparent); transition: background-color .2s; }
+.step .knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--surface); box-shadow: 0 1px 3px #0005; transition: left .3s cubic-bezier(.34, 1.45, .64, 1); }
+.step .switch.on .track { background: var(--accent); }
+.step .switch.on .knob { left: 21px; }
+.step .switch .state { width: 2.2em; font-size: 13px; font-weight: 600; color: var(--muted); }
+.step .switch.on .state { color: var(--ink); }
 .step .tile.photo .tile-art { background: linear-gradient(160deg, #f3a66b, #6a4c93 60%, #1d3557); }
 .step .tile.colour .tile-art { background: conic-gradient(from 200deg, #1f3a5f, #2f5d50, #8a6d1f, #7a2e2e, #5b3a6b, #1f3a5f); }
 .step .tile.glass .tile-art { background: linear-gradient(135deg, color-mix(in srgb, #fff 35%, transparent), color-mix(in srgb, #fff 8%, transparent)),

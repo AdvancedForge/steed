@@ -45,7 +45,7 @@ agents can directly control Steed after sign-in alone.
 - Website-chat UI: native agent chat can use a tab; normal HTTPS chats can move
   between tab and sidebar. Instructions/context have an explicit preview and
   copy/native-paste handoff. This does not connect their cloud models to MCP.
-- Validation (November 16, 2026): **2,126 tests pass** on Qt 6.11.2, and
+- Validation (November 16, 2026): **2,129 tests pass** on Qt 6.11.2, and
   startup/render/shutdown passes. Eight packaged app connections ship (Todoist,
   GitLab.com, Microsoft 365 read, Notion, Asana, Dropbox, Linear, Raindrop.io)
   plus three templates.
@@ -270,8 +270,8 @@ extracting UI responsibilities from the growing BrowserWindow coordinator.
 ## Proposed sequence and decisions to settle
 
 1. Finish chat acceptance and publish this release inventory; complete the
-   connector review without overlapping the contributor's paths.
-2. Add CI/security reporting, investigate startup reliability, audit private
+   connector review.
+2. Add CI, investigate startup reliability, audit private
    storage and complete browser/agent desktop acceptance.
 3. Choose licensing and one initial supported packaging target; build and test
    clean install, upgrade, engine updates and rollback.
