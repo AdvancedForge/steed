@@ -1,6 +1,7 @@
 """Maintained local HTML with a small command bridge and no website authority."""
 
 import json
+import re
 from pathlib import Path
 from secrets import token_hex
 
@@ -78,6 +79,7 @@ class HtmlSurface(QWidget):
         self.ready = False
         self.disposed = False
         self.transparent = False
+        self._painted = None  # The page's own background, once it has drawn.
         self.generation = ""
         self._state = {}
         self._last_payload = None
@@ -278,6 +280,14 @@ class HtmlSurface(QWidget):
             ):
                 if ok:
                     self.stack.setCurrentWidget(self.view)
+                    if not self.transparent:
+                        # Match the colour the page actually paints (styles
+                        # set it, not only dark mode): a resize then never
+                        # shows a light strip before the page catches up.
+                        self.page.runJavaScript(
+                            "getComputedStyle(document.body).backgroundColor",
+                            self._match_background,
+                        )
                 else:
                     self._failed()
 
@@ -285,11 +295,27 @@ class HtmlSurface(QWidget):
         self.page.setBackgroundColor(
             QColor(0, 0, 0, 0)
             if self.transparent  # The host draws rounded, see-through glass.
-            else QColor("#151b25" if dark else "#f5f7fb")
+            else self._painted or QColor("#151b25" if dark else "#f5f7fb")
         )
         self.page.runJavaScript(
             f"window.steedUI && window.steedUI.render({payload})", rendered
         )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Moving the agents panel from the sidebar into a tab can leave the
+        # layout believing it is current while the page keeps its docked
+        # size, showing a strip of background; give it the whole area.
+        self.stack.setGeometry(self.rect())
+
+    def _match_background(self, value):
+        found = re.fullmatch(
+            r"rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)", str(value or "")
+        )
+        if self.disposed or found is None or found[4] not in (None, "1"):
+            return
+        self._painted = QColor(*(int(found[i]) for i in (1, 2, 3)))
+        self.page.setBackgroundColor(self._painted)
 
     def conceal(self):
         """Cover stale pixels synchronously before publishing a private state."""
