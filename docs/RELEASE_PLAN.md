@@ -1,12 +1,13 @@
 # Steed public release plan
 
-Assessment: October 3, 2026. This is a proposed release contract, not a claim that
-Steed is ready to ship. Detailed implementation history remains in ROADMAP.md;
-setup remains in the documentation (docs/). Recheck this list against each release tag.
+Assessment: October 3, 2026, updated November 16, 2026. This is a proposed
+release contract, not a claim that Steed is ready to ship. Where things stand is
+in the [roadmap](../ROADMAP.md), what each round changed in the
+[progress log](history/progress-log.md), and setup in the
+[documentation](README.md). Recheck this list against each release tag.
 
-Current priority is daily-workflow engineering, as clarified by the user after
-this assessment. This document is parked release backlog, not the active work
-sequence. Persistent reusable agent folders are the next implemented workflow.
+Steed is an early preview: run from source, Linux only. This plan is
+the backlog between that and a beta.
 
 ## Product vision and proposed release boundary
 
@@ -44,13 +45,10 @@ agents can directly control Steed after sign-in alone.
 - Website-chat UI: native agent chat can use a tab; normal HTTPS chats can move
   between tab and sidebar. Instructions/context have an explicit preview and
   copy/native-paste handoff. This does not connect their cloud models to MCP.
-- Latest completed pre-chat validation: **873 regressions passed**, native MCP
-  images passed over stdio/HTTP, and startup/render/shutdown passed on Qt 6.11.2.
-  Chat changes have their own acceptance record in ROADMAP.md.
-- Connector PR [#2](https://github.com/AdvancedForge/steed/pull/2) received a
-  positive engineering review: **78 relevant Linux tests passed**, including real
-  bundled catalog reads. It adds two packaged starters and one owner-pinned
-  template without interpreter changes. It is unmerged at this assessment.
+- Validation (November 16, 2026): **2,128 tests pass** on Qt 6.11.2, and
+  startup/render/shutdown passes; CI runs lint, formatting and the suite on every
+  push. Eight packaged app connections ship (Todoist, GitLab.com, Microsoft 365
+  read, Notion, Asana, Dropbox, Linear, Raindrop.io) plus three templates.
 
 Automated synthetic checks do not prove live provider consent, broad website
 compatibility, desktop graphics reliability, resistance to malicious pages or a
@@ -61,12 +59,10 @@ remain release work. No completion percentage or release date is inferred.
 
 ### 1. Release ownership, licensing and support scope
 
-- Choose Steed's distribution/source license and add LICENSE, notices and a
-  dependency/license inventory, including Qt WebEngine/Chromium and document
-  wheels. The repository currently has no LICENSE. PyQt offers GPLv3/commercial
-  licensing; the owner's choice must fit the actual distribution
+- Steed is licensed GPLv3 (LICENSE), which fits PyQt's GPL option
   ([Riverbank licensing FAQ](https://en.riverbankcomputing.com/commercial/license-faq)).
-  Do not assume an arbitrary permissive license resolves dependency obligations.
+  Still to do: third-party notices and a dependency/license inventory, including
+  Qt WebEngine/Chromium and the optional document wheels.
 - Name supported Linux distributions, architectures, desktop/display systems and
   Python/Qt builds. Windows contributor tests do not imply Windows browser support.
 - Define who maintains releases, handles vulnerabilities and can revoke a bad
@@ -96,9 +92,10 @@ are documented. Test the packaged sandbox, not just checkout Python.
 
 ### 3. Automated release gates and desktop reliability
 
-- Add CI for lint/format, Linux unit/regression tests, startup smoke, migration
-  checks and reproducible packaging. Currently no `.github` CI/release workflow
-  is present. Pin a known-good release environment and test dependency updates.
+- CI runs lint, formatting and the unit/regression suite on every push
+  (`.github/workflows/ci.yml`). Still to add: startup smoke, migration checks and
+  reproducible packaging; pin a known-good release environment and test
+  dependency updates.
 - Investigate the intermittent native startup exits with crash diagnostics and
   repeated serial runs; determine whether they are confined to offscreen/GPU
   test environments. Retrying alone is not an acceptance criterion.

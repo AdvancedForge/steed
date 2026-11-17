@@ -1,5 +1,7 @@
 # Steed
 
+[![CI](https://github.com/AdvancedForge/steed/actions/workflows/ci.yml/badge.svg)](https://github.com/AdvancedForge/steed/actions/workflows/ci.yml)
+
 A browser for every day that can become whatever you need.
 
 > **Early preview.** Steed is a personal project under active development:
