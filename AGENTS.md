@@ -3,15 +3,21 @@
 ## Project Structure & Module Organization
 
 Steed is a Linux desktop browser using Python 3.10+, PyQt6, and Qt WebEngine.
-Root modules contain application logic: `main.py` starts the app,
-`browser_window.py` coordinates windows, and `profile_manager.py` owns shared
-engine profiles. History, cookies, downloads, filtering, and passwords have
-separate modules. Widgets and dialogs live in `ui/`; regression tests and
-standalone smoke scripts live in `tests/`. `codec_test.html` is a local media
-fixture. `steed` and `install_launcher.py` provide executable and desktop launchers.
+`main.py` starts the app; `agent_mcp.py` is the MCP adapter agents launch (its
+path is in their saved settings, so it stays at the root). The browser core
+lives in `browser/`: `browser_window.py` coordinates windows and
+`profile_manager.py` owns shared engine profiles; history, cookies, downloads,
+filtering, passwords and extensions have separate modules. Widgets, dialogs and
+Steed's own pages (`ui/web/`) live in `ui/`; agent tasks, permissions and
+providers in `services/`. Regression tests, smoke scripts and fixtures (such as
+`tests/fixtures/codec_test.html`) live in `tests/`. `steed` and
+`browser/install_launcher.py` provide executable and desktop launchers. Helper
+commands run as `.venv/bin/python -m browser.<name>`.
 
-Keep README.md brief; put detailed instructions in DOCUMENTATION.md and progress,
-acceptance checks, and planned work in ROADMAP.md.
+Keep README.md brief. Detailed instructions go in `docs/` (one file per topic,
+listed in `docs/README.md`); where things stand and planned work go in
+ROADMAP.md, and what each round changed goes in `docs/history/progress-log.md`
+(newest first).
 
 ## Build, Test, and Development Commands
 
@@ -46,7 +52,7 @@ Tests use `unittest`; name files `test_*.py` and methods `test_*`. Cover changed
 behavior with meaningful regressions, including failure paths and profile
 isolation. No numeric coverage threshold is configured. Use temporary profiles,
 local pages, and synthetic credentials. Run `tests/smoke_browser.py` separately
-for startup/render/shutdown; DOCUMENTATION.md explains additional smoke checks
+for startup/render/shutdown; docs/development.md explains additional smoke checks
 and their dependencies. Record manual desktop checks separately from automated
 results.
 

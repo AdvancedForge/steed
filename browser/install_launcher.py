@@ -56,7 +56,7 @@ def main() -> int:
         parser.error("steed is not executable; run chmod +x steed")
     if not os.access(project / ".venv/bin/python", os.X_OK):
         parser.error(
-            "Create .venv and install requirements.txt first (see DOCUMENTATION.md)"
+            "Create .venv and install requirements.txt first (see docs/install.md)"
         )
     contents = desktop_entry(project)
     args.applications_dir.mkdir(parents=True, exist_ok=True)

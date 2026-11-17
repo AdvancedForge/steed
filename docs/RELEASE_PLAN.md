@@ -2,7 +2,7 @@
 
 Assessment: October 3, 2026. This is a proposed release contract, not a claim that
 Steed is ready to ship. Detailed implementation history remains in ROADMAP.md;
-setup remains in DOCUMENTATION.md. Recheck this list against each release tag.
+setup remains in the documentation (docs/). Recheck this list against each release tag.
 
 Current priority is daily-workflow engineering, as clarified by the user after
 this assessment. This document is parked release backlog, not the active work
@@ -79,7 +79,7 @@ decision; collecting the inventory and testing targets are engineering work.
 ### 2. Installable, verifiable releases and engine updates
 
 - Pick and build a Linux distribution route. The current `steed` script and
-  `install_launcher.py` point at a checkout and its `.venv`; they are not a
+  `browser/install_launcher.py` point at a checkout and its `.venv`; they are not a
   standalone release package. Provide install/uninstall, desktop icon/branding,
   OS library checks and clean missing-dependency errors.
 - Bundle or clearly provision optional MCP/keyring/worker dependencies. Verify
@@ -204,7 +204,7 @@ subset and real acceptance evidence, or is visibly excluded/experimental.
   release budgets from actual supported hardware rather than inventing numbers.
 - Publish installation, troubleshooting, privacy/security, known limitations,
   change log and recovery instructions. Keep README short and developer detail
-  in DOCUMENTATION.md. Provide issue templates and reproducible diagnostics.
+  in the documentation. Provide issue templates and reproducible diagnostics.
 - Run a small external beta; triage failures, designate blockers, freeze a
   release candidate, test upgrades from it and publish a tagged release with
   support/contact channels. Review feedback before widening the supported matrix.

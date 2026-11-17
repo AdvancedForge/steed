@@ -331,7 +331,7 @@ FEATURES = (
 REASONS = {
     NEWER: "Newer than this engine; a Qt WebEngine upgrade brings it.",
     QT: "Qt WebEngine leaves this out on Linux; an upgrade will not add it.",
-    "codecs": "Not in the PyPI engine. Run .venv/bin/python -m browser.build_codecs to add it (see DOCUMENTATION.md).",
+    "codecs": "Not in the PyPI engine. Run .venv/bin/python -m browser.build_codecs to add it (see docs/install.md).",
 }
 _PROBE = (
     "(() => { const video = document.createElement('video'), "

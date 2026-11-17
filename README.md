@@ -5,7 +5,7 @@ A browser for every day that can become whatever you need.
 > **Early preview.** Steed is a personal project under active development:
 > Linux only, run from source, not yet packaged or security-reviewed for
 > general use. See [Good to know](#good-to-know) and the
-> [release plan](RELEASE_PLAN.md).
+> [release plan](docs/RELEASE_PLAN.md).
 
 ![The New Tab page](docs/screenshots/new-tab.jpg)
 
@@ -64,13 +64,33 @@ is one.
 ## Good to know
 
 - Linux only, run from this folder (no package yet).
-- The PyPI engine cannot play H.264/AAC video; `build_codecs.py` builds one that
-  can ([details](DOCUMENTATION.md#installation)). Netflix-style protected video
-  works when Chrome, Chromium or Firefox has already installed Google's Widevine
+- The PyPI engine cannot play H.264/AAC video; `.venv/bin/python -m
+  browser.build_codecs` builds one that can
+  ([details](docs/install.md#installation)). Netflix-style protected video works
+  when Chrome, Chromium or Firefox has already installed Google's Widevine
   module (see `steed:features`).
-- [DOCUMENTATION.md](DOCUMENTATION.md): using and configuring Steed, plus its
-  design. [ROADMAP.md](ROADMAP.md): progress and what is next.
-  [RELEASE_PLAN.md](RELEASE_PLAN.md): the road to a public release.
+
+## Learn more
+
+- [Documentation](docs/README.md): installing, using and configuring Steed,
+  agents, and how it is built.
+- [Roadmap](ROADMAP.md): where things stand and what is next.
+- [Release plan](docs/RELEASE_PLAN.md): the road to a public release.
+
+## The code
+
+| Folder | What is in it |
+| --- | --- |
+| `browser/` | The browser: windows, tabs, profiles, storage, passwords, extensions |
+| `ui/` | Dialogs, widgets and Steed's own pages (`ui/web/`) |
+| `services/` | Agent tasks, permissions, providers, app connections, workers |
+| `connectors/`, `examples/` | App connection recipes and examples |
+| `tests/` | `unittest` suites and smoke scripts |
+| `docs/` | Documentation, screenshots and older notes |
+
+`main.py` starts Steed; `agent_mcp.py` is what agents run to connect to it.
+[AGENTS.md](AGENTS.md) has the conventions for contributing (people and
+coding agents alike).
 
 ## Licence
 
