@@ -39,7 +39,14 @@ button.control, .table-paging button, .settings-footer button, .inline-actions b
 button { transition: background-color .16s var(--stride), border-color .16s var(--stride), transform .3s var(--spring), box-shadow .2s var(--stride); }
 button:active:enabled { transform: scale(.965); transition-duration: .08s; }
 button.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
+  background-color: var(--accent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent), 0 6px 18px -8px var(--accent); }
+/* Hover keeps a gradient and a solid colour under it: a page's own hover
+   rule that swaps in a plain colour would otherwise fade it in from
+   transparent, flashing the page behind for a moment. */
+button.primary:hover:enabled {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--accent-hover) 88%, #fff), var(--accent-hover));
+  background-color: var(--accent-hover); }
 input, textarea, select { border-radius: 12px; transition: border-color .16s var(--stride), box-shadow .25s var(--stride); }
 input:focus, textarea:focus, select:focus, input[type="text"]:focus-visible {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent), 0 0 24px -6px var(--accent); }

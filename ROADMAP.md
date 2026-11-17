@@ -30,11 +30,12 @@ The road to a public release is the [release plan](docs/RELEASE_PLAN.md).
 
 ## Browser acceptance checklist
 
-The user authorized proceeding with these manual follow-ups recorded. Resolve
-any browser blocker found during continued use alongside A1 work.
+Manual checks on a real desktop, still open unless ticked. Automated checks
+cover much of the same ground; these confirm it by hand.
 
-- [x] Run the complete regression suite (274 checks), startup smoke,
-  local Google-login smoke, launcher validation, and lint/format checks.
+- [x] Run the complete regression suite (2,126 tests on November 16, 2026),
+  startup smoke, local Google-login smoke, launcher validation, and lint/format
+  checks.
 
 - [ ] Launch from the applications menu; check graphics, navigation, search,
   media permissions, multiple windows, and clean shutdown.
@@ -43,8 +44,8 @@ any browser blocker found during continued use alongside A1 work.
   histories and restored groups/positions.
 - [ ] Test real global and separate profile logins, restart, logout, explicit
   cookie deletion, and confirmed global-baseline reset.
-- [x] Google account sign-in: user reported it working after the compatibility
-  fix (October 1, 2026).
+- [x] Google account sign-in: confirmed working after the compatibility fix
+  (October 1, 2026).
 - [ ] Verify user-agent settings and signed-in session persistence after restart;
   test third-party Google sign-in. Record the exact error if either fails.
 - [ ] Download a real file; check progress, supported pause/resume, cancellation,
@@ -65,9 +66,9 @@ KeePassXC pairing was not covered by the seeded synthetic-vault smoke check.
 These are pending enhancements. Move them earlier when needed for a concrete
 daily-use workflow; they do not automatically block the agent milestones.
 
-- **Password convenience — deferred:** automatic save prompts, updating existing
-  entries, iframe/shadow-root forms, TOTP, and passkeys. Revisit when the user
-  wants to improve the password workflow.
+- **Passwords:** save prompts, updates to saved logins, forms in frames and web
+  components, TOTP codes, passkeys and Password Checkup are in place. Next:
+  checking them against more real sign-in pages.
 - **Extensions:** per-profile import, enable/disable/remove, startup restoration
   and action popups are in place. The Bitwarden crash (November 12, 2026) was
   Qt WebEngine 6.11 crashing when a profile closes while a just-installed
@@ -329,8 +330,8 @@ The local HTTP fixture confirms exactly one folder/Doc/append, restart recovery
 under fresh read-only authority, no copied draft, no other-tab text disclosure and
 no automatic retry after revision rejection. Operation ranges are visible to
 collaborators; a retained marker confirms application, not unchanged text.
-Reviewed/plain-text direct replacement is implemented after the user accepted
-review-by-default with a separate reusable direct-edit grant. Before/after
+Reviewed/plain-text direct replacement is implemented, with review by default
+and a separate reusable direct-edit grant. Before/after
 previews are private to trusted UI, default Deny, and scrubbed after decisions or
 restart. Agents cannot approve them. New revision/text requires a fresh proposal.
 The HTTP fixture exercises actual review and lost-reply confirmation without a
@@ -413,7 +414,7 @@ request distinguishes configurable browser UI from saved agent workflows.
    contracts, body/query cursors and distinct continuations are integrated as
    recipe v7/v8 on main. Credential-derived headers, revision guards
    and transforms need separate reviewed types. The
-   connector contributor's C1–C5 data/fixture pack is integrated. Future provider
+   C1–C5 connector data and fixture pack is integrated. Future provider
    adoption follows reviewed shared-runtime checkpoints and separate live-account
    acceptance. Production Google registration stays deferred.
 3. **Better website understanding:** bounded accessible form hints are delivered.
@@ -443,8 +444,8 @@ agent-designed native panels. Installation/update needs versioning, review,
 disable and rollback. Do not run generated browser Python or treat installation
 as authority. Saved workflows are optional actions, not a substitute for UI settings.
 
-**Agent conversation sidebar — external-agent implementation:** the user chose
-external agents first on October 3, 2026. A show/hide dock beside the current page
+**Agent conversation sidebar — external-agent implementation:** external agents
+came first (decided October 3, 2026). A show/hide dock beside the current page
 selects an existing MCP task, sends explicit text, shows streamed replies and
 read markers, and opens that task's permissions/files/app receipts. Closing the
 dock preserves the task; cancellation remains explicit. Ordinary browsing and

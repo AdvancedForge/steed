@@ -270,8 +270,8 @@ extracting UI responsibilities from the growing BrowserWindow coordinator.
 ## Proposed sequence and decisions to settle
 
 1. Finish chat acceptance and publish this release inventory; complete the
-   connector review without overlapping the contributor's paths.
-2. Add CI/security reporting, investigate startup reliability, audit private
+   connector review.
+2. Add CI, investigate startup reliability, audit private
    storage and complete browser/agent desktop acceptance.
 3. Choose licensing and one initial supported packaging target; build and test
    clean install, upgrade, engine updates and rollback.

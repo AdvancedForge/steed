@@ -98,7 +98,7 @@
 .workspace .welcome .start-row .primary { flex: 1; width: auto; max-width: none; margin: 0; }
 .workspace .welcome .agent-pick { width: auto; max-width: 48%; border-radius: 999px; padding: 8px 12px; }
 .workspace .welcome .more-ways { display: flex; flex-wrap: wrap; gap: 4px 16px; max-width: 380px; }
-.workspace .welcome .more-ways button { width: auto; margin: 0; border-radius: 0; font-size: 12.5px; }
+.workspace .welcome .more-ways button { width: auto; margin: 0; font-size: 12.5px; }
 
 /* Wide: the rail stands on the left. */
 @media (min-width: 760px) {
@@ -114,3 +114,10 @@
   .workspace .welcome { align-items: center; text-align: center; }
   .workspace .welcome .more-ways { justify-content: center; }
 }
+
+/* Text buttons are words, not boxes: hovering brightens and underlines them
+   instead of filling a rectangle behind them. */
+.workspace :is(.text-button, .link-button) { border: 0; border-radius: 6px; background: none; box-shadow: none; }
+.workspace :is(.text-button, .link-button):hover:enabled { background: none; color: var(--ink);
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.workspace :is(.text-button, .link-button):focus-visible { outline-offset: 2px; }
