@@ -165,7 +165,7 @@ class HtmlAgentTests(unittest.TestCase):
         }
         self.value(
             sidebar,
-            f"document.getElementById('tasks').value = {json.dumps(second)}; document.getElementById('tasks').dispatchEvent(new Event('change')); true",
+            f"document.querySelector('.chat-row[data-id={json.dumps(second)}]').click(); true",
         )
         self.wait_for(lambda: sidebar.state["task_id"] == second)
         self.wait_for(

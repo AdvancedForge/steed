@@ -83,6 +83,16 @@ class TaskMessages:
         ).fetchone()
         return row[0] if row else 0
 
+    def openers(self):
+        """{task: its first message from the person}, for naming chats."""
+        first = {}
+        for task_id, text in self.store._db.execute(
+            "SELECT task_id, text FROM task_messages "
+            "WHERE role='user' AND state!='cleared' ORDER BY created_sequence DESC"
+        ):
+            first[task_id] = text
+        return first
+
     def summary(self, task_id):
         """Counts for the trusted UI; never expose file bodies or app results."""
         self.store.get(task_id)

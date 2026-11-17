@@ -3,6 +3,7 @@
 import json
 import socket
 import sys
+import uuid
 
 mode = sys.argv[1]
 arguments = sys.argv[2:]
@@ -22,9 +23,21 @@ if mode == "resume":
     assert "--no-session-persistence" not in arguments
     resumed = arguments[arguments.index("--resume") + 1]
     assert "--fork-session" in arguments
+elif mode == "continue":
+    # Carrying on Steed's own kept chat: the same session, not a copy.
+    assert "--no-session-persistence" not in arguments
+    resumed = arguments[arguments.index("--resume") + 1]
+    assert "--fork-session" not in arguments
+elif mode == "keep":
+    # A kept chat is saved: no flag that turns saving off.
+    assert "--no-session-persistence" not in arguments
+    assert "--resume" not in arguments
+    resumed = None
 else:
     assert "--no-session-persistence" in arguments
     resumed = None
+# Claude Code's session: the same one when carried on, else a new id.
+session_id = resumed if mode == "continue" else str(uuid.uuid4())
 model = (
     arguments[arguments.index("--model") + 1] if "--model" in arguments else "default"
 )
@@ -55,7 +68,14 @@ def reply(text):
     turns += 1
     message_id = f"msg_synthetic_{turns}"
     if turns == 1:
-        emit({"type": "system", "subtype": "init", "model": f"claude-{model}"})
+        emit(
+            {
+                "type": "system",
+                "subtype": "init",
+                "model": f"claude-{model}",
+                "session_id": session_id,
+            }
+        )
     if mode == "subagent":
         stream(
             "msg_child",
@@ -192,7 +212,16 @@ for line in sys.stdin:
             answer = decision.get("updatedInput", {}).get("answers", {})
             reply("Answer: " + json.dumps(answer, sort_keys=True))
         else:
-            session = "session" if decision.get("updatedPermissions") else "once"
+            rules = decision.get("updatedPermissions") or []
+            session = (
+                "all commands"
+                if rules
+                and rules[0].get("rules") == [{"toolName": "Bash"}]
+                and rules[0].get("destination") == "session"
+                else "session"
+                if rules
+                else "once"
+            )
             reply(f"Permission {decision['behavior']} ({session})")
         waiting = None
     elif kind == "user":
@@ -249,7 +278,7 @@ for line in sys.stdin:
                 }
             )
             reply("Synthetic reply: " + text)
-        elif mode == "resume":
+        elif mode in ("resume", "continue"):
             import os
 
             reply(f"Resumed {resumed} in {os.getcwd()}: {text}")

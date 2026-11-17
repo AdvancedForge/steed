@@ -143,7 +143,8 @@ class AgentSidebarTests(unittest.TestCase):
         second_window.agent_access_action.trigger()
         self.assertIsNone(self.registry.agent_gateway)
         self.assertEqual(providers.chats, {})
-        self.assertEqual(self.service.store.get(task).status, "cancelled")
+        # Steed closed the chat (access off); the person did not cancel it.
+        self.assertEqual(self.service.store.get(task).status, "interrupted")
         self.assertFalse(second.state["active"])
 
     def test_send_and_stream_are_plain_text_without_grants(self):

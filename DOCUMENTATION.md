@@ -2979,7 +2979,7 @@ forensic erasure from SQLite journals, free pages or external copies.
 
 ### Persistent agent file library
 
-Use **Agents → Agent File Library…**, or **Conversation & settings → File library…** in the
+Use **Agents → Agent File Library…**, or **Settings and tools → File library** in the
 agent sidebar, to keep reusable files outside individual tasks:
 
 1. Choose **New library folder…** and name it, for example `Research`.
@@ -4935,7 +4935,7 @@ process. Local access is off when the browser starts.
 ### External-agent conversation sidebar
 
 **Agents → Agent Connection Setup…**, also available from the sidebar's
-**Connect another agent** button (or **Conversation & settings → Connection setup**
+**Connect another agent** button (or **Settings and tools → Connection setup**
 during a conversation), opens a nonmodal setup screen. It enables local
 access only when you click **Enable Local Agent Access**, then offers **Copy
 Connection Settings** and **Copy Starter Prompt**. The settings use the running
@@ -4956,59 +4956,65 @@ can still use the task mailbox directly. Steed does not store model credentials.
 
 #### Sidebar setup and everyday use
 
-The HTML sidebar shows a short welcome with **Start a Codex chat** and
-**Connect another agent**; the header **+** also starts a new Codex chat. It hides
-the empty transcript, inactive task controls and model/file/receipt administration
-until needed. Starting or choosing a conversation
-shows distinct message cards, a fixed message box, **Send**, **Stop task** and,
-for connected agents, **Give tab control…**. Existing conversations appear in the
-picker.
+The Agents page has two parts: your chats and the open conversation. In a tab
+(or a wide sidebar) the chats sit in a column on the left, like other chat
+apps; in a narrow sidebar they fold behind **Chats** at the top. The list shows
+your five most recent chats, newest first, each with what it was about (its
+first message, or its saved title), the agent and when it was last used; the
+rest are behind **N more**. A chat that was continued is listed once, as the
+chat that carries it on. **+** starts a new chat.
 
-**Conversation & settings** is collapsed initially. It contains model selection
-for a new chat, connection settings, the persistent file library, sidebar/tab presentation,
-task permissions/files/receipts, detailed counts and chat clearing. Opening or
-closing options preserves your local draft and creates no task or permission.
-Pending approvals and unanswered agent questions stay visible above the chat
-without expanding options. Private browsing hides these controls and clears
-regular-profile text/drafts; conversation data remains owned by its original task.
-Short chat tabs can scroll the expanded options. Hiding the sidebar preserves
-running tasks; cancellation remains explicit.
+With nothing open, the page offers **Start** with the agent to use (Codex,
+Claude Code or an ACP agent you added), **Continue a Claude Code session** and
+**Connect another agent**. **Settings and tools** (collapsed, under the list)
+holds the agent and model for new chats, connection setup, the file library,
+sidebar/tab presentation, the open chat's permissions, files and receipts,
+detailed counts and **Clear chat**. Opening it creates no task or permission.
+Pending approvals and unanswered agent questions stay visible above the chat.
+Private browsing hides these controls and clears regular-profile text and
+drafts. Hiding the sidebar keeps chats running; stopping one is explicit.
 
-The header is just **Agents** and **+**. The activity card is one line (state and
-connection) once a conversation has messages; click it for the model and details.
-It stays open before the first message and while the connection needs attention.
-The activity card shows **Sending**, **Thinking**, **Working**, **Replying**,
-**Needs your input** or **Ready** for native Codex chats, with a thin busy indicator
-and queued follow-up count. These are transient runtime states; they do not expose
-reasoning text or establish that an external action succeeded. Other MCP clients
-show **External agent connected** because Steed cannot observe their execution.
-Messages have separate sender cards and a fixed composer with a primary Send
-button. Light/dark appearance follows the browser; details stay under
-Conversation & settings. Messages remain plain text, including code or markup
-returned by an agent.
+Your messages appear in a bubble on the right; the agent's replies are text
+with its name above. Replies are drawn as Markdown: paragraphs, headings,
+lists, tables, `code` and code blocks, bold and italic. They are built from
+plain text nodes, never parsed as HTML, so markup in a reply shows as text and
+links are shown, not followed. The message box grows as you type; **Enter**
+sends and **Shift+Enter** starts a new line (**Ctrl+Enter** also sends). The
+round Send button lights up once there is something to send.
 
-When a native chat stops, the card says why: **Codex chat stopped after an
-error**, **Codex chat ended** (its conversation or task was closed) or **Codex
-disconnected** (Steed shut the connection down). Each keeps the saved messages
-visible and points at starting a new chat; none replays a queued message or
-resumes a turn. When the runtime has reported anything, the card ends with **Last
-agent update HH:MM:SS**, a transport fact only. Messages the agent never read
-from a stopped chat show as **N unread message(s); this chat has stopped**.
+The activity card is one line (state and connection) once a conversation has
+messages; click it for the model and details. It stays open before the first
+message and while the connection needs attention. It shows **Sending**,
+**Thinking**, **Working**, **Replying**, **Needs your input** or **Ready** for
+chats Steed runs, with a thin busy indicator and queued follow-up count. These
+are transient runtime states; they do not expose reasoning text or establish
+that an external action succeeded. Other MCP clients show **External agent
+connected** because Steed cannot observe their execution.
 
-A turn cut off mid-way (shutdown, dropped connection or protocol failure) is
-recorded as **interrupted**, not as a cancellation: `TaskService.interrupt_task`
-keeps the partial reply, which is marked **interrupted before finishing**, and
-the card says nothing was resent or replayed and no permission was restored. A
-chat that failed before any turn was sent is still recorded as cancelled.
-Interrupted tasks stay available to **Continue previous work?**, which copies
-material into a new task with fresh grants; nothing is ever resumed.
+When a chat is no longer live, the card says why: **Chat closed** (Steed closed
+it: it quit, or agent access was turned off), **Stopped after an error**,
+**Chat ended** or **Chat stopped** (you stopped it). Instead of a message box,
+the chat then offers **Continue this chat** (when its conversation was saved,
+see below), **Start a new chat** and **Hand off to another chat…**. Nothing
+replays a queued message or resumes a turn. When the runtime has reported
+anything, the card ends with **Last agent update HH:MM:SS**, a transport fact
+only. Messages the agent never read from a stopped chat show as **Not read by
+agent**.
+
+Steed closing a chat, idle or mid-turn, is recorded as **interrupted**, never
+as a cancellation you did not ask for; so is a turn cut off by a dropped
+connection or protocol failure. `TaskService.interrupt_task` keeps a partial
+reply, marked **cut off before finishing**. A chat that failed before any turn
+was sent is still recorded as cancelled. Interrupted chats stay available to
+**Continue previous work?**, which copies material into a new task with fresh
+grants.
 
 The card also shows **Model: …**, using the resolved model and
 provider returned by the running App Server thread. A reported model reroute
-updates the name and shows the previous model for that turn. **Model for new
-chats** in Conversation & settings selects a future chat; changing it does not
-change the selected conversation. Missing/invalid runtime metadata and other MCP clients
-show **Model: not reported by the agent**, rather than guessing from the selector.
+updates the name and shows the previous model for that turn. **Model** in
+Settings and tools selects it for future chats; changing it does not
+change the selected conversation. When the runtime reports no valid model (and for other MCP clients), no model is
+shown, rather than a guess from the selector.
 After a chat ends, its name is marked **last reported** for this browser run;
 these transient reports are not restored from old chat history after restart.
 
@@ -5037,17 +5043,17 @@ checks use temporary profiles and synthetic messages in
    may be incompatible; failed setup leaves a cancelled, read-only task.
 2. Install Steed's optional adapter dependencies:
    `.venv/bin/python -m pip install -r requirements-mcp.txt`.
-3. Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) and choose **Start a Codex chat**
-   (or the header **+**).
+3. Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) and choose **Start** with Codex
+   (or the **+**).
    This explicitly enables local agent access for this browser run and starts a
    new task. No MCP client configuration or starter prompt is required.
-   Before starting a chat, **Conversation & settings** contains the model selector. It can
+   Before starting a chat, **Settings and tools** contains the model selector. It can
    use your Codex default or request GPT-5.4 for this chat
    without changing Codex's saved configuration. Direct Steed tools were verified
    with GPT-5.4 and code-runtime Steed calls with GPT-6.1 Sol in offline native
    fixtures; your account must still provide the selected model.
-4. When the status says **Codex is ready**, type a message and press **Send** or
-   `Ctrl+Enter`. Codex starts a turn automatically. Follow-ups queue in order while
+4. When the status says **Codex is ready**, type a message and press **Enter** or
+   **Send**. Codex starts a turn automatically. Follow-ups queue in order while
    a reply is running, then continue the same live Codex thread and Steed task.
 
 Codex uses its own account/configuration and model selection. Its account
@@ -5091,7 +5097,7 @@ Codex's active thread, local files or external effects.
 
 Messages still grant no Steed page, profile, connector or worker access. Codex
 requests the same Steed permissions and payload reviews as any other MCP agent;
-expand **Conversation & settings** for **Permissions**, **Task files**, and **Receipts**. Replies
+expand **Settings and tools** for **Permissions**, **Task files**, and **Receipts**. Replies
 are streamed as plain text, coalesced and split at UTF-8 boundaries within existing
 chat limits. No message bodies, account details or runtime stderr enter activity
 events. **Clear Chat** removes queued prompts and suppresses the rest of an erased
@@ -5128,19 +5134,35 @@ permissions; historical conversation is not automatically sent to it.
 #### Claude Code chats from Steed
 
 Install [Claude Code](https://docs.claude.com/en/docs/claude-code) and sign in by
-running `claude` once. In **Conversation & settings**, set **Agent for new chats**
-to **Claude Code**, optionally choose Opus, Sonnet or Haiku, then start a chat.
-Steed runs `claude -p` with the stream-json protocol in a private temporary folder
-and adds only a bound Steed MCP server; your Claude Code settings, other MCP
-servers, tools and permission rules stay in effect, and sessions are not saved to
-Claude Code's history. Steed's own tools are pre-allowed in Claude Code because
-Steed authorizes each capability itself; starting another task and the
+running `claude` once. Choose **Claude Code** next to **Start** (or in **Settings
+and tools → Agent for new chats**), optionally with Opus, Sonnet or Haiku, then
+start a chat. Steed runs `claude -p` with the stream-json protocol and adds only
+a bound Steed MCP server; your Claude Code settings, other MCP servers, tools and
+permission rules stay in effect. Steed's own tools are pre-allowed in Claude Code
+because Steed authorizes each capability itself; starting another task and the
 conversation-reply tool are disabled. When Claude Code asks permission for one of
 its own tools (for example Bash or a file edit), Steed shows the request: **Allow
-once**, **Allow for this chat** (applies Claude Code's suggested session rule) or
-**Deny**. Claude Code's questions appear as answerable prompts. Replies stream into
-the sidebar; text from subagents is not shown as the reply. A failed turn, an exit
-or an MCP connection failure stops the chat and cancels its task without retrying.
+once**, **Allow for this chat** (applies Claude Code's suggested session rule),
+**Allow all commands for this chat** (for commands: Claude Code's own session
+rule for every Bash command, until the chat ends) or **Deny**. Claude Code's
+questions appear as answerable prompts. Replies stream into the sidebar; text
+from subagents is not shown as the reply. A failed turn, an exit or an MCP
+connection failure stops the chat without retrying.
+
+**Keeping chats so they can continue.** With **Settings → Agents → Keep Claude
+Code chats so they can continue after Steed closes** on (the default), each new
+Claude Code chat runs in its own folder, `~/.custom_browser/agent_chats/<task>`,
+and Claude Code saves it in its history as usual. Steed records the session id
+Claude Code reports. When the chat is closed (Steed quit, or agent access was
+turned off), its card offers **Continue this chat**: Steed runs
+`claude --resume <id>` in that folder, so the same conversation carries on with
+its memory, as a new chat that shows the earlier messages above a **Continued
+after the chat closed** line. Permissions are asked for again; nothing is
+replayed. A chat continues once (afterwards it is the newer chat that
+continues). Turned off, chats run with `--no-session-persistence` in a private
+temporary folder, leave no history and end for good when Steed closes. Codex
+chats are not kept yet.
+
 Checked with Claude Code 2.1.312 and a synthetic offline runtime.
 
 #### Asking your agent from anywhere
@@ -5162,20 +5184,23 @@ Incognito windows have no agents, so none of these appear there.
 
 #### Continuing a Claude Code session
 
-**Continue a Claude Code session** (on the sidebar's welcome) lists your saved
-Claude Code sessions (from `~/.claude/projects`: title, folder, last used;
-Steed's own private chats are left out). **Continue here** goes on with the
-chosen one in the sidebar, with its history: Steed runs
-`claude --resume <id> --fork-session` in the session's own folder, so it
-continues as a copy (a session still open in a terminal is left as it is) and
-that copy is saved in Claude Code's history too, unlike new Steed chats.
-Claude Code's own tools ask you in Steed as in any Claude Code chat, and
-browser access still needs Steed's approval.
+**Continue a Claude Code session** (on the welcome) lists your saved Claude
+Code sessions from `~/.claude/projects`: title and short id, what you said
+last, folder and last use. Copies of a session share its title, so what you
+said last tells them apart; nothing is selected for you, since the newest row
+is often a session still open in a terminal. Chats Steed keeps are left out
+(they continue from their own card). **Continue here** goes on with the chosen
+one in the sidebar, with its history: Steed runs `claude --resume <id>
+--fork-session` in the session's own folder, so it continues as a copy and a
+session still open in a terminal is left as it is. The copy is saved in Claude
+Code's history and, once closed, can itself be continued from its card. Claude
+Code's own tools ask you in Steed as in any Claude Code chat, and browser
+access still needs Steed's approval.
 
 #### ACP agents
 
 Agents that speak the [Agent Client Protocol](https://agentclientprotocol.com)
-can chat in the sidebar too. **Conversation & settings → ACP agents…** keeps a
+can chat in the sidebar too. **Settings and tools → Add an ACP agent…** keeps a
 list of them: a name and the command that starts the agent in ACP mode (for
 example `gemini --experimental-acp`). Each then appears under **Agent for new
 chats**. Steed starts the command in a private folder, speaks ACP version 1
@@ -5364,8 +5389,8 @@ lifetime and each frame's authority must be checked before exposing its content.
 2. Ask the agent to call `steed_task_start` and keep that connection open. Give
    the task a recognizable objective so you can choose it in Steed.
 3. Open **Agents → Agent Sidebar**, or press `Ctrl+Shift+A`. Select the connected
-   task from the list. The dock can move between the left and right sides.
-4. Type a message and click **Send**, or press `Ctrl+Enter`. Only the submitted
+   chat from the list (**Chats** in a narrow sidebar). The dock can move between the left and right sides.
+4. Type a message and press **Enter** or **Send**. Only the submitted
    text is shared. Unsent drafts remain in that window and are not sent when
    changing tasks or hiding the sidebar. Messages have an 8 KiB UTF-8 limit.
 5. Have the agent call `steed_conversation_read`, reply with
@@ -5373,7 +5398,7 @@ lifetime and each frame's authority must be checked before exposing its content.
    or waiting for your input. The sidebar shows pending messages and when the
    agent's read tool has fetched them; this does not prove the agent understood
    or acted on the text.
-6. Expand **Conversation & settings** for **Permissions**, **Task files**, and **Receipts**,
+6. Expand **Settings and tools** for **Permissions**, **Task files**, and **Receipts**,
    which open the selected task's controls in a nonmodal window. The sidebar shows counts for pending
    grant, package, recipe and app reviews, files, drafts and app receipts.
    Website, task, package, recipe and payload approvals retain their existing

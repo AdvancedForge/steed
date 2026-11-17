@@ -117,6 +117,12 @@ class AgentRequestDialog(HtmlSettingsDialog):
         )
         self.session.clicked.connect(lambda: self.complete("acceptForSession"))
         buttons.addWidget(self.session)
+        self.all_commands = QPushButton("Allow all commands for this chat")
+        self.all_commands.setVisible(
+            not self.answers and "acceptAllCommands" in (decisions or ())
+        )
+        self.all_commands.clicked.connect(lambda: self.complete("acceptAllCommands"))
+        buttons.addWidget(self.all_commands)
         deny = QPushButton("Cancel" if self.answers else "Deny")
         deny.clicked.connect(self.reject)
         buttons.addWidget(deny)

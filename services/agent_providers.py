@@ -120,16 +120,64 @@ class AgentProviders(QObject):
     def factory(self, value):
         self.factories["codex"] = value
 
-    def new_chat(self, model=None, agent="codex", resume=None):
-        """Start a chat; resume: a Claude Code session id to continue."""
+    def keeps_chats(self):
+        """Settings → Agents: new Claude Code chats are saved so they can
+        continue after Steed closes (on unless turned off)."""
+        config = getattr(self.registry, "config", None)
+        return bool(
+            config is not None
+            and getattr(config, "config_dir", None)
+            and config.get("keep_agent_chats", True)
+        )
+
+    def saved_session(self, task_id):
+        """The Claude Code session a chat was saved under, if any."""
+        events = self.service.store.recent_events(
+            task_id, limit=1, kinds=("agent.session",)
+        )
+        payload = events[-1].payload if events else {}
+        return payload if payload.get("session_id") else None
+
+    def continuable(self, task_id):
+        """A closed chat whose saved conversation can carry on: its
+        session, or None. A chat continues once; later it is the newer one."""
+        try:
+            task = self.service.store.get(task_id)
+        except (KeyError, ValueError):
+            return None
+        if (
+            task.status in ACTIVE_STATUSES
+            or task_id in self.chats
+            or task_id in self.service.store.continuations()
+        ):
+            return None
+        saved = self.saved_session(task_id)
+        if saved is None:
+            return None
+        from services.claude_sessions import find_session
+
+        found = find_session(saved["session_id"])
+        if found is None or found["cwd"] != saved.get("cwd"):
+            return None
+        return found
+
+    def new_chat(self, model=None, agent="codex", resume=None, continues=None):
+        """Start a chat. resume: a Claude Code session id to continue as a
+        copy; continues: a closed Steed chat whose saved session carries on."""
         require_owner_thread(self)
         self.service._usable()
+        if continues is not None:
+            agent = "claude"
         factory = self.factories.get(agent) or self._acp_factory(agent)
         if factory is None:
             raise ValueError("Choose a supported agent")
         name = self.agent_label(agent)
         session = None
-        if resume is not None:
+        if continues is not None:
+            session = self.continuable(continues)
+            if session is None:
+                raise ValueError("This chat can no longer be continued.")
+        elif resume is not None:
             from services.claude_sessions import find_session
 
             session = find_session(resume) if agent == "claude" else None
@@ -149,9 +197,17 @@ class AgentProviders(QObject):
                 "Cancel an existing agent chat before starting another (limit: two)."
             )
         self.registry.set_agent_access(True)
-        task = self.service._create(
-            f"{name}: {session['title']}"[:200] if session else f"{name} conversation"
-        )
+        if continues is not None:
+            objective = self.service.store.get(continues).objective
+        elif session:
+            objective = f"{name}: {session['title']}"[:200]
+        else:
+            objective = f"{name} conversation"
+        task = self.service._create(objective)
+        if continues is not None:
+            self.service.store.record_event(
+                task.task_id, "conversation.continues", {"task_id": continues}
+            )
         directory = tempfile.TemporaryDirectory(prefix="steed-codex-")
         gateway = self.registry.agent_gateway
         token = None
@@ -171,7 +227,16 @@ class AgentProviders(QObject):
             driver.model = model
             driver.expected_task_id = task.task_id
             if session is not None:
-                driver.resume = (session["id"], session["cwd"])
+                driver.resume = (session["id"], session["cwd"], continues is None)
+            elif agent == "claude" and self.keeps_chats():
+                folder = Path(self.registry.config.config_dir) / "agent_chats"
+                driver.workdir = folder / task.task_id
+                driver.workdir.mkdir(mode=0o700, parents=True, exist_ok=True)
+                driver.keep = True
+            if hasattr(driver, "session_reported"):
+                driver.session_reported.connect(
+                    lambda sid: self._session_saved(task.task_id, sid)
+                )
             chat = {
                 "driver": driver,
                 "directory": directory,
@@ -223,6 +288,23 @@ class AgentProviders(QObject):
                 self.service.cancel_task(task.task_id)
             raise
         return task.task_id
+
+    def _session_saved(self, task_id, session_id):
+        chat = self.chats.get(task_id)
+        if chat is None or self.service._closed or self.service.failure:
+            return
+        try:
+            self.service.store.record_event(
+                task_id,
+                "agent.session",
+                {
+                    "agent": "claude",
+                    "session_id": session_id,
+                    "cwd": str(chat["driver"].cwd),
+                },
+            )
+        except sqlite3.Error:
+            self.service._fatal()
 
     @provider_callback
     def _request(self, task_id, request_id, payload):
@@ -558,15 +640,16 @@ class AgentProviders(QObject):
         self._end_chat(task_id, chat["current"] is not None)
         self.changed.emit()
 
-    def _end_chat(self, task_id, interrupted):
-        """A turn cut off mid-flight is an interruption, not a user cancellation."""
+    def _end_chat(self, task_id, interrupted, reason=""):
+        """A turn cut off mid-flight, or a chat Steed closed, is an
+        interruption, never a cancellation the person did not ask for."""
         if self.service._closed or self.service.failure:
             return
         try:
             if self.service.store.get(task_id).status not in ACTIVE_STATUSES:
                 return
-            if interrupted:
-                self.service.interrupt_task(task_id)
+            if interrupted or reason:
+                self.service.interrupt_task(task_id, reason)
             else:
                 self.service.cancel_task(task_id)
         except sqlite3.Error:
@@ -605,5 +688,7 @@ class AgentProviders(QObject):
             self.states[task_id] = f"{self.chats[task_id]['agent']} disconnected"
             chat = self.chats.get(task_id)
             self._stop(task_id)
-            self._end_chat(task_id, chat is not None and chat["current"] is not None)
+            self._end_chat(
+                task_id, chat is not None and chat["current"] is not None, "closed"
+            )
         self.changed.emit()

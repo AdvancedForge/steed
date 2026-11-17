@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import signal
 import sys
@@ -9,7 +10,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
-from PyQt6.QtCore import QProcess, QProcessEnvironment, QTimer
+from PyQt6.QtCore import QProcess, QProcessEnvironment, QTimer, pyqtSignal
 
 from services.agent_provider import AgentProvider
 from services.codex_provider import runtime_name
@@ -25,6 +26,16 @@ EXCLUDED_TOOLS = (
     "steed_conversation_wait",
 )
 FILE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+SESSION_ID = re.compile(r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}")
+# "Allow all commands for this chat": Claude Code's own session rule for Bash.
+ALL_COMMANDS = [
+    {
+        "type": "addRules",
+        "rules": [{"toolName": "Bash"}],
+        "behavior": "allow",
+        "destination": "session",
+    }
+]
 INSTRUCTIONS = (
     "You are an external agent chatting through Steed. Keep your normal tools "
     "and capabilities for work outside Steed. Use the Steed MCP tools for browser "
@@ -49,6 +60,8 @@ def _clip(value):
 
 class ClaudeCodeProvider(AgentProvider):
     agent_name = "Claude Code"
+    # Claude Code saved this conversation under the id (kept chats only).
+    session_reported = pyqtSignal(str)
 
     def __init__(self, parent=None, *, command=None, environment=None, model=None):
         super().__init__(parent)
@@ -56,8 +69,14 @@ class ClaudeCodeProvider(AgentProvider):
         self.command = command
         self.environment = environment
         self.model = model
-        # (session id, folder) to continue a saved Claude Code session.
+        # (session id, folder, fork) to continue a saved Claude Code session;
+        # fork makes a copy, so a session open in a terminal is left alone.
         self.resume = None
+        # Kept chats are saved in Claude Code's history, in their own folder,
+        # so they can continue after Steed closes; others leave no history.
+        self.keep = False
+        self.workdir = None
+        self.session_id = None
         self.model_info = None
         self.process = QProcess(self)
         self.process.setReadChannel(QProcess.ProcessChannel.StandardOutput)
@@ -106,10 +125,10 @@ class ClaudeCodeProvider(AgentProvider):
             return
         self.cwd = str(Path(binding_file).parent)
         if self.resume is not None:
-            # A saved session is found by its folder; continue it there, as
-            # a copy (--fork-session), so a session still open in a terminal
-            # is never written to twice. The copy is kept in its history.
+            # A saved session is found by its folder, so it continues there.
             self.cwd = str(self.resume[1])
+        elif self.keep and self.workdir is not None:
+            self.cwd = str(self.workdir)
         server = {
             "type": "stdio",
             "command": sys.executable,
@@ -132,8 +151,11 @@ class ClaudeCodeProvider(AgentProvider):
             "--verbose",
             "--include-partial-messages",
             *(
-                ["--resume", self.resume[0], "--fork-session"]
+                ["--resume", self.resume[0]]
+                + (["--fork-session"] if self.resume[2] else [])
                 if self.resume is not None
+                else []
+                if self.keep
                 else ["--no-session-persistence"]
             ),
             "--permission-prompt-tool",
@@ -252,6 +274,15 @@ class ClaudeCodeProvider(AgentProvider):
                 self.activity.emit("working")
             return
         if kind == "system" and value.get("subtype") == "init":
+            session = value.get("session_id")
+            if (
+                (self.keep or self.resume is not None)
+                and isinstance(session, str)
+                and SESSION_ID.fullmatch(session)
+                and session != self.session_id
+            ):
+                self.session_id = session
+                self.session_reported.emit(session)
             model = runtime_name(value.get("model"))
             self._report_model(
                 {
@@ -334,6 +365,8 @@ class ClaudeCodeProvider(AgentProvider):
         decisions = ["accept", "acceptForSession", "decline"]
         if not suggestions:
             decisions.remove("acceptForSession")
+        if name == "Bash":
+            decisions.insert(-1, "acceptAllCommands")
         payload = {"agent": self.agent_name}
         if name == "AskUserQuestion":
             questions = data.get("questions")
@@ -429,7 +462,11 @@ class ClaudeCodeProvider(AgentProvider):
                 allowed = bool(result["permissions"])
                 session = result.get("scope") == "session"
             else:
-                allowed = result.get("decision") in ("accept", "acceptForSession")
+                allowed = result.get("decision") in (
+                    "accept",
+                    "acceptForSession",
+                    "acceptAllCommands",
+                )
                 session = result.get("decision") == "acceptForSession"
             response = (
                 {"behavior": "allow", "updatedInput": data}
@@ -438,6 +475,8 @@ class ClaudeCodeProvider(AgentProvider):
             )
             if allowed and session and suggestions:
                 response["updatedPermissions"] = suggestions
+            if name == "Bash" and result.get("decision") == "acceptAllCommands":
+                response["updatedPermissions"] = ALL_COMMANDS
         self._write(
             {
                 "type": "control_response",

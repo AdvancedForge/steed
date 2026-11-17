@@ -22,6 +22,7 @@ DEFAULTS = {
     "safe_browsing": True,
     "check_updates": True,
     "open_again": "front",
+    "keep_agent_chats": True,
     "remember_pages": False,
     "remember_pages_except": "",
     "user_agent_override": "",

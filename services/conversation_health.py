@@ -192,7 +192,7 @@ def delivery_label(message, read_sequence, *, active, provider=None, task_id=Non
     if message["sequence"] <= read_sequence:
         return "Read by agent"
     if not active:
-        return "Not read · connection unavailable"
+        return "Not read by agent"
     if provider is not None and hasattr(provider, "delivery"):
         label = provider.delivery(task_id, message["message_id"])
         if label:

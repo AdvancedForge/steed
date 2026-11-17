@@ -122,6 +122,8 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         for decision, expected in (
             ({"decision": "accept"}, "Permission allow (once)"),
             ({"decision": "acceptForSession"}, "Permission allow (session)"),
+            # Claude Code's own session rule for every command in this chat.
+            ({"decision": "acceptAllCommands"}, "Permission allow (all commands)"),
             ({"decision": "decline"}, "Permission deny (once)"),
         ):
             with self.subTest(decision=decision):
@@ -138,6 +140,9 @@ class ClaudeCodeProviderTests(unittest.TestCase):
                 self.assertEqual(payload["params"]["command"], "echo synthetic")
                 self.assertIn(
                     "acceptForSession", payload["params"]["availableDecisions"]
+                )
+                self.assertIn(
+                    "acceptAllCommands", payload["params"]["availableDecisions"]
                 )
                 self.assertEqual(self.manager.activity(task)["state"], "waiting")
                 self.manager.respond(task, request_id, decision)

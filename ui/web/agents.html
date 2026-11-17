@@ -5,60 +5,71 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Steed · Agents</title>
-  <style nonce="{{NONCE}}">{{STYLE}}</style>
+  <style nonce="{{NONCE}}">{{STYLE}}{{EXTRA_STYLE}}</style>
 </head>
 <body>
-  <div class="workspace">
-    <header class="header">
-      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6.5 20V11a5.5 5.5 0 0 1 11 0v9"/><path d="M4.5 20h4M15.5 20h4"/><path d="M9.5 9.5h.01M14.5 9.5h.01M8.8 14h.01M15.2 14h.01"/></svg></span><h1>Agents</h1></div>
-      <button id="new-chat" class="icon-button" data-action="new_chat" aria-label="Start a new agent chat" title="New agent chat">＋</button>
-    </header>
-    <div id="unsafe" class="notice warning" role="status" hidden><strong>Agent requests are approved automatically</strong><span>Steed automatically approves agent requests for all profiles this run.</span></div>
-    <div class="task-picker" id="task-picker" hidden><label class="sr-only" for="tasks">Conversation</label><select id="tasks"></select></div>
-    <main id="welcome" class="welcome">
-      <h2>Your agent,<br>beside your work.</h2>
-      <p id="welcome-copy">Ask for anything. It keeps working while you browse.</p>
-      <button id="welcome-start" class="primary" data-action="new_chat">Start a <span id="welcome-agent">Codex</span> chat</button>
-      <details id="more-ways" class="more-ways"><summary>Other ways to start</summary>
-        <button id="continue-session" data-action="continue_session">Continue a Claude Code session</button>
-        <button id="setup" data-action="setup">Connect another agent</button>
-      </details>
-      <div id="welcome-note" class="welcome-note">Only what you send is shared.</div>
-    </main>
-    <section id="activity" class="activity" aria-label="Agent activity" hidden>
-      <button id="activity-toggle" class="activity-heading" type="button" aria-expanded="true" aria-controls="activity-details" title="Show or hide details"><span id="activity-dot" class="dot" aria-hidden="true"></span><strong id="activity-title" role="status" aria-live="polite"></strong><span id="connection" class="connection-badge"></span><span class="chevron" aria-hidden="true">⌄</span></button>
-      <div id="activity-details"><p id="running-model" class="model"></p><p id="activity-hint"></p>
-      <p id="delivery" class="delivery" role="status" aria-live="polite"></p></div>
-      <div id="progress" class="progress" role="progressbar" aria-label="Agent is working" hidden></div>
-    </section>
-    <div id="error" class="notice error" role="alert" hidden></div>
-    <section id="tool-failure" class="notice warning" aria-label="Last tool failure" hidden>
-      <strong id="failure-title"></strong><span id="failure-operation"></span><p id="failure-guidance"></p>
-      <div class="failure-actions"><button id="failure-details" data-action="receipts">Check Receipts</button><button data-action="dismiss_failure">Dismiss</button></div>
-    </section>
-    <div id="attention" class="attention" hidden>
-      <button id="pending" data-action="permissions" hidden></button>
-      <button id="agent-requests" data-action="requests" hidden></button>
-    </div>
-    <section id="conversation" class="conversation" aria-label="Conversation" hidden>
-      <div id="messages" class="messages" role="log" aria-label="Agent messages" aria-live="polite" aria-relevant="additions text"></div>
-      <p id="empty-chat" class="empty-chat">What would you like to work on?</p>
-    </section>
-    <section id="compose" class="compose" aria-label="Write a message" hidden>
-      <label class="sr-only" for="composer">Message to selected agent</label>
-      <div class="composer-box"><textarea id="composer" placeholder="Ask your agent…" rows="2" spellcheck="true"></textarea><div class="compose-actions"><span>Ctrl + Enter to send</span><button id="send" class="primary" data-action="send">Send <span aria-hidden="true">↑</span></button></div></div>
-      <div class="task-actions"><button id="delegate" class="text-button" data-action="delegate" hidden>Give tab control…</button><button id="recover" class="text-button" data-action="recover">Continue / hand off…</button><button id="cancel" class="text-button" data-action="cancel" hidden>Stop task</button></div>
-    </section>
-    <details id="options" class="options">
-      <summary>Conversation &amp; settings <span aria-hidden="true">⌄</span></summary>
-      <div class="options-content">
-        <p id="status" class="status"></p>
-        <div id="model-control"><label for="agent">Agent for new chats</label><select id="agent"><option value="codex">Codex</option><option value="claude">Claude Code</option></select><button type="button" class="link-button" data-action="acp_agents">ACP agents…</button><label for="model">Model for new chats</label><select id="model"></select><p class="caption">Existing conversations keep their running model.</p></div>
-        <div class="button-grid"><button data-action="setup">Connection setup</button><button id="library" data-action="library">File library</button><button id="open-tab" data-action="open_tab">Open as tab</button><button id="show-sidebar" data-action="show_sidebar">Show sidebar</button></div>
-        <div class="button-grid task-tools"><button id="permissions" data-action="permissions">Permissions</button><button id="files" data-action="files">Task files</button><button id="receipts" data-action="receipts">Receipts</button><button id="clear" data-action="clear">Clear chat</button></div>
-        <p id="summary" class="caption"></p><p class="caption">Closing this panel keeps the task running.</p>
+  <div class="workspace" id="workspace">
+    <aside class="rail" id="rail" aria-label="Chats">
+      <header class="rail-head">
+        <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6.5 20V11a5.5 5.5 0 0 1 11 0v9"/><path d="M4.5 20h4M15.5 20h4"/><path d="M9.5 9.5h.01M14.5 9.5h.01M8.8 14h.01M15.2 14h.01"/></svg></span><h1>Agents</h1></div>
+        <button id="chats-toggle" class="chats-toggle" type="button" aria-expanded="false" aria-controls="rail-body">Chats</button>
+        <button id="new-chat" class="icon-button" data-action="new_chat" aria-label="Start a new chat" title="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      </header>
+      <div class="rail-body" id="rail-body">
+        <div class="task-picker" id="task-picker" hidden>
+          <ul id="tasks" class="chat-list" role="listbox" aria-label="Recent chats"></ul>
+          <button id="more-chats" class="text-button more-chats" type="button" hidden></button>
+        </div>
+        <details id="options" class="options">
+          <summary>Settings and tools <span aria-hidden="true">⌄</span></summary>
+          <div class="options-content">
+            <div id="model-control"><label for="agent">Agent for new chats</label><select id="agent"></select><div id="model-row"><label for="model">Model</label><select id="model"></select></div><button type="button" class="link-button" data-action="acp_agents">Add an ACP agent…</button></div>
+            <div class="button-grid task-tools"><button id="permissions" data-action="permissions">Permissions</button><button id="files" data-action="files">Task files</button><button id="receipts" data-action="receipts">Receipts</button><button id="clear" data-action="clear">Clear chat</button></div>
+            <div class="button-grid"><button data-action="setup">Connection setup</button><button id="library" data-action="library">File library</button><button id="open-tab" data-action="open_tab">Open as tab</button><button id="show-sidebar" data-action="show_sidebar">Show sidebar</button></div>
+            <p id="status" class="status"></p><p id="summary" class="caption"></p>
+          </div>
+        </details>
       </div>
-    </details>
+    </aside>
+    <main class="chat" id="chat">
+      <div id="unsafe" class="notice warning" role="status" hidden><strong>Agent requests are approved automatically</strong><span>Steed approves agent requests for all profiles this run.</span></div>
+      <section id="welcome" class="welcome">
+        <h2>Start a chat</h2>
+        <p id="welcome-copy">Ask for anything. It keeps working while you browse.</p>
+        <div class="start-row" id="welcome-start-row"><button id="welcome-start" class="primary" data-action="new_chat">Start</button><label class="sr-only" for="welcome-agent">Agent</label><select id="welcome-agent" class="agent-pick"></select></div>
+        <div class="more-ways"><button id="continue-session" class="text-button" data-action="continue_session">Continue a Claude Code session</button><button id="setup" class="text-button" data-action="setup">Connect another agent</button></div>
+        <p id="welcome-note" class="welcome-note">Only what you send is shared. You choose what it may do.</p>
+      </section>
+      <section id="activity" class="activity" aria-label="Agent activity" hidden>
+        <button id="activity-toggle" class="activity-heading" type="button" aria-expanded="true" aria-controls="activity-details" title="Show or hide details"><span id="activity-dot" class="dot" aria-hidden="true"></span><strong id="activity-title" role="status" aria-live="polite"></strong><span id="connection" class="connection-badge"></span><span class="chevron" aria-hidden="true">⌄</span></button>
+        <div id="activity-details"><p id="running-model" class="model"></p><p id="activity-hint"></p>
+        <p id="delivery" class="delivery" role="status" aria-live="polite"></p></div>
+        <div id="progress" class="progress" role="progressbar" aria-label="Agent is working" hidden></div>
+      </section>
+      <div id="error" class="notice error" role="alert" hidden></div>
+      <section id="tool-failure" class="notice warning" aria-label="Last tool failure" hidden>
+        <strong id="failure-title"></strong><span id="failure-operation"></span><p id="failure-guidance"></p>
+        <div class="failure-actions"><button id="failure-details" data-action="receipts">Check Receipts</button><button data-action="dismiss_failure">Dismiss</button></div>
+      </section>
+      <div id="attention" class="attention" hidden>
+        <button id="pending" data-action="permissions" hidden></button>
+        <button id="agent-requests" data-action="requests" hidden></button>
+      </div>
+      <section id="conversation" class="conversation" aria-label="Conversation" hidden>
+        <div id="messages" class="messages" role="log" aria-label="Agent messages" aria-live="polite" aria-relevant="additions text"></div>
+        <p id="empty-chat" class="empty-chat">What would you like to work on?</p>
+      </section>
+      <section id="compose" class="compose" aria-label="Write a message" hidden>
+        <label class="sr-only" for="composer">Message to the agent</label>
+        <div class="composer-box"><textarea id="composer" placeholder="Message your agent…" rows="1" spellcheck="true"></textarea><button id="send" class="send" data-action="send" aria-label="Send" title="Send (Enter)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div>
+        <div class="task-actions"><span class="hint">Enter sends, Shift+Enter adds a line</span><button id="delegate" class="text-button" data-action="delegate" hidden>Give tab control…</button><button id="cancel" class="text-button" data-action="cancel" hidden>Stop chat</button></div>
+      </section>
+      <section id="ended" class="ended" aria-label="This chat has ended" hidden>
+        <button id="continue-chat" class="primary" data-action="continue_chat" hidden>Continue this chat</button>
+        <button id="ended-new" data-action="new_chat">Start a new chat</button>
+        <button id="recover" class="text-button" data-action="recover">Hand off to another chat…</button>
+      </section>
+    </main>
   </div>
   <script nonce="{{NONCE}}">{{CHANNEL}}</script>
   <script nonce="{{NONCE}}">"use strict"; const STEED_GENERATION = "{{GENERATION}}"; {{SCRIPT}}</script>

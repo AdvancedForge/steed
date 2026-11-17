@@ -812,6 +812,16 @@ class TaskStore:
                 task_id, "artifact.deleted", {"artifact_id": artifact.artifact_id}
             )
 
+    def continuations(self):
+        """{closed chat: the chat that continues it}."""
+        return {
+            json.loads(payload).get("task_id"): task_id
+            for task_id, payload in self._db.execute(
+                "SELECT task_id, payload FROM events "
+                "WHERE kind = 'conversation.continues' ORDER BY sequence"
+            )
+        }
+
     def recent_events(self, task_id, *, limit=200, kinds=()):
         """Trusted UI tail, bounded and scoped without changing client cursors."""
         self.get(task_id)
