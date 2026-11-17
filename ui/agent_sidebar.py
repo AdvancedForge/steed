@@ -461,12 +461,7 @@ class AgentSidebar(QDockWidget):
                 if waiting and active
                 else f"{waiting} message(s) not read before the connection became unavailable"
                 if waiting
-                else "Sent messages were read; this does not confirm completed work."
-                if any(
-                    m["role"] == "user" and m["state"] != "cleared"
-                    for m in self._messages.values()
-                )
-                else "Only messages you send are shared."
+                else ""
             ),
             failure=latest_failure(
                 self.service.store, task_id, self._dismissed_failures.get(task_id, 0)
@@ -507,7 +502,7 @@ class AgentSidebar(QDockWidget):
             if model.get("provider"):
                 text += " · " + model["provider"]
             agent = model.get("agent", "the agent")
-            text += f" (reported by {agent})" if model["live"] else " (last reported)"
+            text += "" if model["live"] else " (last reported)"
             if model["source"] == "rerouted":
                 text += f"\n{agent} rerouted this turn from {model['from_model']}."
         else:
@@ -528,31 +523,16 @@ class AgentSidebar(QDockWidget):
             or "The agent"
         )
         title, hint = {
-            "connecting": (
-                f"Connecting to {name}…",
-                "Starting the agent and its Steed connection.",
-            ),
-            "sending": ("Sending…", f"Waiting for {name} to accept your message."),
-            "thinking": (
-                f"{name} is thinking…",
-                "Your message was accepted; the agent is preparing its next step.",
-            ),
+            "connecting": (f"Connecting to {name}…", ""),
+            "sending": ("Sending…", ""),
+            "thinking": (f"{name} is thinking…", ""),
             "working": (
                 f"{name} is working…",
-                "The agent is using tools. You can browse or queue a follow-up.",
+                "You can keep browsing or queue a follow-up.",
             ),
-            "replying": (
-                f"{name} is replying…",
-                "The reply is arriving below. Work continues until the agent finishes.",
-            ),
-            "waiting": (
-                f"{name} needs your input",
-                "Use Answer agent to answer a question or review a request.",
-            ),
-            "ready": (
-                f"{name} is ready",
-                "Send a message to continue this conversation.",
-            ),
+            "replying": (f"{name} is replying…", ""),
+            "waiting": (f"{name} needs your input", "Use Answer agent below."),
+            "ready": (f"{name} is ready", ""),
             "external": (
                 "External agent connected",
                 "Messages queue in Steed; this client must fetch them. Its working state is not reported.",
@@ -569,7 +549,7 @@ class AgentSidebar(QDockWidget):
             ),
         )
         if report and report["queued"]:
-            hint += f" {report['queued']} follow-up message(s) queued."
+            hint = f"{hint} {report['queued']} follow-up message(s) queued.".strip()
         if pending and active and not (report and report["state"] == "waiting"):
             title = "Approval requested"
             hint = "Review the pending access or action request. The agent may continue other work."

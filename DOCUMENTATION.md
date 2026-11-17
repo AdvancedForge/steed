@@ -4974,6 +4974,9 @@ regular-profile text/drafts; conversation data remains owned by its original tas
 Short chat tabs can scroll the expanded options. Hiding the sidebar preserves
 running tasks; cancellation remains explicit.
 
+The header is just **Agents** and **+**. The activity card is one line (state and
+connection) once a conversation has messages; click it for the model and details.
+It stays open before the first message and while the connection needs attention.
 The activity card shows **Sending**, **Thinking**, **Working**, **Replying**,
 **Needs your input** or **Ready** for native Codex chats, with a thin busy indicator
 and queued follow-up count. These are transient runtime states; they do not expose
@@ -5000,7 +5003,7 @@ chat that failed before any turn was sent is still recorded as cancelled.
 Interrupted tasks stay available to **Continue previous work?**, which copies
 material into a new task with fresh grants; nothing is ever resumed.
 
-The card also shows **Model: … (reported by Codex)**, using the resolved model and
+The card also shows **Model: …**, using the resolved model and
 provider returned by the running App Server thread. A reported model reroute
 updates the name and shows the previous model for that turn. **Model for new
 chats** in Conversation & settings selects a future chat; changing it does not

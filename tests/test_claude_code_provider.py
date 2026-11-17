@@ -102,7 +102,8 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         )
         activity = self.sidebar._activity(True)
         self.assertEqual(activity["title"], "Claude Code is ready")
-        self.assertIn("reported by Claude Code", activity["model"])
+        self.assertEqual(activity["model"], "Model: claude-default · Anthropic")
+        self.assertRegex(activity["hint"], r"^Last agent update [0-9:]+\.$")
 
     def test_selected_model_and_unstreamed_replies(self):
         task = self.chat("no-partial", model="haiku")

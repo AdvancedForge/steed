@@ -2,6 +2,8 @@ const $ = id => document.getElementById(id);
 // How a reply's state reads (a cut-off turn keeps its partial reply).
 const MESSAGE_STATES = {streaming: "reply arriving", interrupted: "interrupted before finishing"};
 let bridge = null, state = null, context = null, draftVersion = 0, messagesKey = null, pendingSend = null;
+// null follows the default: details open until the first message or while something needs a look.
+let activityOpen = null;
 const composer = $("composer");
 const AGENTS = {
   codex: {name: "Codex", models: [["", "Codex default"], ["gpt-5.4", "GPT-5.4 (tested direct Steed tools)"]]},
@@ -59,7 +61,7 @@ function renderMessages(messages, reset) {
 window.steedUI = {render(next) {
   const switched = context !== next.context;
   state = next;
-  if (switched) { context = next.context; draftVersion = next.draft_version; messagesKey = null; }
+  if (switched) { context = next.context; draftVersion = next.draft_version; messagesKey = null; activityOpen = null; }
   if (switched || !next.active || (next.send_result.context === context && next.send_result.version >= pendingSend?.version)) pendingSend = null;
   document.documentElement.dataset.theme = next.dark ? "dark" : "light";
   visible("unsafe", next.yolo);
@@ -85,6 +87,7 @@ window.steedUI = {render(next) {
   text("running-model", next.activity.model);
   text("connection", next.connection.label); $("connection").dataset.tone = next.connection.tone;
   text("delivery", next.delivery);
+  renderActivityDetails();
   visible("progress", next.activity.busy);
   $("activity-dot").classList.toggle("working", next.activity.busy);
   $("activity-dot").dataset.connection = next.connection.state;
@@ -143,6 +146,19 @@ window.steedUI = {render(next) {
   return true;
 }};
 
+function renderActivityDetails() {
+  const details = [next => next.activity.model, next => next.activity.hint, next => next.delivery].some(f => f(state));
+  const open = details && (activityOpen ?? (state.messages.length === 0 || state.connection.tone === "warning"));
+  visible("activity-details", open);
+  $("activity-toggle").setAttribute("aria-expanded", String(open));
+  $("activity-toggle").disabled = !details;
+}
+
+$("activity-toggle").addEventListener("click", () => {
+  if (!state) return;
+  activityOpen = $("activity-toggle").getAttribute("aria-expanded") !== "true";
+  renderActivityDetails();
+});
 composer.addEventListener("input", () => command("draft", {value: composer.value, version: ++draftVersion}));
 composer.addEventListener("keydown", event => {
   if (event.key === "Enter" && event.ctrlKey && !event.isComposing) { event.preventDefault(); send(); }

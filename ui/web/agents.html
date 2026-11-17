@@ -10,11 +10,11 @@
 <body>
   <div class="workspace">
     <header class="header">
-      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6.5 20V11a5.5 5.5 0 0 1 11 0v9"/><path d="M4.5 20h4M15.5 20h4"/><path d="M9.5 9.5h.01M14.5 9.5h.01M8.8 14h.01M15.2 14h.01"/></svg></span><div><h1>Agents</h1><p>Your work, with a little help.</p></div></div>
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6.5 20V11a5.5 5.5 0 0 1 11 0v9"/><path d="M4.5 20h4M15.5 20h4"/><path d="M9.5 9.5h.01M14.5 9.5h.01M8.8 14h.01M15.2 14h.01"/></svg></span><h1>Agents</h1></div>
       <button id="new-chat" class="icon-button" data-action="new_chat" aria-label="Start a new agent chat" title="New agent chat">＋</button>
     </header>
     <div id="unsafe" class="notice warning" role="status" hidden><strong>Agent requests are approved automatically</strong><span>Steed automatically approves agent requests for all profiles this run.</span></div>
-    <div class="task-picker" id="task-picker" hidden><label for="tasks">Conversation</label><select id="tasks"></select></div>
+    <div class="task-picker" id="task-picker" hidden><label class="sr-only" for="tasks">Conversation</label><select id="tasks"></select></div>
     <main id="welcome" class="welcome">
       <h2>Your agent,<br>beside your work.</h2>
       <p id="welcome-copy">Ask for anything. It keeps working while you browse.</p>
@@ -26,9 +26,9 @@
       <div id="welcome-note" class="welcome-note">Only what you send is shared.</div>
     </main>
     <section id="activity" class="activity" aria-label="Agent activity" hidden>
-      <div class="activity-heading"><span id="activity-dot" class="dot" aria-hidden="true"></span><strong id="activity-title" role="status" aria-live="polite"></strong><span id="connection" class="connection-badge"></span></div>
-      <p id="running-model" class="model"></p><p id="activity-hint"></p>
-      <p id="delivery" class="delivery" role="status" aria-live="polite"></p>
+      <button id="activity-toggle" class="activity-heading" type="button" aria-expanded="true" aria-controls="activity-details" title="Show or hide details"><span id="activity-dot" class="dot" aria-hidden="true"></span><strong id="activity-title" role="status" aria-live="polite"></strong><span id="connection" class="connection-badge"></span><span class="chevron" aria-hidden="true">⌄</span></button>
+      <div id="activity-details"><p id="running-model" class="model"></p><p id="activity-hint"></p>
+      <p id="delivery" class="delivery" role="status" aria-live="polite"></p></div>
       <div id="progress" class="progress" role="progressbar" aria-label="Agent is working" hidden></div>
     </section>
     <div id="error" class="notice error" role="alert" hidden></div>
@@ -46,7 +46,7 @@
     </section>
     <section id="compose" class="compose" aria-label="Write a message" hidden>
       <label class="sr-only" for="composer">Message to selected agent</label>
-      <div class="composer-box"><textarea id="composer" placeholder="Ask your agent…" rows="3" spellcheck="true"></textarea><div class="compose-actions"><span>Ctrl + Enter to send</span><button id="send" class="primary" data-action="send">Send <span aria-hidden="true">↑</span></button></div></div>
+      <div class="composer-box"><textarea id="composer" placeholder="Ask your agent…" rows="2" spellcheck="true"></textarea><div class="compose-actions"><span>Ctrl + Enter to send</span><button id="send" class="primary" data-action="send">Send <span aria-hidden="true">↑</span></button></div></div>
       <div class="task-actions"><button id="delegate" class="text-button" data-action="delegate" hidden>Give tab control…</button><button id="recover" class="text-button" data-action="recover">Continue / hand off…</button><button id="cancel" class="text-button" data-action="cancel" hidden>Stop task</button></div>
     </section>
     <details id="options" class="options">
