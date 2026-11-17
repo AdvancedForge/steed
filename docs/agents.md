@@ -377,21 +377,23 @@ questions appear as answerable prompts. Replies stream into the sidebar; text
 from subagents is not shown as the reply. A failed turn, an exit or an MCP
 connection failure stops the chat without retrying.
 
-**Keeping chats so they can continue.** With **Settings → Agents → Keep Claude
-Code chats so they can continue after Steed closes** on (the default), each new
-Claude Code chat runs in its own folder, `~/.custom_browser/agent_chats/<task>`,
-and Claude Code saves it in its history as usual. Steed records the session id
-Claude Code reports. When the chat is closed (Steed quit, or agent access was
-turned off), its card offers **Continue this chat**: Steed runs
-`claude --resume <id>` in that folder, so the same conversation carries on with
-its memory, as a new chat that shows the earlier messages above a **Continued
-after the chat closed** line. Permissions are asked for again; nothing is
-replayed. A chat continues once (afterwards it is the newer chat that
-continues). Turned off, chats run with `--no-session-persistence` in a private
-temporary folder, leave no history and end for good when Steed closes. Codex
-chats are not kept yet.
+**Keeping chats so they can continue.** With **Settings → Agents → Keep agent
+chats so they can continue after Steed closes** on (the default), each new
+Claude Code or Codex chat runs in its own folder,
+`~/.custom_browser/agent_chats/<task>`, and the agent saves it in its own
+history as usual: Claude Code as a session, Codex as a thread (started without
+`ephemeral`). Steed records the session or thread id the agent reports. When the
+chat is closed (Steed quit, or agent access was turned off), its card offers
+**Continue this chat** while the agent still has it saved: Steed runs
+`claude --resume <id>`, or asks Codex for `thread/resume`, in that folder, so the
+same conversation carries on with its memory, as a new chat that shows the
+earlier messages above a **Continued after the chat closed** line. Permissions
+are asked for again; nothing is replayed. A chat continues once (afterwards it
+is the newer chat that continues). Turned off, chats leave no history (Claude
+Code runs with `--no-session-persistence`, Codex threads are ephemeral) and end
+for good when Steed closes. ACP agents are not kept.
 
-Checked with Claude Code 2.1.312 and a synthetic offline runtime.
+Checked with Claude Code 2.1.312 and a synthetic offline runtime; Codex resuming follows the App Server protocol of Codex CLI 0.166.0, checked with a synthetic runtime.
 
 #### Asking your agent from anywhere
 

@@ -1,6 +1,7 @@
 """Application-owned chat lifecycle across windows, independent of provider choice."""
 
 import importlib.util
+import os
 import re
 import sqlite3
 import tempfile
@@ -42,6 +43,28 @@ def provider_callback(method):
 
 
 AGENT_NAMES = {"codex": "Codex", "claude": "Claude Code"}
+
+
+_SAVED_THREADS = set()
+
+
+def codex_thread_saved(thread_id):
+    """Whether Codex still has this thread saved (its rollout file under
+    $CODEX_HOME/sessions, ~/.codex by default)."""
+    if not isinstance(thread_id, str) or not re.fullmatch(
+        r"[A-Za-z0-9-]{1,128}", thread_id
+    ):
+        return False
+    if thread_id in _SAVED_THREADS:
+        return True
+    home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    try:
+        found = any((home / "sessions").rglob(f"rollout-*{thread_id}.jsonl"))
+    except OSError:
+        return False
+    if found:
+        _SAVED_THREADS.add(thread_id)
+    return found
 
 
 class AgentProviders(QObject):
@@ -121,8 +144,8 @@ class AgentProviders(QObject):
         self.factories["codex"] = value
 
     def keeps_chats(self):
-        """Settings → Agents: new Claude Code chats are saved so they can
-        continue after Steed closes (on unless turned off)."""
+        """Settings → Agents: new Claude Code and Codex chats are saved so
+        they can continue after Steed closes (on unless turned off)."""
         config = getattr(self.registry, "config", None)
         return bool(
             config is not None
@@ -131,7 +154,8 @@ class AgentProviders(QObject):
         )
 
     def saved_session(self, task_id):
-        """The Claude Code session a chat was saved under, if any."""
+        """The saved conversation a chat was kept under, if any:
+        {"agent", "session_id", "cwd"} (a Claude Code session or Codex thread)."""
         events = self.service.store.recent_events(
             task_id, limit=1, kinds=("agent.session",)
         )
@@ -154,30 +178,37 @@ class AgentProviders(QObject):
         saved = self.saved_session(task_id)
         if saved is None:
             return None
+        if saved.get("agent") == "codex":
+            folder = saved.get("cwd")
+            if not (folder and Path(folder).is_dir()) or not codex_thread_saved(
+                saved["session_id"]
+            ):
+                return None
+            return {"id": saved["session_id"], "cwd": folder, "agent": "codex"}
         from services.claude_sessions import find_session
 
         found = find_session(saved["session_id"])
         if found is None or found["cwd"] != saved.get("cwd"):
             return None
-        return found
+        return {**found, "agent": "claude"}
 
     def new_chat(self, model=None, agent="codex", resume=None, continues=None):
         """Start a chat. resume: a Claude Code session id to continue as a
-        copy; continues: a closed Steed chat whose saved session carries on."""
+        copy; continues: a closed Steed chat whose saved conversation (Claude
+        Code session or Codex thread) carries on."""
         require_owner_thread(self)
         self.service._usable()
-        if continues is not None:
-            agent = "claude"
-        factory = self.factories.get(agent) or self._acp_factory(agent)
-        if factory is None:
-            raise ValueError("Choose a supported agent")
-        name = self.agent_label(agent)
         session = None
         if continues is not None:
             session = self.continuable(continues)
             if session is None:
                 raise ValueError("This chat can no longer be continued.")
-        elif resume is not None:
+            agent = session["agent"]
+        factory = self.factories.get(agent) or self._acp_factory(agent)
+        if factory is None:
+            raise ValueError("Choose a supported agent")
+        name = self.agent_label(agent)
+        if continues is None and resume is not None:
             from services.claude_sessions import find_session
 
             session = find_session(resume) if agent == "claude" else None
@@ -226,9 +257,13 @@ class AgentProviders(QObject):
             driver = factory(self)
             driver.model = model
             driver.expected_task_id = task.task_id
-            if session is not None:
+            if session is not None and agent == "codex":
+                driver.resume_thread = session["id"]
+                driver.workdir = Path(session["cwd"])
+                driver.keep = True
+            elif session is not None:
                 driver.resume = (session["id"], session["cwd"], continues is None)
-            elif agent == "claude" and self.keeps_chats():
+            elif agent in ("claude", "codex") and self.keeps_chats():
                 folder = Path(self.registry.config.config_dir) / "agent_chats"
                 driver.workdir = folder / task.task_id
                 driver.workdir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -253,6 +288,7 @@ class AgentProviders(QObject):
                 "requests": {},
                 "activity": "connecting",
                 "agent": name,
+                "agent_key": agent,
             }
             self.chats[task.task_id] = chat
             self.agent_names[task.task_id] = name
@@ -298,7 +334,7 @@ class AgentProviders(QObject):
                 task_id,
                 "agent.session",
                 {
-                    "agent": "claude",
+                    "agent": chat["agent_key"],
                     "session_id": session_id,
                     "cwd": str(chat["driver"].cwd),
                 },

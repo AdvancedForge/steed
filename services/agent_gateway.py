@@ -435,6 +435,10 @@ class AgentConnection(QObject):
                         # Nobody may act for the task while it waits to be
                         # resumed: end its access, keep its conversation.
                         service._end_authority(task_id, "disconnected")
+                    elif self.managed:
+                        # A chat Steed runs lost its connection: cut off, not
+                        # a cancellation the person asked for.
+                        service.interrupt_task(task_id)
                     else:
                         service.cancel_task(task_id)
             except Exception:

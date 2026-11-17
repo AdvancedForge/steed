@@ -9,6 +9,7 @@ mode = sys.argv[1]
 bridge = None
 thread = "synthetic-thread"
 turn_counter = 0
+cwd = None
 
 
 def emit(value):
@@ -33,7 +34,18 @@ for line in sys.stdin:
         result = {"account": None, "requiresOpenaiAuth": mode == "signin"}
     elif method == "config/read":
         result = {"config": {"mcp_servers": {"synthetic-other": {"enabled": True}}}}
-    elif method == "thread/start":
+    elif method in ("thread/start", "thread/resume"):
+        # keep: a saved thread; continue: Steed carrying on a saved thread.
+        if mode == "continue":
+            assert method == "thread/resume" and "ephemeral" not in params
+            thread = params["threadId"]
+        else:
+            assert method == "thread/start"
+            assert isinstance(params["ephemeral"], bool)
+            assert params["ephemeral"] is False or mode != "keep"
+            if mode == "keep":
+                thread = "kept-" + str(time.time_ns())
+        cwd = params["cwd"]
         assert "environments" not in params
         assert "runtimeWorkspaceRoots" not in params
         assert "permissions" not in params
@@ -124,6 +136,8 @@ for line in sys.stdin:
         elif mode == "wrong-turn":
             scope["turnId"] = "other-turn"
         answer = "Synthetic reply: " + text
+        if mode == "continue":
+            answer = f"Resumed {thread} in {cwd}: {text}"
         if mode == "long":
             answer = "🌍" * 2500
         event("turn/started", {"threadId": thread, "turn": {"id": turn}})
