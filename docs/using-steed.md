@@ -10,7 +10,8 @@ archive through Profile; it is not deleted. Older Default startup selections
 become Global, while other explicitly selected profiles are preserved.
 
 `steed:welcome` is a short tour in three steps, one idea each: how Steed looks
-(photo or colour, liquid glass on or off — applied as you choose), bringing
+(a photo or colour background, marked **Chosen**, and a **Liquid glass**
+switch; both apply as you choose), bringing
 your bookmarks, history and passwords from another browser, and meeting your
 agent. Every step can be skipped; **Start browsing** (or *Skip the tour*)
 completes it, and Settings → Everything → Welcome takes it again. After that,

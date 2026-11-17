@@ -16,6 +16,12 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 - The intermittent startup exit did not occur in 85 starts; recorded in the
   verification record, not claimed fixed.
 - The agents page was checked end to end with a live (synthetic) chat.
+- Welcome works on every step: its links were ignored once the address had a
+  `#step`, and its look choices were only accepted from New Tab. The chosen
+  background is marked (ring, check, **Chosen**); Liquid glass is a switch.
+- The agents page fills its tab (a strip of background showed after moving
+  it from the sidebar); light buttons no longer flash dark on hover, and text
+  buttons underline instead of filling a box.
 - A security policy (`.github/SECURITY.md`); the release plan's outdated
   claims refreshed.
 
