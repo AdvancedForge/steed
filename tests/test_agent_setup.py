@@ -9,7 +9,7 @@ import test_task_profiles as fixtures
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from ui.agent_setup import AGENT_PROMPT, launch_config
 
 
@@ -116,7 +116,7 @@ class AgentSetupTests(unittest.TestCase):
 
         boxes = window.agent_setup_dialog.findChildren(QPlainTextEdit)
         install = next(
-            b.toPlainText() for b in boxes if "requirements-mcp.txt" in b.toPlainText()
+            b.toPlainText() for b in boxes if "requirements/mcp.txt" in b.toPlainText()
         )
         self.assertIn("pip install -r", install)
         self.assertIsNone(self.registry.agent_gateway)
@@ -129,7 +129,7 @@ class AgentSetupTests(unittest.TestCase):
             patch.object(
                 self.registry, "set_agent_access", side_effect=OSError("fixture")
             ),
-            patch("browser_window.QMessageBox.warning") as warning,
+            patch("browser.browser_window.QMessageBox.warning") as warning,
         ):
             window.agent_setup_dialog.enable.click()
         warning.assert_called_once()

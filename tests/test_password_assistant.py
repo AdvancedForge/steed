@@ -13,8 +13,8 @@ from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from PyQt6.QtTest import QTest
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from password_vault import VaultError
+from browser.browser_window import BrowserWindow
+from browser.password_vault import VaultError
 
 LOGIN = b"""<title>Sign in</title><form method=post action=/home>
 <input id=user name=username autocomplete=username>
@@ -96,7 +96,7 @@ class PasswordAssistantTests(unittest.TestCase):
         keep_directory(self.directory)
         self.patches = [
             patch("pathlib.Path.home", return_value=Path(self.directory.name)),
-            patch("password_service.KeyStore", FakeKeys),
+            patch("browser.password_service.KeyStore", FakeKeys),
         ]
         for item in self.patches:
             item.start()
@@ -247,7 +247,7 @@ class PasswordAssistantTests(unittest.TestCase):
         self.assertEqual(self.js(tab, "pass.value"), "")
 
     def test_fill_values_are_data_and_wrong_sites_are_refused(self):
-        from password_service import WORLD, fill_script
+        from browser.password_service import WORLD, fill_script
 
         self.vault.save(self.origin, "PASSWORD", ",globalThis.pwned=1,")
         tab = self.open("/login")

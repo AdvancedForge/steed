@@ -6,7 +6,7 @@ import unittest
 import test_start_page_proposals as fixtures
 from PyQt6 import sip
 
-from start_page_format import parse_page, state_digest
+from browser.start_page_format import parse_page, state_digest
 from ui.start_page_review import StartPageReviewDialog
 
 

@@ -13,8 +13,8 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-import access_levels
-from data_panel_format import stable_id
+from browser import access_levels
+from browser.data_panel_format import stable_id
 from services.task_policy import TaskPermissionError
 
 MAX_RESULTS = 10

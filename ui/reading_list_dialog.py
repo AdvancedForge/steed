@@ -105,7 +105,7 @@ class ReadingListDialog(HtmlSettingsDialog):
 
     def export_book(self, path=None):
         """Every article kept for offline reading, as one EPUB file."""
-        import epub
+        from browser import epub
 
         if path is None:
             from PyQt6.QtWidgets import QFileDialog

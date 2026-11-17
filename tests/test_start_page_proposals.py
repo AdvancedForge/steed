@@ -10,9 +10,9 @@ import test_task_profiles as profiles
 from PyQt6 import sip
 from PyQt6.QtWidgets import QPushButton
 
+from browser.start_page_format import EXAMPLE, parse_page, state_digest
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
-from start_page_format import EXAMPLE, parse_page, state_digest
 from ui.start_page_review import StartPageReviewDialog
 from ui.start_page_share import PageSourceShareDialog
 from ui.task_dialog import TaskDialog

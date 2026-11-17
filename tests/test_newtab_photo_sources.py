@@ -12,7 +12,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from PyQt6.QtGui import QColor, QImage
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 
 
 def picture(path, color, size=(64, 36)):
@@ -161,7 +161,7 @@ class PhotoSourceTests(unittest.TestCase):
         while tab.title() != "New Tab" and time.monotonic() < end:
             self.settle(0.05)
         with patch(
-            "browser_window.QFileDialog.getExistingDirectory",
+            "browser.browser_window.QFileDialog.getExistingDirectory",
             return_value=str(self.folder),
         ):
             self.window._start_page_action(tab, QUrl("steed://action/newtab-folder"))
@@ -174,14 +174,15 @@ class PhotoSourceTests(unittest.TestCase):
         empty = self.home / "Empty"
         empty.mkdir()
         with patch(
-            "browser_window.QFileDialog.getExistingDirectory", return_value=str(empty)
+            "browser.browser_window.QFileDialog.getExistingDirectory",
+            return_value=str(empty),
         ):
             self.window._start_page_action(tab, QUrl("steed://action/newtab-folder"))
         self.assertEqual(
             self.pages.state("global")["settings"]["photo_folder"], str(self.folder)
         )
         with patch(
-            "browser_window.QFileDialog.getOpenFileNames",
+            "browser.browser_window.QFileDialog.getOpenFileNames",
             return_value=([str(self.folder / "a.png")], ""),
         ):
             self.window._start_page_action(

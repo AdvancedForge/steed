@@ -23,8 +23,8 @@ from PyQt6.QtGui import QColor, QImage
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 import services.newtab_photo as photos
-import webengine
-from browser_window import BrowserWindow
+from browser import webengine
+from browser.browser_window import BrowserWindow
 
 
 def jpeg():

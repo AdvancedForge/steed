@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 from PyQt6.QtCore import QObject, QUrl
 
-import webengine
+from browser import webengine
 from services.command_broker import require_owner_thread
 
 ZOOM_LEVELS = (

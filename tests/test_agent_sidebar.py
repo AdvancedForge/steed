@@ -10,7 +10,7 @@ from unittest.mock import patch
 import test_task_profiles as fixtures
 from PyQt6.QtCore import Qt
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services.codex_provider import CodexProvider
 from ui.task_dialog import TaskDialog
 
@@ -275,7 +275,7 @@ class AgentSidebarTests(unittest.TestCase):
         self.windows.append(window)
         with (
             patch("ui.agent_sidebar.AgentSidebar", side_effect=RuntimeError("fixture")),
-            patch("browser_window.QMessageBox.warning"),
+            patch("browser.browser_window.QMessageBox.warning"),
         ):
             window.agent_sidebar_action.trigger()
         self.assertIsNone(window.agent_sidebar)

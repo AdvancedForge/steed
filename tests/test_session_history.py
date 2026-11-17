@@ -11,10 +11,10 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import session_history
-from browser_window import BrowserWindow
-from session_history import SessionHistory, describe
-from tab_manager import TabState
+from browser import session_history
+from browser.browser_window import BrowserWindow
+from browser.session_history import SessionHistory, describe
+from browser.tab_manager import TabState
 
 
 def state(url, title=""):

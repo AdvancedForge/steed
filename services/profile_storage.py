@@ -3,7 +3,7 @@
 import json
 from uuid import uuid4
 
-from utils import sanitize_profile_name, save_json
+from browser.utils import sanitize_profile_name, save_json
 
 MANIFEST = ".steed_profile.json"
 

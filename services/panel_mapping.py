@@ -3,8 +3,8 @@
 import json
 import math
 
-from data_panel_format import MAX_ITEM_CHARS, MAX_LIST_ITEMS
-from layout_preferences import clean_name
+from browser.data_panel_format import MAX_ITEM_CHARS, MAX_LIST_ITEMS
+from browser.layout_preferences import clean_name
 from services.connector_recipes import RecipeError, pointer, select
 
 

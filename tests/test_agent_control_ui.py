@@ -7,10 +7,10 @@ from unittest.mock import patch
 import test_live_tabs as live_fixture
 from PyQt6.QtCore import QUrl
 
-from layout_format import LAYOUT_EXAMPLE
+from browser.layout_format import LAYOUT_EXAMPLE
+from browser.start_page_format import EXAMPLE
 from services.live_control import resolve
 from services.task_policy import TaskPermissionError
-from start_page_format import EXAMPLE
 from ui.live_control_review import LiveControlDialog
 from ui.prompts import MessageBox as QMessageBox
 
@@ -202,14 +202,14 @@ class AgentControlUITests(unittest.TestCase):
     def test_mode_requires_desktop_confirmation_and_agents_cannot_enable_it(self):
         window, _ = self.window()
         with patch(
-            "browser_window.QMessageBox.warning",
+            "browser.browser_window.QMessageBox.warning",
             return_value=QMessageBox.StandardButton.No,
         ):
             window.auto_approval_action.setChecked(True)
         self.assertFalse(self.service.auto_approve_requests)
         self.assertFalse(window.auto_approval_action.isChecked())
         with patch(
-            "browser_window.QMessageBox.warning",
+            "browser.browser_window.QMessageBox.warning",
             return_value=QMessageBox.StandardButton.Yes,
         ):
             window.auto_approval_action.setChecked(True)

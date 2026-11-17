@@ -13,7 +13,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage
 
-import webengine
+from browser import webengine
 
 MAX_WIDTH = 4096
 MAX_HEIGHT = 16384  # Chromium's largest surface; longer pages are cut here.

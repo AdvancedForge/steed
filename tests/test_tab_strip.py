@@ -10,9 +10,9 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from layout_preferences import LayoutPreferences
-from tab_appearance import CHOICES
+from browser.browser_window import BrowserWindow
+from browser.layout_preferences import LayoutPreferences
+from browser.tab_appearance import CHOICES
 
 
 class TabStripTests(unittest.TestCase):
@@ -152,7 +152,7 @@ class TabStripTests(unittest.TestCase):
         from PyQt6.QtCore import QEvent, QPointF, Qt
         from PyQt6.QtGui import QMouseEvent
 
-        from layout_preferences import preferences_from_config
+        from browser.layout_preferences import preferences_from_config
 
         preferences = LayoutPreferences()
         preferences.set_tabs({"position": "right", "vertical_width": 240})

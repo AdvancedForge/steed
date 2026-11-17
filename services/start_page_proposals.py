@@ -3,10 +3,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from data_panel_format import stable_id
+from browser.data_panel_format import stable_id
+from browser.start_page_format import parse_page, state_digest
 from services.command_broker import require_owner_thread
 from services.task_policy import TaskPermissionError
-from start_page_format import parse_page, state_digest
 
 PAGE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS start_page_proposals (

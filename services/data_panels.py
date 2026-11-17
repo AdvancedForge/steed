@@ -7,7 +7,12 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from data_panel_format import form_values, parse_panel, stable_id, widget_content
+from browser.data_panel_format import (
+    form_values,
+    parse_panel,
+    stable_id,
+    widget_content,
+)
 from services.command_broker import require_owner_thread
 from services.task_artifacts import artifact_input
 from services.task_messages import MESSAGE_BYTES

@@ -4,9 +4,9 @@ import json
 import unittest
 from copy import deepcopy
 
-from layout_format import export_layout, layout_changes, parse_layout
-from layout_preferences import LayoutPreferences
-from tab_appearance import clean_tabs, default_tabs, validate_tabs
+from browser.layout_format import export_layout, layout_changes, parse_layout
+from browser.layout_preferences import LayoutPreferences
+from browser.tab_appearance import clean_tabs, default_tabs, validate_tabs
 
 
 class TabAppearanceTests(unittest.TestCase):

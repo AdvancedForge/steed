@@ -14,10 +14,10 @@ from fixtures.responses_server import ResponsesFixture  # noqa: E402
 from PyQt6.QtCore import QProcessEnvironment  # noqa: E402
 from qt_test_support import application  # noqa: E402
 
+from browser.utils import save_json  # noqa: E402
 from services.agent_gateway import AgentGateway  # noqa: E402
 from services.codex_provider import CodexProvider  # noqa: E402
 from services.task_service import TaskService  # noqa: E402
-from utils import save_json  # noqa: E402
 
 
 class Probe(CodexProvider):

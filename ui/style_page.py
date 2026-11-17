@@ -5,14 +5,20 @@ from secrets import token_hex
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-from layout_components import TEXT_SIZES
-from layout_preferences import (
+from browser.layout_components import TEXT_SIZES
+from browser.layout_preferences import (
     DENSITIES,
     LayoutConflict,
     preferences_from_config,
 )
+from browser.tab_appearance import (
+    CHOICES,
+    FLAG_LABELS,
+    LABELS,
+    TAB_WIDTH_RANGE,
+    VALUE_LABELS,
+)
 from services.page_style import CHROME_FIELDS, DEFAULTS, palette, style_guide
-from tab_appearance import CHOICES, FLAG_LABELS, LABELS, TAB_WIDTH_RANGE, VALUE_LABELS
 from ui.html_surface import HtmlSurface
 
 

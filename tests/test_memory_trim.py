@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 from qt_test_support import WAIT_SECONDS, application
 
-import memory_trim
+from browser import memory_trim
 
 
 class MemoryTrimTests(unittest.TestCase):

@@ -13,10 +13,9 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import epub
-import webengine
-from browser_window import BrowserWindow
-from reader_notes import ReaderNotes
+from browser import epub, webengine
+from browser.browser_window import BrowserWindow
+from browser.reader_notes import ReaderNotes
 
 ARTICLE = {
     "title": "A Story",

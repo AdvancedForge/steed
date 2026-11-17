@@ -11,7 +11,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services import page_memory
 from services.page_memory import PageMemory
 from ui.read_search_dialog import ReadSearchDialog, agent_message

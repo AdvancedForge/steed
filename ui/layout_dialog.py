@@ -26,8 +26,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from layout_components import TEXT_SIZES
-from layout_preferences import (
+from browser.layout_components import TEXT_SIZES
+from browser.layout_preferences import (
     DENSITIES,
     SIDEBAR_SIDES,
     SIDEBAR_WIDTH_RANGE,

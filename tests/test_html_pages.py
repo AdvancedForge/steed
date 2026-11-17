@@ -11,7 +11,7 @@ from PyQt6.QtGui import QImage
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QMessageBox
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services.page_style import DEFAULTS
 from services.start_pages import image_data
 
@@ -37,7 +37,7 @@ class HtmlPageTests(unittest.TestCase):
         return window, tab, controller
 
     def test_style_page_sets_tab_and_toolbar_style_for_every_window(self):
-        from layout_preferences import preferences_from_config
+        from browser.layout_preferences import preferences_from_config
 
         window, _, controller = self.loaded("style")
         other = BrowserWindow()

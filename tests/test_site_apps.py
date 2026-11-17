@@ -14,9 +14,9 @@ from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWidgets import QApplication
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from single_instance import launch_urls
-from site_apps import SiteApps
+from browser.browser_window import BrowserWindow
+from browser.single_instance import launch_urls
+from browser.site_apps import SiteApps
 
 
 class StoreTests(unittest.TestCase):

@@ -10,7 +10,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from ui.read_aloud import ReadAloud, chunks
 
 ARTICLE = (

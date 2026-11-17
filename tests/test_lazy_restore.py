@@ -11,10 +11,9 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import memory_modes
-import webengine
-from browser_window import BrowserWindow
-from tab_manager import _parse_states
+from browser import memory_modes, webengine
+from browser.browser_window import BrowserWindow
+from browser.tab_manager import _parse_states
 
 LONG = b"<title>%s</title>" + b"<p>line</p>" * 1500
 

@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-import search_keywords
+from browser import search_keywords
 from ui.html_dialog import HtmlSettingsDialog
 from ui.prompts import MessageBox
 

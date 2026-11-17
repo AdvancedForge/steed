@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-import webengine
+from browser import webengine
 from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
 
 WEB_CHATS = {

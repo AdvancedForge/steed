@@ -13,9 +13,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from layout_components import PANEL_ACTIONS
-from layout_format import layout_changes
-from layout_preferences import preferences_from_config
+from browser.layout_components import PANEL_ACTIONS
+from browser.layout_format import layout_changes
+from browser.layout_preferences import preferences_from_config
 from ui.address_bar import AddressBar
 from ui.html_dialog import HtmlSettingsDialog
 from ui.layout_panel import QuickActionsPanel, apply_chrome_font

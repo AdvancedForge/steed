@@ -11,7 +11,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QPoint
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 
 TEXT = "This is ordinary page text that goes on long enough to count as text. "
 

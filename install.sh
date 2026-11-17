@@ -44,10 +44,10 @@ echo "Installing Steed's packages…"
 .venv/bin/python -m pip install --quiet -r requirements.txt
 
 chmod +x steed
-.venv/bin/python install_launcher.py
+.venv/bin/python -m browser.install_launcher
 
 if [ "$make_default" = 1 ]; then
-  .venv/bin/python -c 'import default_browser; print(default_browser.make_default())'
+  .venv/bin/python -c 'from browser import default_browser; print(default_browser.make_default())'
 fi
 
 echo

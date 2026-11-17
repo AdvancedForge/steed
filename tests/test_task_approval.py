@@ -8,7 +8,7 @@ import test_task_profiles as profiles
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QPlainTextEdit, QScrollArea
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from ui.task_approval import TaskApprovalDialog
 from ui.task_recovery import TaskRecoveryDialog
 

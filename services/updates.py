@@ -5,7 +5,7 @@ Steed asks its git remote whether the branch it follows has new changes
 (`git fetch`, nothing is changed in your checkout), and PyPI whether a newer
 Qt WebEngine (with newer Chromium security fixes) is out. The result shows on
 steed:features and once in the status bar; updating stays your choice
-(`./install.sh --update`, and `upgrade_engine.py try` for the engine).
+(`./install.sh --update`, and `python -m browser.upgrade_engine try` for the engine).
 """
 
 import json
@@ -151,7 +151,7 @@ class Updates(QObject):
         if self.state["engine"]:
             parts.append(
                 f"Qt WebEngine {self.state['engine']} is available, with newer "
-                "Chromium security fixes: run .venv/bin/python upgrade_engine.py try."
+                "Chromium security fixes: run .venv/bin/python -m browser.upgrade_engine try."
             )
         return " ".join(parts)
 

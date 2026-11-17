@@ -11,8 +11,8 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import download_manager
-from browser_window import BrowserWindow
+from browser import download_manager
+from browser.browser_window import BrowserWindow
 from services import safe_browsing
 
 

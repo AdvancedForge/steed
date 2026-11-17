@@ -9,10 +9,10 @@ import sys
 from PyQt6.QtCore import QCoreApplication, QLockFile, Qt
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from browser_window import BrowserWindow
-from config import Config
-from single_instance import InstanceServer, launch_urls, request_existing
-from webengine import prepare_engine_environment
+from browser.browser_window import BrowserWindow
+from browser.config import Config
+from browser.single_instance import InstanceServer, launch_urls, request_existing
+from browser.webengine import prepare_engine_environment
 
 
 def configure_chromium_flags(thin_scrollbars: bool = True) -> None:
@@ -34,7 +34,7 @@ def configure_chromium_flags(thin_scrollbars: bool = True) -> None:
         flags.append(feature_prefix + ",".join(wanted))
     # Protected streaming with Firefox's Widevine module (see widevine.py).
     if not any(flag.startswith("--widevine-path=") for flag in flags):
-        import widevine
+        from browser import widevine
 
         flags += widevine.flags()
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = shlex.join(flags)
@@ -57,7 +57,7 @@ def open_launch_request(urls) -> None:
     last = owner.parent() if owner is not None else None
     active = QApplication.activeWindow()
     target = active if active in regular else last if last in regular else regular[-1]
-    from site_apps import APP_PREFIX
+    from browser.site_apps import APP_PREFIX
 
     apps = [u.removeprefix(APP_PREFIX) for u in urls if u.startswith(APP_PREFIX)]
     urls = [u for u in urls if not u.startswith(APP_PREFIX)]
@@ -116,7 +116,7 @@ def main() -> int:
     app._instance_server = InstanceServer(config.config_dir)
     app._instance_server.open_requested.connect(open_launch_request)
 
-    from site_apps import APP_PREFIX
+    from browser.site_apps import APP_PREFIX
 
     apps = [u.removeprefix(APP_PREFIX) for u in urls if u.startswith(APP_PREFIX)]
     urls = [u for u in urls if not u.startswith(APP_PREFIX)]
@@ -139,7 +139,7 @@ def main() -> int:
 
     stop_shared()
     # Before the application goes: see qt_cleanup.
-    from qt_cleanup import release_leftovers
+    from browser.qt_cleanup import release_leftovers
 
     release_leftovers(app)
     return code

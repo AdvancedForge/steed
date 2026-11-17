@@ -12,7 +12,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, pyqtClassInfo, pyqtProperty, pyqtSlot
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-import webengine
+from browser import webengine
 
 # Steed's own script world: the page can neither see nor change these.
 STATE = """(() => {

@@ -21,9 +21,9 @@ from uuid import uuid4
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 
-import webengine
+from browser import webengine
+from browser.utils import load_json, save_json
 from services.agent_once import AgentOnce, agent_command
-from utils import load_json, save_json
 
 INTERVALS = {"15m": 900, "hourly": 3600, "6h": 6 * 3600, "daily": 24 * 3600}
 # What happens to a "then" action: start it from the notification (ask) or

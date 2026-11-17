@@ -21,18 +21,18 @@ from PyQt6.QtWebEngineCore import QWebEngineFullScreenRequest
 from PyQt6.QtWidgets import QDialog, QFileDialog
 from qt_test_support import application, keep_directory
 
-from ad_blocker import FilterEngine
-from browser_window import BrowserWindow, QWebEnginePermission
-from config import Config
-from cookie_manager import CookieInfo
-from cookie_sharing import cookie_site, delete_exact
+from browser.ad_blocker import FilterEngine
+from browser.browser_window import BrowserWindow, QWebEnginePermission
+from browser.config import Config
+from browser.cookie_manager import CookieInfo
+from browser.cookie_sharing import cookie_site, delete_exact
+from browser.tab_manager import TabManager, TabState
+from browser.utils import load_json, sanitize_profile_name, save_json
 from main import configure_chromium_flags
-from tab_manager import TabManager, TabState
 from ui.cookie_dialog import CookieDialog
 from ui.prompts import MessageBox as QMessageBox
 from ui.settings_dialog import SettingsDialog
 from ui.tab_strip import TabStrip
-from utils import load_json, sanitize_profile_name, save_json
 
 
 class PersistenceTests(unittest.TestCase):
@@ -41,7 +41,9 @@ class PersistenceTests(unittest.TestCase):
             path = Path(directory) / "tabs.json"
             save_json(path, [{"url": "https://example.org"}])
             previous = path.read_bytes()
-            with patch("utils.json.dump", side_effect=ValueError("invalid data")):
+            with patch(
+                "browser.utils.json.dump", side_effect=ValueError("invalid data")
+            ):
                 with self.assertRaises(ValueError):
                     save_json(path, object())
             self.assertEqual(path.read_bytes(), previous)
@@ -74,7 +76,8 @@ class PersistenceTests(unittest.TestCase):
             path = Path(directory) / "invalid.json"
             save_json(path, {"value": 1})
             with patch(
-                "utils.json.load", side_effect=json.JSONDecodeError("bad", "", 0)
+                "browser.utils.json.load",
+                side_effect=json.JSONDecodeError("bad", "", 0),
             ):
                 with self.assertLogs("utils", level="WARNING"):
                     self.assertEqual(load_json(path, []), [])
@@ -178,7 +181,8 @@ class BrowserTests(unittest.TestCase):
         )
         actions = {action.text(): action for action in groups.actions()}
         with patch(
-            "browser_window.QInputDialog.getText", return_value=("Research", True)
+            "browser.browser_window.QInputDialog.getText",
+            return_value=("Research", True),
         ):
             actions["Set Current Tab Group…"].trigger()
         current = self.window.tabs[self.window.current_tab_index]
@@ -477,7 +481,9 @@ class BrowserTests(unittest.TestCase):
             patch.object(self.window, "_ask_permission", return_value=True) as asked,
             patch.object(self.window, "_pick_desktop_media") as picked,
             # The real copy is covered by test_permission_prompts.
-            patch("browser_window.QWebEnginePermission", side_effect=lambda p: p),
+            patch(
+                "browser.browser_window.QWebEnginePermission", side_effect=lambda p: p
+            ),
         ):
             self.window._on_permission_requested(permission)
             self.window._on_desktop_media_requested(request)
@@ -823,7 +829,7 @@ class BrowserTests(unittest.TestCase):
 
     def test_filter_list_update_compiles_in_worker(self):
         service = self.window.adblock
-        with patch("ad_blocker.SOURCES", (self.origin + "/filters",)):
+        with patch("browser.ad_blocker.SOURCES", (self.origin + "/filters",)):
             service.update()
             self.wait_for(lambda: not service.updating)
         self.assertTrue(
@@ -931,7 +937,7 @@ class BrowserTests(unittest.TestCase):
         self.window.profile_manager.create_profile("other")
         self.window.profile_manager.switch_to_profile("other")
         feature = QWebEnginePermission.PermissionType.MediaVideoCapture
-        with patch("browser_window.SitePermissionDialog") as factory:
+        with patch("browser.browser_window.SitePermissionDialog") as factory:
             factory.return_value.exec.return_value = QDialog.DialogCode.Accepted
             factory.return_value.remember.currentData.return_value = "profile"
             self.assertTrue(
@@ -940,7 +946,7 @@ class BrowserTests(unittest.TestCase):
             self.assertEqual(factory.call_args.args[2], original["profile"])
         rules = self.window.profile_manager.registry.site_permissions.rules()
         self.assertEqual(rules[0]["key"], original["key"])
-        with patch("browser_window.SitePermissionDialog") as factory:
+        with patch("browser.browser_window.SitePermissionDialog") as factory:
             self.assertTrue(
                 self.window._ask_permission(QUrl("https://example.org"), feature, page)
             )
@@ -949,7 +955,7 @@ class BrowserTests(unittest.TestCase):
     @unittest.skipIf(QWebEnginePermission is None, "Requires Qt 6.8 permissions")
     def test_allow_once_and_denial_never_save_website_rules(self):
         feature = QWebEnginePermission.PermissionType.Notifications
-        with patch("browser_window.SitePermissionDialog") as factory:
+        with patch("browser.browser_window.SitePermissionDialog") as factory:
             factory.return_value.exec.return_value = QDialog.DialogCode.Accepted
             factory.return_value.remember.currentData.return_value = "once"
             self.assertTrue(
@@ -970,7 +976,7 @@ class BrowserTests(unittest.TestCase):
         )
         permission.origin.return_value = QUrl("https://example.org")
         with (
-            patch("browser_window.SitePermissionDialog") as factory,
+            patch("browser.browser_window.SitePermissionDialog") as factory,
             patch(
                 "services.site_permissions.save_json", side_effect=OSError("fixture")
             ),
@@ -1014,7 +1020,7 @@ class BrowserTests(unittest.TestCase):
             return QDialog.DialogCode.Accepted
 
         try:
-            with patch("browser_window.SitePermissionDialog") as factory:
+            with patch("browser.browser_window.SitePermissionDialog") as factory:
                 factory.return_value.exec.side_effect = close_during_prompt
                 factory.return_value.remember.currentData.return_value = "global"
                 self.assertFalse(
@@ -1096,7 +1102,8 @@ class BrowserTests(unittest.TestCase):
     def test_media_picker_construction_failure_cancels_request(self):
         request = Mock()
         with patch(
-            "browser_window.DesktopMediaDialog", side_effect=RuntimeError("no picker")
+            "browser.browser_window.DesktopMediaDialog",
+            side_effect=RuntimeError("no picker"),
         ):
             with self.assertRaisesRegex(RuntimeError, "no picker"):
                 self.window._pick_desktop_media(request)

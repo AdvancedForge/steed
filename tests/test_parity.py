@@ -15,9 +15,9 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtWidgets import QApplication, QMenu
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import default_browser
-from browser_window import BrowserWindow
-from single_instance import launch_urls
+from browser import default_browser
+from browser.browser_window import BrowserWindow
+from browser.single_instance import launch_urls
 
 
 class LaunchTests(unittest.TestCase):

@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from config import Config
+from browser.config import Config
+from browser.utils import save_json
 from services.profile_storage import MANIFEST, ProfileStorage
-from utils import save_json
 
 
 class ProfileStorageTests(unittest.TestCase):

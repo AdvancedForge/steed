@@ -8,7 +8,7 @@ from copy import deepcopy
 import test_panel_accounts as accounts_fixture
 from PyQt6.QtWidgets import QListWidget, QTableWidget
 
-from data_panel_format import parse_panel
+from browser.data_panel_format import parse_panel
 from services.panel_mapping import project_result
 from ui.data_panels import DataPanelReviewDialog, source_caption
 

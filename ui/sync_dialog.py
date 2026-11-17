@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from password_vault import VaultError
+from browser.password_vault import VaultError
 from ui.html_dialog import HtmlSettingsDialog
 
 

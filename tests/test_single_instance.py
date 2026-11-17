@@ -14,14 +14,14 @@ from PyQt6.QtNetwork import QLocalSocket
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 import main
-from browser_window import BrowserWindow
-from single_instance import InstanceServer, launch_urls, request_existing
+from browser.browser_window import BrowserWindow
+from browser.single_instance import InstanceServer, launch_urls, request_existing
 
 ROOT = Path(__file__).resolve().parent.parent
 CLIENT = """
 import sys
 from PyQt6.QtCore import QCoreApplication
-from single_instance import request_existing
+from browser.single_instance import request_existing
 app = QCoreApplication([])
 sys.exit(0 if request_existing(sys.argv[1], sys.argv[2:]) else 3)
 """

@@ -13,7 +13,7 @@ from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 
 TALL = (
     b"<title>tall</title><style>body{margin:0}div{height:3000px;width:600px;"
@@ -136,7 +136,9 @@ class ScreenshotTests(unittest.TestCase):
         from ui import page_screenshot
 
         holder = self.tab.page().profile()
-        tools = __import__("webengine").Page(holder, self.window)
+        tools = __import__("browser.webengine", fromlist=["Page"]).Page(
+            holder, self.window
+        )
         self.tab.page().setDevToolsPage(tools)
         messages = []
         capture = page_screenshot.FullPageCapture(self.tab.page(), self.window)

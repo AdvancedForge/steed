@@ -3,7 +3,7 @@
 from PyQt6.QtCore import QObject, Qt, QUrl
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton
 
-from extensions import icon_from, inspect, store_id
+from browser.extensions import icon_from, inspect, store_id
 
 
 def confirm(window, details) -> bool:

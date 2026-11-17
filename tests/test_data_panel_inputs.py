@@ -10,7 +10,12 @@ import test_data_panels as panels
 from PyQt6 import sip
 from PyQt6.QtWidgets import QDialogButtonBox, QLineEdit, QPlainTextEdit, QPushButton
 
-from data_panel_format import FORM_EXAMPLE, form_values, parse_panel, widget_content
+from browser.data_panel_format import (
+    FORM_EXAMPLE,
+    form_values,
+    parse_panel,
+    widget_content,
+)
 from ui.data_panels import DataPanelReviewDialog
 
 

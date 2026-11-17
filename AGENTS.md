@@ -21,7 +21,7 @@ Run from the repository root:
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 ./steed
-.venv/bin/python install_launcher.py
+.venv/bin/python -m browser.install_launcher
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 .venv/bin/python -m unittest discover -s tests -v

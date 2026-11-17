@@ -166,7 +166,7 @@ class DictationDialog(QDialog):
         if not dictation.local_available():
             self.model_status.setText(
                 "First install the speech engine: run .venv/bin/python -m pip "
-                "install -r requirements-dictation.txt in Steed's folder, then "
+                "install -r requirements/dictation.txt in Steed's folder, then "
                 "start Steed again."
             )
         elif self.models.downloading(model):

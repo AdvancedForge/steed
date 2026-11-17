@@ -10,7 +10,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from PyQt6.QtWebEngineCore import QWebEnginePage
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 
 
 class DevToolsTests(unittest.TestCase):

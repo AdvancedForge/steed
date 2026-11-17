@@ -270,7 +270,7 @@ class LocalEngine(QObject):
 
     result = pyqtSignal(int, str)  # request id, text
     failed = pyqtSignal(str)
-    WORKER = Path(__file__).resolve().parents[1] / "dictation_worker.py"
+    WORKER = Path(__file__).resolve().parents[1] / "browser" / "dictation_worker.py"
 
     def __init__(self, parent=None):
         super().__init__(parent)

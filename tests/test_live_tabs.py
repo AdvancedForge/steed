@@ -8,7 +8,7 @@ from PyQt6.QtCore import QEvent, Qt, QUrl
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services.page_inspector import PageInspectionError
 from services.task_client import TaskClient
 from services.task_policy import TaskPermissionError, TaskScope

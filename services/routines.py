@@ -20,8 +20,8 @@ from uuid import uuid4
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
 
-import webengine
-from utils import load_json, save_json
+from browser import webengine
+from browser.utils import load_json, save_json
 
 TICK_MS = 30000
 MAX_ROUTINES = 30

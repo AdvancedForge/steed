@@ -38,7 +38,7 @@ from recipe_support import (
 from test_recipe_oauth import OAuthHttp
 from test_task_profiles import TaskProfileTests
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services.connector_recipes import (
     RECIPE_CONTINUATION_EXAMPLE,
     RECIPE_IDENTITY_EXAMPLE,

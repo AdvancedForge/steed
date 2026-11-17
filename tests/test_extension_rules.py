@@ -14,9 +14,9 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import extension_build
-from browser_window import BrowserWindow
-from extension_rules import Rule, url_filter
+from browser import extension_build
+from browser.browser_window import BrowserWindow
+from browser.extension_rules import Rule, url_filter
 
 
 def request(url, kind="image", initiator="site.test", method="get", page=""):
@@ -32,7 +32,7 @@ def request(url, kind="image", initiator="site.test", method="get", page=""):
 
 class MatchingTests(unittest.TestCase):
     def rules(self, *raws):
-        from extension_rules import ExtensionRules
+        from browser.extension_rules import ExtensionRules
 
         store = ExtensionRules(None)
         store.loaded.add("p")
@@ -193,7 +193,7 @@ class MatchingTests(unittest.TestCase):
 
     def test_large_packaged_rulesets_stay_fast(self):
         """Content blockers ship tens of thousands of rules."""
-        from extension_rules import ExtensionRules
+        from browser.extension_rules import ExtensionRules
 
         raws = [
             {
@@ -229,7 +229,7 @@ class MatchingTests(unittest.TestCase):
         )
 
     def test_rules_are_filed_by_whole_words_without_missing_any(self):
-        from extension_rules import Index, _bounded_word
+        from browser.extension_rules import Index, _bounded_word
 
         self.assertEqual(_bounded_word("/ads/banner", False, False), "ads")
         self.assertIsNone(
@@ -287,7 +287,7 @@ class MatchingTests(unittest.TestCase):
         self.assertNotIn(3, found("https://cdn.test/a.js", "other.test"))
 
     def test_bad_rules_are_refused_whole(self):
-        from extension_rules import ExtensionRules
+        from browser.extension_rules import ExtensionRules
 
         class Folder:
             def __init__(self, path):

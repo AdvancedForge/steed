@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from session_history import describe
+from browser.session_history import describe
 from ui.html_dialog import HtmlSettingsDialog
 
 

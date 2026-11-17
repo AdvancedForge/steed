@@ -75,7 +75,7 @@ After installing dependencies, register this checkout in your Linux application
 menu once:
 
 ```bash
-.venv/bin/python install_launcher.py
+.venv/bin/python -m browser.install_launcher
 ```
 
 Open **Steed** from the applications menu, and pin it to your panel if desired.
@@ -137,12 +137,12 @@ proprietary codecs and swaps it into `.venv`; Steed's code does not change.
 The build is for use on this computer, not for redistribution.
 
 ```bash
-.venv/bin/python build_codecs.py check     # prints the apt command for missing packages
-.venv/bin/python build_codecs.py build     # hours; run again to continue after a stop
-.venv/bin/python build_codecs.py install   # backs up the PyPI files, then swaps
-.venv/bin/python build_codecs.py status    # which engine is in use and what plays
-.venv/bin/python build_codecs.py restore   # put the PyPI engine back
-.venv/bin/python build_codecs.py clean     # free the build's disk space
+.venv/bin/python -m browser.build_codecs check     # prints the apt command for missing packages
+.venv/bin/python -m browser.build_codecs build     # hours; run again to continue after a stop
+.venv/bin/python -m browser.build_codecs install   # backs up the PyPI files, then swaps
+.venv/bin/python -m browser.build_codecs status    # which engine is in use and what plays
+.venv/bin/python -m browser.build_codecs restore   # put the PyPI engine back
+.venv/bin/python -m browser.build_codecs clean     # free the build's disk space
 ```
 
 Steed works without it; only videos that come solely as H.264/AAC need it. The
@@ -207,11 +207,11 @@ below. The check sends nothing about your browsing.
 without risking the working setup:
 
 ```bash
-.venv/bin/python upgrade_engine.py check      # installed and newest versions
-.venv/bin/python upgrade_engine.py try        # .venv-upgrade: install and test
-.venv/bin/python upgrade_engine.py try --quick --compare before.json
-.venv/bin/python upgrade_engine.py apply      # pin and install what passed
-.venv/bin/python upgrade_engine.py rollback   # versions from before apply
+.venv/bin/python -m browser.upgrade_engine check      # installed and newest versions
+.venv/bin/python -m browser.upgrade_engine try        # .venv-upgrade: install and test
+.venv/bin/python -m browser.upgrade_engine try --quick --compare before.json
+.venv/bin/python -m browser.upgrade_engine apply      # pin and install what passed
+.venv/bin/python -m browser.upgrade_engine rollback   # versions from before apply
 ```
 
 `try` installs the newest releases into `.venv-upgrade` (never `.venv`) and
@@ -1184,11 +1184,11 @@ environment under `~/src/steed-libretranslate`, with CPU-only packages, and
 points Steed's setting at it:
 
 ```bash
-.venv/bin/python setup_translation.py install --languages en,de,fr
-.venv/bin/python setup_translation.py start     # http://127.0.0.1:5000, this computer only
-.venv/bin/python setup_translation.py status
-.venv/bin/python setup_translation.py stop
-.venv/bin/python setup_translation.py uninstall # removes it and clears the setting
+.venv/bin/python -m browser.setup_translation install --languages en,de,fr
+.venv/bin/python -m browser.setup_translation start     # http://127.0.0.1:5000, this computer only
+.venv/bin/python -m browser.setup_translation status
+.venv/bin/python -m browser.setup_translation stop
+.venv/bin/python -m browser.setup_translation uninstall # removes it and clears the setting
 ```
 
 Each language's model downloads the first time it starts (about 100 MB each);
@@ -1519,7 +1519,7 @@ Say "new line" or "new paragraph" for breaks (single-line fields get a space).
   | Parakeet 0.6B v3 | 487 MB | Best accuracy, 25 European languages |
 
   This needs the speech engine package once:
-  `.venv/bin/python -m pip install -r requirements-dictation.txt`.
+  `.venv/bin/python -m pip install -r requirements/dictation.txt`.
   The model runs in a separate process (`dictation_worker.py`) so the browser
   never stutters; on an i3-1315U, Moonshine base writes down a 4-second
   sentence in about 0.2 s.
@@ -2012,9 +2012,9 @@ Browser/
 │   └── task_service.py     # Application-owned task/session coordination
 ├── codec_test.html         # Local media/codec fixture
 ├── agent_mcp.py            # Optional stdio/HTTP adapter into the running browser
-├── requirements-mcp.txt    # Optional official MCP SDK dependency
+├── requirements/mcp.txt    # Optional official MCP SDK dependency
 ├── dictation_worker.py     # On-device speech recognizer process (sherpa-onnx)
-├── requirements-dictation.txt # Optional on-device dictation engine
+├── requirements/dictation.txt # Optional on-device dictation engine
 ├── ui/
 │   ├── address_bar.py     # Address bar widget
 │   ├── dictation.py       # Push-to-talk, the listening pill, inserting the words
@@ -3260,13 +3260,13 @@ The user selected the optional maintained bundle. **`documents-v1` is implemente
 [Pillow 12.3.0](https://pypi.org/project/pillow/12.3.0/) for images. Its pinned
 dependencies are charset-normalizer 3.5.2, et-xmlfile 2.0.0 and defusedxml 0.7.1.
 `worker_bundle.lock.json` records exact wheel URLs, sizes and hashes;
-`requirements-worker.txt` provides the corresponding hash lock. Browser dependencies
+`requirements/worker.txt` provides the corresponding hash lock. Browser dependencies
 and basic browsing remain unchanged; do not install that lock into Steed's venv.
 
 Run once from the repository root:
 
 ```bash
-.venv/bin/python install_worker_bundle.py
+.venv/bin/python -m browser.install_worker_bundle
 ```
 
 The command downloads only the locked wheels using pip's isolated configuration,
@@ -4224,7 +4224,7 @@ provider verifies that account setup and task policy do not depend on Google.
 To configure Google:
 
 1. Install the optional dependency in Steed's virtual environment:
-   `.venv/bin/python -m pip install -r requirements-apps.txt`.
+   `.venv/bin/python -m pip install -r requirements/apps.txt`.
    Your Linux desktop needs a working Secret Service keyring, such as GNOME
    Keyring or a Secret Service provider you already use. Steed has no plaintext
    credential fallback. This is separate from the website password vault.
@@ -4878,7 +4878,7 @@ process. Local access is off when the browser starts.
 1. Install the optional dependencies from the repository root:
 
    ```bash
-   .venv/bin/python -m pip install -r requirements-mcp.txt
+   .venv/bin/python -m pip install -r requirements/mcp.txt
    ```
 
 2. Start Steed and select **Agents → Enable Local Agent Access**. This enables
@@ -5042,7 +5042,7 @@ checks use temporary profiles and synthetic messages in
    uses its App Server protocol and bundled code runtime. Older runtimes
    may be incompatible; failed setup leaves a cancelled, read-only task.
 2. Install Steed's optional adapter dependencies:
-   `.venv/bin/python -m pip install -r requirements-mcp.txt`.
+   `.venv/bin/python -m pip install -r requirements/mcp.txt`.
 3. Open **Agents → Agent Sidebar** (`Ctrl+Shift+A`) and choose **Start** with Codex
    (or the **+**).
    This explicitly enables local agent access for this browser run and starts a
@@ -5993,7 +5993,7 @@ script execution results, and `tested_routes_contained`. Exit zero means its
 positive controls and scriptless checks completed; it does not approve scripts.
 The current forced-script probes report `tested_routes_contained: false`.
 
-The optional MCP smoke requires `requirements-mcp.txt`. It runs an SDK client
+The optional MCP smoke requires `requirements/mcp.txt`. It runs an SDK client
 and a separate JSON-RPC client against a temporary, synthetic signed-in profile.
 The fixture alone clicks the approval popup and invokes trusted cancellation.
 It checks native edits/submission/downloads/uploads, watch/user handoff/return, blocked agent

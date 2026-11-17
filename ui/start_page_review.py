@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from browser.start_page_format import state_digest
 from services.task_policy import TaskPermissionError
-from start_page_format import state_digest
 from ui.html_dialog import HtmlSettingsDialog
 
 

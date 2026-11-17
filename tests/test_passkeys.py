@@ -15,9 +15,8 @@ import nacl.utils
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import passkeys
-import webengine
-from browser_window import BrowserWindow
+from browser import passkeys, webengine
+from browser.browser_window import BrowserWindow
 
 
 class Page(BaseHTTPRequestHandler):
@@ -115,7 +114,7 @@ class RulesTests(unittest.TestCase):
 
 class VaultTests(unittest.TestCase):
     def test_passkeys_are_sealed_kept_and_replaced_per_account(self):
-        import password_vault as pv
+        from browser import password_vault as pv
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "passwords.vault"
@@ -202,7 +201,7 @@ class CeremonyTests(unittest.TestCase):
         keep_directory(self.directory)
         self.patches = [
             patch("pathlib.Path.home", return_value=Path(self.directory.name)),
-            patch("password_service.KeyStore", FakeKeys),
+            patch("browser.password_service.KeyStore", FakeKeys),
             patch("ui.passkey_prompt.confirm_new_passkey", return_value="steed"),
             patch(
                 "ui.passkey_prompt.choose_passkey",

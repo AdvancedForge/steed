@@ -9,9 +9,9 @@ from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from PyQt6.QtTest import QTest
 from qt_test_support import application, keep_directory
 
-import search_keywords
-from browser_window import BrowserWindow
-from browsing_history import HistoryEntry
+from browser import search_keywords
+from browser.browser_window import BrowserWindow
+from browser.browsing_history import HistoryEntry
 
 
 class Config(dict):

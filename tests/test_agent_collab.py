@@ -12,7 +12,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 from test_ask_agent import FakeSidebar
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services import agent_once
 from services.watches import then_prompt
 from ui.compare_tabs import CompareDialog, comparison

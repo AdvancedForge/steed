@@ -12,7 +12,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent
 from PyQt6.QtGui import QColor, QImage
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 
 
 def jpeg(color, folder):

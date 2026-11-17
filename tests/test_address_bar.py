@@ -126,7 +126,7 @@ class ToolbarStyleTests(unittest.TestCase):
         ]
 
     def test_suggestions_rank_action_tabs_bookmarks_then_history(self):
-        from browsing_history import HistoryEntry
+        from browser.browsing_history import HistoryEntry
 
         self.bar.set_search_name("DuckDuckGo")
         self.bar.set_history(
@@ -161,7 +161,7 @@ class ToolbarStyleTests(unittest.TestCase):
         self.assertEqual(navigated, ["mail"])
 
     def test_suggestions_are_bounded_and_keep_the_active_page_out(self):
-        from browsing_history import HistoryEntry
+        from browser.browsing_history import HistoryEntry
 
         self.bar.set_history(
             [HistoryEntry(f"https://site{i}.example/", f"Site {i}") for i in range(30)]

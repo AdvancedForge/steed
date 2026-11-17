@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from PyQt6.QtCore import QUrl
 
-from data_panel_format import stable_id
+from browser.data_panel_format import stable_id
 from services.command_broker import require_owner_thread
 from services.task_policy import TaskPermissionError
 from services.watches import INTERVAL_LABELS, INTERVALS

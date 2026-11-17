@@ -11,10 +11,15 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWebEngineCore import QWebEngineSettings
 
-from browser_window import BrowserWindow
-from layout_components import PANEL_ACTIONS
-from layout_format import LAYOUT_EXAMPLE, PANEL_EXAMPLE, export_layout, parse_layout
-from layout_preferences import LayoutPreferences
+from browser.browser_window import BrowserWindow
+from browser.layout_components import PANEL_ACTIONS
+from browser.layout_format import (
+    LAYOUT_EXAMPLE,
+    PANEL_EXAMPLE,
+    export_layout,
+    parse_layout,
+)
+from browser.layout_preferences import LayoutPreferences
 from ui.layout_panel import QuickActionsPanel
 from ui.layout_panel_editor import PanelEditor
 

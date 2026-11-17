@@ -7,7 +7,7 @@ import test_task_profiles as fixtures
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWidgets import QApplication
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from ui.web_chat import WebChatPromptDialog
 
 

@@ -12,7 +12,7 @@ import test_data_panels as panels
 from app_connector_support import MemorySecrets
 from recipe_support import TOKEN, SyntheticRecipeHttp, recipe
 
-from data_panel_format import parse_panel
+from browser.data_panel_format import parse_panel
 from services.app_accounts import AccountStore
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService

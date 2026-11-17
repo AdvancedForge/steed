@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-import crash_log
+from browser import crash_log
 
 
 class CrashPanel(QFrame):

@@ -18,16 +18,16 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from qt_test_support import WAIT_SECONDS, application
 
-import webengine
+from browser import webengine
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP = {".venv", ".git", "tests", "__pycache__", ".claude", "examples"}
 DIRECT_ENGINE_FILES = {
-    "ad_blocker.py",
-    "browser_window.py",
-    "cookie_snapshot.py",
-    "engine_features.py",
-    "profile_manager.py",
+    "browser/ad_blocker.py",
+    "browser/browser_window.py",
+    "browser/cookie_snapshot.py",
+    "browser/engine_features.py",
+    "browser/profile_manager.py",
     "services/browser_backend.py",
     "services/permission_service.py",
     "services/start_pages.py",
@@ -81,7 +81,7 @@ class EngineBoundaryTests(unittest.TestCase):
         found = {
             name
             for name, tree in sources()
-            if name != "webengine.py" and imports_engine(tree)
+            if name != "browser/webengine.py" and imports_engine(tree)
         }
         self.assertEqual(
             found - DIRECT_ENGINE_FILES,
@@ -97,7 +97,7 @@ class EngineBoundaryTests(unittest.TestCase):
     def test_wrapped_engine_calls_stay_in_webengine(self):
         uses = []
         for name, tree in sources():
-            if name == "webengine.py":
+            if name == "browser/webengine.py":
                 continue
             for node in ast.walk(tree):
                 if isinstance(node, ast.Attribute) and node.attr in WRAPPED:

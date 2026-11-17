@@ -9,9 +9,9 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import memory_modes
-from browser_window import BrowserWindow
-from config import Config
+from browser import memory_modes
+from browser.browser_window import BrowserWindow
+from browser.config import Config
 
 
 class StoredModeTests(unittest.TestCase):
@@ -96,7 +96,8 @@ class SharingOnDemandTests(test_browser.BrowserTests):
 
     def setUp(self):
         self.on_demand = patch(
-            "profile_manager.ProfileRegistry._inspect_on_demand", return_value=True
+            "browser.profile_manager.ProfileRegistry._inspect_on_demand",
+            return_value=True,
         )
         self.on_demand.start()
         super().setUp()

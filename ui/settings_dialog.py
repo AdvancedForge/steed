@@ -6,10 +6,10 @@ from secrets import token_hex
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QDialog, QVBoxLayout
 
-from config import DEFAULT_SEARCH_ENGINE, Config
+from browser.config import DEFAULT_SEARCH_ENGINE, Config
+from browser.utils import sanitize_profile_name
+from browser.webengine import user_agent_mismatch
 from ui.html_surface import HtmlSurface
-from utils import sanitize_profile_name
-from webengine import user_agent_mismatch
 
 DEFAULTS = {
     "home_page": "steed:newtab",
@@ -92,7 +92,7 @@ class SettingsDialog(QDialog):
         self._error = ""
         self._notice = ""
         try:
-            import default_browser
+            from browser import default_browser
 
             self._default_browser = default_browser.is_default()
         except OSError:
@@ -271,7 +271,7 @@ class SettingsDialog(QDialog):
             raise ValueError("Choose where Developer Tools open.")
         if values["visual_effects"] not in ("full", "balanced", "minimal"):
             raise ValueError("Choose how much motion and light Steed shows.")
-        from page_translation import check_settings
+        from browser.page_translation import check_settings
 
         check_settings(
             values["translate_service"].strip(), values["translate_language"].strip()
@@ -476,7 +476,7 @@ class SettingsDialog(QDialog):
             elif action == "cancel_review":
                 self._review = None
             elif action == "make_default":
-                import default_browser
+                from browser import default_browser
 
                 try:
                     self._notice = default_browser.make_default()

@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+from browser.utils import save_json
 from services.task_policy import origin_url
-from utils import save_json
 
 FEATURES = {
     "MediaAudioCapture": ("Microphone", "Use your microphone."),

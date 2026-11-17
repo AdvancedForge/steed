@@ -12,9 +12,9 @@ from PyQt6.QtGui import QColor, QFontDatabase, QIcon, QPixmap
 from PyQt6.QtWidgets import QApplication
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
+from browser.webengine import UI_FONT
 from ui import lumen
-from webengine import UI_FONT
 
 
 def solid_icon(color):
@@ -144,8 +144,8 @@ class EditableTests(unittest.TestCase):
     def test_an_agent_patches_only_the_lumen_keys_it_names(self):
         import json
 
+        from browser.start_page_format import parse_page
         from services.page_style import DEFAULTS, clean_style
-        from start_page_format import parse_page
 
         current = clean_style(
             {**DEFAULTS, "lumen": {"card_radius": 20, "font": "system"}}

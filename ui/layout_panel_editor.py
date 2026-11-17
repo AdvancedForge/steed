@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from layout_components import (
+from browser.layout_components import (
     DEFAULT_PANEL_ACTIONS,
     MAX_PANEL_ACTIONS,
     MAX_PANELS,
@@ -26,7 +26,7 @@ from layout_components import (
     PANEL_PLACEMENTS,
     clean_panels,
 )
-from layout_preferences import clean_name
+from browser.layout_preferences import clean_name
 
 
 class PanelEditor(QGroupBox):

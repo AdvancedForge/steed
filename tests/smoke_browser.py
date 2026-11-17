@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import QApplication
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import main  # noqa: E402
-from browser_window import BrowserWindow  # noqa: E402
-from config import Config  # noqa: E402
+from browser.browser_window import BrowserWindow  # noqa: E402
+from browser.config import Config  # noqa: E402
 
 
 def smoke_test() -> None:
@@ -69,7 +69,9 @@ def smoke_test() -> None:
             config = Config()
             config.set(
                 "home_page",
-                (Path(__file__).resolve().parents[1] / "codec_test.html").as_uri(),
+                (
+                    Path(__file__).resolve().parent / "fixtures" / "codec_test.html"
+                ).as_uri(),
             )
             with patch.object(
                 main, "QApplication", side_effect=create_application

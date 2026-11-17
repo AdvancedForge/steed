@@ -20,9 +20,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from browser_window import BrowserWindow, reorder_menus
-from config import Config
-from layout_preferences import (
+from browser.browser_window import BrowserWindow, reorder_menus
+from browser.config import Config
+from browser.layout_preferences import (
     LAYOUT_VERSION,
     MAX_LAYOUT_NAME,
     MAX_NAMED_LAYOUTS,

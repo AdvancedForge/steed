@@ -11,6 +11,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtNetwork import QLocalServer
 
+from browser.utils import save_json
 from services.agent_tools import (
     REQUEST_LIMIT,
     RESPONSE_LIMIT,
@@ -19,7 +20,6 @@ from services.agent_tools import (
 )
 from services.command_broker import require_owner_thread
 from services.task_store import ACTIVE_STATUSES
-from utils import save_json
 
 # A disconnected client may resume its task for five minutes.
 RESUME_GRACE_MS = 5 * 60 * 1000

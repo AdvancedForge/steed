@@ -12,7 +12,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from data_panel_format import stable_id
+from browser.data_panel_format import stable_id
 from services.command_broker import require_owner_thread
 from services.routines import DAYS, EVERY_HOURS, check, describe
 from services.task_policy import TaskPermissionError

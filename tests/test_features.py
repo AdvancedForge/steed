@@ -10,11 +10,11 @@ from PyQt6.QtCore import QUrl
 from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineUrlRequestInfo
 
-from ad_blocker import AdBlocker, FilterEngine, FilterInterceptor
-from browser_window import BrowserPage
-from config import Config
-from cookie_sharing import CookieSharing, cookie_key
-from cookie_snapshot import (
+from browser.ad_blocker import AdBlocker, FilterEngine, FilterInterceptor
+from browser.browser_window import BrowserPage
+from browser.config import Config
+from browser.cookie_sharing import CookieSharing, cookie_key
+from browser.cookie_snapshot import (
     COOLDOWN_MS,
     MAX_COOLDOWN_RETRIES,
     MAX_POLL_ATTEMPTS,
@@ -22,10 +22,10 @@ from cookie_snapshot import (
     VERIFIED_AGAINST_QT,
     CookieSnapshot,
 )
-from download_manager import DownloadManager
-from tab_manager import ClosedTabHistory, TabState
-from utils import load_json, save_json
-from webengine import (
+from browser.download_manager import DownloadManager
+from browser.tab_manager import ClosedTabHistory, TabState
+from browser.utils import load_json, save_json
+from browser.webengine import (
     GOOGLE_LOGIN_USER_AGENT,
     SiteCompatibilityInterceptor,
     google_login_user_agent,
@@ -98,7 +98,7 @@ class CookieSnapshotPolicyTests(unittest.TestCase):
 
     def test_target_unavailable_retries_are_bounded(self):
         snapshot = self.snapshot()
-        with patch("cookie_snapshot.QTimer.singleShot") as scheduled:
+        with patch("browser.cookie_snapshot.QTimer.singleShot") as scheduled:
             for attempt in range(MAX_COOLDOWN_RETRIES + 1):
                 snapshot.refresh()
                 snapshot.accept_result({"error": "Inspection target unavailable"})
@@ -110,7 +110,7 @@ class CookieSnapshotPolicyTests(unittest.TestCase):
 
     def test_timeouts_retry_then_report_failure(self):
         snapshot = self.snapshot()
-        with patch("cookie_snapshot.QTimer.singleShot") as scheduled:
+        with patch("browser.cookie_snapshot.QTimer.singleShot") as scheduled:
             snapshot.refresh()
             for attempt in range(MAX_TIMEOUT_RETRIES + 1):
                 snapshot.attempts = MAX_POLL_ATTEMPTS
@@ -184,7 +184,7 @@ class FeatureTests(unittest.TestCase):
                 self.assertEqual(google_login_user_agent(QUrl(url)), expected)
 
     def test_google_login_compatibility_is_independent_of_adblock_settings(self):
-        with patch("ad_blocker.QNetworkAccessManager"):
+        with patch("browser.ad_blocker.QNetworkAccessManager"):
             service = AdBlocker(self.config)
         service.engine = Mock()
         service.engine.blocked.return_value = False
@@ -221,7 +221,7 @@ class FeatureTests(unittest.TestCase):
         info.setHttpHeader.assert_not_called()
 
     def test_google_compatibility_keeps_network_filtering_active(self):
-        with patch("ad_blocker.QNetworkAccessManager"):
+        with patch("browser.ad_blocker.QNetworkAccessManager"):
             service = AdBlocker(self.config)
         service.engine = Mock()
         service.engine.blocked.return_value = True
@@ -241,12 +241,12 @@ class FeatureTests(unittest.TestCase):
         page.site_compatibility = SiteCompatibilityInterceptor(self.config)
         page.site_compatibility.last_main_method = b"GET"
         target = QUrl("https://accounts.google.com/signin?continue=fixture")
-        with patch("browser_window.QTimer.singleShot") as timer:
+        with patch("browser.browser_window.QTimer.singleShot") as timer:
             accepted = BrowserPage.acceptNavigationRequest(
                 page, target, QWebEnginePage.NavigationType.NavigationTypeRedirect, True
             )
         self.assertFalse(accepted)
-        with patch("browser_window.sip.isdeleted", return_value=False):
+        with patch("browser.browser_window.sip.isdeleted", return_value=False):
             timer.call_args.args[1]()
         page.setUrl.assert_called_once_with(target)
 
@@ -257,7 +257,7 @@ class FeatureTests(unittest.TestCase):
         for method, is_main_frame in ((b"POST", True), (b"GET", False)):
             with self.subTest(method=method, is_main_frame=is_main_frame):
                 page.site_compatibility.last_main_method = method
-                with patch("browser_window.QTimer.singleShot") as timer:
+                with patch("browser.browser_window.QTimer.singleShot") as timer:
                     accepted = BrowserPage.acceptNavigationRequest(
                         page,
                         target,
@@ -276,9 +276,9 @@ class FeatureTests(unittest.TestCase):
             return Mock(start=target)
 
         with (
-            patch("ad_blocker.FilterEngine", side_effect=[bootstrap, cached]),
-            patch("ad_blocker.threading.Thread", side_effect=immediate_worker),
-            patch("ad_blocker.QNetworkAccessManager"),
+            patch("browser.ad_blocker.FilterEngine", side_effect=[bootstrap, cached]),
+            patch("browser.ad_blocker.threading.Thread", side_effect=immediate_worker),
+            patch("browser.ad_blocker.QNetworkAccessManager"),
         ):
             service = AdBlocker(self.config)
         self.assertIs(service.engine, cached)
@@ -295,11 +295,11 @@ class FeatureTests(unittest.TestCase):
 
         with (
             patch(
-                "ad_blocker.FilterEngine",
+                "browser.ad_blocker.FilterEngine",
                 side_effect=[bootstrap, ValueError("Invalid cached list")],
             ),
-            patch("ad_blocker.threading.Thread", side_effect=immediate_worker),
-            patch("ad_blocker.QNetworkAccessManager"),
+            patch("browser.ad_blocker.threading.Thread", side_effect=immediate_worker),
+            patch("browser.ad_blocker.QNetworkAccessManager"),
         ):
             service = AdBlocker(self.config)
         self.assertIs(service.engine, bootstrap)

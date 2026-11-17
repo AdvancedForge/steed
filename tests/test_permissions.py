@@ -8,7 +8,7 @@ from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWidgets import QDialog
 
-from browser_window import BrowserWindow, QWebEnginePermission
+from browser.browser_window import BrowserWindow, QWebEnginePermission
 from services.permission_service import PermissionService
 
 
@@ -23,7 +23,7 @@ class PermissionTests(unittest.TestCase):
             featurePermissionRequested=Mock(),
             fullScreenRequested=Mock(),
         )
-        with patch("browser_window.QWebEnginePermission", None):
+        with patch("browser.browser_window.QWebEnginePermission", None):
             BrowserWindow._connect_page_signals(self.window, page)
         callback = page.featurePermissionRequested.connect.call_args.args[0]
         feature = QWebEnginePage.Feature.MediaAudioCapture
@@ -56,7 +56,7 @@ class PermissionTests(unittest.TestCase):
             with self.subTest(allowed=allowed):
                 page.reset_mock()
                 self.window._ask_permission.return_value = allowed
-                with patch("browser_window.sip.isdeleted", return_value=False):
+                with patch("browser.browser_window.sip.isdeleted", return_value=False):
                     BrowserWindow._resolve_feature_permission(
                         self.window, page, self.origin, feature
                     )
@@ -117,7 +117,7 @@ class PermissionTests(unittest.TestCase):
 
     def test_page_deleted_during_prompt_receives_no_response(self):
         page = Mock()
-        with patch("browser_window.sip.isdeleted", side_effect=[False, True]):
+        with patch("browser.browser_window.sip.isdeleted", side_effect=[False, True]):
             BrowserWindow._resolve_feature_permission(
                 self.window, page, self.origin, QWebEnginePage.Feature.Notifications
             )
@@ -141,7 +141,7 @@ class PermissionTests(unittest.TestCase):
                         "allowed",
                         return_value=False,
                     ),
-                    patch("browser_window.SitePermissionDialog") as question,
+                    patch("browser.browser_window.SitePermissionDialog") as question,
                 ):
                     question.return_value.exec.return_value = (
                         QDialog.DialogCode.Rejected

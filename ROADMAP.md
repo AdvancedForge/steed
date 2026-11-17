@@ -1896,7 +1896,7 @@ Document bundle milestone: the optional maintained `documents-v1` worker creates
 PDFs, XLSX spreadsheets and images. Its pinned wheels live outside browser Python;
 each run verifies/copies them into a read-only sandbox mount. Package approvals
 also bind the selected environment. Install once with
-`.venv/bin/python install_worker_bundle.py`, then refresh Workers setup discovery.
+`.venv/bin/python -m browser.install_worker_bundle`, then refresh Workers setup discovery.
 
 Local-worker milestone: approved agent-built Python packages generate attachments
 and compose existing app adapters through the task broker. The automatic package

@@ -344,7 +344,7 @@ class WebSpeech(QObject):
 
     @staticmethod
     def _send(tab, url, session, kind, **values):
-        from webengine import PAGE_WORLD, run_script
+        from browser.webengine import PAGE_WORLD, run_script
 
         if sip.isdeleted(tab) or tab.url() != url:
             return

@@ -107,7 +107,7 @@ class AgentSetupDialog(HtmlSettingsDialog):
                         "pip",
                         "install",
                         "-r",
-                        str(repository / "requirements-mcp.txt"),
+                        str(repository / "requirements" / "mcp.txt"),
                     ]
                 )
             )

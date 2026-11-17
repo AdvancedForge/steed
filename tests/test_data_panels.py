@@ -11,10 +11,10 @@ import test_task_profiles as profiles
 from PyQt6 import sip
 from PyQt6.QtWidgets import QPlainTextEdit
 
-from browser_window import BrowserWindow
-from data_panel_format import PANEL_EXAMPLE, parse_panel, widget_content
-from layout_format import export_layout
-from layout_preferences import preferences_from_config
+from browser.browser_window import BrowserWindow
+from browser.data_panel_format import PANEL_EXAMPLE, parse_panel, widget_content
+from browser.layout_format import export_layout
+from browser.layout_preferences import preferences_from_config
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
 from ui.data_panels import DataPanelReviewDialog

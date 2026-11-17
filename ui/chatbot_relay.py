@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-import webengine
+from browser import webengine
 from services.chatbot_protocol import RelayError, encode
 from services.chatbot_relay import ChatbotRelay
 from ui.html_dialog import HtmlSettingsDialog

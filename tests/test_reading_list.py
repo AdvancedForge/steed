@@ -11,8 +11,8 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from reading_list import ReadingList
+from browser.browser_window import BrowserWindow
+from browser.reading_list import ReadingList
 
 TEXT = "A long and calm paragraph of article text that keeps going for a while. " * 3
 ARTICLE = (

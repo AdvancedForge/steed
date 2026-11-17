@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from layout_format import parse_layout
+from browser.layout_format import parse_layout
 from services.command_broker import require_owner_thread
 from services.task_policy import TaskPermissionError
 
@@ -159,7 +159,7 @@ class LayoutProposals:
 
     def resolve(self, task_id, request_id, *, approve=False, base=None):
         """Trusted UI only; the broker exposes no approval command."""
-        from layout_preferences import preferences_from_config
+        from browser.layout_preferences import preferences_from_config
 
         require_owner_thread(self.service)
         self.service._usable()

@@ -11,8 +11,8 @@ from PyQt6.QtGui import QKeySequence
 from PyQt6.QtWidgets import QApplication
 from qt_test_support import application, keep_directory
 
-import shortcuts
-from browser_window import BrowserWindow
+from browser import shortcuts
+from browser.browser_window import BrowserWindow
 from ui.shortcuts_dialog import ShortcutsDialog
 
 

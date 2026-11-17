@@ -12,8 +12,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from browsing_history import HistoryEntry
-from layout_preferences import TOOLBAR_ORDER, clean_toolbar_order
+from browser.browsing_history import HistoryEntry
+from browser.layout_preferences import TOOLBAR_ORDER, clean_toolbar_order
 from ui.chrome_style import (
     chrome_colors,
     icon,
@@ -472,7 +472,7 @@ class AddressBar(QWidget):
             add("search", f"Search {self.search_name} for “{text}”", text)
             if getattr(self, "remote_enabled", False):
                 if not hasattr(self, "remote"):
-                    from search_suggestions import SearchSuggestions
+                    from browser.search_suggestions import SearchSuggestions
 
                     self.remote = SearchSuggestions(self)
                     self.remote.ready.connect(self._remote_ready)

@@ -6,7 +6,7 @@ from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
-import webengine
+from browser import webengine
 
 SIDES = ("right", "bottom", "window")
 DEFAULT_SIDE = "right"

@@ -11,8 +11,8 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from download_manager import DownloadRecord
+from browser.browser_window import BrowserWindow
+from browser.download_manager import DownloadRecord
 from ui.download_dialog import reveal_file
 
 BODY = bytes(range(256)) * 400  # 100 KB
@@ -158,7 +158,7 @@ class DownloadExtrasTests(unittest.TestCase):
         self.assertEqual(tab.url().toString(), self.origin + "/page")
 
     def test_local_pages_still_cannot_read_the_web(self):
-        import webengine
+        from browser import webengine
 
         tab = self.local_page(
             "<script>window.got = 'waiting'; fetch('"
@@ -190,7 +190,7 @@ class DownloadExtrasTests(unittest.TestCase):
 
         from PyQt6.QtWidgets import QMenu
 
-        import webengine
+        from browser import webengine
 
         tab = self.local_page("<p>x")
         menu = QMenu()
@@ -322,7 +322,7 @@ class PrivateDownloadTests(unittest.TestCase):
     def test_incognito_downloads_never_reach_the_history_file(self):
         import json
 
-        from download_manager import DownloadManager
+        from browser.download_manager import DownloadManager
 
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

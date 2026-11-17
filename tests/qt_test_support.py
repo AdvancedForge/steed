@@ -8,7 +8,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, Qt
 from PyQt6.QtWidgets import QApplication
 
-from webengine import prepare_engine_environment
+from browser.webengine import prepare_engine_environment
 
 _application = None
 _directories = []
@@ -37,8 +37,8 @@ def application():
         photos.COMMONS_URL = "http://127.0.0.1:9/commons?{letter}"
         # Nor dangerous-site lists; and a program download is kept without
         # asking (test_safety asks).
-        import download_manager
         import services.safe_browsing as safety
+        from browser import download_manager
 
         safety.BASE = "http://127.0.0.1:9/"
         safety.LISTS = {kind: safety.BASE + kind for kind in safety.LISTS}
@@ -66,7 +66,7 @@ def keep_directory(directory):
 def shutdown():
     global _application
     if _application is not None and not sip.isdeleted(_application):
-        from qt_cleanup import release_leftovers
+        from browser.qt_cleanup import release_leftovers
 
         release_leftovers(_application)
         sip.delete(_application)
