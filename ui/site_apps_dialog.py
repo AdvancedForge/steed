@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from site_apps import SiteApps
+from browser.site_apps import SiteApps
 from ui.html_dialog import HtmlSettingsDialog
 
 

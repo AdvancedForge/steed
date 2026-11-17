@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import QApplication
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from browser_window import BrowserWindow  # noqa: E402
-from config import Config  # noqa: E402
+from browser.browser_window import BrowserWindow  # noqa: E402
+from browser.config import Config  # noqa: E402
 
 
 def check(data, phase):

@@ -6,7 +6,7 @@ import test_live_tabs as live
 import test_task_profiles as fixtures
 from PyQt6.QtCore import QUrl
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services.page_inspector import PageInspectionError
 
 HTML = """<html><title>Semantics fixture</title><body>

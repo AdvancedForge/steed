@@ -16,9 +16,9 @@ from PyQt6.QtWebEngineCore import (
 )
 from qt_test_support import keep_directory
 
-from browser_window import BrowserWindow
-from config import Config
-from profile_manager import ProfileManager
+from browser.browser_window import BrowserWindow
+from browser.config import Config
+from browser.profile_manager import ProfileManager
 from services.task_policy import TaskPermissionError
 from ui.task_dialog import TaskDialog
 
@@ -112,7 +112,9 @@ class TaskProfileTests(unittest.TestCase):
             "session.open", task_id=task.task_id, profile="existing:work"
         )
         self.navigate(task.task_id, opened.session_id, "/fixture")
-        with patch("profile_manager.QApplication.activeWindow", return_value=first):
+        with patch(
+            "browser.profile_manager.QApplication.activeWindow", return_value=first
+        ):
             self.command(
                 "session.watch", task_id=task.task_id, session_id=opened.session_id
             )

@@ -6,8 +6,8 @@ from secrets import token_hex
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 
-from password_service import copy_secret
-from password_vault import VaultError, VaultLocked, generate_password, totp_code
+from browser.password_service import copy_secret
+from browser.password_vault import VaultError, VaultLocked, generate_password, totp_code
 from ui.html_surface import HtmlSurface
 from ui.prompts import MessageBox
 
@@ -247,7 +247,7 @@ class PasswordsPage(QWidget):
                 self.notice = "Passkey deleted."
                 self.service.notify(self.profile)
         elif action == "checkup":
-            from password_checkup import BreachCheck, local_findings
+            from browser.password_checkup import BreachCheck, local_findings
 
             logins = vault.logins()
             self.checkup = {**local_findings(logins), "breached": {}}

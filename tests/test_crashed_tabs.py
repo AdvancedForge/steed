@@ -11,8 +11,8 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import crash_log
-from browser_window import BrowserWindow
+from browser import crash_log
+from browser.browser_window import BrowserWindow
 
 
 class Page(BaseHTTPRequestHandler):

@@ -242,7 +242,7 @@ class WindowDictation(QObject):
                     return None
                 self.window.open_dictation_settings(
                     "Dictating on this computer needs one more package. Run "
-                    ".venv/bin/python -m pip install -r requirements-dictation.txt "
+                    ".venv/bin/python -m pip install -r requirements/dictation.txt "
                     "in Steed's folder, then start Steed again."
                 )
                 return None
@@ -447,7 +447,7 @@ class WindowDictation(QObject):
     def _target(self):
         """What has the cursor now: a Steed field or a web view (a page, the
         agent sidebar…), in this window."""
-        from webengine import view_around
+        from browser.webengine import view_around
 
         focused = QApplication.focusWidget()
         if focused is None or focused.window() is not self.window:
@@ -477,7 +477,7 @@ class WindowDictation(QObject):
                 target.insertPlainText(words)
             self.inserted.emit("field", words)
         elif kind == "web":
-            from webengine import STEED_WORLD, run_script
+            from browser.webengine import STEED_WORLD, run_script
 
             def done(result):
                 if result == "inserted":

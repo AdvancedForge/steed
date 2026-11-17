@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import qt_test_support
 
-from webengine import ENGINE_ENVIRONMENT, prepare_engine_environment
+from browser.webengine import ENGINE_ENVIRONMENT, prepare_engine_environment
 
 
 class EngineEnvironmentTests(unittest.TestCase):

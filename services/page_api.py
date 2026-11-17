@@ -15,8 +15,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QBuffer, QIODevice, QObject, QUrl
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 
-import access_levels
-import webengine
+from browser import access_levels, webengine
 
 ENDPOINTS = {
     "fetch": "web",

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from PyQt6.QtCore import QObject
 
-from config import Config
+from browser.config import Config
 from services.page_style import DEFAULTS, PageStyle, clean_style
 
 

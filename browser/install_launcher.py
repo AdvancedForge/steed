@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Register this checkout in the Linux application menu without root access."""
+
+import argparse
+import os
+from pathlib import Path
+
+
+def icon(project: Path) -> str:
+    """Steed's own icon when the checkout has it, else the generic one."""
+    found = project / "ui" / "assets" / "steed.svg"
+    text = str(found)
+    if found.is_file() and not any(c in text for c in "\n\r"):
+        return text
+    return "web-browser"
+
+
+def desktop_entry(project: Path) -> str:
+    launcher = str(project / "steed")
+    if any(character in launcher for character in "\n\r="):
+        raise ValueError(
+            "The project path contains unsupported desktop-entry characters"
+        )
+    # Exec quoting happens after desktop string escaping; this is not shell syntax.
+    argument = "".join(
+        "\\" + character if character in '\\"`$' else character
+        for character in launcher
+    )
+    argument = argument.replace("\\", "\\\\").replace("%", "%%")
+    return (
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Version=1.0\n"
+        "Name=Steed\n"
+        "Comment=Browse the web with separate profiles and built-in passwords\n"
+        f'Exec="{argument}" %U\n'
+        f"Icon={icon(project)}\n"
+        "Terminal=false\n"
+        "Categories=Network;WebBrowser;\n"
+        "MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;"
+        "application/xhtml+xml;\n"
+        "Keywords=browser;web;internet;\n"
+        "StartupNotify=false\n"
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    data_home = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    parser.add_argument(
+        "--applications-dir", type=Path, default=data_home / "applications"
+    )
+    args = parser.parse_args()
+    project = Path(__file__).resolve().parents[1]
+    if not os.access(project / "steed", os.X_OK):
+        parser.error("steed is not executable; run chmod +x steed")
+    if not os.access(project / ".venv/bin/python", os.X_OK):
+        parser.error(
+            "Create .venv and install requirements.txt first (see docs/install.md)"
+        )
+    contents = desktop_entry(project)
+    args.applications_dir.mkdir(parents=True, exist_ok=True)
+    destination = args.applications_dir / "steed.desktop"
+    destination.write_text(contents, encoding="utf-8")
+    print(f"Installed {destination}. Open Steed from your applications menu.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

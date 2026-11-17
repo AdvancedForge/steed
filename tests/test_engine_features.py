@@ -9,9 +9,8 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import build_codecs
-import engine_features
-from browser_window import BrowserWindow
+from browser import build_codecs, engine_features
+from browser.browser_window import BrowserWindow
 
 
 def by_name(features):
@@ -28,7 +27,7 @@ class FeatureResultTests(unittest.TestCase):
             self.assertEqual(len(features), len(engine_features.FEATURES))
             self.assertFalse(any(f["supported"] for f in features))
         reasons = by_name(engine_features.results(None))
-        self.assertIn("build_codecs.py", reasons["H.264 video"]["reason"])
+        self.assertIn("browser.build_codecs", reasons["H.264 video"]["reason"])
         self.assertIn("upgrade brings", reasons["Temporal (dates and times)"]["reason"])
         self.assertIn("will not add", reasons["WebUSB"]["reason"])
 
@@ -87,7 +86,7 @@ class FeaturePageTests(unittest.TestCase):
         with patch.object(build_codecs, "replaced_by_pip", return_value=True):
             self.window._warn_codecs_replaced()
             box = self.window.codec_warning
-            self.assertIn("build_codecs.py install", box.text())
+            self.assertIn("-m browser.build_codecs install", box.text())
             before = len(self.window.tabs)
             next(b for b in box.buttons() if b.text() == "Open steed:features").click()
             self.wait(lambda: len(self.window.tabs) == before + 1)

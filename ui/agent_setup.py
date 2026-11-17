@@ -90,7 +90,7 @@ class AgentSetupDialog(HtmlSettingsDialog):
         syntax = QLabel(
             "Copy this into clients that accept mcpServers JSON, or enter its command "
             "and arguments in the client's MCP settings. HTTP setup is documented "
-            "in DOCUMENTATION.md. An idle agent client must be prompted to run."
+            "in docs/agents.md. An idle agent client must be prompted to run."
         )
         syntax.setWordWrap(True)
         layout.addWidget(syntax)
@@ -107,7 +107,7 @@ class AgentSetupDialog(HtmlSettingsDialog):
                         "pip",
                         "install",
                         "-r",
-                        str(repository / "requirements-mcp.txt"),
+                        str(repository / "requirements" / "mcp.txt"),
                     ]
                 )
             )

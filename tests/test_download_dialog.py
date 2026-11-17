@@ -11,7 +11,7 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QPushButton
 from qt_test_support import application
 
-from download_manager import DownloadManager, DownloadRecord
+from browser.download_manager import DownloadManager, DownloadRecord
 from ui.download_dialog import DownloadDialog
 
 

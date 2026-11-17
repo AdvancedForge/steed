@@ -15,7 +15,7 @@ import test_task_profiles as profile_fixtures
 from PyQt6 import sip
 from qt_test_support import WAIT_SECONDS, application
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services.file_library import CHUNK_BYTES, FileLibrary, read_import
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService

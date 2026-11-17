@@ -309,7 +309,7 @@ def apply_ui_font(app):
     touch heavier than regular so small text stays crisp."""
     from PyQt6.QtGui import QFont, QFontDatabase
 
-    from webengine import UI_FONT
+    from browser.webengine import UI_FONT
 
     if UI_FONT not in QFontDatabase.families():
         return

@@ -9,9 +9,9 @@ from unittest.mock import patch
 import test_data_panels as panels
 from PyQt6 import sip
 
-from data_panel_format import parse_panel
-from layout_format import export_layout
-from layout_preferences import preferences_from_config
+from browser.data_panel_format import parse_panel
+from browser.layout_format import export_layout
+from browser.layout_preferences import preferences_from_config
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
 from ui.data_panels import DataPanelReviewDialog

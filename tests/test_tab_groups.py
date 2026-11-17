@@ -10,8 +10,8 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from tab_manager import GROUP_COLORS, TabManager
+from browser.browser_window import BrowserWindow
+from browser.tab_manager import GROUP_COLORS, TabManager
 from ui.tab_strip import GROUP_COLORS as AUTOMATIC
 from ui.tab_strip import group_palette
 

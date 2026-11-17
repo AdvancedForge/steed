@@ -461,7 +461,7 @@ def main():
             asyncio.run(serve(args.discovery, args.task_binding_file))
     except ImportError:
         print(
-            "Install optional MCP dependencies: .venv/bin/python -m pip install -r requirements-mcp.txt",
+            "Install optional MCP dependencies: .venv/bin/python -m pip install -r requirements/mcp.txt",
             file=sys.stderr,
         )
         return 1

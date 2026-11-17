@@ -9,8 +9,8 @@ import test_task_profiles as profiles
 from PyQt6.QtCore import QBuffer, QIODevice
 from PyQt6.QtGui import QImage
 
-from browser_window import BrowserWindow
-from data_panel_format import parse_panel
+from browser.browser_window import BrowserWindow
+from browser.data_panel_format import parse_panel
 from services.panel_images import decode_image
 from services.task_policy import TaskPermissionError
 from services.task_workspace import TaskWorkspace

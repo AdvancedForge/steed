@@ -10,7 +10,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtWebEngineCore import QWebEnginePage
 
-import webengine
+from browser import webengine
 from services.task_input import TaskInput
 
 

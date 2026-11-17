@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-import webengine
+from browser import webengine
 
 PER_TAB = 6000
 TOTAL = 24000

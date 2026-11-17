@@ -11,11 +11,10 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import site_data
-import webengine
-from browser_window import BrowserWindow
-from browsing_history import BrowsingHistory
-from download_manager import DownloadManager, DownloadRecord
+from browser import site_data, webengine
+from browser.browser_window import BrowserWindow
+from browser.browsing_history import BrowsingHistory
+from browser.download_manager import DownloadManager, DownloadRecord
 
 
 class Site(BaseHTTPRequestHandler):

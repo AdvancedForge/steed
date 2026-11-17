@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import upgrade_engine as upgrade
+from browser import upgrade_engine as upgrade
 
 
 class UpgradeTests(unittest.TestCase):

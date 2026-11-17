@@ -11,10 +11,8 @@ from PyQt6.QtNetwork import QNetworkCookie
 from PyQt6.QtWebEngineCore import QWebEnginePage
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import cookie_snapshot
-import memory_modes
-import memory_trim
-from browser_window import BrowserWindow
+from browser import cookie_snapshot, memory_modes, memory_trim
+from browser.browser_window import BrowserWindow
 from ui.interface_mode import native, set_native
 
 State = QWebEnginePage.LifecycleState
@@ -253,7 +251,7 @@ class PressureTests(unittest.TestCase):
         self.assertFalse(unreadable.low)
 
     def test_auto_saver_uses_saver_values_without_changing_settings(self):
-        from config import Config
+        from browser.config import Config
 
         with (
             tempfile.TemporaryDirectory() as directory,

@@ -12,7 +12,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from data_panel_format import stable_id
+from browser.data_panel_format import stable_id
 from services.command_broker import require_owner_thread
 from services.task_policy import TaskPermissionError
 
@@ -71,8 +71,8 @@ class Definition:
 
 def parse(source) -> Definition:
     """Validate one declaration exactly; ValueError explains what is wrong."""
+    from browser.user_scripts import clean
     from services.start_pages import clean_html
-    from user_scripts import clean
 
     try:
         if not isinstance(source, str) or len(source.encode()) > MAX_SOURCE_BYTES:
@@ -115,7 +115,7 @@ def parse(source) -> Definition:
 
 
 def capabilities():
-    from user_scripts import MAX_CSS, MAX_JS, WHEN
+    from browser.user_scripts import MAX_CSS, MAX_JS, WHEN
 
     return {
         "kinds": list(KINDS),

@@ -13,8 +13,8 @@ import test_task_profiles as fixtures
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import access_levels
-from browser_window import BrowserWindow
+from browser import access_levels
+from browser.browser_window import BrowserWindow
 from services.agent_errors import AgentRequestError
 
 

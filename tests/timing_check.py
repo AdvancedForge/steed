@@ -77,10 +77,9 @@ def run_round(home: Path, restored: bool, load_all: bool) -> dict:
     from PyQt6.QtWidgets import QApplication
 
     import main
-    import memory_modes
-    import webengine
-    from browser_window import BrowserWindow
-    from config import Config
+    from browser import memory_modes, webengine
+    from browser.browser_window import BrowserWindow
+    from browser.config import Config
 
     class HideWatch(QObject):
         """Notes when the window leaves the screen, before cleanup finishes."""
@@ -155,7 +154,7 @@ def run_round(home: Path, restored: bool, load_all: bool) -> dict:
                 results["memory_one"] = memory_mb()
                 # Cookie inspection runs for a while after starting, then sleeps
                 # (30 s in Balanced); idle figures are what Steed settles at.
-                import cookie_snapshot
+                from browser import cookie_snapshot
 
                 def inspectors_asleep():
                     return all(
@@ -304,7 +303,7 @@ def summarise(found: list[dict]) -> dict:
 def engine_description() -> str:
     from PyQt6.QtWebEngineCore import qWebEngineChromiumVersion, qWebEngineVersion
 
-    import build_codecs
+    from browser import build_codecs
 
     codecs = (
         "codec build" if build_codecs.using_build(build_codecs.wheel_dir()) else "PyPI"

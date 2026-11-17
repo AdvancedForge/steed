@@ -10,8 +10,8 @@ from PyQt6.QtCore import QEvent, QRectF, Qt, QUrl
 from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PyQt6.QtWidgets import QApplication, QFrame, QVBoxLayout
 
-import webengine
-from webengine import QWebEngineView
+from browser import webengine
+from browser.webengine import QWebEngineView
 
 WIDTH, HEIGHT = 380, 520
 

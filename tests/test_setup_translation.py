@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import setup_translation as setup
+from browser import setup_translation as setup
 
 
 class SetupTests(unittest.TestCase):

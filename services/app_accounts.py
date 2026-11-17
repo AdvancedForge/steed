@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from browser.utils import save_json
 from services.connector_policy import connector_name
-from utils import save_json
 
 
 class AccountError(RuntimeError):
@@ -81,7 +81,7 @@ class SecretServiceStore:
         except Exception:
             raise AccountError(
                 "An unlocked Linux Secret Service keyring is required. Install "
-                "requirements-apps.txt and unlock your desktop keyring."
+                "requirements/apps.txt and unlock your desktop keyring."
             ) from None
 
     def _operation(self, account_id, operation, value=None):

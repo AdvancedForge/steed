@@ -13,8 +13,8 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from PyQt6.QtWidgets import QApplication
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from link_cleaning import clean_link
+from browser.browser_window import BrowserWindow
+from browser.link_cleaning import clean_link
 
 
 class Pages(BaseHTTPRequestHandler):

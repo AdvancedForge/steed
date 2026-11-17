@@ -88,7 +88,7 @@ class SitePermissionDialog(HtmlSettingsDialog):
 
 def describe_site_settings(values):
     """Changed settings in words, such as "JavaScript blocked · zoom 125%"."""
-    from site_settings import LABELS
+    from browser.site_settings import LABELS
 
     parts = [f"{LABELS[key]} blocked" for key in LABELS if values.get(key) == "block"]
     if "zoom" in values:

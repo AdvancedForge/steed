@@ -11,8 +11,8 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import access_levels
-from browser_window import BrowserWindow
+from browser import access_levels
+from browser.browser_window import BrowserWindow
 
 APP = """<title>Notes</title><a id=out href="https://example.org/next">Next</a>
 <script>

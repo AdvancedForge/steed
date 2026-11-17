@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from bookmark_format import MAX_BOOKMARK_HTML_BYTES
+from browser.bookmark_format import MAX_BOOKMARK_HTML_BYTES
 from ui.html_dialog import HtmlSettingsDialog
 from ui.prompts import MessageBox as QMessageBox
 

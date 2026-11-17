@@ -19,7 +19,7 @@ from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import QApplication, QLineEdit
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services import dictation
 
 FAKE_WORKER = Path(__file__).parent / "fixtures" / "fake_dictation_worker.py"
@@ -124,7 +124,7 @@ class WorkerTests(unittest.TestCase):
         import subprocess
         import sys
 
-        worker = Path(__file__).parents[1] / "dictation_worker.py"
+        worker = Path(__file__).parents[1] / "browser" / "dictation_worker.py"
         lines = [
             "not json",
             json.dumps({"op": "decode", "id": 4, "audio": ""}),
@@ -505,7 +505,7 @@ class WindowTests(unittest.TestCase):
             self.assertIn("Download a speech model", opened.call_args[0][0])
             with patch.object(dictation, "local_available", return_value=False):
                 self.assertFalse(self.controller.start())
-            self.assertIn("requirements-dictation.txt", opened.call_args[0][0])
+            self.assertIn("requirements/dictation.txt", opened.call_args[0][0])
         self.window.config.set("dictation_engine", "off")
         self.assertFalse(self.controller.start())
         self.assertIn("Dictation is off", self.window.status_bar.currentMessage())

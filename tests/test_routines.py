@@ -13,7 +13,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services import routines
 from services.routines import check, describe, last_due
 from ui.desktop_notify import DesktopNotifier

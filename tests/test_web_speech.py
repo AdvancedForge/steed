@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import QApplication
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 from test_dictation import FAKE_WORKER, FakeRecorder, spoken
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from services import dictation, web_speech
 
 PAGE = """<title>Speech</title><script>

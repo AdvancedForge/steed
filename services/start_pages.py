@@ -16,16 +16,16 @@ from PyQt6.QtWebEngineCore import (
     QWebEngineUrlSchemeHandler,
 )
 
-from bookmark_format import (
+from browser.bookmark_format import (
     MAX_BOOKMARKS,
     bookmark_name,
     export_bookmarks,
     parse_bookmarks,
 )
+from browser.utils import load_json, save_json
 from services.command_broker import require_owner_thread
 from services.page_api import PageApi, api_endpoint
 from services.page_style import ROOT_CSS
-from utils import load_json, save_json
 
 NEW_TAB = "steed:newtab"
 WELCOME = "steed:welcome"

@@ -11,7 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-import install_worker_bundle
+from browser import install_worker_bundle
 from services import worker_bundle as bundle
 from services.agent_tools import TOOLS_BY_NAME
 from services.local_worker import run_worker

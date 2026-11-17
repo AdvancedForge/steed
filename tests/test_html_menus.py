@@ -18,8 +18,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from browser_window import BrowserWindow
-from layout_preferences import TOOLBAR_ITEMS
+from browser.browser_window import BrowserWindow
+from browser.layout_preferences import TOOLBAR_ITEMS
 from ui.adblock_dialog import AdBlockDialog
 from ui.download_dialog import choose_download_destination
 from ui.layout_dialog import LayoutDialog

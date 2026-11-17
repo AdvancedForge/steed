@@ -762,14 +762,14 @@ class TaskService(QObject):
             raise
 
     def _panel_capabilities(self, task_id):
-        from data_panel_format import panel_capabilities
+        from browser.data_panel_format import panel_capabilities
 
         self._usable()
         self._active(task_id)
         return {"available": self.data_panels.available, **panel_capabilities()}
 
     def _start_page_capabilities(self, task_id):
-        from start_page_format import capabilities
+        from browser.start_page_format import capabilities
 
         self._usable()
         self._active(task_id)
@@ -797,7 +797,7 @@ class TaskService(QObject):
         return {"available": self.customizations.available, **capabilities()}
 
     def _layout_capabilities(self, task_id):
-        from layout_format import layout_capabilities
+        from browser.layout_format import layout_capabilities
 
         self._usable()
         self._active(task_id)
@@ -1748,7 +1748,7 @@ class TaskService(QObject):
                 ) from None
         decision = self._access_decision(scope)
         if decision == "deny":
-            import access_levels
+            from browser import access_levels
 
             blocked = access_levels.blocked_capabilities(
                 self.profiles.config,
@@ -1840,7 +1840,7 @@ class TaskService(QObject):
         config = getattr(self.profiles, "config", None)
         if config is None:
             return "ask"
-        import access_levels
+        from browser import access_levels
 
         return access_levels.agent_decision(
             config, scope.actions, named_profile=scope.profile != "private"

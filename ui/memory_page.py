@@ -5,7 +5,7 @@ from secrets import token_hex
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
-import memory_modes
+from browser import memory_modes
 from ui.html_surface import HtmlSurface
 
 REFRESH_MS = 3000
@@ -35,7 +35,7 @@ class MemoryPage(QWidget):
         self.publish()
 
     def windows(self):
-        from browser_window import BrowserWindow
+        from browser.browser_window import BrowserWindow
 
         return [
             widget

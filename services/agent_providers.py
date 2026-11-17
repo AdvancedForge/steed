@@ -12,12 +12,12 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
+from browser.utils import save_json
 from services.claude_code_provider import ClaudeCodeProvider
 from services.codex_provider import CodexProvider
 from services.command_broker import require_owner_thread
 from services.task_messages import MESSAGE_BYTES, TASK_BYTES
 from services.task_store import ACTIVE_STATUSES
-from utils import save_json
 
 # Retained per conversation so the UI can say when the agent last reported.
 REPORTED_LIMIT = 256
@@ -190,7 +190,7 @@ class AgentProviders(QObject):
             raise ValueError(f"Choose a valid {name} model")
         if importlib.util.find_spec("mcp") is None:
             raise RuntimeError(
-                "Install requirements-mcp.txt in Steed's environment first."
+                "Install requirements/mcp.txt in Steed's environment first."
             )
         if len(self.chats) >= 2:
             raise ValueError(

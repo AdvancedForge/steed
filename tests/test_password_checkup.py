@@ -12,9 +12,9 @@ import nacl.utils
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import passkeys
-import password_checkup as checkup
-from browser_window import BrowserWindow
+from browser import passkeys
+from browser import password_checkup as checkup
+from browser.browser_window import BrowserWindow
 
 
 class FakeKeys:
@@ -88,7 +88,7 @@ class PageTests(unittest.TestCase):
         keep_directory(self.directory)
         self.patches = [
             patch("pathlib.Path.home", return_value=Path(self.directory.name)),
-            patch("password_service.KeyStore", FakeKeys),
+            patch("browser.password_service.KeyStore", FakeKeys),
             patch.object(
                 checkup,
                 "RANGE_URL",

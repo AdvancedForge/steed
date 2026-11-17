@@ -11,9 +11,8 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import privacy
-import webengine
-from browser_window import BrowserWindow
+from browser import privacy, webengine
+from browser.browser_window import BrowserWindow
 
 
 class Config(dict):

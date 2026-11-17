@@ -5,14 +5,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from browsing_history import BrowsingHistory
-from utils import save_json
+from browser.browsing_history import BrowsingHistory
+from browser.utils import save_json
 
 
 class HistoryTests(unittest.TestCase):
     def history(self, path, limit=1000):
         # These checks drive flushing explicitly and do not need a Qt event loop.
-        with patch("browsing_history.QTimer"):
+        with patch("browser.browsing_history.QTimer"):
             return BrowsingHistory(path, limit=limit)
 
     def test_recent_unique_visits_are_bounded_and_survive_restart(self):
@@ -49,7 +49,7 @@ class HistoryTests(unittest.TestCase):
         history.record("https://example.org/private", "Private")
         self.assertEqual(len(history.entries()), 1)
         history._save_timer.start.assert_not_called()
-        with patch("browsing_history.save_json") as save:
+        with patch("browser.browsing_history.save_json") as save:
             history.close()
         save.assert_not_called()
 

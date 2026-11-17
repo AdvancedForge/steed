@@ -4,7 +4,7 @@ from secrets import token_hex
 
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-import access_levels
+from browser import access_levels
 from ui.html_surface import HtmlSurface
 
 AREA_TEXT = {

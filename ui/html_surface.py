@@ -24,8 +24,8 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QLabel, QPushButton, QStackedLayout, QVBoxLayout, QWidget
 
-import webengine
-from config import Config
+from browser import webengine
+from browser.config import Config
 
 
 class _NoNetwork(QWebEngineUrlRequestInterceptor):

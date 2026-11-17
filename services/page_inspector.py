@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QObject, QTimer, QUrl
 
-import webengine
+from browser import webengine
 from services.command_broker import require_owner_thread
 
 INSPECTION_SCRIPT = Path(__file__).with_name("page_inspection.js").read_text()

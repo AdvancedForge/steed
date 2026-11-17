@@ -16,7 +16,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtWidgets import QHBoxLayout, QWidget
 
-from tab_appearance import TAB_WIDTH_RANGE, default_tabs
+from browser.tab_appearance import TAB_WIDTH_RANGE, default_tabs
 from ui.html_surface import HtmlSurface
 
 GROUP_COLORS = ("#4f7cff", "#9b5de5", "#1b998b", "#f08a24", "#e0457b", "#5c6f84")

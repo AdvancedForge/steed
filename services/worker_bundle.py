@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 BUNDLE_ROOT = REPOSITORY / ".worker-bundles"
-LOCK_PATH = REPOSITORY / "worker_bundle.lock.json"
+LOCK_PATH = REPOSITORY / "browser" / "worker_bundle.lock.json"
 MAX_EXPANDED = 96 * 1024 * 1024
 MAX_FILES = 5000
 

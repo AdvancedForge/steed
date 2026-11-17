@@ -10,8 +10,8 @@ from urllib.parse import urlsplit
 
 from PyQt6.QtCore import QUrl
 
+from browser.utils import sanitize_profile_name
 from services.connector_policy import ConnectorPermission, connector_permissions
-from utils import sanitize_profile_name
 
 SUPPORTED_ACTIONS = frozenset(
     {

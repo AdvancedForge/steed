@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import build_codecs as codecs
+from browser import build_codecs as codecs
 
 
 def write(path: Path, text: str) -> None:

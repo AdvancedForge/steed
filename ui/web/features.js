@@ -10,8 +10,8 @@ function stat(value, label) {
 }
 const CODECS = {
   built: ['Video codecs built in', ''],
-  pypi: ['Without H.264/AAC', 'This is the PyPI engine, which cannot play H.264 video or AAC audio, so many MP4 videos and GIFs do not play. Run .venv/bin/python build_codecs.py check to add them.'],
-  replaced: ['Codec build replaced', 'A Python package update put back the engine without H.264/AAC. Run .venv/bin/python build_codecs.py install (or build, for a new version), then restart Steed.'],
+  pypi: ['Without H.264/AAC', 'This is the PyPI engine, which cannot play H.264 video or AAC audio, so many MP4 videos and GIFs do not play. Run .venv/bin/python -m browser.build_codecs check to add them.'],
+  replaced: ['Codec build replaced', 'A Python package update put back the engine without H.264/AAC. Run .venv/bin/python -m browser.build_codecs install (or build, for a new version), then restart Steed.'],
 };
 const DRM = {
   chrome: ['Available', ''],

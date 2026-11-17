@@ -12,9 +12,9 @@ import nacl.utils
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import application, keep_directory
 
-import password_vault as pv
-import sync
-from reading_list import ReadingList
+from browser import password_vault as pv
+from browser import sync
+from browser.reading_list import ReadingList
 
 FAST = (
     nacl.pwhash.argon2id.OPSLIMIT_INTERACTIVE,
@@ -213,7 +213,7 @@ class PasswordTests(unittest.TestCase):
 
 class PasskeySyncTests(PasswordTests):
     def test_passkeys_travel_sealed_and_keep_their_local_use(self):
-        import passkeys
+        from browser import passkeys
 
         key = sync.passphrase_key(self.folder, "correct horse", *FAST)
         a, b = self.vault("a"), self.vault("b")
@@ -259,7 +259,7 @@ class WindowTests(unittest.TestCase):
         self.folder.mkdir()
         self.home = patch("pathlib.Path.home", return_value=root)
         self.home.start()
-        from browser_window import BrowserWindow
+        from browser.browser_window import BrowserWindow
 
         self.window = BrowserWindow()
         self.registry = self.window.profile_manager.registry
@@ -272,7 +272,7 @@ class WindowTests(unittest.TestCase):
         self.home.stop()
 
     def test_a_profile_syncs_with_another_computer_through_the_dialog(self):
-        from tab_manager import TabGroup
+        from browser.tab_manager import TabGroup
         from ui.sync_dialog import SyncDialog
 
         name = self.window.profile_manager.current_profile_name

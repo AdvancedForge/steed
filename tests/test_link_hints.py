@@ -11,7 +11,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QUrl
 from PyQt6.QtTest import QTest
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 
 PAGE = (
     "<title>Hints</title><body style='margin:0'>"

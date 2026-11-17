@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import widevine
+from browser import widevine
 
 
 class WidevineTests(unittest.TestCase):

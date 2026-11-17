@@ -14,8 +14,8 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QThread, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineHttpRequest
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from config import Config
+from browser.browser_window import BrowserWindow
+from browser.config import Config
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService
 from ui.prompts import MessageBox as QMessageBox

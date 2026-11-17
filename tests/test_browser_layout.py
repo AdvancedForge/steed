@@ -14,8 +14,8 @@ from unittest.mock import patch
 import test_task_profiles as profiles
 from PyQt6.QtCore import Qt
 
-from browser_window import BrowserWindow
-from layout_preferences import MENU_ITEMS, TOOLBAR_ITEMS, LayoutPreferences
+from browser.browser_window import BrowserWindow
+from browser.layout_preferences import MENU_ITEMS, TOOLBAR_ITEMS, LayoutPreferences
 
 
 class BrowserLayoutTests(unittest.TestCase):
@@ -269,7 +269,7 @@ class BrowserLayoutTests(unittest.TestCase):
             return 1
 
         with (
-            patch("browser_window.QMessageBox.warning") as warning,
+            patch("browser.browser_window.QMessageBox.warning") as warning,
         ):
             tab = window._open_layout_settings()
             dialog = tab.workspace_controller.source

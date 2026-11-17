@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-import shortcuts
+from browser import shortcuts
 from ui.html_dialog import HtmlSettingsDialog
 
 

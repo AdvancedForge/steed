@@ -11,9 +11,9 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import webengine
-from browser_window import BrowserWindow
-from user_scripts import PREFIX, clean, matches, parse_sites
+from browser import webengine
+from browser.browser_window import BrowserWindow
+from browser.user_scripts import PREFIX, clean, matches, parse_sites
 
 PAGE = b"<title>site</title><p>text</p><script>window.pageReady = true</script>"
 

@@ -8,10 +8,10 @@ from dataclasses import dataclass, replace
 from datetime import date
 from urllib.parse import urlsplit
 
+from browser.utils import save_json
 from services.connector_policy import connector_name
 from services.recipe_templates import JsonTemplate, json_template
 from services.task_workspace import unique_object
-from utils import save_json
 
 MAX_RECIPE_BYTES = 16384
 MAX_QUERY_INPUTS = 8

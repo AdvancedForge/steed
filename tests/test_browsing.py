@@ -12,7 +12,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from PyQt6.QtWidgets import QApplication, QWidget
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 
 
 class Page(BaseHTTPRequestHandler):

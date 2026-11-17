@@ -10,9 +10,9 @@ import test_task_profiles as profiles
 from PyQt6 import sip
 from PyQt6.QtNetwork import QLocalSocket
 
-from browser_window import BrowserWindow
-from layout_format import LAYOUT_EXAMPLE, export_layout, parse_layout
-from layout_preferences import LayoutPreferences, preferences_from_config
+from browser.browser_window import BrowserWindow
+from browser.layout_format import LAYOUT_EXAMPLE, export_layout, parse_layout
+from browser.layout_preferences import LayoutPreferences, preferences_from_config
 from services.agent_gateway import AgentGateway
 from services.task_policy import TaskPermissionError
 from services.task_service import TaskService

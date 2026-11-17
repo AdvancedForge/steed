@@ -10,7 +10,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QPoint
 from PyQt6.QtWidgets import QMenu
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from ui.html_surface import HtmlSurface
 from ui.interface_mode import native, set_native
 

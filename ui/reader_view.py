@@ -175,7 +175,7 @@ class ReaderPanel(QWidget):
         self.tab = tab
         # Highlights belong to the article's address (also when read offline).
         self.notes_url = (notes_url or url.toString()) if url is not None else ""
-        from reader_notes import ReaderNotes
+        from browser.reader_notes import ReaderNotes
 
         manager = window.tab_manager
         self.notes = ReaderNotes(manager.profile_dir if manager else Path())

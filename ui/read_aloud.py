@@ -10,7 +10,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QWidget
 
-import webengine
+from browser import webengine
 
 MAX_CHUNK = 400
 RATE_STEP = 0.15

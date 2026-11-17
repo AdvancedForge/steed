@@ -17,8 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from qt_test_support import application, keep_directory  # noqa: E402
 
-from browser_window import BrowserWindow, QWebEnginePermission  # noqa: E402
-from config import Config  # noqa: E402
+from browser.browser_window import BrowserWindow, QWebEnginePermission  # noqa: E402
+from browser.config import Config  # noqa: E402
 
 
 def check():

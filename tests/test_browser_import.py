@@ -10,7 +10,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import application, keep_directory
 
-import browser_import
+from browser import browser_import
 
 
 def literal_block(data: bytes) -> bytes:
@@ -200,7 +200,7 @@ class WindowImportTests(unittest.TestCase):
         self.home = patch("pathlib.Path.home", return_value=self.root)
         self.home.start()
         make_firefox(self.root)
-        from browser_window import BrowserWindow
+        from browser.browser_window import BrowserWindow
 
         self.window = BrowserWindow()
         self.window.show()

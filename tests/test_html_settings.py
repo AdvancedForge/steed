@@ -10,8 +10,8 @@ from PyQt6 import sip
 from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtWidgets import QDialog
 
-from browser_window import BrowserWindow
-from config import DEFAULT_SEARCH_ENGINE
+from browser.browser_window import BrowserWindow
+from browser.config import DEFAULT_SEARCH_ENGINE
 from ui.settings_dialog import DEFAULTS, SettingsDialog
 
 

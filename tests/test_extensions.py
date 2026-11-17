@@ -22,11 +22,11 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import extension_build as eb
-import extensions as ext
-import webengine
-from browser_window import BrowserWindow
-from extensions import Extensions, crx_zip, inspect, store_id
+from browser import extension_build as eb
+from browser import extensions as ext
+from browser import webengine
+from browser.browser_window import BrowserWindow
+from browser.extensions import Extensions, crx_zip, inspect, store_id
 
 STORE_ID = "abcdefghijklmnopabcdefghijklmnop"
 MANIFEST = {
@@ -595,7 +595,7 @@ class WindowTests(WindowBase):
         self.assertTrue(self.window._closing)
 
     def test_add_from_the_store_page_bar_and_follow_sync(self):
-        import sync
+        from browser import sync
 
         Pages.store = {STORE_ID: crx(write_extension(self.root / "store"))}
         page = QUrl(f"https://chromewebstore.google.com/detail/test/{STORE_ID}")

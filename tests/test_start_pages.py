@@ -9,11 +9,11 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from config import Config
+from browser.browser_window import BrowserWindow
+from browser.config import Config
+from browser.utils import save_json
 from services.news_feed import feed_items
 from services.start_pages import NEW_TAB, WELCOME, clean_settings, image_data
-from utils import save_json
 
 
 class StartPageTests(unittest.TestCase):

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import nacl.utils
 
-import password_vault as pv
+from browser import password_vault as pv
 
 
 class FakeKeys:

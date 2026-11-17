@@ -17,8 +17,8 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from PyQt6.QtWebEngineCore import QWebEnginePage
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import memory_modes
-from browser_window import BrowserWindow
+from browser import memory_modes
+from browser.browser_window import BrowserWindow
 
 State = QWebEnginePage.LifecycleState
 
@@ -224,7 +224,7 @@ class PageUnloadTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 4)
 
     def test_the_setting_can_turn_waiting_off(self):
-        import page_unload
+        from browser import page_unload
 
         self.window.config.set("save_before_closing", False)
         self.window.profile_manager.registry.settings_changed.emit()

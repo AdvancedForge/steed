@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from extensions import STORE, icon_from
+from browser.extensions import STORE, icon_from
 from ui.html_dialog import HtmlSettingsDialog
 
 
@@ -216,7 +216,7 @@ class ExtensionsDialog(HtmlSettingsDialog):
         self.extensions.check_updates(self.profile)
 
     def update(self):
-        from extensions import inspect
+        from browser.extensions import inspect
         from ui.extension_install import confirm
 
         entry = self.selected()

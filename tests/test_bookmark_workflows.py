@@ -8,7 +8,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QDialog, QPushButton
 
-from bookmark_format import (
+from browser.bookmark_format import (
     MAX_BOOKMARK_HTML_BYTES,
     MAX_BOOKMARKS,
     export_bookmarks,

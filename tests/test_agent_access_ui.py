@@ -7,7 +7,7 @@ import test_task_profiles as profiles
 from PyQt6.QtCore import QCoreApplication, QEvent
 from PyQt6.QtWidgets import QDialog
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 
 
 class AgentAccessUITests(unittest.TestCase):
@@ -24,7 +24,9 @@ class AgentAccessUITests(unittest.TestCase):
         self.manager.create_profile("codex test")
         window._switch_to_profile("codex test")
         task = self.command("task.create", objective="Choose the user's profile")
-        with patch("profile_manager.QApplication.activeWindow", return_value=window):
+        with patch(
+            "browser.profile_manager.QApplication.activeWindow", return_value=window
+        ):
             context = self.command("browser.context", task_id=task.task_id)
         self.assertEqual(
             context,
@@ -51,7 +53,9 @@ class AgentAccessUITests(unittest.TestCase):
         )
         self.service.approve_grant(task.task_id, grant.grant_id)
         window._switch_to_profile("default")
-        with patch("profile_manager.QApplication.activeWindow", return_value=window):
+        with patch(
+            "browser.profile_manager.QApplication.activeWindow", return_value=window
+        ):
             self.assertEqual(self.registry.agent_context()["profile"], "default")
         self.assertEqual(
             self.service.store.grant(task.task_id, grant.grant_id).scope["profile"],
@@ -64,12 +68,16 @@ class AgentAccessUITests(unittest.TestCase):
         first._switch_to_profile("work")
         second._switch_to_profile("default")
         dialog = QDialog(first)
-        with patch("profile_manager.QApplication.activeWindow", return_value=dialog):
+        with patch(
+            "browser.profile_manager.QApplication.activeWindow", return_value=dialog
+        ):
             self.assertEqual(
                 self.registry.agent_context()["window_id"], first.browser_window_id
             )
         QCoreApplication.sendEvent(second, QEvent(QEvent.Type.WindowActivate))
-        with patch("profile_manager.QApplication.activeWindow", return_value=None):
+        with patch(
+            "browser.profile_manager.QApplication.activeWindow", return_value=None
+        ):
             context = self.registry.agent_context()
         self.assertEqual(context["window_id"], second.browser_window_id)
         self.assertEqual(context["profile_selector"], "existing:default")
@@ -80,7 +88,9 @@ class AgentAccessUITests(unittest.TestCase):
         first, second = BrowserWindow(), BrowserWindow()
         self.windows.extend((first, second))
         self.registry.last_active_owner = None
-        with patch("profile_manager.QApplication.activeWindow", return_value=None):
+        with patch(
+            "browser.profile_manager.QApplication.activeWindow", return_value=None
+        ):
             self.assertIsNone(self.registry.agent_context()["window_id"])
             QCoreApplication.sendEvent(second, QEvent(QEvent.Type.WindowActivate))
             second.close()
@@ -92,7 +102,9 @@ class AgentAccessUITests(unittest.TestCase):
     def test_context_offers_global_but_keeps_incognito_private(self):
         window = BrowserWindow()
         self.windows.append(window)
-        with patch("profile_manager.QApplication.activeWindow", return_value=window):
+        with patch(
+            "browser.profile_manager.QApplication.activeWindow", return_value=window
+        ):
             for name in ("search", "global"):
                 with self.subTest(profile=name):
                     window._switch_to_profile(name)

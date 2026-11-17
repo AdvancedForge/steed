@@ -4,7 +4,7 @@ from secrets import token_hex
 
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
-import engine_features
+from browser import engine_features
 from ui.html_surface import HtmlSurface
 
 

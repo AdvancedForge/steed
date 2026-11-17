@@ -19,7 +19,7 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QWidget
 
-import webengine
+from browser import webengine
 from services.command_broker import require_owner_thread
 from services.engine_capabilities import qt_engine_capabilities
 from services.form_submission import SubmissionTicket, journal_origin
@@ -334,7 +334,7 @@ class QtBrowserBackend(QObject):
         if owns_profile:
             profile = webengine.private_profile(self)
             if mode == "live":
-                from webengine import configure_web_settings
+                from browser.webengine import configure_web_settings
 
                 configure_web_settings(profile.settings())
                 if self.browser_config is not None:

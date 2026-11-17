@@ -13,7 +13,7 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QDialog
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from ui.site_permissions import SitePermissionDialog
 
 COPY = b"""<title>copy</title><button id=b style="width:300px;height:100px">Copy</button>

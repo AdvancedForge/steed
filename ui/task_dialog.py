@@ -1255,7 +1255,7 @@ class TaskDialog(HtmlSettingsDialog):
                         + (
                             "Document bundle ready: PDF, XLSX and images."
                             if documents["available"]
-                            else "Optional document bundle unavailable. Run .venv/bin/python install_worker_bundle.py once, then retry this check."
+                            else "Optional document bundle unavailable. Run .venv/bin/python -m browser.install_worker_bundle once, then retry this check."
                         )
                     )
             except Exception:

@@ -12,9 +12,8 @@ from unittest.mock import patch
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import page_translation
-import webengine
-from browser_window import BrowserWindow
+from browser import page_translation, webengine
+from browser.browser_window import BrowserWindow
 from ui.prompts import MessageBox
 
 PAGE = (

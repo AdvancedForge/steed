@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from layout_components import PANEL_ACTIONS
+from browser.layout_components import PANEL_ACTIONS
 
 
 def chrome_font(text_size):

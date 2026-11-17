@@ -11,8 +11,8 @@ from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import tab_manager
-from browser_window import _TAB_DRAGS, BrowserWindow
+from browser import tab_manager
+from browser.browser_window import _TAB_DRAGS, BrowserWindow
 
 
 class TabWindowTests(unittest.TestCase):
@@ -158,7 +158,9 @@ class TabWindowTests(unittest.TestCase):
 
     def test_moved_pages_keep_history_and_live_state(self):
         root = self.root()
-        page = (Path(__file__).resolve().parents[1] / "codec_test.html").as_uri()
+        page = (
+            Path(__file__).resolve().parent / "fixtures" / "codec_test.html"
+        ).as_uri()
         tab = root._new_tab(url=page + "#first", return_tab=True)
         self.wait(
             lambda: (
@@ -198,7 +200,9 @@ class TabWindowTests(unittest.TestCase):
         )
         root._pop_out_profile_named(profile)
         other = root._child_windows[-1]
-        page = (Path(__file__).resolve().parents[1] / "codec_test.html").as_uri()
+        page = (
+            Path(__file__).resolve().parent / "fixtures" / "codec_test.html"
+        ).as_uri()
         target = other._new_tab(url=page + "#reading-tab", return_tab=True)
         self.wait(lambda: target.url().fragment() == "reading-tab")
         other._switch_tab(0)

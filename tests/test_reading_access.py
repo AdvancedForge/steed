@@ -5,7 +5,7 @@ import unittest
 
 import test_task_profiles as profiles
 
-import access_levels
+from browser import access_levels
 from services.task_policy import TaskPermissionError
 from ui.reading_review import ReadingReviewDialog
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from PyQt6.QtCore import qVersion
 
-import webengine
+from browser import webengine
 from services.task_policy import SUPPORTED_ACTIONS
 
 # Chrome's stable Connection-Allowlist feature starts at 152. Eligibility is

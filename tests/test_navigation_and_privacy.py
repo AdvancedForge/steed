@@ -13,8 +13,8 @@ from PyQt6.QtWebEngineCore import QWebEngineProfile, qWebEngineChromiumVersion
 from PyQt6.QtWidgets import QApplication
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
-from webengine import browser_user_agent, user_agent_mismatch
+from browser.browser_window import BrowserWindow
+from browser.webengine import browser_user_agent, user_agent_mismatch
 
 
 def page(title):

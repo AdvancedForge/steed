@@ -13,8 +13,8 @@ from urllib.parse import parse_qs, urlsplit
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-import search_suggestions
-from browser_window import BrowserWindow
+from browser import search_suggestions
+from browser.browser_window import BrowserWindow
 from ui.address_bar import KIND_ROLE
 
 

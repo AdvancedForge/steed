@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from data_panel_format import MAX_FIELD_CHARS, FormInputError
+from browser.data_panel_format import MAX_FIELD_CHARS, FormInputError
 from ui.html_dialog import HtmlSettingsDialog
 
 

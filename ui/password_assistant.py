@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
 )
 
-from password_service import (
+from browser.password_service import (
     WORLD,
     code_script,
     copy_secret,
@@ -26,7 +26,7 @@ from password_service import (
     new_password_script,
     take_script,
 )
-from password_vault import (
+from browser.password_vault import (
     VaultError,
     VaultLocked,
     generate_password,

@@ -11,7 +11,7 @@ from PyQt6.QtCore import QCoreApplication, QEvent, QObject, pyqtSignal
 from PyQt6.QtWebEngineCore import QWebEngineWebAuthUxRequest as Request
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
-from browser_window import BrowserWindow
+from browser.browser_window import BrowserWindow
 from ui.prompts import InputDialog, MessageBox
 from ui.web_auth import WebAuthPrompts
 
