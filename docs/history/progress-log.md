@@ -7,6 +7,23 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Before going public — November 16, 2026.**
+- Codex chats can continue after Steed closes too: kept threads are saved (not
+  ephemeral) and resumed with `thread/resume` while Codex still has them. The
+  setting is now **Keep agent chats so they can continue after Steed closes**.
+- A Steed-run chat whose connection dropped is recorded as interrupted; the
+  agent gateway used to race the provider and sometimes cancel it.
+- The intermittent startup exit did not occur in 85 starts; recorded in the
+  verification record, not claimed fixed.
+- The agents page was checked end to end with a live (synthetic) chat.
+- A security policy (`.github/SECURITY.md`); the release plan's outdated
+  claims refreshed.
+
+**A tidier repository — November 16, 2026.** The browser modules moved into
+`browser/` and optional requirements into `requirements/`, leaving 13 files at
+the root; DOCUMENTATION.md became topic files in `docs/`, and the roadmap's
+dated notes moved here.
+
 
 **Agents page round — November 16, 2026.** From using Steed's sidebar to talk
 to Claude Code:

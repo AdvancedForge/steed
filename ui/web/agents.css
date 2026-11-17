@@ -82,7 +82,7 @@
 .workspace .send.ready { background: var(--accent); color: var(--surface); }
 .workspace .send.ready:hover:enabled { background: var(--accent-hover); }
 .workspace .send:disabled { opacity: .5; }
-.workspace .task-actions { align-items: center; margin-top: 4px; padding: 0 6px; }
+.workspace .task-actions { align-items: center; gap: 16px; margin-top: 4px; padding: 0 6px; }
 .workspace .task-actions .hint { margin-right: auto; color: var(--muted); font-size: 11px; }
 
 /* A closed chat: what can happen next. */

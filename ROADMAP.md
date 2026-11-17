@@ -21,7 +21,7 @@ The road to a public release is the [release plan](docs/RELEASE_PLAN.md).
   editable New Tab and Welcome, a rearrangeable toolbar and menus, custom
   shortcuts.
 - **Agents: working, still growing.** A sidebar for Codex, Claude Code and ACP
-  agents (Claude Code chats can continue after Steed closes), local MCP access
+  agents (Claude Code and Codex chats can continue after Steed closes), local MCP access
   for other agents, page reading and actions under per-task permissions,
   watches, routines, app connections and agent-built workers, each reviewed
   before it runs. The milestones below track what is left.

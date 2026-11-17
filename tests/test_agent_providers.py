@@ -3,6 +3,7 @@
 import sqlite3
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -87,6 +88,42 @@ class AgentProviderTests(unittest.TestCase):
 
     def messages(self, task):
         return self.service.messages.read(task)["messages"]
+
+    def test_a_kept_codex_chat_continues_its_saved_thread(self):
+        settings = Path(self.directory.name) / "settings"
+        codex_home = Path(self.directory.name) / "codex"
+        self.manager.registry.config = SimpleNamespace(
+            config_dir=settings, get=lambda key, default=None: default
+        )
+        with unittest.mock.patch.dict("os.environ", {"CODEX_HOME": str(codex_home)}):
+            first = self.chat("keep")
+            self.send("Remember the plan")
+            self.complete(first)
+            saved = self.manager.saved_session(first)
+            self.assertEqual(saved["agent"], "codex")
+            folder = settings / "agent_chats" / first
+            self.assertEqual(saved["cwd"], str(folder))
+            # Not offered until Codex has the thread saved.
+            self.manager.close()
+            self.assertIsNone(self.manager.continuable(first))
+            day = codex_home / "sessions" / "2026" / "11" / "16"
+            day.mkdir(parents=True)
+            (day / f"rollout-2026-11-16T00-00-00-{saved['session_id']}.jsonl").touch()
+            self.sidebar.select_task(first)
+            self.sidebar.refresh()
+            self.assertTrue(self.sidebar.state["can_continue"])
+            self.mode = "continue"
+            self.sidebar.continue_chat()
+            second = self.sidebar.state["task_id"]
+            self.assertNotEqual(second, first)
+            self.wait_for(lambda: self.manager.status(second) == "Codex ready")
+            self.send("Where were we?")
+            self.complete(second)
+            self.assertEqual(
+                self.messages(second)[-1]["text"],
+                f"Resumed {saved['session_id']} in {folder}: Where were we?",
+            )
+            self.assertEqual(self.service.store.continuations(), {first: second})
 
     def test_sidebar_starts_turn_and_continues_same_task(self):
         task = self.chat()

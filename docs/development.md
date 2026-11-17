@@ -100,6 +100,26 @@ establish real account, consent, certificate or desktop-keyring acceptance.
 
 ## Verification record
 
+### Startup exits and a live chat — November 16, 2026
+
+The intermittent native exit (139, during the first persistent
+`QWebEngineProfile` construction, seen in October in headless smoke runs) did
+not occur in 85 starts on Qt 6.11.2: `tests/smoke_browser.py` 30 times in a row
+while the full suite ran, 40 more four at a time, and
+`tests/smoke_google_login.py` 15 times, all with `python -X faulthandler`. It
+is not reproduced; no cause or fix is claimed. If it returns, the faulthandler
+trace says where.
+
+The agents page was driven end to end in a real window, with the real agent
+gateway and the synthetic Claude Code runtime: starting a chat, a streamed
+reply, Steed closing the chat (recorded as interrupted, **Chat closed**),
+**Continue this chat** resuming the same saved session in the chat's folder,
+and a reply in the continued chat beneath the earlier messages.
+
+A flaky test turned out to be a real race: when a Steed-run chat's connection
+dropped, the agent gateway sometimes cancelled the task before the provider
+recorded the interruption. The gateway now records it as interrupted.
+
 ### Daily agent reliability — October 13, 2026
 
 The final full suite passes **1,405 tests in 454.935 seconds**; 46 final sidebar,
