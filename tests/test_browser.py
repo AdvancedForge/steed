@@ -79,7 +79,7 @@ class PersistenceTests(unittest.TestCase):
                 "browser.utils.json.load",
                 side_effect=json.JSONDecodeError("bad", "", 0),
             ):
-                with self.assertLogs("utils", level="WARNING"):
+                with self.assertLogs("browser.utils", level="WARNING"):
                     self.assertEqual(load_json(path, []), [])
 
     def test_profile_names_stay_inside_profile_directory(self):

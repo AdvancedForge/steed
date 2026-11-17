@@ -466,7 +466,7 @@ class FeatureTests(unittest.TestCase):
         request = Mock()
         request.page.return_value = None
         request.suggestedFileName.return_value = "boom.bin"
-        with self.assertLogs("download_manager", level="ERROR"):
+        with self.assertLogs("browser.download_manager", level="ERROR"):
             manager.handle(request, "default")
         request.cancel.assert_called_once()
         self.assertEqual(manager.records, {})
