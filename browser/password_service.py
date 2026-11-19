@@ -250,6 +250,91 @@ def code_script(expected, code):
     )
 
 
+_STEP = """
+    // Fields that are really there, wherever the page is scrolled: an agent's
+    // page is small and in the background, and focusing a field scrolls it.
+    const present = el => {
+        if (!(el instanceof HTMLInputElement) || el.disabled || el.readOnly ||
+            el.type === 'hidden') return false;
+        const box = el.getBoundingClientRect(), style = getComputedStyle(el);
+        return box.width >= 8 && box.height >= 8 && style.visibility !== 'hidden' &&
+            Number(style.opacity) > 0.1;
+    };
+    const fields = deepInputs(document).filter(present);
+    const code = el => (el.autocomplete || '').includes('one-time-code') ||
+        /otp|totp|2fa|mfa|one.?time|verification|auth.?code|security.?code/i.test(
+            el.name + ' ' + el.id + ' ' + (el.placeholder || '') + ' ' +
+            (el.getAttribute('aria-label') || ''));
+    const password = fields.find(el => el.type === 'password' && sameSite(el) &&
+        !(el.autocomplete || '').includes('new-password'));
+    const codeField = fields.find(el => ['text', 'tel', 'number', ''].includes(el.type) &&
+        code(el) && sameSite(el));
+    const user = fields.find(el => ['text', 'email', 'tel', ''].includes(el.type) && !code(el) &&
+        sameSite(el) && ((el.autocomplete || '').includes('username') || el.type === 'email' ||
+        /user|mail|login|account|identifier/i.test(el.name + ' ' + el.id)));
+"""
+
+
+def signin_step_script(expected):
+    """Which sign-in step the page shows: password, code or username first."""
+    return _script(
+        _FIELDS
+        + _STEP
+        + """
+    return {password: !!password, code: !!codeField, user: !!user};
+""",
+        expected=expected,
+    )
+
+
+def signin_form_script(expected):
+    """Where the sign-in step's form would go, so Steed can allow exactly
+    that submission (agent pages refuse any form Steed did not expect)."""
+    return _script(
+        _FIELDS
+        + _STEP
+        + """
+    const field = password || codeField || user;
+    if (!field || !field.form || !sameSite(field)) return null;
+    const form = field.form;
+    return {action: new URL(form.action || location.href, location.href).href,
+        method: (form.method || 'get').toUpperCase()};
+""",
+        expected=expected,
+    )
+
+
+def submit_script(expected):
+    """Submit the sign-in step just filled, as pressing its button would.
+    Only a form that stays on this site, never one sending elsewhere."""
+    return _script(
+        _FIELDS
+        + _STEP
+        + """
+    const field = password || codeField || user;
+    if (!field) return {submitted: false};
+    const form = field.form;
+    const label = el => (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
+    const pressable = root => [...root.querySelectorAll('button, input[type=submit]')]
+        .find(el => !el.disabled && el.type !== 'reset' && el.type !== 'button' ||
+            /sign.?in|log.?in|next|continue|verify|submit/i.test(label(el)));
+    if (form) {
+        if (!sameSite(field)) return {submitted: false};
+        const button = pressable(form);
+        if (button && button.form === form && button.type === 'submit') form.requestSubmit(button);
+        else if (button) button.click();
+        else form.requestSubmit();
+        return {submitted: true};
+    }
+    const button = pressable(field.getRootNode());
+    if (!button) return {submitted: false};
+    button.click();
+    return {submitted: true};
+""",
+        expected=expected,
+    )
+
+
 def new_password_script(expected, password):
     """Put a generated password into a sign-up or change-password form."""
     return _script(

@@ -29,7 +29,7 @@ class ReadingReviewDialog(HtmlSettingsDialog):
         note.setWordWrap(True)
         note.setProperty("role", "note")
         layout.addWidget(note)
-        self.always = QCheckBox("Always allow searches (Access & Permissions)")
+        self.always = QCheckBox("Always allow searches (Access && Permissions)")
         layout.addWidget(self.always)
         self.status = QLabel("")
         self.status.setWordWrap(True)

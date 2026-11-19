@@ -48,6 +48,13 @@ AGENT_CAPABILITIES = {
         "help": "Use app connections you set up, such as reading or sending mail.",
         "actions": {"connector", "app"},
     },
+    "signin": {
+        "label": "Sign in with your saved passwords",
+        "help": "Steed fills and submits a saved login (and its one-time code) "
+        "on the site's own sign-in page. Your agent never sees the password, "
+        "the code or the username.",
+        "actions": set(),
+    },
     "reading": {
         "label": "Search what you've read",
         "help": "Search the text of pages you read (with Remember what I read "

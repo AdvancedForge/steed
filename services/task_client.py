@@ -24,6 +24,8 @@ CLIENT_COMMANDS = frozenset(
         "routine.status",
         "reading.search",
         "reading.status",
+        "signin.request",
+        "signin.status",
         "panel.capabilities",
         "panel.propose",
         "panel.status",
