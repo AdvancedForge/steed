@@ -245,14 +245,32 @@ QSizeGrip {{ background: transparent; }}
     )
 
 
+# Native menus stay small: past this height they scroll.
+MENU_MAX_HEIGHT = 460
+
+
+def keep_menus_small(*menus):
+    """Cap every menu (and its submenus) at MENU_MAX_HEIGHT; they scroll."""
+    seen = set()
+    pending = [m for m in menus if m is not None]
+    while pending:
+        menu = pending.pop()
+        if id(menu) in seen:
+            continue
+        seen.add(id(menu))
+        menu.setMaximumHeight(MENU_MAX_HEIGHT)
+        pending += [a.menu() for a in menu.actions() if a.menu() is not None]
+
+
 def menu_stylesheet(colors):
     """Native menus (the toolbar's ☰ and its sections) in the toolbar's colours."""
     return f"""
 QMenu {{
   background: {colors.get("menu", colors["toolbar"])}; color: {colors["ink"]};
-  border: 1px solid {colors["border"]}; padding: 5px;
+  border: 1px solid {colors["border"]}; padding: 4px;
+  menu-scrollable: 1;  /* One column that scrolls, never a wall of columns. */
 }}
-QMenu::item {{ padding: 6px 26px 6px 12px; border-radius: 6px; background: transparent; }}
+QMenu::item {{ padding: 5px 22px 5px 10px; border-radius: 6px; background: transparent; }}
 QMenu::item:selected {{ background: {colors["hover"]}; color: {colors["ink"]}; }}
 QMenu::item:disabled {{ color: {colors["muted"]}; }}
 QMenu::separator {{ height: 1px; background: {colors["border"]}; margin: 5px 8px; }}
