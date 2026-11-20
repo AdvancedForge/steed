@@ -994,6 +994,8 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         agents_menu.addAction(self.agent_sidebar_action)
+        # Agents → Skills: each skill is also in the command palette.
+        self.skills_menu = agents_menu.addMenu("Skills")
         add_assistant_action = QAction("Add an Assistant…", self)
         add_assistant_action.triggered.connect(self._add_assistant)
         agents_menu.addAction(add_assistant_action)
@@ -1212,6 +1214,7 @@ class BrowserWindow(QMainWindow):
         from browser import shortcuts
 
         self._fill_commands_menu()
+        self._fill_skills_menu()
         shortcuts.apply(self)
         for menu in self._layout_menus.values():
             register_actions(menu)
@@ -1334,6 +1337,8 @@ class BrowserWindow(QMainWindow):
         for menu in self._layout_menus.values():
             self.browser_menu.addMenu(menu)
         self.address_bar.menu_btn.setMenu(self.browser_menu)
+        self.address_bar.workspace_btn.setMenu(self.workspaces_menu)
+        self._show_workspace()
         layout.addWidget(self.address_bar)
         from ui.bookmarks_bar import BookmarksBar
 
@@ -2205,6 +2210,99 @@ class BrowserWindow(QMainWindow):
         self.profile_manager.registry.commit_layout(LayoutPreferences(recovered))
 
     # ---------- Profile handling ----------
+    def _fill_skills_menu(self):
+        """Agents → Skills: one entry per skill, so each is in the palette."""
+        menu = getattr(self, "skills_menu", None)
+        if menu is None or getattr(self, "_closing", False):
+            return
+        menu.clear()
+        skills = self.profile_manager.registry.skills
+        if not getattr(skills, "_menu_hooked", False):
+            skills._menu_hooked = True
+            skills.changed.connect(self._skills_changed)
+        for skill in skills.list():
+            action = menu.addAction("Skill: " + skill["name"])
+            action.triggered.connect(
+                lambda _=False, identity=skill["id"]: self.run_skill(identity)
+            )
+        menu.addSeparator()
+        menu.addAction("Manage Skills…").triggered.connect(self.manage_skills)
+
+    def _skills_changed(self):
+        for window in QApplication.topLevelWidgets():
+            if isinstance(window, BrowserWindow) and not window._closing:
+                window._fill_skills_menu()
+                if window.agent_sidebar is not None:
+                    window.agent_sidebar._publish()
+
+    def manage_skills(self):
+        from ui.skills_dialog import SkillsDialog
+
+        self._present_dialog(SkillsDialog(self), modal=False)
+
+    def run_skill(self, skill_id, tabs=()):
+        """Run a skill: its saved steps first (by Steed, no model), then the
+        ask, with this page if the skill looks at it, in the agent chat."""
+        from services.skills import message
+
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Skills are not available in incognito.", 5000)
+            return
+        skill = self.profile_manager.registry.skills.get(skill_id)
+        if skill is None:
+            return
+        tab = self.tabs[self.current_tab_index] if self.tabs else None
+        state = {"page": None, "read": [], "stopped": None, "waiting": 0}
+
+        def deliver():
+            if state["waiting"]:
+                return
+            self.agent_message(
+                message(skill, state["page"], state["read"], state["stopped"]),
+                send=True,
+            )
+
+        if (
+            skill["context"] == "page"
+            and tab is not None
+            and tab.url().scheme() in ("http", "https", "file")
+        ):
+            state["waiting"] += 1
+
+            def read(text):
+                body = " ".join(str(text or "").split())[:5000]
+                state["page"] = (tab.title(), tab.url().toString(), body)
+                state["waiting"] -= 1
+                deliver()
+
+            webengine.run_script(
+                tab.page(),
+                "document.body ? document.body.innerText : ''",
+                read,
+                world=webengine.STEED_WORLD,
+            )
+        if skill.get("steps"):
+            from services.routine_steps import StepRunner
+
+            state["waiting"] += 1
+            runner = StepRunner(
+                self.profile_manager.current_profile, skill["steps"], self
+            )
+
+            def stepped(pages, stopped):
+                state["read"] = [
+                    (title, url, " ".join(text.split())[:3000])
+                    for title, url, text in pages
+                ]
+                state["stopped"] = stopped
+                runner.deleteLater()
+                state["waiting"] -= 1
+                deliver()
+
+            runner.finished.connect(stepped)
+            runner.start()
+        deliver()
+
     def _fill_commands_menu(self):
         """View → Your Commands: one entry per command script, so each is
         also in the command palette and can take a shortcut."""
@@ -3992,6 +4090,8 @@ class BrowserWindow(QMainWindow):
             tab.setFocus()
 
     def delegate_tabs(self, task_id, *, whole_profile=False):
+        if self.workspace_agents() == "never":
+            raise ValueError("Agents are not allowed in this workspace.")
         service = self.profile_manager.registry.tasks
         if whole_profile:
             name = self.profile_manager.current_profile_name
@@ -7216,6 +7316,27 @@ class BrowserWindow(QMainWindow):
         current = menu.addAction("Rename This Workspace…")
         current.setEnabled(self.workspace != "Main")
         current.triggered.connect(self.rename_workspace)
+        agents = menu.addMenu("Agents in This Workspace")
+        rule = store.agents(self.workspace)
+        for value, label in (
+            ("allowed", "As My Settings Say"),
+            ("ask", "Ask Me About Everything"),
+            ("never", "Not Allowed"),
+        ):
+            choice = agents.addAction(label)
+            choice.setCheckable(True)
+            choice.setChecked(rule == value)
+            choice.triggered.connect(
+                lambda _=False, v=value: self.set_workspace_agents(v)
+            )
+        keep = menu.addAction("Keep This Tab in Every Workspace")
+        keep.setCheckable(True)
+        current_url = (
+            self.tabs[self.current_tab_index].url().toString() if self.tabs else ""
+        )
+        keep.setChecked(current_url in store.everywhere)
+        keep.setEnabled(current_url.startswith("http"))
+        keep.triggered.connect(lambda: store.toggle_everywhere(current_url))
         remove = menu.addAction("Delete This Workspace…")
         remove.setEnabled(self.workspace != "Main")
         remove.triggered.connect(self.delete_workspace)
@@ -7257,6 +7378,7 @@ class BrowserWindow(QMainWindow):
             QMessageBox.information(self, "Workspaces", str(error))
             return
         self.switch_workspace(name)
+        self._show_workspace()
 
     def switch_workspace(self, name):
         """Put this window's web tabs away under the current workspace and
@@ -7269,6 +7391,7 @@ class BrowserWindow(QMainWindow):
             for tab in self.tabs
             if tab.url().scheme() in ("http", "https", "file")
             and not tab.workspace_name
+            and tab.url().toString() not in store.everywhere
         ]
         store.put_away(
             self.workspace,
@@ -7301,6 +7424,27 @@ class BrowserWindow(QMainWindow):
         self._save_current_tabs()
         self._update_window_title()
         self.status_bar.showMessage(f"Workspace: {name}", 3000)
+        self._show_workspace()
+
+    def _show_workspace(self):
+        """The switcher beside the address: shown once there are two or more."""
+        store = self._workspaces()
+        if not hasattr(self, "address_bar"):
+            return
+        many = store is not None and len(store.spaces) > 1
+        self.address_bar.show_workspace(self.workspace if many else None)
+
+    def workspace_agents(self):
+        """What agents may do in this window's workspace."""
+        store = self._workspaces()
+        return store.agents(self.workspace) if store is not None else "allowed"
+
+    def set_workspace_agents(self, rule):
+        store = self._workspaces()
+        if store is not None:
+            store.set_agents(self.workspace, rule)
+            if self.agent_sidebar is not None:
+                self.agent_sidebar.refresh()
 
     def rename_workspace(self):
         store = self._workspaces()
@@ -7339,6 +7483,7 @@ class BrowserWindow(QMainWindow):
         finally:
             self._restoring_tabs = False
         store.delete(gone)
+        self._show_workspace()
         self._save_current_tabs()
         self._update_window_title()
 
@@ -8580,6 +8725,16 @@ class BrowserWindow(QMainWindow):
             text = params[0][1].strip()
             if text and len(text) <= 4096:
                 self._navigate_tab_to_url(tab, text)
+        elif (
+            action == "assistant"
+            and len(params) == 1
+            and params[0][0] == "kind"
+            and params[0][1] in ("local", "key", "coding", "website", "cloud")
+        ):
+            # Welcome → Bring an assistant: straight into that setup.
+            self._toggle_agent_sidebar(True)
+            if self.agent_sidebar is not None:
+                self.agent_sidebar._assistant_chosen(params[0][1], None)
         elif action == "reopen" and len(params) == 1 and params[0][0] == "id":
             self._restore_closed_tab(params[0][1])
         elif action == "menu" and len(params) == 1 and params[0][0] == "name":

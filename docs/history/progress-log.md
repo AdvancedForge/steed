@@ -7,6 +7,22 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Setting up an assistant from the start — November 20, 2026.** The Welcome
+tour's last step is now *Bring an assistant, or don't*: Steed works fully
+without one, and five cards open each way to bring one (a local model, your
+own key, a coding agent, a chatbot website, a cloud agent), naming any coding
+agent already installed.
+
+**Workspaces, next layer — November 20, 2026.** Each workspace sets what agents
+may do in it (as your settings say, ask about everything, or not allowed); a
+switcher with the workspace's name sits before the address field once you
+have two; and tabs you keep in every workspace stay open when you switch.
+
+**Skills — November 20, 2026.** Kept asks you run in one go, from Agents →
+Skills, the command palette or `/` in the agent chat, on the page you are on;
+a skill can carry saved steps Steed replays first with no model, and **Write it
+for me** drafts one from a description. A few starter skills, all editable.
+
 **Everyday features — November 20, 2026.** **Workspaces** (Tabs menu,
 `Ctrl+Alt+W`) keep sets of tabs apart within a profile; **Help Me Write…**
 rewrites a text field with your assistant, shown first and inserted only on

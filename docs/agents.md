@@ -25,6 +25,20 @@ pick one (or up to five) and it goes with the message as its title, address
 and text, sharing the room an 8 KiB message has (shown as chips you can remove
 before sending). Only what you attach is shared.
 
+**Skills.** Things you ask your assistant often, kept to run in one go:
+**Agents → Skills** lists them (each is also in the command palette), and
+typing `/` at the start of a message in the agent chat lists them to pick.
+A skill is a name, what to ask, and what it looks at (the page you are on, or
+nothing), so "Summarize this page" sends the ask with this page's title,
+address and text (form fields are never included). A skill can also carry
+saved steps (as routines do, or taken from one) that Steed replays itself,
+with no model, before asking; what they read goes along, and if one breaks the
+assistant is told where. **Manage Skills…** adds, edits and removes them;
+**Write it for me** turns a one-line description into the ask with your
+assistant. Steed starts you with a few (Summarize this page, Explain simply,
+Draft a reply, Compare options), all editable. Kept in `skills.json`; not in
+incognito.
+
 ## Cloud agents and chatbots with connectors
 
 **Add an assistant → Cloud agents and chatbots with connectors** makes a

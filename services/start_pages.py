@@ -598,7 +598,9 @@ class StartPages(QObject):
             return self.render_simple(profile, state["settings"], root_css)
         if name == "welcome":
             body = welcome_steps(
-                state["settings"]["background"], styles.get(profile)["glass"]
+                state["settings"]["background"],
+                styles.get(profile)["glass"],
+                installed_assistants(),
             )
         else:
             settings = state["settings"]
@@ -932,7 +934,43 @@ MORE_OPTIONS = {
 }
 
 
-def welcome_steps(background, glass):
+# The ways to bring an assistant, as in Agents → Add an Assistant.
+ASSISTANT_CARDS = (
+    ("local", "On this computer", "A local model: private, free, offline."),
+    ("key", "With your API key", "OpenAI, Anthropic, Gemini, OpenRouter…"),
+    ("coding", "A coding agent", "Codex, Claude Code or any ACP agent."),
+    ("website", "A chatbot website", "ChatGPT, Claude or Gemini in the sidebar."),
+    ("cloud", "A cloud agent", "claude.ai or ChatGPT through a private link."),
+)
+
+
+def assistant_cards(ready=()):
+    """Links into each setup; ready names what is already on this computer."""
+    cards = "".join(
+        f'<a class="assistant" href="steed://action/assistant?kind={kind}">'
+        f"<strong>{escape(title)}</strong><span>{escape(text)}</span></a>"
+        for kind, title, text in ASSISTANT_CARDS
+    )
+    note = (
+        f'<p class="ready">Already on this computer: {escape(" and ".join(ready))}. '
+        "Choose it in the agent panel.</p>"
+        if ready
+        else ""
+    )
+    return f'<div class="assistants">{cards}</div>{note}'
+
+
+def installed_assistants():
+    import shutil
+
+    return [
+        name
+        for name, program in (("Codex", "codex"), ("Claude Code", "claude"))
+        if shutil.which(program)
+    ]
+
+
+def welcome_steps(background, glass, ready=()):
     """Getting started in three calm steps, one idea each: the look, your
     things from another browser, your agent. No script: the address's
     #fragment picks the step (and survives the page being shown again)."""
@@ -982,10 +1020,13 @@ def welcome_steps(background, glass):
         "from a file you export there.</p>"
         '<div class="actions"><a class="button" href="steed://action/import">Import…</a>'
         '<a class="button secondary" href="#agent">Not now</a></div></section>'
-        '<section id="agent" class="step"><h1>Meet your agent.</h1>'
-        "<p>Any assistant you like (a local model, your own API key, Codex, Claude Code or another agent) works beside you, only with what you allow.</p>"
-        '<div class="actions"><a class="button" href="steed://action/agents">Open the agent panel</a>'
-        '<a class="button secondary" href="steed://action/start">Start browsing</a></div></section>'
+        '<section id="agent" class="step"><h1>Bring an assistant, or don\'t.</h1>'
+        "<p>Steed works fully without one. If you would like help, any assistant "
+        "you like works here, gets the same tools and asks you before it does "
+        "anything.</p>"
+        + assistant_cards(ready)
+        + '<div class="actions"><a class="button" href="steed://action/start">Start browsing</a>'
+        '<a class="button secondary" href="steed://action/agents">Open the agent panel</a></div></section>'
         '<a class="skip" href="steed://action/start">Skip the tour</a></div>'
     )
 
@@ -1394,6 +1435,15 @@ body.onboarding header nav, body.onboarding .browser-menu, body.onboarding foote
   font-size: 15px; font-weight: 800; }
 .step .tile:not(.on) .tile-art { opacity: .78; }
 .step .tile:not(.on):hover .tile-art { opacity: 1; }
+.step .assistants { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px;
+  margin: 18px 0 6px; max-width: 620px; }
+.step .assistant { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 16px;
+  text-decoration: none; color: var(--ink); background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); transition: border-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
+.step .assistant:hover { border-color: var(--accent); transform: translateY(-2px); }
+.step .assistant strong { font-size: 14.5px; }
+.step .assistant span { font-size: 12.5px; color: var(--muted); }
+.step .ready { font-size: 14px; color: var(--muted); }
 .step .switch { display: flex; align-items: center; gap: 14px; max-width: 360px; margin-top: 18px; padding: 12px 16px;
   border-radius: 16px; text-decoration: none; color: var(--ink); background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
