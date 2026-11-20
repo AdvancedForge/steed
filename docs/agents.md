@@ -103,6 +103,28 @@ unsafe auto-approval on:
   (click to open the page) and gives the agent a note in place of the login
   page; sign in and the next run reads it. Watches already did this.
 
+## Tools websites offer (WebMCP)
+
+Chrome is adding WebMCP: a site registers named actions for agents with
+`document.modelContext.registerTool({name, description, inputSchema,
+annotations, execute})` (search, add to cart, book a table) so an agent can use
+them instead of clicking through the page. Qt WebEngine does not have it yet,
+so Steed defines `document.modelContext` (and the older
+`navigator.modelContext`, with `provideContext`) in every page's own world,
+including agents' private live pages. Sites that look for it register their
+tools as they would in Chrome.
+
+Any agent reaches them through two tools: `steed_page_tools` lists what a live
+page offers (name, description, input schema, and whether the site marked it
+read-only or consequential), and `steed_page_call_tool` runs one with
+arguments. A tool the site marked read-only (`readOnlyHint`) needs read access
+to that page; any other needs the task's submit permission on it, as pressing
+a button would. The site's own code runs the tool, as when you use the site;
+its result is the site's content, returned marked untrusted, with a warning
+when it seems to give instructions to agents. The journal records the tool's
+name and site, never its arguments or result. Restricted (scriptless) pages
+offer no tools.
+
 ## Replaying what an agent did
 
 **Agents → Task Permissions… → Steps** lists every step of the selected task

@@ -56,6 +56,8 @@ BROWSING_TOOLS = frozenset(
         "session.stop",
         "session.close",
         "page.inspect",
+        "page.tools",
+        "page.call_tool",
         "page.target",
         "page.act",
         "page.click",

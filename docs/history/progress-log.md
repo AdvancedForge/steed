@@ -7,6 +7,12 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Tools websites offer (WebMCP) — November 20, 2026.** Steed defines
+`document.modelContext` in every page, as Chrome is adding, so sites can
+register tools for agents; `page.tools` lists them and `page.call_tool` runs
+one. Read-only tools need read access, others the task's submit permission;
+results are marked untrusted and checked for text aimed at agents.
+
 **Signing in without friction — November 20, 2026.** **Bitwarden…** (General
 menu) unlocks Bitwarden through its command line for this run; its logins then
 sign in like Steed's own, filled by Steed and never shown to agents, with the

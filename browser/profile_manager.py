@@ -550,6 +550,16 @@ class ProfileRegistry(QObject):
             when="start",
             frames=True,
         )
+        from services import webmcp
+
+        # Tools sites offer to agents (WebMCP), as Chrome is adding.
+        webengine.add_profile_script(
+            profile,
+            "steed-webmcp",
+            webmcp.shim(),
+            world=webengine.PAGE_WORLD,
+            when="start",
+        )
         from browser import privacy
 
         privacy.install_fingerprint_guard(

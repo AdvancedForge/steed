@@ -315,6 +315,15 @@ class QtBrowserBackend(QObject):
                 from browser.webengine import configure_web_settings
 
                 configure_web_settings(profile.settings())
+                from services import webmcp
+
+                webengine.add_profile_script(
+                    profile,
+                    "steed-webmcp",
+                    webmcp.shim(),
+                    world=webengine.PAGE_WORLD,
+                    when="start",
+                )
                 if self.browser_config is not None:
                     override = self.browser_config.get(
                         "user_agent_override", ""
@@ -438,6 +447,86 @@ class QtBrowserBackend(QObject):
             ),
             None,
         )
+
+    def page_tools(self, session_id):
+        """Future: the tools the session's page registered (WebMCP)."""
+        from services.webmcp import clean_tools
+
+        session = self._session(session_id)
+        if session.mode != "live":
+            raise PageInspectionError("live_session_required")
+        result = Future()
+
+        def listed(raw):
+            if not result.done():
+                result.set_result(clean_tools(raw))
+
+        webengine.run_script(
+            session.page,
+            "window.__steedWebMCP ? window.__steedWebMCP.list() : '[]'",
+            listed,
+            world=webengine.PAGE_WORLD,
+        )
+        QTimer.singleShot(5000, lambda: listed("[]"))
+        return result
+
+    def call_page_tool(self, session_id, name, arguments):
+        """Future: run one of the page's tools; its result as text, or an
+        error. The page's own code runs it, as when a person uses the site."""
+        from services.webmcp import RESULT_LIMIT
+
+        session = self._session(session_id)
+        if session.mode != "live":
+            raise PageInspectionError("live_session_required")
+        call_id = uuid4().hex
+        result = Future()
+        page = session.page
+        waited = [0]
+
+        def poll():
+            if result.done() or sip.isdeleted(page):
+                if not result.done():
+                    result.set_exception(PageInspectionError("page_closed"))
+                return
+            webengine.run_script(
+                page,
+                f"window.__steedWebMCP ? window.__steedWebMCP.result({json.dumps(call_id)}) : '{{}}'",
+                answered,
+                world=webengine.PAGE_WORLD,
+            )
+
+        def answered(raw):
+            if result.done():
+                return
+            try:
+                found = json.loads(raw) if isinstance(raw, str) else {}
+            except ValueError:
+                found = {}
+            if "value" in found or "error" in found:
+                result.set_result(
+                    {
+                        "value": str(found.get("value", ""))[:RESULT_LIMIT],
+                        "error": str(found.get("error", ""))[:500],
+                    }
+                )
+                return
+            waited[0] += 250
+            if waited[0] >= 30000:
+                result.set_exception(PageInspectionError("tool_timeout"))
+            else:
+                QTimer.singleShot(250, poll)
+
+        webengine.run_script(
+            page,
+            "window.__steedWebMCP && window.__steedWebMCP.call("
+            + ", ".join(
+                json.dumps(value) for value in (call_id, name, json.dumps(arguments))
+            )
+            + ")",
+            lambda _: QTimer.singleShot(50, poll),
+            world=webengine.PAGE_WORLD,
+        )
+        return result
 
     def live_view(self, session_id):
         return self._session(session_id).borrowed_view
