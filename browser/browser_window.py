@@ -8725,6 +8725,16 @@ class BrowserWindow(QMainWindow):
             text = params[0][1].strip()
             if text and len(text) <= 4096:
                 self._navigate_tab_to_url(tab, text)
+        elif (
+            action == "assistant"
+            and len(params) == 1
+            and params[0][0] == "kind"
+            and params[0][1] in ("local", "key", "coding", "website", "cloud")
+        ):
+            # Welcome → Bring an assistant: straight into that setup.
+            self._toggle_agent_sidebar(True)
+            if self.agent_sidebar is not None:
+                self.agent_sidebar._assistant_chosen(params[0][1], None)
         elif action == "reopen" and len(params) == 1 and params[0][0] == "id":
             self._restore_closed_tab(params[0][1])
         elif action == "menu" and len(params) == 1 and params[0][0] == "name":

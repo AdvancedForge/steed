@@ -7,7 +7,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import QCoreApplication, QEvent
 from qt_test_support import WAIT_SECONDS, application, keep_directory
@@ -23,6 +23,12 @@ class PieceTests(unittest.TestCase):
             self.assertIn(step, page)
         self.assertIn("steed://action/import", page)
         self.assertIn("steed://action/agents", page)
+        # Every way to bring an assistant, and none needed.
+        for kind in ("local", "key", "coding", "website", "cloud"):
+            self.assertIn(f"steed://action/assistant?kind={kind}", page)
+        self.assertIn("works fully without one", page)
+        ready = welcome_steps("photo", glass=False, ready=["Codex"])
+        self.assertIn("Already on this computer: Codex", ready)
         self.assertEqual(page.count("steed://action/start"), 2)  # Done, or skip.
         self.assertIn("newtab-set?glass=1", page)  # Glass is off: turns it on.
         self.assertIn("newtab-set?glass=0", welcome_steps("photo", glass=True))
@@ -143,6 +149,20 @@ class TipTests(unittest.TestCase):
         self.assertEqual(pages.state(profile)["settings"]["background"], "color")
         window._start_page_action(tab, QUrl("steed://action/agents"))
         self.wait(lambda: window.agent_sidebar is not None)
+        shown = []
+        with patch.object(
+            type(window),
+            "_present_dialog",
+            lambda s, d, **_: (shown.append(d), MagicMock())[1],
+        ):
+            window._start_page_action(tab, QUrl("steed://action/assistant?kind=key"))
+            window._start_page_action(
+                tab, QUrl("steed://action/assistant?kind=nonsense")
+            )
+        self.assertEqual([type(d).__name__ for d in shown], ["ModelsDialog"])
+        self.assertEqual(shown[0].service.currentData()[1], "keyring")
+        for dialog in shown:
+            dialog.deleteLater()
         window._start_page_action(tab, QUrl("steed://action/start"))
         self.assertTrue(window.config.get("welcome_completed"))
 
