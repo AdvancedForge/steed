@@ -78,6 +78,7 @@ class TaskStore:
     """Atomically persist state changes and their journal entries."""
 
     def __init__(self, path: Path):
+        self.on_event = None  # Called after each journal event.
         path.parent.mkdir(parents=True, exist_ok=True)
         # Create with private permissions before SQLite writes any task metadata.
         with path.open("ab"):
@@ -702,6 +703,11 @@ class TaskStore:
         self.get(task_id)
         with self._db:
             self._append(task_id, kind, payload)
+        if self.on_event is not None:
+            try:  # An observer (task replay) never breaks the journal.
+                self.on_event(task_id, kind, payload)
+            except Exception:
+                pass
 
     def events(
         self, task_id: str, *, after: int = 0, limit: int = 100

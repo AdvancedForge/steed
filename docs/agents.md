@@ -55,6 +55,22 @@ unsafe auto-approval on:
   (click to open the page) and gives the agent a note in place of the login
   page; sign in and the next run reads it. Watches already did this.
 
+## Replaying what an agent did
+
+**Agents → Task Permissions… → Steps** lists every step of the selected task
+in plain words: opened a page, typed into a field, clicked, sent a form, was
+refused, signed in with your saved login. The journal never holds page text,
+so the steps say what kind of thing happened, not what the page said.
+
+Turn on **Keep a picture of each agent step** (Settings → Agents) and Steed
+also keeps a picture of the page just after each action, navigation and newly
+opened page; choose a step to see it. Pictures are taken only of pages on
+screen (a tab you lent the agent, or one shown with `session.watch`); Steed
+never renders a hidden page to photograph it, so background work has steps but
+no pictures. They are saved as small JPEGs in `task_replays/<task>` under
+Steed's settings (readable only by you), at most 300 per task, until you press
+**Delete Pictures**. Agents cannot change this setting.
+
 ## Local agent access (MCP)
 
 ### Daily browser access and permission diagnostics

@@ -130,6 +130,10 @@ class TaskService(QObject):
         self.data_panels = DataPanels(self)
         self.start_pages = StartPageProposals(self)
         self.customizations = CustomizationProposals(self)
+        from services.task_replay import TaskReplay
+
+        self.replay = TaskReplay(self, self)
+        self.store.on_event = self.replay.recorded
         self.watches = WatchProposals(self)
         self.routines = RoutineProposals(self)
         from services.reading_access import ReadingAccess

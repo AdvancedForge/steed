@@ -7,6 +7,12 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Replaying what an agent did — November 19, 2026.** Task Permissions has a
+**Steps** tab: each thing an agent did, in plain words, from the journal. With
+**Keep a picture of each agent step** on (Settings → Agents, off by default),
+Steed also keeps a small picture of the page after each action when the page
+is on screen, private to you and deleted with **Delete Pictures**.
+
 **Staying in charge of agents — November 19, 2026.** Four safeguards that hold
 for every agent, even with auto-approval on: **Pause All Agents** (Agents menu,
 `Ctrl+Alt+P`, the sidebar) holds every agent's actions at Steed's gateway and
