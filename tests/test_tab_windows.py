@@ -117,6 +117,36 @@ class TabWindowTests(unittest.TestCase):
         self.assertIn("https://work.example/doc", self.urls(root))
         self.assertNotIn("Taxes", root._workspaces().names())
 
+    def test_workspace_switcher_agent_rules_and_tabs_kept_everywhere(self):
+        root = self.root()
+        self.assertFalse(root.address_bar.workspace_btn.isVisible())
+        root._new_tab(url="https://mail.example/")
+        self.settle()
+        mail = next(t for t in root.tabs if t.url().host() == "mail.example")
+        root._switch_tab(root.tabs.index(mail))
+        store = root._workspaces()
+        store.toggle_everywhere("https://mail.example/")
+        with patch(
+            "browser.browser_window.QInputDialog.getText", return_value=("Work", True)
+        ):
+            root.new_workspace()
+        self.assertTrue(root.address_bar.workspace_btn.isVisible())
+        self.assertEqual(root.address_bar.workspace_btn.text(), "Work")
+        # Kept in every workspace: still open after the switch.
+        self.assertIn("https://mail.example/", self.urls(root))
+        self.assertEqual(root.workspace_agents(), "allowed")
+        root.set_workspace_agents("never")
+        self.assertEqual(root.workspace_agents(), "never")
+        with self.assertRaises(ValueError):
+            root.delegate_tabs("task")
+        root._toggle_agent_sidebar(True)
+        sidebar = root.agent_sidebar
+        sidebar.state["available"] = True
+        sidebar.start_chat()
+        self.assertIn("not allowed in this workspace", sidebar._error)
+        root.switch_workspace("Main")
+        self.assertEqual(root.workspace_agents(), "allowed")
+
     def test_second_window_starts_fresh_and_each_window_saves_its_own_tabs(self):
         root = self.root()
         root._new_tab(url="about:blank#one")

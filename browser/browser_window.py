@@ -1337,6 +1337,8 @@ class BrowserWindow(QMainWindow):
         for menu in self._layout_menus.values():
             self.browser_menu.addMenu(menu)
         self.address_bar.menu_btn.setMenu(self.browser_menu)
+        self.address_bar.workspace_btn.setMenu(self.workspaces_menu)
+        self._show_workspace()
         layout.addWidget(self.address_bar)
         from ui.bookmarks_bar import BookmarksBar
 
@@ -4088,6 +4090,8 @@ class BrowserWindow(QMainWindow):
             tab.setFocus()
 
     def delegate_tabs(self, task_id, *, whole_profile=False):
+        if self.workspace_agents() == "never":
+            raise ValueError("Agents are not allowed in this workspace.")
         service = self.profile_manager.registry.tasks
         if whole_profile:
             name = self.profile_manager.current_profile_name
@@ -7312,6 +7316,27 @@ class BrowserWindow(QMainWindow):
         current = menu.addAction("Rename This Workspace…")
         current.setEnabled(self.workspace != "Main")
         current.triggered.connect(self.rename_workspace)
+        agents = menu.addMenu("Agents in This Workspace")
+        rule = store.agents(self.workspace)
+        for value, label in (
+            ("allowed", "As My Settings Say"),
+            ("ask", "Ask Me About Everything"),
+            ("never", "Not Allowed"),
+        ):
+            choice = agents.addAction(label)
+            choice.setCheckable(True)
+            choice.setChecked(rule == value)
+            choice.triggered.connect(
+                lambda _=False, v=value: self.set_workspace_agents(v)
+            )
+        keep = menu.addAction("Keep This Tab in Every Workspace")
+        keep.setCheckable(True)
+        current_url = (
+            self.tabs[self.current_tab_index].url().toString() if self.tabs else ""
+        )
+        keep.setChecked(current_url in store.everywhere)
+        keep.setEnabled(current_url.startswith("http"))
+        keep.triggered.connect(lambda: store.toggle_everywhere(current_url))
         remove = menu.addAction("Delete This Workspace…")
         remove.setEnabled(self.workspace != "Main")
         remove.triggered.connect(self.delete_workspace)
@@ -7353,6 +7378,7 @@ class BrowserWindow(QMainWindow):
             QMessageBox.information(self, "Workspaces", str(error))
             return
         self.switch_workspace(name)
+        self._show_workspace()
 
     def switch_workspace(self, name):
         """Put this window's web tabs away under the current workspace and
@@ -7365,6 +7391,7 @@ class BrowserWindow(QMainWindow):
             for tab in self.tabs
             if tab.url().scheme() in ("http", "https", "file")
             and not tab.workspace_name
+            and tab.url().toString() not in store.everywhere
         ]
         store.put_away(
             self.workspace,
@@ -7397,6 +7424,27 @@ class BrowserWindow(QMainWindow):
         self._save_current_tabs()
         self._update_window_title()
         self.status_bar.showMessage(f"Workspace: {name}", 3000)
+        self._show_workspace()
+
+    def _show_workspace(self):
+        """The switcher beside the address: shown once there are two or more."""
+        store = self._workspaces()
+        if not hasattr(self, "address_bar"):
+            return
+        many = store is not None and len(store.spaces) > 1
+        self.address_bar.show_workspace(self.workspace if many else None)
+
+    def workspace_agents(self):
+        """What agents may do in this window's workspace."""
+        store = self._workspaces()
+        return store.agents(self.workspace) if store is not None else "allowed"
+
+    def set_workspace_agents(self, rule):
+        store = self._workspaces()
+        if store is not None:
+            store.set_agents(self.workspace, rule)
+            if self.agent_sidebar is not None:
+                self.agent_sidebar.refresh()
 
     def rename_workspace(self):
         store = self._workspaces()
@@ -7435,6 +7483,7 @@ class BrowserWindow(QMainWindow):
         finally:
             self._restoring_tabs = False
         store.delete(gone)
+        self._show_workspace()
         self._save_current_tabs()
         self._update_window_title()
 

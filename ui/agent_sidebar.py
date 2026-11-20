@@ -817,6 +817,14 @@ class AgentSidebar(QDockWidget):
     def start_chat(self):
         if self._private or self.providers is None or not self.state.get("available"):
             return
+        rule = getattr(self.browser_window, "workspace_agents", lambda: "allowed")()
+        if rule == "never":
+            self._error = (
+                "Agents are not allowed in this workspace (Tabs → Workspaces → "
+                "Agents in This Workspace)."
+            )
+            self._publish()
+            return
         if self._new_agent.startswith("web:"):
             site = next(
                 (
@@ -833,6 +841,8 @@ class AgentSidebar(QDockWidget):
             task_id = self.providers.new_chat(
                 model=self._new_model, agent=self._new_agent
             )
+            if rule == "ask":  # This workspace asks about everything.
+                self.service.mark_always_ask(task_id)
             self.refresh()
             self.select_task(task_id)
         except _ERRORS as error:

@@ -125,6 +125,8 @@ class TaskService(QObject):
         self.agents_paused = False
         # Tasks started by a cloud agent through a pairing link: always asked.
         self.remote_tasks = set()
+        # Tasks started from a workspace set to "Ask for everything".
+        self.ask_tasks = set()
         # What each chat's agent did on pages, as saved-step candidates for
         # routines. Memory only, never the journal: it holds labels and text.
         self.step_logs = {}
@@ -1734,6 +1736,18 @@ class TaskService(QObject):
             record.state = "returned"
         return record.payload()
 
+    def always_asks(self, task_id):
+        """Whether every request of this task waits for you, whatever your
+        access settings, saved approvals or auto-approval say: a cloud
+        agent's, or one started in an "Ask for everything" workspace."""
+        return task_id in self.remote_tasks or task_id in self.ask_tasks
+
+    def mark_always_ask(self, task_id):
+        if task_id not in self.ask_tasks:
+            self.ask_tasks.add(task_id)
+            self.store.record_event(task_id, "agent.always_ask", {})
+            self.changed.emit()
+
     def mark_remote(self, task_id):
         """A cloud agent's task: you approve each request yourself, whatever
         your access settings, saved approvals or auto-approval say."""
@@ -1865,7 +1879,7 @@ class TaskService(QObject):
                 else ""
             )
             rule = next((r for r in rules if r.covers(scope, profile_key)), None)
-            if recovery["status"] == "approved" or task_id in self.remote_tasks:
+            if recovery["status"] == "approved" or self.always_asks(task_id):
                 # Recovered work, and cloud agents, always ask afresh.
                 automatic = None
             elif self.auto_approve_requests or decision == "approve":

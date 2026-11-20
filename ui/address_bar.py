@@ -297,6 +297,13 @@ class AddressBar(QWidget):
         self.extensions_btn.clicked.connect(self.extensions_requested.emit)
         pins.addWidget(self.extensions_btn)
         self.extensions_shown = True
+        # Which workspace this window is in, when you have more than one.
+        self.workspace_btn = QPushButton(self)
+        self.workspace_btn.hide()
+        self.workspace_btn.setObjectName("TextButton")
+        self.workspace_btn.setAccessibleName("Workspace")
+        self.workspace_btn.setToolTip("Switch workspace (Ctrl+Alt+W)")
+        self.workspace_shown = False
 
         # Stable identifiers let a saved layout reorder or hide individual
         # buttons without depending on widget names.
@@ -323,7 +330,10 @@ class AddressBar(QWidget):
     def _apply_toolbar(self) -> None:
         """Place controls around the mandatory address field and hide omissions."""
         layout = self.layout()
-        for widget in list(self.buttons.values()) + [self.address_input]:
+        for widget in list(self.buttons.values()) + [
+            self.address_input,
+            self.workspace_btn,
+        ]:
             layout.removeWidget(widget)
         for name, button in self.buttons.items():
             if button.parent() is not self:
@@ -336,10 +346,20 @@ class AddressBar(QWidget):
             )
         for name in self.toolbar_order:
             if name == "address":
+                # With more than one workspace, its name sits before the address.
+                if self.workspace_shown:
+                    layout.addWidget(self.workspace_btn)
                 self.address_input.show()
                 layout.addWidget(self.address_input, 1)
             elif name not in self.hidden_toolbar:
                 layout.addWidget(self.buttons[name])
+
+    def show_workspace(self, name: str | None) -> None:
+        """Show the workspace's name, or hide the switcher with only one."""
+        self.workspace_shown = bool(name)
+        self.workspace_btn.setText(name or "")
+        self._apply_toolbar()
+        self.workspace_btn.setVisible(self.workspace_shown)
 
     def show_downloads(self, text: str, tooltip: str) -> None:
         self.downloads_btn.setText(text)

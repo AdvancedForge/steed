@@ -7,6 +7,11 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Workspaces, next layer — November 20, 2026.** Each workspace sets what agents
+may do in it (as your settings say, ask about everything, or not allowed); a
+switcher with the workspace's name sits before the address field once you
+have two; and tabs you keep in every workspace stay open when you switch.
+
 **Skills — November 20, 2026.** Kept asks you run in one go, from Agents →
 Skills, the command palette or `/` in the agent chat, on the page you are on;
 a skill can carry saved steps Steed replays first with no model, and **Write it

@@ -231,6 +231,17 @@ class CloudTasksAlwaysAskTests(unittest.TestCase):
             },
         )
         self.assertEqual(grant.status, "requested")
+        careful = self.service._create("Work in an ask-everything workspace")
+        self.service.mark_always_ask(careful.task_id)
+        grant = self.service._request_grant(
+            careful.task_id,
+            {"origins": ["https://example.com"], "actions": ["navigate", "read"]},
+        )
+        self.assertEqual(grant.status, "requested")
+        self.assertIn(
+            "agent.always_ask",
+            [e.kind for e in self.service.store.events(careful.task_id)],
+        )
         local = self.service._create("Local work")
         grant = self.service._request_grant(
             local.task_id,

@@ -155,7 +155,7 @@ class VaultSignin:
             return self._receipt(entry)
         entry["path"] = page.url().path()
         remembered = self.approved.get((task_id, origin))
-        if task_id in getattr(self.service, "remote_tasks", ()):
+        if self.service.always_asks(task_id):
             self.service.changed.emit()  # A cloud agent's sign-in waits for you.
         elif (
             remembered

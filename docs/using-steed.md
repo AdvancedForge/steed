@@ -434,8 +434,17 @@ current workspace and opens the other one's, each loading when you first look
 at it. A profile still holds your sign-ins, cookies and history; workspaces
 only sort tabs. **Switch Workspace…** (`Ctrl+Alt+W`) lets you type to find
 one among many, or type a new name to make it; the window title shows the
-workspace when it is not Main. Deleting a workspace moves its open tabs to
-Main. Kept in the profile's `workspaces.json`; not in incognito.
+workspace when it is not Main, and once you have more than one, its name sits
+before the address field (click it for the Workspaces menu). Deleting a
+workspace moves its open tabs to Main. Kept in the profile's
+`workspaces.json`; not in incognito.
+
+**Keep This Tab in Every Workspace** leaves a tab (your mail, your music) open
+whichever workspace you switch to. **Agents in This Workspace** sets what
+agents may do in it: **As My Settings Say**, **Ask Me About Everything**
+(every request from a chat started there waits for you, whatever your access
+settings, saved approvals or auto-approval say) or **Not Allowed** (no chats
+start there and no tabs are handed to an agent).
 
 ### Help me write
 

@@ -13,6 +13,9 @@ from pathlib import Path
 from browser.utils import save_json
 
 DEFAULT = "Main"
+# What agents may do in a workspace: as your settings say, ask about
+# everything, or nothing at all.
+AGENT_RULES = ("allowed", "ask", "never")
 MAX_WORKSPACES = 100
 MAX_TABS = 200
 
@@ -46,8 +49,16 @@ class Workspaces:
                 if isinstance(t, dict)
                 and str(t.get("url", "")).startswith(("http", "file"))
             ][:MAX_TABS]
-            self.spaces[name[:60]] = {"tabs": tabs}
-        self.spaces.setdefault(DEFAULT, {"tabs": []})
+            agents = value.get("agents", "allowed")
+            self.spaces[name[:60]] = {
+                "tabs": tabs,
+                "agents": agents if agents in AGENT_RULES else "allowed",
+            }
+        self.spaces.setdefault(DEFAULT, {"tabs": [], "agents": "allowed"})
+        listed = raw.get("everywhere") if isinstance(raw, dict) else None
+        self.everywhere = [
+            str(url)[:4096] for url in (listed or []) if str(url).startswith("http")
+        ][:20]
         current = raw.get("current") if isinstance(raw, dict) else None
         self.current = current if current in self.spaces else DEFAULT
 
@@ -58,7 +69,13 @@ class Workspaces:
 
     def _save(self):
         save_json(
-            self.path, {"version": 1, "current": self.current, "spaces": self.spaces}
+            self.path,
+            {
+                "version": 1,
+                "current": self.current,
+                "everywhere": self.everywhere,
+                "spaces": self.spaces,
+            },
         )
 
     def create(self, name):
@@ -67,14 +84,34 @@ class Workspaces:
             raise ValueError("A workspace has that name already.")
         if len(self.spaces) >= MAX_WORKSPACES:
             raise ValueError(f"Keep at most {MAX_WORKSPACES} workspaces.")
-        self.spaces[name] = {"tabs": []}
+        self.spaces[name] = {"tabs": [], "agents": "allowed"}
         self._save()
         return name
 
     def put_away(self, name, tabs):
         """Remember a workspace's tabs as they are now."""
-        self.spaces.setdefault(name, {"tabs": []})["tabs"] = list(tabs)[:MAX_TABS]
+        self.spaces.setdefault(name, {"tabs": [], "agents": "allowed"})["tabs"] = list(
+            tabs
+        )[:MAX_TABS]
         self._save()
+
+    def agents(self, name):
+        return self.spaces.get(name, {}).get("agents", "allowed")
+
+    def set_agents(self, name, rule):
+        if rule not in AGENT_RULES or name not in self.spaces:
+            raise ValueError("Choose allowed, ask or never.")
+        self.spaces[name]["agents"] = rule
+        self._save()
+
+    def toggle_everywhere(self, url):
+        """A tab kept open in every workspace (or no longer)."""
+        if url in self.everywhere:
+            self.everywhere.remove(url)
+        elif url.startswith("http"):
+            self.everywhere = (self.everywhere + [url])[-20:]
+        self._save()
+        return url in self.everywhere
 
     def take(self, name):
         """The tabs to open for a workspace (they are now open, not stored)."""
