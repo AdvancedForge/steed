@@ -3,12 +3,14 @@
 import importlib.util
 import os
 import re
+import shutil
 import sqlite3
 import tempfile
 import time
 from collections import deque
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
@@ -143,12 +145,53 @@ class AgentProviders(QObject):
 
     def agent_choices(self):
         """[(key, name)] of every agent a new chat can use: your models first,
-        then Codex, Claude Code and any ACP agents."""
-        return (
-            [("model:" + m["name"], m["name"]) for m in self.models()]
-            + [(key, AGENT_NAMES[key]) for key in ("codex", "claude")]
-            + [("acp:" + a["name"], a["name"]) for a in self.acp_agents()]
-        )
+        then Codex and Claude Code (when installed) and any ACP agents."""
+        return [(key, name) for key, name, _ in self.assistants()]
+
+    def _installed(self, key):
+        default = {"codex": CodexProvider, "claude": ClaudeCodeProvider}[key]
+        if self.factories.get(key) is not default:
+            return True  # Supplied by the caller (tests, embedders).
+        return shutil.which("codex" if key == "codex" else "claude") is not None
+
+    def assistants(self):
+        """[(key, name, where)]: every assistant set up, and where it runs."""
+        found = []
+        for entry in self.models():
+            host = urlsplit(entry["base_url"]).hostname
+            where = (
+                "On this computer"
+                if host in ("localhost", "127.0.0.1", "::1")
+                else "With your API key"
+            )
+            found.append(("model:" + entry["name"], entry["name"], where))
+        found += [
+            (key, AGENT_NAMES[key], "Coding agents")
+            for key in ("codex", "claude")
+            if self._installed(key)
+        ]
+        found += [
+            ("acp:" + a["name"], a["name"], "Coding agents") for a in self.acp_agents()
+        ]
+        found += [
+            ("web:" + site["name"], site["name"], "Chatbot websites")
+            for site in self.website_chats()
+        ]
+        return found
+
+    def website_chats(self):
+        """Chatbot websites you added (config "website_chats"): opened in the
+        sidebar, signed in as you; they reach Steed only through the relay."""
+        from services.website_chats import clean_website_chat
+
+        config = getattr(self.registry, "config", None)
+        found = []
+        for entry in (config.get("website_chats", []) if config else []) or []:
+            try:
+                found.append(clean_website_chat(entry))
+            except ValueError:
+                continue
+        return found
 
     def agent_label_for(self, task_id):
         """The agent's name for a chat's task."""

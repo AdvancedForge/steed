@@ -151,7 +151,9 @@ def request(service, task_id, request_id, selection="current_tab"):
         "browser.control_requested",
         {"request_id": request_id, "selection": selection},
     )
-    if service.auto_approve_requests:
+    if service.auto_approve_requests and task_id not in getattr(
+        service, "remote_tasks", ()
+    ):
         resolve(service, record, approve=True)
     service.changed.emit()
     return record.payload()

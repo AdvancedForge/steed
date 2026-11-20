@@ -145,3 +145,11 @@ body.workspace-page { display: grid; grid-template-columns: 216px minmax(0, 1fr)
   color: var(--ink); background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   box-shadow: inset 3px 0 0 var(--accent); white-space: pre-line; }
 .control[data-role=note] { color: var(--muted); font-size: 12.5px; }
+
+/* A card: one large choice, its title and a line saying what it is. */
+.control.button[data-role=card] { display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  width: 100%; max-width: none; min-height: 0; margin: 0 0 8px; padding: 14px 16px; border-radius: 14px; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.control.button[data-role=card] strong { font-size: 14.5px; font-weight: 650; color: var(--ink); }
+.control.button[data-role=card] small { font-size: 12.5px; font-weight: 450; line-height: 1.45; color: var(--muted); white-space: normal; }
+.control.button[data-role=card]:hover:enabled { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }

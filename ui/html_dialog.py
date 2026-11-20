@@ -38,7 +38,7 @@ from browser import webengine
 from ui.html_surface import HtmlSurface
 from ui.interface_mode import native
 
-ROLES = ("quote", "note")
+ROLES = ("quote", "note", "card")
 
 
 class HtmlPresentation:
@@ -273,6 +273,10 @@ class HtmlDialog(QDialog):
                 checked=widget.isChecked(),
                 primary=bool(widget.property("primary")),
             )
+            # A card: a large choice with a line saying what it is.
+            detail = widget.property("detail")
+            if isinstance(detail, str) and detail:
+                node["detail"] = detail
         elif isinstance(widget, QLabel):
             from ui.panel_image import PanelImage
 

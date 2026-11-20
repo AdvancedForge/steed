@@ -5,6 +5,48 @@ API key), Codex, Claude Code, any ACP agent, or any MCP client. Each gets the
 same tools and asks you the same way. This page covers the agent sidebar, those
 chats, and local MCP access. [Documentation index](README.md).
 
+## Every assistant in one place
+
+The agent sidebar's picker lists every assistant you have set up, grouped by
+where it runs: **On this computer**, **With your API key**, **Coding agents**
+(Codex and Claude Code when installed, ACP agents) and **Chatbot websites**.
+The last entry, **Add an assistant…** (also in the Agents menu and on the
+sidebar's start screen), opens one gallery for adding any of them. It notices
+Ollama or LM Studio already running and Codex or Claude Code already
+installed, so there is often nothing to type.
+
+A **chatbot website** (ChatGPT, Claude, Gemini or any chat site) opens in the
+sidebar's place, signed in as you, beside the agent chat. It reaches Steed's
+tools only through what you hand it: **Share instructions…** or the reviewed
+**Use as agent…** relay, or a pairing link if it supports connectors.
+
+## Cloud agents and chatbots with connectors
+
+**Add an assistant → Cloud agents and chatbots with connectors** makes a
+private pairing link that lets claude.ai, ChatGPT or a cloud agent use Steed's
+tools. Paste it where the assistant adds connectors (claude.ai: Settings →
+Connectors → Add custom connector; ChatGPT: Settings → Apps & Connectors →
+Create, in developer mode, with no authentication), or give it to a cloud
+agent as a remote MCP server. Which plans allow custom connectors is up to
+each company.
+
+How it works: Steed starts the bridge end of its MCP server on a local port
+(`agent_mcp.py --transport bridge`) and a tunnel that connects out and gives a
+public https address: **Tailscale Funnel** (Funnel must be on for this
+computer), a **Cloudflare quick tunnel** (needs `cloudflared`), or **an
+address you set up yourself** that forwards to the port Steed shows. Nothing
+listens on your network. Connector settings cannot add headers, so the link
+carries a long random secret in its path; anyone with the link can ask, so
+keep it to yourself.
+
+Everything that comes through the link is treated as a cloud agent: Steed asks
+you about every request it makes (permissions, sign-in, reading, tab
+control), whatever your access settings, saved approvals or auto-approval say,
+and the task's journal says it came from a cloud agent. Pause All Agents holds
+it like any other. The link ends after eight hours, when you press **Stop
+link**, when agent access is turned off, or when Steed closes; while one is
+open the sidebar says so.
+
 ## Any model, nothing else to install
 
 Open the agent sidebar, then **Settings and tools → Use any model…** (or **Use

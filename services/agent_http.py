@@ -18,8 +18,20 @@ from services.agent_tools import REQUEST_LIMIT
 IDLE_TIMEOUT = 1800
 
 
-def create_http_app(discovery, credentials, authority, *, idle_timeout=IDLE_TIMEOUT):
-    """Give every HTTP session its own browser connection and credential owner."""
+def create_http_app(
+    discovery,
+    credentials,
+    authority,
+    *,
+    idle_timeout=IDLE_TIMEOUT,
+    path_secret=None,
+):
+    """Give every HTTP session its own browser connection and credential owner.
+
+    With path_secret it is a pairing link for a cloud agent instead: reached
+    through a tunnel (so any one Host), authenticated by the secret in its
+    path, since connector settings in chat apps cannot add headers, and
+    marked remote so Steed asks you about everything it requests."""
     from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
     from mcp.server.auth.provider import AccessToken
     from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
@@ -31,7 +43,12 @@ def create_http_app(discovery, credentials, authority, *, idle_timeout=IDLE_TIME
 
     epoch = read_browser_discovery(discovery)["token"]
     manager = StreamableHTTPSessionManager(
-        create_server(discovery, expected_epoch=epoch, cancel_on_close=True),
+        create_server(
+            discovery,
+            expected_epoch=epoch,
+            cancel_on_close=True,
+            remote=path_secret is not None,
+        ),
         json_response=True,
         stateless=False,
         event_store=None,
@@ -40,7 +57,9 @@ def create_http_app(discovery, credentials, authority, *, idle_timeout=IDLE_TIME
         max_request_body_size=REQUEST_LIMIT,
         security_settings=TransportSecuritySettings(
             allowed_hosts=[authority], allowed_origins=[]
-        ),
+        )
+        if path_secret is None
+        else TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
 
     @asynccontextmanager
@@ -54,12 +73,25 @@ def create_http_app(discovery, credentials, authority, *, idle_timeout=IDLE_TIME
             # Check every method before handing any input to the SDK. Reject
             # duplicate security headers and all website-origin access.
             headers = request.headers
-            if len(headers.getlist("host")) != 1 or headers.get("host") != authority:
+            if len(headers.getlist("host")) != 1 or (
+                path_secret is None and headers.get("host") != authority
+            ):
                 response = Response(status_code=421)
             elif "origin" in headers:
                 response = Response(status_code=403)
             elif len(headers.getlist("mcp-session-id")) > 1:
                 response = Response(status_code=400)
+            elif path_secret is not None:
+                # The route itself holds the secret: only the paired link
+                # reaches here.
+                if not gateway_available(discovery, epoch):
+                    response = Response(status_code=503)
+                else:
+                    scope["user"] = AuthenticatedUser(
+                        AccessToken(token="paired", client_id="cloud", scopes=[])
+                    )
+                    await manager.handle_request(scope, receive, send)
+                    return
             elif len(headers.getlist("authorization")) != 1:
                 response = Response(
                     status_code=401, headers={"WWW-Authenticate": "Bearer"}
@@ -92,8 +124,9 @@ def create_http_app(discovery, credentials, authority, *, idle_timeout=IDLE_TIME
                     return
             await response(scope, receive, send)
 
+    path = "/mcp" if path_secret is None else f"/{path_secret}/mcp"
     return Starlette(
-        routes=[Route("/mcp", Endpoint(), methods=["GET", "POST", "DELETE"])],
+        routes=[Route(path, Endpoint(), methods=["GET", "POST", "DELETE"])],
         lifespan=lifespan,
     )
 
@@ -186,6 +219,71 @@ async def serve_http(
             f"Steed MCP HTTP: {url}; private credentials: {endpoint_file}",
             file=sys.stderr,
         )
+        while not runner.done():
+            if not gateway_available(discovery, epoch):
+                server.should_exit = True
+            await asyncio.sleep(0.25)
+        await runner
+    finally:
+        try:
+            if runner is not None:
+                server.should_exit = True
+                await runner
+        finally:
+            listener.close()
+            if published is not None:
+                try:
+                    metadata = endpoint_file.lstat()
+                    if (metadata.st_dev, metadata.st_ino) == published:
+                        endpoint_file.unlink()
+                except FileNotFoundError:
+                    pass
+
+
+async def serve_bridge(discovery, endpoint_file, idle_timeout=IDLE_TIMEOUT):
+    """A pairing link's local end: loopback only, for a tunnel to forward to.
+    Publishes its port and secret path in a private file for Steed."""
+    import sys
+
+    import uvicorn
+
+    discovery = Path(discovery)
+    epoch = read_browser_discovery(discovery)["token"]
+    secret = secrets.token_urlsafe(32)
+    endpoint_file = Path(endpoint_file)
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    runner = server = published = None
+    try:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(16)
+        port = listener.getsockname()[1]
+        app = create_http_app(
+            discovery,
+            {},
+            f"127.0.0.1:{port}",
+            idle_timeout=idle_timeout,
+            path_secret=secret,
+        )
+        server = uvicorn.Server(
+            uvicorn.Config(
+                app,
+                access_log=False,
+                proxy_headers=False,
+                log_level="warning",
+                timeout_graceful_shutdown=2,
+                limit_concurrency=16,
+            )
+        )
+        runner = asyncio.create_task(server.serve(sockets=[listener]))
+        while not server.started:
+            if runner.done():
+                await runner
+                raise RuntimeError("Bridge did not start")
+            await asyncio.sleep(0.01)
+        published = publish_endpoint(
+            endpoint_file, {"version": 1, "port": port, "path": f"/{secret}/mcp"}
+        )
+        print("Steed bridge ready", file=sys.stderr, flush=True)
         while not runner.done():
             if not gateway_available(discovery, epoch):
                 server.should_exit = True

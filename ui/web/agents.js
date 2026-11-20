@@ -204,21 +204,38 @@ function renderChats(next) {
   text("more-chats", showAllChats ? "Show fewer" : `${hidden} more`);
 }
 
+// Assistants grouped by where they run, then a way to add another.
+function agentOptions(agents) {
+  const groups = new Map();
+  for (const entry of agents) {
+    if (!groups.has(entry.where)) groups.set(entry.where, []);
+    groups.get(entry.where).push(entry);
+  }
+  const nodes = [];
+  for (const [where, list] of groups) {
+    const group = document.createElement("optgroup");
+    group.label = where;
+    group.append(...list.map(entry => new Option(entry.name, entry.id)));
+    nodes.push(group);
+  }
+  nodes.push(new Option("Add an assistant…", "__add"));
+  return nodes;
+}
+
 function renderAgents(next) {
   const agents = next.agents || [];
-  const known = JSON.stringify(agents.map(a => [a.id, a.name]));
+  const known = JSON.stringify(agents.map(a => [a.id, a.name, a.where]));
   for (const id of ["agent", "welcome-agent"]) {
     if ($(id).dataset.known !== known) {
-      $(id).replaceChildren(...agents.map(entry => new Option(entry.name, entry.id)));
+      $(id).replaceChildren(...agentOptions(agents));
       $(id).dataset.known = known;
     }
   }
   const current = agents.find(a => a.id === next.new_agent) || agents[0];
+  $("agent").dataset.current = $("welcome-agent").dataset.current = current ? current.id : "";
   if (!current) return;
   $("agent").value = current.id;
   $("welcome-agent").value = current.id;
-  // One agent: nothing to choose between.
-  visible("welcome-agent", agents.length > 1);
   if ($("model").dataset.agent !== current.id) {
     $("model").replaceChildren(...current.models.map(([value, label]) => new Option(label, value)));
     $("model").dataset.agent = current.id;
@@ -236,11 +253,10 @@ window.steedUI = {render(next) {
   document.documentElement.dataset.theme = next.dark ? "dark" : "light";
   visible("unsafe", next.yolo);
   visible("paused", next.paused);
+  visible("bridge-on", next.bridge);
   visible("pause-agents", next.available && !next.paused);
   visible("welcome", !next.usable);
   visible("welcome-start-row", next.available && next.has_provider);
-  visible("setup", next.available);
-  $("setup").textContent = next.has_provider ? "Connect another agent" : "Connect an agent";
   text("welcome-copy", next.private ? "Agent chats are off in private browsing. Switch to a regular profile to chat." : next.available ? "Ask for anything. It keeps working while you browse." : "Agent chats are unavailable. Open Connection setup from the Agents menu to check your connection.");
   text("welcome-note", next.yolo ? "Agent requests are approved automatically. Turn it off in Agents → Access and Setup to review access." : "Only what you send is shared. You choose what it may do.");
   visible("new-chat", next.available && next.has_provider);
@@ -344,7 +360,12 @@ $("tasks").addEventListener("keydown", event => {
 $("more-chats").addEventListener("click", () => { showAllChats = !showAllChats; if (state) renderChats(state); });
 $("chats-toggle").addEventListener("click", () => setChatsOpen(!chatsOpen));
 $("model").addEventListener("change", () => command("model", {value: $("model").value}));
-for (const id of ["agent", "welcome-agent"]) $(id).addEventListener("change", () => command("agent", {value: $(id).value}));
+for (const id of ["agent", "welcome-agent"]) $(id).addEventListener("change", () => {
+  if ($(id).value === "__add") {
+    $(id).value = $(id).dataset.current || "";
+    command("add_assistant");
+  } else command("agent", {value: $(id).value});
+});
 document.addEventListener("click", event => {
   const button = event.target.closest("button[data-action]");
   if (!button || button.disabled) return;

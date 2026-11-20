@@ -84,14 +84,9 @@ GROUPS = {
         ("Browsing History…", "Search What You've Read…", "Clear Browsing History…"),
     ),
     "agents": (
-        (
-            "Agent Sidebar",
-            "Agent Chat Tab",
-            "Routines…",
-            "Watches…",
-            "Website Chats",
-            "Data Panels",
-        ),
+        ("Agent Sidebar", "Add an Assistant…", "Pause All Agents"),
+        ("Routines…", "Watches…", "Data Panels"),
+        ("Agent Chat Tab", "Website Chats"),
     ),
 }
 # Items gathered into a sub-menu at the end: what sets agents up and what

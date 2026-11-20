@@ -101,7 +101,8 @@ class ReadingAccess:
             "created": time.time(),
         }
         self.requests[key] = entry
-        if policy == "always" or self.service.auto_approve_requests:
+        remote = task_id in getattr(self.service, "remote_tasks", ())
+        if not remote and (policy == "always" or self.service.auto_approve_requests):
             self._answer(entry)
         else:
             self.service.store._append(

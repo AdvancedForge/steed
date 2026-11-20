@@ -200,6 +200,7 @@ class AgentConnection(QObject):
         self.closed = False
         self.client = None
         self.managed = False
+        self.remote = False
         self.pending = None
         # Set when Steed itself drops the connection (a stuck operation):
         # such a task is cancelled rather than offered for resumption.
@@ -243,12 +244,19 @@ class AgentConnection(QObject):
                 if not self.authenticated:
                     token = request.get("token")
                     if (
-                        set(request) not in ({"token"}, {"token", "task_binding"})
+                        set(request)
+                        not in (
+                            {"token"},
+                            {"token", "task_binding"},
+                            {"token", "remote"},
+                        )
                         or not isinstance(token, str)
                         or not secrets.compare_digest(token, self.gateway.token)
+                        or request.get("remote", True) is not True
                     ):
                         self.close()
                         return
+                    self.remote = "remote" in request
                     if "task_binding" in request:
                         self.client = self.gateway._redeem(request["task_binding"])
                         self.managed = True
@@ -320,6 +328,8 @@ class AgentConnection(QObject):
                 # Creation and binding happen together on the Qt thread. A
                 # disconnect cannot leave queued creation without an owner.
                 task = self.gateway.service._create(**request["arguments"])
+                if self.remote:
+                    self.gateway.service.mark_remote(task.task_id)
                 if self.client is not None:
                     self.gateway.service.external_connection(self.client.task_id, False)
                 self.client = self.gateway.service.client(task.task_id)
@@ -343,6 +353,8 @@ class AgentConnection(QObject):
                 task = self.gateway.service.store.get(task_id)
                 if task.status not in ACTIVE_STATUSES:
                     raise ValueError("Unknown or expired resume token")
+                if self.remote:
+                    self.gateway.service.mark_remote(task_id)
                 self.client = self.gateway.service.client(task_id)
                 self.gateway.service.external_connection(task_id, True)
                 result = {

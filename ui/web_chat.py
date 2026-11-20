@@ -17,12 +17,6 @@ from PyQt6.QtWidgets import (
 from browser import webengine
 from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
 
-WEB_CHATS = {
-    "ChatGPT": "https://chatgpt.com/",
-    "Claude": "https://claude.ai/",
-    "Gemini": "https://gemini.google.com/",
-}
-
 # Focus only an unambiguous visible editor. No provider-specific DOM writes,
 # arbitrary scripts, Enter key, form submission, or response scraping.
 FOCUS_COMPOSER = """(() => {

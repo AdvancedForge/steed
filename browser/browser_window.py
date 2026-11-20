@@ -982,6 +982,9 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         agents_menu.addAction(self.agent_sidebar_action)
+        add_assistant_action = QAction("Add an Assistant…", self)
+        add_assistant_action.triggered.connect(self._add_assistant)
+        agents_menu.addAction(add_assistant_action)
         routines_action = QAction("Routines…", self)
         routines_action.triggered.connect(self.manage_routines)
         agents_menu.addAction(routines_action)
@@ -1003,7 +1006,7 @@ class BrowserWindow(QMainWindow):
         agents_tab_action.triggered.connect(lambda: self._open_agent_tab())
         agents_menu.addAction(agents_tab_action)
         web_chats_menu = agents_menu.addMenu("Website Chats")
-        from ui.web_chat import WEB_CHATS
+        from services.website_chats import WEB_CHATS
 
         for label, url in WEB_CHATS.items():
             action = web_chats_menu.addAction(label)
@@ -2852,13 +2855,106 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar.hide()
         self._update_page_actions()
 
-    def _dock_web_chat(self):
+    def _add_assistant(self):
+        """Agents → Add an Assistant…: the gallery, from the agent sidebar."""
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Agents are not available in incognito.", 5000)
+            return
+        self._toggle_agent_sidebar(True)
+        if self.agent_sidebar is not None:
+            self.agent_sidebar.add_assistant()
+
+    def agent_bridge(self):
+        """The one pairing link for cloud agents, shared by every window."""
+        registry = self.profile_manager.registry
+        bridge = getattr(registry, "agent_bridge_link", None)
+        if bridge is None:
+            from PyQt6.QtCore import QCoreApplication
+
+            from services.agent_bridge import AgentBridge
+
+            bridge = registry.agent_bridge_link = AgentBridge(registry, registry)
+            QCoreApplication.instance().aboutToQuit.connect(bridge.stop)
+            registry.agent_access_changed.connect(
+                lambda on: on or bridge.stop("Agent access was turned off.")
+            )
+            tasks = registry._tasks
+            bridge.changed.connect(lambda: tasks is not None and tasks.changed.emit())
+        return bridge
+
+    def _open_bridge(self):
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Agents are not available in incognito.", 5000)
+            return
+        from ui.bridge_dialog import BridgeDialog
+
+        dialog = BridgeDialog(self.agent_bridge(), self)
+        present = getattr(self, "_present_dialog", None)
+        if present is not None:
+            present(dialog, modal=False)
+        else:
+            dialog.show()
+
+    def _choose_website_assistant(self):
+        """Add a chatbot website as an assistant, and open it in the sidebar."""
+        from services.website_chats import WEB_CHATS, clean_website_chat
+
+        other = "Another chat website…"
+        choice, ok = QInputDialog.getItem(
+            self,
+            "Add a chatbot website",
+            "Which chat website? You sign in to it as usual.",
+            [*WEB_CHATS, other],
+            0,
+            False,
+        )
+        if not ok:
+            return
+        if choice == other:
+            url, ok = QInputDialog.getText(
+                self, "Add a chatbot website", "Its address (https://…):"
+            )
+            if not ok:
+                return
+            name = QUrl(url.strip()).host().removeprefix("www.") or url
+        else:
+            name, url = choice, WEB_CHATS[choice]
+        try:
+            site = clean_website_chat({"name": name[:40], "url": url.strip()})
+        except ValueError as error:
+            QMessageBox.information(self, "Add a chatbot website", str(error))
+            return
+        sites = [
+            s
+            for s in self.config.get("website_chats", []) or []
+            if isinstance(s, dict) and s.get("name") != site["name"]
+        ]
+        self.config.set("website_chats", (sites + [site])[-12:])
+        if self.agent_sidebar is not None:
+            self.agent_sidebar.set_agent("web:" + site["name"])
+            self.agent_sidebar._publish()
+        self._open_website_assistant(site["url"])
+
+    def _open_website_assistant(self, url):
+        """A chatbot website in the sidebar's place, beside the agent chat."""
+        view = self._new_tab(url=url, return_tab=True)
+        self._dock_web_chat(view)
+        if self.web_chat_dock is not None and self.agent_sidebar is not None:
+            if self.agent_sidebar.isVisible():
+                self.tabifyDockWidget(self.agent_sidebar, self.web_chat_dock)
+            self.web_chat_dock.show()
+            self.web_chat_dock.raise_()
+
+    def _dock_web_chat(self, view=None):
         from ui.web_chat import WebChatDock
 
         if not self.tabs:
             return
-        view = self.tabs[self.current_tab_index]
-        if getattr(view, "agent_panel", False) or view.url().scheme() != "https":
+        chosen = view is not None
+        view = view or self.tabs[self.current_tab_index]
+        if getattr(view, "agent_panel", False) or (
+            not chosen and view.url().scheme() != "https"
+        ):
             QMessageBox.information(
                 self, "Website chat", "Open an HTTPS chat website first."
             )
@@ -2875,7 +2971,7 @@ class BrowserWindow(QMainWindow):
         self._switch_tab(self.tabs.index(others[0]))
 
     def _choose_web_chat(self):
-        from ui.web_chat import WEB_CHATS
+        from services.website_chats import WEB_CHATS
 
         hosts = {QUrl(url).host() for url in WEB_CHATS.values()}
         choices = [

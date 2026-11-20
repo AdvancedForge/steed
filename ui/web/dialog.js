@@ -66,6 +66,11 @@ function update(entry, node) {
   } else if (node.kind === 'label' || node.kind === 'button') {
     // Checkable buttons are drawn as switches (dialog.css), not "✓ text".
     element.textContent = node.text;
+    if (node.kind === 'button' && node.detail) {
+      const title = document.createElement('strong'), detail = document.createElement('small');
+      title.textContent = node.text; detail.textContent = node.detail;
+      element.replaceChildren(title, detail);
+    }
     if (node.status) { element.setAttribute('role', 'status'); element.setAttribute('aria-live', 'polite'); }
     if (node.checkable) { element.setAttribute('aria-pressed', node.checked); element.classList.add('toggle'); }
     if (node.kind === 'button') { element.dataset.tone = tone(node.text); element.dataset.primary = !!node.primary; }

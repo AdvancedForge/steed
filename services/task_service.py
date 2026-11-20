@@ -123,6 +123,8 @@ class TaskService(QObject):
         self.auto_approve_requests = False
         # Pause all agents: every agent's browser and app actions wait.
         self.agents_paused = False
+        # Tasks started by a cloud agent through a pairing link: always asked.
+        self.remote_tasks = set()
         self.control_requests = {}
         self.workers = WorkerManager(self)
         self.recipes = RecipeProposals(self, connections)
@@ -1727,6 +1729,14 @@ class TaskService(QObject):
             record.state = "returned"
         return record.payload()
 
+    def mark_remote(self, task_id):
+        """A cloud agent's task: you approve each request yourself, whatever
+        your access settings, saved approvals or auto-approval say."""
+        if task_id not in self.remote_tasks:
+            self.remote_tasks.add(task_id)
+            self.store.record_event(task_id, "agent.remote", {})
+            self.changed.emit()
+
     def set_agents_paused(self, paused):
         """Trusted desktop switch that holds every agent's actions (only
         reading the conversation and checking status still work); never an
@@ -1850,8 +1860,9 @@ class TaskService(QObject):
                 else ""
             )
             rule = next((r for r in rules if r.covers(scope, profile_key)), None)
-            if recovery["status"] == "approved":
-                automatic = None  # Recovered work always asks afresh.
+            if recovery["status"] == "approved" or task_id in self.remote_tasks:
+                # Recovered work, and cloud agents, always ask afresh.
+                automatic = None
             elif self.auto_approve_requests or decision == "approve":
                 automatic = {}
             elif rule is not None:
