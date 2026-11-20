@@ -81,6 +81,42 @@ class TabWindowTests(unittest.TestCase):
             root._child_windows[-1].profile_manager.current_profile_name, "Work"
         )
 
+    def test_workspaces_put_tabs_away_and_bring_them_back(self):
+        root = self.root()
+        root._new_tab(url="https://work.example/doc")
+        self.settle()
+        with patch(
+            "browser.browser_window.QInputDialog.getText", return_value=("Trip", True)
+        ):
+            root.new_workspace()
+        self.assertEqual(root.workspace, "Trip")
+        self.assertNotIn("https://work.example/doc", self.urls(root))
+        self.assertIn("(Trip)", root.windowTitle())
+        root._new_tab(url="https://flights.example/")
+        self.settle()
+        root.switch_workspace("Main")
+        self.assertIn("https://work.example/doc", self.urls(root))
+        self.assertNotIn("https://flights.example/", self.urls(root))
+        root._fill_workspaces_menu()
+        names = [a.text() for a in root.workspaces_menu.actions()]
+        self.assertIn("Trip", names)
+        # Many workspaces: type to find one.
+        with patch(
+            "browser.browser_window.QInputDialog.getItem", return_value=("Trip", True)
+        ):
+            root.choose_workspace()
+        self.assertIn("https://flights.example/", self.urls(root))
+        with patch(
+            "browser.browser_window.QInputDialog.getItem", return_value=("Taxes", True)
+        ):
+            root.choose_workspace()  # A new name makes a workspace.
+        self.assertEqual(root.workspace, "Taxes")
+        self.assertEqual(root._workspaces().names(), ["Main", "Taxes", "Trip"])
+        root.delete_workspace()
+        self.assertEqual(root.workspace, "Main")
+        self.assertIn("https://work.example/doc", self.urls(root))
+        self.assertNotIn("Taxes", root._workspaces().names())
+
     def test_second_window_starts_fresh_and_each_window_saves_its_own_tabs(self):
         root = self.root()
         root._new_tab(url="about:blank#one")

@@ -17,7 +17,63 @@ function send() {
   if (!state?.active || composer.disabled || pendingSend || !composer.value.trim()) return;
   pendingSend = {context, version: ++draftVersion};
   $("send").disabled = true;
-  command("send", {value: composer.value, version: draftVersion});
+  const values = {value: composer.value, version: draftVersion};
+  if (attached.length) values.attach = attached.map(tab => tab.id);
+  command("send", values);
+  attached = []; renderAttached();
+}
+
+// @ in the message lists your open tabs; a picked tab goes with the message
+// (its title, address and text), shown as a chip you can remove.
+let attached = [], mentionIndex = 0;
+function mentionQuery() {
+  const before = composer.value.slice(0, composer.selectionStart);
+  const match = before.match(/(^|\s)@([^\s@]*)$/);
+  return match ? match[2].toLowerCase() : null;
+}
+function mentionChoices() {
+  const query = mentionQuery();
+  if (query === null || !state) return [];
+  return (state.mention_tabs || []).filter(tab => !attached.some(a => a.id === tab.id) &&
+    (tab.title.toLowerCase().includes(query) || tab.host.toLowerCase().includes(query))).slice(0, 8);
+}
+function renderMentions() {
+  const choices = mentionChoices();
+  mentionIndex = Math.min(mentionIndex, Math.max(0, choices.length - 1));
+  $("mentions").replaceChildren(...choices.map((tab, index) => {
+    const item = document.createElement("li");
+    item.setAttribute("role", "option");
+    item.setAttribute("aria-selected", index === mentionIndex);
+    const title = document.createElement("strong"), host = document.createElement("span");
+    title.textContent = tab.title; host.textContent = tab.host;
+    item.append(title, host);
+    item.addEventListener("mousedown", event => { event.preventDefault(); pickMention(tab); });
+    return item;
+  }));
+  visible("mentions", choices.length > 0);
+}
+function pickMention(tab) {
+  const start = composer.selectionStart, before = composer.value.slice(0, start);
+  const cut = before.replace(/@[^\s@]*$/, "");
+  composer.value = cut + composer.value.slice(start);
+  composer.selectionStart = composer.selectionEnd = cut.length;
+  if (attached.length < 5) attached.push(tab);
+  renderAttached(); renderMentions();
+  command("draft", {value: composer.value, version: ++draftVersion});
+}
+function renderAttached() {
+  $("attached").replaceChildren(...attached.map(tab => {
+    const chip = document.createElement("span");
+    chip.className = "tab-chip";
+    chip.textContent = "@" + tab.title;
+    const remove = document.createElement("button");
+    remove.type = "button"; remove.textContent = "×";
+    remove.setAttribute("aria-label", "Remove " + tab.title);
+    remove.addEventListener("click", () => { attached = attached.filter(a => a !== tab); renderAttached(); });
+    chip.append(remove);
+    return chip;
+  }));
+  $("attached").hidden = !attached.length;
 }
 
 function visible(id, show) { $(id).hidden = !show; }
@@ -348,11 +404,20 @@ $("activity-toggle").addEventListener("click", () => {
   activityOpen = $("activity-toggle").getAttribute("aria-expanded") !== "true";
   renderActivityDetails();
 });
-composer.addEventListener("input", () => { fitComposer(); renderSend(); command("draft", {value: composer.value, version: ++draftVersion}); });
+composer.addEventListener("input", () => { fitComposer(); renderSend(); renderMentions(); command("draft", {value: composer.value, version: ++draftVersion}); });
 composer.addEventListener("keydown", event => {
+  const choices = $("mentions").hidden ? [] : mentionChoices();
+  if (choices.length && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+    event.preventDefault();
+    mentionIndex = (mentionIndex + (event.key === "ArrowDown" ? 1 : choices.length - 1)) % choices.length;
+    renderMentions(); return;
+  }
+  if (choices.length && (event.key === "Enter" || event.key === "Tab")) { event.preventDefault(); pickMention(choices[mentionIndex]); return; }
+  if (choices.length && event.key === "Escape") { event.preventDefault(); visible("mentions", false); return; }
   // Enter sends; Shift+Enter adds a line (Ctrl+Enter also sends).
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); send(); }
 });
+composer.addEventListener("blur", () => visible("mentions", false));
 $("tasks").addEventListener("click", event => choose(event.target.closest(".chat-row")));
 $("tasks").addEventListener("keydown", event => {
   if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(event.target.closest(".chat-row")); }

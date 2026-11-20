@@ -7,6 +7,15 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Everyday features — November 20, 2026.** **Workspaces** (Tabs menu,
+`Ctrl+Alt+W`) keep sets of tabs apart within a profile; **Help Me Write…**
+rewrites a text field with your assistant, shown first and inserted only on
+Insert, never in password or card fields; `@` in the agent chat attaches open
+tabs to a message; **Morning Brief…** is a ready routine that adds the watched
+pages that changed; **Group My Recent History into Topics…** asks your
+assistant to sort the past week's titles into topics you can reopen, keeping
+nothing.
+
 **Tools websites offer (WebMCP) — November 20, 2026.** Steed defines
 `document.modelContext` in every page, as Chrome is adding, so sites can
 register tools for agents; `page.tools` lists them and `page.call_tool` runs

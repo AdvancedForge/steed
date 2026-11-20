@@ -132,6 +132,7 @@ class AgentSidebar(QDockWidget):
         self._new_model = None
         self._new_agent = "codex"
         self._agent_picked = False
+        self._tab_tokens = {}
         self._send_result = {"context": -1, "version": -1}
         self._error = ""
         self._load_failed = False
@@ -224,7 +225,7 @@ class AgentSidebar(QDockWidget):
         action = command.get("action")
         fields = {
             "draft": {"value", "version"},
-            "send": {"value", "version"},
+            "send": {"value", "version", "attach"},
             "select": {"value"},
             "model": {"value"},
             "agent": {"value"},
@@ -262,13 +263,27 @@ class AgentSidebar(QDockWidget):
             or command["context"] != self._context
             or not isinstance(action, str)
             or action not in fields.keys() | operations.keys()
-            or set(command) != {"action", "context"} | fields.get(action, set())
+            or not (
+                set(command) == {"action", "context"} | fields.get(action, set())
+                or (
+                    action == "send"
+                    and set(command) == {"action", "context", "value", "version"}
+                )
+            )
         ):
             return
         if action in ("draft", "send"):
             if self.set_draft(command["value"], version=command["version"]):
                 if action == "send":
-                    self.send_message()
+                    attach = command.get("attach") or []
+                    if (
+                        isinstance(attach, list)
+                        and attach
+                        and all(isinstance(t, str) for t in attach)
+                    ):
+                        self.send_with_tabs(attach[:5])
+                    else:
+                        self.send_message()
         elif action == "select" and isinstance(command["value"], str):
             self.select_task(command["value"] or None)
         elif action == "model" and isinstance(command["value"], str):
@@ -349,6 +364,7 @@ class AgentSidebar(QDockWidget):
                 for key, name in choices
             ],
             send_result=dict(self._send_result),
+            mention_tabs=[] if self._private else self._mention_tabs(),
             error=self._error,
             dark=bool(
                 getattr(
@@ -938,6 +954,67 @@ class AgentSidebar(QDockWidget):
         else:
             self._error = ""
         self._publish()
+
+    def _mention_tabs(self):
+        """The window's web tabs, to @-mention in a message: [{id, title, host}]."""
+        window = self.browser_window
+        tabs = [
+            tab
+            for tab in getattr(window, "tabs", [])
+            if tab.url().scheme() in ("http", "https")
+        ][:30]
+        self._tab_tokens = {f"tab-{id(tab)}": tab for tab in tabs}
+        return [
+            {
+                "id": token,
+                "title": (tab.title() or tab.url().host())[:80],
+                "host": tab.url().host(),
+            }
+            for token, tab in self._tab_tokens.items()
+        ]
+
+    def send_with_tabs(self, tokens):
+        """Send the draft with the @-mentioned tabs' title, address and text,
+        sharing the room an 8 KiB message has."""
+        from browser import webengine
+
+        tabs = [
+            self._tab_tokens.get(token)
+            for token in tokens
+            if self._tab_tokens.get(token) in getattr(self.browser_window, "tabs", [])
+        ]
+        if not tabs:
+            self.send_message()
+            return
+        texts = {}
+        task_id, draft = self._task_id, self.draft
+
+        def read(tab, value):
+            texts[id(tab)] = value if isinstance(value, str) else ""
+            if len(texts) < len(tabs) or self._task_id != task_id:
+                return
+            room = 7600 - len(draft.encode("utf-8"))
+            share = max(200, room // len(tabs) - 200)
+            parts = [draft.rstrip()]
+            for tab in tabs:
+                body = " ".join(texts[id(tab)].split())
+                clipped = body.encode("utf-8")[:share].decode("utf-8", "ignore")
+                more = " …(more on the page)" if len(clipped) < len(body) else ""
+                parts.append(
+                    f"[Attached tab: {tab.title()[:120]} — {tab.url().toString()[:300]}]\n"
+                    + clipped
+                    + more
+                )
+            self._drafts[task_id] = "\n\n".join(parts)
+            self.send_message()
+
+        for tab in tabs:
+            webengine.run_script(
+                tab.page(),
+                "document.body ? document.body.innerText : ''",
+                lambda value, tab=tab: read(tab, value),
+                world=webengine.STEED_WORLD,
+            )
 
     def send_message(self):
         if not self.state.get("active") or self._private or self._detached:

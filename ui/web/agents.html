@@ -64,8 +64,10 @@
       </section>
       <section id="compose" class="compose" aria-label="Write a message" hidden>
         <label class="sr-only" for="composer">Message to the agent</label>
+        <ul id="mentions" class="mentions" role="listbox" aria-label="Tabs to attach" hidden></ul>
+        <div id="attached" class="attached-tabs" aria-label="Attached tabs"></div>
         <div class="composer-box"><textarea id="composer" placeholder="Message your agent…" rows="1" spellcheck="true"></textarea><button id="send" class="send" data-action="send" aria-label="Send" title="Send (Enter)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button></div>
-        <div class="task-actions"><span class="hint">Enter sends, Shift+Enter adds a line</span><button id="delegate" class="text-button" data-action="delegate" hidden>Give tab control…</button><button id="cancel" class="text-button" data-action="cancel" hidden>Stop chat</button></div>
+        <div class="task-actions"><span class="hint">Enter sends, Shift+Enter adds a line, @ attaches a tab</span><button id="delegate" class="text-button" data-action="delegate" hidden>Give tab control…</button><button id="cancel" class="text-button" data-action="cancel" hidden>Stop chat</button></div>
       </section>
       <section id="ended" class="ended" aria-label="This chat has ended" hidden>
         <button id="continue-chat" class="primary" data-action="continue_chat" hidden>Continue this chat</button>

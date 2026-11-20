@@ -100,7 +100,30 @@ def check(routine):
     found["tell"] = tell
     if routine.get("signin"):
         found["signin"] = True
+    if routine.get("brief"):
+        found["brief"] = True
     return found
+
+
+BRIEF_ASK = (
+    "Give me a short brief for today: first what needs my attention, then "
+    "anything else worth knowing, in a few lines. End with one line saying "
+    "what you read (the pages and Steed's notes)."
+)
+
+
+def brief_notes(watches, since):
+    """What Steed itself knows for a brief: watches that changed lately."""
+    changed = [
+        w for w in watches if w.get("last_change", 0) > since and w.get("last_summary")
+    ][:10]
+    if not changed:
+        return "### From Steed\nNo watched page changed since the last brief."
+    lines = [
+        f"- {w['title'][:120]} ({w['url'][:200]}): {w['last_summary'][:300]}"
+        for w in changed
+    ]
+    return "### From Steed: watched pages that changed\n" + "\n".join(lines)
 
 
 def last_due(routine, now: datetime):
@@ -278,6 +301,7 @@ class Routines(QObject):
         if self.running is not None:
             return False
         routine = next((r for r in self.routines if r["id"] == routine["id"]), routine)
+        routine["previous_run"] = routine.get("last_run", 0)
         routine["last_run"] = time.time()
         self._save()
         self.running = [routine, [], list(routine.get("pages", [])), None]
@@ -327,7 +351,13 @@ class Routines(QObject):
                 self.noticed.emit(dict(routine), change_summary(before, text))
             return
         # With an agent, or when saved steps stopped: the agent takes over.
-        self.ran.emit(dict(routine), message(routine, read, stopped))
+        text = message(routine, read, stopped)
+        if routine.get("brief"):
+            watches = getattr(self.registry, "watches", None)
+            listed = watches.list() if watches is not None else []
+            since = routine.get("previous_run") or (time.time() - 24 * 3600)
+            text += "\n\n" + brief_notes(listed, since)
+        self.ran.emit(dict(routine), text)
 
     def _next_page(self):
         routine, read, pending, _page = self.running

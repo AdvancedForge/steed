@@ -20,6 +20,11 @@ sidebar's place, signed in as you, beside the agent chat. It reaches Steed's
 tools only through what you hand it: **Share instructions…** or the reviewed
 **Use as agent…** relay, or a pairing link if it supports connectors.
 
+**Attaching tabs.** Type `@` in a message to list this window's open web tabs;
+pick one (or up to five) and it goes with the message as its title, address
+and text, sharing the room an 8 KiB message has (shown as chips you can remove
+before sending). Only what you attach is shared.
+
 ## Cloud agents and chatbots with connectors
 
 **Add an assistant → Cloud agents and chatbots with connectors** makes a

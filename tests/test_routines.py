@@ -245,6 +245,49 @@ class RoutineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.add({"name": "Nothing", "tell": "changes"})
 
+    def test_a_morning_brief_adds_what_steed_noticed(self):
+        from ui.routines_dialog import RoutinesDialog
+
+        self.window._watch_alerts()
+        dialog = RoutinesDialog(self.window)
+        shown = []
+        with patch.object(
+            BrowserWindow, "_present_dialog", lambda s, d, **_: shown.append(d)
+        ):
+            editor = dialog.add_brief()
+        values = editor.values()
+        self.assertTrue(values["brief"])
+        self.assertEqual(values["days"], [0, 1, 2, 3, 4])
+        self.assertIn("what you read", values["ask"])
+        values["pages"] = [self.url]
+        routine = self.service.add(values)
+        watches = self.window.profile_manager.registry.watches
+        with patch.object(
+            type(watches),
+            "list",
+            return_value=[
+                {
+                    "title": "Rent portal",
+                    "url": "https://rent.example/",
+                    "last_change": time.time(),
+                    "last_summary": "Payment due moved to Friday",
+                },
+                {
+                    "title": "Old",
+                    "url": "https://old.example/",
+                    "last_change": 1,
+                    "last_summary": "ancient",
+                },
+            ],
+        ):
+            message, _ = self.run_and_wait(routine)
+        text = message.call_args.args[0]
+        self.assertIn("rent due Friday", text)
+        self.assertIn("Rent portal (https://rent.example/): Payment due moved", text)
+        self.assertNotIn("ancient", text)
+        editor.deleteLater()
+        dialog.deleteLater()
+
     def test_without_an_agent_you_are_told(self):
         self.window._watch_alerts()
         routine = self.service.add({"name": "Brief", "ask": "Hi"})

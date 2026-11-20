@@ -426,6 +426,35 @@ In the panel you can choose:
 **More options…** (also General → Customize New Tab…) opens the full dialog
 with the classic sections, a feed, a custom colour and your own HTML.
 
+### Workspaces
+
+**Tabs → Workspaces** keeps what you are working on (Work, Trip, Taxes) apart
+inside one profile: switching puts this window's web tabs away under the
+current workspace and opens the other one's, each loading when you first look
+at it. A profile still holds your sign-ins, cookies and history; workspaces
+only sort tabs. **Switch Workspace…** (`Ctrl+Alt+W`) lets you type to find
+one among many, or type a new name to make it; the window title shows the
+workspace when it is not Main. Deleting a workspace moves its open tabs to
+Main. Kept in the profile's `workspaces.json`; not in incognito.
+
+### Help me write
+
+Right-click a text field → **Help Me Write…**: Steed shows what goes to your
+assistant (the field's text, or the part you selected, and the page's title),
+you pick a goal (Polish, Shorter, Longer, Friendlier, More formal, Fix
+spelling) or say what you want, and you see the result, which you can edit,
+before **Insert** puts it in the field. Nothing is submitted, and password and
+card fields are never offered. It uses the assistant you chose (a model you
+added, else Claude Code or Codex).
+
+### Your week in topics
+
+**Tabs → Group My Recent History into Topics…** sends the titles and sites of
+the past week's pages (never page text; no banking, health or sign-in sites;
+nothing from incognito) to your assistant, which groups them into topics such
+as "Planning a trip to Lisbon". Reopen a topic's pages, or ask your agent to
+help you pick up where you left off. Nothing is kept; run it whenever you like.
+
 ### Split view and sites in a profile
 
 **Show Beside Current Tab** (tab menu) puts a tab beside the current one;
@@ -1281,6 +1310,12 @@ Each run replays them without asking a model; if a step no longer works (the
 site changed), the run goes to your agent as usual, saying which step stopped
 and why, so it can finish the job and propose new steps. Saved steps never type
 into password or card fields and never press a button beside a filled one.
+
+**Morning Brief…** in Routines makes a brief that is ready to go: weekdays
+at 08:00, asking for what needs your attention today, then anything else
+worth knowing, ending with a line of what was read. Add the pages it should
+read (your calendar, your inbox); with **Add what Steed noticed** on, Steed
+also adds the watched pages that changed since the last run.
 
 **Each run → Just tell me when it changes** needs no assistant at all: Steed
 reads the pages (after any saved steps) and notifies you only when what it read

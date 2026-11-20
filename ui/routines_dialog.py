@@ -80,6 +80,11 @@ class RoutineEditor(HtmlSettingsDialog):
         )
         self.signin.setChecked(bool(routine.get("signin")))
         layout.addWidget(self.signin)
+        self.brief = QCheckBox(
+            "Add what Steed noticed (watched pages that changed since the last run)"
+        )
+        self.brief.setChecked(bool(routine.get("brief")))
+        layout.addWidget(self.brief)
         from services.routine_steps import describe_step
 
         self.saved_steps = list(routine.get("steps") or [])
@@ -139,6 +144,7 @@ class RoutineEditor(HtmlSettingsDialog):
             "every": self.every.currentData(),
             "tell": self.tell.currentData(),
             "signin": self.signin.isChecked(),
+            "brief": self.brief.isChecked(),
             "steps": self.saved_steps if self.keep_steps.isChecked() else [],
         }
 
@@ -178,6 +184,7 @@ class RoutinesDialog(HtmlSettingsDialog):
         row = QHBoxLayout()
         for text, callback in (
             ("New Routine…", self.add),
+            ("Morning Brief…", self.add_brief),
             ("Edit…", self.edit_selected),
             ("Run now", self.run_selected),
             ("Pause or resume", self.pause_selected),
@@ -231,6 +238,28 @@ class RoutinesDialog(HtmlSettingsDialog):
 
     def add(self):
         return self._editor()
+
+    def add_brief(self):
+        """A morning brief, ready to go: add the pages you want read."""
+        from services.routines import BRIEF_ASK
+
+        editor = self._editor(
+            {
+                "name": "Morning brief",
+                "ask": BRIEF_ASK,
+                "kind": "daily",
+                "at": "08:00",
+                "days": [0, 1, 2, 3, 4],
+                "pages": [],
+                "brief": True,
+            }
+        )
+        editor.routine = None  # A new routine, not an edit.
+        editor.setWindowTitle("New Morning Brief")
+        editor.status.setText(
+            "Add the pages to read first, such as your calendar and inbox."
+        )
+        return editor
 
     def edit_selected(self):
         routine = self.selected()
