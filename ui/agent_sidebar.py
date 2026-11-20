@@ -235,7 +235,9 @@ class AgentSidebar(QDockWidget):
             "continue_chat": self.continue_chat,
             "acp_agents": self.manage_acp_agents,
             "models": self.manage_models,
+            "add_assistant": self.add_assistant,
             "pause_agents": lambda: self.set_agents_paused(True),
+            "bridge": lambda: self.browser_window._open_bridge(),
             "resume_agents": lambda: self.set_agents_paused(False),
             "setup": self.setup_requested.emit,
             "requests": self.show_requests,
@@ -288,6 +290,7 @@ class AgentSidebar(QDockWidget):
             "has_provider": self.providers is not None,
             "yolo": self.service.auto_approve_requests,
             "paused": getattr(self.service, "agents_paused", False),
+            "bridge": self._bridge_state(),
             "tasks": self._choices if available else [],
             "task_id": self._task_id,
             "messages": [],
@@ -318,6 +321,10 @@ class AgentSidebar(QDockWidget):
         if self._detached:
             return
         choices = self._agent_choices()
+        where = {
+            key: place
+            for key, _, place in getattr(self.providers, "assistants", list)()
+        }
         if choices and (not self._agent_picked or self._new_agent not in dict(choices)):
             # Until you pick one, new chats use the first: a model you added,
             # else Codex.
@@ -337,6 +344,7 @@ class AgentSidebar(QDockWidget):
                         [model or "", model.title() if model else f"{name} default"]
                         for model in _AGENT_MODELS.get(key, (None,))
                     ],
+                    "where": where.get(key, "Coding agents"),
                 }
                 for key, name in choices
             ],
@@ -787,6 +795,18 @@ class AgentSidebar(QDockWidget):
     def start_chat(self):
         if self._private or self.providers is None or not self.state.get("available"):
             return
+        if self._new_agent.startswith("web:"):
+            site = next(
+                (
+                    s
+                    for s in self.providers.website_chats()
+                    if "web:" + s["name"] == self._new_agent
+                ),
+                None,
+            )
+            if site is not None:
+                self.browser_window._open_website_assistant(site["url"])
+            return
         try:
             task_id = self.providers.new_chat(
                 model=self._new_model, agent=self._new_agent
@@ -830,12 +850,45 @@ class AgentSidebar(QDockWidget):
         else:
             dialog.show()
 
+    def _bridge_state(self):
+        registry = getattr(
+            getattr(self.browser_window, "profile_manager", None), "registry", None
+        )
+        bridge = getattr(registry, "agent_bridge_link", None)
+        return bool(bridge is not None and bridge.state in ("starting", "on"))
+
     def set_agents_paused(self, paused):
         try:
             self.service.set_agents_paused(paused)
         except _ERRORS as error:
             self._error = str(error)
         self.refresh()
+
+    def add_assistant(self):
+        from ui.add_assistant import AddAssistantDialog
+
+        dialog = AddAssistantDialog(self.browser_window)
+        dialog.chosen.connect(self._assistant_chosen)
+        self._show_agent_dialog(dialog)
+
+    def _assistant_chosen(self, kind, detail):
+        from ui.agent_sessions import ModelsDialog
+
+        config = self.browser_window.config
+        if kind == "local":
+            self._show_agent_dialog(
+                ModelsDialog(config, self.browser_window, start="local", address=detail)
+            )
+        elif kind == "key":
+            self._show_agent_dialog(
+                ModelsDialog(config, self.browser_window, start="key")
+            )
+        elif kind == "coding":
+            self.manage_acp_agents()
+        elif kind == "website":
+            self.browser_window._choose_website_assistant()
+        elif kind == "cloud":
+            self.browser_window._open_bridge()
 
     def manage_models(self):
         from ui.agent_sessions import ModelsDialog

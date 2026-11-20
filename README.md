@@ -47,6 +47,9 @@ switch whenever you want; every one gets the same tools and the same rules.
   llama.cpp) or any OpenAI-compatible service with your own API key.
 - Coding agents in the sidebar: Codex, Claude Code, or any Agent Client
   Protocol agent; and local MCP access for any other client.
+- Chatbot websites (ChatGPT, Claude, Gemini) in the sidebar, and a private
+  pairing link that lets claude.ai, ChatGPT or a cloud agent use Steed's
+  tools, asking you about everything.
 - Routines: your agent on a schedule ("every morning, read my inbox and
   calendar and tell me what matters").
 - Ask about a page or selection, watch a page and act when it changes,

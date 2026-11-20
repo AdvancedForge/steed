@@ -214,9 +214,11 @@ MODEL_SERVICES = (
 
 
 class ModelsDialog(QDialog):
-    """Models Steed runs as chat agents itself (config "models")."""
+    """Models Steed runs as chat agents itself (config "models"). start picks
+    the first service shown: "local" (or the address of one found running)
+    or "key" for a hosted service."""
 
-    def __init__(self, config, parent=None):
+    def __init__(self, config, parent=None, *, start=None, address=None):
         super().__init__(parent)
         self.config = config
         self.network = None
@@ -283,6 +285,22 @@ class ModelsDialog(QDialog):
         layout.addLayout(buttons)
         self._service_changed()
         self.refresh()
+        if start == "key":
+            self.service.setCurrentIndex(
+                next(
+                    i
+                    for i, (_, _, key) in enumerate(MODEL_SERVICES)
+                    if key == "keyring"
+                )
+            )
+        elif address:
+            index = next(
+                (i for i, (_, url, _) in enumerate(MODEL_SERVICES) if url == address),
+                None,
+            )
+            if index is not None:
+                self.service.setCurrentIndex(index)
+                self.find_models()
 
     def _service_changed(self, *_):
         address, _key = self.service.currentData()

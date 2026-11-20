@@ -35,6 +35,7 @@ through Steed.
 | What a task may do | Exact origins, actions, profile, limits and file paths, approved by you (or by your access settings, saved rules or, if you turned it on, auto-approval). Checked again on every page action and network request. |
 | Agents and pages | Page reads come from Steed's own script world; values of form fields are never returned; the journal keeps origins, not page text. Restricted sessions run no site scripts. |
 | Passwords and cards | Agents cannot read, type into or submit password or card fields (by DOM action, by custom-button or keyboard activation, or by screenshot click and typing). Vault sign-in fills them without the agent seeing them, only on forms that look like signing in and that send to the same site in the same window. |
+| Cloud agents | Only through a pairing link you make: a random secret in its path, reached through an outbound tunnel, no browser origins. Every request from it asks you, whatever your settings; the link expires after eight hours or when you stop it. |
 | You stay in charge | Pause All Agents holds every agent at the gateway; Take Back ends a tab hand-off; cancelling a task ends its grants. |
 
 ## Findings and what changed
@@ -107,6 +108,10 @@ agents can do to and read from pages. Findings, most severe first:
   the page holds; Steed's rules cover what agents do, not what the site does.
   One-click purchases with a saved card are not caught.
 - **Card preview widgets** that draw the number as text appear in page reads.
+- **Pairing links.** Anyone who gets the link can make requests (each still
+  needs your approval). The tunnel provider sees the traffic's metadata and,
+  for a Cloudflare quick tunnel, terminates TLS. Use your own address if that
+  matters to you.
 - **Already dispatched actions** (a submitted form, a running app call) finish
   after a pause or cancel.
 

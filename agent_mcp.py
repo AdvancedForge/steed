@@ -93,6 +93,9 @@ class BrowserConnection:
         # Counts lost connections. Calls queued before a loss fail with it
         # rather than reconnecting: they may depend on the call that failed.
         self.generation = 0
+        # A cloud agent through a pairing link: Steed asks you about
+        # everything it requests, whatever your access settings.
+        self.remote = False
 
     async def connect(self):
         config = read_browser_discovery(self.discovery)
@@ -104,6 +107,8 @@ class BrowserConnection:
             asyncio.open_unix_connection(config["socket"], limit=RESPONSE_LIMIT), 5
         )
         auth = {"token": config["token"]}
+        if self.remote:
+            auth["remote"] = True
         if self.binding_file is not None:
             binding = read_browser_discovery(self.binding_file)
             if binding["socket"] != config["socket"] or not secrets.compare_digest(
@@ -281,7 +286,12 @@ def tool_result(result, *, images=False):
 
 
 def create_server(
-    discovery, *, expected_epoch=None, binding_file=None, cancel_on_close=False
+    discovery,
+    *,
+    expected_epoch=None,
+    binding_file=None,
+    cancel_on_close=False,
+    remote=False,
 ):
     import anyio
     from mcp import types
@@ -293,6 +303,7 @@ def create_server(
         connection.binding_file = binding_file
         connection.expected_epoch = expected_epoch
         connection.cancel_on_close = cancel_on_close
+        connection.remote = remote
         try:
             try:
                 await connection.connect()
@@ -411,7 +422,12 @@ def main():
         type=Path,
         default=Path.home() / ".custom_browser" / "agent-access.json",
     )
-    parser.add_argument("--transport", choices=("stdio", "http"), default="stdio")
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "http", "bridge"),
+        default="stdio",
+        help="bridge: the local end of a cloud pairing link (Steed starts it)",
+    )
     parser.add_argument(
         "--task-binding-file",
         type=Path,
@@ -443,12 +459,20 @@ def main():
         parser.error("Port must be between 0 and 65535")
     if not 10 <= args.idle_timeout <= 86400:
         parser.error("Idle timeout must be between 10 and 86400 seconds")
-    if args.idle_timeout != 1800 and args.transport != "http":
+    if args.transport == "bridge" and args.http_discovery is None:
+        parser.error("A bridge needs --http-discovery for its private endpoint file")
+    if args.idle_timeout != 1800 and args.transport not in ("http", "bridge"):
         parser.error("Idle timeout applies to HTTP sessions only")
     if args.task_binding_file is not None and args.transport != "stdio":
         parser.error("Managed task bindings require stdio")
     try:
-        if args.transport == "http":
+        if args.transport == "bridge":
+            from services.agent_http import serve_bridge
+
+            asyncio.run(
+                serve_bridge(args.discovery, args.http_discovery, args.idle_timeout)
+            )
+        elif args.transport == "http":
             from services.agent_http import serve_http
 
             asyncio.run(

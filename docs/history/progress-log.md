@@ -7,6 +7,19 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Every assistant in one place, and cloud agents — November 20, 2026.** The
+sidebar's picker lists every assistant you have set up, grouped by where it
+runs, ending with **Add an assistant…**: one gallery (local models, your own
+key, coding agents, chatbot websites, cloud agents) that notices what is
+already on this computer. It replaces separate Models, ACP Agents and website
+chat entries; the Agents menu leads with Agent Sidebar, Add an Assistant and
+Pause All Agents. Chatbot websites are assistants too, opened in the sidebar's
+place. A **pairing link** (Tailscale Funnel, a Cloudflare quick tunnel or your
+own address) lets claude.ai, ChatGPT or a cloud agent use Steed's tools; every
+request through it asks you, whatever your settings, and it expires after
+eight hours. Tested end to end on Steed's side; not yet tried through a real
+tunnel with claude.ai or ChatGPT.
+
 **A security review of the agent surface — November 20, 2026.** Two reviews
 (connections and authorization; what agents can do in pages) found thirteen
 problems, now fixed, and recorded the limits that remain in the
