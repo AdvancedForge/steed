@@ -21,6 +21,7 @@ from browser import access_levels, webengine
 from browser.data_panel_format import stable_id
 from browser.password_service import (
     WORLD,
+    clear_signin_script,
     code_script,
     fill_script,
     frames,
@@ -92,7 +93,7 @@ class VaultSignin:
             "state": entry["state"],
             "site": site_of(entry["origin"]),
         }
-        if entry["state"] == "done":
+        if entry["state"] in ("done", "failed"):
             receipt["outcome"] = entry["outcome"]
             receipt["steps"] = entry["steps"]
         return receipt
@@ -145,8 +146,13 @@ class VaultSignin:
         if not logins:
             self._finish(entry, "no_saved_login")
             return self._receipt(entry)
+        entry["path"] = page.url().path()
         remembered = self.approved.get((task_id, origin))
-        if remembered and remembered[1] > time.monotonic():
+        if (
+            remembered
+            and remembered[1] > time.monotonic()
+            and remembered[2] == entry["path"]
+        ):
             self._start(entry, remembered[0])
         elif policy == "always" or self.service.auto_approve_requests:
             self._start(entry, logins[0].id)
@@ -200,9 +206,12 @@ class VaultSignin:
     def _start(self, entry, login_id):
         entry["state"] = "signing_in"
         entry["login_id"] = login_id
+        # Reused only on the same page (a login's next step), never on
+        # another page of the site.
         self.approved[(entry["task_id"], entry["origin"])] = (
             login_id,
             time.monotonic() + APPROVAL_SECONDS,
+            entry.get("path", ""),
         )
         self.service.changed.emit()
         self._step(entry, None)
@@ -286,6 +295,11 @@ class VaultSignin:
         if entry["state"] != "signing_in" or sip.isdeleted(page):
             return
         found = found if isinstance(found, dict) else {}
+        if found.get("unsafe"):
+            # Asks for more than signing in (changing an email, deleting an
+            # account, paying): Steed fills a saved login only on sign-in forms.
+            self._finish(entry, "not_a_sign_in_form", state="failed")
+            return
         kind = (
             "code"
             if found.get("code")
@@ -298,12 +312,10 @@ class VaultSignin:
         if kind is None:
             self._finish(entry, "signed_in" if entry["steps"] else "no_sign_in_form")
             return
-        if kind == previous:
+        if kind == previous or entry["steps"] >= MAX_STEPS:
             # The same step again: a wrong password, a captcha or a check the
-            # site wants from the person.
-            self._finish(entry, "still_on_sign_in")
-            return
-        if entry["steps"] >= MAX_STEPS:
+            # site wants from the person. Empty what Steed filled first.
+            webengine.run_in(frame, clear_signin_script(entry["origin"]), WORLD)
             self._finish(entry, "still_on_sign_in")
             return
         login = self._login(entry)

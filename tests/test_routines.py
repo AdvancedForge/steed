@@ -23,6 +23,11 @@ from ui.routines_dialog import RoutineEditor
 class Inbox(BaseHTTPRequestHandler):
     def do_GET(self):
         body = b"<title>Inbox</title><p>3 unread: rent due Friday</p>"
+        if self.path == "/mail":
+            body = (
+                b"<title>Mail</title><p>Secret mail list</p>"
+                b"<form>Password <input type=password></form>"
+            )
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", str(len(body)))
@@ -134,12 +139,40 @@ class RoutineTests(unittest.TestCase):
             item["last_run"] = 0
             item["kind"], item["at"], item["days"] = "daily", "00:00", list(range(7))
         self.assertIsNotNone(self.service.due())
+        # Paused agents (Agents → Pause All Agents): it waits, then runs.
+        self.window.pause_agents_action.setChecked(True)
+        self.assertTrue(self.window.profile_manager.registry.tasks.agents_paused)
+        self.service.tick()
+        self.assertIsNone(self.service.running)
+        self.assertEqual(self.window.address_bar.menu_btn.text(), "⏸ Agents paused")
+        self.window.pause_agents_action.setChecked(False)
         with patch.object(BrowserWindow, "agent_message", return_value="task"):
             self.service.tick()
             self.wait(lambda: self.service.running is None)
         self.assertIsNone(self.service.due())
         self.service.pause(routine["id"])
         self.assertTrue(self.service.list()[0]["paused"])
+
+    def test_a_page_that_asks_you_to_sign_in_comes_to_you(self):
+        self.window._watch_alerts()
+        mail = self.url.replace("/inbox", "/mail")
+        routine = self.service.add(
+            {"name": "Mail", "ask": "Anything new?", "pages": [mail, self.url]}
+        )
+        with (
+            patch.object(
+                BrowserWindow, "agent_message", return_value="task"
+            ) as message,
+            patch.object(DesktopNotifier, "notify") as notify,
+        ):
+            self.service.run(routine)
+            self.wait(lambda: message.called)
+        text = message.call_args.args[0]
+        self.assertIn(routines.SIGNED_OUT, text)
+        self.assertNotIn("Secret mail list", text)
+        self.assertIn("rent due Friday", text)
+        titles = [call.args[0] for call in notify.call_args_list]
+        self.assertIn("Routine “Mail” needs you to sign in", titles)
 
     def test_without_an_agent_you_are_told(self):
         self.window._watch_alerts()

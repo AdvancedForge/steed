@@ -12,6 +12,7 @@ from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtNetwork import QLocalServer
 
 from browser.utils import save_json
+from services.agent_errors import AgentRequestError
 from services.agent_tools import (
     REQUEST_LIMIT,
     RESPONSE_LIMIT,
@@ -23,6 +24,23 @@ from services.task_store import ACTIVE_STATUSES
 
 # A disconnected client may resume its task for five minutes.
 RESUME_GRACE_MS = 5 * 60 * 1000
+
+# What an agent may still do while you have paused all agents.
+WHILE_PAUSED = frozenset(
+    {
+        "conversation.read",
+        "conversation.wait",
+        "task.capabilities",
+        "task.events",
+        "grant.list",
+        # Stopping is always allowed.
+        "session.stop",
+        "session.close",
+        "download.cancel",
+        "worker.cancel",
+        "app.cancel",
+    }
+)
 
 
 class AgentGateway(QObject):
@@ -285,6 +303,13 @@ class AgentConnection(QObject):
             ):
                 raise ValueError("Managed conversation is bound by the browser")
             self.gateway.service._usable()
+            if self.gateway.service.agents_paused and spec.command not in WHILE_PAUSED:
+                raise AgentRequestError(
+                    "agents_paused",
+                    "The user paused all agents. Nothing was done. Tell the user "
+                    "what you were about to do and wait; do not retry until they "
+                    "resume agents.",
+                )
             if spec.command == "task.start":
                 if (
                     self.client is not None

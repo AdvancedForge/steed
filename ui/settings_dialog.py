@@ -23,6 +23,7 @@ DEFAULTS = {
     "check_updates": True,
     "open_again": "front",
     "keep_agent_chats": True,
+    "agent_replay": False,
     "remember_pages": False,
     "remember_pages_except": "",
     "user_agent_override": "",

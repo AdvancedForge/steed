@@ -117,6 +117,32 @@ def describe(routine):
     return f"{which} at {routine['at']}"
 
 
+# The page's text, and whether it asks for a sign-in instead.
+READ_SCRIPT = """(() => ({
+  text: document.body ? document.body.innerText : "",
+  url: location.href,
+  password: [...document.querySelectorAll("input[type=password]")]
+    .some(field => field.getClientRects().length > 0),
+}))()"""
+SIGNED_OUT = (
+    "(this page asked you to sign in; Steed told you, so say nothing more about it)"
+)
+
+
+def asks_to_sign_in(url, found):
+    """Sent to a sign-in address, or showing a password field."""
+    from services.watches import SIGN_IN
+
+    landed = QUrl(found.get("url") or "")
+    asked = QUrl(url)
+    moved = landed.isValid() and (
+        landed.host() != asked.host() or landed.path() != asked.path()
+    )
+    return bool(found.get("password")) or (
+        moved and bool(SIGN_IN.search(landed.host() + landed.path()))
+    )
+
+
 def message(routine, pages):
     """What the agent gets: the routine's ask, and the pages' text."""
     parts = [f"Routine “{routine['name']}”: {routine['ask']}"]
@@ -129,6 +155,7 @@ def message(routine, pages):
 class Routines(QObject):
     changed = pyqtSignal()
     ran = pyqtSignal(dict, str)  # routine, message for the agent
+    needs_you = pyqtSignal(dict, str)  # routine, a page that wants a sign-in
 
     def __init__(self, registry):
         super().__init__(registry)
@@ -209,6 +236,9 @@ class Routines(QObject):
     def tick(self):
         if self.closed or self.running is not None:
             return
+        tasks = getattr(self.registry, "_tasks", None)
+        if tasks is not None and getattr(tasks, "agents_paused", False):
+            return  # Paused agents: a due routine runs after you resume.
         routine = self.due()
         if routine is not None:
             self.run(routine)
@@ -241,12 +271,18 @@ class Routines(QObject):
         self.running[3] = page
         done = []
 
-        def finish(text):
+        def finish(found):
             if done or self.closed or self.running is None:
                 return
             done.append(True)
             title = page.title() if not sip.isdeleted(page) else url
-            read.append((title, url, text if isinstance(text, str) else ""))
+            found = found if isinstance(found, dict) else {}
+            text = found.get("text") if isinstance(found.get("text"), str) else ""
+            if asks_to_sign_in(url, found):
+                # Hand it to you rather than the agent: it can't sign in here.
+                text = SIGNED_OUT
+                self.needs_you.emit(dict(routine), url)
+            read.append((title, url, text))
             if not sip.isdeleted(page):
                 page.deleteLater()
             self.running[3] = None
@@ -254,7 +290,7 @@ class Routines(QObject):
 
         def loaded(ok):
             if not ok:
-                finish("")
+                finish({})
                 return
             QTimer.singleShot(
                 SETTLE_MS,
@@ -262,7 +298,7 @@ class Routines(QObject):
                     not sip.isdeleted(page)
                     and webengine.run_script(
                         page,
-                        "document.body ? document.body.innerText : ''",
+                        READ_SCRIPT,
                         finish,
                         world=webengine.STEED_WORLD,
                     )
@@ -270,7 +306,7 @@ class Routines(QObject):
             )
 
         page.loadFinished.connect(loaded)
-        QTimer.singleShot(READ_TIMEOUT_MS, lambda: finish(""))
+        QTimer.singleShot(READ_TIMEOUT_MS, lambda: finish({}))
         page.load(QUrl(url))
 
     def close(self):

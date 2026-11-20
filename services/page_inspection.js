@@ -13,6 +13,39 @@
     // Keys go to whichever document holds page focus. Inside a child frame,
     // its own activeElement survives the page moving focus elsewhere.
     const holdsFocus = (doc, node) => focused(doc) === node && (doc.defaultView === doc.defaultView.top || doc.hasFocus());
+    // Payment card fields are the person's alone, like passwords: agents can
+    // neither fill them nor submit a form that has one.
+    const CARD_NAME = /(card.?(number|num|no)|cc.?(num|number)|\bcvv|\bcvc|\bcsc\b|security.?code)/i;
+    const paymentField = node => ["INPUT", "SELECT"].includes(node.tagName) && (
+        (node.getAttribute("autocomplete") || "").trim().toLowerCase().split(/\s+/).some(t => t.startsWith("cc-")) ||
+        CARD_NAME.test(node.getAttribute("name") || "") || CARD_NAME.test(node.id || ""));
+    // A password, however the page draws it: the type attribute (even after a
+    // reveal toggle switched it), or text drawn as dots.
+    const secretField = node => node.tagName === "INPUT" && (
+        node.type === "password" || (node.getAttribute("type") || "").toLowerCase() === "password" ||
+        !["", "none"].includes(node.ownerDocument.defaultView.getComputedStyle(node).webkitTextSecurity || ""));
+    const sensitiveField = node => secretField(node) || paymentField(node) ||
+        (node.tagName === "INPUT" && /card.?(number|num)|security code|cvv|cvc/i.test(
+            [node.placeholder, node.getAttribute("aria-label"), node.labels?.[0]?.innerText].join(" ")));
+    // Pressing anything near a filled password or card field could send it,
+    // through the site's own scripts, so agents may not: near means the same
+    // form or, for a control in no form, any field in no form on the page
+    // (open shadow roots included).
+    const sensitiveNear = node => {
+        const form = node.form || node.closest("form");
+        const pending = [form || node.ownerDocument];
+        for (let seen = 0; pending.length && seen < 5000;) {
+            const scope = pending.shift();
+            for (const el of scope.querySelectorAll("*")) {
+                if (++seen >= 5000) break;
+                if (el.shadowRoot) pending.push(el.shadowRoot);
+                // Outside any form, fields that are in no form either.
+                if (el.tagName === "INPUT" && el.value && (form || !el.form) &&
+                    sensitiveField(el) && el.getClientRects().length) return true;
+            }
+        }
+        return false;
+    };
     const POINTER_ROLES = ["button", "link", "tab", "menuitem", "menuitemcheckbox", "menuitemradio",
         "switch", "checkbox", "radio", "option", "treeitem", "combobox"];
     // Custom controls moved by arrow keys while focused.
@@ -75,7 +108,8 @@
         const uploads = [];
         let fileCount = 0;
         for (const control of elements) {
-            if (control.type === "password") return {error: "sensitive_form_unsupported"};
+            if (control.tagName === "INPUT" && sensitiveField(control)) return {error: "sensitive_form_unsupported"};
+            if (paymentField(control)) return {error: "sensitive_form_unsupported"};
             if (control.type === "file") {
                 if (!multipart || ++fileCount > 1 || control.multiple || control.webkitdirectory)
                     return {error: "sensitive_form_unsupported"};
@@ -263,6 +297,8 @@
                     el = el.parentElement || el.getRootNode()?.host;
                 }
                 if (!inside) return fail("target_obscured");
+                if (request.operation !== "hover" && (sensitiveField(node) || sensitiveNear(node)))
+                    return fail("sensitive_form_unsupported");
                 return JSON.stringify({x: Math.round(x), y: Math.round(y), width: innerWidth, height: innerHeight});
             }
             if (request.mode === "live_prepare") {
@@ -272,6 +308,7 @@
                     node.matches(":disabled") || node.getAttribute("aria-disabled") === "true" ||
                     !node.getClientRects().length || win.getComputedStyle(node).visibility !== "visible")
                     return fail("control_unsupported");
+                if (sensitiveNear(node)) return fail("sensitive_form_unsupported");
                 node.focus({preventScroll: false});
                 return holdsFocus(doc, node) ? JSON.stringify({prepared:true}) : fail("focus_unavailable");
             }
@@ -631,7 +668,7 @@
                     else if (tag === "input" && type !== "hidden") {
                         kind = type === "checkbox" || type === "radio" ? type : "input";
                         operations = [kind === "input" ? "enter" : "activate"];
-                        if (type === "password") { constraints.push("sensitive_field", "values_omitted"); operations = []; }
+                        if (sensitiveField(node)) { constraints.push("sensitive_field", "values_omitted"); operations = []; }
                         if (type === "file") {
                             constraints.push("values_omitted");
                             operations = request.upload_available && win === window && node.getRootNode() === doc &&
@@ -640,7 +677,10 @@
                         }
                         if (type === "submit" || type === "button") { kind = "button"; operations = ["activate"]; }
                     } else if (tag === "textarea") { kind = "textarea"; operations = ["enter"]; }
-                    else if (tag === "select") { kind = "select"; operations = ["select"]; }
+                    else if (tag === "select") {
+                        kind = "select"; operations = ["select"];
+                        if (paymentField(node)) { constraints.push("sensitive_field"); operations = []; }
+                    }
                     else if (POINTER_ROLES.includes(role) || OBSERVED_ROLES.includes(role)) {
                         kind = "custom";
                         if (request.live && win === window && POINTER_ROLES.includes(role)) {

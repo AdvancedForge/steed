@@ -80,8 +80,9 @@ class WatchDialog(QDialog):
             f"When the page changes, {agent_name(agent)} decides whether it is what "
             "you asked about. It sees only the before and after text."
             if agent
-            else "No agent to judge changes was found (Claude Code or Codex), so "
-            "Steed will tell you about any change."
+            else "No agent to judge changes was found (add a model under Use any "
+            "model in the agent sidebar, or install a coding agent), so Steed "
+            "will tell you about any change."
         )
         note.setWordWrap(True)
         note.setProperty("role", "note")

@@ -1,6 +1,81 @@
 # Agents in Steed
 
-The agent sidebar, Codex, Claude Code and ACP chats, and local MCP access for other agents. [Documentation index](README.md).
+Steed works with any assistant: a model it runs itself (local or with your own
+API key), Codex, Claude Code, any ACP agent, or any MCP client. Each gets the
+same tools and asks you the same way. This page covers the agent sidebar, those
+chats, and local MCP access. [Documentation index](README.md).
+
+## Any model, nothing else to install
+
+Open the agent sidebar, then **Settings and tools → Use any model…** (or **Use
+any model** under Start a chat). Pick a service, then a model, and add it:
+
+- **On this computer**: Ollama (`http://localhost:11434/v1`), LM Studio or a
+  llama.cpp server. No key needed. **Find models** lists what you have pulled.
+- **A hosted service** with your own API key: OpenAI, Anthropic, Google Gemini,
+  OpenRouter, or any other OpenAI-compatible address (it must use https).
+
+The key goes to the desktop keyring (install `requirements/apps.txt`), never to
+`config.json`. Settings keep only where to find it: `keyring`, `none`, or
+`env:NAME` for a key in an environment variable. A model you add becomes the
+agent for new chats until you pick another.
+
+Steed runs the conversation itself and gives the model its own MCP tools,
+bound to the chat's task, so the model asks for permissions, gets approvals
+and leaves receipts exactly like any other agent. It gets no files, terminal or
+network of its own. **Browsing tools** (the default) offers the tools for
+reading and acting on pages, permissions, watches, routines, settings, sign-in
+and customization; **All of Steed's tools** adds files, apps, workers and
+panels for larger models. Tick **It can look at screenshots** for models that
+take images. A turn stops after 40 steps; older tool results are shortened as
+a chat grows.
+
+## Staying in charge
+
+These hold for every agent and model, whatever its permissions, and even with
+unsafe auto-approval on:
+
+- **Pause All Agents** (Agents menu, `Ctrl+Alt+P`, or **Pause all agents** in
+  the sidebar) holds every agent at once. While paused, agents can only read
+  their conversation and check their task; anything else returns
+  `agents_paused` and does nothing. Routines that come due wait and run after
+  you resume. The menu button shows **⏸ Agents paused**, and each active task's
+  journal records the pause.
+- **Passwords and payment cards are yours alone.** Card fields
+  (`autocomplete="cc-…"`, or named or labelled like a card number or security
+  code) are treated like passwords: agents see them as `sensitive_field` with
+  no actions, cannot type into them (screenshot typing included), cannot
+  submit a form that has one, and cannot press a button, by any means, while
+  a filled one shares its form (or, outside forms, the page). A site that
+  charges a saved card with a single button is not caught by this, so keep
+  submit permission for sites you trust.
+- **Always means public sites.** An "Always" access setting approves
+  requests for public websites and files in Downloads only; your network,
+  this computer and other files always ask.
+- **Page text aimed at agents is pointed out.** When a page contains text that
+  seems to instruct an AI ("ignore your previous instructions…", "note to AI
+  agents…"), `page.inspect` adds `suspected_agent_instructions` to its
+  limitations and quotes it in its guidance as page content, not the user. The
+  journal records it. It is a reminder, not a filter: the text is still there.
+- **A routine that meets a sign-in page hands it to you.** Steed notifies you
+  (click to open the page) and gives the agent a note in place of the login
+  page; sign in and the next run reads it. Watches already did this.
+
+## Replaying what an agent did
+
+**Agents → Task Permissions… → Steps** lists every step of the selected task
+in plain words: opened a page, typed into a field, clicked, sent a form, was
+refused, signed in with your saved login. The journal never holds page text,
+so the steps say what kind of thing happened, not what the page said.
+
+Turn on **Keep a picture of each agent step** (Settings → Agents) and Steed
+also keeps a picture of the page just after each action, navigation and newly
+opened page; choose a step to see it. Pictures are taken only of pages on
+screen (a tab you lent the agent, or one shown with `session.watch`); Steed
+never renders a hidden page to photograph it, so background work has steps but
+no pictures. They are saved as small JPEGs in `task_replays/<task>` under
+Steed's settings (readable only by you), at most 300 per task, until you press
+**Delete Pictures**. Agents cannot change this setting.
 
 ## Local agent access (MCP)
 

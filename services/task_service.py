@@ -43,7 +43,7 @@ from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
 from services.task_downloads import DownloadDestination
 from services.task_messages import TaskMessages
-from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
+from services.task_policy import LiveGrant, TaskPermissionError, TaskScope, everyday
 from services.task_recovery import (
     MAX_RECOVERY_ARTIFACTS,
     MAX_RECOVERY_FILES,
@@ -121,6 +121,8 @@ class TaskService(QObject):
         self._closed = False
         self.failure = ""
         self.auto_approve_requests = False
+        # Pause all agents: every agent's browser and app actions wait.
+        self.agents_paused = False
         self.control_requests = {}
         self.workers = WorkerManager(self)
         self.recipes = RecipeProposals(self, connections)
@@ -128,6 +130,10 @@ class TaskService(QObject):
         self.data_panels = DataPanels(self)
         self.start_pages = StartPageProposals(self)
         self.customizations = CustomizationProposals(self)
+        from services.task_replay import TaskReplay
+
+        self.replay = TaskReplay(self, self)
+        self.store.on_event = self.replay.recorded
         self.watches = WatchProposals(self)
         self.routines = RoutineProposals(self)
         from services.reading_access import ReadingAccess
@@ -1721,6 +1727,28 @@ class TaskService(QObject):
             record.state = "returned"
         return record.payload()
 
+    def set_agents_paused(self, paused):
+        """Trusted desktop switch that holds every agent's actions (only
+        reading the conversation and checking status still work); never an
+        agent command. Each active task's journal records it."""
+        require_owner_thread(self)
+        self._usable()
+        if type(paused) is not bool:
+            raise ValueError("Provide a boolean pause choice")
+        if paused == self.agents_paused:
+            return
+        try:
+            for task in self.store.list_tasks():
+                if task.status in ACTIVE_STATUSES:
+                    self.store.record_event(
+                        task.task_id, "agents.paused", {"paused": paused}
+                    )
+        except (sqlite3.Error, OSError):
+            self._fatal()
+            raise
+        self.agents_paused = paused
+        self.changed.emit()
+
     def set_auto_approval(self, enabled):
         """Trusted desktop opt-in for this browser run; never an agent command."""
         require_owner_thread(self)
@@ -1822,7 +1850,9 @@ class TaskService(QObject):
                 else ""
             )
             rule = next((r for r in rules if r.covers(scope, profile_key)), None)
-            if self.auto_approve_requests or decision == "approve":
+            if recovery["status"] == "approved":
+                automatic = None  # Recovered work always asks afresh.
+            elif self.auto_approve_requests or decision == "approve":
                 automatic = {}
             elif rule is not None:
                 automatic = {"_rule": rule}
@@ -1870,9 +1900,12 @@ class TaskService(QObject):
             return "ask"
         from browser import access_levels
 
-        return access_levels.agent_decision(
+        decision = access_levels.agent_decision(
             config, scope.actions, named_profile=scope.profile != "private"
         )
+        if decision == "approve" and not everyday(scope):
+            return "ask"  # Your network, this computer or other files.
+        return decision
 
     def _approval_profile_key(self, scope, *, create=False):
         if scope.profile == "private" or self.profiles is None:

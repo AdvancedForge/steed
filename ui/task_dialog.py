@@ -59,6 +59,11 @@ class TaskDialog(HtmlSettingsDialog):
         self.activity = QPlainTextEdit()
         self.activity.setReadOnly(True)
         self.panels.addTab(self.activity, "Activity")
+        from ui.task_steps import TaskSteps
+
+        self.steps = TaskSteps(service)
+        self.panels.addTab(self.steps, "Steps")
+        self.panels.currentChanged.connect(lambda _: self.refresh_activity())
         artifacts = QWidget()
         artifact_layout = QVBoxLayout(artifacts)
         artifact_notice = QLabel(
@@ -698,6 +703,8 @@ class TaskDialog(HtmlSettingsDialog):
             return
         task = selected[0]
         try:
+            if self.panels.currentWidget() is self.steps:
+                self.steps.show_task(task.task_id)
             events = self.service.store.recent_events(task.task_id)
             lines = []
             for event in events:

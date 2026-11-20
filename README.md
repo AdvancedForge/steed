@@ -38,10 +38,15 @@ is in your way until you go looking for it.
 - `steed:style` for themes and CSS on any site; user scripts and panel apps;
   editable New Tab and Welcome pages; a rearrangeable toolbar and menus.
 
-## Bring your AI
+## Bring your AI, any AI
 
-- An agent sidebar for Claude Code, Codex or any Agent Client Protocol agent,
-  and local MCP access for other clients.
+Steed is not tied to one AI company. Use whatever assistant you like, and
+switch whenever you want; every one gets the same tools and the same rules.
+
+- Any model, with nothing else to install: a local one (Ollama, LM Studio,
+  llama.cpp) or any OpenAI-compatible service with your own API key.
+- Coding agents in the sidebar: Codex, Claude Code, or any Agent Client
+  Protocol agent; and local MCP access for any other client.
 - Routines: your agent on a schedule ("every morning, read my inbox and
   calendar and tell me what matters").
 - Ask about a page or selection, watch a page and act when it changes,

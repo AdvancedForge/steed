@@ -294,6 +294,12 @@ class ChatbotRelay(QObject):
 
     def _before_dispatch(self, call):
         self._active()
+        if getattr(self.service, "agents_paused", False):
+            from services.agent_errors import AgentRequestError
+
+            raise AgentRequestError(
+                "agents_paused", "The user paused all agents. Nothing was done."
+            )
         try:
             self.service.store.record_event(
                 self.task_id,

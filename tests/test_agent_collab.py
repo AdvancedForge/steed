@@ -214,7 +214,7 @@ class CollabTests(unittest.TestCase):
         tabs = self.pages(("A", "https://a.test/", "a"), ("B", "https://b.test/", "b"))
         with patch.object(agent_once, "agent_commands", return_value={}):
             dialog = OrganizeDialog(self.window, tabs)
-        self.assertIn("Install Claude Code or Codex", dialog.status.text())
+        self.assertIn("Use any model", dialog.status.text())
         self.assertFalse(dialog.apply_button.isEnabled())
 
     def test_compare_tabs_drafts_their_text_for_your_question(self):

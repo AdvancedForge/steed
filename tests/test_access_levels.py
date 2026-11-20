@@ -82,9 +82,32 @@ class AgentGrantTests(unittest.TestCase):
         access_levels.apply_preset(self.registry.config, "agents", "ask")
         fixtures.TaskProfileTests.tearDown(self)
 
-    def ask_for(self, actions):
+    def ask_for(self, actions, **changes):
         task = self.command("task.create", objective="Access settings")
-        return task.task_id, self.request(task.task_id, actions=actions)
+        changes.setdefault("origins", ["https://example.com"])
+        changes.setdefault("allow_private_network", True)  # DNS, as usual.
+        return task.task_id, self.request(task.task_id, actions=actions, **changes)
+
+    def test_always_covers_public_sites_and_downloads_only(self):
+        access_levels.apply_preset(self.registry.config, "agents", "everything")
+        downloads = Path.home() / "Downloads"
+        for changes in (
+            {"origins": [self.origin], "allow_private_network": True},
+            {"origins": ["https://router.lan"]},
+            {"origins": ["http://localhost:8080"], "allow_private_network": True},
+            {
+                "actions": ["read", "navigate", "download"],
+                "download_destinations": [str(Path.home() / ".config" / "x.desktop")],
+            },
+        ):
+            changes.setdefault("actions", ["read", "navigate"])
+            _, grant = self.ask_for(**changes)
+            self.assertEqual(grant.status, "requested", changes)
+        _, grant = self.ask_for(
+            ["read", "navigate", "download"],
+            download_destinations=[str(downloads / "report.pdf")],
+        )
+        self.assertEqual(grant.status, "approved")
 
     def test_never_refuses_and_everything_approves_without_asking(self):
         access_levels.apply_preset(self.registry.config, "agents", "nothing")

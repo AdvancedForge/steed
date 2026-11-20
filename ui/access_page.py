@@ -10,7 +10,7 @@ from ui.html_surface import HtmlSurface
 AREA_TEXT = {
     "agents": (
         "Agents",
-        "Connected agents such as Claude Code and Codex. Never refuses a request "
+        "Any connected agent or model. Never refuses a request "
         "without asking you; Always approves it without asking. Applies to new "
         "requests; access already approved stays until the task ends.",
     ),

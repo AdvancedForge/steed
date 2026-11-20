@@ -15,7 +15,7 @@ from services.task_policy import TaskPermissionError, TaskScope
 
 HTML = """<html><title>Live fixture</title><body>
 <h1>Current live document</h1><input id="field" aria-label="Message" value="PRIVATE_VALUE">
-<input type="checkbox" aria-label="Confirm"><input type="password" value="PASSWORD_VALUE">
+<input type="checkbox" aria-label="Confirm"><form id="login"><input type="password" value="PASSWORD_VALUE"></form>
 <button type="button" id="action" onclick="window.clicked++; document.title='Clicked'; fetch('/background', {method:'POST',body:'live'})">Run action</button>
 <form action="/submitted" method="post" onsubmit="event.preventDefault(); window.sent++; document.title='Submitted'">
 <button id="send">Send</button></form>
@@ -84,6 +84,37 @@ class LiveTabsTests(unittest.TestCase):
             operation=operation,
             **extra,
         )
+
+    def test_buttons_near_a_filled_password_or_card_are_left_to_you(self):
+        window, view = self.window()
+        self.value(
+            view.page(),
+            """const box = document.createElement('div');
+            box.innerHTML = '<input id="pw" type="password">' +
+                '<div role="button" aria-label="Sign in" onclick="window.sent++">Go</div>';
+            document.body.append(box); true;""",
+        )
+        task, _, session = self.share(window)
+
+        def press():
+            snapshot = self.inspect(task, session)
+            target = next(
+                t for f in snapshot.frames for t in f.targets if t.label == "Sign in"
+            )
+            self.act(task, session, snapshot, target)
+
+        press()  # Empty: an ordinary button.
+        self.wait_for(lambda: self.value(view.page(), "window.sent") == 1)
+        # A reveal toggle that made it plain text does not change what it is.
+        self.value(
+            view.page(),
+            "pw.value = 'typed by you'; pw.setAttribute('type', 'text'); "
+            "pw.setAttribute('type', 'password'); true",
+        )
+        with self.assertRaises(PageInspectionError) as raised:
+            press()
+        self.assertEqual(raised.exception.code, "sensitive_form_unsupported")
+        self.assertEqual(self.value(view.page(), "window.sent"), 1)
 
     def test_live_changed_form_help_and_errors_require_fresh_target_references(self):
         window, view = self.window()

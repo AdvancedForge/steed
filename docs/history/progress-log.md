@@ -7,6 +7,46 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**A security review of the agent surface — November 20, 2026.** Two reviews
+(connections and authorization; what agents can do in pages) found thirteen
+problems, now fixed, and recorded the limits that remain in the
+[security assessment](../security-assessment.md). The most serious: vault
+sign-in could be steered into submitting a change-email, delete-account or
+checkout form, and its same-site check could be fooled by a button's
+`formaction`; buttons without a form, drags and screenshot clicks could send
+a filled password or card; "Always" settings approved local network
+addresses and any file path. Sign-in now fills only sign-in forms that send
+to the same site, no press goes near a filled password or card, and "Always"
+covers public sites and Downloads only.
+
+**Replaying what an agent did — November 19, 2026.** Task Permissions has a
+**Steps** tab: each thing an agent did, in plain words, from the journal. With
+**Keep a picture of each agent step** on (Settings → Agents, off by default),
+Steed also keeps a small picture of the page after each action when the page
+is on screen, private to you and deleted with **Delete Pictures**.
+
+**Staying in charge of agents — November 19, 2026.** Four safeguards that hold
+for every agent, even with auto-approval on: **Pause All Agents** (Agents menu,
+`Ctrl+Alt+P`, the sidebar) holds every agent's actions at Steed's gateway and
+delays routines until you resume; payment card fields are treated like
+passwords (no typing, choosing or submitting by agents); page text that seems
+to instruct AI agents is flagged to the agent as page content and recorded in
+the journal; and a routine that meets a sign-in page tells you instead of
+handing the agent a login form.
+
+**Any assistant, nothing else to install — November 19, 2026.** Agents used
+to need a coding agent (Codex, Claude Code or an ACP agent) installed first.
+Now **Use any model** in the agent sidebar adds a model Steed runs itself: a
+local one (Ollama, LM Studio, llama.cpp) or any OpenAI-compatible service with
+your own API key (OpenAI, Anthropic, Gemini, OpenRouter or another). Steed
+starts its own MCP server for the chat, bound to the chat's task, so the model
+gets the same tools, permissions, approvals and receipts as every other agent,
+and nothing else. Keys live in the desktop keyring (or an environment
+variable), never in settings. Watches and the tab organizer ask an added model
+too. Wording across the sidebar, Welcome, settings, setup and docs now says
+plainly that Steed works with any assistant. Tested against a scripted chat
+API with Steed's real tool server; not yet tried with a real model.
+
 **The engine boundary, finished — November 19, 2026.** Only
 `browser/webengine.py` talks to Qt WebEngine now (15 other files used to).
 Steed's pages decide through Steed's hooks with kinds in words; network

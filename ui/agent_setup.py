@@ -65,12 +65,13 @@ class AgentSetupDialog(HtmlSettingsDialog):
         notice.setWordWrap(True)
         layout.addWidget(notice)
         codex = QLabel(
-            "For Codex: install a current Codex CLI (tested with 0.160.0), sign in "
-            "once using codex login, then choose New Codex Chat in the sidebar. "
-            "No client configuration or starter prompt is needed for that option. "
-            "Steed sends messages automatically and never stores model credentials. "
-            "For Claude Code: install it and run claude once to sign in, then choose "
-            "Claude Code under Agent for new chats."
+            "Steed works with any assistant. You don't need this setup for chats "
+            "in the sidebar: there, add any model (a local one or your own API "
+            "key) with Use any model, or pick Codex, Claude Code or an ACP agent "
+            "under Agent for new chats. Codex: install a current Codex CLI (tested "
+            "with 0.160.0) and sign in once with codex login. Claude Code: install "
+            "it and run claude once to sign in. The steps above are for any other "
+            "MCP client."
         )
         codex.setWordWrap(True)
         layout.addWidget(codex)

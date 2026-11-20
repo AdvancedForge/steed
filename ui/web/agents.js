@@ -235,6 +235,8 @@ window.steedUI = {render(next) {
   if (switched || !next.active || (next.send_result.context === context && next.send_result.version >= pendingSend?.version)) pendingSend = null;
   document.documentElement.dataset.theme = next.dark ? "dark" : "light";
   visible("unsafe", next.yolo);
+  visible("paused", next.paused);
+  visible("pause-agents", next.available && !next.paused);
   visible("welcome", !next.usable);
   visible("welcome-start-row", next.available && next.has_provider);
   visible("setup", next.available);

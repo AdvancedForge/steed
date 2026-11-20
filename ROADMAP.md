@@ -20,9 +20,10 @@ The road to a public release is the [release plan](docs/RELEASE_PLAN.md).
   motion setting, `steed:style` themes and CSS, user scripts, panel apps, an
   editable New Tab and Welcome, a rearrangeable toolbar and menus, custom
   shortcuts.
-- **Agents: working, still growing.** A sidebar for Codex, Claude Code and ACP
-  agents (Claude Code and Codex chats can continue after Steed closes), local MCP access
-  for other agents, page reading and actions under per-task permissions,
+- **Agents: working, still growing.** Any assistant: a sidebar for models
+  Steed runs itself (local, or any OpenAI-compatible API with your own key),
+  Codex, Claude Code and ACP agents (Claude Code and Codex chats can continue
+  after Steed closes), local MCP access for any other agent, page reading and actions under per-task permissions,
   watches, routines, app connections and agent-built workers, each reviewed
   before it runs. The milestones below track what is left.
 - **Release: early preview.** Not packaged or security-reviewed yet; see the
@@ -33,7 +34,7 @@ The road to a public release is the [release plan](docs/RELEASE_PLAN.md).
 Manual checks on a real desktop, still open unless ticked. Automated checks
 cover much of the same ground; these confirm it by hand.
 
-- [x] Run the complete regression suite (2,142 tests on November 19, 2026),
+- [x] Run the complete regression suite (2,167 tests on November 20, 2026),
   startup smoke, local Google-login smoke, launcher validation, and lint/format
   checks.
 
