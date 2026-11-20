@@ -7,6 +7,15 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Signing in for your agent — November 19, 2026.** A new permission, **Sign in
+with your saved passwords** (Ask by default): an agent asks Steed to sign in on
+a page it is working on, and Steed fills and submits the saved login (username,
+password, one-time code) on that exact site, reporting only the outcome. The
+agent never sees the login. Live sessions only, under the task's own submit
+permission; one approval covers the site for three minutes. Also: the top
+menus are one column that scrolls past 460 px (View had grown into an
+833×792 wall of columns).
+
 **Before going public — November 16, 2026.**
 - Codex chats can continue after Steed closes too: kept threads are saved (not
   ephemeral) and resumed with `thread/resume` while Codex still has them. The

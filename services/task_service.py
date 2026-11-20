@@ -133,6 +133,9 @@ class TaskService(QObject):
         from services.reading_access import ReadingAccess
 
         self.reading = ReadingAccess(self)
+        from services.vault_signin import VaultSignin
+
+        self.signin = VaultSignin(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -161,6 +164,14 @@ class TaskService(QObject):
                 ),
                 "reading.status": lambda task_id, request_id: self._layout_action(
                     self.reading.status, task_id, request_id
+                ),
+                "signin.request": lambda task_id, session_id, request_id: (
+                    self._layout_action(
+                        self.signin.request, task_id, session_id, request_id
+                    )
+                ),
+                "signin.status": lambda task_id, request_id: self._layout_action(
+                    self.signin.status, task_id, request_id
                 ),
                 "routine.capabilities": self._routine_capabilities,
                 "routine.propose": lambda task_id, **arguments: self._layout_action(
@@ -2853,6 +2864,7 @@ class TaskService(QObject):
         self.watches.cancel_task(task_id, interrupted=status == "interrupted")
         self.routines.cancel_task(task_id, interrupted=status == "interrupted")
         self.reading.cancel_task(task_id, interrupted=status == "interrupted")
+        self.signin.cancel_task(task_id, interrupted=status == "interrupted")
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):

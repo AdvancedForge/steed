@@ -11,7 +11,7 @@ from ui.html_surface import HtmlSurface
 from ui.menu_layout import ICONS, label
 
 # A compact popup: rows and separators in pixels (see menu.css).
-WIDTH, ROW, SEPARATOR, MAX_HEIGHT = 290, 31, 11, 560
+WIDTH, ROW, SEPARATOR, MAX_HEIGHT = 290, 31, 11, 460
 
 
 class HtmlMenu(QDialog):

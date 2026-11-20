@@ -32,6 +32,7 @@ READ_ONLY_COMMANDS = frozenset(
         "routine.capabilities",
         "routine.status",
         "reading.status",
+        "signin.status",
         "grant.list",
         "browser.context",
         "browser.tabs",

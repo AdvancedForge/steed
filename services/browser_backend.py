@@ -41,7 +41,7 @@ from services.page_inspector import (
 from services.permission_service import PermissionService
 from services.task_downloads import TaskDownload
 from services.task_network import TaskNetwork
-from services.task_policy import LiveGrant
+from services.task_policy import LiveGrant, TaskPermissionError
 from services.task_uploads import UploadCopy
 
 
@@ -693,6 +693,34 @@ class QtBrowserBackend(QObject):
                 raise PageInspectionError("stale_snapshot")
 
         return session, validate
+
+    def signin_page(self, session_id):
+        """The session's page and profile for a Steed-run sign-in, only on a
+        page the task may read (so only a site it was approved for)."""
+        session = self._session(session_id)
+        if session.loading or session.load_success is not True:
+            raise PageInspectionError("page_not_ready")
+        session.grant.check("read", url=session.page.url().toString())
+        return session.page, session.grant.scope.profile
+
+    def signin_may_submit(self, session_id):
+        """Whether the task may submit forms on the session's page at all."""
+        session = self._session(session_id)
+        try:
+            session.grant.check("submit", url=session.page.url().toString())
+        except TaskPermissionError:
+            return False
+        return True
+
+    def allow_signin_submission(self, session_id, url, method):
+        """Let exactly one sign-in form submission through (to url, by
+        method), under the task's own submit and navigate authority."""
+        session = self._session(session_id)
+        if session.mode == "live":
+            session.grant.check("submit", url=url)
+            session.grant.check("navigate", url=url)
+            return
+        session.page.submission.arm(url, method)
 
     def inspect_page(self, session_id):
         session, validate = self._read_context(session_id)

@@ -210,6 +210,20 @@ class HtmlMenuTests(unittest.TestCase):
         self.assertIs(type(window.menuBar()), QMenuBar)
         self.assertIs(window.address_bar.menu_btn.menu(), window.browser_menu)
 
+    def test_top_menus_stay_small_and_scroll(self):
+        from ui.chrome_style import MENU_MAX_HEIGHT
+
+        window = self.window()
+        window.apply_dark_mode()
+        menus = [a.menu() for a in window.menuBar().actions() if a.menu()]
+        while menus:
+            menu = menus.pop()
+            with self.subTest(menu=menu.title()):
+                self.assertLessEqual(menu.maximumHeight(), MENU_MAX_HEIGHT)
+                # One column: no menu grows wider than its longest row.
+                self.assertLess(menu.sizeHint().width(), 480)
+            menus += [a.menu() for a in menu.actions() if a.menu()]
+
     def test_newtab_category_click_anchors_html_and_footer_opens_matching_settings(
         self,
     ):

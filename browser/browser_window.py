@@ -66,6 +66,7 @@ from ui.address_bar import AddressBar
 from ui.chrome_style import (
     bar_stylesheet,
     browser_colors,
+    keep_menus_small,
     menu_stylesheet,
     scrollbar_stylesheet,
 )
@@ -1413,6 +1414,7 @@ class BrowserWindow(QMainWindow):
                 + ";padding:4px 8px;}"
                 "QPushButton:hover {background:" + chosen["soft"] + ";}"
                 "QMenu::item:selected {background:" + chosen["soft"] + ";}"
+                "QMenu {menu-scrollable: 1;}"
             )
         elif self.profile_manager.registry.page_style.dark(
             self.profile_manager.current_profile_name
@@ -1425,7 +1427,7 @@ class BrowserWindow(QMainWindow):
                 QPushButton:hover {background:#3d3d3d;}
                 QPushButton:pressed {background:#1d1d1d;}
                 QMenuBar {background:#1e1e1e;color:#fff;}
-                QMenu {background:#2d2d2d;color:#fff;}
+                QMenu {background:#2d2d2d;color:#fff;menu-scrollable:1;}
                 QMenu::item:selected {background:#3d3d3d;}
                 QStatusBar {background:#1e1e1e;color:#fff;}
             """)
@@ -1495,6 +1497,10 @@ class BrowserWindow(QMainWindow):
         ):
             if menu is not None:
                 menu.setStyleSheet(menus)
+        keep_menus_small(
+            getattr(self, "browser_menu", None),
+            *(a.menu() for a in self.menuBar().actions()),
+        )
         self.menuBar().setStyleSheet(bars)
         self.status_bar.setStyleSheet(bars)
         self._apply_lumen(colors)

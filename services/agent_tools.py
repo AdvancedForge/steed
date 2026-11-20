@@ -251,6 +251,18 @@ TOOLS = (
         ("request_id",),
     ),
     tool(
+        "signin.request",
+        "Sign in on the session's current page with the person's saved login for that site, when a page you are working on asks for a sign-in (for example a watched page that signed out). Steed itself fills and submits each step (username, password, and a one-time code when the login has one); you never receive the password, code or username, only the outcome: signed_in, still_on_sign_in (a wrong password, captcha or check the person must do), code_needed_from_person, no_saved_login, no_sign_in_form or could_not_submit. Afterwards inspect the page as usual. The person's Access & Permissions decide: it may run at once, wait for their approval (state awaiting_approval: poll signin.status), or be refused.",
+        {"session_id": string(64), "request_id": string(64)},
+        ("session_id", "request_id"),
+    ),
+    tool(
+        "signin.status",
+        "Poll a signin.request: awaiting_approval, signing_in, done (with outcome and steps), denied or failed.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "routine.capabilities",
         "Discover how to propose a routine: something you do for the person on a schedule (a morning brief, a weekly summary). Each run starts a new conversation with you containing their ask and the text of up to five pages read with their sign-ins. Returns the schedule format, limits and an example.",
     ),

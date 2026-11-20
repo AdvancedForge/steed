@@ -1153,6 +1153,30 @@ November 12, 2026) installs from the Chrome Web Store and runs; see
 Extensions for the one engine limit it hit (closing while its background was
 still starting), which Steed now works around.
 
+### Your agent signing in for you
+
+When a page your agent is working on asks for a sign-in (for example a watched
+page that signed out), the agent can ask Steed to sign in with your saved
+login for that site (`steed_signin_request`, then `steed_signin_status`).
+Steed fills and submits each step itself (username, password, and the
+one-time code when the login has one) and tells the agent only the outcome:
+**signed_in**, **still_on_sign_in** (a wrong password, a captcha or a check you
+must do), **code_needed_from_person**, **no_saved_login**, **no_sign_in_form**
+or **could_not_submit**. The agent never receives the password, the code or
+the username, and the task's records keep only the site, the step and the
+outcome.
+
+Agents → Access & Permissions → **Sign in with your saved passwords** decides:
+**Ask** (the default) shows the site and, when you have several logins there,
+lets you pick the account, with **Sign in**, **Deny** and **Always allow**;
+**Always** signs in at once with the login you used most recently there;
+**Never** refuses. One approval covers that site for the task for three
+minutes, so a sign-in in several steps is asked about once. Steed only fills a
+login on its own site, never into a form that would send it to another site,
+and only in a live session (sign-in pages run their own scripts) whose task may
+submit forms on that site. Not in incognito, and not while your passwords are
+locked.
+
 ### Passkeys
 
 Sites that offer passkeys can keep them in Steed: creating one asks **Create

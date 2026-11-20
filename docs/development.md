@@ -108,7 +108,10 @@ not occur in 85 starts on Qt 6.11.2: `tests/smoke_browser.py` 30 times in a row
 while the full suite ran, 40 more four at a time, and
 `tests/smoke_google_login.py` 15 times, all with `python -X faulthandler`. It
 is not reproduced; no cause or fix is claimed. If it returns, the faulthandler
-trace says where.
+trace says where. It did return once on November 19: a child Steed started by
+`test_browser`'s global-profile persistence test exited with signal 11 during a
+full-suite run that the laptop's sleep paused for hours; that test, rerun five
+times, passed each time.
 
 The agents page was driven end to end in a real window, with the real agent
 gateway and the synthetic Claude Code runtime: starting a chat, a streamed
