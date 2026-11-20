@@ -5,6 +5,10 @@ matching http(s) page and frame: styles from Steed's own script world as soon
 as the document exists, scripts in the page's world (so they can work with the
 site's code) when the page is ready, or at the start or after loading. Changes
 apply to pages loaded afterwards. Incognito windows run none.
+
+A script set to run "when I choose it" is a command instead: it runs on the
+current page only when picked from View → Your Commands, the command palette
+or its own keyboard shortcut (still only on the sites it lists).
 """
 
 import json
@@ -21,7 +25,7 @@ MAX_ENTRIES = 50
 MAX_SITES = 50
 MAX_CSS = 100_000
 MAX_JS = 200_000
-WHEN = ("start", "ready", "loaded")
+WHEN = ("start", "ready", "loaded", "command")
 PREFIX = "steed-user-"
 _HOST = re.compile(r"^(\*|(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)*)$")
 _MATCH = """const host = location.hostname.toLowerCase();
@@ -120,6 +124,14 @@ def script_source(entry) -> str:
     )
 
 
+def run_command(entry, page) -> None:
+    """Run a command's style and script on a page, now (sites still apply)."""
+    if entry["css"].strip():
+        page.runJavaScript(style_source(entry), webengine.STEED_WORLD)
+    if entry["js"].strip():
+        page.runJavaScript(script_source(entry), webengine.PAGE_WORLD)
+
+
 class UserScripts(QObject):
     changed = pyqtSignal()
 
@@ -140,6 +152,9 @@ class UserScripts(QObject):
             except (ValueError, TypeError, AttributeError):
                 continue
         return entries[:MAX_ENTRIES]
+
+    def commands(self) -> list[dict]:
+        return [e for e in self.entries if e["enabled"] and e["when"] == "command"]
 
     def get(self, identity):
         return next((e for e in self.entries if e["id"] == identity), None)
@@ -180,7 +195,7 @@ class UserScripts(QObject):
             if script.name().startswith(PREFIX):
                 collection.remove(script)
         for entry in self.entries:
-            if not entry["enabled"]:
+            if not entry["enabled"] or entry["when"] == "command":
                 continue
             if entry["css"].strip():
                 collection.insert(

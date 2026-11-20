@@ -4,10 +4,12 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
 )
 
+from browser.ad_blocker import MAX_OWN_RULES, own_rules
 from ui.html_dialog import HtmlSettingsDialog
 
 
@@ -16,7 +18,7 @@ class AdBlockDialog(HtmlSettingsDialog):
         super().__init__(parent)
         self.service = service
         self.setWindowTitle("Ad Blocking")
-        self.resize(620, 260)
+        self.resize(620, 460)
         layout = QVBoxLayout(self)
         self.enabled = QCheckBox(
             "Enable network blocking and supported cosmetic filters"
@@ -32,6 +34,18 @@ class AdBlockDialog(HtmlSettingsDialog):
             ", ".join(service.config.get("adblock_exceptions", []))
         )
         layout.addWidget(self.exceptions)
+        layout.addWidget(
+            QLabel(
+                "Your own rules, one per line, in the same syntax as the lists: "
+                "||ads.example.com^ blocks a site's requests, "
+                "example.com##.cookie-banner hides an element there, and "
+                "@@||example.com^ lets a site through. Lines starting with ! "
+                f"are notes. Up to {MAX_OWN_RULES:,} rules."
+            )
+        )
+        self.rules = QPlainTextEdit("\n".join(own_rules(service.config)))
+        self.rules.setPlaceholderText("example.com##.newsletter-popup")
+        layout.addWidget(self.rules, 1)
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -62,8 +76,16 @@ class AdBlockDialog(HtmlSettingsDialog):
                 if host.strip()
             }
         )
+        rules = [line.strip() for line in self.rules.toPlainText().splitlines()]
+        changed = own_rules({"adblock_rules": rules}) != own_rules(self.service.config)
         self.service.config.update(
-            {"adblock_enabled": self.enabled.isChecked(), "adblock_exceptions": hosts}
+            {
+                "adblock_enabled": self.enabled.isChecked(),
+                "adblock_exceptions": hosts,
+                "adblock_rules": [line for line in rules if line],
+            }
         )
         self.service.refresh_settings()
+        if changed:
+            self.service.refresh_rules()
         self.accept()

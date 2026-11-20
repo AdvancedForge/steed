@@ -32,6 +32,26 @@ BOOTSTRAP = [
 ]
 
 
+# Your own rules (config "adblock_rules"): the same syntax as the lists,
+# "||ads.example^" to block, "example.com##.banner" to hide an element.
+MAX_OWN_RULES = 1000
+MAX_RULE_LENGTH = 1000
+
+
+def own_rules(config):
+    """Your rules, cleaned: no comments, blanks, or overlong lines."""
+    raw = config.get("adblock_rules", []) if config is not None else []
+    if not isinstance(raw, list):
+        return []
+    found = []
+    for line in raw:
+        line = str(line).strip() if isinstance(line, str) else ""
+        if line and not line.startswith(("!", "[")) and len(line) <= MAX_RULE_LENGTH:
+            if "\n" not in line and line not in found:
+                found.append(line)
+    return found[:MAX_OWN_RULES]
+
+
 class FilterEngine:
     """Compile off the request path; serialize access to the Rust binding."""
 
@@ -115,6 +135,9 @@ class AdBlocker(QObject):
         self.engine = FilterEngine(BOOTSTRAP)
         self.compiling = False
         self._pending_rules = cached if valid else None
+        # The lists without your own rules; those are added on each compile.
+        self.base_rules = cached if valid else list(BOOTSTRAP)
+        self._recompile = False
         self.count = 0
         self.network = QNetworkAccessManager(self)
         self.replies: list[QNetworkReply] = []
@@ -129,18 +152,20 @@ class AdBlocker(QObject):
         self.compilation_failed.connect(self.fail)
         # Initialize state and connect both outcomes before starting a worker:
         # even a tiny cached list can finish before __init__ returns.
-        if valid:
-            self._compile_async(cached, self.status)
+        if valid or own_rules(config):
+            self._compile_async(self.base_rules, self.status)
 
     def _compile_async(self, rules, success_status):
-        """Compile rules off the GUI thread and install them via the event loop."""
+        """Compile rules (and your own) off the GUI thread and install them
+        via the event loop. rules are the lists only; they are what is cached."""
         self.compiling = True
         self.status = "Compiling filter lists..."
         self.changed.emit()
+        everything = list(rules) + own_rules(self.config)
 
         def compile_rules():
             try:
-                engine = FilterEngine(rules)
+                engine = FilterEngine(everything)
             except Exception as error:
                 try:
                     self.compilation_failed.emit(str(error))
@@ -221,6 +246,13 @@ class AdBlocker(QObject):
         self.changed.emit()
         self.fetch(0)
 
+    def refresh_rules(self):
+        """Your own rules changed: compile them with the lists again."""
+        if self.compiling or self.updating:
+            self._recompile = True
+            return
+        self._compile_async(self.base_rules, None)
+
     def refresh_settings(self):
         """Re-read toggles after the settings or ad-blocking dialog changes them."""
         self._refresh_exceptions(force=True)
@@ -277,9 +309,18 @@ class AdBlocker(QObject):
                 self.fail("Could not save updated rules; previous rules retained.")
                 return
         self.engine = engine
+        self.base_rules = rules
         self.updating = False
-        self.status = f"{len(rules):,} rules loaded; network and CSS hiding supported (scriptlets/redirects not enabled)"
+        own = len(own_rules(self.config))
+        self.status = (
+            f"{len(rules):,} rules loaded"
+            + (f" and {own:,} of your own" if own else "")
+            + "; network and CSS hiding supported (scriptlets/redirects not enabled)"
+        )
         self.changed.emit()
+        if self._recompile:
+            self._recompile = False
+            self.refresh_rules()
 
     def fail(self, message):
         self.compiling = False
@@ -287,6 +328,9 @@ class AdBlocker(QObject):
         self.updating = False
         self.status = message
         self.changed.emit()
+        if self._recompile:
+            self._recompile = False
+            self.refresh_rules()
 
     def apply_cosmetic(self, tab):
         from PyQt6 import sip

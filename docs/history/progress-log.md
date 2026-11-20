@@ -7,6 +7,18 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**More for agents (and you) to change — November 19, 2026.** What a coding
+agent can change in Steed, compared with what you can, left a few gaps:
+- **Settings proposals**: an agent proposes preferences, shortcuts, search
+  keywords, ad-blocking rules and sites, and per-site settings; you see each
+  change as now → after and press Apply. Security, privacy and agent settings
+  stay yours alone.
+- **Your own ad-blocking rules** (General → Ad Blocking), compiled with the
+  lists: block a site, hide an element, let a site through.
+- **Commands**: a user script set to run when you choose it is a command in
+  View → Your Commands and the command palette, with its own shortcut if you
+  like. Agents propose them like any user script.
+
 **Signing in for your agent — November 19, 2026.** A new permission, **Sign in
 with your saved passwords** (Ask by default): an agent asks Steed to sign in on
 a page it is working on, and Steed fills and submits the saved login (username,

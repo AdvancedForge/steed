@@ -797,6 +797,8 @@ class BrowserWindow(QMainWindow):
         self.translate_action = QAction("Translate Page", self)
         self.translate_action.triggered.connect(self.translate_page)
         view_menu.addAction(self.translate_action)
+        # Your own commands: user scripts set to run when chosen.
+        self.commands_menu = view_menu.addMenu("Your Commands")
         media_action = QAction("Play or Pause Media", self)
         media_action.triggered.connect(lambda: media_controls.controller().toggle())
         view_menu.addAction(media_action)
@@ -1196,6 +1198,7 @@ class BrowserWindow(QMainWindow):
         arrange(self._layout_menus)
         from browser import shortcuts
 
+        self._fill_commands_menu()
         shortcuts.apply(self)
         for menu in self._layout_menus.values():
             register_actions(menu)
@@ -2189,7 +2192,67 @@ class BrowserWindow(QMainWindow):
         self.profile_manager.registry.commit_layout(LayoutPreferences(recovered))
 
     # ---------- Profile handling ----------
+    def _fill_commands_menu(self):
+        """View → Your Commands: one entry per command script, so each is
+        also in the command palette and can take a shortcut."""
+        from browser import shortcuts
+
+        menu = getattr(self, "commands_menu", None)
+        if menu is None or getattr(self, "_closing", False):
+            return
+        menu.clear()
+        name = self.profile_manager.current_profile_name
+        scripts = (
+            None
+            if self.profile_manager.is_search_profile()
+            else self.profile_manager.registry.user_scripts(name)
+        )
+        if scripts is not None and not getattr(scripts, "_menu_hooked", None):
+            scripts._menu_hooked = True
+            scripts.changed.connect(self._commands_changed)
+        entries = scripts.commands() if scripts is not None else []
+        for entry in entries:
+            action = menu.addAction(entry["name"])
+            action.triggered.connect(
+                lambda _=False, identity=entry["id"]: self.run_command(identity)
+            )
+        if not entries:
+            empty = menu.addAction(
+                "No commands yet: add a user script set to run when you choose it"
+            )
+            empty.setEnabled(False)
+        menu.addSeparator()
+        menu.addAction(
+            "Manage Commands…",
+            lambda: self._new_tab(url="steed:userscripts", return_tab=True),
+        )
+        shortcuts.apply(self)
+
+    def _commands_changed(self):
+        from PyQt6.QtWidgets import QApplication
+
+        for window in QApplication.topLevelWidgets():
+            if hasattr(window, "_fill_commands_menu") and not getattr(
+                window, "_closing", True
+            ):
+                window._fill_commands_menu()
+
+    def run_command(self, identity):
+        from browser.user_scripts import run_command
+
+        if self._closing or self.profile_manager.is_search_profile():
+            return
+        scripts = self.profile_manager.registry.user_scripts(
+            self.profile_manager.current_profile_name
+        )
+        entry = scripts.get(identity)
+        tab = self.tabs[self.current_tab_index] if self.tabs else None
+        if entry is None or tab is None or tab.page() is None:
+            return
+        run_command(entry, tab.page())
+
     def _on_profile_changed(self, profile_name: str):
+        self._fill_commands_menu()
         self.address_bar.show_extensions(profile_name != "search")
         self._refresh_extension_pins()
         self._refresh_extension_shortcuts()
