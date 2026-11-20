@@ -168,6 +168,18 @@ existing scripts or apps and grant no browser data, files or network access.
 Receipts, retries, task cancellation and automatic mode work as for page
 proposals.
 
+Agents can also propose **changes to Steed's settings** with
+`steed_settings_capabilities`, `steed_settings_propose` and
+`steed_settings_status`: preferences, keyboard shortcuts, search keywords,
+your own ad-blocking rules and sites, and per-site settings (zoom, JavaScript,
+autoplay, pop-ups), in one document with a one-line summary. A popup lists
+every change as **now → after**, asks which profile per-site settings belong
+to, and changes nothing until you press **Apply**. Settings that affect
+security, privacy or agents (safe browsing, HTTPS-first, fingerprinting,
+tracking removal, what Steed remembers, cookie sharing, the user agent, agent
+settings) cannot be proposed; capabilities lists what can, with the current
+preferences and every menu command's shortcut so a proposal can be precise.
+
 Agents can **suggest a watch** when you ask for one in a chat ("tell me when
 tickets go on sale") with `steed_watch_capabilities`, `steed_watch_propose`
 (`url`, optional `title`, `instruction`, `every` of `15m`/`hourly`/`6h`/
@@ -348,6 +360,13 @@ such as `example.org`; a site includes its subdomains, `*.example.org` means
 the same, and `*` means every site), CSS, JavaScript, when the script runs (as
 the page starts, when it is ready, or after it has loaded) and an on/off
 switch. They also run in frames from the listed sites.
+
+**Commands.** Set a script to run **When I choose it** and it becomes a
+command of your own instead: it never runs by itself, and appears in **View →
+Your Commands** and the command palette, where choosing it runs it on the
+current page (only if that page is one of its sites). Like any menu command it
+can take a keyboard shortcut. Use one for something you do often: copy a page
+as Markdown, tidy a cluttered site, fill a form the same way every time.
 
 Styles are added from Steed's own script world as soon as the document exists,
 so pages do not flash unstyled. Scripts run in the page's world, like
@@ -1492,4 +1511,4 @@ all records. Progress updates retain the selected download; filtering it out cle
 selection. Select a row and use **Copy Path** to copy its full destination path,
 including when the file is still downloading or is no longer available.
 
-Open **General → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, or add host-name exceptions. Only a small bootstrap rule set ships with the browser; download the full lists for broader coverage. Rule compilation runs off the GUI thread, and a failed update keeps the last working rules. Network blocking applies immediately, while cosmetic (CSS) hiding is re-applied on page load — reload pages after changing exceptions. Same-origin frames, including nested frames and `srcdoc`, receive their own CSS rules; each pass covers up to 32 documents and eight frame levels. Cross-origin frames cannot be inspected. Scriptlets and resource redirects are not enabled, and unsupported filters are not presented as full uBlock compatibility.
+Open **General → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, add host-name exceptions, or write **your own rules**, one per line in the same syntax as the lists: `||ads.example.com^` blocks a site's requests, `example.com##.cookie-banner` hides an element there, and `@@||example.com^` lets a site through (up to 1,000 rules, kept in `adblock_rules` in `config.json`). Your rules are compiled with the lists and survive list updates. Only a small bootstrap rule set ships with the browser; download the full lists for broader coverage. Rule compilation runs off the GUI thread, and a failed update keeps the last working rules. Network blocking applies immediately, while cosmetic (CSS) hiding is re-applied on page load — reload pages after changing exceptions. Same-origin frames, including nested frames and `srcdoc`, receive their own CSS rules; each pass covers up to 32 documents and eight frame levels. Cross-origin frames cannot be inspected. Scriptlets and resource redirects are not enabled, and unsupported filters are not presented as full uBlock compatibility.

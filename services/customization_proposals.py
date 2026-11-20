@@ -126,7 +126,11 @@ def capabilities():
             "when": list(WHEN),
             "limits": {"css_bytes": MAX_CSS, "js_bytes": MAX_JS},
             "runs": "CSS from Steed's isolated world at document start; JavaScript "
-            "in the page's own world, so it has that page's permissions only.",
+            "in the page's own world, so it has that page's permissions only. "
+            'when "command" makes it a command instead: it runs on the current '
+            "page only when the person picks it from View → Your Commands, the "
+            "command palette or a shortcut they give it (a button for something "
+            "they do often: copy as Markdown, tidy a page, fill a form).",
             "example": EXAMPLES["user_script"],
         },
         "panel_app": {

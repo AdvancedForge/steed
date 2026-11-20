@@ -140,6 +140,37 @@ class InjectionTests(unittest.TestCase):
         names = [s.name() for s in tab.page().profile().scripts().toList()]
         self.assertFalse(any(name.startswith(PREFIX) for name in names))
 
+    def test_a_command_runs_only_when_chosen_and_can_take_a_shortcut(self):
+        from browser import shortcuts
+
+        self.store.save(
+            {
+                "name": "Mark Page",
+                "sites": "127.0.0.1",
+                "js": "document.body.dataset.marked = 'yes';",
+                "when": "command",
+            }
+        )
+        menu = self.window.commands_menu
+        self.wait(lambda: "Mark Page" in [a.text() for a in menu.actions()])
+        tab = self.open("127.0.0.1")
+        # Not run on loading: it waits to be chosen.
+        self.assertIsNone(self.js(tab, "document.body.dataset.marked || null"))
+        names = [s.name() for s in tab.page().profile().scripts().toList()]
+        self.assertFalse(any(name.startswith(PREFIX) for name in names))
+        # In the command palette's list, and a shortcut like any command.
+        self.assertIn("Mark Page", dict(shortcuts.commands(self.window)))
+        shortcuts.change(self.window, "Mark Page", "Ctrl+Alt+M")
+        action = next(a for a in menu.actions() if a.text() == "Mark Page")
+        self.assertEqual(action.shortcut().toString(), "Ctrl+Alt+M")
+        action.trigger()
+        self.wait(lambda: self.js(tab, "document.body.dataset.marked || null") == "yes")
+        # Still only on the sites it lists.
+        other = self.open("localhost")
+        action.trigger()
+        self.app.processEvents()
+        self.assertIsNone(self.js(other, "document.body.dataset.marked || null"))
+
     def test_not_in_incognito_and_kept_per_profile(self):
         registry = self.window.profile_manager.registry
         self.assertIsNone(registry.user_scripts("search"))

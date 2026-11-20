@@ -286,6 +286,48 @@ class FeatureTests(unittest.TestCase):
         self.assertFalse(service.updating)
         self.assertIn("1 rules loaded", service.status)
 
+    def test_your_own_rules_join_the_lists_and_are_never_cached(self):
+        from browser.ad_blocker import own_rules
+
+        save_json(
+            self.config.config_dir / "filter_lists.json", ["||listed-ads.example^"]
+        )
+        self.config.set(
+            "adblock_rules",
+            ["! a note", "example.org##.cookie-banner", "", "||mine.example^"],
+        )
+
+        def immediate_worker(*, target, daemon):
+            return Mock(start=target)
+
+        with (
+            patch("browser.ad_blocker.threading.Thread", side_effect=immediate_worker),
+            patch("browser.ad_blocker.QNetworkAccessManager"),
+        ):
+            service = AdBlocker(self.config)
+            self.assertIn("and 2 of your own", service.status)
+            engine = service.engine
+            for url in ("https://listed-ads.example/a.js", "https://mine.example/b.js"):
+                self.assertTrue(engine.blocked(url, "https://example.org", "script"))
+            self.assertIn(".cookie-banner", engine.selectors("https://example.org"))
+            self.assertEqual(service.base_rules, ["||listed-ads.example^"])
+            self.config.set("adblock_rules", ["||other.example^"])
+            service.refresh_rules()
+            self.assertFalse(
+                service.engine.blocked(
+                    "https://mine.example/b.js", "https://example.org", "script"
+                )
+            )
+            self.assertTrue(
+                service.engine.blocked(
+                    "https://other.example/c.js", "https://example.org", "script"
+                )
+            )
+        self.assertEqual(
+            own_rules({"adblock_rules": ["x" * 2000, "ok##.a", "ok##.a", 5]}),
+            ["ok##.a"],
+        )
+
     def test_fast_cached_filter_failure_keeps_bootstrap_and_allows_update(self):
         save_json(self.config.config_dir / "filter_lists.json", ["||fixture^"])
         bootstrap = Mock()

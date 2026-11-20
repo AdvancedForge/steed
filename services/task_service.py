@@ -136,6 +136,9 @@ class TaskService(QObject):
         from services.vault_signin import VaultSignin
 
         self.signin = VaultSignin(self)
+        from services.settings_proposals import SettingsProposals
+
+        self.settings_proposals = SettingsProposals(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -172,6 +175,20 @@ class TaskService(QObject):
                 ),
                 "signin.status": lambda task_id, request_id: self._layout_action(
                     self.signin.status, task_id, request_id
+                ),
+                "settings.capabilities": lambda task_id: self._layout_action(
+                    lambda: (
+                        self._active(task_id),
+                        self.settings_proposals.capabilities(),
+                    )[1]
+                ),
+                "settings.propose": lambda task_id, request_id, **document: (
+                    self._layout_action(
+                        self.settings_proposals.propose, task_id, request_id, document
+                    )
+                ),
+                "settings.status": lambda task_id, request_id: self._layout_action(
+                    self.settings_proposals.status, task_id, request_id
                 ),
                 "routine.capabilities": self._routine_capabilities,
                 "routine.propose": lambda task_id, **arguments: self._layout_action(
@@ -2865,6 +2882,9 @@ class TaskService(QObject):
         self.routines.cancel_task(task_id, interrupted=status == "interrupted")
         self.reading.cancel_task(task_id, interrupted=status == "interrupted")
         self.signin.cancel_task(task_id, interrupted=status == "interrupted")
+        self.settings_proposals.cancel_task(
+            task_id, interrupted=status == "interrupted"
+        )
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):

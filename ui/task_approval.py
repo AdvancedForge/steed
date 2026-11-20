@@ -406,6 +406,12 @@ class TaskApprovalQueue(QObject):
                         (task, request)
                         for request in self.service.signin.pending(task.task_id)
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.settings_proposals.pending(
+                            task.task_id
+                        )
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -442,6 +448,7 @@ class TaskApprovalQueue(QObject):
             from services.reading_access import ReadingRequest
             from services.recipe_proposals import RecipeProposal
             from services.routine_proposals import RoutineProposal
+            from services.settings_proposals import SettingsProposal
             from services.start_page_proposals import PageProposal
             from services.vault_signin import SigninRequest
             from services.watch_proposals import WatchProposal
@@ -454,6 +461,7 @@ class TaskApprovalQueue(QObject):
             from ui.reading_review import ReadingReviewDialog
             from ui.recipe_review import RecipeReviewDialog
             from ui.routines_dialog import RoutineReviewDialog
+            from ui.settings_review import SettingsReviewDialog
             from ui.signin_review import SigninReviewDialog
             from ui.start_page_review import StartPageReviewDialog
             from ui.watch_review import WatchReviewDialog
@@ -471,6 +479,7 @@ class TaskApprovalQueue(QObject):
                         RoutineProposal,
                         ReadingRequest,
                         SigninRequest,
+                        SettingsProposal,
                     ),
                 )
                 and parent.profile_manager.is_search_profile()
@@ -498,6 +507,8 @@ class TaskApprovalQueue(QObject):
                     if isinstance(grant, ReadingRequest)
                     else SigninReviewDialog(self.service, grant, parent)
                     if isinstance(grant, SigninRequest)
+                    else SettingsReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, SettingsProposal)
                     else DataPanelReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PanelReceipt)
                     else LayoutReviewDialog(
@@ -562,6 +573,7 @@ class TaskApprovalQueue(QObject):
                         RoutineProposal,
                         ReadingRequest,
                         SigninRequest,
+                        SettingsProposal,
                     ),
                 ):
                     dialog.apply()
@@ -594,6 +606,7 @@ class TaskApprovalQueue(QObject):
         from services.reading_access import ReadingRequest
         from services.recipe_proposals import RecipeProposal
         from services.routine_proposals import RoutineProposal
+        from services.settings_proposals import SettingsProposal
         from services.start_page_proposals import PageProposal
         from services.vault_signin import SigninRequest
         from services.watch_proposals import WatchProposal
@@ -616,6 +629,7 @@ class TaskApprovalQueue(QObject):
                     RoutineProposal,
                     ReadingRequest,
                     SigninRequest,
+                    SettingsProposal,
                 ),
             )
             else item.grant_id

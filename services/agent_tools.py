@@ -251,6 +251,32 @@ TOOLS = (
         ("request_id",),
     ),
     tool(
+        "settings.capabilities",
+        "Discover what you may propose changing in Steed's settings: the allowed preferences (with their values now), every menu command with its shortcut, search keywords, the ad-blocking rule syntax and per-site settings, with an example. Settings that affect security, privacy or agents are not proposable.",
+        {},
+        (),
+    ),
+    tool(
+        "settings.propose",
+        'Propose changes to Steed\'s settings as one document: preferences, shortcuts (command name as the menus show it: shortcut, "" for none), search_keywords (add / remove), blocking (add_rules, remove_rules, allow_sites, block_sites) and sites (host: zoom/javascript/autoplay/popups/auto_zoom), plus a one-line summary. The person sees every change as now -> after and must press Apply; nothing changes before that. Use a stable request_id and poll settings.status (awaiting_approval, applied with anything skipped, or denied).',
+        {
+            "request_id": string(64),
+            "summary": string(300),
+            "preferences": {"type": "object"},
+            "shortcuts": {"type": "object"},
+            "search_keywords": {"type": "object"},
+            "blocking": {"type": "object"},
+            "sites": {"type": "object"},
+        },
+        ("request_id",),
+    ),
+    tool(
+        "settings.status",
+        "Poll a settings.propose request.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "signin.request",
         "Sign in on the session's current page with the person's saved login for that site, when a page you are working on asks for a sign-in (for example a watched page that signed out). Steed itself fills and submits each step (username, password, and a one-time code when the login has one); you never receive the password, code or username, only the outcome: signed_in, still_on_sign_in (a wrong password, captcha or check the person must do), code_needed_from_person, no_saved_login, no_sign_in_form or could_not_submit. Afterwards inspect the page as usual. The person's Access & Permissions decide: it may run at once, wait for their approval (state awaiting_approval: poll signin.status), or be refused.",
         {"session_id": string(64), "request_id": string(64)},
