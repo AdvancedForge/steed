@@ -994,6 +994,8 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.agent_sidebar_action.triggered.connect(self._toggle_agent_sidebar)
         agents_menu.addAction(self.agent_sidebar_action)
+        # Agents → Skills: each skill is also in the command palette.
+        self.skills_menu = agents_menu.addMenu("Skills")
         add_assistant_action = QAction("Add an Assistant…", self)
         add_assistant_action.triggered.connect(self._add_assistant)
         agents_menu.addAction(add_assistant_action)
@@ -1212,6 +1214,7 @@ class BrowserWindow(QMainWindow):
         from browser import shortcuts
 
         self._fill_commands_menu()
+        self._fill_skills_menu()
         shortcuts.apply(self)
         for menu in self._layout_menus.values():
             register_actions(menu)
@@ -2205,6 +2208,99 @@ class BrowserWindow(QMainWindow):
         self.profile_manager.registry.commit_layout(LayoutPreferences(recovered))
 
     # ---------- Profile handling ----------
+    def _fill_skills_menu(self):
+        """Agents → Skills: one entry per skill, so each is in the palette."""
+        menu = getattr(self, "skills_menu", None)
+        if menu is None or getattr(self, "_closing", False):
+            return
+        menu.clear()
+        skills = self.profile_manager.registry.skills
+        if not getattr(skills, "_menu_hooked", False):
+            skills._menu_hooked = True
+            skills.changed.connect(self._skills_changed)
+        for skill in skills.list():
+            action = menu.addAction("Skill: " + skill["name"])
+            action.triggered.connect(
+                lambda _=False, identity=skill["id"]: self.run_skill(identity)
+            )
+        menu.addSeparator()
+        menu.addAction("Manage Skills…").triggered.connect(self.manage_skills)
+
+    def _skills_changed(self):
+        for window in QApplication.topLevelWidgets():
+            if isinstance(window, BrowserWindow) and not window._closing:
+                window._fill_skills_menu()
+                if window.agent_sidebar is not None:
+                    window.agent_sidebar._publish()
+
+    def manage_skills(self):
+        from ui.skills_dialog import SkillsDialog
+
+        self._present_dialog(SkillsDialog(self), modal=False)
+
+    def run_skill(self, skill_id, tabs=()):
+        """Run a skill: its saved steps first (by Steed, no model), then the
+        ask, with this page if the skill looks at it, in the agent chat."""
+        from services.skills import message
+
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Skills are not available in incognito.", 5000)
+            return
+        skill = self.profile_manager.registry.skills.get(skill_id)
+        if skill is None:
+            return
+        tab = self.tabs[self.current_tab_index] if self.tabs else None
+        state = {"page": None, "read": [], "stopped": None, "waiting": 0}
+
+        def deliver():
+            if state["waiting"]:
+                return
+            self.agent_message(
+                message(skill, state["page"], state["read"], state["stopped"]),
+                send=True,
+            )
+
+        if (
+            skill["context"] == "page"
+            and tab is not None
+            and tab.url().scheme() in ("http", "https", "file")
+        ):
+            state["waiting"] += 1
+
+            def read(text):
+                body = " ".join(str(text or "").split())[:5000]
+                state["page"] = (tab.title(), tab.url().toString(), body)
+                state["waiting"] -= 1
+                deliver()
+
+            webengine.run_script(
+                tab.page(),
+                "document.body ? document.body.innerText : ''",
+                read,
+                world=webengine.STEED_WORLD,
+            )
+        if skill.get("steps"):
+            from services.routine_steps import StepRunner
+
+            state["waiting"] += 1
+            runner = StepRunner(
+                self.profile_manager.current_profile, skill["steps"], self
+            )
+
+            def stepped(pages, stopped):
+                state["read"] = [
+                    (title, url, " ".join(text.split())[:3000])
+                    for title, url, text in pages
+                ]
+                state["stopped"] = stopped
+                runner.deleteLater()
+                state["waiting"] -= 1
+                deliver()
+
+            runner.finished.connect(stepped)
+            runner.start()
+        deliver()
+
     def _fill_commands_menu(self):
         """View → Your Commands: one entry per command script, so each is
         also in the command palette and can take a shortcut."""

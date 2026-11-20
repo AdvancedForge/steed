@@ -98,7 +98,7 @@ GROUPS = {
         ("Browsing History…", "Search What You've Read…", "Clear Browsing History…"),
     ),
     "agents": (
-        ("Agent Sidebar", "Add an Assistant…", "Pause All Agents"),
+        ("Agent Sidebar", "Skills", "Add an Assistant…", "Pause All Agents"),
         ("Routines…", "Watches…", "Data Panels"),
         ("Agent Chat Tab", "Website Chats"),
     ),

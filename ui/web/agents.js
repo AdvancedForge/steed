@@ -31,7 +31,18 @@ function mentionQuery() {
   const match = before.match(/(^|\s)@([^\s@]*)$/);
   return match ? match[2].toLowerCase() : null;
 }
+// / at the start of the message lists your skills; picking one runs it on
+// the page you are on.
+function skillQuery() {
+  const match = composer.value.match(/^\/([^\n]*)$/);
+  return match ? match[1].trim().toLowerCase() : null;
+}
 function mentionChoices() {
+  const skill = skillQuery();
+  if (skill !== null && state) {
+    return (state.skills || []).filter(s => s.name.toLowerCase().includes(skill))
+      .slice(0, 8).map(s => ({id: s.id, title: s.name, host: s.steps ? "skill · with saved steps" : "skill", skill: true}));
+  }
   const query = mentionQuery();
   if (query === null || !state) return [];
   return (state.mention_tabs || []).filter(tab => !attached.some(a => a.id === tab.id) &&
@@ -53,6 +64,13 @@ function renderMentions() {
   visible("mentions", choices.length > 0);
 }
 function pickMention(tab) {
+  if (tab.skill) {
+    composer.value = "";
+    visible("mentions", false);
+    command("draft", {value: "", version: ++draftVersion});
+    command("skill", {value: tab.id});
+    return;
+  }
   const start = composer.selectionStart, before = composer.value.slice(0, start);
   const cut = before.replace(/@[^\s@]*$/, "");
   composer.value = cut + composer.value.slice(start);

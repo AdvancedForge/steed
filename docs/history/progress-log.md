@@ -7,6 +7,11 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Skills — November 20, 2026.** Kept asks you run in one go, from Agents →
+Skills, the command palette or `/` in the agent chat, on the page you are on;
+a skill can carry saved steps Steed replays first with no model, and **Write it
+for me** drafts one from a description. A few starter skills, all editable.
+
 **Everyday features — November 20, 2026.** **Workspaces** (Tabs menu,
 `Ctrl+Alt+W`) keep sets of tabs apart within a profile; **Help Me Write…**
 rewrites a text field with your assistant, shown first and inserted only on

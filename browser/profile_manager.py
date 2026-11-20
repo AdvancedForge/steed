@@ -328,6 +328,15 @@ class ProfileRegistry(QObject):
         return self._routines
 
     @property
+    def skills(self):
+        """Things you ask your assistant often (services.skills)."""
+        if getattr(self, "_skills", None) is None:
+            from services.skills import Skills
+
+            self._skills = Skills(self.config.config_dir, self)
+        return self._skills
+
+    @property
     def watches(self):
         """Pages Steed keeps an eye on for you (services.watches)."""
         if self._watches is None:

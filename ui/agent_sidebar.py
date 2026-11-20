@@ -229,6 +229,7 @@ class AgentSidebar(QDockWidget):
             "select": {"value"},
             "model": {"value"},
             "agent": {"value"},
+            "skill": {"value"},
         }
         operations = {
             "new_chat": self.start_chat,
@@ -290,6 +291,10 @@ class AgentSidebar(QDockWidget):
             self.set_model(command["value"] or None)
         elif action == "agent" and isinstance(command["value"], str):
             self.set_agent(command["value"])
+        elif action == "skill" and isinstance(command["value"], str):
+            run = getattr(self.browser_window, "run_skill", None)
+            if run is not None:
+                run(command["value"])
         elif action in operations:
             operations[action]()
 
@@ -365,6 +370,7 @@ class AgentSidebar(QDockWidget):
             ],
             send_result=dict(self._send_result),
             mention_tabs=[] if self._private else self._mention_tabs(),
+            skills=[] if self._private else self._skill_names(),
             error=self._error,
             dark=bool(
                 getattr(
@@ -954,6 +960,17 @@ class AgentSidebar(QDockWidget):
         else:
             self._error = ""
         self._publish()
+
+    def _skill_names(self):
+        registry = getattr(
+            getattr(self.browser_window, "profile_manager", None), "registry", None
+        )
+        if registry is None:
+            return []
+        return [
+            {"id": s["id"], "name": s["name"], "steps": bool(s.get("steps"))}
+            for s in registry.skills.list()
+        ]
 
     def _mention_tabs(self):
         """The window's web tabs, to @-mention in a message: [{id, title, host}]."""
