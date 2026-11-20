@@ -114,8 +114,9 @@ class DownloadManager(QObject):
             self.records[record.download_id] = record
 
     def attach(self, profile, name):
-        profile.downloadRequested.connect(
-            lambda request, n=name, p=profile: self._profile_download(request, n, p)
+        webengine.on_download(
+            profile,
+            lambda request, n=name, p=profile: self._profile_download(request, n, p),
         )
 
     def _profile_download(self, request, name, profile):

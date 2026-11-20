@@ -1,9 +1,9 @@
-"""Engine details stay behind webengine.py; the list of exceptions only shrinks.
+"""Only browser/webengine.py talks to the web engine.
 
-Each file below still uses Qt WebEngine directly. Moving one behind
-webengine.py means removing it here; adding a new file means using webengine.py
-instead, or (when the engine is the point, as in a page class) adding it here
-on purpose.
+Nothing else imports Qt WebEngine, calls the engine's own methods for what
+webengine.py wraps, or overrides the engine's hooks (Steed's pages use
+navigation_allowed, new_window and the other Steed hooks instead). Another
+engine is then another webengine.py.
 """
 
 import ast
@@ -22,22 +22,7 @@ from browser import webengine
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP = {".venv", ".git", "tests", "__pycache__", ".claude", "examples"}
-DIRECT_ENGINE_FILES = {
-    "browser/ad_blocker.py",
-    "browser/browser_window.py",
-    "browser/cookie_snapshot.py",
-    "browser/engine_features.py",
-    "browser/profile_manager.py",
-    "services/browser_backend.py",
-    "services/permission_service.py",
-    "services/start_pages.py",
-    "services/task_network.py",
-    "ui/app_panel.py",
-    "ui/devtools.py",
-    "ui/html_dialog.py",
-    "ui/html_surface.py",
-    "ui/web_auth.py",
-}
+ENGINE_MODULE = "browser/webengine.py"
 # Engine names with a Steed equivalent in webengine.py.
 WRAPPED = {
     "LifecycleState",
@@ -53,6 +38,44 @@ WRAPPED = {
     "HttpCacheType",
     "PersistentCookiesPolicy",
     "UnknownUrlSchemePolicy",
+    # Scripts, frames, cookies, developer tools, requests, permissions,
+    # downloads and schemes: webengine.run_script/run_in, frames, main_frame,
+    # cookie_store, attach_devtools, devtools_of, Request, RequestFilter,
+    # set_request_filter, on_permission, on_download, install_scheme...
+    "runJavaScript",
+    "mainFrame",
+    "cookieStore",
+    "devToolsPage",
+    "setDevToolsPage",
+    "setUrlRequestInterceptor",
+    "installUrlSchemeHandler",
+    "interceptRequest",
+    "requestUrl",
+    "firstPartyUrl",
+    "resourceType",
+    "navigationType",
+    "setHttpHeader",
+    "featurePermissionRequested",
+    "setFeaturePermission",
+    "PermissionPolicy",
+    "downloadRequested",
+    "SavePageFormat",
+    "RenderProcessTerminationStatus",
+    "NavigationType",
+    "WebWindowType",
+    "ResourceType",
+}
+# The engine's hooks; Steed's pages override webengine.Page's instead.
+ENGINE_HOOKS = {
+    "acceptNavigationRequest",
+    "createWindow",
+    "javaScriptConsoleMessage",
+    "chooseFiles",
+    "javaScriptAlert",
+    "javaScriptConfirm",
+    "javaScriptPrompt",
+    "interceptRequest",
+    "requestStarted",
 }
 
 
@@ -71,38 +94,99 @@ def imports_engine(tree) -> bool:
             names = [alias.name for alias in node.names]
         else:
             continue
-        if any(name.startswith("PyQt6.QtWebEngine") for name in names):
+        if any(
+            name.startswith(("PyQt6.QtWebEngine", "PyQt6.QtWebChannel"))
+            for name in names
+        ):
             return True
     return False
 
 
 class EngineBoundaryTests(unittest.TestCase):
-    def test_only_listed_files_use_the_engine_directly(self):
+    def test_only_webengine_uses_the_engine(self):
         found = {
             name
             for name, tree in sources()
-            if name != "browser/webengine.py" and imports_engine(tree)
+            if name != ENGINE_MODULE and imports_engine(tree)
         }
-        self.assertEqual(
-            found - DIRECT_ENGINE_FILES,
-            set(),
-            "Use webengine.py, or list the file in DIRECT_ENGINE_FILES on purpose",
-        )
-        self.assertEqual(
-            DIRECT_ENGINE_FILES - found,
-            set(),
-            "These no longer use the engine directly; remove them from the list",
-        )
+        self.assertEqual(found, set(), "Use browser/webengine.py instead")
 
     def test_wrapped_engine_calls_stay_in_webengine(self):
         uses = []
         for name, tree in sources():
-            if name == "browser/webengine.py":
+            if name == ENGINE_MODULE:
                 continue
             for node in ast.walk(tree):
                 if isinstance(node, ast.Attribute) and node.attr in WRAPPED:
                     uses.append(f"{name}:{node.lineno} {node.attr}")
         self.assertEqual(uses, [], "Use the matching helper in webengine.py")
+
+    def test_pages_decide_through_steeds_hooks(self):
+        overrides = []
+        for name, tree in sources():
+            if name == ENGINE_MODULE:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name in ENGINE_HOOKS:
+                    overrides.append(f"{name}:{node.lineno} {node.name}")
+        self.assertEqual(
+            overrides, [], "Override webengine.Page/View/RequestFilter's hooks instead"
+        )
+
+    def test_every_engine_kind_has_a_steed_name(self):
+        from PyQt6.QtWebEngineCore import QWebEngineUrlRequestInfo
+
+        for table, enum in (
+            (webengine.NAVIGATIONS, QWebEnginePage.NavigationType),
+            (webengine.REQUEST_NAVIGATIONS, QWebEngineUrlRequestInfo.NavigationType),
+            (webengine.WINDOWS, QWebEnginePage.WebWindowType),
+            (webengine.CONSOLE_LEVELS, QWebEnginePage.JavaScriptConsoleMessageLevel),
+            (webengine.CRASHES, QWebEnginePage.RenderProcessTerminationStatus),
+        ):
+            with self.subTest(enum=enum.__name__):
+                self.assertEqual(set(table), set(enum))
+        # Both navigation enums speak the same words.
+        self.assertEqual(
+            set(webengine.NAVIGATIONS.values()),
+            set(webengine.REQUEST_NAVIGATIONS.values()),
+        )
+
+    def test_requests_in_steeds_terms(self):
+        from PyQt6.QtWebEngineCore import QWebEngineUrlRequestInfo as Info
+
+        class FakeInfo:
+            def __init__(self, resource, navigation):
+                self.resource, self.navigation = resource, navigation
+                self.blocked = None
+
+            def resourceType(self):
+                return self.resource
+
+            def navigationType(self):
+                return self.navigation
+
+            def block(self, value):
+                self.blocked = value
+
+        resource, nav = Info.ResourceType, Info.NavigationType
+        form = webengine.Request(
+            FakeInfo(resource.ResourceTypeMainFrame, nav.NavigationTypeFormSubmitted)
+        )
+        self.assertEqual(
+            (form.resource, form.navigation, form.main_frame),
+            ("main_frame", "form", True),
+        )
+        info = FakeInfo(resource.ResourceTypeServiceWorker, nav.NavigationTypeOther)
+        worker = webengine.Request(info)
+        self.assertEqual(
+            (worker.resource, worker.main_frame), ("service_worker", False)
+        )
+        worker.block()
+        self.assertTrue(info.blocked)
+        for kind in resource:
+            self.assertTrue(
+                webengine.Request(FakeInfo(kind, nav.NavigationTypeOther)).resource
+            )
 
 
 class FakePage:

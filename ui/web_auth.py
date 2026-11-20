@@ -7,9 +7,9 @@ phone are not available in Qt WebEngine on Linux.
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject
-from PyQt6.QtWebEngineCore import QWebEngineWebAuthUxRequest as Request
 from PyQt6.QtWidgets import QLineEdit
 
+from browser.webengine import WebAuthRequest as Request
 from ui.prompts import InputDialog, MessageBox
 
 State = Request.WebAuthUxState

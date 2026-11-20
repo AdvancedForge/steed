@@ -11,7 +11,6 @@ from PyQt6.QtGui import QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, Q
 from PyQt6.QtWidgets import QApplication, QFrame, QVBoxLayout
 
 from browser import webengine
-from browser.webengine import QWebEngineView
 
 WIDTH, HEIGHT = 380, 520
 
@@ -53,7 +52,7 @@ class PopupPage(webengine.Page):
 
     window = None
 
-    def createWindow(self, kind):
+    def new_window(self, kind):
         if self.window is None or getattr(self.window, "_closing", True):
             return None
         tab = self.window._new_tab(return_tab=True)
@@ -64,12 +63,12 @@ class PopupPage(webengine.Page):
     def page(self):
         return self
 
-    def javaScriptConsoleMessage(self, level, message, line, source):
+    def console_message(self, level, message, line, source):
         from services.web_speech import PREFIX
 
         window = self.window
         if not message.startswith(PREFIX):
-            super().javaScriptConsoleMessage(level, message, line, source)
+            super().console_message(level, message, line, source)
         elif window is not None and not getattr(window, "_closing", True):
             window.web_speech.request(self, message)
 
@@ -82,7 +81,7 @@ class ExtensionPopup(QFrame):
         self.setWindowTitle(title)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(1, 1, 1, 1)
-        self.view = QWebEngineView(self)
+        self.view = webengine.View(self)
         self.page = PopupPage(profile, self.view)
         self.page.window = parent
         self.view.setPage(self.page)

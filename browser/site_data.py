@@ -134,7 +134,7 @@ class SiteDataJob(QObject):
         self.page.setUrl(QUrl("about:blank"))
         self.frontend = webengine.Page(self.profile, self)
         self.frontend.loadFinished.connect(self._ready)
-        self.page.setDevToolsPage(self.frontend)
+        webengine.attach_devtools(self.page, self.frontend)
         self.limit.start()
 
     def _ready(self, ok):
@@ -205,7 +205,7 @@ class SiteDataJob(QObject):
             setattr(self, name, None)
             if page is not None and not sip.isdeleted(page):
                 if name == "frontend" and self.page is not None:
-                    self.page.setDevToolsPage(None)
+                    webengine.attach_devtools(self.page, None)
                 page.deleteLater()
 
     def dispose(self):

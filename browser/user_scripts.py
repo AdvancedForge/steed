@@ -127,9 +127,9 @@ def script_source(entry) -> str:
 def run_command(entry, page) -> None:
     """Run a command's style and script on a page, now (sites still apply)."""
     if entry["css"].strip():
-        page.runJavaScript(style_source(entry), webengine.STEED_WORLD)
+        webengine.run_script(page, style_source(entry), world=webengine.STEED_WORLD)
     if entry["js"].strip():
-        page.runJavaScript(script_source(entry), webengine.PAGE_WORLD)
+        webengine.run_script(page, script_source(entry), world=webengine.PAGE_WORLD)
 
 
 class UserScripts(QObject):

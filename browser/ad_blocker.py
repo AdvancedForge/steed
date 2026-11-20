@@ -6,9 +6,8 @@ import threading
 import adblock
 from PyQt6.QtCore import QObject, QUrl, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
-from PyQt6.QtWebEngineCore import QWebEngineUrlRequestInterceptor
 
-from browser import extension_rules
+from browser import extension_rules, webengine
 from browser.utils import load_json, save_json
 
 SOURCES = (
@@ -78,7 +77,7 @@ class FilterEngine:
             return selectors
 
 
-class FilterInterceptor(QWebEngineUrlRequestInterceptor):
+class FilterInterceptor(webengine.RequestFilter):
     blocked = pyqtSignal(str)
 
     def __init__(self, service, parent=None):
@@ -86,26 +85,24 @@ class FilterInterceptor(QWebEngineUrlRequestInterceptor):
         self.service = service
         self.profile = parent
 
-    def interceptRequest(self, info):
+    def filter(self, request):
         # Extensions' network rules (extension_rules) come first, as in Chrome.
-        if self.profile is not None and extension_rules.apply(self.profile, info):
+        if self.profile is not None and extension_rules.apply(self.profile, request):
             return
-        request_url = info.requestUrl()
+        request_url = request.url
         scheme = request_url.scheme()
         if not self.service.applies_now() or scheme not in ("http", "https"):
             return
         # Exception match on the host string directly; no QUrl per request.
         if self.service.host_excluded(request_url.host()):
             return
-        source = info.firstPartyUrl().toString()
-        resource_type = info.resourceType().name.removeprefix("ResourceType").lower()
-        resource = {
-            "mainframe": "document",
-            "subframe": "subdocument",
-            "xhr": "xmlhttprequest",
-        }.get(resource_type, resource_type)
+        source = request.page.toString()
+        # The filter lists' names for two of the kinds.
+        resource = {"main_frame": "document", "sub_frame": "subdocument"}.get(
+            request.resource, request.resource
+        )
         if self.service.engine.blocked(request_url.toString(), source, resource):
-            info.block(True)
+            request.block()
             self.blocked.emit(request_url.host())
 
 
@@ -183,7 +180,7 @@ class AdBlocker(QObject):
         interceptor = FilterInterceptor(self, profile)
         interceptor.blocked.connect(self.note_blocked)
         profile.adblock_interceptor = interceptor
-        profile.setUrlRequestInterceptor(interceptor)
+        webengine.set_request_filter(profile, interceptor)
 
     def _refresh_exceptions(self, force=False):
         """Recompute the per-request cache from configuration.
@@ -386,7 +383,7 @@ class AdBlocker(QObject):
                     } catch (error) { /* cross-origin or removed frame */ }
                 }
             })();""".replace("STYLES", json.dumps(styles))
-            tab.page().runJavaScript(script, 1)
+            webengine.run_script(tab.page(), script, world=webengine.STEED_WORLD)
 
         # Collect from the main frame and every same-origin subframe so
         # cosmetic rules also apply inside iframes. Cross-origin frames cannot
@@ -410,4 +407,4 @@ class AdBlocker(QObject):
             collect(document, [], document.URL);
             return {documents};
         })();"""
-        tab.page().runJavaScript(script, 1, apply)
+        webengine.run_script(tab.page(), script, apply, world=webengine.STEED_WORLD)

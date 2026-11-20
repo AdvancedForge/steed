@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QObject, QTimer
 
+from browser import webengine
 from services.page_inspector import PageInspectionError
 
 KEYS = {
@@ -207,8 +208,8 @@ class TaskInput(QObject):
             deadline.deleteLater()
             if not self.network.closed:
                 # The private async loop observes cancellation between keys.
-                self.network.frontend.runJavaScript(
-                    f"window[{json.dumps(identifier)}] = false"
+                webengine.run_in(
+                    self.network.frontend, f"window[{json.dumps(identifier)}] = false"
                 )
 
         def received(value):
@@ -228,8 +229,8 @@ class TaskInput(QObject):
 
         def tick():
             if not result.done():
-                self.network.frontend.runJavaScript(
-                    f"window[{json.dumps(identifier)}]", received
+                webengine.run_in(
+                    self.network.frontend, f"window[{json.dumps(identifier)}]", received
                 )
 
         def expire():
@@ -242,7 +243,7 @@ class TaskInput(QObject):
         request = {"id": identifier, **arguments}
         script = template.replace("/* REQUEST */", json.dumps(request))
         try:
-            self.network.frontend.runJavaScript(script)
+            webengine.run_in(self.network.frontend, script)
             poll.start()
             deadline.start(self.timeout_ms)
         except Exception as error:
@@ -257,6 +258,7 @@ class TaskInput(QObject):
 
     def release_focus(self):
         if not self.network.closed:
-            self.network.frontend.runJavaScript(
-                "window.__steedInputTarget?.emulationAgent().invoke_setFocusEmulationEnabled({enabled:false})"
+            webengine.run_in(
+                self.network.frontend,
+                "window.__steedInputTarget?.emulationAgent().invoke_setFocusEmulationEnabled({enabled:false})",
             )

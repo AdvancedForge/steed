@@ -8,6 +8,7 @@ from uuid import uuid4
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, Qt, QTimer
 from PyQt6.QtGui import QImageReader
 
+from browser import webengine
 from services.page_inspector import PageInspectionError
 
 CAPTURE_SCRIPT = """
@@ -111,7 +112,9 @@ def capture_viewport(network, validate):
         poll.deleteLater()
         deadline.deleteLater()
         if not network.closed:
-            network.frontend.runJavaScript(f"window[{json.dumps(identifier)}] = false")
+            webengine.run_in(
+                network.frontend, f"window[{json.dumps(identifier)}] = false"
+            )
 
     def received(value):
         if result.done():
@@ -136,8 +139,9 @@ def capture_viewport(network, validate):
             source.result()
             validate()
             network.validate()
-            network.frontend.runJavaScript(
-                CAPTURE_SCRIPT.replace("/* ID */", json.dumps(identifier))
+            webengine.run_in(
+                network.frontend,
+                CAPTURE_SCRIPT.replace("/* ID */", json.dumps(identifier)),
             )
             poll.start()
             deadline.start(5000)
@@ -146,8 +150,8 @@ def capture_viewport(network, validate):
 
     def tick():
         if not result.done():
-            network.frontend.runJavaScript(
-                f"window[{json.dumps(identifier)}]", received
+            webengine.run_in(
+                network.frontend, f"window[{json.dumps(identifier)}]", received
             )
 
     result.add_done_callback(cleanup)

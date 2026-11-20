@@ -1,17 +1,36 @@
-"""Shared Qt WebEngine settings, tab lifecycle and site compatibility helpers.
+"""Steed's web engine: the one module that talks to Qt WebEngine.
 
-This module is Steed's boundary with the engine. Code elsewhere asks for
-things in Steed's terms (a tab is "active", "frozen" or "unloaded") so that
-engine details stay here; tests/test_engine_boundary.py lists the files that
-still use Qt WebEngine directly and keeps new ones from appearing.
+Everything else asks for things in Steed's terms, so another engine means
+another version of this module, not changes across the browser. What an
+engine provides (tests/test_engine_boundary.py keeps everything else from
+reaching past it):
+
+- Page, View and Profile: a page, the widget showing it, and the storage it
+  belongs to. Steed's pages subclass Page and decide through Steed's hooks
+  (navigation_allowed, new_window, console_message, choose_files and the
+  script_alert/confirm/prompt dialogs), with kinds named in words
+  ("link", "form", "background_tab"...), never the engine's enums. Their
+  everyday methods (url, title, setUrl, load, back, history, zoom, the load
+  and title signals) are the common ground of web views and part of the
+  interface as they are.
+- Request and RequestFilter: every network request a profile or page makes,
+  with its address, page, initiator, method and kind, to block, redirect or
+  add a header to.
+- SchemeHandler and SchemeRequest: Steed's own steed:// pages.
+- Scripts in two worlds (PAGE_WORLD, STEED_WORLD): run_script, page_script.
+- Frames, cookies, developer tools, permissions, downloads, saving pages,
+  page actions, find, tab sleep states and crash reasons, as functions here.
 """
 
 import os
 import re
 from pathlib import Path
 
-from PyQt6.QtCore import QUrl
+from PyQt6 import QtWebEngineCore
+from PyQt6.QtCore import QBuffer, QIODevice, QUrl
+from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import (
+    QWebEngineDownloadRequest,
     QWebEnginePage,
     QWebEngineProfile,
     QWebEngineScript,
@@ -19,12 +38,392 @@ from PyQt6.QtWebEngineCore import (
     QWebEngineUrlRequestInfo,
     QWebEngineUrlRequestInterceptor,
     QWebEngineUrlRequestJob,
+    QWebEngineUrlScheme,
+    QWebEngineUrlSchemeHandler,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
-# Names for type hints elsewhere, so annotations need no engine import.
-Page = QWebEnginePage
 Profile = QWebEngineProfile
+# The bridge between Steed's own pages and Python (a Qt WebChannel).
+Channel = QWebChannel
+# Passkey and security-key prompts (ui.web_auth); None where unavailable.
+WebAuthRequest = getattr(QtWebEngineCore, "QWebEngineWebAuthUxRequest", None)
+
+# ---- Pages and views, decided through Steed's hooks ----------------------
+
+_NAV = QWebEnginePage.NavigationType
+NAVIGATIONS = {
+    _NAV.NavigationTypeLinkClicked: "link",
+    _NAV.NavigationTypeTyped: "typed",
+    _NAV.NavigationTypeFormSubmitted: "form",
+    _NAV.NavigationTypeBackForward: "back_forward",
+    _NAV.NavigationTypeReload: "reload",
+    _NAV.NavigationTypeRedirect: "redirect",
+    _NAV.NavigationTypeOther: "other",
+}
+# Requests carry their own navigation enum, with "Link" for "LinkClicked".
+_REQUEST_NAV = QWebEngineUrlRequestInfo.NavigationType
+REQUEST_NAVIGATIONS = {
+    _REQUEST_NAV.NavigationTypeLink: "link",
+    _REQUEST_NAV.NavigationTypeTyped: "typed",
+    _REQUEST_NAV.NavigationTypeFormSubmitted: "form",
+    _REQUEST_NAV.NavigationTypeBackForward: "back_forward",
+    _REQUEST_NAV.NavigationTypeReload: "reload",
+    _REQUEST_NAV.NavigationTypeRedirect: "redirect",
+    _REQUEST_NAV.NavigationTypeOther: "other",
+}
+_WINDOW = QWebEnginePage.WebWindowType
+WINDOWS = {
+    _WINDOW.WebBrowserWindow: "window",
+    _WINDOW.WebBrowserTab: "tab",
+    _WINDOW.WebDialog: "dialog",
+    _WINDOW.WebBrowserBackgroundTab: "background_tab",
+}
+_LEVEL = QWebEnginePage.JavaScriptConsoleMessageLevel
+CONSOLE_LEVELS = {
+    _LEVEL.InfoMessageLevel: "info",
+    _LEVEL.WarningMessageLevel: "warning",
+    _LEVEL.ErrorMessageLevel: "error",
+}
+
+
+class Page(QWebEnginePage):
+    """A web page. Subclasses override the Steed hooks below."""
+
+    def acceptNavigationRequest(self, url, kind, main_frame):
+        return self.navigation_allowed(url, NAVIGATIONS.get(kind, "other"), main_frame)
+
+    def navigation_allowed(self, url, kind, main_frame) -> bool:
+        """kind: link, typed, form, back_forward, reload, redirect or other."""
+        return True
+
+    def createWindow(self, kind):
+        return self.new_window(WINDOWS.get(kind, "tab"))
+
+    def new_window(self, kind):
+        """A page asks for a window, tab, background_tab or dialog: return a
+        Page to load it in, or None to refuse."""
+        return None
+
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        self.console_message(CONSOLE_LEVELS.get(level, "info"), message, line, source)
+
+    def console_message(self, level, message, line, source):
+        """level: info, warning or error. By default the engine prints it."""
+        engine_level = next(k for k, v in CONSOLE_LEVELS.items() if v == level)
+        QWebEnginePage.javaScriptConsoleMessage(
+            self, engine_level, message, line, source
+        )
+
+    def chooseFiles(self, mode, old_files, accepted_mime_types):
+        several = mode == QWebEnginePage.FileSelectionMode.FileSelectOpenMultiple
+        return self.choose_files(several, old_files, accepted_mime_types)
+
+    def choose_files(self, several, old_files, accepted_types):
+        """Files for an upload field (several: it takes more than one)."""
+        mode = QWebEnginePage.FileSelectionMode
+        return QWebEnginePage.chooseFiles(
+            self,
+            mode.FileSelectOpenMultiple if several else mode.FileSelectOpen,
+            old_files,
+            accepted_types,
+        )
+
+    def javaScriptAlert(self, origin, message):
+        self.script_alert(origin, message)
+
+    def script_alert(self, origin, message):
+        QWebEnginePage.javaScriptAlert(self, origin, message)
+
+    def javaScriptConfirm(self, origin, message):
+        return self.script_confirm(origin, message)
+
+    def script_confirm(self, origin, message) -> bool:
+        return QWebEnginePage.javaScriptConfirm(self, origin, message)
+
+    def javaScriptPrompt(self, origin, message, default):
+        return self.script_prompt(origin, message, default)
+
+    def script_prompt(self, origin, message, default):
+        return QWebEnginePage.javaScriptPrompt(self, origin, message, default)
+
+
+class View(QWebEngineView):
+    """The widget showing a page. Subclasses override new_window."""
+
+    def createWindow(self, kind):
+        return self.new_window(WINDOWS.get(kind, "tab"))
+
+    def new_window(self, kind):
+        """Return a View for the new window, tab, background_tab or dialog."""
+        return None
+
+
+def is_view(widget) -> bool:
+    return isinstance(widget, QWebEngineView)
+
+
+def is_page(value) -> bool:
+    return isinstance(value, QWebEnginePage)
+
+
+# ---- Network requests ------------------------------------------------------
+
+# Request kinds in the words browser extensions use (declarativeNetRequest).
+_RESOURCES = {
+    "mainframe": "main_frame",
+    "navigationpreloadmainframe": "main_frame",
+    "subframe": "sub_frame",
+    "navigationpreloadsubframe": "sub_frame",
+    "stylesheet": "stylesheet",
+    "script": "script",
+    "image": "image",
+    "favicon": "image",
+    "fontresource": "font",
+    "object": "object",
+    "pluginresource": "object",
+    "xhr": "xmlhttprequest",
+    "ping": "ping",
+    "cspreport": "csp_report",
+    "media": "media",
+    "websocket": "websocket",
+    "worker": "worker",
+    "sharedworker": "shared_worker",
+    "serviceworker": "service_worker",
+    "prefetch": "prefetch",
+}
+
+
+class Request:
+    """One network request, in Steed's terms. resource is its kind, as browser
+    extensions name them: main_frame, sub_frame, script, stylesheet, image,
+    font, object, xmlhttprequest, media, websocket, ping, csp_report, worker,
+    shared_worker, service_worker, prefetch or other."""
+
+    __slots__ = ("_info",)
+
+    def __init__(self, info):
+        self._info = info
+
+    @property
+    def url(self) -> QUrl:
+        return self._info.requestUrl()
+
+    @property
+    def page(self) -> QUrl:
+        """The page the request is for (its first party)."""
+        return self._info.firstPartyUrl()
+
+    @property
+    def initiator(self) -> QUrl:
+        return self._info.initiator()
+
+    @property
+    def method(self) -> bytes:
+        return bytes(self._info.requestMethod())
+
+    @property
+    def resource(self) -> str:
+        kind = self._info.resourceType().name.removeprefix("ResourceType").lower()
+        return _RESOURCES.get(kind, "other")
+
+    @property
+    def navigation(self) -> str:
+        return REQUEST_NAVIGATIONS.get(self._info.navigationType(), "other")
+
+    @property
+    def main_frame(self) -> bool:
+        return (
+            self._info.resourceType()
+            == QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMainFrame
+        )
+
+    def block(self, blocked: bool = True) -> None:
+        self._info.block(blocked)
+
+    def redirect(self, url: QUrl) -> None:
+        self._info.redirect(url)
+
+    def set_header(self, name: bytes, value: bytes) -> None:
+        self._info.setHttpHeader(name, value)
+
+
+class RequestFilter(QWebEngineUrlRequestInterceptor):
+    """Sees every request of the profile or page it is set on (filter())."""
+
+    def interceptRequest(self, info):
+        self.filter(Request(info))
+
+    def filter(self, request: Request) -> None:
+        """Block, redirect or add headers to a request; anything else lets it go."""
+
+
+def set_request_filter(target, request_filter) -> None:
+    """Filter a profile's (or one page's) requests; None removes it."""
+    target.setUrlRequestInterceptor(request_filter)
+
+
+# ---- Steed's own pages (steed://) ----------------------------------------
+
+
+def register_scheme(name: bytes) -> None:
+    """A secure, local scheme whose host names a page; register before the
+    application starts. Its pages may fetch() their own address."""
+    if QWebEngineUrlScheme.schemeByName(name).name():
+        return
+    scheme = QWebEngineUrlScheme(name)
+    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
+    scheme.setFlags(
+        QWebEngineUrlScheme.Flag.SecureScheme
+        | QWebEngineUrlScheme.Flag.LocalScheme
+        | QWebEngineUrlScheme.Flag.FetchApiAllowed
+    )
+    QWebEngineUrlScheme.registerScheme(scheme)
+
+
+class SchemeRequest:
+    """A request for one of Steed's own pages, to answer or refuse."""
+
+    __slots__ = ("_job",)
+
+    def __init__(self, job):
+        self._job = job
+
+    @property
+    def url(self) -> QUrl:
+        return self._job.requestUrl()
+
+    @property
+    def method(self) -> bytes:
+        return bytes(self._job.requestMethod())
+
+    @property
+    def initiator(self) -> QUrl:
+        return self._job.initiator()
+
+    @property
+    def alive(self) -> bool:
+        """False once the page that asked has gone (answer nothing then)."""
+        from PyQt6 import sip
+
+        return not sip.isdeleted(self._job)
+
+    def reply(self, mime: bytes, data: bytes) -> None:
+        buffer = QBuffer(self._job)
+        buffer.setData(data)
+        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+        self._job.reply(mime, buffer)
+
+    def fail(self, reason: str) -> None:
+        """reason: denied, not_found, invalid or failed."""
+        fail_request(self._job, reason)
+
+
+class SchemeHandler(QWebEngineUrlSchemeHandler):
+    def requestStarted(self, job):
+        self.handle(SchemeRequest(job))
+
+    def handle(self, request: SchemeRequest) -> None:
+        request.fail("not_found")
+
+
+def install_scheme(profile, name: bytes, handler) -> None:
+    profile.installUrlSchemeHandler(name, handler)
+
+
+# ---- Frames, cookies, developer tools, permissions, downloads -----------
+
+
+def frames(page):
+    """Every frame of a page, main frame first."""
+    found, pending = [], [page.mainFrame()]
+    while pending:
+        frame = pending.pop(0)
+        found.append(frame)
+        pending.extend(frame.children())
+    return found
+
+
+def main_frame(page):
+    return page.mainFrame()
+
+
+def cookie_store(profile):
+    return profile.cookieStore()
+
+
+def devtools_of(page):
+    """The developer tools page attached to a page, or None."""
+    return page.devToolsPage()
+
+
+def attach_devtools(page, tools) -> None:
+    """Attach (or with None, detach) a developer tools page."""
+    page.setDevToolsPage(tools)
+
+
+# Newer engines hand permissions over as an object; older ones as a feature
+# enum on the page (Qt before 6.8).
+_PERMISSION = getattr(QtWebEngineCore, "QWebEnginePermission", None)
+MODERN_PERMISSIONS = _PERMISSION is not None
+
+
+def on_permission(page, modern, legacy, *, modern_available=None) -> None:
+    """modern(permission) or legacy(page, origin, feature) for each request."""
+    if modern_available is None:
+        modern_available = MODERN_PERMISSIONS
+    if modern_available and hasattr(page, "permissionRequested"):
+        page.permissionRequested.connect(modern)
+    else:
+        page.featurePermissionRequested.connect(
+            lambda origin, feature: legacy(page, origin, feature)
+        )
+
+
+def keep_permission(permission):
+    """A copy of a permission request that outlives the signal delivering it."""
+    return _PERMISSION(permission)
+
+
+def answer_legacy_permission(page, origin, feature, allowed: bool) -> None:
+    policy = QWebEnginePage.PermissionPolicy
+    page.setFeaturePermission(
+        origin,
+        feature,
+        policy.PermissionGrantedByUser if allowed else policy.PermissionDeniedByUser,
+    )
+
+
+def on_download(profile, handler) -> None:
+    """handler(download) for each download the profile starts."""
+    profile.downloadRequested.connect(handler)
+
+
+_SAVE_FORMATS = {
+    "single": QWebEngineDownloadRequest.SavePageFormat.SingleHtmlSaveFormat,
+    "complete": QWebEngineDownloadRequest.SavePageFormat.CompleteHtmlSaveFormat,
+    "mhtml": QWebEngineDownloadRequest.SavePageFormat.MimeHtmlSaveFormat,
+}
+
+
+def save_page(page, path: str, kind: str) -> None:
+    """Save a page as "single" HTML, "complete" (with a folder) or "mhtml"."""
+    page.save(path, _SAVE_FORMATS[kind])
+
+
+_ENDED = QWebEnginePage.RenderProcessTerminationStatus
+CRASHES = {
+    _ENDED.NormalTerminationStatus: "normal",
+    _ENDED.AbnormalTerminationStatus: "abnormal",
+    _ENDED.CrashedTerminationStatus: "crashed",
+    _ENDED.KilledTerminationStatus: "killed",
+}
+
+
+def crash_reason(status) -> str:
+    """Why a page's process ended: normal, abnormal, crashed or killed."""
+    return CRASHES.get(status, "abnormal")
+
 
 # qutebrowser uses this site-specific workaround for Google sign-in:
 # https://github.com/qutebrowser/qutebrowser/issues/5182
@@ -72,7 +471,7 @@ def google_login_user_agent(url: QUrl) -> bytes | None:
     return None
 
 
-class SiteCompatibilityInterceptor(QWebEngineUrlRequestInterceptor):
+class SiteCompatibilityInterceptor(RequestFilter):
     """Apply account-host compatibility after profile-level ad filtering."""
 
     def __init__(self, config, parent=None):
@@ -89,13 +488,10 @@ class SiteCompatibilityInterceptor(QWebEngineUrlRequestInterceptor):
             self.config.get("google_login_compatibility", True)
         )
 
-    def interceptRequest(self, info):
-        url = info.requestUrl()
-        if (
-            info.resourceType()
-            == QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMainFrame
-        ):
-            self.last_main_method = bytes(info.requestMethod())
+    def filter(self, request):
+        url = request.url
+        if request.main_frame:
+            self.last_main_method = request.method
             self.last_main_url = url
             if self.last_main_method == b"GET":
                 from browser import privacy
@@ -105,12 +501,12 @@ class SiteCompatibilityInterceptor(QWebEngineUrlRequestInterceptor):
                 if target != asked:
                     if target.startswith("https:") and asked.startswith("http:"):
                         self.upgraded = (target, asked)
-                    info.redirect(QUrl(target))
+                    request.redirect(QUrl(target))
                     return
         if self.enabled:
             user_agent = google_login_user_agent(url)
             if user_agent is not None:
-                info.setHttpHeader(b"User-Agent", user_agent)
+                request.set_header(b"User-Agent", user_agent)
 
 
 # Page options by Steed name; set_options(settings, javascript=False, ...).
@@ -352,6 +748,19 @@ def run_script(target, source: str, callback=None, *, world: int):
         target.runJavaScript(source, world)
     else:
         target.runJavaScript(source, world, callback)
+
+
+def run_in(target, source: str, *arguments):
+    """Run JavaScript in a page or frame: run_in(target, source), with a
+    world, a callback, or a world and a callback after it, as the engine's
+    own call takes them. Without a world it runs in the page's own."""
+    world, callback = PAGE_WORLD, None
+    if arguments and callable(arguments[0]):
+        callback = arguments[0]
+    elif arguments:
+        world = arguments[0]
+        callback = arguments[1] if len(arguments) > 1 else None
+    run_script(target, source, callback, world=world)
 
 
 def page_script(

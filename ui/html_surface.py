@@ -17,38 +17,32 @@ from PyQt6.QtCore import (
     pyqtSlot,
 )
 from PyQt6.QtGui import QColor
-from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtWebEngineCore import (
-    QWebEnginePage,
-    QWebEngineUrlRequestInterceptor,
-)
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QLabel, QPushButton, QStackedLayout, QVBoxLayout, QWidget
 
 from browser import webengine
 from browser.config import Config
 
 
-class _NoNetwork(QWebEngineUrlRequestInterceptor):
-    def interceptRequest(self, info):
+class _NoNetwork(webengine.RequestFilter):
+    def filter(self, request):
         # setHtml uses a data document. All assets are bundled inline; there is
         # deliberately no localhost server, file access, or website cookie jar.
-        info.block(info.requestUrl().scheme() != "data")
+        request.block(request.url.scheme() != "data")
 
 
-class _LocalPage(QWebEnginePage):
+class _LocalPage(webengine.Page):
     loading_document = False
 
-    def acceptNavigationRequest(self, url, kind, main_frame):
+    def navigation_allowed(self, url, kind, main_frame):
         if main_frame and self.loading_document and url.scheme() == "data":
             self.loading_document = False
             return True
         return False
 
-    def createWindow(self, kind):
+    def new_window(self, kind):
         return None
 
-    def chooseFiles(self, mode, old_files, accepted_mime_types):
+    def choose_files(self, several, old_files, accepted_types):
         return []
 
 
@@ -97,14 +91,14 @@ class HtmlSurface(QWidget):
         layout.addWidget(self.retry)
         layout.addStretch()
         self.stack.addWidget(self.fallback)
-        self.view = QWebEngineView(self)
+        self.view = webengine.View(self)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.view.setAccessibleName(f"Steed {label} interface")
         self.stack.addWidget(self.view)
         self.profile = webengine.private_profile(self)
         self.interceptor = _NoNetwork(self.profile)
-        self.profile.setUrlRequestInterceptor(self.interceptor)
-        self.profile.downloadRequested.connect(lambda download: download.cancel())
+        webengine.set_request_filter(self.profile, self.interceptor)
+        webengine.on_download(self.profile, lambda download: download.cancel())
         self.page = _LocalPage(self.profile, self.view)
         self.view.setPage(self.page)
         settings = self.page.settings()
@@ -120,10 +114,16 @@ class HtmlSurface(QWidget):
             webgl=False,
             pdf_viewer=False,
         )
-        self.page.permissionRequested.connect(lambda permission: permission.deny())
+        webengine.on_permission(
+            self.page,
+            lambda permission: permission.deny(),
+            lambda page, origin, feature: webengine.answer_legacy_permission(
+                page, origin, feature, False
+            ),
+        )
         self.page.fileSystemAccessRequested.connect(lambda request: request.reject())
         self.page.setAudioMuted(True)
-        self.channel = QWebChannel(self.page)
+        self.channel = webengine.Channel(self.page)
         self.bridge = _Bridge(self.channel)
         self.channel.registerObject("interface", self.bridge)
         self.page.setWebChannel(self.channel)
@@ -260,7 +260,8 @@ class HtmlSurface(QWidget):
         self._last_payload = payload
         generation = self.generation
 
-        self.page.runJavaScript(
+        webengine.run_in(
+            self.page,
             "(() => { document.documentElement.dataset.effects = "
             + json.dumps(state.get("effects", "full"))
             + "; let s = document.getElementById('steed-root-overrides');"
@@ -268,7 +269,7 @@ class HtmlSurface(QWidget):
             "s.nonce = document.querySelector('style[nonce]').nonce;"
             "document.head.append(s); } s.textContent = "
             + json.dumps(state.get("root_css", ""), ensure_ascii=True)
-            + "; })()"
+            + "; })()",
         )
 
         def rendered(ok):
@@ -284,7 +285,8 @@ class HtmlSurface(QWidget):
                         # Match the colour the page actually paints (styles
                         # set it, not only dark mode): a resize then never
                         # shows a light strip before the page catches up.
-                        self.page.runJavaScript(
+                        webengine.run_in(
+                            self.page,
                             "getComputedStyle(document.body).backgroundColor",
                             self._match_background,
                         )
@@ -297,8 +299,8 @@ class HtmlSurface(QWidget):
             if self.transparent  # The host draws rounded, see-through glass.
             else self._painted or QColor("#151b25" if dark else "#f5f7fb")
         )
-        self.page.runJavaScript(
-            f"window.steedUI && window.steedUI.render({payload})", rendered
+        webengine.run_in(
+            self.page, f"window.steedUI && window.steedUI.render({payload})", rendered
         )
 
     def resizeEvent(self, event):

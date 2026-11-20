@@ -352,14 +352,8 @@ def new_password_script(expected, password):
     )
 
 
-def frames(page):
-    """Every frame of a page, main frame first."""
-    found, pending = [], [page.mainFrame()]
-    while pending:
-        frame = pending.pop(0)
-        found.append(frame)
-        pending.extend(frame.children())
-    return found
+# Every frame of a page, main frame first.
+frames = webengine.frames
 
 
 class PasswordService(QObject):

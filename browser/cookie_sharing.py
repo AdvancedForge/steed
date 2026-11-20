@@ -10,6 +10,7 @@ import json
 from PyQt6.QtCore import QDateTime, QObject, QUrl
 from PyQt6.QtNetwork import QNetworkCookie
 
+from browser import webengine
 from browser.utils import load_json, save_json
 
 
@@ -76,7 +77,7 @@ class CookieSharing(QObject):
         # report overwrite notifications, so the application confirms global
         # cookies through an authoritative snapshot instead. observe_global stays
         # available for callers that only need live additions.
-        store = global_profile.cookieStore()
+        store = webengine.cookie_store(global_profile)
         if observe_global:
             store.cookieAdded.connect(self.global_added)
             store.cookieRemoved.connect(self.global_removed)
@@ -106,7 +107,7 @@ class CookieSharing(QObject):
         self.pending[name] = {}
         if fresh:
             self.fresh.add(name)
-        store = profile.cookieStore()
+        store = webengine.cookie_store(profile)
         store.cookieAdded.connect(
             lambda cookie, n=name, source=profile: (
                 self.target_added(n, cookie) if self.profiles.get(n) is source else None
@@ -192,7 +193,7 @@ class CookieSharing(QObject):
                 and not self.local(name, cookie_site(cookie))
             ):
                 self.pending[name][key] = None
-                delete_exact(self.profiles[name].cookieStore(), observed)
+                delete_exact(webengine.cookie_store(self.profiles[name]), observed)
 
     def target_added(self, name, cookie):
         if (
@@ -220,7 +221,7 @@ class CookieSharing(QObject):
                 and not self.local(name, cookie_site(cookie))
             ):
                 self.pending[name][key] = None
-                delete_exact(self.profiles[name].cookieStore(), cookie)
+                delete_exact(webengine.cookie_store(self.profiles[name]), cookie)
             return
         inherited = self.states[name]["inherited"].get(key)
         if inherited != digest:
@@ -231,7 +232,7 @@ class CookieSharing(QObject):
             and not self.local(name, cookie_site(cookie))
         ):
             self.pending[name][key] = None
-            delete_exact(self.profiles[name].cookieStore(), cookie)
+            delete_exact(webengine.cookie_store(self.profiles[name]), cookie)
         elif name in self.enabled and key in self.global_cookies:
             self.copy(name, self.global_cookies[key])
 
@@ -288,7 +289,7 @@ class CookieSharing(QObject):
             # setCookie adds a dot to nonempty domains. Empty + explicit origin
             # retains a host-only cookie instead of widening it to subdomains.
             copy.setDomain("")
-        self.profiles[name].cookieStore().setCookie(copy, origin)
+        webengine.cookie_store(self.profiles[name]).setCookie(copy, origin)
 
     def reconcile(self, name):
         if self.closed or name not in self.observed or name in self.suspended:
@@ -300,7 +301,7 @@ class CookieSharing(QObject):
                 and not self.local(name, cookie_site(cookie))
             ):
                 self.pending[name][key] = None
-                delete_exact(self.profiles[name].cookieStore(), cookie)
+                delete_exact(webengine.cookie_store(self.profiles[name]), cookie)
         for cookie in list(self.global_cookies.values()):
             self.copy(name, cookie)
 
@@ -329,7 +330,7 @@ class CookieSharing(QObject):
         for key, cookie in list(self.observed[name].items()):
             if related_domains(cookie_site(cookie), domain):
                 self.pending[name][key] = None
-                delete_exact(self.profiles[name].cookieStore(), cookie)
+                delete_exact(webengine.cookie_store(self.profiles[name]), cookie)
                 self.observed[name].pop(key, None)
                 state["inherited"].pop(key, None)
         self.save(name)

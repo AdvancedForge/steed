@@ -9,7 +9,6 @@ upgrade will).
 import json
 
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
-from PyQt6.QtWebEngineCore import QWebEnginePage
 
 from browser import webengine
 
@@ -398,7 +397,7 @@ class FeatureProbe(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.profile = webengine.private_profile(self)
-        self.page = QWebEnginePage(self.profile, self)
+        self.page = webengine.Page(self.profile, self)
         self.done = False
         self.page.loadFinished.connect(self._loaded)
         self.timer = QTimer(self, singleShot=True, interval=PROBE_TIMEOUT_MS)

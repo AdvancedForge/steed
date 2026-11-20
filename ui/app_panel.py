@@ -8,8 +8,6 @@ open go to normal tabs.
 
 from PyQt6 import sip
 from PyQt6.QtCore import QUrl
-from PyQt6.QtWebEngineCore import QWebEnginePage
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QComboBox,
     QDockWidget,
@@ -20,17 +18,18 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from browser import webengine
 from services.start_pages import app_id
 
 
-class AppPage(QWebEnginePage):
+class AppPage(webengine.Page):
     """Stays on its app; web links and pop-ups open as ordinary tabs."""
 
     def __init__(self, profile, dock):
         super().__init__(profile, dock)
         self.dock = dock
 
-    def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+    def navigation_allowed(self, url, kind, is_main_frame):
         if not is_main_frame:
             return url.scheme() in ("http", "https", "data", "blob", "about")
         if app_id(url) is not None:
@@ -39,9 +38,9 @@ class AppPage(QWebEnginePage):
             self.dock.open_link(url)
         return False
 
-    def createWindow(self, kind):
+    def new_window(self, kind):
         # A pop-up's first navigation becomes a normal tab.
-        page = QWebEnginePage(self.profile(), self)
+        page = webengine.Page(self.profile(), self)
 
         def opened(url):
             if url.scheme() in ("http", "https"):
@@ -82,7 +81,7 @@ class AppPanelDock(QDockWidget):
         self.notice.setWordWrap(True)
         self.notice.setContentsMargins(12, 12, 12, 12)
         layout.addWidget(self.notice)
-        self.view = QWebEngineView(body)
+        self.view = webengine.View(body)
         self.view.setAccessibleName("Panel app")
         layout.addWidget(self.view, 1)
         self.setWidget(body)
@@ -169,7 +168,7 @@ class AppPanelDock(QDockWidget):
     def _drop_page(self):
         if self.page is not None:
             page, self.page = self.page, None
-            self.view.setPage(QWebEnginePage(self.view))
+            self.view.setPage(webengine.Page(self.view))
             sip.delete(page)
 
     def dispose(self):

@@ -2,8 +2,6 @@
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, QTimer
-from PyQt6.QtWebEngineCore import QWebEnginePage
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QSplitter, QStackedWidget, QVBoxLayout, QWidget
 
 from browser import webengine
@@ -74,17 +72,17 @@ class DevToolsHost(QObject):
         view = self.views.get(tab)
         if view is None:
             page = tab.page()
-            if page.devToolsPage() is not None:
+            if webengine.devtools_of(page) is not None:
                 # An agent task or private helper already owns this page's
                 # DevTools connection; taking it would break their protection.
                 raise DevToolsUnavailable(
                     "Developer Tools are unavailable while an agent controls this tab."
                 )
-            view = QWebEngineView()
-            frontend = QWebEnginePage(self._profile(), view)
+            view = webengine.View()
+            frontend = webengine.Page(self._profile(), view)
             view.setPage(frontend)
             frontend.windowCloseRequested.connect(lambda: self.close(tab))
-            page.setDevToolsPage(frontend)
+            webengine.attach_devtools(page, frontend)
             self.views[tab] = view
             self.stack.addWidget(view)
         self.show_for(tab)
@@ -107,7 +105,7 @@ class DevToolsHost(QObject):
         if view is None:
             return
         if not sip.isdeleted(tab):
-            tab.page().setDevToolsPage(None)
+            webengine.attach_devtools(tab.page(), None)
         self.stack.removeWidget(view)
         # Destroy the frontend page before its profile, on the Qt thread.
         sip.delete(view)
@@ -195,7 +193,7 @@ class DevToolsHost(QObject):
 
         def run(ok=True):
             if ok and not sip.isdeleted(view):
-                page.runJavaScript(source)
+                webengine.run_in(page, source)
 
         if page.url().isEmpty() or page.isLoading():
             # Run once when the frontend first loads, not on later reloads.
