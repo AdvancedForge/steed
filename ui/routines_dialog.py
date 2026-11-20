@@ -74,6 +74,12 @@ class RoutineEditor(HtmlSettingsDialog):
         self.tell.addItem("Just tell me when it changes (no assistant)", "changes")
         self.tell.setCurrentIndex(1 if routine.get("tell") == "changes" else 0)
         layout.addWidget(self.tell)
+        self.signin = QCheckBox(
+            "If a page asks me to sign in, sign in with my saved login "
+            "(Steed's passwords or an unlocked Bitwarden)"
+        )
+        self.signin.setChecked(bool(routine.get("signin")))
+        layout.addWidget(self.signin)
         from services.routine_steps import describe_step
 
         self.saved_steps = list(routine.get("steps") or [])
@@ -132,6 +138,7 @@ class RoutineEditor(HtmlSettingsDialog):
             "days": [i for i, box in enumerate(self.days) if box.isChecked()],
             "every": self.every.currentData(),
             "tell": self.tell.currentData(),
+            "signin": self.signin.isChecked(),
             "steps": self.saved_steps if self.keep_steps.isChecked() else [],
         }
 

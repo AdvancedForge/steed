@@ -7,6 +7,12 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Signing in without friction — November 20, 2026.** **Bitwarden…** (General
+menu) unlocks Bitwarden through its command line for this run; its logins then
+sign in like Steed's own, filled by Steed and never shown to agents, with the
+session only in memory. Routines can sign themselves in with your saved login
+when a page they read asks, if you tick that for the routine.
+
 **Routines that need no model, and profiles in their own windows — November
 20, 2026.** A routine can carry **saved steps** (open, click, type, choose,
 wait, read) that Steed replays itself; an agent proposes them from exactly the

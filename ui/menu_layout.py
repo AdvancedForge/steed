@@ -12,7 +12,14 @@ GROUPS = {
     "general": (
         ("Print…",),
         ("Settings…", "Customize New Tab…", "Layout Settings…", "Keyboard Shortcuts…"),
-        ("Passwords…", "Fill Login", "Downloads…", "Dictation", "Extensions"),
+        (
+            "Passwords…",
+            "Bitwarden…",
+            "Fill Login",
+            "Downloads…",
+            "Dictation",
+            "Extensions",
+        ),
         (
             "Import from Another Browser…",
             "Sync…",

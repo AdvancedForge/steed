@@ -31,6 +31,7 @@ from browser.password_service import (
     submit_script,
 )
 from browser.password_vault import VaultError, site_of, totp_code
+from services.bitwarden import Logins
 from services.page_inspector import PageInspectionError
 from services.task_policy import TaskPermissionError
 
@@ -80,12 +81,18 @@ class VaultSignin:
             raise ValueError("Saved passwords are not used in incognito.")
         passwords = getattr(registry, "passwords", None)
         vault = passwords.vault(profile) if passwords is not None else None
-        if vault is None or not vault.unlocked:
+        if vault is not None and not vault.unlocked:
+            vault = None
+        # Bitwarden, when the person unlocked it in Steed, beside the vault.
+        bitwarden = getattr(registry, "bitwarden", None)
+        if bitwarden is not None and not bitwarden.unlocked:
+            bitwarden = None
+        if vault is None and bitwarden is None:
             raise ValueError(
                 "The person's saved passwords are locked. Ask them to unlock "
                 "them in Steed, then try again."
             )
-        return vault
+        return Logins(vault, bitwarden)
 
     def _receipt(self, entry):
         receipt = {

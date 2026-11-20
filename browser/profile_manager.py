@@ -95,6 +95,8 @@ class ProfileRegistry(QObject):
 
         self.downloads.confirm_program = download_manager.confirm_program
         self.passwords = PasswordService(config, self)
+        # Bitwarden, once unlocked in Steed (General → Bitwarden…).
+        self.bitwarden = None
         from browser.passkeys import Passkeys
 
         self.passkeys = Passkeys(self)

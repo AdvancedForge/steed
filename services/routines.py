@@ -98,6 +98,8 @@ def check(routine):
     if tell == "changes" and not (pages or any("read" in s for s in steps)):
         raise ValueError("To be told of changes, the routine has to read a page.")
     found["tell"] = tell
+    if routine.get("signin"):
+        found["signin"] = True
     return found
 
 
@@ -181,6 +183,7 @@ class Routines(QObject):
     changed = pyqtSignal()
     ran = pyqtSignal(dict, str)  # routine, message for the agent
     noticed = pyqtSignal(dict, str)  # routine, what changed (no agent asked)
+    signed_in = pyqtSignal(dict, str, str)  # routine, site, outcome
     needs_you = pyqtSignal(dict, str)  # routine, a page that wants a sign-in
 
     def __init__(self, registry):
@@ -342,23 +345,42 @@ class Routines(QObject):
         page = webengine.background_page(profile, self)
         self.running[3] = page
         done = []
+        tried = []  # Signed in once on this page already.
+        signing = []  # While signing in, its own page loads are not reads.
 
         def finish(found):
-            if done or self.closed or self.running is None:
+            if done or signing or self.closed or self.running is None:
                 return
-            done.append(True)
             title = page.title() if not sip.isdeleted(page) else url
             found = found if isinstance(found, dict) else {}
             text = found.get("text") if isinstance(found.get("text"), str) else ""
             if asks_to_sign_in(url, found):
+                if (
+                    routine.get("signin")
+                    and not tried
+                    and self._sign_in(routine, page, url, signed_in)
+                ):
+                    tried.append(True)
+                    signing.append(True)
+                    return
                 # Hand it to you rather than the agent: it can't sign in here.
                 text = SIGNED_OUT
                 self.needs_you.emit(dict(routine), url)
+            done.append(True)
             read.append((title, url, text))
             if not sip.isdeleted(page):
                 page.deleteLater()
             self.running[3] = None
             self._next_page()
+
+        def signed_in(ok):
+            signing.clear()
+            if done or self.closed or sip.isdeleted(page):
+                return
+            if ok:  # Back to the page the routine reads, now signed in.
+                page.load(QUrl(url))
+            else:
+                finish({"password": True})
 
         def loaded(ok):
             if not ok:
@@ -380,6 +402,37 @@ class Routines(QObject):
         page.loadFinished.connect(loaded)
         QTimer.singleShot(READ_TIMEOUT_MS, lambda: finish({}))
         page.load(QUrl(url))
+
+    def _sign_in(self, routine, page, url, then):
+        """Sign in on page with the profile's saved login, if there is one."""
+        from browser.password_service import login_origin
+        from services.bitwarden import Logins
+        from services.page_signin import PageSignin
+
+        origin = login_origin(page.url())
+        passwords = getattr(self.registry, "passwords", None)
+        try:
+            vault = passwords.vault(routine["profile"]) if passwords else None
+        except (ValueError, OSError):
+            vault = None
+        if vault is not None and not vault.unlocked:
+            vault = None
+        bitwarden = getattr(self.registry, "bitwarden", None)
+        if bitwarden is not None and not bitwarden.unlocked:
+            bitwarden = None
+        logins = Logins(vault, bitwarden).logins(origin) if origin else []
+        if not logins:
+            return False
+        signer = PageSignin(page, origin, logins[0], self)
+
+        def finished(outcome):
+            signer.deleteLater()
+            self.signed_in.emit(dict(routine), origin, outcome)
+            then(outcome == "signed_in")
+
+        signer.finished.connect(finished)
+        signer.start()
+        return True
 
     def close(self):
         """Before the profiles go."""

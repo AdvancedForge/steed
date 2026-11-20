@@ -692,6 +692,9 @@ class BrowserWindow(QMainWindow):
             lambda: self._new_tab(url="steed:passwords", return_tab=True)
         )
         general_menu.addAction(passwords_action)
+        bitwarden_action = QAction("Bitwarden…", self)
+        bitwarden_action.triggered.connect(self._open_bitwarden)
+        general_menu.addAction(bitwarden_action)
         fill_login_action = QAction("Fill Login", self)
         fill_login_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
         fill_login_action.triggered.connect(
@@ -2877,6 +2880,12 @@ class BrowserWindow(QMainWindow):
         self._toggle_agent_sidebar(True)
         if self.agent_sidebar is not None:
             self.agent_sidebar.add_assistant()
+
+    def _open_bitwarden(self):
+        from ui.bitwarden_dialog import BitwardenDialog
+
+        dialog = BitwardenDialog(self.profile_manager.registry, self)
+        self._present_dialog(dialog, modal=False)
 
     def agent_bridge(self):
         """The one pairing link for cloud agents, shared by every window."""

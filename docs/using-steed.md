@@ -1193,11 +1193,30 @@ Agents → Access & Permissions → **Sign in with your saved passwords** decide
 lets you pick the account, with **Sign in**, **Deny** and **Always allow**;
 **Always** signs in at once with the login you used most recently there;
 **Never** refuses. One approval covers that site for the task for three
-minutes, so a sign-in in several steps is asked about once. Steed only fills a
-login on its own site, never into a form that would send it to another site,
-and only in a live session (sign-in pages run their own scripts) whose task may
-submit forms on that site. Not in incognito, and not while your passwords are
-locked.
+minutes on the same page, so a sign-in in several steps is asked about once.
+Steed only fills a login on a form that looks like signing in (a few fields,
+one password, nothing about deleting, changing or paying), on its own site,
+never into a form that would send it to another site or window, and only in a
+live session (sign-in pages run their own scripts) whose task may submit forms
+on that site; if a sign-in fails, it empties what it filled. Not in
+incognito, and not while your passwords are locked. A cloud agent's sign-in
+always asks.
+
+**Bitwarden.** General → **Bitwarden…** unlocks your Bitwarden vault for this
+run (Steed uses the Bitwarden command line, `bw`; sign in to it once in a
+terminal with `bw login`). Its logins for a site then work like Steed's own
+saved logins, for agents' sign-ins and for routines, filled by Steed so no
+agent sees them. Your master password goes to `bw` in its environment, never on
+a command line; the session lives only in Steed's memory until you lock it or
+Steed closes, and Steed saves nothing from Bitwarden. Only logins saved for
+exactly that site are used.
+
+**Routines that sign themselves in.** Tick **If a page asks me to sign in,
+sign in with my saved login** in a routine and, when a page it reads asks for
+a password, Steed signs in with your login for that site (Steed's passwords
+or an unlocked Bitwarden) under the same rules, then reads the page again.
+Without a saved login, or when the sign-in does not go through, you get the
+notification to sign in yourself, as before.
 
 ### Passkeys
 
