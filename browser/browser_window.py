@@ -1119,6 +1119,15 @@ class BrowserWindow(QMainWindow):
         # Quick shortcuts submenu
         self.profile_shortcuts_menu = QMenu("Quick Switch", self)
         profile_menu.addMenu(self.profile_shortcuts_menu)
+        # Any profile in a window of its own, beside this one, as Ctrl+Shift+N
+        # does for incognito; this window keeps its profile.
+        self.profile_windows_menu = QMenu("Open in New Window", self)
+        self.profile_windows_menu.aboutToShow.connect(self._fill_profile_windows_menu)
+        profile_menu.addMenu(self.profile_windows_menu)
+        new_profile_window = QAction("New Profile in New Window…", self)
+        new_profile_window.setShortcut(QKeySequence("Ctrl+Alt+N"))
+        new_profile_window.triggered.connect(self._new_profile_window)
+        profile_menu.addAction(new_profile_window)
         general_menu.addSeparator()
         general_menu.addAction(exit_action)
         tabs_menu.addSeparator()
@@ -3077,6 +3086,42 @@ class BrowserWindow(QMainWindow):
 
     def _pop_out_profile(self):
         self._open_settings("profile", intent="open_window")
+
+    def _fill_profile_windows_menu(self):
+        menu = self.profile_windows_menu
+        menu.clear()
+        current = self.profile_manager.current_profile_name
+        for name in self.profile_manager.list_profiles():
+            action = menu.addAction(
+                name + (" (this window)" if name == current else "")
+            )
+            action.triggered.connect(
+                lambda _=False, n=name: self._pop_out_profile_named(n)
+            )
+        menu.addSeparator()
+        menu.addAction("Incognito").triggered.connect(
+            lambda: self._pop_out_profile_named("search")
+        )
+
+    def _new_profile_window(self):
+        """Make a profile and open it in a new window straight away."""
+        name, ok = QInputDialog.getText(
+            self, "New profile in a new window", "Name for the new profile:"
+        )
+        if not ok or not name.strip():
+            return
+        from browser.utils import sanitize_profile_name
+
+        clean = sanitize_profile_name(name.strip())
+        if not self.profile_manager.create_profile(name.strip()):
+            QMessageBox.information(
+                self,
+                "New profile",
+                "That name is taken or cannot be used. Choose another name.",
+            )
+            return
+        self._update_profile_shortcuts()
+        self._pop_out_profile_named(clean)
 
     def _pop_out_profile_named(self, profile: str):
         try:

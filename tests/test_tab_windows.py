@@ -56,6 +56,31 @@ class TabWindowTests(unittest.TestCase):
     def urls(self, window):
         return [window._tab_url(tab) for tab in window.tabs]
 
+    def test_any_profile_opens_in_its_own_window_and_this_one_keeps_its_own(self):
+        root = self.root()
+        before = root.profile_manager.current_profile_name
+        with patch(
+            "browser.browser_window.QInputDialog.getText", return_value=("Work", True)
+        ):
+            root._new_profile_window()
+        child = root._child_windows[-1]
+        self.windows.append(child)
+        self.assertEqual(child.profile_manager.current_profile_name, "Work")
+        self.assertEqual(root.profile_manager.current_profile_name, before)
+        root._fill_profile_windows_menu()
+        labels = [a.text() for a in root.profile_windows_menu.actions() if a.text()]
+        self.assertIn("Work", labels)
+        self.assertIn("Incognito", labels)
+        self.assertIn(before + " (this window)", labels)
+        work = next(
+            a for a in root.profile_windows_menu.actions() if a.text() == "Work"
+        )
+        work.trigger()
+        self.windows.append(root._child_windows[-1])
+        self.assertEqual(
+            root._child_windows[-1].profile_manager.current_profile_name, "Work"
+        )
+
     def test_second_window_starts_fresh_and_each_window_saves_its_own_tabs(self):
         root = self.root()
         root._new_tab(url="about:blank#one")

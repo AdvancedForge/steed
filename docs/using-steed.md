@@ -221,6 +221,7 @@ window and are kept in `config.json` (`shortcuts`).
 - `Alt+Left` / `Alt+Right`, or the mouse's back/forward side buttons: Back / Forward
 - `Ctrl+Shift+T`: Restore the most recently closed tab for this profile
 - `Ctrl+Shift+N`: Open search profile in a separate window (incognito)
+- `Ctrl+Alt+N`: Make a new profile and open it in a separate window
 - `Ctrl+Shift+0`: Switch the current window to search profile
 - `Ctrl+Shift+1` … `Ctrl+Shift+9`: Switch to the Nth profile
 - `Ctrl+J`: Downloads
@@ -249,7 +250,9 @@ The menu bar has six categories, in this order:
 - **General:** Passwords, Fill Login, Downloads, Ad Blocking, Website Permissions,
   Settings and Exit.
 - **Profile:** Create, switch, pop out, rename or delete profiles, open private
-  browsing and use Quick Switch shortcuts.
+  browsing and use Quick Switch shortcuts. **Open in New Window** opens any
+  profile in a window of its own while this one keeps its profile, and **New
+  Profile in New Window…** (`Ctrl+Alt+N`) makes a profile and opens it there.
 - **Tabs:** New Tab, Restore Closed Tab, Close Tab, Reload, Bookmark This Page
   and Manage Bookmarks.
   **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
