@@ -7,10 +7,6 @@ from uuid import uuid4
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer, QUrl, pyqtSignal
-from PyQt6.QtWebEngineCore import (
-    QWebEnginePage,
-)
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication
 
 from browser import webengine
@@ -170,8 +166,8 @@ class ProfileRegistry(QObject):
         if old is not None:
             old.deleteLater()
         profile = webengine.private_profile(self)
-        profile.installUrlSchemeHandler(
-            b"steed", StartPageHandler(self.start_pages, "search", profile)
+        webengine.install_scheme(
+            profile, b"steed", StartPageHandler(self.start_pages, "search", profile)
         )
         configure_permission_policy(profile)
         self.defaults["search"] = browser_user_agent(profile.httpUserAgent())
@@ -198,7 +194,7 @@ class ProfileRegistry(QObject):
         if any(owner.current_profile_name == "search" for owner in self.owners):
             return False
         if any(
-            isinstance(widget, QWebEngineView)
+            webengine.is_view(widget)
             and not sip.isdeleted(widget)
             and widget.page() is not None
             and widget.page().profile() is old
@@ -530,8 +526,8 @@ class ProfileRegistry(QObject):
         )
         configure_permission_policy(profile)
         configure_web_settings(profile.settings())
-        profile.installUrlSchemeHandler(
-            b"steed", StartPageHandler(self.start_pages, name, profile)
+        webengine.install_scheme(
+            profile, b"steed", StartPageHandler(self.start_pages, name, profile)
         )
         self.defaults[name] = browser_user_agent(profile.httpUserAgent())
         profile.setHttpUserAgent(self.defaults[name])
@@ -602,8 +598,10 @@ class ProfileRegistry(QObject):
     def _start_inspection(self, name, profile):
         # A profile with no page may not initialize Chromium's network context,
         # so startup loadAllCookies alone is insufficient (notably for global).
-        page = QWebEnginePage(profile, self)
-        page.loadFinished.connect(lambda ok: profile.cookieStore().loadAllCookies())
+        page = webengine.Page(profile, self)
+        page.loadFinished.connect(
+            lambda ok: webengine.cookie_store(profile).loadAllCookies()
+        )
         self.bootstrap_pages[name] = page
         page.setUrl(QUrl("about:blank"))
         snapshot = CookieSnapshot(page, self)
@@ -875,7 +873,7 @@ class ProfileManager(QObject):
         profile = self._profiles.get(name)
         if profile is not None:
             if any(
-                isinstance(w, QWebEngineView) and w.page().profile() is profile
+                webengine.is_view(w) and w.page().profile() is profile
                 for w in QApplication.allWidgets()
             ):
                 return False

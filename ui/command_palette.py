@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from browser import webengine
 from ui.html_dialog import place_popup
 from ui.html_surface import HtmlSurface
 
@@ -210,8 +211,8 @@ class CommandPalette(QDialog):
         if self.surface.ready:
             self.surface.view.setFocus()
             # A page still loading focuses its field when it first renders.
-            self.surface.page.runJavaScript(
-                "window.steedPalette && steedPalette.focus()"
+            webengine.run_in(
+                self.surface.page, "window.steedPalette && steedPalette.focus()"
             )
 
     def command(self, command):

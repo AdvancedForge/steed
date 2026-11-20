@@ -478,7 +478,7 @@ class PageInspector(QObject):
                 engine_frames.append(child)
                 walk(child)
 
-        walk(page.mainFrame())
+        walk(webengine.main_frame(page))
         frames = list(snapshot.frames)
         remaining = set(pending)
         targets, routes = {}, {}

@@ -1,7 +1,8 @@
 """Resolve modern and legacy engine permissions using an injected decision."""
 
 from PyQt6 import sip
-from PyQt6.QtWebEngineCore import QWebEnginePage
+
+from browser import webengine
 
 
 class PermissionService:
@@ -9,12 +10,7 @@ class PermissionService:
 
     @staticmethod
     def connect_page(page, modern, legacy, desktop, *, modern_available=True):
-        if modern_available and hasattr(page, "permissionRequested"):
-            page.permissionRequested.connect(modern)
-        else:
-            page.featurePermissionRequested.connect(
-                lambda origin, feature: legacy(page, origin, feature)
-            )
+        webengine.on_permission(page, modern, legacy, modern_available=modern_available)
         if hasattr(page, "desktopMediaRequested"):
             page.desktopMediaRequested.connect(desktop)
 
@@ -38,14 +34,7 @@ class PermissionService:
         allowed = decide(origin, feature)
         if closing() or sip.isdeleted(page):
             return
-        policy = QWebEnginePage.PermissionPolicy
-        page.setFeaturePermission(
-            origin,
-            feature,
-            policy.PermissionGrantedByUser
-            if allowed
-            else policy.PermissionDeniedByUser,
-        )
+        webengine.answer_legacy_permission(page, origin, feature, allowed)
 
     @classmethod
     def deny_page(cls, page, closing):

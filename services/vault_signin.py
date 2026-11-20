@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
 
-from browser import access_levels
+from browser import access_levels, webengine
 from browser.data_panel_format import stable_id
 from browser.password_service import (
     WORLD,
@@ -275,7 +275,8 @@ class VaultSignin:
                 state="failed",
             )
             return
-        frame.runJavaScript(
+        webengine.run_in(
+            frame,
             signin_step_script(entry["origin"]),
             WORLD,
             lambda found: self._filled(entry, page, frame, found, previous),
@@ -322,7 +323,7 @@ class VaultSignin:
             script = fill_script(
                 entry["origin"], login.username, login.password, only_empty=False
             )
-        frame.runJavaScript(script, WORLD)
+        webengine.run_in(frame, script, WORLD)
         entry["steps"] += 1
         self.service.store.record_event(
             entry["task_id"],
@@ -333,7 +334,8 @@ class VaultSignin:
                 "step": kind,
             },
         )
-        frame.runJavaScript(
+        webengine.run_in(
+            frame,
             signin_form_script(entry["origin"]),
             WORLD,
             lambda target: self._submit(entry, page, frame, kind, target),
@@ -356,7 +358,8 @@ class VaultSignin:
         except (KeyError, RuntimeError, ValueError, TaskPermissionError):
             self._finish(entry, "could_not_submit")
             return
-        frame.runJavaScript(
+        webengine.run_in(
+            frame,
             submit_script(entry["origin"]),
             WORLD,
             lambda result: self._submitted(entry, page, kind, result),

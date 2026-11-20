@@ -212,7 +212,7 @@ class BridgePage(webengine.Page):
             world=webengine.PAGE_WORLD,
         )
 
-    def javaScriptConsoleMessage(self, level, message, line, source):
+    def console_message(self, level, message, line, source):
         if message.startswith(PREFIX):
             try:
                 self.received(json.loads(message[len(PREFIX) :]))
@@ -231,7 +231,7 @@ class OffscreenPage(webengine.Page):
     def page(self):
         return self
 
-    def javaScriptConsoleMessage(self, level, message, line, source):
+    def console_message(self, level, message, line, source):
         from services.web_speech import PREFIX as SPEECH
 
         if message.startswith(SPEECH):

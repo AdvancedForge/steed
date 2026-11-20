@@ -7,6 +7,16 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**The engine boundary, finished — November 19, 2026.** Only
+`browser/webengine.py` talks to Qt WebEngine now (15 other files used to).
+Steed's pages decide through Steed's hooks with kinds in words; network
+requests are Steed `Request`s handed to `RequestFilter`s (ad blocking,
+extension rules, agents' limits, HTTPS-first); steed:// pages are answered
+through `SchemeRequest`s; scripts, frames, cookies, developer tools,
+permissions, downloads, saving and crashes go through its functions. The
+boundary test refuses engine imports, engine-only calls and engine hooks
+anywhere else. Another engine is now another version of that module.
+
 **More for agents (and you) to change — November 19, 2026.** What a coding
 agent can change in Steed, compared with what you can, left a few gaps:
 - **Settings proposals**: an agent proposes preferences, shortcuts, search

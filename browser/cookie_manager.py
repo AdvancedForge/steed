@@ -31,7 +31,7 @@ class CookieManager(QObject):
     ) -> None:
         super().__init__(parent)
         self.profile = profile
-        self.cookie_store = profile.cookieStore()
+        self.cookie_store = webengine.cookie_store(profile)
         self.cookies: list[CookieInfo] = []
         self.snapshot = snapshot
         self.status = "Loading stored cookies..." if snapshot else "Live cookie updates"

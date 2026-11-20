@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 
 from PyQt6 import sip
 
+from browser import webengine
 from services.command_broker import require_owner_thread
 from services.task_policy import (
     TaskPermissionError,
@@ -52,7 +53,7 @@ class LiveTabs:
             origins.add(origin_url(f"{url.scheme}://{url.netloc}"))
             if service.backend.live_session(view) is not None:
                 raise ValueError("Take back this tab before delegating it again")
-            if view.page().devToolsPage() is not None:
+            if webengine.devtools_of(view.page()) is not None:
                 raise ValueError("Close this tab's Developer Tools before delegating")
         if len(profiles) != 1:
             raise ValueError("Choose tabs from one named profile")

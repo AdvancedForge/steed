@@ -10,13 +10,6 @@ from uuid import uuid4
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt, QThread, QTimer, QUrl, pyqtSignal
-from PyQt6.QtWebEngineCore import (
-    QWebEnginePage,
-    QWebEngineProfile,
-    QWebEngineUrlRequestInfo,
-    QWebEngineUrlRequestInterceptor,
-)
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from browser import webengine
@@ -96,7 +89,7 @@ class BrowserBackend(Protocol):
     def stop(self, session_id: str) -> SessionSnapshot: ...
     def attach_view(
         self, session_id: str, parent: QWidget | None = None
-    ) -> QWebEngineView: ...
+    ) -> webengine.View: ...
     def close_session(self, session_id: str) -> None: ...
     def close(self) -> None: ...
 
@@ -124,7 +117,7 @@ def navigation_url(url: str) -> QUrl:
 SETTLE_MS = 750
 
 
-class TaskPage(QWebEnginePage):
+class TaskPage(webengine.Page):
     """Suppress dialogs, uploads, and unsupported main-document schemes."""
 
     def __init__(self, profile, parent, grant, blocked, *, live=False):
@@ -136,7 +129,7 @@ class TaskPage(QWebEnginePage):
         self.network_ready = True
         self.submission = SubmissionTicket(grant)
 
-    def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+    def navigation_allowed(self, url, kind, is_main_frame):
         if not self.network_ready and url.toString() != "about:blank":
             return False
         if self.live and not is_main_frame:
@@ -149,32 +142,24 @@ class TaskPage(QWebEnginePage):
                 "data",
             ) or url.toString() in ("about:blank", "about:srcdoc")
         reason = self.grant.navigation(url.toString())
-        if (
-            not reason
-            and not self.live
-            and navigation_type == self.NavigationType.NavigationTypeFormSubmitted
-        ):
+        if not reason and not self.live and kind == "form":
             reason = self.submission.navigation(url.toString(), is_main_frame)
-        elif (
-            not reason
-            and not self.live
-            and navigation_type == self.NavigationType.NavigationTypeRedirect
-        ):
+        elif not reason and not self.live and kind == "redirect":
             reason = self.submission.redirect(is_main_frame)
         if reason:
             self.report_blocked(reason)
         return not reason
 
-    def chooseFiles(self, mode, old_files, accepted_mime_types):
+    def choose_files(self, several, old_files, accepted_types):
         return []
 
-    def javaScriptAlert(self, origin, message):
+    def script_alert(self, origin, message):
         pass
 
-    def javaScriptConfirm(self, origin, message):
+    def script_confirm(self, origin, message):
         return False
 
-    def javaScriptPrompt(self, origin, message, default_value):
+    def script_prompt(self, origin, message, default):
         return False, ""
 
 
@@ -221,7 +206,7 @@ def redirect_guard(grant):
     )
 
 
-class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
+class TaskRequestInterceptor(webengine.RequestFilter):
     """Scope redirects/resources without Qt/store lookups in network callbacks."""
 
     def __init__(self, grant, blocked, parent, fallback=None, *, submission=None):
@@ -233,26 +218,19 @@ class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
         self.fallback = fallback
         self.submission = submission
 
-    def interceptRequest(self, info):
-        resource = QWebEngineUrlRequestInfo.ResourceType
-        forbidden = (
-            resource.ResourceTypeWorker,
-            resource.ResourceTypeSharedWorker,
-            resource.ResourceTypeServiceWorker,
-            getattr(resource, "ResourceTypeWebSocket", None),
-        )
-        url, method = info.requestUrl().toString(), bytes(info.requestMethod())
-        form = info.navigationType() == info.NavigationType.NavigationTypeFormSubmitted
-        if info.resourceType() in forbidden:
+    # Workers and sockets would run or talk past the task's checks.
+    FORBIDDEN = frozenset(("worker", "shared_worker", "service_worker", "websocket"))
+
+    def filter(self, request):
+        url, method = request.url.toString(), request.method
+        if request.resource in self.FORBIDDEN:
             reason = "active_content_unavailable"
-        elif self.submission is not None and form:
-            reason = self.submission.request(
-                url, method, info.resourceType() == resource.ResourceTypeMainFrame
-            )
+        elif self.submission is not None and request.navigation == "form":
+            reason = self.submission.request(url, method, request.main_frame)
         else:
             reason = self.grant.request(url, method)
         if reason:
-            info.block(True)
+            request.block()
             # Bound journal traffic from a page repeatedly making denied requests.
             with self._lock:
                 fresh = reason not in self._reported
@@ -260,17 +238,17 @@ class TaskRequestInterceptor(QWebEngineUrlRequestInterceptor):
             if fresh:
                 self.report_blocked(reason)
         elif self.fallback is not None:
-            self.fallback.interceptRequest(info)
+            self.fallback.filter(request)
 
 
 @dataclass
 class QtSession:
     task_id: str
-    profile: QWebEngineProfile
-    page: QWebEnginePage
+    profile: webengine.Profile
+    page: webengine.Page
     grant: LiveGrant
     owns_profile: bool = True
-    views: list[QWebEngineView] = field(default_factory=list)
+    views: list[webengine.View] = field(default_factory=list)
     revision: int = 0
     loading: bool = False
     load_success: bool | None = None
@@ -281,7 +259,7 @@ class QtSession:
     control_owner: str = "agent"
     downloads: dict = field(default_factory=dict)
     uploads: dict = field(default_factory=dict)
-    borrowed_view: QWebEngineView | None = None
+    borrowed_view: webengine.View | None = None
     connections: list = field(default_factory=list)
     shield: QObject | None = None
     focus_policy: Qt.FocusPolicy | None = None
@@ -356,16 +334,16 @@ class QtBrowserBackend(QObject):
             interceptor = TaskRequestInterceptor(
                 grant, report, profile, submission=page.submission
             )
-            profile.setUrlRequestInterceptor(interceptor)
+            webengine.set_request_filter(profile, interceptor)
             profile.task_interceptor = interceptor
-            profile.downloadRequested.connect(
-                lambda request: page.task_download_handler(request)
+            webengine.on_download(
+                profile, lambda request: page.task_download_handler(request)
             )
         if not owns_profile and mode == "restricted":
             interceptor = TaskRequestInterceptor(
                 grant, report, page, submission=page.submission
             )
-            page.setUrlRequestInterceptor(interceptor)
+            webengine.set_request_filter(page, interceptor)
             page.task_interceptor = interceptor
             page.network_ready = False
         # Page overrides preserve the ordinary profile's rendering preferences.
@@ -387,8 +365,8 @@ class QtBrowserBackend(QObject):
             if guard is not None:
                 page.scripts().insert(guard)
         if owns_profile and mode == "live":
-            profile.downloadRequested.connect(
-                lambda request: page.task_download_handler(request)
+            webengine.on_download(
+                profile, lambda request: page.task_download_handler(request)
             )
         page.setAudioMuted(True)
         page.fullScreenRequested.connect(lambda request: request.reject())
@@ -424,7 +402,7 @@ class QtBrowserBackend(QObject):
             raise ValueError("Live tab profile does not match approval")
         if self.live_session(view) is not None:
             raise ValueError("This tab is already delegated")
-        if page.devToolsPage() is not None:
+        if webengine.devtools_of(page) is not None:
             raise ValueError("Close this tab's Developer Tools before delegating")
         from ui.task_watch import InputShield
 
@@ -741,7 +719,7 @@ class QtBrowserBackend(QObject):
         if session.pending_action is not None:
             raise PageInspectionError("session_busy")
         if session.network is None:
-            if session.page.devToolsPage() is not None:
+            if webengine.devtools_of(session.page) is not None:
                 raise PageInspectionError("native_frontend_in_use")
             session.network = TaskNetwork(
                 session.page, self, live=session.mode == "live"
@@ -1978,7 +1956,7 @@ class QtBrowserBackend(QObject):
         session.views = [view for view in session.views if not sip.isdeleted(view)]
         if session.views:
             return session.views[0]
-        view = QWebEngineView(parent)
+        view = webengine.View(parent)
         view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         view.setPage(session.page)
         from ui.task_watch import InputShield

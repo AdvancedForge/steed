@@ -22,12 +22,13 @@ from PyQt6.QtWidgets import QDialog, QFileDialog
 from qt_test_support import application, keep_directory
 
 from browser.ad_blocker import FilterEngine
-from browser.browser_window import BrowserWindow, QWebEnginePermission
+from browser.browser_window import BrowserWindow
 from browser.config import Config
 from browser.cookie_manager import CookieInfo
 from browser.cookie_sharing import cookie_site, delete_exact
 from browser.tab_manager import TabManager, TabState
 from browser.utils import load_json, sanitize_profile_name, save_json
+from browser.webengine import Permission as QWebEnginePermission
 from main import configure_chromium_flags
 from ui.cookie_dialog import CookieDialog
 from ui.prompts import MessageBox as QMessageBox
@@ -481,9 +482,7 @@ class BrowserTests(unittest.TestCase):
             patch.object(self.window, "_ask_permission", return_value=True) as asked,
             patch.object(self.window, "_pick_desktop_media") as picked,
             # The real copy is covered by test_permission_prompts.
-            patch(
-                "browser.browser_window.QWebEnginePermission", side_effect=lambda p: p
-            ),
+            patch("browser.webengine.keep_permission", side_effect=lambda p: p),
         ):
             self.window._on_permission_requested(permission)
             self.window._on_desktop_media_requested(request)

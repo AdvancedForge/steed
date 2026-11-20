@@ -57,25 +57,6 @@ RESOURCE_TYPES = {
     "webbundle",
     "other",
 }
-# Qt's request types by enum name (ResourceType… with the prefix dropped).
-QT_TYPES = {
-    "mainframe": "main_frame",
-    "navigationpreloadmainframe": "main_frame",
-    "subframe": "sub_frame",
-    "navigationpreloadsubframe": "sub_frame",
-    "stylesheet": "stylesheet",
-    "script": "script",
-    "image": "image",
-    "favicon": "image",
-    "fontresource": "font",
-    "object": "object",
-    "pluginresource": "object",
-    "xhr": "xmlhttprequest",
-    "ping": "ping",
-    "cspreport": "csp_report",
-    "media": "media",
-    "websocket": "websocket",
-}
 METHODS = {"connect", "delete", "get", "head", "options", "patch", "post", "put"}
 
 
@@ -776,24 +757,22 @@ class ExtensionRules:
         return ("headers", headers) if headers else None
 
 
-def request_of(info):
-    """What a rule looks at in a Qt request."""
-    url = info.requestUrl()
-    kind = info.resourceType().name.removeprefix("ResourceType").lower()
-    initiator = info.initiator()
+def request_of(request):
+    """What a rule looks at in a request (webengine.Request)."""
+    url = request.url
+    initiator = request.initiator
+    page = request.page
     return {
         "url": url.toString(),
         "host": url.host(),
         "initiator": initiator.host() if initiator.isValid() else "",
-        "type": QT_TYPES.get(kind, "other"),
-        "method": bytes(info.requestMethod()).decode("ascii", "replace").lower(),
-        "page": info.firstPartyUrl().toString()
-        if info.firstPartyUrl().scheme() in ("http", "https")
-        else "",
+        "type": request.resource if request.resource in RESOURCE_TYPES else "other",
+        "method": request.method.decode("ascii", "replace").lower(),
+        "page": page.toString() if page.scheme() in ("http", "https") else "",
     }
 
 
-def apply(profile, info):
+def apply(profile, request):
     """In a profile's request filter: True when an extension's rule decided."""
     holder = getattr(profile, "steed_rules", None)
     if holder is None:
@@ -801,19 +780,19 @@ def apply(profile, info):
     rules, name = holder
     if not rules.index.get(name, EMPTY).count:
         return False
-    if info.requestUrl().scheme() not in ("http", "https", "ws", "wss"):
+    if request.url.scheme() not in ("http", "https", "ws", "wss"):
         return False
-    outcome = rules.match(name, request_of(info))
+    outcome = rules.match(name, request_of(request))
     if outcome is None:
         return False
     if outcome[0] == "block":
-        info.block(True)
+        request.block()
         return True
     if outcome[0] == "redirect":
-        info.redirect(QUrl(outcome[1]))
+        request.redirect(QUrl(outcome[1]))
         return True
     if outcome[0] == "headers":
         for header, value in outcome[1].items():
-            info.setHttpHeader(header.encode(), value.encode())
+            request.set_header(header.encode(), value.encode())
         return False
     return True  # allow

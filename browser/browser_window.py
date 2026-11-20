@@ -9,14 +9,9 @@ from time import monotonic
 from urllib.parse import parse_qsl, quote
 from uuid import uuid4
 
-from PyQt6 import QtWebEngineCore, sip
+from PyQt6 import sip
 from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QKeySequence, QPalette
-from PyQt6.QtWebEngineCore import (
-    QWebEngineFullScreenRequest,
-    QWebEnginePage,
-)
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -84,8 +79,6 @@ logger = logging.getLogger(__name__)
 # How often a profile's open windows are recorded (only when they changed).
 SESSION_SNAPSHOT_MS = 10 * 60 * 1000
 
-# Qt versions before 6.8 expose permissions through QWebEnginePage.Feature.
-QWebEnginePermission = getattr(QtWebEngineCore, "QWebEnginePermission", None)
 
 # Enough to merge a redirect chain or a SPA's boot sequence into one write.
 TAB_SAVE_DEBOUNCE_MS = 750
@@ -109,7 +102,7 @@ def reorder_menus(menubar, menus: dict, order) -> None:
         menubar.addMenu(menu)
 
 
-class BrowserPage(QWebEnginePage):
+class BrowserPage(webengine.Page):
     """Keep page console output out of the application's own logs.
 
     Page-controlled text must not reach the terminal log: a site could inject
@@ -120,12 +113,12 @@ class BrowserPage(QWebEnginePage):
     def __init__(self, profile, parent=None, config=None):
         super().__init__(profile, parent)
         self.site_compatibility = SiteCompatibilityInterceptor(config, self)
-        self.setUrlRequestInterceptor(self.site_compatibility)
+        webengine.set_request_filter(self, self.site_compatibility)
 
-    def javaScriptConsoleMessage(self, level, message, line, source):
+    def console_message(self, level, message, line, source):
         """Steed's own messages from scripts it runs in pages go to Steed."""
         if not message.startswith("\x01steed"):
-            super().javaScriptConsoleMessage(level, message, line, source)
+            super().console_message(level, message, line, source)
             return
         from browser.extension_bridge import WORLD_PREFIX
         from browser.passkeys import PASSKEY_PREFIX
@@ -151,14 +144,13 @@ class BrowserPage(QWebEnginePage):
             if url:
                 QTimer.singleShot(0, lambda: window.open_in_background(tab, url))
 
-    def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
-        kinds = QWebEnginePage.NavigationType
+    def navigation_allowed(self, url, kind, is_main_frame):
         window = getattr(self.parent(), "browser_window", None)
         if (
             window is not None
             and window.app_url
             and is_main_frame
-            and navigation_type == kinds.NavigationTypeLinkClicked
+            and kind == "link"
             and url.scheme() in ("http", "https")
         ):
             from browser.site_apps import site_key
@@ -187,16 +179,14 @@ class BrowserPage(QWebEnginePage):
         if (
             is_main_frame
             and window is not None
-            and navigation_type
-            in (kinds.NavigationTypeLinkClicked, kinds.NavigationTypeTyped)
+            and kind in ("link", "typed")
             and url.scheme() in ("http", "https")
             and window.follow_site_rule(self.parent(), url)
         ):
             return False
         if (
             is_main_frame
-            and navigation_type
-            == QWebEnginePage.NavigationType.NavigationTypeLinkClicked
+            and kind == "link"
             and webengine.is_local(self.url())
             and url.scheme() in ("http", "https")
         ):
@@ -221,8 +211,7 @@ class BrowserPage(QWebEnginePage):
             if (
                 window is not None
                 and action_page(self.url()) is not None
-                and navigation_type
-                == QWebEnginePage.NavigationType.NavigationTypeLinkClicked
+                and kind == "link"
                 and not window.profile_manager.registry.start_pages.state(
                     window.profile_manager.current_profile_name
                 )["html" if action_page(self.url()) == "newtab" else "welcome_html"]
@@ -238,11 +227,7 @@ class BrowserPage(QWebEnginePage):
                 window is not None
                 and is_main_frame
                 and action_page(self.url()) is not None
-                and navigation_type
-                in (
-                    QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
-                    QWebEnginePage.NavigationType.NavigationTypeFormSubmitted,
-                )
+                and kind in ("link", "form")
                 and not window.profile_manager.registry.start_pages.state(
                     window.profile_manager.current_profile_name
                 )["html" if action_page(self.url()) == "newtab" else "welcome_html"]
@@ -257,7 +242,7 @@ class BrowserPage(QWebEnginePage):
         if (
             compatibility.enabled
             and is_main_frame
-            and navigation_type == QWebEnginePage.NavigationType.NavigationTypeRedirect
+            and kind == "redirect"
             and compatibility.last_main_method == b"GET"
             and (
                 google_login_user_agent(url) is not None
@@ -276,7 +261,7 @@ class BrowserPage(QWebEnginePage):
         return True
 
 
-class BrowserTab(QWebEngineView):
+class BrowserTab(webengine.View):
     """Represents a single browser tab."""
 
     def __init__(
@@ -388,21 +373,20 @@ class BrowserTab(QWebEngineView):
             menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             menu.popup(event.globalPos())
 
-    def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> "BrowserTab":
-        kinds = QWebEnginePage.WebWindowType
+    def new_window(self, kind) -> "BrowserTab":
         window = self.browser_window
         if window.app_url:
             # A site app opens other windows and tabs in a normal window.
             regular = window.regular_window()
             return regular._new_tab(return_tab=True) if regular is not None else None
-        if window_type == kinds.WebBrowserWindow:
+        if kind == "window":
             # "Open Link in New Window" (and shift-click): a real window.
             opened = window._open_window(
                 window.profile_manager.current_profile_name, states=[]
             )
             # Its first tab takes the link (the engine loads it there).
             return opened.tabs[0] if opened is not None and opened.tabs else None
-        if window_type == kinds.WebBrowserBackgroundTab:
+        if kind == "background_tab":
             current = window.tabs[window.current_tab_index] if window.tabs else None
             tab = window._new_tab(return_tab=True)
             if current in window.tabs:
@@ -2798,7 +2782,7 @@ class BrowserWindow(QMainWindow):
         self.removeDockWidget(self.agent_sidebar)
         tab.agent_panel = True
         self.agent_tab = tab
-        # QWebEngineView owns its internal layout; overlay the native panel
+        # The web view owns its internal layout; overlay the native panel
         # without replacing or deleting that engine-owned layout.
         self.agent_sidebar.setParent(tab)
         tab.native_panel = self.agent_sidebar
@@ -5205,8 +5189,6 @@ class BrowserWindow(QMainWindow):
         """Save the current page as one file, as HTML with its files, or PDF."""
         import re
 
-        from PyQt6.QtWebEngineCore import QWebEngineDownloadRequest
-
         tab = self._current_browser_tab()
         if (
             tab is None
@@ -5246,13 +5228,7 @@ class BrowserWindow(QMainWindow):
                 Qt.ConnectionType.SingleShotConnection,
             )
         else:
-            formats = QWebEngineDownloadRequest.SavePageFormat
-            page.save(
-                path,
-                formats.MimeHtmlSaveFormat
-                if kind == ".mhtml"
-                else formats.CompleteHtmlSaveFormat,
-            )
+            webengine.save_page(page, path, "mhtml" if kind == ".mhtml" else "complete")
             self.status_bar.showMessage(f"Saving {Path(path).name}…", 6000)
         return path
 
@@ -5328,7 +5304,7 @@ class BrowserWindow(QMainWindow):
             return None
         hosts = set(recent)
         if self.cookie_manager is None and since <= 0:
-            profile.cookieStore().deleteAllCookies()
+            webengine.cookie_store(profile).deleteAllCookies()
         if self.cookie_manager is not None:
             if since <= 0:
                 hosts |= {
@@ -5498,14 +5474,9 @@ class BrowserWindow(QMainWindow):
         from browser import crash_log
         from ui.crash_panel import CrashPanel
 
-        kind = QWebEnginePage.RenderProcessTerminationStatus
-        reason = {
-            kind.AbnormalTerminationStatus: "abnormal",
-            kind.CrashedTerminationStatus: "crashed",
-            kind.KilledTerminationStatus: "killed",
-        }.get(status)
+        reason = webengine.crash_reason(status)
         if (
-            reason is None
+            reason == "normal"
             or self._closing
             or sip.isdeleted(tab)
             or tab not in self.tabs
@@ -5612,7 +5583,7 @@ class BrowserWindow(QMainWindow):
                     self.profile_manager.current_profile_name
                 )["html"]
             ):
-                tab.page().runJavaScript("window.scrollTo(0, 0)")
+                webengine.run_in(tab.page(), "window.scrollTo(0, 0)")
         self._schedule_tab_save()
 
     def _schedule_tab_save(self):
@@ -5766,7 +5737,7 @@ class BrowserWindow(QMainWindow):
             lambda permission: self._on_permission_requested(permission, page),
             self._on_feature_permission_requested,
             self._on_desktop_media_requested,
-            modern_available=QWebEnginePermission is not None,
+            modern_available=webengine.MODERN_PERMISSIONS,
         )
         page.fullScreenRequested.connect(self._on_fullscreen_requested)
 
@@ -5775,9 +5746,9 @@ class BrowserWindow(QMainWindow):
     # would never appear (the window hung on "Opening settings interface…"),
     # so each answer is worked out a moment later; requests stay valid until
     # answered.
-    def _on_permission_requested(self, permission: QWebEnginePermission, page=None):
+    def _on_permission_requested(self, permission, page=None):
         # The signal's object is only valid during the call; keep a copy.
-        permission = QWebEnginePermission(permission)
+        permission = webengine.keep_permission(permission)
         QTimer.singleShot(0, lambda: self._resolve_permission(permission, page))
 
     def _resolve_permission(self, permission, page=None):
@@ -5942,7 +5913,11 @@ class BrowserWindow(QMainWindow):
         ):
             return True
         page = tab.page()
-        if page is None or page.recentlyAudible() or page.devToolsPage() is not None:
+        if (
+            page is None
+            or page.recentlyAudible()
+            or webengine.devtools_of(page) is not None
+        ):
             return True
         if page.isLoading():
             return True
@@ -6311,7 +6286,7 @@ class BrowserWindow(QMainWindow):
             not tab.workspace_name
             and not getattr(tab, "agent_panel", False)
             and tab.native_panel is None
-            and tab.page().devToolsPage() is None
+            and webengine.devtools_of(tab.page()) is None
             and not delegated
             and not (self.web_chat_dock and self.web_chat_dock.view is tab)
         )
@@ -7243,13 +7218,13 @@ class BrowserWindow(QMainWindow):
 
         for job in self.findChildren(SiteDataJob):
             job.dispose()
-            for page in job.findChildren(QWebEnginePage):
+            for page in job.findChildren(webengine.Page):
                 sip.delete(page)
         self.profile_manager.close()
 
         event.accept()
 
-    def _on_fullscreen_requested(self, request: QWebEngineFullScreenRequest):
+    def _on_fullscreen_requested(self, request):
         # toggleOn describes the requested state, not whether to invert ours.
         entering = request.toggleOn()
         request.accept()
@@ -7491,7 +7466,7 @@ class BrowserWindow(QMainWindow):
                     self._layout_menus[name], screen(point[0], point[1]), beside=beside
                 )
 
-        page.runJavaScript(script, opened)
+        webengine.run_in(page, script, opened)
 
     def _poll_newtab_menu(self):
         """Long hover applies only inside maintained New Tab, not desktop menus."""
@@ -7538,13 +7513,14 @@ class BrowserWindow(QMainWindow):
             ):
                 self._newtab_hover_opened = True
                 if value == "summary":
-                    tab.page().runJavaScript(
-                        "document.querySelector('.browser-menu').open=true"
+                    webengine.run_in(
+                        tab.page(), "document.querySelector('.browser-menu').open=true"
                     )
                 else:
                     self._newtab_menu_at(tab, value, hover=True)
 
-        tab.page().runJavaScript(
+        webengine.run_in(
+            tab.page(),
             "(() => { const s=document.querySelector('.browser-menu summary:hover'); "
             "if(s && !s.parentElement.open) return 'summary'; "
             "const a=document.querySelector('.browser-menu a:hover'); "
@@ -8137,10 +8113,11 @@ class BrowserWindow(QMainWindow):
         body = json.dumps(pages.news_section(profile))
         for tab in self.tabs:
             if page_name(tab.url()) == "newtab":
-                tab.page().runJavaScript(
+                webengine.run_in(
+                    tab.page(),
                     "{const card = document.getElementById('news'); if (card) card.outerHTML = "
                     + body
-                    + ";}"
+                    + ";}",
                 )
 
     def _bookmark_current(self):

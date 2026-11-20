@@ -10,12 +10,8 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 from PyQt6.QtCore import QBuffer, QIODevice, QObject, QUrl, pyqtSignal
-from PyQt6.QtWebEngineCore import (
-    QWebEngineUrlRequestJob,
-    QWebEngineUrlScheme,
-    QWebEngineUrlSchemeHandler,
-)
 
+from browser import webengine
 from browser.bookmark_format import (
     MAX_BOOKMARKS,
     bookmark_name,
@@ -107,18 +103,9 @@ input { width: 65%; } </style></head><body><h1>My space.</h1>
 
 
 def register_scheme():
-    """Register before QApplication; host syntax keeps distinct page origins."""
-    if QWebEngineUrlScheme.schemeByName(b"steed").name():
-        return
-    scheme = QWebEngineUrlScheme(b"steed")
-    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
-    scheme.setFlags(
-        QWebEngineUrlScheme.Flag.SecureScheme
-        | QWebEngineUrlScheme.Flag.LocalScheme
-        # Custom start pages call their own steed://newtab/api/… with fetch().
-        | QWebEngineUrlScheme.Flag.FetchApiAllowed
-    )
-    QWebEngineUrlScheme.registerScheme(scheme)
+    """Register before QApplication; host syntax keeps distinct page origins.
+    Custom start pages call their own steed://newtab/api/… with fetch()."""
+    webengine.register_scheme(b"steed")
 
 
 register_scheme()
@@ -1515,48 +1502,42 @@ def clean_html(value):
     return value
 
 
-class StartPageHandler(QWebEngineUrlSchemeHandler):
+class StartPageHandler(webengine.SchemeHandler):
     def __init__(self, pages, profile_name, parent):
         super().__init__(parent)
         self.pages, self.profile_name = pages, profile_name
         self.api = PageApi(pages, profile_name, self)
 
-    def requestStarted(self, job):
-        endpoint = api_endpoint(job.requestUrl())
+    def handle(self, request):
+        endpoint = api_endpoint(request.url)
         if endpoint is not None:
-            self.api.handle(job, endpoint)
+            self.api.handle(request, endpoint)
             return
-        app = app_id(job.requestUrl())
+        app = app_id(request.url)
         if app is not None:
             # Panel apps load only directly (never from another page).
-            if bytes(job.requestMethod()) != b"GET" or not job.initiator().isEmpty():
-                job.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
+            if request.method != b"GET" or not request.initiator.isEmpty():
+                request.fail("denied")
                 return
             try:
                 data = self.pages.render_app(self.profile_name, app)
             except (OSError, ValueError):
-                job.fail(QWebEngineUrlRequestJob.Error.RequestFailed)
+                request.fail("failed")
                 return
-            buffer = QBuffer(job)
-            buffer.setData(data)
-            buffer.open(QIODevice.OpenModeFlag.ReadOnly)
-            job.reply(b"text/html", buffer)
+            request.reply(b"text/html", data)
             return
-        name = page_name(job.requestUrl())
-        initiator = job.initiator()
+        name = page_name(request.url)
+        initiator = request.initiator
         if (
             name is None
-            or bytes(job.requestMethod()) != b"GET"
+            or request.method != b"GET"
             or (not initiator.isEmpty() and page_name(initiator) is None)
         ):
-            job.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
+            request.fail("denied")
             return
         try:
             data = self.pages.render(self.profile_name, name)
         except (OSError, ValueError):
-            job.fail(QWebEngineUrlRequestJob.Error.RequestFailed)
+            request.fail("failed")
             return
-        buffer = QBuffer(job)
-        buffer.setData(data)
-        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
-        job.reply(b"text/html", buffer)
+        request.reply(b"text/html", data)

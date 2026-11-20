@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
 )
 
+from browser import webengine
 from browser.password_service import (
     WORLD,
     code_script,
@@ -153,7 +154,8 @@ class PasswordAssistant(QObject):
             origin = login_origin(frame.url())
             if origin is None:
                 continue
-            frame.runJavaScript(
+            webengine.run_in(
+                frame,
                 take_script(origin, force),
                 WORLD,
                 lambda result, origin=origin, tab=tab: self._captured(
@@ -286,13 +288,13 @@ class PasswordAssistant(QObject):
         page = tab.page()
         if page is None:
             return
-        frame = page.mainFrame()
+        frame = webengine.main_frame(page)
         origin = login_origin(frame.url())
         logins = vault.logins(origin) if origin else []
         if logins:
             login = logins[0]
-            frame.runJavaScript(
-                fill_script(origin, login.username, login.password), WORLD
+            webengine.run_in(
+                frame, fill_script(origin, login.username, login.password), WORLD
             )
 
     # ---------------------------------------------------------- key menu
@@ -302,7 +304,9 @@ class PasswordAssistant(QObject):
         menu = QMenu(self.window)
         tab = self.window.tabs[self.window.current_tab_index]
         page = tab.page()
-        origin = login_origin(page.mainFrame().url()) if page is not None else None
+        origin = (
+            login_origin(webengine.main_frame(page).url()) if page is not None else None
+        )
         if self.profile == "search":
             menu.addAction("Passwords are not saved in incognito").setEnabled(False)
             return menu
@@ -386,7 +390,8 @@ class PasswordAssistant(QObject):
         for frame in frames(tab.page()):
             if login_origin(frame.url()) != login.origin:
                 continue
-            frame.runJavaScript(
+            webengine.run_in(
+                frame,
                 fill_script(
                     login.origin, login.username, login.password, only_empty=False
                 ),
@@ -397,7 +402,7 @@ class PasswordAssistant(QObject):
                     code = totp_code(login.totp)[0]
                 except VaultError:
                     continue
-                frame.runJavaScript(code_script(login.origin, code), WORLD)
+                webengine.run_in(frame, code_script(login.origin, code), WORLD)
 
     def _generate(self, tab):
         password = generate_password()
@@ -405,7 +410,9 @@ class PasswordAssistant(QObject):
             for frame in frames(tab.page()):
                 origin = login_origin(frame.url())
                 if origin is not None:
-                    frame.runJavaScript(new_password_script(origin, password), WORLD)
+                    webengine.run_in(
+                        frame, new_password_script(origin, password), WORLD
+                    )
         self._copy(password, "Strong password filled and copied")
 
     def _copy(self, text, message):

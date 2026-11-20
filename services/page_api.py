@@ -11,11 +11,10 @@ import json
 import re
 from urllib.parse import parse_qs
 
-from PyQt6 import sip
-from PyQt6.QtCore import QBuffer, QIODevice, QObject, QUrl
+from PyQt6.QtCore import QObject, QUrl
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 
-from browser import access_levels, webengine
+from browser import access_levels
 
 ENDPOINTS = {
     "fetch": "web",
@@ -64,15 +63,15 @@ class PageApi(QObject):
         return self.pages.registry.config
 
     def handle(self, job, name):
-        url, initiator = job.requestUrl(), job.initiator()
+        url, initiator = job.url, job.initiator
         # Only the start page on the same steed: host may ask.
         if (
-            bytes(job.requestMethod()) != b"GET"
+            job.method != b"GET"
             or initiator.scheme() != "steed"
             or initiator.host() != url.host()
             or not self._custom_page(url.host())
         ):
-            webengine.fail_request(job, "denied")
+            job.fail("denied")
             return
         capability = ENDPOINTS[name]
         policy = access_levels.values(self.config, "pages")[capability]
@@ -124,7 +123,7 @@ class PageApi(QObject):
                 access_levels.set_policy(self.config, "pages", capability, "always")
             self.session[key] = allowed
             for pending, pending_name, pending_url in self.prompts.pop(key, []):
-                if sip.isdeleted(pending):
+                if not pending.alive:
                     continue
                 if allowed:
                     self._serve(pending, pending_name, pending_url)
@@ -203,7 +202,7 @@ class PageApi(QObject):
             error = reply.error() != reply.NetworkError.NoError
             kind = reply.header(QNetworkRequest.KnownHeaders.ContentTypeHeader)
             reply.deleteLater()
-            if sip.isdeleted(job):
+            if not job.alive:
                 return
             if error or len(body) > FETCH_LIMIT:
                 self._json(
@@ -223,7 +222,4 @@ class PageApi(QObject):
 
     @staticmethod
     def _reply(job, content_type, body):
-        buffer = QBuffer(job)
-        buffer.setData(body)
-        buffer.open(QIODevice.OpenModeFlag.ReadOnly)
-        job.reply(content_type, buffer)
+        job.reply(content_type, body)

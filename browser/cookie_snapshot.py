@@ -13,7 +13,6 @@ import weakref
 from PyQt6 import sip
 from PyQt6.QtCore import QDateTime, QObject, QTimer, pyqtSignal
 from PyQt6.QtNetwork import QNetworkCookie
-from PyQt6.QtWebEngineCore import QWebEnginePage
 
 from browser import webengine
 
@@ -130,7 +129,7 @@ class CookieSnapshot(QObject):
         self.dirty = False
         self.closed = False
         self.skipped_partitioned = 0
-        store = inspected.profile().cookieStore()
+        store = webengine.cookie_store(inspected.profile())
         store.cookieAdded.connect(self.store_changed)
         store.cookieRemoved.connect(self.store_changed)
         self.timer = QTimer(self)
@@ -158,9 +157,9 @@ class CookieSnapshot(QObject):
                 self.refresh()  # Stay-awake mode starts warm.
 
     def _attach(self):
-        self.frontend = QWebEnginePage(self.inspected.profile(), self)
+        self.frontend = webengine.Page(self.inspected.profile(), self)
         self.frontend.loadFinished.connect(self.on_ready)
-        self.inspected.setDevToolsPage(self.frontend)
+        webengine.attach_devtools(self.inspected, self.frontend)
 
     def _sleep(self):
         """Release both renderers while nothing needs inspecting."""
@@ -170,7 +169,7 @@ class CookieSnapshot(QObject):
             self.idle.start()
             return
         self.ready = False
-        self.inspected.setDevToolsPage(None)
+        webengine.attach_devtools(self.inspected, None)
         sip.delete(self.frontend)
         self.frontend = None
         self.sleeping = True
@@ -233,8 +232,8 @@ class CookieSnapshot(QObject):
         # The SDK module and its target manager are cached on the frontend page
         # across refreshes: re-importing per snapshot dominated the wall time
         # and delayed every enumeration behind a fresh module evaluation.
-        self.frontend.runJavaScript(
-            SNAPSHOT_SCRIPT.replace("REQUEST_ID", str(self.request_id))
+        webengine.run_in(
+            self.frontend, SNAPSHOT_SCRIPT.replace("REQUEST_ID", str(self.request_id))
         )
         self.timer.start()
 
@@ -278,7 +277,8 @@ class CookieSnapshot(QObject):
                 )
             return
         request_id = self.request_id
-        self.frontend.runJavaScript(
+        webengine.run_in(
+            self.frontend,
             "window.__browserCookieSnapshot",
             lambda result: self.accept_result(result, request_id),
         )
@@ -293,7 +293,7 @@ class CookieSnapshot(QObject):
             return
         self.pending = False
         self.timer.stop()
-        self.frontend.runJavaScript("window.__browserCookieSnapshot = null;")
+        webengine.run_in(self.frontend, "window.__browserCookieSnapshot = null;")
         if self.revision != self.request_revision:
             # The store changed while the round trip was in flight, so this
             # result is already out of date. Re-run immediately a few times,
@@ -372,7 +372,7 @@ class CookieSnapshot(QObject):
         self.deferred.stop()
         self.pending = False
         if self.frontend is not None:
-            self.inspected.setDevToolsPage(None)
+            webengine.attach_devtools(self.inspected, None)
 
     def dispose(self):
         """Close and delete the frontend page now, before its profile goes."""

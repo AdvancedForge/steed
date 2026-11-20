@@ -360,7 +360,7 @@ class HtmlMenuTests(unittest.TestCase):
         with patch.object(
             tab.page(),
             "runJavaScript",
-            side_effect=lambda script, callback: callbacks.append(callback),
+            side_effect=lambda script, *rest: callbacks.append(rest[-1]),
         ):
             window._newtab_menu_at(tab, "general")
         pages = window.profile_manager.registry.start_pages

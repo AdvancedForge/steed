@@ -115,38 +115,56 @@ page gives back its GPU surface), and offscreen all of it takes about 45 ms.
 
 ### Engine boundary
 
-`browser/webengine.py` is Steed's boundary with Qt WebEngine: other code asks for
-things in Steed's terms, so a later engine change, or a Qt API change, is a
-contained edit there. It covers:
+`browser/webengine.py` is the only module that talks to the web engine (Qt
+WebEngine today). Everything else asks for things in Steed's terms, so another
+engine means another version of that one module. It provides:
 
-- **Tab lifecycle:** `tab_state(page)` returns `"active"`, `"frozen"` or
-  `"unloaded"`, with `set_tab_state`, `wake`, `lightest_state` (the furthest the
-  engine allows) and `deeper`.
-- **Scripts:** `run_script(page_or_frame, source, callback, world=...)` in
-  `PAGE_WORLD` (the page's own JavaScript) or `STEED_WORLD` (same document,
-  separate globals the page cannot see); `page_script` and `add_profile_script`
-  for scripts every page runs at `"start"`, `"ready"` or `"loaded"`.
-- **Page actions:** `trigger(page, "back")` and the other `PAGE_ACTIONS`,
-  `menu_action`, `find_text`, `view_for(page)`.
-- **steed:// answers:** `fail_request(job, "denied")` and the other reasons.
-- **Page options:** `set_options(settings, javascript=False, ...)`, `option`,
-  `block_unknown_schemes` and `configure_web_settings`, with Steed names for
-  each engine setting (`PAGE_OPTIONS`).
-- **Profiles:** `private_profile(parent)` (nothing on disk),
-  `stored_profile(name, parent, storage=..., cache=..., keep_session_cookies=...)`
-  and `set_keep_session_cookies`.
-- **Versions:** `versions()` gives the Qt WebEngine, Chromium-feature and
-  Chromium-security versions.
-- **Type hints:** `webengine.Page` and `webengine.Profile`.
+- **Pages and views:** `Page`, `View` and `Profile`. Steed's pages subclass
+  `Page` and decide through Steed's hooks, with kinds in words:
+  `navigation_allowed(url, kind, main_frame)` (`"link"`, `"typed"`, `"form"`,
+  `"back_forward"`, `"reload"`, `"redirect"`, `"other"`), `new_window(kind)`
+  (`"tab"`, `"background_tab"`, `"window"`, `"dialog"`), `console_message(level,
+  …)`, `choose_files(several, …)` and `script_alert/confirm/prompt`. `View`
+  has `new_window` too. `is_view`, `is_page`, `view_for(page)`, `view_around`.
+- **Network requests:** `Request` (its `url`, `page`, `initiator`, `method`,
+  `resource` in the names browser extensions use, such as `"main_frame"`,
+  `"script"` or `"service_worker"`, `navigation`, `main_frame`, and `block`,
+  `redirect`, `set_header`), `RequestFilter` (override `filter(request)`) and
+  `set_request_filter(profile_or_page, filter)`. Ad blocking, extensions'
+  network rules, agents' network limits, HTTPS-first and Steed's own pages'
+  isolation are all request filters.
+- **Steed's own pages:** `register_scheme`, `SchemeHandler` (override
+  `handle(request)`), `SchemeRequest` (`url`, `method`, `initiator`, `alive`,
+  `reply(mime, data)`, `fail(reason)`), `install_scheme`.
+- **Scripts:** `run_script(page_or_frame, source, callback, world=...)` and
+  `run_in(target, source, [world], [callback])` in `PAGE_WORLD` (the page's own
+  JavaScript) or `STEED_WORLD` (same document, separate globals the page cannot
+  see); `page_script` and `add_profile_script` for scripts every page runs at
+  `"start"`, `"ready"` or `"loaded"`.
+- **Frames, cookies, developer tools:** `frames(page)`, `main_frame`,
+  `cookie_store(profile)`, `devtools_of(page)`, `attach_devtools(page, tools)`.
+- **Permissions and downloads:** `on_permission(page, modern, legacy)`,
+  `keep_permission`, `answer_legacy_permission`, `MODERN_PERMISSIONS`,
+  `on_download(profile, handler)`, `save_page(page, path, "single" |
+  "complete" | "mhtml")`, `Channel` (the bridge to Steed's own pages) and
+  `WebAuthRequest` (passkey prompts).
+- **Tab lifecycle and crashes:** `tab_state(page)` (`"active"`, `"frozen"`,
+  `"unloaded"`), `set_tab_state`, `wake`, `lightest_state`, `deeper`, and
+  `crash_reason(status)`.
+- **Page actions, options, profiles, versions:** `trigger(page, "back")` and
+  the other `PAGE_ACTIONS`, `menu_action`, `find_text`; `set_options(settings,
+  javascript=False, …)` with Steed names for each engine setting;
+  `private_profile`, `stored_profile`, `set_keep_session_cookies`; `versions()`.
 
-`tests/test_engine_boundary.py` lists the 14 files that still import Qt
-WebEngine directly. What remains is engine-shaped by nature: page and view
-subclasses, URL-scheme handlers, request interceptors, permission and security-
-key requests, and the feature probe. A new file fails the test unless
-it uses `browser/webengine.py` or is added to the list on purpose; a file that stops
-using the engine must be removed from it. The engine names that have a helper
-(lifecycle states, script worlds, injection points, page actions, find flags,
-page settings, cache and cookie policies) may appear only in `browser/webengine.py`.
+Pages' everyday methods and signals (`url`, `title`, `setUrl`, `load`, `back`,
+`history`, zoom, `loadFinished`, `urlChanged`, `titleChanged` and the like) are
+the common ground of web views and part of the interface as they are; another
+engine's `Page` provides them under the same names.
+
+`tests/test_engine_boundary.py` enforces it: no other file imports Qt
+WebEngine or Qt WebChannel, calls the engine's own methods for what the module
+wraps, or overrides the engine's hooks; and every engine navigation, window,
+console, request and crash kind has a Steed name.
 
 ## Engine and storage internals
 

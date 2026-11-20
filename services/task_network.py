@@ -8,7 +8,6 @@ from concurrent.futures import Future
 
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtWebEngineCore import QWebEnginePage
 
 from browser import webengine
 from services.task_input import TaskInput
@@ -62,7 +61,7 @@ class TaskNetwork(QObject):
         # The bundled DevTools frontend has its own off-the-record storage;
         # task HTTP filters never need exceptions for its internal assets.
         self.frontend_profile = webengine.private_profile(self)
-        self.frontend = QWebEnginePage(self.frontend_profile, self)
+        self.frontend = webengine.Page(self.frontend_profile, self)
         self.input = TaskInput(self)
         self.frontend.loadFinished.connect(self._loaded)
         self.frontend.renderProcessTerminated.connect(lambda *_: self._fail())
@@ -70,7 +69,7 @@ class TaskNetwork(QObject):
         self.timer.setInterval(POLL_MS)
         self.timer.timeout.connect(self._poll)
         self.timer.start()
-        page.setDevToolsPage(self.frontend)
+        webengine.attach_devtools(page, self.frontend)
 
     def _loaded(self, ok):
         if self.closed:
@@ -82,7 +81,7 @@ class TaskNetwork(QObject):
         script = PREPARE_SCRIPT
         if self.live:
             script = script.replace("{bypass: true}", "{bypass: false}")
-        self.frontend.runJavaScript(script)
+        webengine.run_in(self.frontend, script)
 
     def _fail(self):
         self.healthy = False
@@ -99,7 +98,7 @@ class TaskNetwork(QObject):
         if self.attempts >= READY_TIMEOUT_MS // POLL_MS:
             self._fail()
         elif self.started:
-            self.frontend.runJavaScript("window.__steedTaskNetwork", self._received)
+            webengine.run_in(self.frontend, "window.__steedTaskNetwork", self._received)
 
     def _received(self, value):
         if self.closed or self.ready.done():
@@ -119,6 +118,6 @@ class TaskNetwork(QObject):
         self.closed = True
         self._fail()
         if not sip.isdeleted(self.page):
-            self.page.setDevToolsPage(None)
+            webengine.attach_devtools(self.page, None)
         sip.delete(self.frontend)
         sip.delete(self.frontend_profile)

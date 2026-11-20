@@ -10,7 +10,6 @@ from secrets import token_hex
 from PyQt6 import sip
 from PyQt6.QtCore import QBuffer, QIODevice, QItemSelectionModel, QPoint, Qt, QTimer
 from PyQt6.QtGui import QGuiApplication, QImage, QTextDocument
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QAbstractItemView,
@@ -35,6 +34,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from browser import webengine
 from ui.html_surface import HtmlSurface
 from ui.interface_mode import native
 
@@ -150,7 +150,7 @@ class HtmlDialog(QDialog):
         self.active_tokens = set()
         self.existing_surface = getattr(source, "surface", None)
         view = getattr(source, "view", None)
-        self.embedded_view = view if isinstance(view, QWebEngineView) else None
+        self.embedded_view = view if webengine.is_view(view) else None
         self.surface = HtmlSurface(
             "dialog", self, label="settings", command_limit=650000
         )
@@ -260,7 +260,7 @@ class HtmlDialog(QDialog):
                 tab_enabled=[widget.isTabEnabled(i) for i in range(widget.count())],
                 children=self.children(current.layout()) if current is not None else [],
             )
-        elif isinstance(widget, QWebEngineView):
+        elif webengine.is_view(widget):
             return None  # Live website content is a separate, unbridged engine view.
         elif isinstance(widget, QAbstractButton):
             node.update(

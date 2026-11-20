@@ -73,12 +73,12 @@ class FullPageCapture(QObject):
         self.limit.timeout.connect(lambda: self._fail("The page took too long."))
 
     def start(self):
-        if self.page.devToolsPage() is not None:
+        if webengine.devtools_of(self.page) is not None:
             self._fail("Close Developer Tools for this tab, then try again.")
             return
         self.frontend = webengine.Page(self.page.profile(), self)
         self.frontend.loadFinished.connect(self._ready)
-        self.page.setDevToolsPage(self.frontend)
+        webengine.attach_devtools(self.page, self.frontend)
         self.limit.start()
 
     def _ready(self, ok):
@@ -139,8 +139,8 @@ class FullPageCapture(QObject):
         if self.frontend is not None:
             if (
                 not sip.isdeleted(self.page)
-                and self.page.devToolsPage() is self.frontend
+                and webengine.devtools_of(self.page) is self.frontend
             ):
-                self.page.setDevToolsPage(None)
+                webengine.attach_devtools(self.page, None)
             frontend, self.frontend = self.frontend, None
             frontend.deleteLater()

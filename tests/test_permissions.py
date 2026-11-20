@@ -8,7 +8,8 @@ from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWidgets import QDialog
 
-from browser.browser_window import BrowserWindow, QWebEnginePermission
+from browser.browser_window import BrowserWindow
+from browser.webengine import Permission as QWebEnginePermission
 from services.permission_service import PermissionService
 
 
@@ -23,7 +24,7 @@ class PermissionTests(unittest.TestCase):
             featurePermissionRequested=Mock(),
             fullScreenRequested=Mock(),
         )
-        with patch("browser.browser_window.QWebEnginePermission", None):
+        with patch("browser.webengine.MODERN_PERMISSIONS", False):
             BrowserWindow._connect_page_signals(self.window, page)
         callback = page.featurePermissionRequested.connect.call_args.args[0]
         feature = QWebEnginePage.Feature.MediaAudioCapture
