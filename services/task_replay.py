@@ -52,6 +52,14 @@ STEPS = {
     "download.finished": "Downloaded a file",
 }
 # After these, the page is photographed (when pictures are on).
+# No picture while a filled password or card field is showing.
+SECRETS_SHOWN = r"""
+(() => [...document.querySelectorAll("input")].some(el => el.value &&
+    el.getClientRects().length && (el.type === "password" ||
+    (el.getAttribute("type") || "").toLowerCase() === "password" ||
+    (el.getAttribute("autocomplete") || "").toLowerCase().includes("cc-") ||
+    /card.?(number|num)|cvv|cvc|security.?code/i.test(el.name + " " + el.id))))()
+"""
 PICTURE_AFTER = frozenset(
     {"page.action_finished", "page.navigation_finished", "session.opened"}
 )
@@ -121,8 +129,8 @@ class TaskReplay(QObject):
     def _view(self, session_id):
         backend = self.service.backend
         session = getattr(backend, "_sessions", {}).get(session_id)
-        if session is None:
-            return None
+        if session is None or getattr(session, "control_owner", "agent") != "agent":
+            return None  # While you have control, what you do is yours.
         views = [session.borrowed_view, *getattr(session, "views", ())]
         return next(
             (
@@ -137,11 +145,26 @@ class TaskReplay(QObject):
         if self.service._closed or self.service.failure or not self.enabled():
             return
         view = self._view(session_id)
+        if view is None:
+            return
+        from browser import webengine
+
+        webengine.run_script(
+            view.page(),
+            SECRETS_SHOWN,
+            lambda shown: shown is False and self._keep(task_id, session_id, sequence),
+            world=webengine.STEED_WORLD,
+        )
+
+    def _keep(self, task_id, session_id, sequence):
+        view = self._view(session_id)
         folder = self.folder(task_id)
-        if view is None or folder is None:
+        if view is None or folder is None or self.service._closed:
             return
         try:
-            folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+            folder.parent.mkdir(mode=0o700, exist_ok=True)
+            os.chmod(folder.parent, 0o700)
+            folder.mkdir(mode=0o700, exist_ok=True)
             if len(list(folder.glob("*.jpg"))) >= PICTURES_PER_TASK:
                 return
             image = view.grab().toImage()

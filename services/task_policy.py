@@ -6,6 +6,7 @@ import os
 import threading
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from PyQt6.QtCore import QUrl
@@ -125,6 +126,41 @@ def network_needs_permission(origin):
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
         address = address.ipv4_mapped
     return not address.is_global
+
+
+LOCAL_SUFFIXES = (".local", ".lan", ".home", ".internal", ".localhost", ".arpa")
+
+
+def everyday_origin(origin):
+    """A public website: not an address on this computer or your network."""
+    host = (urlsplit(origin).hostname or "").lower().rstrip(".")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return "." in host and host != "localhost" and not host.endswith(LOCAL_SUFFIXES)
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return address.is_global
+
+
+def everyday_path(path):
+    """A file in your Downloads folder, not anywhere else in your home."""
+    downloads = (Path.home() / "Downloads").resolve()
+    try:
+        return Path(path).resolve().is_relative_to(downloads)
+    except (OSError, ValueError):
+        return False
+
+
+def everyday(scope):
+    """What an "Always" access setting may approve without asking: public
+    websites and files in Downloads. Your network, this computer and other
+    files always ask, whatever the settings."""
+    return (
+        all(everyday_origin(o) for o in scope.origins + scope.upload_origins)
+        and all(everyday_path(p) for p in scope.download_destinations)
+        and all(everyday_path(p) for p in scope.upload_sources)
+    )
 
 
 @dataclass(frozen=True)

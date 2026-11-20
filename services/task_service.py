@@ -43,7 +43,7 @@ from services.task_artifacts import artifact_input
 from services.task_client import TaskClient
 from services.task_downloads import DownloadDestination
 from services.task_messages import TaskMessages
-from services.task_policy import LiveGrant, TaskPermissionError, TaskScope
+from services.task_policy import LiveGrant, TaskPermissionError, TaskScope, everyday
 from services.task_recovery import (
     MAX_RECOVERY_ARTIFACTS,
     MAX_RECOVERY_FILES,
@@ -1850,7 +1850,9 @@ class TaskService(QObject):
                 else ""
             )
             rule = next((r for r in rules if r.covers(scope, profile_key)), None)
-            if self.auto_approve_requests or decision == "approve":
+            if recovery["status"] == "approved":
+                automatic = None  # Recovered work always asks afresh.
+            elif self.auto_approve_requests or decision == "approve":
                 automatic = {}
             elif rule is not None:
                 automatic = {"_rule": rule}
@@ -1898,9 +1900,12 @@ class TaskService(QObject):
             return "ask"
         from browser import access_levels
 
-        return access_levels.agent_decision(
+        decision = access_levels.agent_decision(
             config, scope.actions, named_profile=scope.profile != "private"
         )
+        if decision == "approve" and not everyday(scope):
+            return "ask"  # Your network, this computer or other files.
+        return decision
 
     def _approval_profile_key(self, scope, *, create=False):
         if scope.profile == "private" or self.profiles is None:

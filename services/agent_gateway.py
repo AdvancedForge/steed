@@ -33,6 +33,12 @@ WHILE_PAUSED = frozenset(
         "task.capabilities",
         "task.events",
         "grant.list",
+        # Stopping is always allowed.
+        "session.stop",
+        "session.close",
+        "download.cancel",
+        "worker.cancel",
+        "app.cancel",
     }
 )
 
@@ -297,6 +303,13 @@ class AgentConnection(QObject):
             ):
                 raise ValueError("Managed conversation is bound by the browser")
             self.gateway.service._usable()
+            if self.gateway.service.agents_paused and spec.command not in WHILE_PAUSED:
+                raise AgentRequestError(
+                    "agents_paused",
+                    "The user paused all agents. Nothing was done. Tell the user "
+                    "what you were about to do and wait; do not retry until they "
+                    "resume agents.",
+                )
             if spec.command == "task.start":
                 if (
                     self.client is not None
@@ -340,16 +353,6 @@ class AgentConnection(QObject):
                 return
             if self.client is None:
                 raise ValueError("Start a task first")
-            if (
-                self.gateway.service.agents_paused
-                and spec.command not in WHILE_PAUSED
-            ):
-                raise AgentRequestError(
-                    "agents_paused",
-                    "The user paused all agents. Nothing was done. Tell the user "
-                    "what you were about to do and wait; do not retry until they "
-                    "resume agents.",
-                )
             future = self.client.submit(spec.command, **request["arguments"])
             self.pending = future
             self.deadline.start(30000)

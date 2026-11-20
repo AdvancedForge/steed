@@ -83,12 +83,25 @@ class ReplayTests(unittest.TestCase):
         later = time.monotonic() + 0.8  # Past the moment a picture is taken.
         self.wait_for(lambda: time.monotonic() > later)
         self.assertEqual(replay.pictures(task), {})  # Off by default.
+        self.value(  # The fixture's password field starts filled.
+            view.page(), "document.querySelector('[type=password]').value = ''; true"
+        )
         self.service.profiles.config.set("agent_replay", True)
         self.click(task, session)
         self.wait_for(lambda: replay.pictures(task))
         sequence, path = next(iter(replay.pictures(task).items()))
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(path.parent.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(path.parent.parent.stat().st_mode), 0o700)
+        # Never while a filled password shows.
+        self.value(
+            view.page(), "document.querySelector('[type=password]').value = 'x'; true"
+        )
+        count = len(replay.pictures(task))
+        self.click(task, session)
+        later = time.monotonic() + 0.8
+        self.wait_for(lambda: time.monotonic() > later)
+        self.assertEqual(len(replay.pictures(task)), count)
         events = {e.sequence: e.kind for e in self.service.store.events(task)}
         self.assertEqual(events[sequence], "page.action_finished")
         steps = replay.steps(task)

@@ -49,6 +49,8 @@ Checks to run, the verification record and references.
 ## Elsewhere
 
 - [Release plan](RELEASE_PLAN.md): the road to a public release.
+- [Security assessment](security-assessment.md): the agent threat model, what a
+  review fixed and the known limitations.
 - [Screenshots](screenshots/).
 - [History](history/): what each round changed ([progress log](history/progress-log.md))
   and hand-off notes from earlier work, kept for reference.

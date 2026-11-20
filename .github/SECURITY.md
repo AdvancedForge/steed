@@ -1,7 +1,9 @@
 # Security
 
-Steed is an early preview and has not had a security review. Please don't use it
-where a browser compromise would be costly.
+Steed is an early preview. Its agent surface has had an internal review
+([security assessment](../docs/security-assessment.md), which lists what was
+fixed and what is still a known limitation), but no external audit yet.
+Please don't use it where a browser compromise would be costly.
 
 If you find a security problem, report it privately through GitHub: the
 repository's **Security** tab → **Report a vulnerability**. Please don't open a

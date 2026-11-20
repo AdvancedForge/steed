@@ -110,3 +110,57 @@ SCRIPT = """
     })();
 })();
 """
+
+
+# Before a screenshot-guided click, typing or key: never into a password or
+# card field, and never a press that could send one the person filled (in
+# the same form or, for a control in no form, a field in no form either).
+# Card fields inside payment providers' frames count too. Runs in Steed's own
+# script world.
+GUARD = r"""
+(() => {
+    const R = /* REQUEST */;
+    const CARD = /(card.?(number|num|no)|cc.?(num|number)|\bcvv|\bcvc|\bcsc\b|security.?code)/i;
+    const PAY_FRAME = /stripe|braintree|adyen|checkout|payment|card|paypal|klarna/i;
+    const payment = el => ["INPUT", "SELECT"].includes(el.tagName) && (
+        (el.getAttribute("autocomplete") || "").toLowerCase().split(/\s+/).some(t => t.startsWith("cc-")) ||
+        CARD.test([el.name, el.id, el.placeholder, el.getAttribute("aria-label")].join(" ")));
+    const secret = el => el.tagName === "INPUT" && (el.type === "password" ||
+        (el.getAttribute("type") || "").toLowerCase() === "password" ||
+        !["", "none"].includes(getComputedStyle(el).webkitTextSecurity || ""));
+    const payFrame = el => el && el.tagName === "IFRAME" &&
+        PAY_FRAME.test([el.src, el.name, el.title, el.id].join(" "));
+    const sensitive = el => !!el && (secret(el) || payment(el) || payFrame(el));
+    const deepest = (root, pick) => {
+        let el = pick(root);
+        for (let depth = 0; el?.shadowRoot && depth < 8; depth++) {
+            const inner = pick(el.shadowRoot);
+            if (!inner || inner === el) break;
+            el = inner;
+        }
+        return el;
+    };
+    const near = el => {
+        if (!el) return false;
+        const form = el.form || el.closest?.("form");
+        const pending = [form || document];
+        for (let seen = 0; pending.length && seen < 5000;) {
+            for (const node of pending.shift().querySelectorAll("*")) {
+                if (++seen >= 5000) break;
+                if (node.shadowRoot) pending.push(node.shadowRoot);
+                if (node.getClientRects().length && (form || !node.form) &&
+                    ((node.value && sensitive(node)) || payFrame(node)))
+                    return true;
+            }
+        }
+        return false;
+    };
+    const focus = deepest(document, root => root.activeElement);
+    if (R.operation === "click") {
+        const hit = deepest(document, root => root.elementFromPoint(R.x, R.y));
+        return !(sensitive(hit) || near(hit));
+    }
+    if (R.operation === "type") return !sensitive(focus);
+    return !(sensitive(focus) || (["Enter", "Space"].includes(R.key) && near(focus)));
+})()
+"""

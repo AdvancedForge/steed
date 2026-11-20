@@ -7,6 +7,18 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**A security review of the agent surface — November 20, 2026.** Two reviews
+(connections and authorization; what agents can do in pages) found thirteen
+problems, now fixed, and recorded the limits that remain in the
+[security assessment](../security-assessment.md). The most serious: vault
+sign-in could be steered into submitting a change-email, delete-account or
+checkout form, and its same-site check could be fooled by a button's
+`formaction`; buttons without a form, drags and screenshot clicks could send
+a filled password or card; "Always" settings approved local network
+addresses and any file path. Sign-in now fills only sign-in forms that send
+to the same site, no press goes near a filled password or card, and "Always"
+covers public sites and Downloads only.
+
 **Replaying what an agent did — November 19, 2026.** Task Permissions has a
 **Steps** tab: each thing an agent did, in plain words, from the journal. With
 **Keep a picture of each agent step** on (Settings → Agents, off by default),

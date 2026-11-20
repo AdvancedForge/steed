@@ -772,7 +772,7 @@ class QtBrowserBackend(QObject):
         return response
 
     def computer(self, session_id, action_id, capture_id, operation, values):
-        from services.computer_input import KEYS, SCRIPT, arguments
+        from services.computer_input import GUARD, KEYS, SCRIPT, arguments
 
         values = arguments(operation, values)
         session, validate_read = self._edit_context(session_id, "computer")
@@ -832,6 +832,29 @@ class QtBrowserBackend(QObject):
                 }
                 if operation == "key":
                     request["key"] = KEYS[values["key"]]
+                guard = {"operation": operation, "key": values.get("key")}
+                if operation == "click":
+                    scale = capture["css_width"] / max(1, capture["width"])
+                    guard["x"] = values["x"] * scale
+                    guard["y"] = values["y"] * scale
+                webengine.run_script(
+                    session.page,
+                    GUARD.replace("/* REQUEST */", json.dumps(guard)),
+                    lambda allowed: guarded(allowed, request),
+                    world=webengine.STEED_WORLD,
+                )
+            except Exception as error:
+                result.set_exception(error)
+
+        def guarded(allowed, request):
+            if result.done():
+                return
+            try:
+                if allowed is not True:
+                    # Passwords and payment cards are the person's to enter
+                    # and send; a screenshot click is no way around that.
+                    raise PageInspectionError("sensitive_form_unsupported")
+                validate_after()
                 dispatched = network.input._run(SCRIPT, request, validate_after)
                 dispatched.add_done_callback(completed)
             except Exception as error:

@@ -110,6 +110,17 @@ class AgentOnce(QObject):
         )
         if key:
             request.setRawHeader(b"Authorization", f"Bearer {key}".encode())
+        # The key goes to that address only: no redirects, no cookies.
+        request.setAttribute(
+            QNetworkRequest.Attribute.RedirectPolicyAttribute,
+            QNetworkRequest.RedirectPolicy.ManualRedirectPolicy,
+        )
+        for attribute in (
+            QNetworkRequest.Attribute.CookieLoadControlAttribute,
+            QNetworkRequest.Attribute.CookieSaveControlAttribute,
+            QNetworkRequest.Attribute.AuthenticationReuseAttribute,
+        ):
+            request.setAttribute(attribute, QNetworkRequest.LoadControl.Manual)
         body = {
             "model": entry["model"],
             "messages": [{"role": "user", "content": prompt}],

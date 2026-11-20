@@ -145,6 +145,50 @@ class PrivateComputerTests(unittest.TestCase):
         self.assertEqual(self.value(page, "field.value"), "")
         self.assertNotIn("SYNTHETIC_TYPED_SECRET", str(self.service.store.events(task)))
 
+    def test_screenshot_input_stays_out_of_passwords_and_cards(self):
+        task, _, session, page = self.session(
+            html=HTML + "<form><input id='card' autocomplete='cc-number' "
+            "style='position:absolute;left:20px;top:130px'>"
+            "<button id='pay' type='button' onclick='window.paid=1' "
+            "style='position:absolute;left:20px;top:170px;width:80px;height:24px'>"
+            "Pay</button></form>"
+            "<input id='secret' type='password' "
+            "style='position:absolute;left:200px;top:130px'>"
+        )
+
+        def click(x, y):
+            image = self.capture(task, session)
+            self.command(
+                "page.click",
+                task_id=task,
+                session_id=session,
+                capture_id=image["capture_id"],
+                x=x,
+                y=y,
+            )
+
+        for x, y in ((40, 140), (220, 140)):  # Into the card or password field.
+            with self.assertRaises(PageInspectionError) as raised:
+                click(x, y)
+            self.assertEqual(raised.exception.code, "sensitive_form_unsupported")
+        click(40, 180)  # Pay is fine while the card field is empty…
+        self.assertEqual(self.value(page, "window.paid"), 1)
+        self.value(page, "window.paid = 0; card.value = '4242424242424242'; true")
+        with self.assertRaises(PageInspectionError):  # …but not once it is filled.
+            click(40, 180)
+        self.assertEqual(self.value(page, "window.paid"), 0)
+        self.value(page, "secret.focus(); true")
+        image = self.capture(task, session)
+        with self.assertRaises(PageInspectionError):
+            self.command(
+                "page.type",
+                task_id=task,
+                session_id=session,
+                capture_id=image["capture_id"],
+                text="guess",
+            )
+        self.assertEqual(self.value(page, "secret.value"), "")
+
     def test_resize_invalidates_pixels_before_click_and_bounds_are_checked(self):
         task, _, session, page = self.session()
         image = self.capture(task, session)

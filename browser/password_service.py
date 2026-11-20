@@ -191,9 +191,55 @@ _FIELDS = """
         el.dispatchEvent(new Event('input', {bubbles: true}));
         el.dispatchEvent(new Event('change', {bubbles: true}));
     };
-    // A form that would send its fields to another site is never filled.
-    const sameSite = el => !el.form ||
-        new URL(el.form.action || location.href, location.href).origin === location.origin;
+    // Where a form really sends, read with the browser's own getters (a
+    // field named "action" or "target" cannot stand in for them) and with
+    // the submit button's formaction/formtarget, as requestSubmit uses them.
+    const formGet = (form, name) =>
+        Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, name).get.call(form);
+    const destination = (form, button) => {
+        const own = (attr, prop, fallback) =>
+            button && button.hasAttribute(attr) ? button[prop] : fallback;
+        const action = own('formaction', 'formAction', formGet(form, 'action')) || location.href;
+        const target = own('formtarget', 'formTarget',
+            formGet(form, 'target') || document.querySelector('base[target]')?.target || '');
+        return {url: new URL(action, location.href), target};
+    };
+    const staysHere = (form, button) => {
+        const where = destination(form, button);
+        return where.url.origin === location.origin && ['', '_self'].includes(where.target);
+    };
+    // A form that would send its fields to another site, or another window,
+    // is never filled.
+    const sameSite = el => !el.form || staysHere(el.form);
+    // Payment card fields: never Steed's (or an agent's) to fill or send.
+    const CARD = /(card.?(number|num|no)|cc.?(num|number)|\\bcvv|\\bcvc|\\bcsc\\b|security.?code|expir)/i;
+    const card = el => (el.getAttribute('autocomplete') || '').toLowerCase().split(/\\s+/)
+        .some(t => t.startsWith('cc-')) || CARD.test([el.name, el.id, el.placeholder,
+            el.getAttribute('aria-label')].join(' '));
+    // Steed signs in only on a form that looks like signing in: no card or
+    // new-password fields, at most one password and a few fields in all.
+    // A change-email, delete-account or checkout form asks for more.
+    const signinLike = field => {
+        const scope = field.form ? [...formGet(field.form, 'elements')] :
+            deepInputs(field.getRootNode());
+        const shown = scope.filter(el => !el.disabled && el.type !== 'hidden' &&
+            ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) &&
+            !['submit', 'button', 'reset', 'image', 'checkbox', 'radio'].includes(el.type) &&
+            el.getClientRects().length);
+        // What the form says it does: never deleting, changing or paying.
+        const holder = field.form || field.closest('section, main, [role=dialog], div') ||
+            document.body;
+        const headings = [...document.querySelectorAll('h1, h2, h3, legend, [role=heading]')]
+            .slice(0, 20).map(el => el.innerText || '').join(' ');
+        const words = [holder.innerText || '', headings, document.title,
+            decodeURIComponent(location.pathname)].join(' ').slice(0, 4000);
+        if (/\\b(delete|remove|deactivate|close (your |my |this )?account|change (your |my )?(e-?mail|password|phone|number|address|username)|transfer|pay|payment|purchase|buy|place (your )?order|checkout|unsubscribe)\\b/i
+                .test(words)) return false;
+        return !shown.some(card) &&
+            !shown.some(el => (el.autocomplete || '').includes('new-password')) &&
+            shown.filter(el => el.type === 'password').length <= 1 &&
+            !shown.some(el => el.tagName !== 'INPUT') && shown.length <= 3;
+    };
 """
 
 
@@ -208,7 +254,7 @@ def fill_script(expected, username, password, *, only_empty=True):
         passwords[0];
     const scope = password && password.form ? inputs.filter(el => el.form === password.form) : inputs;
     const code = el => (el.autocomplete || '').includes('one-time-code') ||
-        /otp|totp|2fa|mfa|one.?time|verification|auth.?code|security.?code/i.test(
+        /otp|totp|2fa|mfa|one.?time|verification|auth.?code/i.test(
             el.name + ' ' + el.id + ' ' + (el.placeholder || ''));
     const text = scope.filter(el => ['text', 'email', 'tel', ''].includes(el.type) &&
         !code(el) && sameSite(el));
@@ -238,10 +284,10 @@ def code_script(expected, code):
         + """
     const field = inputs.find(el => (el.autocomplete || '').includes('one-time-code')) ||
         inputs.find(el => ['text', 'tel', 'number', ''].includes(el.type) &&
-            /otp|totp|2fa|mfa|one.?time|verification|auth.?code|security.?code/i.test(
+            /otp|totp|2fa|mfa|one.?time|verification|auth.?code/i.test(
                 el.name + ' ' + el.id + ' ' + (el.placeholder || '') + ' ' +
                 (el.getAttribute('aria-label') || '')));
-    if (!field || field.value || !sameSite(field)) return {filled: false};
+    if (!field || field.value || card(field) || !sameSite(field)) return {filled: false};
     set(field, ARGS.code);
     return {filled: true};
 """,
@@ -262,17 +308,37 @@ _STEP = """
     };
     const fields = deepInputs(document).filter(present);
     const code = el => (el.autocomplete || '').includes('one-time-code') ||
-        /otp|totp|2fa|mfa|one.?time|verification|auth.?code|security.?code/i.test(
+        /otp|totp|2fa|mfa|one.?time|verification|auth.?code/i.test(
             el.name + ' ' + el.id + ' ' + (el.placeholder || '') + ' ' +
             (el.getAttribute('aria-label') || ''));
     const password = fields.find(el => el.type === 'password' && sameSite(el) &&
         !(el.autocomplete || '').includes('new-password'));
     const codeField = fields.find(el => ['text', 'tel', 'number', ''].includes(el.type) &&
-        code(el) && sameSite(el));
+        code(el) && !card(el) && sameSite(el));
     const user = fields.find(el => ['text', 'email', 'tel', ''].includes(el.type) && !code(el) &&
         sameSite(el) && ((el.autocomplete || '').includes('username') || el.type === 'email' ||
         /user|mail|login|account|identifier/i.test(el.name + ' ' + el.id)));
 """
+
+
+def clear_signin_script(expected):
+    """Empty the password and code fields Steed filled, after a sign-in that
+    did not go through, so nothing can reveal them later."""
+    return _script(
+        _FIELDS
+        + _STEP
+        + """
+    const set = (el, value) => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        setter.call(el, value);
+        el.dispatchEvent(new Event('input', {bubbles: true}));
+    };
+    for (const el of deepInputs(document))
+        if (el.type === 'password' || el === codeField) set(el, '');
+    return true;
+""",
+        expected=expected,
+    )
 
 
 def signin_step_script(expected):
@@ -281,7 +347,9 @@ def signin_step_script(expected):
         _FIELDS
         + _STEP
         + """
-    return {password: !!password, code: !!codeField, user: !!user};
+    const field = password || codeField || user;
+    return {password: !!password, code: !!codeField, user: !!user,
+        unsafe: !!field && !signinLike(field)};
 """,
         expected=expected,
     )
@@ -295,10 +363,10 @@ def signin_form_script(expected):
         + _STEP
         + """
     const field = password || codeField || user;
-    if (!field || !field.form || !sameSite(field)) return null;
+    if (!field || !field.form || !sameSite(field) || !signinLike(field)) return null;
     const form = field.form;
-    return {action: new URL(form.action || location.href, location.href).href,
-        method: (form.method || 'get').toUpperCase()};
+    return {action: destination(form).url.href,
+        method: (formGet(form, 'method') || 'get').toUpperCase()};
 """,
         expected=expected,
     )
@@ -312,7 +380,7 @@ def submit_script(expected):
         + _STEP
         + """
     const field = password || codeField || user;
-    if (!field) return {submitted: false};
+    if (!field || !signinLike(field)) return {submitted: false};
     const form = field.form;
     const label = el => (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
     const pressable = root => [...root.querySelectorAll('button, input[type=submit]')]
@@ -321,7 +389,10 @@ def submit_script(expected):
     if (form) {
         if (!sameSite(field)) return {submitted: false};
         const button = pressable(form);
-        if (button && button.form === form && button.type === 'submit') form.requestSubmit(button);
+        if (button && button.form === form && button.type === 'submit') {
+            if (!staysHere(form, button)) return {submitted: false};
+            form.requestSubmit(button);
+        }
         else if (button) button.click();
         else form.requestSubmit();
         return {submitted: true};

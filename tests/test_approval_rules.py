@@ -112,6 +112,13 @@ class ApprovalRuleTests(unittest.TestCase):
             "saved_approval:" + rule.rule_id,
             str(self.service.store.events(task.task_id)),
         )
+        # A private approval never covers a signed-in profile…
+        self.assertEqual(
+            self.request(profile="existing:personal")[1].status, "requested"
+        )
+
+    def test_global_rule_from_a_profile_covers_other_profiles(self):
+        self.remember(profile="existing:work")
         self.assertEqual(
             self.request(profile="existing:personal")[1].status, "approved"
         )

@@ -41,11 +41,17 @@ unsafe auto-approval on:
   `agents_paused` and does nothing. Routines that come due wait and run after
   you resume. The menu button shows **⏸ Agents paused**, and each active task's
   journal records the pause.
-- **Payment cards are yours alone.** Card fields (`autocomplete="cc-…"`, or
-  named like a card number or security code) are treated like passwords:
-  agents see them as `sensitive_field` with no actions, and cannot submit a
-  form that has one. A site that charges a saved card with a single button is
-  not caught by this, so keep submit permission for sites you trust.
+- **Passwords and payment cards are yours alone.** Card fields
+  (`autocomplete="cc-…"`, or named or labelled like a card number or security
+  code) are treated like passwords: agents see them as `sensitive_field` with
+  no actions, cannot type into them (screenshot typing included), cannot
+  submit a form that has one, and cannot press a button, by any means, while
+  a filled one shares its form (or, outside forms, the page). A site that
+  charges a saved card with a single button is not caught by this, so keep
+  submit permission for sites you trust.
+- **Always means public sites.** An "Always" access setting approves
+  requests for public websites and files in Downloads only; your network,
+  this computer and other files always ask.
 - **Page text aimed at agents is pointed out.** When a page contains text that
   seems to instruct an AI ("ignore your previous instructions…", "note to AI
   agents…"), `page.inspect` adds `suspected_agent_instructions` to its

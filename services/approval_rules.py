@@ -72,6 +72,9 @@ class ApprovalRule:
         ):
             return False
         approved = TaskScope.parse(self.scope)
+        if approved.profile == "private" and scope.profile != "private":
+            # A throwaway private approval never covers your signed-in profiles.
+            return False
         return (
             (not scope.allow_private_network or approved.allow_private_network)
             and all(
