@@ -242,9 +242,7 @@ class FeatureTests(unittest.TestCase):
         page.site_compatibility.last_main_method = b"GET"
         target = QUrl("https://accounts.google.com/signin?continue=fixture")
         with patch("browser.browser_window.QTimer.singleShot") as timer:
-            accepted = BrowserPage.acceptNavigationRequest(
-                page, target, QWebEnginePage.NavigationType.NavigationTypeRedirect, True
-            )
+            accepted = BrowserPage.navigation_allowed(page, target, "redirect", True)
         self.assertFalse(accepted)
         with patch("browser.browser_window.sip.isdeleted", return_value=False):
             timer.call_args.args[1]()

@@ -365,6 +365,8 @@ def attach_devtools(page, tools) -> None:
 # Newer engines hand permissions over as an object; older ones as a feature
 # enum on the page (Qt before 6.8).
 _PERMISSION = getattr(QtWebEngineCore, "QWebEnginePermission", None)
+# The engine's permission request type, for tests and type checks (or None).
+Permission = _PERMISSION
 MODERN_PERMISSIONS = _PERMISSION is not None
 
 
