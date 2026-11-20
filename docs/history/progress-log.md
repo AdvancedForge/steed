@@ -7,6 +7,15 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Staying in charge of agents — November 19, 2026.** Four safeguards that hold
+for every agent, even with auto-approval on: **Pause All Agents** (Agents menu,
+`Ctrl+Alt+P`, the sidebar) holds every agent's actions at Steed's gateway and
+delays routines until you resume; payment card fields are treated like
+passwords (no typing, choosing or submitting by agents); page text that seems
+to instruct AI agents is flagged to the agent as page content and recorded in
+the journal; and a routine that meets a sign-in page tells you instead of
+handing the agent a login form.
+
 **Any assistant, nothing else to install — November 19, 2026.** Agents used
 to need a coding agent (Codex, Claude Code or an ACP agent) installed first.
 Now **Use any model** in the agent sidebar adds a model Steed runs itself: a

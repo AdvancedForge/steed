@@ -235,6 +235,8 @@ class AgentSidebar(QDockWidget):
             "continue_chat": self.continue_chat,
             "acp_agents": self.manage_acp_agents,
             "models": self.manage_models,
+            "pause_agents": lambda: self.set_agents_paused(True),
+            "resume_agents": lambda: self.set_agents_paused(False),
             "setup": self.setup_requested.emit,
             "requests": self.show_requests,
             "permissions": lambda: self.open_details("Permissions"),
@@ -285,6 +287,7 @@ class AgentSidebar(QDockWidget):
             "active": False,
             "has_provider": self.providers is not None,
             "yolo": self.service.auto_approve_requests,
+            "paused": getattr(self.service, "agents_paused", False),
             "tasks": self._choices if available else [],
             "task_id": self._task_id,
             "messages": [],
@@ -826,6 +829,13 @@ class AgentSidebar(QDockWidget):
             present(dialog, modal=False)
         else:
             dialog.show()
+
+    def set_agents_paused(self, paused):
+        try:
+            self.service.set_agents_paused(paused)
+        except _ERRORS as error:
+            self._error = str(error)
+        self.refresh()
 
     def manage_models(self):
         from ui.agent_sessions import ModelsDialog

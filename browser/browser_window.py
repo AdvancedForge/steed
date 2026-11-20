@@ -924,6 +924,11 @@ class BrowserWindow(QMainWindow):
         self.auto_approval_action.setCheckable(True)
         self.auto_approval_action.toggled.connect(self._toggle_auto_approval)
         agents_menu.addAction(self.auto_approval_action)
+        self.pause_agents_action = QAction("Pause All Agents", self)
+        self.pause_agents_action.setCheckable(True)
+        self.pause_agents_action.setShortcut(QKeySequence("Ctrl+Alt+P"))
+        self.pause_agents_action.toggled.connect(self._toggle_agents_paused)
+        agents_menu.addAction(self.pause_agents_action)
         self.auto_approval_notice = QLabel(
             "Agent requests approved automatically", self
         )
@@ -2501,6 +2506,23 @@ class BrowserWindow(QMainWindow):
 
         registry.routines.ran.connect(routine_ran)
 
+        def routine_needs_you(routine, url):
+            def open_it():
+                window = window_for(routine)
+                if window is not None:
+                    window._new_tab(url=url)
+                    window.raise_()
+                    window.activateWindow()
+
+            notifier.notify(
+                f"Routine “{routine['name']}” needs you to sign in",
+                f"{QUrl(url).host()} asks you to sign in, so your agent gets the "
+                "rest without it. Sign in and the next run will read it.",
+                on_click=open_it,
+            )
+
+        registry.routines.needs_you.connect(routine_needs_you)
+
     def ask_agent(
         self, tab, *, selection="", link="", page="", question="", send=False
     ):
@@ -2720,8 +2742,22 @@ class BrowserWindow(QMainWindow):
         styles = self.profile_manager.registry.page_style
         return bool(styles.get(self.profile_manager.current_profile_name)["status_bar"])
 
+    def _toggle_agents_paused(self, paused):
+        service = self.profile_manager.registry.tasks
+        try:
+            service.set_agents_paused(paused)
+        except (RuntimeError, ValueError, OSError) as error:
+            self.status_bar.showMessage(
+                f"Could not change the agent pause: {error}", 6000
+            )
+        self._refresh_auto_approval()
+
     def _refresh_auto_approval(self):
         service = self.profile_manager.registry._tasks
+        paused = bool(service and service.agents_paused)
+        self.pause_agents_action.blockSignals(True)
+        self.pause_agents_action.setChecked(paused)
+        self.pause_agents_action.blockSignals(False)
         enabled = bool(service and service.auto_approve_requests)
         self.auto_approval_action.blockSignals(True)
         self.auto_approval_action.setChecked(enabled)
@@ -2732,7 +2768,9 @@ class BrowserWindow(QMainWindow):
         if hasattr(self, "status_bar") and not self.isFullScreen():
             self.status_bar.setVisible(self._status_bar_wanted())
         if hasattr(self, "address_bar"):
-            self.address_bar.set_menu_badge("⚠ Auto-approve" if enabled else "")
+            self.address_bar.set_menu_badge(
+                "⏸ Agents paused" if paused else "⚠ Auto-approve" if enabled else ""
+            )
             self.address_bar.menu_btn.setToolTip(
                 "Browser menu · unsafe agent auto-approval is enabled"
                 if enabled

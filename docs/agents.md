@@ -30,6 +30,31 @@ panels for larger models. Tick **It can look at screenshots** for models that
 take images. A turn stops after 40 steps; older tool results are shortened as
 a chat grows.
 
+## Staying in charge
+
+These hold for every agent and model, whatever its permissions, and even with
+unsafe auto-approval on:
+
+- **Pause All Agents** (Agents menu, `Ctrl+Alt+P`, or **Pause all agents** in
+  the sidebar) holds every agent at once. While paused, agents can only read
+  their conversation and check their task; anything else returns
+  `agents_paused` and does nothing. Routines that come due wait and run after
+  you resume. The menu button shows **⏸ Agents paused**, and each active task's
+  journal records the pause.
+- **Payment cards are yours alone.** Card fields (`autocomplete="cc-…"`, or
+  named like a card number or security code) are treated like passwords:
+  agents see them as `sensitive_field` with no actions, and cannot submit a
+  form that has one. A site that charges a saved card with a single button is
+  not caught by this, so keep submit permission for sites you trust.
+- **Page text aimed at agents is pointed out.** When a page contains text that
+  seems to instruct an AI ("ignore your previous instructions…", "note to AI
+  agents…"), `page.inspect` adds `suspected_agent_instructions` to its
+  limitations and quotes it in its guidance as page content, not the user. The
+  journal records it. It is a reminder, not a filter: the text is still there.
+- **A routine that meets a sign-in page hands it to you.** Steed notifies you
+  (click to open the page) and gives the agent a note in place of the login
+  page; sign in and the next run reads it. Watches already did this.
+
 ## Local agent access (MCP)
 
 ### Daily browser access and permission diagnostics

@@ -121,6 +121,8 @@ class TaskService(QObject):
         self._closed = False
         self.failure = ""
         self.auto_approve_requests = False
+        # Pause all agents: every agent's browser and app actions wait.
+        self.agents_paused = False
         self.control_requests = {}
         self.workers = WorkerManager(self)
         self.recipes = RecipeProposals(self, connections)
@@ -1720,6 +1722,28 @@ class TaskService(QObject):
         ):
             record.state = "returned"
         return record.payload()
+
+    def set_agents_paused(self, paused):
+        """Trusted desktop switch that holds every agent's actions (only
+        reading the conversation and checking status still work); never an
+        agent command. Each active task's journal records it."""
+        require_owner_thread(self)
+        self._usable()
+        if type(paused) is not bool:
+            raise ValueError("Provide a boolean pause choice")
+        if paused == self.agents_paused:
+            return
+        try:
+            for task in self.store.list_tasks():
+                if task.status in ACTIVE_STATUSES:
+                    self.store.record_event(
+                        task.task_id, "agents.paused", {"paused": paused}
+                    )
+        except (sqlite3.Error, OSError):
+            self._fatal()
+            raise
+        self.agents_paused = paused
+        self.changed.emit()
 
     def set_auto_approval(self, enabled):
         """Trusted desktop opt-in for this browser run; never an agent command."""

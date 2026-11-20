@@ -64,6 +64,21 @@ class FakeChatApi(BaseHTTPRequestHandler):
                     }
                 ],
             }
+        elif last["content"] == "read my tabs":
+            message = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call-3",
+                        "type": "function",
+                        "function": {
+                            "name": "steed_browser_context",
+                            "arguments": "{}",
+                        },
+                    }
+                ],
+            }
         elif last["content"] == "made-up tool":
             message = {
                 "role": "assistant",
@@ -286,6 +301,26 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(refusal["role"], "tool")
         self.assertIn("no tool called rm_rf", refusal["content"])
         self.assertIn(task, self.manager.chats)
+
+    def test_paused_agents_do_nothing_until_resumed(self):
+        task = self.chat()
+        self.service.set_agents_paused(True)
+        self.sidebar.select_task(task)
+        self.sidebar.refresh()
+        self.assertTrue(self.sidebar.state["paused"])
+        self.service.send_message(task, "read my tabs")
+        self.assertEqual(self.replies(task, 1), ["Your browser: agents_paused"])
+        # Checking its own task still works while paused.
+        self.service.send_message(task, "use a tool")
+        self.assertEqual(self.replies(task, 2)[1], "Your browser: ok")
+        kinds = [e.kind for e in self.service.store.events(task)]
+        self.assertIn("agents.paused", kinds)
+        self.sidebar._on_command(
+            {"action": "resume_agents", "context": self.sidebar._context}
+        )
+        self.assertFalse(self.service.agents_paused)
+        self.service.send_message(task, "read my tabs")
+        self.assertEqual(self.replies(task, 3)[2], "Your browser: ok")
 
     def test_api_errors_end_the_chat_clearly(self):
         FakeChatApi.status = 401

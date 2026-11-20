@@ -13,6 +13,12 @@
     // Keys go to whichever document holds page focus. Inside a child frame,
     // its own activeElement survives the page moving focus elsewhere.
     const holdsFocus = (doc, node) => focused(doc) === node && (doc.defaultView === doc.defaultView.top || doc.hasFocus());
+    // Payment card fields are the person's alone, like passwords: agents can
+    // neither fill them nor submit a form that has one.
+    const CARD_NAME = /(card.?(number|num|no)|cc.?(num|number)|\bcvv|\bcvc|\bcsc\b|security.?code)/i;
+    const paymentField = node => ["INPUT", "SELECT"].includes(node.tagName) && (
+        (node.getAttribute("autocomplete") || "").trim().toLowerCase().split(/\s+/).some(t => t.startsWith("cc-")) ||
+        CARD_NAME.test(node.getAttribute("name") || "") || CARD_NAME.test(node.id || ""));
     const POINTER_ROLES = ["button", "link", "tab", "menuitem", "menuitemcheckbox", "menuitemradio",
         "switch", "checkbox", "radio", "option", "treeitem", "combobox"];
     // Custom controls moved by arrow keys while focused.
@@ -75,7 +81,7 @@
         const uploads = [];
         let fileCount = 0;
         for (const control of elements) {
-            if (control.type === "password") return {error: "sensitive_form_unsupported"};
+            if (control.type === "password" || paymentField(control)) return {error: "sensitive_form_unsupported"};
             if (control.type === "file") {
                 if (!multipart || ++fileCount > 1 || control.multiple || control.webkitdirectory)
                     return {error: "sensitive_form_unsupported"};
@@ -631,7 +637,7 @@
                     else if (tag === "input" && type !== "hidden") {
                         kind = type === "checkbox" || type === "radio" ? type : "input";
                         operations = [kind === "input" ? "enter" : "activate"];
-                        if (type === "password") { constraints.push("sensitive_field", "values_omitted"); operations = []; }
+                        if (type === "password" || paymentField(node)) { constraints.push("sensitive_field", "values_omitted"); operations = []; }
                         if (type === "file") {
                             constraints.push("values_omitted");
                             operations = request.upload_available && win === window && node.getRootNode() === doc &&
@@ -640,7 +646,10 @@
                         }
                         if (type === "submit" || type === "button") { kind = "button"; operations = ["activate"]; }
                     } else if (tag === "textarea") { kind = "textarea"; operations = ["enter"]; }
-                    else if (tag === "select") { kind = "select"; operations = ["select"]; }
+                    else if (tag === "select") {
+                        kind = "select"; operations = ["select"];
+                        if (paymentField(node)) { constraints.push("sensitive_field"); operations = []; }
+                    }
                     else if (POINTER_ROLES.includes(role) || OBSERVED_ROLES.includes(role)) {
                         kind = "custom";
                         if (request.live && win === window && POINTER_ROLES.includes(role)) {
