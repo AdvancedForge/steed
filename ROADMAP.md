@@ -34,7 +34,7 @@ The road to a public release is the [release plan](docs/RELEASE_PLAN.md).
 Manual checks on a real desktop, still open unless ticked. Automated checks
 cover much of the same ground; these confirm it by hand.
 
-- [x] Run the complete regression suite (2,142 tests on November 19, 2026),
+- [x] Run the complete regression suite (2,167 tests on November 20, 2026),
   startup smoke, local Google-login smoke, launcher validation, and lint/format
   checks.
 
