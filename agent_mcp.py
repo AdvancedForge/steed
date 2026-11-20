@@ -38,6 +38,7 @@ READ_ONLY_COMMANDS = frozenset(
         "grant.list",
         "browser.context",
         "browser.tabs",
+        "page.tools",
         "browser.control_status",
         "library.folders",
         "app.list_tools",

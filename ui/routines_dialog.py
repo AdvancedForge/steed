@@ -68,6 +68,41 @@ class RoutineEditor(HtmlSettingsDialog):
             self.every.addItem(f"Every {hours} hour{'s' * (hours != 1)}", hours)
         self.every.setCurrentIndex(max(0, self.every.findData(routine.get("every", 4))))
         layout.addWidget(self.every)
+        layout.addWidget(QLabel("Each run"))
+        self.tell = QComboBox()
+        self.tell.addItem("Your agent reads it and replies", "agent")
+        self.tell.addItem("Just tell me when it changes (no assistant)", "changes")
+        self.tell.setCurrentIndex(1 if routine.get("tell") == "changes" else 0)
+        layout.addWidget(self.tell)
+        self.signin = QCheckBox(
+            "If a page asks me to sign in, sign in with my saved login "
+            "(Steed's passwords or an unlocked Bitwarden)"
+        )
+        self.signin.setChecked(bool(routine.get("signin")))
+        layout.addWidget(self.signin)
+        self.brief = QCheckBox(
+            "Add what Steed noticed (watched pages that changed since the last run)"
+        )
+        self.brief.setChecked(bool(routine.get("brief")))
+        layout.addWidget(self.brief)
+        from services.routine_steps import describe_step
+
+        self.saved_steps = list(routine.get("steps") or [])
+        self.steps_label = QLabel(
+            "Saved steps, which Steed does itself before reading, with no model:\n"
+            + "\n".join(
+                f"{n}. {describe_step(step)}"
+                for n, step in enumerate(self.saved_steps, 1)
+            )
+        )
+        self.steps_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.steps_label.setWordWrap(True)
+        self.steps_label.setProperty("role", "quote")
+        self.keep_steps = QCheckBox("Keep these saved steps")
+        self.keep_steps.setChecked(True)
+        if self.saved_steps:
+            layout.addWidget(self.steps_label)
+            layout.addWidget(self.keep_steps)
         note = QLabel(
             "Each run starts a new conversation in the agent sidebar. The pages "
             "are read with this profile's sign-ins and their text goes to your "
@@ -107,6 +142,10 @@ class RoutineEditor(HtmlSettingsDialog):
             "at": self.at.text().strip(),
             "days": [i for i, box in enumerate(self.days) if box.isChecked()],
             "every": self.every.currentData(),
+            "tell": self.tell.currentData(),
+            "signin": self.signin.isChecked(),
+            "brief": self.brief.isChecked(),
+            "steps": self.saved_steps if self.keep_steps.isChecked() else [],
         }
 
     def save(self):
@@ -145,6 +184,7 @@ class RoutinesDialog(HtmlSettingsDialog):
         row = QHBoxLayout()
         for text, callback in (
             ("New Routine…", self.add),
+            ("Morning Brief…", self.add_brief),
             ("Edit…", self.edit_selected),
             ("Run now", self.run_selected),
             ("Pause or resume", self.pause_selected),
@@ -198,6 +238,28 @@ class RoutinesDialog(HtmlSettingsDialog):
 
     def add(self):
         return self._editor()
+
+    def add_brief(self):
+        """A morning brief, ready to go: add the pages you want read."""
+        from services.routines import BRIEF_ASK
+
+        editor = self._editor(
+            {
+                "name": "Morning brief",
+                "ask": BRIEF_ASK,
+                "kind": "daily",
+                "at": "08:00",
+                "days": [0, 1, 2, 3, 4],
+                "pages": [],
+                "brief": True,
+            }
+        )
+        editor.routine = None  # A new routine, not an edit.
+        editor.setWindowTitle("New Morning Brief")
+        editor.status.setText(
+            "Add the pages to read first, such as your calendar and inbox."
+        )
+        return editor
 
     def edit_selected(self):
         routine = self.selected()

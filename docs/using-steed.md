@@ -221,6 +221,7 @@ window and are kept in `config.json` (`shortcuts`).
 - `Alt+Left` / `Alt+Right`, or the mouse's back/forward side buttons: Back / Forward
 - `Ctrl+Shift+T`: Restore the most recently closed tab for this profile
 - `Ctrl+Shift+N`: Open search profile in a separate window (incognito)
+- `Ctrl+Alt+N`: Make a new profile and open it in a separate window
 - `Ctrl+Shift+0`: Switch the current window to search profile
 - `Ctrl+Shift+1` … `Ctrl+Shift+9`: Switch to the Nth profile
 - `Ctrl+J`: Downloads
@@ -249,7 +250,9 @@ The menu bar has six categories, in this order:
 - **General:** Passwords, Fill Login, Downloads, Ad Blocking, Website Permissions,
   Settings and Exit.
 - **Profile:** Create, switch, pop out, rename or delete profiles, open private
-  browsing and use Quick Switch shortcuts.
+  browsing and use Quick Switch shortcuts. **Open in New Window** opens any
+  profile in a window of its own while this one keeps its profile, and **New
+  Profile in New Window…** (`Ctrl+Alt+N`) makes a profile and opens it there.
 - **Tabs:** New Tab, Restore Closed Tab, Close Tab, Reload, Bookmark This Page
   and Manage Bookmarks.
   **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
@@ -422,6 +425,35 @@ In the panel you can choose:
 
 **More options…** (also General → Customize New Tab…) opens the full dialog
 with the classic sections, a feed, a custom colour and your own HTML.
+
+### Workspaces
+
+**Tabs → Workspaces** keeps what you are working on (Work, Trip, Taxes) apart
+inside one profile: switching puts this window's web tabs away under the
+current workspace and opens the other one's, each loading when you first look
+at it. A profile still holds your sign-ins, cookies and history; workspaces
+only sort tabs. **Switch Workspace…** (`Ctrl+Alt+W`) lets you type to find
+one among many, or type a new name to make it; the window title shows the
+workspace when it is not Main. Deleting a workspace moves its open tabs to
+Main. Kept in the profile's `workspaces.json`; not in incognito.
+
+### Help me write
+
+Right-click a text field → **Help Me Write…**: Steed shows what goes to your
+assistant (the field's text, or the part you selected, and the page's title),
+you pick a goal (Polish, Shorter, Longer, Friendlier, More formal, Fix
+spelling) or say what you want, and you see the result, which you can edit,
+before **Insert** puts it in the field. Nothing is submitted, and password and
+card fields are never offered. It uses the assistant you chose (a model you
+added, else Claude Code or Codex).
+
+### Your week in topics
+
+**Tabs → Group My Recent History into Topics…** sends the titles and sites of
+the past week's pages (never page text; no banking, health or sign-in sites;
+nothing from incognito) to your assistant, which groups them into topics such
+as "Planning a trip to Lisbon". Reopen a topic's pages, or ask your agent to
+help you pick up where you left off. Nothing is kept; run it whenever you like.
 
 ### Split view and sites in a profile
 
@@ -1190,11 +1222,30 @@ Agents → Access & Permissions → **Sign in with your saved passwords** decide
 lets you pick the account, with **Sign in**, **Deny** and **Always allow**;
 **Always** signs in at once with the login you used most recently there;
 **Never** refuses. One approval covers that site for the task for three
-minutes, so a sign-in in several steps is asked about once. Steed only fills a
-login on its own site, never into a form that would send it to another site,
-and only in a live session (sign-in pages run their own scripts) whose task may
-submit forms on that site. Not in incognito, and not while your passwords are
-locked.
+minutes on the same page, so a sign-in in several steps is asked about once.
+Steed only fills a login on a form that looks like signing in (a few fields,
+one password, nothing about deleting, changing or paying), on its own site,
+never into a form that would send it to another site or window, and only in a
+live session (sign-in pages run their own scripts) whose task may submit forms
+on that site; if a sign-in fails, it empties what it filled. Not in
+incognito, and not while your passwords are locked. A cloud agent's sign-in
+always asks.
+
+**Bitwarden.** General → **Bitwarden…** unlocks your Bitwarden vault for this
+run (Steed uses the Bitwarden command line, `bw`; sign in to it once in a
+terminal with `bw login`). Its logins for a site then work like Steed's own
+saved logins, for agents' sign-ins and for routines, filled by Steed so no
+agent sees them. Your master password goes to `bw` in its environment, never on
+a command line; the session lives only in Steed's memory until you lock it or
+Steed closes, and Steed saves nothing from Bitwarden. Only logins saved for
+exactly that site are used.
+
+**Routines that sign themselves in.** Tick **If a page asks me to sign in,
+sign in with my saved login** in a routine and, when a page it reads asks for
+a password, Steed signs in with your login for that site (Steed's passwords
+or an unlocked Bitwarden) under the same rules, then reads the page again.
+Without a saved login, or when the sign-in does not go through, you get the
+notification to sign in yourself, as before.
 
 ### Passkeys
 
@@ -1247,6 +1298,28 @@ every 1–12 hours, up to five pages) and `steed_routine_status`. A review popup
 shows it in the routine editor, where you can change anything, then **Add
 routine**, **Decline** or **Later**; nothing runs before you add it. Pending
 suggestions are in Task Permissions → Pages & Scripts.
+
+**Saved steps: routines that need no model.** A routine can carry up to 20
+steps that Steed does itself, in the routine's profile, before reading: open a
+page, click something by its label, type into a field, choose an option, wait
+for some text, read the page. After an agent has done a task once in a chat,
+it can propose the routine with `steps_from_this_chat`: Steed saves exactly the
+page actions that worked there (it notes them in memory while the chat lasts,
+never in the journal), and you see every step in the review before adding it.
+Each run replays them without asking a model; if a step no longer works (the
+site changed), the run goes to your agent as usual, saying which step stopped
+and why, so it can finish the job and propose new steps. Saved steps never type
+into password or card fields and never press a button beside a filled one.
+
+**Morning Brief…** in Routines makes a brief that is ready to go: weekdays
+at 08:00, asking for what needs your attention today, then anything else
+worth knowing, ending with a line of what was read. Add the pages it should
+read (your calendar, your inbox); with **Add what Steed noticed** on, Steed
+also adds the watched pages that changed since the last run.
+
+**Each run → Just tell me when it changes** needs no assistant at all: Steed
+reads the pages (after any saved steps) and notifies you only when what it read
+differs from the last run.
 
 ### Watches
 

@@ -12,7 +12,14 @@ GROUPS = {
     "general": (
         ("Print…",),
         ("Settings…", "Customize New Tab…", "Layout Settings…", "Keyboard Shortcuts…"),
-        ("Passwords…", "Fill Login", "Downloads…", "Dictation", "Extensions"),
+        (
+            "Passwords…",
+            "Bitwarden…",
+            "Fill Login",
+            "Downloads…",
+            "Dictation",
+            "Extensions",
+        ),
         (
             "Import from Another Browser…",
             "Sync…",
@@ -39,7 +46,14 @@ GROUPS = {
         ),
         ("Back", "Forward", "Reload", "Home"),
         ("Next Tab", "Previous Tab"),
-        ("Tab Groups", "Saved Groups", "Save All Tabs as Group…", "Session History…"),
+        (
+            "Tab Groups",
+            "Saved Groups",
+            "Workspaces",
+            "Save All Tabs as Group…",
+            "Session History…",
+            "Group My Recent History into Topics…",
+        ),
         ("Bookmark This Page…", "Manage Bookmarks…"),
         ("Install This Site as an App…", "Site Apps…"),
         ("Organize Tabs with Agent…", "Compare Tabs with Agent…"),

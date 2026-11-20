@@ -116,14 +116,6 @@ class VaultSigninTests(unittest.TestCase):
         finally:
             dialog.deleteLater()
         final = self.finished(client, "s1")
-        snap = self.service.backend.inspect(session)
-        print(
-            "DEBUG posted",
-            [(p, b) for p, b, _ in self.posted],
-            snap.url,
-            snap.load_success,
-            snap,
-        )
         self.assertEqual(
             final,
             {
@@ -175,6 +167,61 @@ class VaultSigninTests(unittest.TestCase):
             request_id="c",
         )
         self.assertEqual(quick["state"], "signing_in")
+
+    def test_bitwarden_logins_sign_in_the_same_way(self):
+        from browser.password_vault import Login
+
+        class Unlocked:
+            unlocked = True
+
+            def logins(self, origin):
+                return [
+                    Login(
+                        "bw:item-1",
+                        origin,
+                        USERNAME,
+                        "Synthetic-Bw-Passw0rd",
+                        totp=TOTP,
+                    )
+                ]
+
+        self.vault.delete(self.vault.logins(self.origin)[0].id)
+        self.registry.bitwarden = Unlocked()
+        self.addCleanup(setattr, self.registry, "bitwarden", None)
+        access_levels.set_policy(self.config, "agents", "signin", "always")
+        task, session, client = self.session()
+        self.command(
+            "signin.request", client=client, session_id=session, request_id="b"
+        )
+        self.assertEqual(self.finished(client, "b")["outcome"], "signed_in")
+        posted = {path: body for path, body, _ in self.posted}
+        self.assertIn(b"Synthetic-Bw-Passw0rd", posted["/p"])
+
+    def test_a_routine_you_allowed_signs_itself_in(self):
+        routines = self.registry.routines
+        outcomes = []
+        routines.signed_in.connect(lambda r, site, outcome: outcomes.append(outcome))
+        routine = routines.add(
+            {
+                "name": "Stay signed in",
+                "ask": "Anything new?",
+                # A page that asks for a password: it asks you to sign in.
+                "pages": [self.origin + "/password"],
+                "signin": True,
+            },
+            "work",
+        )
+        delivered = []
+        routines.ran.connect(lambda r, text: delivered.append(text))
+        routines.run(routine)
+        self.wait_for(lambda: outcomes)
+        self.assertEqual(outcomes, ["signed_in"])
+        posted = {path: body for path, body, _ in self.posted}
+        self.assertIn(PASSWORD.encode(), posted["/p"])
+        self.assertRegex(posted["/c"].decode(), r"otp=\d{6}")
+        self.wait_for(lambda: delivered)
+        # Nothing of the login goes to the agent.
+        self.assertNotIn(PASSWORD, delivered[0])
 
     def test_never_denied_no_login_and_forms_sending_elsewhere(self):
         task, session, client = self.session()

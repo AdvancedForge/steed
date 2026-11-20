@@ -20,7 +20,8 @@ is in your way until you go looking for it.
 ## Everyday browsing
 
 - Profiles kept apart, an incognito profile, and per-site permissions.
-- Tab groups, saved groups, session history, sleeping tabs, split view.
+- Tab groups, saved groups, workspaces, session history, sleeping tabs,
+  split view.
 - A built-in password manager (encrypted vault, generator, breach check,
   passkeys) and bookmark, history and password import.
 - Site apps (a site in its own window), read aloud, keyboard link hints,
@@ -52,8 +53,9 @@ switch whenever you want; every one gets the same tools and the same rules.
   tools, asking you about everything.
 - Routines: your agent on a schedule ("every morning, read my inbox and
   calendar and tell me what matters").
-- Ask about a page or selection, watch a page and act when it changes,
-  organize or compare tabs, hand a tab to your agent and take it back.
+- Ask about a page or selection, attach tabs to a message with `@`, help
+  writing in any text field, watch a page and act when it changes, organize or
+  compare tabs, hand a tab to your agent and take it back.
 - You review what agents ask to do and choose what each may do (or, for agents
   you trust, let Steed approve for you).
 

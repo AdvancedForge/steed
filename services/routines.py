@@ -38,6 +38,8 @@ def check(routine):
     """A routine from what you entered; ValueError says what is wrong."""
     name = " ".join(str(routine.get("name", "")).split())[:80]
     ask = str(routine.get("ask", "")).strip()[:4000]
+    if not ask and routine.get("tell") == "changes":
+        ask = "Tell me what changed."
     if not name or not ask:
         raise ValueError("Give the routine a name and say what to ask.")
     kind = routine.get("kind", "daily")
@@ -83,7 +85,45 @@ def check(routine):
         elif str(page).strip():
             raise ValueError(f"Not a web address: {page}")
     found["pages"] = pages
+    from services.routine_steps import check_steps
+
+    steps = check_steps(routine.get("steps"))
+    if steps:
+        found["steps"] = steps
+    tell = routine.get("tell", "agent")
+    if tell not in ("agent", "changes"):
+        raise ValueError(
+            "Choose whether your agent reads it or Steed tells you of changes."
+        )
+    if tell == "changes" and not (pages or any("read" in s for s in steps)):
+        raise ValueError("To be told of changes, the routine has to read a page.")
+    found["tell"] = tell
+    if routine.get("signin"):
+        found["signin"] = True
+    if routine.get("brief"):
+        found["brief"] = True
     return found
+
+
+BRIEF_ASK = (
+    "Give me a short brief for today: first what needs my attention, then "
+    "anything else worth knowing, in a few lines. End with one line saying "
+    "what you read (the pages and Steed's notes)."
+)
+
+
+def brief_notes(watches, since):
+    """What Steed itself knows for a brief: watches that changed lately."""
+    changed = [
+        w for w in watches if w.get("last_change", 0) > since and w.get("last_summary")
+    ][:10]
+    if not changed:
+        return "### From Steed\nNo watched page changed since the last brief."
+    lines = [
+        f"- {w['title'][:120]} ({w['url'][:200]}): {w['last_summary'][:300]}"
+        for w in changed
+    ]
+    return "### From Steed: watched pages that changed\n" + "\n".join(lines)
 
 
 def last_due(routine, now: datetime):
@@ -143,9 +183,19 @@ def asks_to_sign_in(url, found):
     )
 
 
-def message(routine, pages):
-    """What the agent gets: the routine's ask, and the pages' text."""
+def message(routine, pages, stopped=None):
+    """What the agent gets: the routine's ask, and the pages' text; when its
+    saved steps stopped, where and why, so the agent can carry on."""
     parts = [f"Routine “{routine['name']}”: {routine['ask']}"]
+    if stopped is not None:
+        from services.routine_steps import REASONS, describe_step
+
+        number, step, reason = stopped
+        parts.append(
+            f"(Its saved steps stopped at step {number}, “{describe_step(step)}”: "
+            f"{REASONS.get(reason, reason)}. Please do this part yourself; if the "
+            "site changed, you can propose new steps with steed_routine_propose.)"
+        )
     for title, url, text in pages:
         body = " ".join((text or "(could not be read)").split())[:PAGE_TEXT]
         parts.append(f"### {title or url}\n{url}\n\n{body}")
@@ -155,6 +205,8 @@ def message(routine, pages):
 class Routines(QObject):
     changed = pyqtSignal()
     ran = pyqtSignal(dict, str)  # routine, message for the agent
+    noticed = pyqtSignal(dict, str)  # routine, what changed (no agent asked)
+    signed_in = pyqtSignal(dict, str, str)  # routine, site, outcome
     needs_you = pyqtSignal(dict, str)  # routine, a page that wants a sign-in
 
     def __init__(self, registry):
@@ -168,6 +220,7 @@ class Routines(QObject):
             else []
         )
         self.running = None  # (routine, [pages read], pending urls, page)
+        self.stopped = None  # Where saved steps stopped, this run.
         self.closed = False
         self.timer = QTimer(self)
         self.timer.setInterval(TICK_MS)
@@ -248,17 +301,69 @@ class Routines(QObject):
         if self.running is not None:
             return False
         routine = next((r for r in self.routines if r["id"] == routine["id"]), routine)
+        routine["previous_run"] = routine.get("last_run", 0)
         routine["last_run"] = time.time()
         self._save()
         self.running = [routine, [], list(routine.get("pages", [])), None]
-        self._next_page()
+        self.stopped = None
+        if routine.get("steps"):
+            self._run_steps(routine)
+        else:
+            self._next_page()
         return True
+
+    def _run_steps(self, routine):
+        from services.routine_steps import StepRunner
+
+        try:
+            profile = self.registry.get(routine["profile"])
+        except (ValueError, OSError):
+            self.stopped = (1, routine["steps"][0], "not_loaded")
+            self._next_page()
+            return
+        runner = StepRunner(profile, routine["steps"], self)
+        self.running[3] = runner
+
+        def finished(pages, stopped):
+            if self.closed or self.running is None:
+                return
+            self.running[3] = None
+            self.running[1].extend(pages)
+            self.stopped = stopped
+            runner.deleteLater()
+            self._next_page()
+
+        runner.finished.connect(finished)
+        runner.start()
+
+    def _deliver(self, routine, read):
+        stopped, self.stopped = self.stopped, None
+        if routine.get("tell") == "changes" and stopped is None:
+            from services.watches import change_summary
+
+            text = "\n\n".join(t for _, _, t in read if t)[:20000]
+            stored = next((r for r in self.routines if r["id"] == routine["id"]), None)
+            before = stored.get("last_text") if stored else None
+            if stored is not None:
+                stored["last_text"] = text
+                self._save()
+            if before is not None and before != text:
+                self.noticed.emit(dict(routine), change_summary(before, text))
+            return
+        # With an agent, or when saved steps stopped: the agent takes over.
+        text = message(routine, read, stopped)
+        if routine.get("brief"):
+            watches = getattr(self.registry, "watches", None)
+            listed = watches.list() if watches is not None else []
+            since = routine.get("previous_run") or (time.time() - 24 * 3600)
+            text += "\n\n" + brief_notes(listed, since)
+        self.ran.emit(dict(routine), text)
 
     def _next_page(self):
         routine, read, pending, _page = self.running
         if not pending:
             self.running = None
-            self.ran.emit(dict(routine), message(routine, read))
+            self._deliver(routine, read)
             return
         url = pending.pop(0)
         try:
@@ -270,23 +375,42 @@ class Routines(QObject):
         page = webengine.background_page(profile, self)
         self.running[3] = page
         done = []
+        tried = []  # Signed in once on this page already.
+        signing = []  # While signing in, its own page loads are not reads.
 
         def finish(found):
-            if done or self.closed or self.running is None:
+            if done or signing or self.closed or self.running is None:
                 return
-            done.append(True)
             title = page.title() if not sip.isdeleted(page) else url
             found = found if isinstance(found, dict) else {}
             text = found.get("text") if isinstance(found.get("text"), str) else ""
             if asks_to_sign_in(url, found):
+                if (
+                    routine.get("signin")
+                    and not tried
+                    and self._sign_in(routine, page, url, signed_in)
+                ):
+                    tried.append(True)
+                    signing.append(True)
+                    return
                 # Hand it to you rather than the agent: it can't sign in here.
                 text = SIGNED_OUT
                 self.needs_you.emit(dict(routine), url)
+            done.append(True)
             read.append((title, url, text))
             if not sip.isdeleted(page):
                 page.deleteLater()
             self.running[3] = None
             self._next_page()
+
+        def signed_in(ok):
+            signing.clear()
+            if done or self.closed or sip.isdeleted(page):
+                return
+            if ok:  # Back to the page the routine reads, now signed in.
+                page.load(QUrl(url))
+            else:
+                finish({"password": True})
 
         def loaded(ok):
             if not ok:
@@ -308,6 +432,37 @@ class Routines(QObject):
         page.loadFinished.connect(loaded)
         QTimer.singleShot(READ_TIMEOUT_MS, lambda: finish({}))
         page.load(QUrl(url))
+
+    def _sign_in(self, routine, page, url, then):
+        """Sign in on page with the profile's saved login, if there is one."""
+        from browser.password_service import login_origin
+        from services.bitwarden import Logins
+        from services.page_signin import PageSignin
+
+        origin = login_origin(page.url())
+        passwords = getattr(self.registry, "passwords", None)
+        try:
+            vault = passwords.vault(routine["profile"]) if passwords else None
+        except (ValueError, OSError):
+            vault = None
+        if vault is not None and not vault.unlocked:
+            vault = None
+        bitwarden = getattr(self.registry, "bitwarden", None)
+        if bitwarden is not None and not bitwarden.unlocked:
+            bitwarden = None
+        logins = Logins(vault, bitwarden).logins(origin) if origin else []
+        if not logins:
+            return False
+        signer = PageSignin(page, origin, logins[0], self)
+
+        def finished(outcome):
+            signer.deleteLater()
+            self.signed_in.emit(dict(routine), origin, outcome)
+            then(outcome == "signed_in")
+
+        signer.finished.connect(finished)
+        signer.start()
+        return True
 
     def close(self):
         """Before the profiles go."""

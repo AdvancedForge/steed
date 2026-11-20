@@ -7,6 +7,37 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Everyday features — November 20, 2026.** **Workspaces** (Tabs menu,
+`Ctrl+Alt+W`) keep sets of tabs apart within a profile; **Help Me Write…**
+rewrites a text field with your assistant, shown first and inserted only on
+Insert, never in password or card fields; `@` in the agent chat attaches open
+tabs to a message; **Morning Brief…** is a ready routine that adds the watched
+pages that changed; **Group My Recent History into Topics…** asks your
+assistant to sort the past week's titles into topics you can reopen, keeping
+nothing.
+
+**Tools websites offer (WebMCP) — November 20, 2026.** Steed defines
+`document.modelContext` in every page, as Chrome is adding, so sites can
+register tools for agents; `page.tools` lists them and `page.call_tool` runs
+one. Read-only tools need read access, others the task's submit permission;
+results are marked untrusted and checked for text aimed at agents.
+
+**Signing in without friction — November 20, 2026.** **Bitwarden…** (General
+menu) unlocks Bitwarden through its command line for this run; its logins then
+sign in like Steed's own, filled by Steed and never shown to agents, with the
+session only in memory. Routines can sign themselves in with your saved login
+when a page they read asks, if you tick that for the routine.
+
+**Routines that need no model, and profiles in their own windows — November
+20, 2026.** A routine can carry **saved steps** (open, click, type, choose,
+wait, read) that Steed replays itself; an agent proposes them from exactly the
+page actions that worked in its chat (`steps_from_this_chat`), you review each
+step, and a step that breaks hands the run to the agent with where it stopped.
+**Just tell me when it changes** runs a routine with no assistant at all. In
+the Profile menu, **Open in New Window** opens any profile beside the current
+one and **New Profile in New Window…** (`Ctrl+Alt+N`) makes one straight into
+its own window.
+
 **Every assistant in one place, and cloud agents — November 20, 2026.** The
 sidebar's picker lists every assistant you have set up, grouped by where it
 runs, ending with **Add an assistant…**: one gallery (local models, your own

@@ -20,6 +20,11 @@ sidebar's place, signed in as you, beside the agent chat. It reaches Steed's
 tools only through what you hand it: **Share instructions…** or the reviewed
 **Use as agent…** relay, or a pairing link if it supports connectors.
 
+**Attaching tabs.** Type `@` in a message to list this window's open web tabs;
+pick one (or up to five) and it goes with the message as its title, address
+and text, sharing the room an 8 KiB message has (shown as chips you can remove
+before sending). Only what you attach is shared.
+
 ## Cloud agents and chatbots with connectors
 
 **Add an assistant → Cloud agents and chatbots with connectors** makes a
@@ -102,6 +107,28 @@ unsafe auto-approval on:
 - **A routine that meets a sign-in page hands it to you.** Steed notifies you
   (click to open the page) and gives the agent a note in place of the login
   page; sign in and the next run reads it. Watches already did this.
+
+## Tools websites offer (WebMCP)
+
+Chrome is adding WebMCP: a site registers named actions for agents with
+`document.modelContext.registerTool({name, description, inputSchema,
+annotations, execute})` (search, add to cart, book a table) so an agent can use
+them instead of clicking through the page. Qt WebEngine does not have it yet,
+so Steed defines `document.modelContext` (and the older
+`navigator.modelContext`, with `provideContext`) in every page's own world,
+including agents' private live pages. Sites that look for it register their
+tools as they would in Chrome.
+
+Any agent reaches them through two tools: `steed_page_tools` lists what a live
+page offers (name, description, input schema, and whether the site marked it
+read-only or consequential), and `steed_page_call_tool` runs one with
+arguments. A tool the site marked read-only (`readOnlyHint`) needs read access
+to that page; any other needs the task's submit permission on it, as pressing
+a button would. The site's own code runs the tool, as when you use the site;
+its result is the site's content, returned marked untrusted, with a warning
+when it seems to give instructions to agents. The journal records the tool's
+name and site, never its arguments or result. Restricted (scriptless) pages
+offer no tools.
 
 ## Replaying what an agent did
 

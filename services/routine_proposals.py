@@ -63,6 +63,21 @@ def capabilities():
             "pages": ["https://calendar.example.org/"],
             "request_id": "morning-brief-1",
         },
+        "steps": {
+            "what": "Optional saved steps Steed runs itself, with no model, before "
+            "reading: open, click (by label), type (label + text), choose (label + "
+            "option), wait (for text), read. Prefer steps_from_this_chat=true after "
+            "doing the task once here: Steed saves exactly the page actions that "
+            "worked. If a step later breaks, the run comes to you with where it "
+            "stopped.",
+            "example": [
+                {"open": "https://shop.example.org/orders"},
+                {"click": "Open orders"},
+                {"read": True},
+            ],
+        },
+        "tell": "agent (default: each run comes to you) or changes (no assistant: "
+        "Steed only tells the person when what it read changed).",
         "notes": "The person reviews and can change the routine before adding "
         "it. Each run starts a new conversation with you, containing the ask and "
         "the pages' text (read with the person's sign-ins). Anything more needs "
@@ -117,6 +132,15 @@ class RoutineProposals:
         self.service._active(task_id)
         if not self.available or not stable_id(request_id):
             raise ValueError("Routines are unavailable or the request ID is invalid")
+        if fields.pop("steps_from_this_chat", False):
+            # Exactly what worked in this chat, as Steed saw it: not a
+            # description the agent could make up.
+            done = list(self.service.step_logs.get(task_id, ()))
+            if not done:
+                raise ValueError(
+                    "No page actions to save yet: do the steps in this chat first."
+                )
+            fields["steps"] = done + [{"read": True}]
         routine = check(fields)
         source = json.dumps(routine, sort_keys=True)
         digest = hashlib.sha256(source.encode()).hexdigest()

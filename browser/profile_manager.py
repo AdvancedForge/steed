@@ -95,6 +95,8 @@ class ProfileRegistry(QObject):
 
         self.downloads.confirm_program = download_manager.confirm_program
         self.passwords = PasswordService(config, self)
+        # Bitwarden, once unlocked in Steed (General → Bitwarden…).
+        self.bitwarden = None
         from browser.passkeys import Passkeys
 
         self.passkeys = Passkeys(self)
@@ -547,6 +549,16 @@ class ProfileRegistry(QObject):
             world=webengine.PAGE_WORLD,
             when="start",
             frames=True,
+        )
+        from services import webmcp
+
+        # Tools sites offer to agents (WebMCP), as Chrome is adding.
+        webengine.add_profile_script(
+            profile,
+            "steed-webmcp",
+            webmcp.shim(),
+            world=webengine.PAGE_WORLD,
+            when="start",
         )
         from browser import privacy
 

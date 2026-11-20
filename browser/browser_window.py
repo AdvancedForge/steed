@@ -625,10 +625,19 @@ class BrowserWindow(QMainWindow):
         new_tab_action.triggered.connect(lambda: self._new_tab())
         tabs_menu.addAction(new_tab_action)
         self.saved_groups_menu = tabs_menu.addMenu("Saved Groups")
+        self.workspaces_menu = tabs_menu.addMenu("Workspaces")
+        self.workspaces_menu.aboutToShow.connect(self._fill_workspaces_menu)
+        switch_space = QAction("Switch Workspace…", self)
+        switch_space.setShortcut(QKeySequence("Ctrl+Alt+W"))
+        switch_space.triggered.connect(self.choose_workspace)
+        self.addAction(switch_space)
         self.saved_groups_menu.aboutToShow.connect(self._fill_saved_groups_menu)
         reopen_window = QAction("Reopen Closed Window", self)
         reopen_window.triggered.connect(self.reopen_closed_window)
         tabs_menu.addAction(reopen_window)
+        topics_action = QAction("Group My Recent History into Topics…", self)
+        topics_action.triggered.connect(self.history_topics)
+        tabs_menu.addAction(topics_action)
         history_action = QAction("Session History…", self)
         history_action.triggered.connect(self._open_session_history)
         tabs_menu.addAction(history_action)
@@ -692,6 +701,9 @@ class BrowserWindow(QMainWindow):
             lambda: self._new_tab(url="steed:passwords", return_tab=True)
         )
         general_menu.addAction(passwords_action)
+        bitwarden_action = QAction("Bitwarden…", self)
+        bitwarden_action.triggered.connect(self._open_bitwarden)
+        general_menu.addAction(bitwarden_action)
         fill_login_action = QAction("Fill Login", self)
         fill_login_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
         fill_login_action.triggered.connect(
@@ -1119,6 +1131,15 @@ class BrowserWindow(QMainWindow):
         # Quick shortcuts submenu
         self.profile_shortcuts_menu = QMenu("Quick Switch", self)
         profile_menu.addMenu(self.profile_shortcuts_menu)
+        # Any profile in a window of its own, beside this one, as Ctrl+Shift+N
+        # does for incognito; this window keeps its profile.
+        self.profile_windows_menu = QMenu("Open in New Window", self)
+        self.profile_windows_menu.aboutToShow.connect(self._fill_profile_windows_menu)
+        profile_menu.addMenu(self.profile_windows_menu)
+        new_profile_window = QAction("New Profile in New Window…", self)
+        new_profile_window.setShortcut(QKeySequence("Ctrl+Alt+N"))
+        new_profile_window.triggered.connect(self._new_profile_window)
+        profile_menu.addAction(new_profile_window)
         general_menu.addSeparator()
         general_menu.addAction(exit_action)
         tabs_menu.addSeparator()
@@ -2343,10 +2364,61 @@ class BrowserWindow(QMainWindow):
         menu.insertAction(first, action)
         menu.insertSeparator(first)
 
+    def history_topics(self):
+        """Your past week grouped into topics by your assistant, on request."""
+        from services.agent_once import agent_command
+        from ui.history_topics import HistoryTopicsDialog
+
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Not in incognito.", 4000)
+            return
+        command = agent_command(self.config)
+        if command is None:
+            self.status_bar.showMessage(
+                "Add an assistant first (Agents → Add an Assistant…).", 6000
+            )
+            return
+        self._present_dialog(HistoryTopicsDialog(self, command), modal=False)
+
+    def help_me_write(self, tab):
+        """Your assistant rewrites the focused text field, shown first."""
+        from services.agent_once import agent_command
+        from ui.writing_help import READ_FIELD, WritingHelpDialog
+
+        command = agent_command(self.config)
+        if command is None:
+            self.status_bar.showMessage(
+                "Add an assistant first (Agents → Add an Assistant…).", 6000
+            )
+            return
+
+        def read(field):
+            if not isinstance(field, dict) or tab not in self.tabs:
+                return
+            if field.get("error") == "sensitive":
+                self.status_bar.showMessage(
+                    "Password and card fields are yours to write.", 5000
+                )
+                return
+            if "text" not in field:
+                self.status_bar.showMessage("Click into a text field first.", 5000)
+                return
+            self._present_dialog(
+                WritingHelpDialog(self, tab, field, command), modal=False
+            )
+
+        webengine.run_script(tab.page(), READ_FIELD, read, world=webengine.STEED_WORLD)
+
     def _add_ask_agent_item(self, menu, tab, request):
         """Ask Agent About … (selection, link or page) in the page menu."""
         if self.profile_manager.current_profile_name == "search":
             return
+        editable = getattr(request, "isContentEditable", None)
+        if editable is not None and editable():
+            first = menu.actions()[0] if menu.actions() else None
+            write = QAction("Help Me Write…", menu)
+            write.triggered.connect(lambda: self.help_me_write(tab))
+            menu.insertAction(first, write)
         selection = (request.selectedText() or "").strip() if request else ""
         link = request.linkUrl() if request else QUrl()
         if selection:
@@ -2525,6 +2597,11 @@ class BrowserWindow(QMainWindow):
             )
 
         registry.routines.needs_you.connect(routine_needs_you)
+
+        def routine_noticed(routine, summary):
+            notifier.notify(f"Routine “{routine['name']}”: something changed", summary)
+
+        registry.routines.noticed.connect(routine_noticed)
 
     def ask_agent(
         self, tab, *, selection="", link="", page="", question="", send=False
@@ -2864,6 +2941,12 @@ class BrowserWindow(QMainWindow):
         if self.agent_sidebar is not None:
             self.agent_sidebar.add_assistant()
 
+    def _open_bitwarden(self):
+        from ui.bitwarden_dialog import BitwardenDialog
+
+        dialog = BitwardenDialog(self.profile_manager.registry, self)
+        self._present_dialog(dialog, modal=False)
+
     def agent_bridge(self):
         """The one pairing link for cloud agents, shared by every window."""
         registry = self.profile_manager.registry
@@ -3030,6 +3113,11 @@ class BrowserWindow(QMainWindow):
             "Search Profile (Incognito)" if profile_name == "search" else profile_name
         )
         title = f"Custom Browser - {label}"
+        if getattr(self, "tab_manager", None) is not None:
+            self._workspaces()  # Loads which workspace these tabs are.
+        space = getattr(self, "workspace", None)
+        if space and space != "Main":
+            title += f" ({space})"
         if url is None and 0 <= self.current_tab_index < len(self.tabs):
             url = self.tabs[self.current_tab_index].url()
         # Desktop password managers' auto-type can match this host. Page titles must not
@@ -3042,6 +3130,8 @@ class BrowserWindow(QMainWindow):
         self._open_settings("profile", intent="switch")
 
     def _switch_to_profile(self, profile_name: str):
+        self._workspace_store = None  # Workspaces belong to each profile.
+        self.workspace = "Main"
         try:
             self.profile_manager.registry.check_user_profile(profile_name)
         except ValueError as error:
@@ -3077,6 +3167,42 @@ class BrowserWindow(QMainWindow):
 
     def _pop_out_profile(self):
         self._open_settings("profile", intent="open_window")
+
+    def _fill_profile_windows_menu(self):
+        menu = self.profile_windows_menu
+        menu.clear()
+        current = self.profile_manager.current_profile_name
+        for name in self.profile_manager.list_profiles():
+            action = menu.addAction(
+                name + (" (this window)" if name == current else "")
+            )
+            action.triggered.connect(
+                lambda _=False, n=name: self._pop_out_profile_named(n)
+            )
+        menu.addSeparator()
+        menu.addAction("Incognito").triggered.connect(
+            lambda: self._pop_out_profile_named("search")
+        )
+
+    def _new_profile_window(self):
+        """Make a profile and open it in a new window straight away."""
+        name, ok = QInputDialog.getText(
+            self, "New profile in a new window", "Name for the new profile:"
+        )
+        if not ok or not name.strip():
+            return
+        from browser.utils import sanitize_profile_name
+
+        clean = sanitize_profile_name(name.strip())
+        if not self.profile_manager.create_profile(name.strip()):
+            QMessageBox.information(
+                self,
+                "New profile",
+                "That name is taken or cannot be used. Choose another name.",
+            )
+            return
+        self._update_profile_shortcuts()
+        self._pop_out_profile_named(clean)
 
     def _pop_out_profile_named(self, profile: str):
         try:
@@ -7056,6 +7182,165 @@ class BrowserWindow(QMainWindow):
             self._switch_tab(self.tabs.index(opened[0]))
         self._save_current_tabs()
         return group
+
+    def _workspaces(self):
+        from browser.workspaces import Workspaces
+
+        if self.tab_manager is None or self.tab_manager.private:
+            return None
+        folder = self.tab_manager.tabs_file.parent
+        cached = getattr(self, "_workspace_store", None)
+        if cached is None or cached.path.parent != folder:
+            cached = self._workspace_store = Workspaces(folder)
+            # The open tabs belong to the workspace last switched to.
+            self.workspace = cached.current
+        return cached
+
+    def _fill_workspaces_menu(self):
+        menu = self.workspaces_menu
+        menu.clear()
+        store = self._workspaces()
+        if store is None:
+            menu.addAction("Not in incognito").setEnabled(False)
+            return
+        for name in store.names():
+            action = menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(name == self.workspace)
+            action.triggered.connect(lambda _=False, n=name: self.switch_workspace(n))
+        menu.addSeparator()
+        menu.addAction("New Workspace…").triggered.connect(self.new_workspace)
+        menu.addAction("Switch Workspace… (Ctrl+Alt+W)").triggered.connect(
+            self.choose_workspace
+        )
+        current = menu.addAction("Rename This Workspace…")
+        current.setEnabled(self.workspace != "Main")
+        current.triggered.connect(self.rename_workspace)
+        remove = menu.addAction("Delete This Workspace…")
+        remove.setEnabled(self.workspace != "Main")
+        remove.triggered.connect(self.delete_workspace)
+
+    def choose_workspace(self):
+        """Type to find a workspace among many, or a new name to make one."""
+        store = self._workspaces()
+        if store is None:
+            return
+        names = store.names()
+        name, ok = QInputDialog.getItem(
+            self,
+            "Switch workspace",
+            "Workspace (type a new name to make one):",
+            names,
+            names.index(self.workspace) if self.workspace in names else 0,
+            True,
+        )
+        if not ok or not name.strip():
+            return
+        if name.strip() not in names:
+            try:
+                name = store.create(name)
+            except ValueError as error:
+                QMessageBox.information(self, "Workspaces", str(error))
+                return
+        self.switch_workspace(name.strip())
+
+    def new_workspace(self):
+        store = self._workspaces()
+        if store is None:
+            return
+        name, ok = QInputDialog.getText(self, "New workspace", "Name it:")
+        if not ok:
+            return
+        try:
+            name = store.create(name)
+        except ValueError as error:
+            QMessageBox.information(self, "Workspaces", str(error))
+            return
+        self.switch_workspace(name)
+
+    def switch_workspace(self, name):
+        """Put this window's web tabs away under the current workspace and
+        open the other workspace's tabs (each loads when you look at it)."""
+        store = self._workspaces()
+        if store is None or name == self.workspace or name not in store.spaces:
+            return
+        leaving = [
+            tab
+            for tab in self.tabs
+            if tab.url().scheme() in ("http", "https", "file")
+            and not tab.workspace_name
+        ]
+        store.put_away(
+            self.workspace,
+            [{"url": t.url().toString(), "title": t.title()} for t in leaving],
+        )
+        opening = store.take(name)
+        self.workspace = store.current = name
+        store.put_away(name, [])
+        self._restoring_tabs = True
+        try:
+            first = None
+            for page in opening:
+                tab = self._new_tab(
+                    url=page["url"],
+                    title=page["title"] or page["url"],
+                    index=len(self.tabs),
+                    return_tab=True,
+                    defer=True,
+                )
+                first = first or tab
+            if first is None:
+                first = self._new_tab(return_tab=True)
+        finally:
+            self._restoring_tabs = False
+        for tab in leaving:
+            if tab in self.tabs:
+                self._close_tab(self.tabs.index(tab), remember=False)
+        if first in self.tabs:
+            self._switch_tab(self.tabs.index(first))
+        self._save_current_tabs()
+        self._update_window_title()
+        self.status_bar.showMessage(f"Workspace: {name}", 3000)
+
+    def rename_workspace(self):
+        store = self._workspaces()
+        if store is None or self.workspace == "Main":
+            return
+        name, ok = QInputDialog.getText(
+            self, "Rename workspace", "New name:", text=self.workspace
+        )
+        if not ok:
+            return
+        try:
+            self.workspace = store.current = store.rename(self.workspace, name)
+            store.put_away(self.workspace, store.spaces[self.workspace]["tabs"])
+        except ValueError as error:
+            QMessageBox.information(self, "Workspaces", str(error))
+            return
+        self._update_window_title()
+
+    def delete_workspace(self):
+        """Delete this workspace: its open tabs move to Main."""
+        store = self._workspaces()
+        if store is None or self.workspace == "Main":
+            return
+        gone = self.workspace
+        self.workspace = store.current = "Main"
+        main = store.take("Main")
+        self._restoring_tabs = True
+        try:
+            for page in main:
+                self._new_tab(
+                    url=page["url"],
+                    title=page["title"] or page["url"],
+                    index=len(self.tabs),
+                    defer=True,
+                )
+        finally:
+            self._restoring_tabs = False
+        store.delete(gone)
+        self._save_current_tabs()
+        self._update_window_title()
 
     def _fill_saved_groups_menu(self):
         menu = self.saved_groups_menu

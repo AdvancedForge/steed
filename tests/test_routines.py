@@ -21,8 +21,22 @@ from ui.routines_dialog import RoutineEditor
 
 
 class Inbox(BaseHTTPRequestHandler):
+    orders_seen = 0
+    news = 0
+
     def do_GET(self):
         body = b"<title>Inbox</title><p>3 unread: rent due Friday</p>"
+        if self.path == "/start":
+            body = (
+                b"<title>Shop</title><label>Search <input id=q></label>"
+                b"<a href='/orders'>Open orders</a>"
+            )
+        if self.path == "/orders":
+            body = b"<title>Orders</title><p>Order 42 shipped</p>"
+            Inbox.orders_seen += 1
+        if self.path == "/news":
+            Inbox.news += 1
+            body = f"<title>News</title><p>Story {Inbox.news}</p>".encode()
         if self.path == "/mail":
             body = (
                 b"<title>Mail</title><p>Secret mail list</p>"
@@ -173,6 +187,106 @@ class RoutineTests(unittest.TestCase):
         self.assertIn("rent due Friday", text)
         titles = [call.args[0] for call in notify.call_args_list]
         self.assertIn("Routine “Mail” needs you to sign in", titles)
+
+    def run_and_wait(self, routine):
+        with (
+            patch.object(
+                BrowserWindow, "agent_message", return_value="task"
+            ) as message,
+            patch.object(DesktopNotifier, "notify") as notify,
+        ):
+            self.service.run(routine)
+            self.wait(lambda: self.service.running is None)
+        return message, notify
+
+    def test_saved_steps_run_without_a_model_and_hand_over_when_they_break(self):
+        self.window._watch_alerts()
+        start = self.url.replace("/inbox", "/start")
+        routine = self.service.add(
+            {
+                "name": "Orders",
+                "ask": "Anything shipped?",
+                "steps": [
+                    {"open": start},
+                    {"type": "Search", "text": "kettle"},
+                    {"click": "Open orders"},
+                    {"wait": "shipped"},
+                    {"read": True},
+                ],
+            }
+        )
+        message, _ = self.run_and_wait(routine)
+        text = message.call_args.args[0]
+        self.assertIn("Order 42 shipped", text)
+        self.assertNotIn("stopped", text)
+        broken = self.service.add(
+            {
+                "name": "Broken",
+                "ask": "Anything shipped?",
+                "steps": [{"open": start}, {"click": "No such link"}, {"read": True}],
+            }
+        )
+        message, _ = self.run_and_wait(broken)
+        text = message.call_args.args[0]
+        self.assertIn("stopped at step 2, “Click “No such link””", text)
+        self.assertIn("could not find it on the page", text)
+
+    def test_tell_me_of_changes_needs_no_assistant(self):
+        self.window._watch_alerts()
+        news = self.url.replace("/inbox", "/news")
+        routine = self.service.add({"name": "News", "pages": [news], "tell": "changes"})
+        message, notify = self.run_and_wait(routine)
+        message.assert_not_called()  # First run: only remembered.
+        notify.assert_not_called()
+        message, notify = self.run_and_wait(routine)
+        message.assert_not_called()
+        titles = [c.args[0] for c in notify.call_args_list]
+        self.assertIn("Routine “News”: something changed", titles)
+        with self.assertRaises(ValueError):
+            self.service.add({"name": "Nothing", "tell": "changes"})
+
+    def test_a_morning_brief_adds_what_steed_noticed(self):
+        from ui.routines_dialog import RoutinesDialog
+
+        self.window._watch_alerts()
+        dialog = RoutinesDialog(self.window)
+        shown = []
+        with patch.object(
+            BrowserWindow, "_present_dialog", lambda s, d, **_: shown.append(d)
+        ):
+            editor = dialog.add_brief()
+        values = editor.values()
+        self.assertTrue(values["brief"])
+        self.assertEqual(values["days"], [0, 1, 2, 3, 4])
+        self.assertIn("what you read", values["ask"])
+        values["pages"] = [self.url]
+        routine = self.service.add(values)
+        watches = self.window.profile_manager.registry.watches
+        with patch.object(
+            type(watches),
+            "list",
+            return_value=[
+                {
+                    "title": "Rent portal",
+                    "url": "https://rent.example/",
+                    "last_change": time.time(),
+                    "last_summary": "Payment due moved to Friday",
+                },
+                {
+                    "title": "Old",
+                    "url": "https://old.example/",
+                    "last_change": 1,
+                    "last_summary": "ancient",
+                },
+            ],
+        ):
+            message, _ = self.run_and_wait(routine)
+        text = message.call_args.args[0]
+        self.assertIn("rent due Friday", text)
+        self.assertIn("Rent portal (https://rent.example/): Payment due moved", text)
+        self.assertNotIn("ancient", text)
+        editor.deleteLater()
+        dialog.deleteLater()
 
     def test_without_an_agent_you_are_told(self):
         self.window._watch_alerts()
