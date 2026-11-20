@@ -2413,7 +2413,8 @@ class BrowserWindow(QMainWindow):
         """Ask Agent About … (selection, link or page) in the page menu."""
         if self.profile_manager.current_profile_name == "search":
             return
-        if request is not None and request.isContentEditable():
+        editable = getattr(request, "isContentEditable", None)
+        if editable is not None and editable():
             first = menu.actions()[0] if menu.actions() else None
             write = QAction("Help Me Write…", menu)
             write.triggered.connect(lambda: self.help_me_write(tab))
