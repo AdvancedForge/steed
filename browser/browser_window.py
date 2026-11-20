@@ -2535,6 +2535,11 @@ class BrowserWindow(QMainWindow):
 
         registry.routines.needs_you.connect(routine_needs_you)
 
+        def routine_noticed(routine, summary):
+            notifier.notify(f"Routine “{routine['name']}”: something changed", summary)
+
+        registry.routines.noticed.connect(routine_noticed)
+
     def ask_agent(
         self, tab, *, selection="", link="", page="", question="", send=False
     ):

@@ -1251,6 +1251,22 @@ shows it in the routine editor, where you can change anything, then **Add
 routine**, **Decline** or **Later**; nothing runs before you add it. Pending
 suggestions are in Task Permissions → Pages & Scripts.
 
+**Saved steps: routines that need no model.** A routine can carry up to 20
+steps that Steed does itself, in the routine's profile, before reading: open a
+page, click something by its label, type into a field, choose an option, wait
+for some text, read the page. After an agent has done a task once in a chat,
+it can propose the routine with `steps_from_this_chat`: Steed saves exactly the
+page actions that worked there (it notes them in memory while the chat lasts,
+never in the journal), and you see every step in the review before adding it.
+Each run replays them without asking a model; if a step no longer works (the
+site changed), the run goes to your agent as usual, saying which step stopped
+and why, so it can finish the job and propose new steps. Saved steps never type
+into password or card fields and never press a button beside a filled one.
+
+**Each run → Just tell me when it changes** needs no assistant at all: Steed
+reads the pages (after any saved steps) and notifies you only when what it read
+differs from the last run.
+
 ### Watches
 
 Ask Steed to keep an eye on a page for you. Right-click a page — or select the

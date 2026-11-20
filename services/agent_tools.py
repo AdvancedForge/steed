@@ -294,7 +294,7 @@ TOOLS = (
     ),
     tool(
         "routine.propose",
-        'Propose a routine when the person wants something done regularly ("every weekday morning, tell me what\'s on my calendar"). name; ask: what you should do each run; kind: daily (at HH:MM on days 0=Mon..6=Sun) or hours (every 1, 2, 3, 4, 6, 8 or 12 hours); pages: up to five http(s) pages to read first. The person reviews, can change it, and adds it; nothing runs before that and no access is granted. Identical retries return the original receipt.',
+        'Propose a routine when the person wants something done regularly ("every weekday morning, tell me what\'s on my calendar"). name; ask: what you should do each run; kind: daily (at HH:MM on days 0=Mon..6=Sun) or hours (every 1, 2, 3, 4, 6, 8 or 12 hours); pages: up to five http(s) pages to read first; steps: saved clicks and typing Steed replays itself with no model (see routine.capabilities), or steps_from_this_chat=true to save exactly the page actions that worked in this chat; tell: changes for no assistant at all. The person reviews, can change it, and adds it; nothing runs before that and no access is granted. Identical retries return the original receipt.',
         {
             "request_id": string(64),
             "name": string(80),
@@ -304,6 +304,13 @@ TOOLS = (
             "days": {"type": "array", "items": integer(0, 6), "maxItems": 7},
             "every": integer(1, 12),
             "pages": {"type": "array", "items": string(2048), "maxItems": 5},
+            "steps": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {"type": "object", "maxProperties": 2},
+            },
+            "steps_from_this_chat": {"type": "boolean"},
+            "tell": {**string(), "enum": ["agent", "changes"]},
         },
         ("request_id", "name", "ask"),
     ),

@@ -68,6 +68,30 @@ class RoutineEditor(HtmlSettingsDialog):
             self.every.addItem(f"Every {hours} hour{'s' * (hours != 1)}", hours)
         self.every.setCurrentIndex(max(0, self.every.findData(routine.get("every", 4))))
         layout.addWidget(self.every)
+        layout.addWidget(QLabel("Each run"))
+        self.tell = QComboBox()
+        self.tell.addItem("Your agent reads it and replies", "agent")
+        self.tell.addItem("Just tell me when it changes (no assistant)", "changes")
+        self.tell.setCurrentIndex(1 if routine.get("tell") == "changes" else 0)
+        layout.addWidget(self.tell)
+        from services.routine_steps import describe_step
+
+        self.saved_steps = list(routine.get("steps") or [])
+        self.steps_label = QLabel(
+            "Saved steps, which Steed does itself before reading, with no model:\n"
+            + "\n".join(
+                f"{n}. {describe_step(step)}"
+                for n, step in enumerate(self.saved_steps, 1)
+            )
+        )
+        self.steps_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.steps_label.setWordWrap(True)
+        self.steps_label.setProperty("role", "quote")
+        self.keep_steps = QCheckBox("Keep these saved steps")
+        self.keep_steps.setChecked(True)
+        if self.saved_steps:
+            layout.addWidget(self.steps_label)
+            layout.addWidget(self.keep_steps)
         note = QLabel(
             "Each run starts a new conversation in the agent sidebar. The pages "
             "are read with this profile's sign-ins and their text goes to your "
@@ -107,6 +131,8 @@ class RoutineEditor(HtmlSettingsDialog):
             "at": self.at.text().strip(),
             "days": [i for i, box in enumerate(self.days) if box.isChecked()],
             "every": self.every.currentData(),
+            "tell": self.tell.currentData(),
+            "steps": self.saved_steps if self.keep_steps.isChecked() else [],
         }
 
     def save(self):

@@ -639,6 +639,18 @@ class PageInspector(QObject):
         timer.timeout.connect(finish)
         timer.start(5000)
 
+    def described(self, session_id, snapshot_id, target_id):
+        """The descriptor a current snapshot gave a target, or None."""
+        state = self._states.get(session_id)
+        if (
+            state is None
+            or state.snapshot is None
+            or state.snapshot.snapshot_id != snapshot_id
+            or target_id not in state.targets
+        ):
+            return None
+        return state.targets[target_id][1]
+
     def route(self, session_id, target_id):
         """The frame route of a cross-origin frame target, or None."""
         state = self._states.get(session_id)

@@ -7,6 +7,16 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Routines that need no model, and profiles in their own windows — November
+20, 2026.** A routine can carry **saved steps** (open, click, type, choose,
+wait, read) that Steed replays itself; an agent proposes them from exactly the
+page actions that worked in its chat (`steps_from_this_chat`), you review each
+step, and a step that breaks hands the run to the agent with where it stopped.
+**Just tell me when it changes** runs a routine with no assistant at all. In
+the Profile menu, **Open in New Window** opens any profile beside the current
+one and **New Profile in New Window…** (`Ctrl+Alt+N`) makes one straight into
+its own window.
+
 **Every assistant in one place, and cloud agents — November 20, 2026.** The
 sidebar's picker lists every assistant you have set up, grouped by where it
 runs, ending with **Add an assistant…**: one gallery (local models, your own
