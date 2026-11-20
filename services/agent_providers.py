@@ -118,11 +118,37 @@ class AgentProviders(QObject):
             parent, name=entry["name"], command=entry["command"]
         )
 
+    def models(self):
+        """Models Steed runs itself, set up in Agents → Models (config "models")."""
+        from services.model_assistant import clean_model
+
+        config = getattr(self.registry, "config", None)
+        found = []
+        for entry in (config.get("models", []) if config else []) or []:
+            try:
+                found.append(clean_model(entry))
+            except ValueError:
+                continue
+        return found
+
+    def _model_factory(self, agent):
+        if not isinstance(agent, str) or not agent.startswith("model:"):
+            return None
+        entry = next((m for m in self.models() if "model:" + m["name"] == agent), None)
+        if entry is None:
+            return None
+        from services.model_assistant import ModelAssistant
+
+        return lambda parent: ModelAssistant(parent, entry=entry)
+
     def agent_choices(self):
-        """[(key, name)] of every agent a new chat can use."""
-        return [(key, AGENT_NAMES[key]) for key in ("codex", "claude")] + [
-            ("acp:" + a["name"], a["name"]) for a in self.acp_agents()
-        ]
+        """[(key, name)] of every agent a new chat can use: your models first,
+        then Codex, Claude Code and any ACP agents."""
+        return (
+            [("model:" + m["name"], m["name"]) for m in self.models()]
+            + [(key, AGENT_NAMES[key]) for key in ("codex", "claude")]
+            + [("acp:" + a["name"], a["name"]) for a in self.acp_agents()]
+        )
 
     def agent_label_for(self, task_id):
         """The agent's name for a chat's task."""
@@ -132,7 +158,7 @@ class AgentProviders(QObject):
         """The name shown for an agent key (built-in or an ACP agent)."""
         if agent in AGENT_NAMES:
             return AGENT_NAMES[agent]
-        return agent.removeprefix("acp:")
+        return agent.removeprefix("acp:").removeprefix("model:")
 
     @property
     def factory(self):
@@ -204,7 +230,11 @@ class AgentProviders(QObject):
             if session is None:
                 raise ValueError("This chat can no longer be continued.")
             agent = session["agent"]
-        factory = self.factories.get(agent) or self._acp_factory(agent)
+        factory = (
+            self.factories.get(agent)
+            or self._acp_factory(agent)
+            or self._model_factory(agent)
+        )
         if factory is None:
             raise ValueError("Choose a supported agent")
         name = self.agent_label(agent)

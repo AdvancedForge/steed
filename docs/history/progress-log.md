@@ -7,6 +7,19 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Any assistant, nothing else to install — November 19, 2026.** Agents used
+to need a coding agent (Codex, Claude Code or an ACP agent) installed first.
+Now **Use any model** in the agent sidebar adds a model Steed runs itself: a
+local one (Ollama, LM Studio, llama.cpp) or any OpenAI-compatible service with
+your own API key (OpenAI, Anthropic, Gemini, OpenRouter or another). Steed
+starts its own MCP server for the chat, bound to the chat's task, so the model
+gets the same tools, permissions, approvals and receipts as every other agent,
+and nothing else. Keys live in the desktop keyring (or an environment
+variable), never in settings. Watches and the tab organizer ask an added model
+too. Wording across the sidebar, Welcome, settings, setup and docs now says
+plainly that Steed works with any assistant. Tested against a scripted chat
+API with Steed's real tool server; not yet tried with a real model.
+
 **The engine boundary, finished — November 19, 2026.** Only
 `browser/webengine.py` talks to Qt WebEngine now (15 other files used to).
 Steed's pages decide through Steed's hooks with kinds in words; network

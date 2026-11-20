@@ -23,7 +23,7 @@
         <details id="options" class="options">
           <summary>Settings and tools <span aria-hidden="true">⌄</span></summary>
           <div class="options-content">
-            <div id="model-control"><label for="agent">Agent for new chats</label><select id="agent"></select><div id="model-row"><label for="model">Model</label><select id="model"></select></div><button type="button" class="link-button" data-action="acp_agents">Add an ACP agent…</button></div>
+            <div id="model-control"><label for="agent">Agent for new chats</label><select id="agent"></select><div id="model-row"><label for="model">Model</label><select id="model"></select></div><button type="button" class="link-button" data-action="models">Use any model…</button><button type="button" class="link-button" data-action="acp_agents">Add an ACP agent…</button></div>
             <div class="button-grid task-tools"><button id="permissions" data-action="permissions">Permissions</button><button id="files" data-action="files">Task files</button><button id="receipts" data-action="receipts">Receipts</button><button id="clear" data-action="clear">Clear chat</button></div>
             <div class="button-grid"><button data-action="setup">Connection setup</button><button id="library" data-action="library">File library</button><button id="open-tab" data-action="open_tab">Open as tab</button><button id="show-sidebar" data-action="show_sidebar">Show sidebar</button></div>
             <p id="status" class="status"></p><p id="summary" class="caption"></p>
@@ -36,8 +36,9 @@
       <section id="welcome" class="welcome">
         <h2>Start a chat</h2>
         <p id="welcome-copy">Ask for anything. It keeps working while you browse.</p>
+        <p class="welcome-note">Use any assistant you like: a model on this computer, any service with your own API key, Codex, Claude Code, or any agent that speaks MCP or ACP. Each gets the same tools and asks you the same way.</p>
         <div class="start-row" id="welcome-start-row"><button id="welcome-start" class="primary" data-action="new_chat">Start</button><label class="sr-only" for="welcome-agent">Agent</label><select id="welcome-agent" class="agent-pick"></select></div>
-        <div class="more-ways"><button id="continue-session" class="text-button" data-action="continue_session">Continue a Claude Code session</button><button id="setup" class="text-button" data-action="setup">Connect another agent</button></div>
+        <div class="more-ways"><button id="continue-session" class="text-button" data-action="continue_session">Continue a Claude Code session</button><button class="text-button" data-action="models">Use any model</button><button id="setup" class="text-button" data-action="setup">Connect another agent</button></div>
         <p id="welcome-note" class="welcome-note">Only what you send is shared. You choose what it may do.</p>
       </section>
       <section id="activity" class="activity" aria-label="Agent activity" hidden>

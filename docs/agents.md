@@ -1,6 +1,34 @@
 # Agents in Steed
 
-The agent sidebar, Codex, Claude Code and ACP chats, and local MCP access for other agents. [Documentation index](README.md).
+Steed works with any assistant: a model it runs itself (local or with your own
+API key), Codex, Claude Code, any ACP agent, or any MCP client. Each gets the
+same tools and asks you the same way. This page covers the agent sidebar, those
+chats, and local MCP access. [Documentation index](README.md).
+
+## Any model, nothing else to install
+
+Open the agent sidebar, then **Settings and tools → Use any model…** (or **Use
+any model** under Start a chat). Pick a service, then a model, and add it:
+
+- **On this computer**: Ollama (`http://localhost:11434/v1`), LM Studio or a
+  llama.cpp server. No key needed. **Find models** lists what you have pulled.
+- **A hosted service** with your own API key: OpenAI, Anthropic, Google Gemini,
+  OpenRouter, or any other OpenAI-compatible address (it must use https).
+
+The key goes to the desktop keyring (install `requirements/apps.txt`), never to
+`config.json`. Settings keep only where to find it: `keyring`, `none`, or
+`env:NAME` for a key in an environment variable. A model you add becomes the
+agent for new chats until you pick another.
+
+Steed runs the conversation itself and gives the model its own MCP tools,
+bound to the chat's task, so the model asks for permissions, gets approvals
+and leaves receipts exactly like any other agent. It gets no files, terminal or
+network of its own. **Browsing tools** (the default) offers the tools for
+reading and acting on pages, permissions, watches, routines, settings, sign-in
+and customization; **All of Steed's tools** adds files, apps, workers and
+panels for larger models. Tick **It can look at screenshots** for models that
+take images. A turn stops after 40 steps; older tool results are shortened as
+a chat grows.
 
 ## Local agent access (MCP)
 

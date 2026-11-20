@@ -131,6 +131,7 @@ class AgentSidebar(QDockWidget):
         self._recovery_dialog = None
         self._new_model = None
         self._new_agent = "codex"
+        self._agent_picked = False
         self._send_result = {"context": -1, "version": -1}
         self._error = ""
         self._load_failed = False
@@ -207,6 +208,7 @@ class AgentSidebar(QDockWidget):
 
     def set_agent(self, agent):
         if agent in dict(self._agent_choices()) and agent != self._new_agent:
+            self._agent_picked = True
             self._new_agent = agent
             self._new_model = None
             self._publish()
@@ -232,6 +234,7 @@ class AgentSidebar(QDockWidget):
             "continue_session": self.continue_session,
             "continue_chat": self.continue_chat,
             "acp_agents": self.manage_acp_agents,
+            "models": self.manage_models,
             "setup": self.setup_requested.emit,
             "requests": self.show_requests,
             "permissions": lambda: self.open_details("Permissions"),
@@ -311,6 +314,12 @@ class AgentSidebar(QDockWidget):
     def _publish(self):
         if self._detached:
             return
+        choices = self._agent_choices()
+        if choices and (not self._agent_picked or self._new_agent not in dict(choices)):
+            # Until you pick one, new chats use the first: a model you added,
+            # else Codex.
+            if self._new_agent != choices[0][0]:
+                self._new_agent, self._new_model = choices[0][0], None
         self._state.update(
             context=self._context,
             draft=self.draft,
@@ -326,7 +335,7 @@ class AgentSidebar(QDockWidget):
                         for model in _AGENT_MODELS.get(key, (None,))
                     ],
                 }
-                for key, name in self._agent_choices()
+                for key, name in choices
             ],
             send_result=dict(self._send_result),
             error=self._error,
@@ -818,10 +827,21 @@ class AgentSidebar(QDockWidget):
         else:
             dialog.show()
 
+    def manage_models(self):
+        from ui.agent_sessions import ModelsDialog
+
+        self._show_agent_dialog(
+            ModelsDialog(self.browser_window.config, self.browser_window)
+        )
+
     def manage_acp_agents(self):
         from ui.agent_sessions import AcpAgentsDialog
 
-        dialog = AcpAgentsDialog(self.browser_window.config, self.browser_window)
+        self._show_agent_dialog(
+            AcpAgentsDialog(self.browser_window.config, self.browser_window)
+        )
+
+    def _show_agent_dialog(self, dialog):
         dialog.finished.connect(lambda _: self._publish())
         present = getattr(self.browser_window, "_present_dialog", None)
         if present is not None:

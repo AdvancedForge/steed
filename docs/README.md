@@ -24,9 +24,9 @@ Settings, `config.json` keys and where Steed keeps its data.
 
 ## [Agents in Steed](agents.md)
 
-The agent sidebar, Codex, Claude Code and ACP chats, and local MCP access for other agents.
+Any assistant you like: a model Steed runs itself, Codex, Claude Code, ACP agents, or any MCP client.
 
-[Daily browser access and permission diagnostics](agents.md#daily-browser-access-and-permission-diagnostics), [Unsafe automatic agent approval (YOLO mode)](agents.md#unsafe-automatic-agent-approval-yolo-mode), [External-agent conversation sidebar](agents.md#external-agent-conversation-sidebar), [HTTP connection](agents.md#http-connection), [Shared tools and permissions](agents.md#shared-tools-and-permissions), [Watching and taking control](agents.md#watching-and-taking-control), [Continuing previous work](agents.md#continuing-previous-work), [Checking an archived app receipt](agents.md#checking-an-archived-app-receipt), [Results and connection limits](agents.md#results-and-connection-limits).
+[Any model, nothing else to install](agents.md#any-model-nothing-else-to-install), [Daily browser access and permission diagnostics](agents.md#daily-browser-access-and-permission-diagnostics), [Unsafe automatic agent approval (YOLO mode)](agents.md#unsafe-automatic-agent-approval-yolo-mode), [External-agent conversation sidebar](agents.md#external-agent-conversation-sidebar), [HTTP connection](agents.md#http-connection), [Shared tools and permissions](agents.md#shared-tools-and-permissions), [Watching and taking control](agents.md#watching-and-taking-control), [Continuing previous work](agents.md#continuing-previous-work), [Checking an archived app receipt](agents.md#checking-an-archived-app-receipt), [Results and connection limits](agents.md#results-and-connection-limits).
 
 ## [Agent task services](task-services.md)
 

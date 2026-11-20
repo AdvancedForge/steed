@@ -101,7 +101,8 @@ class OrganizeDialog(QDialog):
         self.status = QLabel(
             f"Asking {agent_name(command)} (it sees only tab titles and addresses)…"
             if command
-            else "Install Claude Code or Codex to have an agent organize your tabs."
+            else "Add a model (Use any model in the agent sidebar) or install a coding "
+            "agent such as Claude Code or Codex to have an agent organize your tabs."
         )
         self.status.setWordWrap(True)
         self.status.setProperty("role", "quote")

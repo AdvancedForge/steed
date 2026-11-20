@@ -983,7 +983,7 @@ def welcome_steps(background, glass):
         '<div class="actions"><a class="button" href="steed://action/import">Import…</a>'
         '<a class="button secondary" href="#agent">Not now</a></div></section>'
         '<section id="agent" class="step"><h1>Meet your agent.</h1>'
-        "<p>Codex, Claude Code or another agent works beside you, only with what you allow.</p>"
+        "<p>Any assistant you like (a local model, your own API key, Codex, Claude Code or another agent) works beside you, only with what you allow.</p>"
         '<div class="actions"><a class="button" href="steed://action/agents">Open the agent panel</a>'
         '<a class="button secondary" href="steed://action/start">Start browsing</a></div></section>'
         '<a class="skip" href="steed://action/start">Skip the tour</a></div>'
