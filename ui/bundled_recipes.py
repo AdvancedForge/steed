@@ -11,7 +11,7 @@ class BundledRecipesDialog(HtmlSettingsDialog):
     def __init__(self, manager, parent=None):
         super().__init__(parent)
         self.manager = manager
-        self.setWindowTitle("Add a Service")
+        self.setWindowTitle("Add a service")
         self.resize(620, 350)
         layout = QVBoxLayout(self)
         intro = QLabel(

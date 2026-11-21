@@ -1323,7 +1323,7 @@ site changed), the run goes to your agent as usual, saying which step stopped
 and why, so it can finish the job and propose new steps. Saved steps never type
 into password or card fields and never press a button beside a filled one.
 
-**Morning Brief…** in Routines makes a brief that is ready to go: weekdays
+**Morning brief…** in Routines makes a brief that is ready to go: weekdays
 at 08:00, asking for what needs your attention today, then anything else
 worth knowing, ending with a line of what was read. Add the pages it should
 read (your calendar, your inbox); with **Add what Steed noticed** on, Steed

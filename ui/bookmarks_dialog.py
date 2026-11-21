@@ -104,7 +104,7 @@ class BookmarksDialog(HtmlSettingsDialog):
         self.open_url = open_url
         self.close_on_open = close_on_open
         self.profile_identity = profile_identity(pages, profile)
-        self.setWindowTitle("Manage Bookmarks • " + profile)
+        self.setWindowTitle("Bookmarks")
         self.resize(680, 480)
         layout = QVBoxLayout(self)
         filters = QHBoxLayout()
@@ -121,6 +121,9 @@ class BookmarksDialog(HtmlSettingsDialog):
         filters.addWidget(self.folder)
         layout.addLayout(filters)
         self.items = QListWidget()
+        self.items.setProperty(
+            "empty", "No bookmarks yet. Press Ctrl+D on a page to keep it here."
+        )
         self.items.itemDoubleClicked.connect(
             lambda _: self.open_selected() if self.open_url else self.edit()
         )

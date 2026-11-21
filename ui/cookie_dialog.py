@@ -65,6 +65,7 @@ class CookieDialog(HtmlSettingsDialog):
 
         # Cookie table
         self.table = QTableWidget()
+        self.table.setProperty("empty", "No cookies stored for this profile.")
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(
             ["Domain", "Name", "Value", "Path", "Expires", "Secure"]

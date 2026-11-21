@@ -17,6 +17,7 @@ from browser.layout_preferences import TOOLBAR_ORDER, clean_toolbar_order
 from ui.chrome_style import (
     chrome_colors,
     icon,
+    mix,
     popup_stylesheet,
     toolbar_stylesheet,
 )
@@ -271,6 +272,7 @@ class AddressBar(QWidget):
         self.zoom_btn.setObjectName("TextButton")
         self.zoom_btn.setToolTip("Reset page zoom (Ctrl+0)")
         self.zoom_btn.clicked.connect(self.reset_zoom_requested.emit)
+        self.zoom_shown = False  # Only when a page is zoomed in or out.
         # Appears only while something downloads, and briefly afterwards.
         self.downloads_btn = QPushButton()
         self.downloads_btn.setObjectName("TextButton")
@@ -341,6 +343,7 @@ class AddressBar(QWidget):
             button.setVisible(
                 name not in self.hidden_toolbar
                 and (name != "downloads" or self.downloads_shown)
+                and (name != "zoom" or self.zoom_shown)
                 and (name != "media" or self.media_shown)
                 and (name != "extensions" or self.extensions_shown)
             )
@@ -353,6 +356,12 @@ class AddressBar(QWidget):
                 layout.addWidget(self.address_input, 1)
             elif name not in self.hidden_toolbar:
                 layout.addWidget(self.buttons[name])
+
+    def show_zoom(self, percent: int) -> None:
+        """The zoom level beside the address, only when it is not 100%."""
+        self.zoom_shown = percent != 100
+        self.zoom_btn.setText(f"{percent}%")
+        self.zoom_btn.setVisible(self.zoom_shown and "zoom" not in self.hidden_toolbar)
 
     def show_workspace(self, name: str | None) -> None:
         """Show the workspace's name, or hide the switcher with only one."""
@@ -557,7 +566,13 @@ class AddressBar(QWidget):
             if name == "extensions":
                 button = self.extensions_btn
             if name in BUTTON_ICONS:
-                button.setIcon(icon(BUTTON_ICONS[name], colors["ink"]))
+                button.setIcon(
+                    icon(
+                        BUTTON_ICONS[name],
+                        colors["ink"],
+                        disabled=mix(colors["ink"], colors["toolbar"], 0.62),
+                    )
+                )
                 button.setIconSize(QSize(18, 18))
         self._update_site_icon()
 

@@ -17,7 +17,7 @@ class GroupDialog(HtmlSettingsDialog):
     def __init__(self, window):
         super().__init__(window)
         self.window = window
-        self.setWindowTitle("Tab Groups")
+        self.setWindowTitle("Tab groups")
         self.resize(500, 350)
         layout = QVBoxLayout(self)
         self.list = QListWidget()

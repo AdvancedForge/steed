@@ -35,7 +35,7 @@ class AppConnectionsDialog(HtmlSettingsDialog):
     def __init__(self, manager, parent=None):
         super().__init__(parent)
         self.manager = manager
-        self.setWindowTitle("App Connections")
+        self.setWindowTitle("App connections")
         self.resize(720, 620)
         layout = QVBoxLayout(self)
         intro = QLabel(

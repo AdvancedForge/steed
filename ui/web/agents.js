@@ -328,6 +328,7 @@ window.steedUI = {render(next) {
   visible("unsafe", next.yolo);
   visible("paused", next.paused);
   visible("bridge-on", next.bridge);
+  visible("hide-sidebar", !!next.docked);
   visible("pause-agents", next.available && !next.paused);
   visible("welcome", !next.usable);
   visible("welcome-start-row", next.available && next.has_provider);

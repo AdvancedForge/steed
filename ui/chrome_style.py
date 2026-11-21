@@ -29,23 +29,29 @@ ICONS = {
 }
 
 
-def icon(name, color, size=20):
-    """Render one stroke icon in a colour, sharp on high-DPI screens."""
-    svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-        f'stroke="{color}" stroke-width="2" stroke-linecap="round" '
-        f'stroke-linejoin="round">{ICONS[name]}</svg>'
-    )
-    renderer = QSvgRenderer(QByteArray(svg.encode()))
+def icon(name, color, size=20, disabled=None):
+    """Render one stroke icon in a colour, sharp on high-DPI screens;
+    disabled: the colour it takes when its button is unavailable (Qt's own
+    greying reads as enabled on dark bars)."""
     result = QIcon()
-    for scale in (1, 2):
-        pixmap = QPixmap(QSize(size * scale, size * scale))
-        pixmap.setDevicePixelRatio(scale)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        renderer.render(painter, QRectF(0, 0, size, size))
-        painter.end()
-        result.addPixmap(pixmap)
+    shades = [(color, QIcon.Mode.Normal)]
+    if disabled:
+        shades.append((disabled, QIcon.Mode.Disabled))
+    for shade, mode in shades:
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+            f'stroke="{shade}" stroke-width="2" stroke-linecap="round" '
+            f'stroke-linejoin="round">{ICONS[name]}</svg>'
+        )
+        renderer = QSvgRenderer(QByteArray(svg.encode()))
+        for scale in (1, 2):
+            pixmap = QPixmap(QSize(size * scale, size * scale))
+            pixmap.setDevicePixelRatio(scale)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter, QRectF(0, 0, size, size))
+            painter.end()
+            result.addPixmap(pixmap, mode)
     return result
 
 

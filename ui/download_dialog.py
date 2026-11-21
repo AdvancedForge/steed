@@ -73,6 +73,9 @@ class DownloadDialog(HtmlSettingsDialog):
         self.search.setClearButtonEnabled(True)
         layout.addWidget(self.search)
         self.table = QTableWidget(0, 5)
+        self.table.setProperty(
+            "empty", "No downloads yet. Files you download appear here."
+        )
         self.table.setHorizontalHeaderLabels(
             ["Name / Profile", "Progress", "Status", "Destination", "Error"]
         )

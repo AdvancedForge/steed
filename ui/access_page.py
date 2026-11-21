@@ -10,9 +10,10 @@ from ui.html_surface import HtmlSurface
 AREA_TEXT = {
     "agents": (
         "Agents",
-        "Any connected agent or model. Never refuses a request "
-        "without asking you; Always approves it without asking. Applies to new "
-        "requests; access already approved stays until the task ends.",
+        "Any agent or model you use. Never: it can't. Ask: you approve each "
+        "request. Always: no prompt (only for public sites and your Downloads "
+        "folder). Applies to new requests; access already approved stays until "
+        "the task ends.",
     ),
     "pages": (
         "Local pages",

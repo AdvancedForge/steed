@@ -176,26 +176,36 @@ class RoutinesDialog(HtmlSettingsDialog):
         intro.setProperty("role", "note")
         layout.addWidget(intro)
         self.table = QTableWidget(0, 3)
+        self.table.setProperty(
+            "empty", "No routines yet. Start with a morning brief, or make your own."
+        )
         self.table.setHorizontalHeaderLabels(["Routine", "When", "Last run"])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.itemDoubleClicked.connect(lambda _: self.edit_selected())
         layout.addWidget(self.table)
         row = QHBoxLayout()
-        for text, callback in (
-            ("New Routine…", self.add),
-            ("Morning Brief…", self.add_brief),
-            ("Edit…", self.edit_selected),
-            ("Run now", self.run_selected),
-            ("Pause or resume", self.pause_selected),
-            ("Remove", self.remove_selected),
+        self.selection_buttons = []
+        for text, callback, needs in (
+            ("New routine…", self.add, False),
+            ("Morning brief…", self.add_brief, False),
+            ("Edit…", self.edit_selected, True),
+            ("Run now", self.run_selected, True),
+            ("Pause", self.pause_selected, True),
+            ("Remove", self.remove_selected, True),
         ):
             button = QPushButton(text)
-            if text == "New Routine…":
+            if text == "New routine…":
                 button.setProperty("primary", True)
+            if text == "Remove":
+                row.addStretch()  # Apart from the things that make or run.
             button.clicked.connect(callback)
             row.addWidget(button)
+            if needs:
+                self.selection_buttons.append(button)
+        self.pause_button = self.selection_buttons[2]
         layout.addLayout(row)
+        self.table.itemSelectionChanged.connect(self._selection_changed)
         self.service.changed.connect(self.refresh)
         self.finished.connect(lambda _: self.service.changed.disconnect(self.refresh))
         self.refresh()
@@ -216,6 +226,15 @@ class RoutinesDialog(HtmlSettingsDialog):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, routine["id"])
                 self.table.setItem(index, column, item)
+        self._selection_changed()
+
+    def _selection_changed(self):
+        routine = self.selected()
+        for button in self.selection_buttons:
+            button.setEnabled(routine is not None)
+        self.pause_button.setText(
+            "Resume" if routine is not None and routine.get("paused") else "Pause"
+        )
 
     def selected(self):
         item = (

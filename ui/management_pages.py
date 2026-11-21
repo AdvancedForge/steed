@@ -69,6 +69,9 @@ class WatchesDialog(HtmlSettingsDialog):
             )
         )
         self.items = QTableWidget(0, 5)
+        self.items.setProperty(
+            "empty", "No watches yet. Right-click a page and choose Watch with Agent."
+        )
         self.items.setHorizontalHeaderLabels(
             ["Page", "Tell me", "Then", "How often", "Last news"]
         )
@@ -175,6 +178,7 @@ class HistoryDialog(HtmlSettingsDialog):
             QLabel("Most recent visits first. History belongs to this profile.")
         )
         self.items = QTableWidget(0, 2)
+        self.items.setProperty("empty", "No history yet. Pages you visit appear here.")
         self.items.setHorizontalHeaderLabels(["Page", "Address"])
         self.items.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.items.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)

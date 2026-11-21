@@ -254,6 +254,7 @@ class AgentSidebar(QDockWidget):
             "library": self.open_library,
             "open_tab": lambda: self.change_display("_open_agent_tab"),
             "show_sidebar": lambda: self.change_display("_toggle_agent_sidebar"),
+            "hide_sidebar": self._hide_sidebar,
         }
         if (
             self._detached
@@ -371,6 +372,7 @@ class AgentSidebar(QDockWidget):
             send_result=dict(self._send_result),
             mention_tabs=[] if self._private else self._mention_tabs(),
             skills=[] if self._private else self._skill_names(),
+            docked=getattr(self.browser_window, "agent_tab", None) is None,
             error=self._error,
             dark=bool(
                 getattr(
@@ -888,6 +890,11 @@ class AgentSidebar(QDockWidget):
         )
         bridge = getattr(registry, "agent_bridge_link", None)
         return bool(bridge is not None and bridge.state in ("starting", "on"))
+
+    def _hide_sidebar(self):
+        hide = getattr(self.browser_window, "_toggle_agent_sidebar", None)
+        if hide is not None and self.state.get("docked"):
+            hide(False)
 
     def set_agents_paused(self, paused):
         try:

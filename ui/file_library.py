@@ -32,7 +32,7 @@ class FileLibraryDialog(HtmlSettingsDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service
-        self.setWindowTitle("Agent File Library")
+        self.setWindowTitle("File library")
         self.resize(850, 620)
         self._loading = False
         self._job = None

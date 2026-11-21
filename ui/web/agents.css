@@ -96,9 +96,13 @@
 .workspace .welcome h2 { font-size: clamp(22px, 4vw, 28px); margin: 0; }
 .workspace .welcome .start-row { display: flex; gap: 8px; width: 100%; max-width: 380px; margin-top: 6px; }
 .workspace .welcome .start-row .primary { flex: 1; width: auto; max-width: none; margin: 0; }
-.workspace .welcome .agent-pick { width: auto; max-width: 48%; border-radius: 999px; padding: 8px 12px; }
+.workspace .welcome .agent-pick { width: auto; max-width: 48%; border-radius: 999px; padding: 8px 34px 8px 14px; min-height: 38px;
+  appearance: none; border: 1px solid var(--border); background-color: var(--surface); color: var(--ink);
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 19px) 52%, calc(100% - 14px) 52%; background-size: 5px 5px; background-repeat: no-repeat; }
 .workspace .welcome .more-ways { display: flex; flex-wrap: wrap; gap: 4px 16px; max-width: 380px; }
-.workspace .welcome .more-ways button { width: auto; margin: 0; font-size: 12.5px; }
+.workspace .welcome .more-ways button { width: auto; margin: 0; font-size: 12.5px; color: var(--accent); }
+.workspace .welcome .more-ways button:hover:enabled { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 
 /* Wide: the rail stands on the left. */
 @media (min-width: 760px) {
@@ -134,3 +138,6 @@
 .tab-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 4px 3px 10px; border-radius: 999px;
   background: var(--soft); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-chip button { border: 0; background: transparent; color: var(--muted); padding: 0 6px; min-height: 0; font-size: 14px; cursor: pointer; }
+
+/* No chats yet: say so, rather than an empty box. */
+.workspace .chat-list:empty::before { content: "No chats yet."; display: block; padding: 10px 12px; color: var(--muted); font-size: 12.5px; }

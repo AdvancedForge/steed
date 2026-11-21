@@ -97,7 +97,7 @@ class LayoutDialog(HtmlSettingsDialog):
 
     def __init__(self, preferences: LayoutPreferences, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Layout Settings")
+        self.setWindowTitle("Browser layout")
         self.setMinimumWidth(520)
         self.resize(640, 640)
         self._saved = preferences.copy()

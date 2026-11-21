@@ -34,7 +34,7 @@ class TaskDialog(HtmlSettingsDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service
-        self.setWindowTitle("Task Permissions")
+        self.setWindowTitle("Agent tasks & permissions")
         self.resize(800, 600)
         layout = QVBoxLayout(self)
         notice = QLabel(
