@@ -271,6 +271,38 @@ TOOLS = (
         ("request_id",),
     ),
     tool(
+        "creation.capabilities",
+        "Discover what custom_page.propose and automation.propose accept: a page of the person's own (steed:<name>, HTML and JavaScript with Steed's page API) and an automation (a trigger and steps, with an example).",
+    ),
+    tool(
+        "custom_page.propose",
+        "Propose a page of the person's own, opened as steed:<name> (a dashboard, a launcher, a small tool): name (lowercase letters, digits, dashes), title, html (one body with inline style and script). The person sees the HTML and must press Add; nothing is saved before that. Use a stable request_id and poll creation.status.",
+        {
+            "request_id": string(64),
+            "name": string(32),
+            "title": string(80),
+            "html": string(262144),
+        },
+        ("request_id", "name", "html"),
+    ),
+    tool(
+        "automation.propose",
+        "Propose an automation (see creation.capabilities): name, trigger {kind: manual|startup|schedule|watch, ...} and steps [{do: gather|noticed|read|fetch|ask|chat|skill|notify|open|contains|changed, value, ...}]. The person sees every step and must press Add; nothing runs before that. Use a stable request_id and poll creation.status.",
+        {
+            "request_id": string(64),
+            "name": string(80),
+            "trigger": {"type": "object"},
+            "steps": {"type": "array", "maxItems": 20, "items": {"type": "object"}},
+        },
+        ("request_id", "name", "steps"),
+    ),
+    tool(
+        "creation.status",
+        "Poll a custom_page.propose or automation.propose request: awaiting_approval, applied (with saved_as) or denied.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "settings.status",
         "Poll a settings.propose request.",
         {"request_id": string(64)},

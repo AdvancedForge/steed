@@ -183,6 +183,17 @@ tracking removal, what Steed remembers, cookie sharing, the user agent, agent
 settings) cannot be proposed; capabilities lists what can, with the current
 preferences and every menu command's shortcut so a proposal can be precise.
 
+Ask an agent for a page or an automation ("make me a dashboard of my price
+watches", "every Friday, check these three shops and tell me what changed")
+and it can propose one with `steed_creation_capabilities`,
+`steed_custom_page_propose`, `steed_automation_propose` and
+`steed_creation_status`. The popup shows a page's whole HTML and JavaScript,
+or an automation's trigger and every step in order, and saves nothing until
+you press **Add**; it goes to the profile of the window you review it in.
+Proposals are checked exactly like what you make yourself (reserved names,
+web addresses only, known steps), at most three wait per task, and they grant
+no access: what a page's scripts may do still follows Access → Local pages.
+
 Agents can **suggest a watch** when you ask for one in a chat ("tell me when
 tickets go on sale") with `steed_watch_capabilities`, `steed_watch_propose`
 (`url`, optional `title`, `instruction`, `every` of `15m`/`hourly`/`6h`/

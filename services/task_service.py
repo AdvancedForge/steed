@@ -152,6 +152,9 @@ class TaskService(QObject):
         from services.settings_proposals import SettingsProposals
 
         self.settings_proposals = SettingsProposals(self)
+        from services.creation_proposals import CreationProposals
+
+        self.creations = CreationProposals(self)
         if hasattr(self.backend, "changed"):
             self.backend.changed.connect(self._session_changed)
         if hasattr(self.backend, "blocked"):
@@ -202,6 +205,29 @@ class TaskService(QObject):
                 ),
                 "settings.status": lambda task_id, request_id: self._layout_action(
                     self.settings_proposals.status, task_id, request_id
+                ),
+                "creation.capabilities": lambda task_id: self._layout_action(
+                    lambda: (
+                        self._active(task_id),
+                        self.creations.capabilities(),
+                    )[1]
+                ),
+                "custom_page.propose": lambda task_id, request_id, **document: (
+                    self._layout_action(
+                        self.creations.propose, task_id, request_id, "page", document
+                    )
+                ),
+                "automation.propose": lambda task_id, request_id, **document: (
+                    self._layout_action(
+                        self.creations.propose,
+                        task_id,
+                        request_id,
+                        "automation",
+                        document,
+                    )
+                ),
+                "creation.status": lambda task_id, request_id: self._layout_action(
+                    self.creations.status, task_id, request_id
                 ),
                 "routine.capabilities": self._routine_capabilities,
                 "routine.propose": lambda task_id, **arguments: self._layout_action(
@@ -3142,6 +3168,7 @@ class TaskService(QObject):
         self.settings_proposals.cancel_task(
             task_id, interrupted=status == "interrupted"
         )
+        self.creations.cancel_task(task_id, interrupted=status == "interrupted")
         self._cancel_app_jobs(task_id)
         try:
             for session_id, owner in list(self._sessions.items()):
