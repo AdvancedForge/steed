@@ -429,6 +429,32 @@ In the panel you can choose:
 **More options…** (also General → Customize New Tab…) opens the full dialog
 with the classic sections, a feed, a custom colour and your own HTML.
 
+### Your own steed: pages
+
+**View → Your Pages…** makes pages of your own, opened like Steed's as
+`steed:<name>` in any tab: a dashboard of your watches and routines, a
+launcher for your skills, a board of links, a small tool. Start from a
+template (a dashboard, a skills launcher, a blank page), write the HTML and
+JavaScript yourself, or describe it and press **Write it for me** to have your
+assistant draft it. Type its address to open it, or set it as your New Tab in
+Settings (New tab page: `steed:dashboard`). Names are lowercase letters,
+digits and dashes; Steed's own page names stay Steed's.
+
+A page's scripts reach Steed with `fetch("/api/…")`, each capability allowed in
+**Access & Permissions → Local pages** (never by default, ask, or always):
+
+| Endpoint | What it gives or does | Capability |
+| --- | --- | --- |
+| `fetch?url=…` | a web address, without cookies | Load data from the web |
+| `tabs`, `history`, `bookmarks` | titles and addresses | See tabs, history, bookmarks |
+| `watches`, `routines`, `skills` | what you watch (and what changed), your routines, your skills | See your watches, routines and skills |
+| `run-skill?id=…`, `run-routine?id=…`, `open?url=…`, `notify?title=…&text=…` | run one of yours, open a web page, notify you | Run your skills and routines, open tabs and notify you |
+
+Refusals come back as JSON with `"status": 403`. Pages keep their own
+`localStorage`. They run under a strict content policy: their own inline
+scripts and styles, images from the web, no other scripts. Kept in the
+profile's start-page data; not in incognito.
+
 ### Workspaces
 
 **Tabs → Workspaces** keeps what you are working on (Work, Trip, Taxes) apart
@@ -1332,6 +1358,39 @@ also adds the watched pages that changed since the last run.
 **Each run → Just tell me when it changes** needs no assistant at all: Steed
 reads the pages (after any saved steps) and notifies you only when what it read
 differs from the last run.
+
+### Automations
+
+**Agents → Automations → Manage Automations…** makes your own workflows. A
+routine asks your agent on a schedule; an automation is the general form,
+and many need no AI at all.
+
+**What starts it:** you (Agents → Automations, the command palette, or a button
+on one of your pages), a schedule (every day at a time, or every few hours), a
+watched page changing (with what changed), or Steed starting.
+
+**Its steps, in order**, each able to use what the step before found by
+writing `{last}`:
+
+| Step | What it does |
+| --- | --- |
+| Read a page | the page's text, read in the background with your sign-ins |
+| Fetch a web address | the response, without cookies |
+| Ask your assistant | a one-off answer from the assistant you chose, with no tools |
+| Start a chat | a new agent chat with the text, which may act with your approvals |
+| Run a skill | one of your skills, with the text |
+| Notify me | a desktop notification |
+| Open a page | a new tab |
+| Go on only if it contains | stops unless the text so far contains something |
+| Go on only if it changed | stops unless the text differs from the last run's |
+
+For example: every morning, read the bank's rates page, go on only if it
+changed, ask your assistant for the change in one line, notify me. **Write it
+for me** turns a description into an automation for you to check step by step
+before saving. Runs happen one at a time; Automations shows when each last ran
+and how it ended. Pause All Agents stops steps that need an assistant. Your own
+pages can list automations and run them (`/api/automations`,
+`/api/run-automation?id=…`). Kept in `automations.json`; never in incognito.
 
 ### Watches
 

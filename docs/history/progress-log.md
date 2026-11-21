@@ -7,6 +7,21 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Automations — November 21, 2026.** Your own workflows, the general form of
+routines: started by you, a schedule, a watched page changing or Steed
+starting, then steps in order (read a page, fetch an address, ask your
+assistant, start an agent chat, run a skill, notify, open a page, go on only if
+it contains something or changed), each using what the step before found.
+Many need no AI. **Write it for me** drafts one from a description; your pages
+can list and run them.
+
+**Your own steed: pages — November 21, 2026.** **View → Your Pages…** makes
+`steed:<name>` tabs of your own in HTML and JavaScript (from a dashboard or
+launcher template, by hand, or written by your assistant from a description),
+usable as your New Tab. Besides web data, tabs, history and bookmarks, their
+scripts can read your watches, routines and skills and run them, open pages
+and notify you, each behind Access → Local pages.
+
 **A beautification pass — November 21, 2026.** Three design reviews of every
 Steed page, dialog and the browser chrome, in light and dark, then fixes:
 - **Dark mode:** cards, fields and buttons keep visible edges (surfaces and

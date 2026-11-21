@@ -328,6 +328,16 @@ class ProfileRegistry(QObject):
         return self._routines
 
     @property
+    def automations(self):
+        """Your workflows: a trigger and steps (services.automations)."""
+        if getattr(self, "_automations", None) is None:
+            from services.automations import Automations
+
+            self._automations = Automations(self)
+            self.watches.fired.connect(self._automations.watch_changed)
+        return self._automations
+
+    @property
     def skills(self):
         """Things you ask your assistant often (services.skills)."""
         if getattr(self, "_skills", None) is None:
@@ -758,6 +768,8 @@ class ProfileRegistry(QObject):
         self.safe_browsing.close()
         if getattr(self, "_routines", None) is not None:
             self._routines.close()  # Its page goes before the profiles.
+        if getattr(self, "_automations", None) is not None:
+            self._automations.close()  # Its page goes before the profiles.
         self.updates.close()
         if self._app_connections is not None:
             self._app_connections.close()

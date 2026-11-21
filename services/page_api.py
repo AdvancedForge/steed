@@ -21,7 +21,31 @@ ENDPOINTS = {
     "tabs": "tabs",
     "history": "history",
     "bookmarks": "bookmarks",
+    # Your own pages also see and run what you made in Steed.
+    "watches": "steed",
+    "routines": "steed",
+    "skills": "steed",
+    "run-skill": "automation",
+    "run-routine": "automation",
+    "automations": "steed",
+    "run-automation": "automation",
+    "open": "automation",
+    "notify": "automation",
 }
+# What only your own steed:<name> pages may ask (not New Tab or panel apps).
+YOURS_ONLY = frozenset(
+    {
+        "watches",
+        "routines",
+        "skills",
+        "automations",
+        "run-skill",
+        "run-routine",
+        "run-automation",
+        "open",
+        "notify",
+    }
+)
 FETCH_LIMIT = 2 * 1024 * 1024
 FETCH_TIMEOUT_MS = 15000
 HISTORY_LIMIT = 200
@@ -35,14 +59,24 @@ def api_endpoint(url):
 
     Pages are the custom New Tab and Welcome pages and side-panel apps.
     """
+    from services.start_pages import RESERVED_NAMES, YOUR_PAGE_NAME
+
+    host = url.host() or ""
+    yours = (
+        YOUR_PAGE_NAME.fullmatch(host)
+        and host not in RESERVED_NAMES
+        and not host.startswith("app-")
+    )
     if (
         url.scheme() == "steed"
-        and (url.host() in ("newtab", "welcome") or APP_HOST.fullmatch(url.host()))
+        and (host in ("newtab", "welcome") or APP_HOST.fullmatch(host) or yours)
         and url.path().startswith("/api/")
         and not url.userInfo()
         and url.port() == -1
     ):
         name = url.path().removeprefix("/api/")
+        if name in YOURS_ONLY and not yours:
+            return None
         return name if name in ENDPOINTS else None
     return None
 
@@ -87,6 +121,8 @@ class PageApi(QObject):
     def _custom_page(self, host):
         if APP_HOST.fullmatch(host):
             return self.pages.app(self.profile_name, host[4:]) is not None
+        if host not in ("newtab", "welcome"):
+            return self.pages.your_page(self.profile_name, host) is not None
         state = self.pages.state(self.profile_name)
         return bool(state.get("html" if host == "newtab" else "welcome_html"))
 
@@ -94,6 +130,8 @@ class PageApi(QObject):
         if APP_HOST.fullmatch(host):
             app = self.pages.app(self.profile_name, host[4:])
             return f"Your panel app “{app['name'] if app else 'app'}”"
+        if host not in ("newtab", "welcome"):
+            return f"Your page steed:{host}"
         return (
             "Your custom New Tab page"
             if host == "newtab"
@@ -141,6 +179,12 @@ class PageApi(QObject):
             self._fetch(job, url)
             return
         registry = self.pages.registry
+        if name in YOURS_ONLY:
+            try:
+                self._json(job, self._yours(name, parse_qs(url.query())))
+            except ValueError as error:
+                self._json(job, {"error": str(error)}, 400)
+            return
         if name == "bookmarks":
             data = [
                 {"title": b.get("title", ""), "url": b.get("url", "")}
@@ -156,6 +200,104 @@ class PageApi(QObject):
         else:
             data = self._tabs()
         self._json(job, data)
+
+    def _window(self):
+        """A window of this profile, to run things in."""
+        from PyQt6.QtWidgets import QApplication
+
+        windows = [
+            w
+            for w in QApplication.topLevelWidgets()
+            if getattr(w, "profile_manager", None) is not None
+            and not getattr(w, "_closing", True)
+            and w.profile_manager.registry is self.pages.registry
+            and w.profile_manager.current_profile_name == self.profile_name
+        ]
+        active = QApplication.activeWindow()
+        return active if active in windows else (windows[0] if windows else None)
+
+    def _yours(self, name, query):
+        """Dashboards and automations for your own pages."""
+        registry = self.pages.registry
+        one = lambda key: (query.get(key) or [""])[0]  # noqa: E731
+        if name == "watches":
+            return [
+                {
+                    "title": w.get("title", ""),
+                    "url": w.get("url", ""),
+                    "last_change": w.get("last_change", 0),
+                    "last_summary": w.get("last_summary", ""),
+                    "paused": bool(w.get("paused")),
+                }
+                for w in registry.watches.list()
+            ]
+        if name == "routines":
+            from services.routines import describe
+
+            return [
+                {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "when": describe(r),
+                    "last_run": r.get("last_run", 0),
+                    "paused": bool(r.get("paused")),
+                }
+                for r in registry.routines.list()
+            ]
+        if name == "automations":
+            from services.automations import describe_trigger
+
+            return [
+                {
+                    "id": a["id"],
+                    "name": a["name"],
+                    "runs": describe_trigger(a["trigger"]),
+                    "last_run": a["last_run"],
+                    "last_outcome": a["last_outcome"],
+                    "paused": a["paused"],
+                }
+                for a in registry.automations.list()
+            ]
+        if name == "run-automation":
+            if not registry.automations.run(one("id")):
+                raise ValueError("No such automation.")
+            return {"started": True}
+        if name == "skills":
+            return [
+                {"id": s["id"], "name": s["name"], "ask": s["ask"]}
+                for s in registry.skills.list()
+            ]
+        window = self._window()
+        if name == "run-skill":
+            skill = registry.skills.get(one("id")) or registry.skills.find(one("name"))
+            if skill is None or window is None:
+                raise ValueError("No such skill, or no window to run it in.")
+            window.run_skill(skill["id"])
+            return {"ran": skill["name"]}
+        if name == "run-routine":
+            routine = next(
+                (r for r in registry.routines.list() if r["id"] == one("id")), None
+            )
+            if routine is None:
+                raise ValueError("No such routine.")
+            return {"ran": routine["name"], "started": registry.routines.run(routine)}
+        if name == "open":
+            target = QUrl(one("url"))
+            if target.scheme() not in ("http", "https") or not target.host():
+                raise ValueError("Open an http or https address.")
+            if window is None:
+                raise ValueError("No window to open it in.")
+            window._new_tab(url=target.toString())
+            return {"opened": target.toString()}
+        title, text = one("title")[:120], one("text")[:400]
+        if not title:
+            raise ValueError("Give the notification a title.")
+        if getattr(self, "notifier", None) is None:
+            from ui.desktop_notify import DesktopNotifier
+
+            self.notifier = DesktopNotifier(self)
+        self.notifier.notify(title, text)
+        return {"notified": True}
 
     def _tabs(self):
         from PyQt6.QtWidgets import QApplication

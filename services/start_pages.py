@@ -91,6 +91,54 @@ def workspace_name(text):
     return None
 
 
+MAX_YOUR_PAGES = 30
+YOUR_PAGE_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
+# Names Steed's own pages (and their helpers) keep.
+RESERVED_NAMES = frozenset({"newtab", "welcome", "action", *WORKSPACES})
+
+
+def clean_page_name(value):
+    """A name for your own steed:<name> page, or ValueError."""
+    name = str(value or "").strip().lower().removeprefix("steed:").strip("/")
+    if not YOUR_PAGE_NAME.fullmatch(name) or name.startswith("app-"):
+        raise ValueError(
+            "Name it with lowercase letters, digits and dashes, starting with a "
+            "letter (up to 32), e.g. dashboard."
+        )
+    if name in RESERVED_NAMES:
+        raise ValueError(
+            f"steed:{name} is one of Steed's own pages; choose another name."
+        )
+    return name
+
+
+def clean_your_page(item):
+    """A stored page of yours, or ValueError."""
+    if not isinstance(item, dict):
+        raise ValueError("Invalid page")
+    title = " ".join(str(item.get("title", "")).split())[:80]
+    return {
+        "name": clean_page_name(item.get("name")),
+        "title": title or str(item.get("name", "")),
+        "html": clean_html(item.get("html", "")),
+    }
+
+
+def your_page_name(url):
+    """The name of your own page for steed://<name>/, or None."""
+    if (
+        url.scheme() == "steed"
+        and YOUR_PAGE_NAME.fullmatch(url.host() or "")
+        and url.host() not in RESERVED_NAMES
+        and not url.host().startswith("app-")
+        and url.path() in ("", "/")
+        and not url.userInfo()
+        and url.port() == -1
+    ):
+        return url.host()
+    return None
+
+
 CUSTOM_EXAMPLE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>My New Tab</title>
 <style>body { font: 18px system-ui; max-width: 680px; margin: 15vh auto;
@@ -121,8 +169,19 @@ def internal_url(text):
     aliases.update({"steed:" + name: "steed://" + name + "/" for name in WORKSPACES})
     if text in aliases:
         return QUrl(aliases[text])
+    if isinstance(text, str) and text.startswith("steed:") and "//" not in text:
+        # steed:<name> for a page of yours.
+        name = text.removeprefix("steed:").split("#")[0]
+        if YOUR_PAGE_NAME.fullmatch(name) and name not in RESERVED_NAMES:
+            return QUrl("steed://" + text.removeprefix("steed:"))
     url = QUrl(text)
-    return url if page_name(url) is not None or workspace_name(url.toString()) else None
+    return (
+        url
+        if page_name(url) is not None
+        or workspace_name(url.toString())
+        or your_page_name(url) is not None
+        else None
+    )
 
 
 MAX_APPS = 12
@@ -177,8 +236,15 @@ def page_name(url):
 
 
 def display_url(url):
-    name = page_name(url)
-    return "steed:" + name if name is not None else url.toString()
+    name = page_name(url) or your_page_name(url)
+    if name is None:
+        return url.toString()
+    fragment = (
+        "#" + url.fragment()
+        if url.hasFragment() and name not in ("newtab", "welcome")
+        else ""
+    )
+    return "steed:" + name + fragment
 
 
 def web_url(text):
@@ -394,6 +460,18 @@ class StartPages(QObject):
                     continue
                 if all(other["id"] != app["id"] for other in apps):
                     apps.append(app)
+            yours = []
+            for item in (
+                raw.get("pages", [])[:MAX_YOUR_PAGES]
+                if isinstance(raw.get("pages"), list)
+                else []
+            ):
+                try:
+                    page = clean_your_page(item)
+                except ValueError:
+                    continue
+                if all(other["name"] != page["name"] for other in yours):
+                    yours.append(page)
             self._states[profile] = {
                 "version": 1,
                 "settings": settings,
@@ -401,6 +479,7 @@ class StartPages(QObject):
                 "html": html,
                 "welcome_html": welcome_html,
                 "apps": apps,
+                "pages": yours,
             }
         return deepcopy(self._states[profile])
 
@@ -454,6 +533,65 @@ class StartPages(QObject):
             (a for a in self.state(profile).get("apps", []) if a["id"] == identity),
             None,
         )
+
+    def your_pages(self, profile):
+        """Your own steed:<name> pages: [{name, title, html}]."""
+        return [dict(p) for p in self.state(profile).get("pages", [])]
+
+    def your_page(self, profile, name):
+        return next(
+            (
+                dict(p)
+                for p in self.state(profile).get("pages", [])
+                if p["name"] == name
+            ),
+            None,
+        )
+
+    def save_your_page(self, profile, name, title, html, *, replacing=None):
+        """Add a page of yours, or replace one (by its old name); its name."""
+        if profile == "search":
+            raise ValueError("Incognito windows have no pages of their own.")
+        page = clean_your_page({"name": name, "title": title, "html": html})
+        state = self.state(profile)
+        pages = [p for p in state["pages"] if p["name"] != replacing]
+        if any(p["name"] == page["name"] for p in pages):
+            raise ValueError(
+                f"steed:{page['name']} exists already; choose another name."
+            )
+        if len(pages) >= MAX_YOUR_PAGES:
+            raise ValueError(f"Keep at most {MAX_YOUR_PAGES} pages.")
+        index = next(
+            (i for i, p in enumerate(state["pages"]) if p["name"] == replacing),
+            len(pages),
+        )
+        pages.insert(index, page)
+        state["pages"] = pages
+        self._commit(profile, state)
+        return page["name"]
+
+    def remove_your_page(self, profile, name):
+        state = self.state(profile)
+        state["pages"] = [p for p in state["pages"] if p["name"] != name]
+        self._commit(profile, state)
+
+    def render_yours(self, profile, name):
+        page = self.your_page(profile, name)
+        if page is None:
+            raise ValueError("Unknown page")
+        styles = self.registry.page_style
+        root_css = ROOT_CSS.read_text(encoding="utf-8") + styles.css(profile)
+        return (
+            '<!doctype html><html data-theme="'
+            + ("dark" if styles.dark(profile) else "light")
+            + '"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; style-src &apos;unsafe-inline&apos;; script-src &apos;unsafe-inline&apos;; connect-src &apos;self&apos;; img-src data: blob: https:; form-action http: https:; base-uri &apos;none&apos;; object-src &apos;none&apos;">'
+            + "<title>"
+            + escape(page["title"])
+            + "</title><style>"
+            + root_css
+            + "</style></head>"
+            + page["html"]
+        ).encode()
 
     def render_app(self, profile, identity):
         app = self.app(profile, identity)
@@ -1572,6 +1710,22 @@ class StartPageHandler(webengine.SchemeHandler):
                 return
             try:
                 data = self.pages.render_app(self.profile_name, app)
+            except (OSError, ValueError):
+                request.fail("failed")
+                return
+            request.reply(b"text/html", data)
+            return
+        yours = your_page_name(request.url)
+        if yours is not None:
+            # Your own page: opened directly, or from another of your pages.
+            initiator = request.initiator
+            if request.method != b"GET" or (
+                not initiator.isEmpty() and initiator.scheme() != "steed"
+            ):
+                request.fail("denied")
+                return
+            try:
+                data = self.pages.render_yours(self.profile_name, yours)
             except (OSError, ValueError):
                 request.fail("failed")
                 return
