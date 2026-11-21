@@ -51,12 +51,18 @@ class BitwardenDialog(HtmlSettingsDialog):
 
     def refresh(self, message=""):
         if not self.bitwarden.available:
-            text = "The Bitwarden command line (bw) is not installed."
+            text = (
+                "The Bitwarden command line (bw) is not installed. Install it, "
+                "sign in once with bw login, then open this again."
+            )
         elif self.bitwarden.unlocked:
             text = "Unlocked: Steed can sign in with your Bitwarden logins."
         else:
             text = "Locked."
         self.status.setText(message or text)
+        self.status.setProperty(
+            "role", "quote" if self.bitwarden.unlocked else "warning"
+        )
         self.unlock_button.setEnabled(
             self.bitwarden.available and not self.bitwarden.unlocked
         )

@@ -36,6 +36,13 @@ th { font-size: 12px; font-weight: 600; }
 /* ---- Controls ---- */
 button.control, .table-paging button, .settings-footer button, .inline-actions button, .footer-buttons button, .welcome button {
   border-radius: 999px; }
+/* Steed's own full pages use the same buttons and width as the rest. */
+:is(.passwords-shell, .features-shell, .scripts-shell, .access-shell, .memory-shell, .style-shell, .apps-shell) button {
+  border-radius: 999px; font-size: 13px; min-height: 34px; padding: 6px 15px; }
+:is(.passwords-shell, .features-shell, .scripts-shell, .access-shell, .memory-shell, .style-shell, .apps-shell) {
+  max-width: 1040px; }
+:is(.passwords-shell, .features-shell, .scripts-shell, .access-shell, .memory-shell, .style-shell, .apps-shell) input {
+  border-radius: 12px; }
 button { transition: background-color .16s var(--stride), border-color .16s var(--stride), transform .3s var(--spring), box-shadow .2s var(--stride); }
 button:active:enabled { transform: scale(.965); transition-duration: .08s; }
 button.primary { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
@@ -104,10 +111,10 @@ input[type=range] { width: min(360px, 100%); }
 .directory-item strong { font-size: 13.5px; font-weight: 650; }
 .directory-item small { font-size: 12px; color: var(--muted); font-weight: 450; }
 .directory-item:hover:enabled { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); transform: translateY(-1px); }
-/* Calm by default: explanations show as one quiet line and open up when
-   the setting is pointed at or focused. Nothing is removed. */
+/* Calm by default: long explanations show three quiet lines and open up
+   when the setting is pointed at or focused. Nothing is removed. */
 .settings-card .help, .toggle-row small, .workspace-page .form-group:has(> .control) > .form-label {
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 :is(.settings-card, .toggle-row, .form-group):is(:hover, :focus-within) :is(.help, small, .form-label) {
   -webkit-line-clamp: unset; }
 body.settings-clean .settings-footer { display: none; }
@@ -118,3 +125,6 @@ body.settings-clean .settings-footer { display: none; }
 .more-ways > summary::-webkit-details-marker { display: none; }
 .more-ways[open] > summary { margin-bottom: 6px; }
 .more-ways button { width: 100%; margin-top: 6px; }
+
+/* A main action that is not available yet does not glow. */
+button.primary:disabled { box-shadow: none; background-image: none; opacity: .45; filter: saturate(.6); }

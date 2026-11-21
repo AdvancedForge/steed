@@ -38,7 +38,7 @@ from browser import webengine
 from ui.html_surface import HtmlSurface
 from ui.interface_mode import native
 
-ROLES = ("quote", "note", "card")
+ROLES = ("quote", "note", "card", "warning")
 
 
 class HtmlPresentation:
@@ -441,6 +441,8 @@ class HtmlDialog(QDialog):
                 reorder=isinstance(widget, QListWidget)
                 and widget.dragDropMode()
                 == QAbstractItemView.DragDropMode.InternalMove,
+                # What an empty list says (its "empty" property).
+                empty=str(widget.property("empty") or "")[:200],
             )
         elif isinstance(widget, QDialogButtonBox):
             node.update(
@@ -503,6 +505,21 @@ class HtmlDialog(QDialog):
             force=force,
         )
 
+    def _fit(self, height):
+        """Shrink a popup dialog to its content (never taller than it opened)."""
+        if (
+            type(height) is not int
+            or not 120 <= height <= 4000
+            or self.workspace
+            or not self.isWindow()
+        ):
+            return
+        tallest = getattr(self, "_opened_height", None) or self.height()
+        self._opened_height = tallest
+        target = max(220, min(height, tallest))
+        if abs(target - self.height()) > 12:
+            self.resize(self.width(), target)
+
     def command(self, command):
         if self.closed or command.get("context") != self.context:
             return
@@ -524,6 +541,9 @@ class HtmlDialog(QDialog):
                 if command.get("value") not in WORKSPACES:
                     raise ValueError("Unknown browser page.")
                 self.owner._new_tab(url="steed:" + command["value"])
+                return
+            if action == "fit":
+                self._fit(command.get("value"))
                 return
             if action == "close":
                 if self.on_close is not None:

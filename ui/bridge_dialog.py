@@ -41,6 +41,7 @@ class BridgeDialog(HtmlSettingsDialog):
             "Anyone with the link can ask, so keep it to yourself."
         )
         intro.setWordWrap(True)
+        intro.setProperty("role", "note")
         layout.addWidget(intro)
         layout.addWidget(QLabel("How the link reaches this computer"))
         self.method = QComboBox()
@@ -55,7 +56,6 @@ class BridgeDialog(HtmlSettingsDialog):
         layout.addWidget(self.base)
         self.status = QLabel()
         self.status.setWordWrap(True)
-        self.status.setProperty("role", "quote")
         layout.addWidget(self.status)
         self.link = QLineEdit()
         self.link.setReadOnly(True)
@@ -127,10 +127,14 @@ class BridgeDialog(HtmlSettingsDialog):
         else:
             text = bridge.message or "No link is open."
         self.status.setText(text)
+        # The open link is what this window is about; otherwise a quiet line.
+        self.status.setProperty("role", "quote" if state == "on" else "note")
         self.link.setText(bridge.link)
         on = state == "on"
+        busy = state in ("starting", "on")
+        # Only what can be done now: make a link, or use and stop the one open.
         for widget in (self.link, self.copy, self.show_link):
-            widget.setEnabled(on)
-        self.stop.setEnabled(state in ("starting", "on"))
-        self.start.setEnabled(state not in ("starting", "on"))
-        self.method.setEnabled(state not in ("starting", "on"))
+            widget.setVisible(on)
+        self.stop.setVisible(busy)
+        self.start.setVisible(not busy)
+        self.method.setEnabled(not busy)

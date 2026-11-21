@@ -45,7 +45,7 @@ class StartPageDialog(HtmlSettingsDialog):
     def __init__(self, pages, profile, parent=None):
         super().__init__(parent)
         self.pages, self.profile = pages, profile
-        self.setWindowTitle("Customize New Tab")
+        self.setWindowTitle("Customize start pages")
         self.resize(650, 620)
         state = pages.state(profile)
         self.original = state

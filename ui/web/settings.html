@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{NONCE}}'; style-src 'nonce-{{NONCE}}'; connect-src 'none'; img-src 'none'; font-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>Steed · Settings &amp; profiles</title>
+  <title>Settings</title>
   <style nonce="{{NONCE}}">{{STYLE}}
   {{EXTRA_STYLE}}</style>
 </head>
 <body>
   <div class="settings-shell">
-    <header class="header"><div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6.5 20V11a5.5 5.5 0 0 1 11 0v9"/><path d="M4.5 20h4M15.5 20h4"/><path d="M9.5 9.5h.01M14.5 9.5h.01M8.8 14h.01M15.2 14h.01"/></svg></span><div><h1>Make Steed yours</h1><p>Settings &amp; profiles</p></div></div><span class="scope-tag">Browser preferences</span></header>
+    <header class="header"><div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6.5 20V11a5.5 5.5 0 0 1 11 0v9"/><path d="M4.5 20h4M15.5 20h4"/><path d="M9.5 9.5h.01M14.5 9.5h.01M8.8 14h.01M15.2 14h.01"/></svg></span><div><h1>Settings</h1><p>Choose how Steed starts, searches, looks and works with agents</p></div></div></header>
     <div class="settings-body">
       <nav class="settings-nav" aria-label="Settings sections">
         <button data-section="general">General</button><button data-section="profile">Profile</button><button data-section="tabs">Tabs</button><button data-section="view">View</button><button data-section="cookies">Cookies</button><button data-section="agents">Agents</button><button data-section="everything">Everything</button>
@@ -82,7 +82,7 @@
           <label class="toggle-row" for="global_cookie_sharing_apply_on_startup"><span><strong>Apply global cookies on startup</strong><small>Reconcile the baseline as the profile opens.</small></span><input id="global_cookie_sharing_apply_on_startup" data-pref="global_cookie_sharing_apply_on_startup" type="checkbox" role="switch"></label></div>
         </section>
         <section data-panel="agents" hidden>
-          <div class="section-heading"><span class="eyebrow">Bring your own agent</span><h2>Agents</h2><p>Connect an external agent and keep access in your control.</p></div>
+          <div class="section-heading"><span class="eyebrow">Any assistant you like</span><h2>Agents</h2><p>Use any assistant, and keep what it may do in your hands.</p></div>
           <div class="settings-card link-card"><div><h3>Your agent workspace</h3><p class="help">Conversations, model status, task files and permission controls.</p></div><button data-action="open" data-destination="agents">Open agents</button></div>
           <div class="settings-card"><label class="toggle-row" for="keep_agent_chats"><span><strong>Keep agent chats so they can continue after Steed closes</strong><small>Claude Code and Codex save each chat (in its own folder under Steed's settings), so a chat that was open when Steed closed can carry on with <b>Continue this chat</b>. Turned off, chats leave no history behind and end for good when Steed closes.</small></span><input id="keep_agent_chats" data-pref="keep_agent_chats" type="checkbox" role="switch"></label></div>
           <div class="settings-card"><label class="toggle-row" for="agent_replay"><span><strong>Keep a picture of each agent step</strong><small>After each thing an agent does on a page you can see, Steed keeps a picture of it, so you can check later in Task Permissions → Steps. Pictures stay on this computer; delete them there whenever you like.</small></span><input id="agent_replay" data-pref="agent_replay" type="checkbox" role="switch"></label></div>

@@ -399,14 +399,21 @@ class PageStyle(QObject):
         )
         accent = accent or tint_colors(tint, dark)[1]
         if dark:
-            ink, base = "#e8edf6", "#101010"
-            shades = {"bg": 0.84, "surface": 0.74, "soft": 0.6, "border": 0.55}
+            # Surfaces and lines lift toward white, so cards, fields and
+            # buttons keep visible edges on the dark page.
+            ink = "#e8edf6"
+            palette = {
+                "bg": mix(tint, "#101010", 0.5),
+                "surface": mix(tint, "#ffffff", 0.04),
+                "soft": mix(tint, "#ffffff", 0.09),
+                "border": mix(tint, "#ffffff", 0.18),
+            }
             hover = mix(accent, "#ffffff", 0.18)
         else:
             ink, base = "#202b40", "#ffffff"
             shades = {"bg": 0.9, "surface": 0.97, "soft": 0.84, "border": 0.72}
+            palette = {key: mix(tint, base, amount) for key, amount in shades.items()}
             hover = mix(accent, "#000000", 0.15)
-        palette = {key: mix(tint, base, amount) for key, amount in shades.items()}
         palette.update(
             accent=accent, **{"accent-hover": hover}, muted=mix(ink, palette["bg"], 0.4)
         )

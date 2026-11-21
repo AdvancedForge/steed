@@ -7,6 +7,22 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**A beautification pass — November 21, 2026.** Three design reviews of every
+Steed page, dialog and the browser chrome, in light and dark, then fixes:
+- **Dark mode:** cards, fields and buttons keep visible edges (surfaces and
+  lines now lift toward white instead of all landing near black).
+- **Panels and dialogs:** the agent panel fills its tab with no strip and loses
+  the duplicate Qt title bar for its own close button; dialogs fit their
+  content instead of a fixed 640 pixels.
+- **Buttons:** buttons that need a selection wait for one, Remove stands apart,
+  and a disabled main button no longer glows.
+- **Text and names:** lists say what goes in them when empty, settings help
+  shows three lines instead of one, pages have one sentence-case name
+  everywhere, and the settings header says what it is.
+- **Chrome and pages:** the zoom level shows only when zoomed, disabled toolbar
+  icons dim in dark mode, the agent picker and links look like what they are,
+  and Steed's own full pages share the dialogs' buttons and width.
+
 **Setting up an assistant from the start — November 20, 2026.** The Welcome
 tour's last step is now *Bring an assistant, or don't*: Steed works fully
 without one, and five cards open each way to bring one (a local model, your
@@ -27,7 +43,7 @@ for me** drafts one from a description. A few starter skills, all editable.
 `Ctrl+Alt+W`) keep sets of tabs apart within a profile; **Help Me Write…**
 rewrites a text field with your assistant, shown first and inserted only on
 Insert, never in password or card fields; `@` in the agent chat attaches open
-tabs to a message; **Morning Brief…** is a ready routine that adds the watched
+tabs to a message; **Morning brief…** is a ready routine that adds the watched
 pages that changed; **Group My Recent History into Topics…** asks your
 assistant to sort the past week's titles into topics you can reopen, keeping
 nothing.

@@ -101,7 +101,7 @@ class SitePermissionsDialog(HtmlSettingsDialog):
         super().__init__(parent)
         self.store = store
         self.site_settings = site_settings
-        self.setWindowTitle("Website Permissions")
+        self.setWindowTitle("Website permissions")
         self.resize(760, 560)
         layout = QVBoxLayout(self)
         layout.addWidget(

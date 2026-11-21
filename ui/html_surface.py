@@ -7,6 +7,7 @@ from secrets import token_hex
 
 from PyQt6 import sip
 from PyQt6.QtCore import (
+    QEvent,
     QFile,
     QIODevice,
     QObject,
@@ -82,19 +83,23 @@ class HtmlSurface(QWidget):
         self.fallback = QWidget(self)
         layout = QVBoxLayout(self.fallback)
         layout.addStretch()
-        self.notice = QLabel(f"Opening {label} interface…", self.fallback)
+        self.notice = QLabel("Loading…", self.fallback)
         self.notice.setWordWrap(True)
+        self.notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.notice.setStyleSheet("color: #8a93a6; font-size: 13px;")
         layout.addWidget(self.notice)
         self.retry = QPushButton("Reload interface", self.fallback)
         self.retry.clicked.connect(self.reload)
         self.retry.hide()
-        layout.addWidget(self.retry)
+        layout.addWidget(self.retry, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch()
         self.stack.addWidget(self.fallback)
         self.view = webengine.View(self)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.view.setAccessibleName(f"Steed {label} interface")
         self.stack.addWidget(self.view)
+        # Whatever resizes the page behind the surface's back, it fills it.
+        self.view.installEventFilter(self)
         self.profile = webengine.private_profile(self)
         self.interceptor = _NoNetwork(self.profile)
         webengine.set_request_filter(self.profile, self.interceptor)
@@ -148,7 +153,7 @@ class HtmlSurface(QWidget):
         self._last_payload = None
         self.reloading.emit()
         self.stack.setCurrentWidget(self.fallback)
-        self.notice.setText(f"Opening {self.label} interface…")
+        self.notice.setText("Loading…")
         self.retry.hide()
         assets = Path(__file__).parent / "web"
         library = QFile(":/qtwebchannel/qwebchannel.js")
@@ -294,6 +299,10 @@ class HtmlSurface(QWidget):
                     self._failed()
 
         dark = state.get("dark", False)
+        # The placeholder wears the page's colour, never a grey flash.
+        self.fallback.setStyleSheet(
+            "background: %s;" % ("#171717" if dark else "#f5f7fb")
+        )
         self.page.setBackgroundColor(
             QColor(0, 0, 0, 0)
             if self.transparent  # The host draws rounded, see-through glass.
@@ -308,7 +317,29 @@ class HtmlSurface(QWidget):
         # Moving the agents panel from the sidebar into a tab can leave the
         # layout believing it is current while the page keeps its docked
         # size, showing a strip of background; give it the whole area.
+        self.fit()
+
+    def fit(self):
+        """Give the page (and its placeholder) the whole surface."""
         self.stack.setGeometry(self.rect())
+        for index in range(self.stack.count()):
+            widget = self.stack.widget(index)
+            if widget is not None and widget.geometry() != self.rect():
+                widget.setGeometry(self.rect())
+
+    def eventFilter(self, watched, event):
+        if (
+            watched is self.view
+            and event.type() == QEvent.Type.Resize
+            and self.view.size() != self.size()
+            and not self.disposed
+        ):
+            QTimer.singleShot(0, lambda: None if sip.isdeleted(self) else self.fit())
+        return super().eventFilter(watched, event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, lambda: None if sip.isdeleted(self) else self.fit())
 
     def _match_background(self, value):
         found = re.fullmatch(

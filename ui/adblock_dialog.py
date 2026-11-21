@@ -17,7 +17,7 @@ class AdBlockDialog(HtmlSettingsDialog):
     def __init__(self, service, parent=None):
         super().__init__(parent)
         self.service = service
-        self.setWindowTitle("Ad Blocking")
+        self.setWindowTitle("Ad blocking")
         self.resize(620, 460)
         layout = QVBoxLayout(self)
         self.enabled = QCheckBox(

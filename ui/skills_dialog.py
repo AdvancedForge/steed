@@ -162,21 +162,28 @@ class SkillsDialog(HtmlSettingsDialog):
         intro.setProperty("role", "note")
         layout.addWidget(intro)
         self.list = QListWidget()
+        self.list.setProperty("empty", "No skills yet. Make one with New skill….")
         self.list.itemDoubleClicked.connect(lambda _: self.edit())
         layout.addWidget(self.list, 1)
         row = QHBoxLayout()
+        self.selection_buttons = []
         for text, callback in (
-            ("New Skill…", self.new),
+            ("New skill…", self.new),
             ("Edit…", self.edit),
             ("Run", self.run),
             ("Remove", self.remove),
         ):
             button = QPushButton(text)
-            if text == "New Skill…":
+            if text == "New skill…":
                 button.setProperty("primary", True)
+            else:
+                self.selection_buttons.append(button)
+            if text == "Remove":
+                row.addStretch()
             button.clicked.connect(callback)
             row.addWidget(button)
         layout.addLayout(row)
+        self.list.currentItemChanged.connect(lambda *_: self._selection_changed())
         self.skills.changed.connect(self.refresh)
         self.finished.connect(lambda _: self.skills.changed.disconnect(self.refresh))
         self.refresh()
@@ -190,6 +197,11 @@ class SkillsDialog(HtmlSettingsDialog):
             item.setData(Qt.ItemDataRole.UserRole, skill["id"])
             item.setToolTip(skill["ask"])
             self.list.addItem(item)
+        self._selection_changed()
+
+    def _selection_changed(self):
+        for button in self.selection_buttons:
+            button.setEnabled(self.list.currentItem() is not None)
 
     def selected(self):
         item = self.list.currentItem()

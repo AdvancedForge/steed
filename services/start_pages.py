@@ -1360,9 +1360,10 @@ body { font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif); font-
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent), 0 18px 50px -18px #000a;
   transition: box-shadow .4s cubic-bezier(.22, 1, .36, 1), border-color .3s, transform .5s cubic-bezier(.22, 1, .36, 1); }
 .search:focus-within { border-color: color-mix(in srgb, var(--accent) 70%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 26%, transparent), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent),
-    0 0 60px -10px var(--accent), 0 18px 50px -18px #000a; transform: translateY(-1px) scale(1.01); }
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 26%, transparent), 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent),
+    0 0 32px -14px var(--accent), 0 18px 50px -18px #000a; transform: translateY(-1px) scale(1.01); }
 .search input { font-weight: 500; }
+.search input::placeholder { color: var(--muted); font-weight: 450; }
 .corner .icon, .browser-menu > summary { transition: background-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
 .corner .icon:hover, .browser-menu > summary:hover { transform: scale(1.08); }
 html:not([data-effects=minimal]) body::before { transition: background-image .9s ease; }
@@ -1417,7 +1418,7 @@ body.onboarding header nav, body.onboarding .browser-menu, body.onboarding foote
 .step h1 { margin: 0 0 10px; }
 .step p { font-size: 17px; max-width: 46ch; }
 .step h2.choice { margin: 20px 0 0; font-size: 14px; color: var(--muted); font-weight: 600; }
-.step .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 12px 0 8px; max-width: 360px; }
+.step .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 12px 0 8px; max-width: 460px; }
 .step .tile { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 14px; }
 .step .tile-label { display: flex; align-items: center; gap: 8px; }
 .step .chosen { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
@@ -1444,7 +1445,7 @@ body.onboarding header nav, body.onboarding .browser-menu, body.onboarding foote
 .step .assistant strong { font-size: 14.5px; }
 .step .assistant span { font-size: 12.5px; color: var(--muted); }
 .step .ready { font-size: 14px; color: var(--muted); }
-.step .switch { display: flex; align-items: center; gap: 14px; max-width: 360px; margin-top: 18px; padding: 12px 16px;
+.step .switch { display: flex; align-items: center; gap: 14px; max-width: 460px; margin-top: 18px; padding: 12px 16px;
   border-radius: 16px; text-decoration: none; color: var(--ink); background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 .step .switch-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }

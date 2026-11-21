@@ -51,29 +51,33 @@ class AgentSetupDialog(HtmlSettingsDialog):
     def __init__(self, registry, parent=None):
         super().__init__(parent)
         self.registry = registry
-        self.setWindowTitle("Connect an External Agent")
+        self.setWindowTitle("Agent setup")
         self.resize(620, 580)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         layout = QVBoxLayout(self)
+        intro = QLabel(
+            "Chatting in the sidebar needs none of this: add any assistant with "
+            "Agents → Add an Assistant…. This page connects any other MCP client "
+            "(an editor, a terminal agent, your own tool) to Steed."
+        )
+        intro.setWordWrap(True)
+        intro.setProperty("role", "quote")
+        layout.addWidget(intro)
         notice = QLabel(
             "1. Enable local access for this browser run.\n"
-            "2. Add the Steed MCP server in your external agent client.\n"
-            "3. Give the agent the starter prompt, then select its task in the sidebar.\n\n"
-            "Steed stays open; your client manages the adapter process. "
-            "This setup grants no page or app permissions."
+            "2. Add the Steed MCP server in your agent client.\n"
+            "3. Give the agent the starter prompt, then select its task in the sidebar."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
         codex = QLabel(
-            "Steed works with any assistant. You don't need this setup for chats "
-            "in the sidebar: there, add any model (a local one or your own API "
-            "key) with Use any model, or pick Codex, Claude Code or an ACP agent "
-            "under Agent for new chats. Codex: install a current Codex CLI (tested "
-            "with 0.160.0) and sign in once with codex login. Claude Code: install "
-            "it and run claude once to sign in. The steps above are for any other "
-            "MCP client."
+            "Steed stays open and your client runs the adapter. This setup grants "
+            "no page or app permissions. Codex and Claude Code need no setup here: "
+            "install them and sign in once (codex login, or run claude), and they "
+            "appear among the sidebar's assistants."
         )
         codex.setWordWrap(True)
+        codex.setProperty("role", "note")
         layout.addWidget(codex)
         self.status = QLabel()
         self.status.setWordWrap(True)

@@ -72,7 +72,8 @@ function update(entry, node) {
       element.replaceChildren(title, detail);
     }
     if (node.status) { element.setAttribute('role', 'status'); element.setAttribute('aria-live', 'polite'); }
-    if (node.checkable) { element.setAttribute('aria-pressed', node.checked); element.classList.add('toggle'); }
+    // A checkable button that opens something ("…") is a button, not a switch.
+    if (node.checkable && !node.text.endsWith('…')) { element.setAttribute('aria-pressed', node.checked); element.classList.add('toggle'); }
     if (node.kind === 'button') { element.dataset.tone = tone(node.text); element.dataset.primary = !!node.primary; }
   } else if (['input','text','number'].includes(node.kind)) {
     if (document.activeElement !== element && element.value !== String(node.value)) element.value = node.value;
@@ -157,8 +158,10 @@ function update(entry, node) {
       body.append(tr);
     });
     const paging = document.createElement('div'); paging.className = 'table-paging';
-    const count = document.createElement('span'); count.className = 'row-count'; count.textContent = node.count ? 'Showing ' + (node.offset + 1) + '–' + (node.offset + node.rows.length) + ' of ' + node.count : 'Nothing here yet';
+    const count = document.createElement('span'); count.className = 'row-count'; count.textContent = node.count ? 'Showing ' + (node.offset + 1) + '–' + (node.offset + node.rows.length) + ' of ' + node.count : (node.empty || 'Nothing here yet');
     paging.append(count);
+    // One page of rows needs no count under it; empty lists still say so.
+    paging.hidden = node.count > 0 && node.count <= 500;
     if (node.count > 500) for (const [label, direction] of [['Previous', -1], ['Next', 1]]) {
       const button = document.createElement('button'); button.textContent = label;
       button.disabled = direction < 0 ? !node.offset : node.offset + node.rows.length >= node.count;
@@ -190,7 +193,8 @@ window.steedUI = {render(next) {
   $('workspace-nav').hidden = !next.workspace;
   $('workspace-picker').hidden = !next.workspace;
   $('scope').hidden = !next.workspace;
-  $('scope').textContent = next.shared ? 'Browser-wide, viewing ' + (next.profile === 'search' ? 'Incognito' : `the ${next.profile} profile`) : next.profile === 'search' ? 'Incognito, a temporary session' : `The ${next.profile} profile`;
+  const profileName = next.profile === 'search' ? 'Incognito' : next.profile.charAt(0).toUpperCase() + next.profile.slice(1) + ' profile';
+  $('scope').textContent = next.shared ? 'All profiles' : profileName;
   if (next.workspace && $('workspace-nav').dataset.page !== next.workspace) {
     const nav = $('workspace-nav'); nav.replaceChildren(); nav.dataset.page = next.workspace;
     $('workspace-picker').replaceChildren();
@@ -209,6 +213,12 @@ window.steedUI = {render(next) {
   seen = new Set(); children($('controls'), next.children);
   emphasize();
   for (const [id, entry] of nodes) if (!seen.has(id)) { entry.list?.remove(); nodes.delete(id); }
+  // A dialog is as tall as what it holds (Steed keeps it within the screen).
+  if (!next.workspace && !next.compact && next.header !== false) requestAnimationFrame(() => {
+    const bottom = $('controls').getBoundingClientRect().bottom + document.documentElement.scrollTop;
+    const height = Math.ceil(bottom + 30);
+    if (Math.abs(height - (window.steedFitted || 0)) > 12) { window.steedFitted = height; command('fit', null, height); }
+  });
   return true;
 }};
 $('close').onclick = () => command('close');

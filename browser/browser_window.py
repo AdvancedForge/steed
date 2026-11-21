@@ -2884,6 +2884,7 @@ class BrowserWindow(QMainWindow):
                     self, "Agents", "The agent sidebar could not be opened."
                 )
                 return
+            self.agent_sidebar.setTitleBarWidget(QWidget(self.agent_sidebar))
             self.addDockWidget(self._sidebar_dock_area(), self.agent_sidebar)
             self._agent_alerts()
             if (
@@ -3006,10 +3007,14 @@ class BrowserWindow(QMainWindow):
         self.agent_sidebar.setGeometry(tab.rect())
         self.agent_sidebar.show()
         self.agent_sidebar.raise_()
+        surface = getattr(self.agent_sidebar, "surface", None)
+        if surface is not None:
+            QTimer.singleShot(0, surface.fit)
         self._update_page_actions()
         self.agent_sidebar_action.setChecked(False)
         self.tab_bar.set_tab_title(self.tabs.index(tab), "Agents")
         self.address_bar.set_url("steed:agents")
+        self.agent_sidebar._publish()  # Now a tab: no sidebar close button.
 
     def _return_agent_sidebar(self, tab):
         if tab is not self.agent_tab:
@@ -3018,8 +3023,10 @@ class BrowserWindow(QMainWindow):
         tab.agent_panel = False
         tab.native_panel = None
         self.agent_sidebar.setParent(self)
-        self.agent_sidebar.setTitleBarWidget(None)
+        # Its own header carries the title and close; no Qt title bar.
+        self.agent_sidebar.setTitleBarWidget(QWidget(self.agent_sidebar))
         self.addDockWidget(self._sidebar_dock_area(), self.agent_sidebar)
+        self.agent_sidebar._publish()
         preferences = getattr(self, "layout_preferences", None)
         if preferences is not None:
             self.resizeDocks(
@@ -5274,7 +5281,7 @@ class BrowserWindow(QMainWindow):
             percent = round(
                 self._visible_page(self.tabs[self.current_tab_index]).zoomFactor() * 100
             )
-            self.address_bar.zoom_btn.setText(f"{percent}%")
+            self.address_bar.show_zoom(percent)
             self.zoom_reset_action.setText(f"Reset Zoom ({percent}%)")
 
     def _refresh_address_history(self):

@@ -30,14 +30,14 @@ main { padding: 16px 22px 28px; }
 .control.image { display: block; max-height: 420px; object-fit: contain; margin: 12px auto; border-radius: 10px; }
 
 /* ---- Fields ---- */
-input, textarea, select { color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font: inherit; }
+input, textarea, select { color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; font: inherit; }
 input, textarea { padding: 9px 12px; }
 select { min-height: 38px; padding: 8px 12px; }
 input[type=text], input[type=password], input[type=number], textarea, .table-wrap, .tabs { width: 100%; }
 input[type=text], input[type=password], input[type=number] { min-height: 38px; }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
-textarea { min-height: 110px; resize: vertical; line-height: 1.5; } textarea[readonly] { font: 12px/1.55 ui-monospace, monospace; background: var(--bg); }
+textarea { min-height: 110px; resize: vertical; line-height: 1.5; } textarea[readonly] { font: 12px/1.55 ui-monospace, monospace; background: var(--soft); resize: none; }
 .check { display: inline-flex; align-items: center; gap: 9px; font-size: 13.5px; font-weight: 500; margin: 0; color: var(--ink); }
 input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
 
@@ -50,7 +50,7 @@ button.control[data-tone=danger]:hover:enabled { background: var(--error-bg); bo
 button.control[data-tone=quiet] { border-color: transparent; color: var(--muted); }
 button.control.primary { background: var(--accent); border-color: transparent; color: var(--bg); padding: 6px 18px; }
 button.control.primary:hover:enabled { background: var(--accent-hover, var(--accent)); border-color: transparent; }
-button.control:disabled { opacity: .45; }
+button.control:disabled { opacity: .45; border-color: var(--border); }
 /* Full pages close with the header's ✕; their own Close buttons repeat it. */
 .workspace-page button.control[data-tone=close] { display: none; }
 /* On/off buttons: a switch and its label. */
@@ -63,7 +63,7 @@ button.control.toggle[aria-pressed=true]::before { background-color: var(--accen
 button.control.toggle:hover:enabled { background: var(--row-hover); border-color: transparent; }
 
 /* ---- Tabs (sections of a page) ---- */
-.tabs > nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--surface);
+.tabs > nav { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 4px; margin-bottom: 14px; background: var(--surface);
   border: 1px solid var(--line); border-radius: 12px; }
 .tabs > nav button { min-height: 30px; padding: 4px 12px; border-radius: 8px; border-color: transparent; background: transparent;
   font-size: 13px; font-weight: 560; color: var(--muted); }
@@ -92,7 +92,7 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .table-wrap.empty .row-count { flex: none; font-size: 13px; }
 
 /* ---- Footer (Save / Cancel) ---- */
-[data-footer=true] { position: sticky; bottom: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent);
+[data-footer=true] { position: sticky; bottom: 12px; background: var(--surface);
   backdrop-filter: blur(14px); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; z-index: 2;
   box-shadow: 0 10px 30px #0000002e; }
 
@@ -100,7 +100,9 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 .dialog-main { min-width: 0; }
 body.workspace-page { display: grid; grid-template-columns: 216px minmax(0, 1fr); }
 #workspace-nav { padding: 18px 10px 24px; background: var(--surface); border-right: 1px solid var(--line); height: 100vh;
-  position: sticky; top: 0; overflow: auto; }
+  position: sticky; top: 0; overflow: auto; scrollbar-gutter: stable; }
+/* The sidebar's scroll bar shows only while the pointer is over it. */
+#workspace-nav:not(:hover)::-webkit-scrollbar-thumb { background: transparent; }
 #workspace-nav h2 { color: var(--muted); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin: 18px 12px 6px; }
 #workspace-nav h2:first-child { margin-top: 4px; }
 #workspace-nav button { position: relative; display: block; width: 100%; min-height: 32px; text-align: left; background: transparent;
@@ -113,7 +115,7 @@ body.workspace-page { display: grid; grid-template-columns: 216px minmax(0, 1fr)
 .workspace-page .dialog-header > div, .workspace-page main { width: 100%; max-width: var(--page-width); }
 /* The title lines up with the page below; the ✕ sits in the corner. */
 .workspace-page .dialog-header { display: block; padding: 22px 36px 14px; }
-.workspace-page .dialog-header > div { margin: 0 auto; }
+.workspace-page .dialog-header > div { margin: 0 auto; max-width: calc(var(--page-width) - 72px); }
 .workspace-page #close { position: absolute; top: 18px; right: 18px; }
 /* A footer left with nothing but its (hidden) Close button. */
 .workspace-page [data-footer=true]:not(:has(button.control:not([data-tone=close]), input, select, textarea, .form-label:not(:empty))) { display: none; }
@@ -147,9 +149,31 @@ body.workspace-page { display: grid; grid-template-columns: 216px minmax(0, 1fr)
 .control[data-role=note] { color: var(--muted); font-size: 12.5px; }
 
 /* A card: one large choice, its title and a line saying what it is. */
-.control.button[data-role=card] { display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-  width: 100%; max-width: none; min-height: 0; margin: 0 0 8px; padding: 14px 16px; border-radius: 14px; text-align: left;
-  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.control.button[data-role=card] { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  width: 100%; max-width: none; min-height: 0; margin: 0 0 8px; padding: 14px 44px 14px 16px; border-radius: 18px; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--lift, var(--shadow)); }
+.control.button[data-role=card]::after { content: "›"; position: absolute; right: 18px; top: 50%; translate: 0 -50%;
+  color: var(--muted); font-size: 22px; font-weight: 400; }
 .control.button[data-role=card] strong { font-size: 14.5px; font-weight: 650; color: var(--ink); }
 .control.button[data-role=card] small { font-size: 12.5px; font-weight: 450; line-height: 1.45; color: var(--muted); white-space: normal; }
-.control.button[data-role=card]:hover:enabled { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.control.button[data-role=card]:hover:enabled { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); transform: translateY(-1px); }
+
+/* Text runs as wide as the fields it explains, and sections breathe. */
+.workspace-page .form-label { max-width: none; }
+.form-group + .form-group { margin-top: 24px; }
+/* Pages with a footer leave room to scroll their last controls clear of it. */
+main:has([data-footer=true]) { padding-bottom: 96px; }
+
+/* Dialogs: the close sits level with the title; notes take the full width
+   and leave room before what they explain. */
+body:not(.workspace-page) .dialog-header { align-items: center; }
+body:not(.workspace-page) .form-label { max-width: none; }
+.control[data-role=note] { margin-bottom: 8px; }
+.table-paging[hidden] { display: none; }
+/* Secondary buttons always have a fill, so they read as buttons. */
+button.control:where(:not(.primary, .toggle)) { background: var(--surface); }
+button.control[data-tone=quiet] { background: transparent; }
+/* A status that needs doing something about. */
+.control[data-role=warning] { padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 550;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface)); color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); }

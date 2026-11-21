@@ -402,6 +402,9 @@ class AddressBarLayoutTests(unittest.TestCase):
             )
         self.bar.apply_toolbar(TOOLBAR_ORDER, [])
         self.assertFalse(self.bar.home_btn.isHidden())
+        # The zoom level shows only when a page is zoomed.
+        self.assertTrue(self.bar.zoom_btn.isHidden())
+        self.bar.show_zoom(110)
         self.assertFalse(self.bar.zoom_btn.isHidden())
 
     def test_reordering_keeps_every_button_and_the_address_input(self):
