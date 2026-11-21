@@ -794,6 +794,9 @@ class BrowserWindow(QMainWindow):
         self.translate_action.triggered.connect(self.translate_page)
         view_menu.addAction(self.translate_action)
         # Your own commands: user scripts set to run when chosen.
+        your_pages_action = QAction("Your Pages…", self)
+        your_pages_action.triggered.connect(self.manage_your_pages)
+        view_menu.addAction(your_pages_action)
         self.commands_menu = view_menu.addMenu("Your Commands")
         media_action = QAction("Play or Pause Media", self)
         media_action.triggered.connect(lambda: media_controls.controller().toggle())
@@ -2234,6 +2237,14 @@ class BrowserWindow(QMainWindow):
                 window._fill_skills_menu()
                 if window.agent_sidebar is not None:
                     window.agent_sidebar._publish()
+
+    def manage_your_pages(self):
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Incognito has no pages of its own.", 4000)
+            return
+        from ui.your_pages import YourPagesDialog
+
+        self._present_dialog(YourPagesDialog(self), modal=False)
 
     def manage_skills(self):
         from ui.skills_dialog import SkillsDialog

@@ -429,6 +429,32 @@ In the panel you can choose:
 **More options…** (also General → Customize New Tab…) opens the full dialog
 with the classic sections, a feed, a custom colour and your own HTML.
 
+### Your own steed: pages
+
+**View → Your Pages…** makes pages of your own, opened like Steed's as
+`steed:<name>` in any tab: a dashboard of your watches and routines, a
+launcher for your skills, a board of links, a small tool. Start from a
+template (a dashboard, a skills launcher, a blank page), write the HTML and
+JavaScript yourself, or describe it and press **Write it for me** to have your
+assistant draft it. Type its address to open it, or set it as your New Tab in
+Settings (New tab page: `steed:dashboard`). Names are lowercase letters,
+digits and dashes; Steed's own page names stay Steed's.
+
+A page's scripts reach Steed with `fetch("/api/…")`, each capability allowed in
+**Access & Permissions → Local pages** (never by default, ask, or always):
+
+| Endpoint | What it gives or does | Capability |
+| --- | --- | --- |
+| `fetch?url=…` | a web address, without cookies | Load data from the web |
+| `tabs`, `history`, `bookmarks` | titles and addresses | See tabs, history, bookmarks |
+| `watches`, `routines`, `skills` | what you watch (and what changed), your routines, your skills | See your watches, routines and skills |
+| `run-skill?id=…`, `run-routine?id=…`, `open?url=…`, `notify?title=…&text=…` | run one of yours, open a web page, notify you | Run your skills and routines, open tabs and notify you |
+
+Refusals come back as JSON with `"status": 403`. Pages keep their own
+`localStorage`. They run under a strict content policy: their own inline
+scripts and styles, images from the web, no other scripts. Kept in the
+profile's start-page data; not in incognito.
+
 ### Workspaces
 
 **Tabs → Workspaces** keeps what you are working on (Work, Trip, Taxes) apart

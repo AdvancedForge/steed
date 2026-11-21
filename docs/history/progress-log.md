@@ -7,6 +7,13 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Your own steed: pages — November 21, 2026.** **View → Your Pages…** makes
+`steed:<name>` tabs of your own in HTML and JavaScript (from a dashboard or
+launcher template, by hand, or written by your assistant from a description),
+usable as your New Tab. Besides web data, tabs, history and bookmarks, their
+scripts can read your watches, routines and skills and run them, open pages
+and notify you, each behind Access → Local pages.
+
 **A beautification pass — November 21, 2026.** Three design reviews of every
 Steed page, dialog and the browser chrome, in light and dark, then fixes:
 - **Dark mode:** cards, fields and buttons keep visible edges (surfaces and
