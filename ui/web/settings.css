@@ -2,8 +2,11 @@
 .scope-tag { color: var(--muted); font-size: 11px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 20px; }
 .settings-body { display: flex; flex: 1; min-height: 0; }
 .settings-nav { width: 165px; flex-shrink: 0; padding: 23px 12px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 7px; }
-.settings-nav button { border-color: transparent; background: transparent; text-align: left; padding: 10px 14px; font-size: 13px; color: var(--muted); }
-.settings-nav button[aria-current="page"] { background: var(--soft); color: var(--accent); font-weight: 700; }
+.settings-nav button { position: relative; border-color: transparent; background: transparent; text-align: left; padding: 10px 14px; font-size: 13.5px; color: var(--ink); font-weight: 500; }
+.settings-nav button[aria-current="page"] { background: var(--soft); color: var(--accent); font-weight: 620; }
+/* The current section: the same accent bar as the management pages' sidebar. */
+.settings-nav button[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px;
+  border-radius: 2px; background: var(--accent); }
 .settings-content { padding: 25px 30px 35px; overflow: auto; flex: 1; min-width: 0; }
 .section-heading { margin-bottom: 24px; }
 .section-heading h2 { margin-top: 6px; font-size: 29px; }

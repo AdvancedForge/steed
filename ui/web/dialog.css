@@ -54,7 +54,7 @@ button.control:disabled { opacity: .45; border-color: var(--border); }
 /* Full pages close with the header's ✕; their own Close buttons repeat it. */
 .workspace-page button.control[data-tone=close] { display: none; }
 /* On/off buttons: a switch and its label. */
-button.control.toggle { display: inline-flex; align-items: center; gap: 10px; border-color: transparent; padding-left: 4px; font-weight: 550; }
+button.control.toggle { display: inline-flex; align-items: center; gap: 10px; border-color: transparent; padding-left: 0; font-weight: 550; }
 button.control.toggle::before { content: ""; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--border);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent); transition: background .2s;
   background-image: radial-gradient(circle at 10px 10px, #fff 7px, transparent 7.5px); }
