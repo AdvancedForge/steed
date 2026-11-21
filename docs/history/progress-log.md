@@ -7,6 +7,16 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**More ways to start automations, packs, agent-made pages — November 21,
+2026.** Automations can start when a download finishes, when you visit a site,
+on a keyboard shortcut, or from a page's right-click menu with that page's
+text, and gained steps that go on only if your assistant says yes, save the
+text to your file library, and wait. **View → Packs…** shares pages, skills
+and automations as one file; adding a pack shows every item in full, adds only
+what you tick, and brings automations in paused. Agents can propose a page or
+an automation; the popup shows the HTML or every step and saves nothing until
+you press Add.
+
 **Routines are automations — November 21, 2026.** One kind of workflow:
 routines you had became automations once (their schedule, a step that reads
 their pages with saved steps and sign-in, what Steed noticed, then a chat or a
