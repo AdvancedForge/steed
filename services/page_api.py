@@ -27,12 +27,24 @@ ENDPOINTS = {
     "skills": "steed",
     "run-skill": "automation",
     "run-routine": "automation",
+    "automations": "steed",
+    "run-automation": "automation",
     "open": "automation",
     "notify": "automation",
 }
 # What only your own steed:<name> pages may ask (not New Tab or panel apps).
 YOURS_ONLY = frozenset(
-    {"watches", "routines", "skills", "run-skill", "run-routine", "open", "notify"}
+    {
+        "watches",
+        "routines",
+        "skills",
+        "automations",
+        "run-skill",
+        "run-routine",
+        "run-automation",
+        "open",
+        "notify",
+    }
 )
 FETCH_LIMIT = 2 * 1024 * 1024
 FETCH_TIMEOUT_MS = 15000
@@ -232,6 +244,24 @@ class PageApi(QObject):
                 }
                 for r in registry.routines.list()
             ]
+        if name == "automations":
+            from services.automations import describe_trigger
+
+            return [
+                {
+                    "id": a["id"],
+                    "name": a["name"],
+                    "runs": describe_trigger(a["trigger"]),
+                    "last_run": a["last_run"],
+                    "last_outcome": a["last_outcome"],
+                    "paused": a["paused"],
+                }
+                for a in registry.automations.list()
+            ]
+        if name == "run-automation":
+            if not registry.automations.run(one("id")):
+                raise ValueError("No such automation.")
+            return {"started": True}
         if name == "skills":
             return [
                 {"id": s["id"], "name": s["name"], "ask": s["ask"]}

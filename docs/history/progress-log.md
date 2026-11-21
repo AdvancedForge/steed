@@ -7,6 +7,14 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Automations — November 21, 2026.** Your own workflows, the general form of
+routines: started by you, a schedule, a watched page changing or Steed
+starting, then steps in order (read a page, fetch an address, ask your
+assistant, start an agent chat, run a skill, notify, open a page, go on only if
+it contains something or changed), each using what the step before found.
+Many need no AI. **Write it for me** drafts one from a description; your pages
+can list and run them.
+
 **Your own steed: pages — November 21, 2026.** **View → Your Pages…** makes
 `steed:<name>` tabs of your own in HTML and JavaScript (from a dashboard or
 launcher template, by hand, or written by your assistant from a description),

@@ -999,6 +999,8 @@ class BrowserWindow(QMainWindow):
         agents_menu.addAction(self.agent_sidebar_action)
         # Agents → Skills: each skill is also in the command palette.
         self.skills_menu = agents_menu.addMenu("Skills")
+        # Agents → Automations: likewise, each one runnable from the palette.
+        self.automations_menu = agents_menu.addMenu("Automations")
         add_assistant_action = QAction("Add an Assistant…", self)
         add_assistant_action.triggered.connect(self._add_assistant)
         agents_menu.addAction(add_assistant_action)
@@ -1218,6 +1220,7 @@ class BrowserWindow(QMainWindow):
 
         self._fill_commands_menu()
         self._fill_skills_menu()
+        self._fill_automations_menu()
         shortcuts.apply(self)
         for menu in self._layout_menus.values():
             register_actions(menu)
@@ -2231,6 +2234,38 @@ class BrowserWindow(QMainWindow):
         menu.addSeparator()
         menu.addAction("Manage Skills…").triggered.connect(self.manage_skills)
 
+    def _fill_automations_menu(self):
+        menu = getattr(self, "automations_menu", None)
+        if menu is None or getattr(self, "_closing", False):
+            return
+        menu.clear()
+        automations = self.profile_manager.registry.automations
+        if not getattr(automations, "_menu_hooked", False):
+            automations._menu_hooked = True
+            automations.changed.connect(self._automations_changed)
+        for item in automations.list():
+            action = menu.addAction("Run Automation: " + item["name"])
+            action.triggered.connect(
+                lambda _=False, identity=item["id"]: automations.run(identity)
+            )
+        menu.addSeparator()
+        menu.addAction("Manage Automations…").triggered.connect(self.manage_automations)
+
+    def _automations_changed(self):
+        for window in QApplication.topLevelWidgets():
+            if isinstance(window, BrowserWindow) and not window._closing:
+                window._fill_automations_menu()
+
+    def manage_automations(self):
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage(
+                "Automations are not available in incognito.", 4000
+            )
+            return
+        from ui.automations_dialog import AutomationsDialog
+
+        self._present_dialog(AutomationsDialog(self), modal=False)
+
     def _skills_changed(self):
         for window in QApplication.topLevelWidgets():
             if isinstance(window, BrowserWindow) and not window._closing:
@@ -2251,7 +2286,7 @@ class BrowserWindow(QMainWindow):
 
         self._present_dialog(SkillsDialog(self), modal=False)
 
-    def run_skill(self, skill_id, tabs=()):
+    def run_skill(self, skill_id, tabs=(), extra=""):
         """Run a skill: its saved steps first (by Steed, no model), then the
         ask, with this page if the skill looks at it, in the agent chat."""
         from services.skills import message
@@ -2268,10 +2303,10 @@ class BrowserWindow(QMainWindow):
         def deliver():
             if state["waiting"]:
                 return
-            self.agent_message(
-                message(skill, state["page"], state["read"], state["stopped"]),
-                send=True,
-            )
+            text = message(skill, state["page"], state["read"], state["stopped"])
+            if extra:  # From an automation: what its earlier steps found.
+                text += "\n\n[From the automation]\n" + extra[:6000]
+            self.agent_message(text, send=True)
 
         if (
             skill["context"] == "page"
@@ -2689,6 +2724,35 @@ class BrowserWindow(QMainWindow):
             )
 
         registry.routines.ran.connect(routine_ran)
+
+        automations = registry.automations
+
+        def automation_chat(automation, text):
+            window = window_for(automation)
+            if (
+                window is not None
+                and window.agent_message(text, send=True, new_chat=True) is not None
+            ):
+                notifier.notify(
+                    f"Automation “{automation['name']}” started a chat",
+                    "Your agent's answer will be in the agent sidebar.",
+                )
+
+        def automation_skill(automation, skill, text):
+            window = window_for(automation)
+            found = registry.skills.get(skill) or registry.skills.find(skill)
+            if window is not None and found is not None:
+                window.run_skill(found["id"], extra=text)
+
+        def automation_open(url):
+            window = window_for(None)
+            if window is not None:
+                window._new_tab(url=url)
+
+        automations.chat.connect(automation_chat)
+        automations.skill.connect(automation_skill)
+        automations.notify.connect(lambda title, text: notifier.notify(title, text))
+        automations.open_page.connect(automation_open)
 
         def routine_needs_you(routine, url):
             def open_it():

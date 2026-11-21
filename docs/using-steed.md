@@ -1359,6 +1359,39 @@ also adds the watched pages that changed since the last run.
 reads the pages (after any saved steps) and notifies you only when what it read
 differs from the last run.
 
+### Automations
+
+**Agents → Automations → Manage Automations…** makes your own workflows. A
+routine asks your agent on a schedule; an automation is the general form,
+and many need no AI at all.
+
+**What starts it:** you (Agents → Automations, the command palette, or a button
+on one of your pages), a schedule (every day at a time, or every few hours), a
+watched page changing (with what changed), or Steed starting.
+
+**Its steps, in order**, each able to use what the step before found by
+writing `{last}`:
+
+| Step | What it does |
+| --- | --- |
+| Read a page | the page's text, read in the background with your sign-ins |
+| Fetch a web address | the response, without cookies |
+| Ask your assistant | a one-off answer from the assistant you chose, with no tools |
+| Start a chat | a new agent chat with the text, which may act with your approvals |
+| Run a skill | one of your skills, with the text |
+| Notify me | a desktop notification |
+| Open a page | a new tab |
+| Go on only if it contains | stops unless the text so far contains something |
+| Go on only if it changed | stops unless the text differs from the last run's |
+
+For example: every morning, read the bank's rates page, go on only if it
+changed, ask your assistant for the change in one line, notify me. **Write it
+for me** turns a description into an automation for you to check step by step
+before saving. Runs happen one at a time; Automations shows when each last ran
+and how it ended. Pause All Agents stops steps that need an assistant. Your own
+pages can list automations and run them (`/api/automations`,
+`/api/run-automation?id=…`). Kept in `automations.json`; never in incognito.
+
 ### Watches
 
 Ask Steed to keep an eye on a page for you. Right-click a page — or select the
