@@ -42,13 +42,25 @@ STEP_CHOICES = (
     ("open", "Open a page", "https://…"),
     ("contains", "Go on only if it contains", "in stock"),
     ("changed", "Go on only if it changed since last time", ""),
+    ("decide", "Go on only if my assistant says yes", "Is this a good deal?"),
+    ("save", "Save it to my file library", "kettle prices {date}.md"),
+    ("wait", "Wait (minutes)", "10"),
 )
 TRIGGER_CHOICES = (
     ("manual", "When I run it"),
     ("schedule", "On a schedule"),
     ("watch", "When a watched page changes"),
     ("startup", "When Steed starts"),
+    ("download", "When a download finishes"),
+    ("visit", "When I visit a site"),
+    ("shortcut", "When I press a shortcut"),
+    ("page", "From a page's right-click menu"),
 )
+TRIGGER_FIELDS = {
+    "download": ("match", "Only files named like (optional), e.g. .pdf"),
+    "visit": ("site", "example.com"),
+    "shortcut": ("keys", "Ctrl+Alt+K"),
+}
 
 
 class AutomationEditor(HtmlSettingsDialog):
@@ -104,6 +116,11 @@ class AutomationEditor(HtmlSettingsDialog):
         if trigger.get("watch"):
             self.watch.setCurrentIndex(max(0, self.watch.findData(trigger["watch"])))
         layout.addWidget(self.watch)
+        self.trigger_value = QLineEdit()
+        kind = trigger.get("kind")
+        if kind in TRIGGER_FIELDS:
+            self.trigger_value.setText(trigger.get(TRIGGER_FIELDS[kind][0], ""))
+        layout.addWidget(self.trigger_value)
         layout.addWidget(
             QLabel("Steps, in order ({last} is what the step before found)")
         )
@@ -156,6 +173,9 @@ class AutomationEditor(HtmlSettingsDialog):
         self.timing.setVisible(kind == "schedule")
         self.at.setVisible(kind == "schedule" and self.timing.currentData() == "daily")
         self.watch.setVisible(kind == "watch")
+        self.trigger_value.setVisible(kind in TRIGGER_FIELDS)
+        if kind in TRIGGER_FIELDS:
+            self.trigger_value.setPlaceholderText(TRIGGER_FIELDS[kind][1])
 
     def _kind_changed(self, *_):
         kind = self.step_kind.currentData()
@@ -209,6 +229,8 @@ class AutomationEditor(HtmlSettingsDialog):
                 trigger["every"] = self.timing.currentData()
         elif kind == "watch":
             trigger["watch"] = self.watch.currentData() or ""
+        elif kind in TRIGGER_FIELDS:
+            trigger[TRIGGER_FIELDS[kind][0]] = self.trigger_value.text().strip()
         return {"name": self.name.text(), "trigger": trigger, "steps": self.steps}
 
     def load(self, automation):
@@ -223,6 +245,10 @@ class AutomationEditor(HtmlSettingsDialog):
             self.at.setText(trigger.get("at", "08:00"))
         if trigger.get("watch"):
             self.watch.setCurrentIndex(max(0, self.watch.findData(trigger["watch"])))
+        if trigger["kind"] in TRIGGER_FIELDS:
+            self.trigger_value.setText(
+                trigger.get(TRIGGER_FIELDS[trigger["kind"]][0], "")
+            )
         self.steps = list(automation["steps"])
         self.refresh_steps()
 

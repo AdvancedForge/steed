@@ -61,6 +61,10 @@ def capabilities():
                     "every": "hours instead of at/days",
                 },
                 "watch": {"watch": "a watch id"},
+                "download": {"match": "optional text in the file name"},
+                "visit": {"site": "example.com (and its subdomains)"},
+                "shortcut": {"keys": "Ctrl+Alt+K (needs Ctrl, Alt or Meta)"},
+                "page": {},
             },
             "steps": {name: words for name, words in STEP_WORDS.items()},
             "example": {

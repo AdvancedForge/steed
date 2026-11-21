@@ -1404,7 +1404,15 @@ and many need no AI at all.
 
 **What starts it:** you (Agents → Automations, the command palette, or a button
 on one of your pages), a schedule (every day at a time, or every few hours), a
-watched page changing (with what changed), or Steed starting.
+watched page changing (with what changed), Steed starting, or:
+
+- **a download finishing**, optionally only files named like `.pdf` (its name,
+  where it was saved and where it came from become `{last}`);
+- **visiting a site** such as `shop.example` or its subdomains (the page's title
+  and address; at most once every ten minutes, never in incognito);
+- **a keyboard shortcut** with Ctrl, Alt or Meta, such as `Ctrl+Alt+K`;
+- **a page's right-click menu**: *Run Automation on This Page* lists these, and
+  the page's title, address and text become `{last}`.
 
 **Its steps, in order**, each able to use what the step before found by
 writing `{last}`:
@@ -1422,6 +1430,9 @@ writing `{last}`:
 | Open a page | a new tab |
 | Go on only if it contains | stops unless the text so far contains something |
 | Go on only if it changed | stops unless the text differs from the last run's |
+| Go on only if my assistant says yes | asks your assistant a yes-or-no question about the text; stops on anything but yes |
+| Save it to my file library | the text as a file in the library's *Automations* folder (`{date}` and `{time}` in the name; never overwrites; the folder is not shared with agents unless you share it) |
+| Wait | 1 to 60 minutes before the next step |
 
 For example: every morning, read the bank's rates page, go on only if it
 changed, ask your assistant for the change in one line, notify me. **Write it

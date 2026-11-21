@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
 import test_writing_help as fixture
+from PyQt6.QtCore import QObject, QTimer, QUrl
 
 from services.automations import (
     check,
@@ -273,6 +274,205 @@ class RunTests(unittest.TestCase):
         self.window._fill_automations_menu()
         labels = [a.text() for a in self.window.automations_menu.actions()]
         self.assertIn("Run Automation: Look", labels)
+
+    def test_new_triggers_start_them_with_what_happened(self):
+        from types import SimpleNamespace
+
+        service = self.automations()
+        profile = self.window.profile_manager.current_profile_name
+        service.add(
+            {
+                "name": "PDFs",
+                "trigger": {"kind": "download", "match": ".pdf"},
+                "steps": [{"do": "notify", "value": "{last}"}],
+            },
+            profile,
+        )
+        service.add(
+            {
+                "name": "Shop",
+                "trigger": {"kind": "visit", "site": "https://www.Shop.example/x"},
+                "steps": [{"do": "notify", "value": "{last}"}],
+            },
+            profile,
+        )
+        record = SimpleNamespace(
+            name="bill.pdf",
+            path="/d/bill.pdf",
+            url="https://a.example/",
+            profile=profile,
+        )
+        service.download_finished(SimpleNamespace(**{**vars(record), "name": "a.zip"}))
+        service.download_finished(
+            SimpleNamespace(**{**vars(record), "profile": "search"})
+        )
+        service.download_finished(record)
+        self.wait(lambda: self.notes)
+        self.assertEqual(
+            self.notes, [("PDFs", "bill.pdf\n/d/bill.pdf\nfrom https://a.example/")]
+        )
+        service.visited(profile, "https://news.example/", "News")
+        service.visited("search", "https://www.shop.example/", "Shop")
+        service.visited(profile, "https://cart.www.shop.example/basket", "Basket")
+        service.visited(profile, "https://www.shop.example/again", "Again")  # Too soon.
+        self.wait(lambda: len(self.notes) == 2)
+        time.sleep(0.1)
+        self.app.processEvents()
+        self.assertEqual(
+            self.notes[1],
+            ("Shop", "### Basket\nhttps://cart.www.shop.example/basket"),
+        )
+        self.assertEqual(len(self.notes), 2)
+
+    def test_shortcut_and_page_menu_triggers(self):
+        from PyQt6.QtWidgets import QMenu
+
+        service = self.automations()
+        profile = self.window.profile_manager.current_profile_name
+        keyed = service.add(
+            {
+                "name": "Keyed",
+                "trigger": {"kind": "shortcut", "keys": "ctrl+alt+k"},
+                "steps": [{"do": "notify", "value": "pressed"}],
+            },
+            profile,
+        )
+        self.assertEqual(keyed["trigger"]["keys"], "Ctrl+Alt+K")
+        for bad in ("k", "", "Ctrl+K, Ctrl+L"):
+            with self.assertRaises(ValueError, msg=bad):
+                check(
+                    {
+                        "name": "x",
+                        "trigger": {"kind": "shortcut", "keys": bad},
+                        "steps": [{"do": "changed"}],
+                    }
+                )
+        self.window._fill_automations_menu()
+        (action,) = [
+            a
+            for a in self.window.automations_menu.actions()
+            if a.text().endswith("Keyed")
+        ]
+        self.assertEqual(action.shortcut().toString(), "Ctrl+Alt+K")
+        self.assertIn(action, self.window.actions())
+        service.add(
+            {
+                "name": "Summarize here",
+                "trigger": {"kind": "page"},
+                "steps": [{"do": "notify", "value": "{last}"}],
+            },
+            profile,
+        )
+        tab = self.window.tabs[self.window.current_tab_index]
+        tab.setHtml(
+            "<title>Deal</title><p>Half price kettles</p>",
+            QUrl("https://deal.example/"),
+        )
+        self.wait(lambda: tab.title() == "Deal")
+        menu = QMenu()
+        self.window._add_ask_agent_item(menu, tab, None)
+        (runs,) = [a.menu() for a in menu.actions() if a.menu()]
+        self.assertEqual(runs.title(), "Run Automation on This Page")
+        runs.actions()[0].trigger()
+        self.wait(lambda: self.notes)
+        self.assertEqual(self.notes[0][0], "Summarize here")
+        self.assertIn("https://deal.example/", self.notes[0][1])
+        self.assertIn("Half price kettles", self.notes[0][1])
+
+    def test_decide_save_and_wait_steps(self):
+        service = self.automations()
+        registry = self.window.profile_manager.registry
+        item = service.add(
+            {
+                "name": "Deal",
+                "steps": [
+                    {"do": "decide", "value": "Is this cheap? {last}"},
+                    {"do": "save", "value": "deal {date}.md"},
+                    {"do": "wait", "value": "1"},
+                    {"do": "notify", "value": "{last}"},
+                ],
+            }
+        )
+        for bad in (
+            {"do": "wait", "value": "0"},
+            {"do": "wait", "value": "x"},
+            {"do": "save", "value": "../escape"},
+            {"do": "save", "value": ""},
+        ):
+            with self.assertRaises(ValueError, msg=bad):
+                check({"name": "x", "steps": [bad]})
+
+        class Says(fixture.FakeOnce):
+            answer = "No."
+
+            def __init__(self, command, prompt, parent=None, **_):
+                QObject.__init__(self, parent)
+                fixture.FakeOnce.asked.append(prompt)
+                QTimer.singleShot(0, lambda: self.answered.emit(Says.answer))
+
+        timers = []
+        real_start = QTimer.start
+
+        def quick(timer, ms=None):
+            if ms == 60_000:
+                timers.append(ms)
+                ms = 10
+            return real_start(timer) if ms is None else real_start(timer, ms)
+
+        with (
+            patch("services.agent_once.agent_command", return_value=["fake"]),
+            patch("services.agent_once.AgentOnce", Says),
+            patch.object(QTimer, "start", quick),
+        ):
+            service.run(item["id"], start="Kettle, 12 pounds")
+            self.wait(lambda: self.outcomes)
+            self.assertEqual(
+                self.outcomes[-1], "Stopped at step 1: your assistant said no."
+            )
+            self.assertIn(
+                "Answer only yes or no. Is this cheap? Kettle",
+                fixture.FakeOnce.asked[-1],
+            )
+            Says.answer = "Yes, it is."
+            service.run(item["id"], start="Kettle, 12 pounds")
+            self.wait(lambda: len(self.outcomes) == 2)
+        self.assertEqual(self.outcomes[-1], "Done (4 steps).")
+        self.assertEqual(timers, [60_000])
+        self.assertEqual(self.notes, [("Deal", "Kettle, 12 pounds")])
+        library = registry.tasks.library
+        (folder,) = [f for f in library.folders() if f["name"] == "Automations"]
+        self.assertFalse(folder["enabled"])  # Not shared with agents by itself.
+        (entry,) = library.list(folder["id"])["entries"]
+        self.assertTrue(entry["path"].startswith("deal 20"))
+
+    def test_the_editor_sets_the_new_triggers(self):
+        from ui.automations_dialog import AutomationEditor
+
+        editor = AutomationEditor(self.window)
+        self.addCleanup(editor.deleteLater)
+        editor.name.setText("Visit")
+        editor.trigger.setCurrentIndex(editor.trigger.findData("visit"))
+        self.assertFalse(editor.trigger_value.isHidden())
+        editor.trigger_value.setText("shop.example")
+        editor.step_kind.setCurrentIndex(editor.step_kind.findData("wait"))
+        editor.step_value.setText("5")
+        editor.add_step()
+        self.assertEqual(
+            editor.values()["trigger"], {"kind": "visit", "site": "shop.example"}
+        )
+        self.assertEqual(editor.steps, [{"do": "wait", "value": "5"}])
+        editor.load(
+            check(
+                {
+                    "name": "K",
+                    "trigger": {"kind": "shortcut", "keys": "Alt+J"},
+                    "steps": [{"do": "changed"}],
+                }
+            )
+        )
+        self.assertEqual(editor.trigger_value.text(), "Alt+J")
+        editor.trigger.setCurrentIndex(editor.trigger.findData("page"))
+        self.assertTrue(editor.trigger_value.isHidden())
 
 
 if __name__ == "__main__":

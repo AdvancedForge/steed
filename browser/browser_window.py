@@ -2248,11 +2248,24 @@ class BrowserWindow(QMainWindow):
         if not getattr(automations, "_menu_hooked", False):
             automations._menu_hooked = True
             automations.changed.connect(self._automations_changed)
+        for action in getattr(self, "_automation_shortcuts", ()):
+            self.removeAction(action)
+        self._automation_shortcuts = []
+        profile = self.profile_manager.current_profile_name
         for item in automations.list():
             action = menu.addAction("Run Automation: " + item["name"])
             action.triggered.connect(
                 lambda _=False, identity=item["id"]: automations.run(identity)
             )
+            trigger = item["trigger"]
+            if (
+                trigger["kind"] == "shortcut"
+                and not item["paused"]
+                and item["profile"] == profile
+            ):
+                action.setShortcut(QKeySequence(trigger["keys"]))
+                self.addAction(action)
+                self._automation_shortcuts.append(action)
         menu.addSeparator()
         menu.addAction("Manage Automations…").triggered.connect(self.manage_automations)
 
@@ -2590,6 +2603,18 @@ class BrowserWindow(QMainWindow):
         action = QAction(label, menu)
         action.triggered.connect(lambda: self.ask_agent(tab, **{kind: value}))
         menu.insertAction(first, action)
+        on_page = self.profile_manager.registry.automations.for_trigger(
+            "page", self.profile_manager.current_profile_name
+        )
+        if on_page and tab.url().scheme() in ("http", "https"):
+            runs = QMenu("Run Automation on This Page", menu)
+            for item in on_page:
+                runs.addAction(item["name"]).triggered.connect(
+                    lambda _=False, identity=item["id"]: self.run_automation_on_page(
+                        tab, identity
+                    )
+                )
+            menu.insertMenu(first, runs)
         if tab.url().scheme() in ("http", "https"):
             watch = QAction(
                 "Watch This with Agent…"
@@ -2600,6 +2625,31 @@ class BrowserWindow(QMainWindow):
             watch.triggered.connect(lambda: self.watch_page(tab))
             menu.insertAction(first, watch)
         menu.insertSeparator(first)
+
+    def run_automation_on_page(self, tab, automation_id):
+        """An automation started from the page menu: the page is its {last}."""
+        if self._closing or self.profile_manager.current_profile_name == "search":
+            return
+        automations = self.profile_manager.registry.automations
+
+        def read(text):
+            if sip.isdeleted(tab) or self._closing:
+                return
+            body = " ".join(text.split())[:15000] if isinstance(text, str) else ""
+            url = tab.url().toString()
+            if automations.run(
+                automation_id, start=f"### {tab.title() or url}\n{url}\n\n{body}"
+            ):
+                self.status_bar.showMessage(
+                    "Running the automation on this page…", 4000
+                )
+
+        webengine.run_script(
+            tab.page(),
+            "document.body ? document.body.innerText : ''",
+            read,
+            world=webengine.STEED_WORLD,
+        )
 
     def watch_page(self, tab):
         """Keep an eye on this page (or the selected part) for you."""
@@ -6029,6 +6079,11 @@ class BrowserWindow(QMainWindow):
         tab.quiet_stop = False
         if ok:
             self.history.record(tab.url().toString(), tab.title())
+            profile = self.profile_manager.current_profile_name
+            if profile != "search" and not tab.workspace_name:
+                self.profile_manager.registry.automations.visited(
+                    profile, tab.url().toString(), tab.title()
+                )
             self.adblock.apply_cosmetic(tab)
             if (
                 page_name(tab.url()) == "newtab"
