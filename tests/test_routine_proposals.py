@@ -78,15 +78,19 @@ class RoutineProposalTests(unittest.TestCase):
         finally:
             if dialog.isVisible():
                 dialog.close()
-        (routine,) = self.registry.routines.list()
-        self.assertEqual((routine["name"], routine["at"]), ("Morning brief", "07:30"))
+        # An added routine is an automation now.
+        (routine,) = self.registry.automations.list()
+        self.assertEqual(
+            (routine["name"], routine["trigger"]["at"]), ("Morning brief", "07:30")
+        )
+        self.assertEqual(routine["steps"][-1]["do"], "chat")
         self.assertEqual(
             self.service.routines.get(task.task_id, "one").state, "applied"
         )
         _, other = self.propose(request="two", task=task, name="Evening")
         self.service.routines.resolve(task.task_id, "two", approve=False)
         self.assertEqual(self.service.routines.get(task.task_id, "two").state, "denied")
-        self.assertEqual(len(self.registry.routines.list()), 1)
+        self.assertEqual(len(self.registry.automations.list()), 1)
 
     def test_ending_the_task_cancels_pending_proposals(self):
         task, _ = self.propose()

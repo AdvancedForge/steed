@@ -183,6 +183,17 @@ tracking removal, what Steed remembers, cookie sharing, the user agent, agent
 settings) cannot be proposed; capabilities lists what can, with the current
 preferences and every menu command's shortcut so a proposal can be precise.
 
+Ask an agent for a page or an automation ("make me a dashboard of my price
+watches", "every Friday, check these three shops and tell me what changed")
+and it can propose one with `steed_creation_capabilities`,
+`steed_custom_page_propose`, `steed_automation_propose` and
+`steed_creation_status`. The popup shows a page's whole HTML and JavaScript,
+or an automation's trigger and every step in order, and saves nothing until
+you press **Add**; it goes to the profile of the window you review it in.
+Proposals are checked exactly like what you make yourself (reserved names,
+web addresses only, known steps), at most three wait per task, and they grant
+no access: what a page's scripts may do still follows Access → Local pages.
+
 Agents can **suggest a watch** when you ask for one in a chat ("tell me when
 tickets go on sale") with `steed_watch_capabilities`, `steed_watch_propose`
 (`url`, optional `title`, `instruction`, `every` of `15m`/`hourly`/`6h`/
@@ -454,6 +465,23 @@ Refusals come back as JSON with `"status": 403`. Pages keep their own
 `localStorage`. They run under a strict content policy: their own inline
 scripts and styles, images from the web, no other scripts. Kept in the
 profile's start-page data; not in incognito.
+
+### Packs: sharing pages, skills and automations
+
+**View → Packs…** puts any of your pages, skills and automations in one
+`.steedpack` file, to keep or give someone. A pack holds exactly what each
+item is (a page's HTML, a skill's ask and saved steps, an automation's trigger
+and steps, with their web addresses and text) and nothing else: no logins,
+history, settings or run records. Items whose saved steps type text are marked
+so you can check that text before sharing. An automation started by one of
+your watches goes in as run-by-hand, since watches are yours.
+
+**Add a pack…** reads a pack with the same checks as anything you make
+(items that fail are listed and left out), shows every item in full, and adds
+only what you leave ticked. Automations arrive paused; resume them in Agents →
+Automations. A page or skill whose name you already use comes in renamed
+(`board-2`, `Price check (2)`), an identical skill is skipped, and automation
+steps that run a renamed skill follow it.
 
 ### Workspaces
 
@@ -1318,6 +1346,15 @@ last until the page closes.
 
 ### Routines
 
+Routines are automations now (see Automations above): each one you had became
+an automation the first time this version started (the old list is kept as
+`routines.migrated.json`), and a routine you or an agent adds is kept as the
+automation it is: its schedule, a step that reads its pages (with its saved
+steps and signing in if allowed), what Steed noticed if asked, then a chat
+with its ask, or a note when it changed. **Agents → Automations → Morning
+brief…** starts the brief. What follows describes what a routine does.
+
+
 **Agents → Routines…**: things your agent does on a schedule, such as a
 morning brief. A routine has a name, what to ask, when (every day at a time on
 the days you choose, or every 1–12 hours), and up to five pages to read first.
@@ -1367,7 +1404,15 @@ and many need no AI at all.
 
 **What starts it:** you (Agents → Automations, the command palette, or a button
 on one of your pages), a schedule (every day at a time, or every few hours), a
-watched page changing (with what changed), or Steed starting.
+watched page changing (with what changed), Steed starting, or:
+
+- **a download finishing**, optionally only files named like `.pdf` (its name,
+  where it was saved and where it came from become `{last}`);
+- **visiting a site** such as `shop.example` or its subdomains (the page's title
+  and address; at most once every ten minutes, never in incognito);
+- **a keyboard shortcut** with Ctrl, Alt or Meta, such as `Ctrl+Alt+K`;
+- **a page's right-click menu**: *Run Automation on This Page* lists these, and
+  the page's title, address and text become `{last}`.
 
 **Its steps, in order**, each able to use what the step before found by
 writing `{last}`:
@@ -1375,6 +1420,8 @@ writing `{last}`:
 | Step | What it does |
 | --- | --- |
 | Read a page | the page's text, read in the background with your sign-ins |
+| Read pages, signing in | a routine's reading: saved steps, then pages, signing in with your saved login if a page asks |
+| Add what Steed noticed | the watched pages that changed since the last run |
 | Fetch a web address | the response, without cookies |
 | Ask your assistant | a one-off answer from the assistant you chose, with no tools |
 | Start a chat | a new agent chat with the text, which may act with your approvals |
@@ -1383,6 +1430,9 @@ writing `{last}`:
 | Open a page | a new tab |
 | Go on only if it contains | stops unless the text so far contains something |
 | Go on only if it changed | stops unless the text differs from the last run's |
+| Go on only if my assistant says yes | asks your assistant a yes-or-no question about the text; stops on anything but yes |
+| Save it to my file library | the text as a file in the library's *Automations* folder (`{date}` and `{time}` in the name; never overwrites; the folder is not shared with agents unless you share it) |
+| Wait | 1 to 60 minutes before the next step |
 
 For example: every morning, read the bank's rates page, go on only if it
 changed, ask your assistant for the change in one line, notify me. **Write it

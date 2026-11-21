@@ -28,6 +28,8 @@ from ui.html_dialog import HtmlSettingsDialog
 
 STEP_CHOICES = (
     ("read", "Read a page (with your sign-ins)", "https://…"),
+    ("gather", "Read a page, signing in with my saved login if asked", "https://…"),
+    ("noticed", "Add what Steed noticed (watched pages that changed)", ""),
     ("fetch", "Fetch a web address", "https://…/feed.json"),
     (
         "ask",
@@ -40,13 +42,25 @@ STEP_CHOICES = (
     ("open", "Open a page", "https://…"),
     ("contains", "Go on only if it contains", "in stock"),
     ("changed", "Go on only if it changed since last time", ""),
+    ("decide", "Go on only if my assistant says yes", "Is this a good deal?"),
+    ("save", "Save it to my file library", "kettle prices {date}.md"),
+    ("wait", "Wait (minutes)", "10"),
 )
 TRIGGER_CHOICES = (
     ("manual", "When I run it"),
     ("schedule", "On a schedule"),
     ("watch", "When a watched page changes"),
     ("startup", "When Steed starts"),
+    ("download", "When a download finishes"),
+    ("visit", "When I visit a site"),
+    ("shortcut", "When I press a shortcut"),
+    ("page", "From a page's right-click menu"),
 )
+TRIGGER_FIELDS = {
+    "download": ("match", "Only files named like (optional), e.g. .pdf"),
+    "visit": ("site", "example.com"),
+    "shortcut": ("keys", "Ctrl+Alt+K"),
+}
 
 
 class AutomationEditor(HtmlSettingsDialog):
@@ -102,6 +116,11 @@ class AutomationEditor(HtmlSettingsDialog):
         if trigger.get("watch"):
             self.watch.setCurrentIndex(max(0, self.watch.findData(trigger["watch"])))
         layout.addWidget(self.watch)
+        self.trigger_value = QLineEdit()
+        kind = trigger.get("kind")
+        if kind in TRIGGER_FIELDS:
+            self.trigger_value.setText(trigger.get(TRIGGER_FIELDS[kind][0], ""))
+        layout.addWidget(self.trigger_value)
         layout.addWidget(
             QLabel("Steps, in order ({last} is what the step before found)")
         )
@@ -154,6 +173,9 @@ class AutomationEditor(HtmlSettingsDialog):
         self.timing.setVisible(kind == "schedule")
         self.at.setVisible(kind == "schedule" and self.timing.currentData() == "daily")
         self.watch.setVisible(kind == "watch")
+        self.trigger_value.setVisible(kind in TRIGGER_FIELDS)
+        if kind in TRIGGER_FIELDS:
+            self.trigger_value.setPlaceholderText(TRIGGER_FIELDS[kind][1])
 
     def _kind_changed(self, *_):
         kind = self.step_kind.currentData()
@@ -169,7 +191,9 @@ class AutomationEditor(HtmlSettingsDialog):
     def add_step(self):
         kind = self.step_kind.currentData()
         step = {"do": kind}
-        if STEPS[kind] is not None:
+        if kind == "gather":
+            step.update(value=[self.step_value.text().strip()], signin=True)
+        elif STEPS[kind] is not None:
             step["value"] = self.step_value.text().strip()
         try:
             check({"name": "x", "steps": [step]})
@@ -205,6 +229,8 @@ class AutomationEditor(HtmlSettingsDialog):
                 trigger["every"] = self.timing.currentData()
         elif kind == "watch":
             trigger["watch"] = self.watch.currentData() or ""
+        elif kind in TRIGGER_FIELDS:
+            trigger[TRIGGER_FIELDS[kind][0]] = self.trigger_value.text().strip()
         return {"name": self.name.text(), "trigger": trigger, "steps": self.steps}
 
     def load(self, automation):
@@ -219,6 +245,10 @@ class AutomationEditor(HtmlSettingsDialog):
             self.at.setText(trigger.get("at", "08:00"))
         if trigger.get("watch"):
             self.watch.setCurrentIndex(max(0, self.watch.findData(trigger["watch"])))
+        if trigger["kind"] in TRIGGER_FIELDS:
+            self.trigger_value.setText(
+                trigger.get(TRIGGER_FIELDS[trigger["kind"]][0], "")
+            )
         self.steps = list(automation["steps"])
         self.refresh_steps()
 
@@ -294,6 +324,7 @@ class AutomationsDialog(HtmlSettingsDialog):
         self.selection_buttons = []
         for text, callback in (
             ("New automation…", self.new),
+            ("Morning brief…", self.morning_brief),
             ("Run now", self.run),
             ("Edit…", self.edit),
             ("Pause", self.pause),
@@ -302,7 +333,7 @@ class AutomationsDialog(HtmlSettingsDialog):
             button = QPushButton(text)
             if text == "New automation…":
                 button.setProperty("primary", True)
-            else:
+            elif text != "Morning brief…":
                 self.selection_buttons.append(button)
             button.clicked.connect(callback)
             row.addWidget(button)
@@ -342,6 +373,32 @@ class AutomationsDialog(HtmlSettingsDialog):
 
     def new(self):
         editor = AutomationEditor(self.window)
+        self.window._present_dialog(editor, modal=False)
+        return editor
+
+    def morning_brief(self):
+        """A brief that is ready to go: add the pages it should read."""
+        from services.automations import check
+        from services.routines import BRIEF_ASK
+
+        editor = AutomationEditor(self.window)
+        editor.load(
+            check(
+                {
+                    "name": "Morning brief",
+                    "trigger": {
+                        "kind": "schedule",
+                        "at": "08:00",
+                        "days": [0, 1, 2, 3, 4],
+                    },
+                    "steps": [{"do": "noticed"}, {"do": "chat", "value": BRIEF_ASK}],
+                }
+            )
+        )
+        editor.status.setText(
+            "Add a step that reads your calendar and inbox (Read a page) before "
+            "the chat, then Save."
+        )
         self.window._present_dialog(editor, modal=False)
         return editor
 

@@ -335,6 +335,13 @@ class ProfileRegistry(QObject):
 
             self._automations = Automations(self)
             self.watches.fired.connect(self._automations.watch_changed)
+            automations = self._automations
+            self.downloads.finished.connect(
+                lambda key: (
+                    key in self.downloads.records
+                    and automations.download_finished(self.downloads.records[key])
+                )
+            )
         return self._automations
 
     @property

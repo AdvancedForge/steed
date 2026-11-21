@@ -183,6 +183,17 @@ def asks_to_sign_in(url, found):
     )
 
 
+def REASONS_NOTE(stopped):  # noqa: N802
+    """Where saved steps stopped, in words for an agent."""
+    from services.routine_steps import REASONS, describe_step
+
+    number, step, reason = stopped
+    return (
+        f"(The saved steps stopped at step {number}, “{describe_step(step)}”: "
+        f"{REASONS.get(reason, reason)}. Do this part yourself if you can.)"
+    )
+
+
 def message(routine, pages, stopped=None):
     """What the agent gets: the routine's ask, and the pages' text; when its
     saved steps stopped, where and why, so the agent can carry on."""
@@ -202,6 +213,164 @@ def message(routine, pages, stopped=None):
     return "\n\n".join(parts)
 
 
+class Gatherer(QObject):
+    """Reads what a routine or automation reads: its saved steps first (by
+    Steed, no model), then its pages, signing in with your saved login when
+    allowed. finished(read, stopped): [(title, url, text)] and where saved
+    steps stopped, or None."""
+
+    finished = pyqtSignal(list, object)
+    needs_you = pyqtSignal(str)  # a page that wants a sign-in
+    signed_in = pyqtSignal(str, str)  # site, outcome
+
+    def __init__(
+        self, registry, profile, pages=(), steps=(), signin=False, parent=None
+    ):
+        super().__init__(parent)
+        self.registry, self.profile = registry, profile
+        self.pending, self.steps, self.signin = list(pages), list(steps), signin
+        self.read, self.stopped = [], None
+        self.current = None  # A runner or page in progress.
+        self.closed = False
+
+    def start(self):
+        if self.steps:
+            self._run_steps()
+        else:
+            self._next_page()
+
+    def close(self):
+        self.closed = True
+        current, self.current = self.current, None
+        if current is not None and not sip.isdeleted(current):
+            sip.delete(current)
+
+    def _profile(self):
+        return self.registry.get(self.profile)
+
+    def _run_steps(self):
+        from services.routine_steps import StepRunner
+
+        try:
+            profile = self._profile()
+        except (ValueError, OSError):
+            self.stopped = (1, self.steps[0], "not_loaded")
+            self._next_page()
+            return
+        runner = StepRunner(profile, self.steps, self)
+        self.current = runner
+
+        def finished(pages, stopped):
+            if self.closed:
+                return
+            self.current = None
+            self.read.extend(pages)
+            self.stopped = stopped
+            runner.deleteLater()
+            self._next_page()
+
+        runner.finished.connect(finished)
+        runner.start()
+
+    def _next_page(self):
+        if self.closed:
+            return
+        if not self.pending:
+            self.finished.emit(list(self.read), self.stopped)
+            return
+        url = self.pending.pop(0)
+        try:
+            profile = self._profile()
+        except (ValueError, OSError):
+            self.read.append((url, url, ""))
+            self._next_page()
+            return
+        page = webengine.background_page(profile, self)
+        self.current = page
+        done = []
+        tried = []  # Signed in once on this page already.
+        signing = []  # While signing in, its own page loads are not reads.
+
+        def finish(found):
+            if done or signing or self.closed:
+                return
+            title = page.title() if not sip.isdeleted(page) else url
+            found = found if isinstance(found, dict) else {}
+            text = found.get("text") if isinstance(found.get("text"), str) else ""
+            if asks_to_sign_in(url, found):
+                if self.signin and not tried and self._sign_in(page, signed_in):
+                    tried.append(True)
+                    signing.append(True)
+                    return
+                # Hand it to you rather than the agent: it can't sign in here.
+                text = SIGNED_OUT
+                self.needs_you.emit(url)
+            done.append(True)
+            self.read.append((title, url, text))
+            if not sip.isdeleted(page):
+                page.deleteLater()
+            self.current = None
+            self._next_page()
+
+        def signed_in(ok):
+            signing.clear()
+            if done or self.closed or sip.isdeleted(page):
+                return
+            if ok:  # Back to the page it reads, now signed in.
+                page.load(QUrl(url))
+            else:
+                finish({"password": True})
+
+        def loaded(ok):
+            if not ok:
+                finish({})
+                return
+            QTimer.singleShot(
+                SETTLE_MS,
+                lambda: (
+                    not sip.isdeleted(page)
+                    and webengine.run_script(
+                        page, READ_SCRIPT, finish, world=webengine.STEED_WORLD
+                    )
+                ),
+            )
+
+        page.loadFinished.connect(loaded)
+        QTimer.singleShot(READ_TIMEOUT_MS, lambda: finish({}))
+        page.load(QUrl(url))
+
+    def _sign_in(self, page, then):
+        """Sign in on page with the profile's saved login, if there is one."""
+        from browser.password_service import login_origin
+        from services.bitwarden import Logins
+        from services.page_signin import PageSignin
+
+        origin = login_origin(page.url())
+        passwords = getattr(self.registry, "passwords", None)
+        try:
+            vault = passwords.vault(self.profile) if passwords else None
+        except (ValueError, OSError):
+            vault = None
+        if vault is not None and not vault.unlocked:
+            vault = None
+        bitwarden = getattr(self.registry, "bitwarden", None)
+        if bitwarden is not None and not bitwarden.unlocked:
+            bitwarden = None
+        logins = Logins(vault, bitwarden).logins(origin) if origin else []
+        if not logins:
+            return False
+        signer = PageSignin(page, origin, logins[0], self)
+
+        def finished(outcome):
+            signer.deleteLater()
+            self.signed_in.emit(origin, outcome)
+            then(outcome == "signed_in")
+
+        signer.finished.connect(finished)
+        signer.start()
+        return True
+
+
 class Routines(QObject):
     changed = pyqtSignal()
     ran = pyqtSignal(dict, str)  # routine, message for the agent
@@ -219,7 +388,13 @@ class Routines(QObject):
             if isinstance(raw, list)
             else []
         )
-        self.running = None  # (routine, [pages read], pending urls, page)
+        if self.routines:
+            # Routines are automations now: hand them over once, keeping the
+            # old file beside them.
+            registry.automations.adopt_routines(self.routines)
+            self.path.replace(self.path.with_name("routines.migrated.json"))
+            self.routines = []
+        self.running = None  # The Gatherer reading for a run.
         self.stopped = None  # Where saved steps stopped, this run.
         self.closed = False
         self.timer = QTimer(self)
@@ -236,6 +411,17 @@ class Routines(QObject):
         self.changed.emit()
 
     def add(self, routine, profile="global"):
+        """A routine, kept as the automation it is."""
+        from services.automations import from_routine
+
+        if profile == "search":
+            raise ValueError("Routines do not run in incognito.")
+        found = check(routine)
+        automation = self.registry.automations.add(from_routine(found), profile)
+        return {**found, "id": automation["id"], "profile": profile}
+
+    def add_routine(self, routine, profile="global"):
+        """The old kind of routine, run by this service (kept for its tests)."""
         if profile == "search":
             raise ValueError("Routines do not run in incognito.")
         if len(self.routines) >= MAX_ROUTINES:
@@ -304,37 +490,31 @@ class Routines(QObject):
         routine["previous_run"] = routine.get("last_run", 0)
         routine["last_run"] = time.time()
         self._save()
-        self.running = [routine, [], list(routine.get("pages", [])), None]
-        self.stopped = None
-        if routine.get("steps"):
-            self._run_steps(routine)
-        else:
-            self._next_page()
-        return True
+        gatherer = Gatherer(
+            self.registry,
+            routine["profile"],
+            routine.get("pages", []),
+            routine.get("steps", []),
+            bool(routine.get("signin")),
+            self,
+        )
+        self.running = gatherer
+        gatherer.needs_you.connect(lambda url: self.needs_you.emit(dict(routine), url))
+        gatherer.signed_in.connect(
+            lambda site, outcome: self.signed_in.emit(dict(routine), site, outcome)
+        )
 
-    def _run_steps(self, routine):
-        from services.routine_steps import StepRunner
-
-        try:
-            profile = self.registry.get(routine["profile"])
-        except (ValueError, OSError):
-            self.stopped = (1, routine["steps"][0], "not_loaded")
-            self._next_page()
-            return
-        runner = StepRunner(profile, routine["steps"], self)
-        self.running[3] = runner
-
-        def finished(pages, stopped):
-            if self.closed or self.running is None:
+        def finished(read, stopped):
+            if self.closed or self.running is not gatherer:
                 return
-            self.running[3] = None
-            self.running[1].extend(pages)
+            self.running = None
+            gatherer.deleteLater()
             self.stopped = stopped
-            runner.deleteLater()
-            self._next_page()
+            self._deliver(routine, read)
 
-        runner.finished.connect(finished)
-        runner.start()
+        gatherer.finished.connect(finished)
+        gatherer.start()
+        return True
 
     def _deliver(self, routine, read):
         stopped, self.stopped = self.stopped, None
@@ -359,117 +539,10 @@ class Routines(QObject):
             text += "\n\n" + brief_notes(listed, since)
         self.ran.emit(dict(routine), text)
 
-    def _next_page(self):
-        routine, read, pending, _page = self.running
-        if not pending:
-            self.running = None
-            self._deliver(routine, read)
-            return
-        url = pending.pop(0)
-        try:
-            profile = self.registry.get(routine["profile"])
-        except (ValueError, OSError):
-            read.append((url, url, ""))
-            self._next_page()
-            return
-        page = webengine.background_page(profile, self)
-        self.running[3] = page
-        done = []
-        tried = []  # Signed in once on this page already.
-        signing = []  # While signing in, its own page loads are not reads.
-
-        def finish(found):
-            if done or signing or self.closed or self.running is None:
-                return
-            title = page.title() if not sip.isdeleted(page) else url
-            found = found if isinstance(found, dict) else {}
-            text = found.get("text") if isinstance(found.get("text"), str) else ""
-            if asks_to_sign_in(url, found):
-                if (
-                    routine.get("signin")
-                    and not tried
-                    and self._sign_in(routine, page, url, signed_in)
-                ):
-                    tried.append(True)
-                    signing.append(True)
-                    return
-                # Hand it to you rather than the agent: it can't sign in here.
-                text = SIGNED_OUT
-                self.needs_you.emit(dict(routine), url)
-            done.append(True)
-            read.append((title, url, text))
-            if not sip.isdeleted(page):
-                page.deleteLater()
-            self.running[3] = None
-            self._next_page()
-
-        def signed_in(ok):
-            signing.clear()
-            if done or self.closed or sip.isdeleted(page):
-                return
-            if ok:  # Back to the page the routine reads, now signed in.
-                page.load(QUrl(url))
-            else:
-                finish({"password": True})
-
-        def loaded(ok):
-            if not ok:
-                finish({})
-                return
-            QTimer.singleShot(
-                SETTLE_MS,
-                lambda: (
-                    not sip.isdeleted(page)
-                    and webengine.run_script(
-                        page,
-                        READ_SCRIPT,
-                        finish,
-                        world=webengine.STEED_WORLD,
-                    )
-                ),
-            )
-
-        page.loadFinished.connect(loaded)
-        QTimer.singleShot(READ_TIMEOUT_MS, lambda: finish({}))
-        page.load(QUrl(url))
-
-    def _sign_in(self, routine, page, url, then):
-        """Sign in on page with the profile's saved login, if there is one."""
-        from browser.password_service import login_origin
-        from services.bitwarden import Logins
-        from services.page_signin import PageSignin
-
-        origin = login_origin(page.url())
-        passwords = getattr(self.registry, "passwords", None)
-        try:
-            vault = passwords.vault(routine["profile"]) if passwords else None
-        except (ValueError, OSError):
-            vault = None
-        if vault is not None and not vault.unlocked:
-            vault = None
-        bitwarden = getattr(self.registry, "bitwarden", None)
-        if bitwarden is not None and not bitwarden.unlocked:
-            bitwarden = None
-        logins = Logins(vault, bitwarden).logins(origin) if origin else []
-        if not logins:
-            return False
-        signer = PageSignin(page, origin, logins[0], self)
-
-        def finished(outcome):
-            signer.deleteLater()
-            self.signed_in.emit(dict(routine), origin, outcome)
-            then(outcome == "signed_in")
-
-        signer.finished.connect(finished)
-        signer.start()
-        return True
-
     def close(self):
         """Before the profiles go."""
         self.closed = True
         self.timer.stop()
-        if self.running is not None and self.running[3] is not None:
-            page = self.running[3]
-            if not sip.isdeleted(page):
-                sip.delete(page)
+        if self.running is not None:
+            self.running.close()
         self.running = None

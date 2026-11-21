@@ -148,24 +148,20 @@ class RoutineTests(unittest.TestCase):
         self.assertIn("rent due Friday", text)
         self.assertEqual(message.call_args.kwargs, {"send": True, "new_chat": True})
         self.assertIn("is running", notify.call_args.args[0])
-        # Missed while closed: it runs once, then not again.
-        for item in self.service.routines:
-            item["last_run"] = 0
-            item["kind"], item["at"], item["days"] = "daily", "00:00", list(range(7))
-        self.assertIsNotNone(self.service.due())
-        # Paused agents (Agents → Pause All Agents): it waits, then runs.
+        # A routine is kept as the automation it is: on its schedule, reading
+        # its pages, then a chat with the ask.
+        automations = self.window.profile_manager.registry.automations
+        (kept,) = [a for a in automations.list() if a["name"] == "Morning"]
+        self.assertEqual(kept["trigger"]["kind"], "schedule")
+        self.assertEqual([s["do"] for s in kept["steps"]], ["gather", "chat"])
+        self.assertEqual(kept["steps"][0]["value"], [self.url])
+        # Paused agents (Agents → Pause All Agents) show on the menu button.
         self.window.pause_agents_action.setChecked(True)
         self.assertTrue(self.window.profile_manager.registry.tasks.agents_paused)
-        self.service.tick()
-        self.assertIsNone(self.service.running)
         self.assertEqual(self.window.address_bar.menu_btn.text(), "⏸ Agents paused")
         self.window.pause_agents_action.setChecked(False)
-        with patch.object(BrowserWindow, "agent_message", return_value="task"):
-            self.service.tick()
-            self.wait(lambda: self.service.running is None)
-        self.assertIsNone(self.service.due())
-        self.service.pause(routine["id"])
-        self.assertTrue(self.service.list()[0]["paused"])
+        automations.pause(routine["id"])
+        self.assertTrue(automations.get(routine["id"])["paused"])
 
     def test_a_page_that_asks_you_to_sign_in_comes_to_you(self):
         self.window._watch_alerts()
@@ -235,13 +231,18 @@ class RoutineTests(unittest.TestCase):
         self.window._watch_alerts()
         news = self.url.replace("/inbox", "/news")
         routine = self.service.add({"name": "News", "pages": [news], "tell": "changes"})
-        message, notify = self.run_and_wait(routine)
-        message.assert_not_called()  # First run: only remembered.
-        notify.assert_not_called()
-        message, notify = self.run_and_wait(routine)
-        message.assert_not_called()
-        titles = [c.args[0] for c in notify.call_args_list]
-        self.assertIn("Routine “News”: something changed", titles)
+        automations = self.window.profile_manager.registry.automations
+        notes, outcomes = [], []
+        automations.notify.connect(lambda title, text: notes.append(title))
+        automations.finished.connect(lambda a, outcome: outcomes.append(outcome))
+        with patch.object(BrowserWindow, "agent_message") as message:
+            automations.run(routine["id"])
+            self.wait(lambda: outcomes)
+            self.assertEqual(notes, [])  # First run: only remembered.
+            automations.run(routine["id"])
+            self.wait(lambda: len(outcomes) == 2)
+        message.assert_not_called()  # No assistant at all.
+        self.assertEqual(notes, ["News"])
         with self.assertRaises(ValueError):
             self.service.add({"name": "Nothing", "tell": "changes"})
 
@@ -308,10 +309,9 @@ class RoutineTests(unittest.TestCase):
             editor.ask.setPlainText("Summarize my day")
             editor.kind.setCurrentIndex(1)
             editor.save()
-            (saved,) = self.service.list()
-            self.assertEqual(
-                (saved["name"], saved["kind"], saved["every"]), ("Evening", "hours", 4)
-            )
+            automations = self.window.profile_manager.registry.automations
+            (saved,) = automations.list()
+            self.assertEqual((saved["name"], saved["trigger"]["every"]), ("Evening", 4))
         finally:
             editor.deleteLater()
         with self.assertRaises(ValueError):

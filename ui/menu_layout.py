@@ -99,7 +99,7 @@ GROUPS = {
     ),
     "agents": (
         ("Agent Sidebar", "Skills", "Add an Assistant…", "Pause All Agents"),
-        ("Automations", "Routines…", "Watches…", "Data Panels"),
+        ("Automations", "Watches…", "Data Panels"),
         ("Agent Chat Tab", "Website Chats"),
     ),
 }

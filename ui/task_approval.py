@@ -412,6 +412,10 @@ class TaskApprovalQueue(QObject):
                             task.task_id
                         )
                     )
+                    pending.extend(
+                        (task, proposal)
+                        for proposal in self.service.creations.pending(task.task_id)
+                    )
             except (sqlite3.Error, OSError, ValueError):
                 self.service._fatal()
         if self.dialog is not None and not sip.isdeleted(self.dialog):
@@ -441,6 +445,7 @@ class TaskApprovalQueue(QObject):
             if key in self.deferred and not self.service.auto_approve_requests:
                 continue
             from services.connector_reviews import AppReview
+            from services.creation_proposals import CreationProposal
             from services.customization_proposals import CustomizationProposal
             from services.data_panels import PanelReceipt
             from services.layout_proposals import LayoutProposal
@@ -454,6 +459,7 @@ class TaskApprovalQueue(QObject):
             from services.watch_proposals import WatchProposal
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
+            from ui.creation_review import CreationReviewDialog
             from ui.customization_review import CustomizationReviewDialog
             from ui.data_panels import DataPanelReviewDialog
             from ui.layout_review import LayoutReviewDialog
@@ -480,6 +486,7 @@ class TaskApprovalQueue(QObject):
                         ReadingRequest,
                         SigninRequest,
                         SettingsProposal,
+                        CreationProposal,
                     ),
                 )
                 and parent.profile_manager.is_search_profile()
@@ -509,6 +516,8 @@ class TaskApprovalQueue(QObject):
                     if isinstance(grant, SigninRequest)
                     else SettingsReviewDialog(self.service, grant, parent)
                     if isinstance(grant, SettingsProposal)
+                    else CreationReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, CreationProposal)
                     else DataPanelReviewDialog(self.service, grant, parent)
                     if isinstance(grant, PanelReceipt)
                     else LayoutReviewDialog(
@@ -574,6 +583,7 @@ class TaskApprovalQueue(QObject):
                         ReadingRequest,
                         SigninRequest,
                         SettingsProposal,
+                        CreationProposal,
                     ),
                 ):
                     dialog.apply()
@@ -599,6 +609,7 @@ class TaskApprovalQueue(QObject):
 
     def request_key(self, task, item):
         from services.connector_reviews import AppReview
+        from services.creation_proposals import CreationProposal
         from services.customization_proposals import CustomizationProposal
         from services.data_panels import PanelReceipt
         from services.layout_proposals import LayoutProposal
@@ -630,6 +641,7 @@ class TaskApprovalQueue(QObject):
                     ReadingRequest,
                     SigninRequest,
                     SettingsProposal,
+                    CreationProposal,
                 ),
             )
             else item.grant_id
