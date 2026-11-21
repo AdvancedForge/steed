@@ -466,6 +466,23 @@ Refusals come back as JSON with `"status": 403`. Pages keep their own
 scripts and styles, images from the web, no other scripts. Kept in the
 profile's start-page data; not in incognito.
 
+### Packs: sharing pages, skills and automations
+
+**View → Packs…** puts any of your pages, skills and automations in one
+`.steedpack` file, to keep or give someone. A pack holds exactly what each
+item is (a page's HTML, a skill's ask and saved steps, an automation's trigger
+and steps, with their web addresses and text) and nothing else: no logins,
+history, settings or run records. Items whose saved steps type text are marked
+so you can check that text before sharing. An automation started by one of
+your watches goes in as run-by-hand, since watches are yours.
+
+**Add a pack…** reads a pack with the same checks as anything you make
+(items that fail are listed and left out), shows every item in full, and adds
+only what you leave ticked. Automations arrive paused; resume them in Agents →
+Automations. A page or skill whose name you already use comes in renamed
+(`board-2`, `Price check (2)`), an identical skill is skipped, and automation
+steps that run a renamed skill follow it.
+
 ### Workspaces
 
 **Tabs → Workspaces** keeps what you are working on (Work, Trip, Taxes) apart

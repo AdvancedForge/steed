@@ -797,6 +797,9 @@ class BrowserWindow(QMainWindow):
         your_pages_action = QAction("Your Pages…", self)
         your_pages_action.triggered.connect(self.manage_your_pages)
         view_menu.addAction(your_pages_action)
+        packs_action = QAction("Packs…", self)
+        packs_action.triggered.connect(self.manage_packs)
+        view_menu.addAction(packs_action)
         self.commands_menu = view_menu.addMenu("Your Commands")
         media_action = QAction("Play or Pause Media", self)
         media_action.triggered.connect(lambda: media_controls.controller().toggle())
@@ -2282,6 +2285,16 @@ class BrowserWindow(QMainWindow):
         from ui.your_pages import YourPagesDialog
 
         self._present_dialog(YourPagesDialog(self), modal=False)
+
+    def manage_packs(self):
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Packs are not available in incognito.", 4000)
+            return None
+        from ui.packs_dialog import PacksDialog
+
+        dialog = PacksDialog(self)
+        self._present_dialog(dialog, modal=False)
+        return dialog
 
     def manage_skills(self):
         from ui.skills_dialog import SkillsDialog
