@@ -7,6 +7,12 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Routines are automations — November 21, 2026.** One kind of workflow:
+routines you had became automations once (their schedule, a step that reads
+their pages with saved steps and sign-in, what Steed noticed, then a chat or a
+note), and new routines, yours or an agent's, are kept as automations.
+Automations gained those two steps and a ready Morning brief.
+
 **Automations — November 21, 2026.** Your own workflows, the general form of
 routines: started by you, a schedule, a watched page changing or Steed
 starting, then steps in order (read a page, fetch an address, ask your

@@ -28,6 +28,8 @@ from ui.html_dialog import HtmlSettingsDialog
 
 STEP_CHOICES = (
     ("read", "Read a page (with your sign-ins)", "https://…"),
+    ("gather", "Read a page, signing in with my saved login if asked", "https://…"),
+    ("noticed", "Add what Steed noticed (watched pages that changed)", ""),
     ("fetch", "Fetch a web address", "https://…/feed.json"),
     (
         "ask",
@@ -169,7 +171,9 @@ class AutomationEditor(HtmlSettingsDialog):
     def add_step(self):
         kind = self.step_kind.currentData()
         step = {"do": kind}
-        if STEPS[kind] is not None:
+        if kind == "gather":
+            step.update(value=[self.step_value.text().strip()], signin=True)
+        elif STEPS[kind] is not None:
             step["value"] = self.step_value.text().strip()
         try:
             check({"name": "x", "steps": [step]})
@@ -294,6 +298,7 @@ class AutomationsDialog(HtmlSettingsDialog):
         self.selection_buttons = []
         for text, callback in (
             ("New automation…", self.new),
+            ("Morning brief…", self.morning_brief),
             ("Run now", self.run),
             ("Edit…", self.edit),
             ("Pause", self.pause),
@@ -302,7 +307,7 @@ class AutomationsDialog(HtmlSettingsDialog):
             button = QPushButton(text)
             if text == "New automation…":
                 button.setProperty("primary", True)
-            else:
+            elif text != "Morning brief…":
                 self.selection_buttons.append(button)
             button.clicked.connect(callback)
             row.addWidget(button)
@@ -342,6 +347,32 @@ class AutomationsDialog(HtmlSettingsDialog):
 
     def new(self):
         editor = AutomationEditor(self.window)
+        self.window._present_dialog(editor, modal=False)
+        return editor
+
+    def morning_brief(self):
+        """A brief that is ready to go: add the pages it should read."""
+        from services.automations import check
+        from services.routines import BRIEF_ASK
+
+        editor = AutomationEditor(self.window)
+        editor.load(
+            check(
+                {
+                    "name": "Morning brief",
+                    "trigger": {
+                        "kind": "schedule",
+                        "at": "08:00",
+                        "days": [0, 1, 2, 3, 4],
+                    },
+                    "steps": [{"do": "noticed"}, {"do": "chat", "value": BRIEF_ASK}],
+                }
+            )
+        )
+        editor.status.setText(
+            "Add a step that reads your calendar and inbox (Read a page) before "
+            "the chat, then Save."
+        )
         self.window._present_dialog(editor, modal=False)
         return editor
 

@@ -42,6 +42,8 @@ FETCH_LIMIT = 2 * 1024 * 1024
 CATCH_UP = 24 * 3600
 TRIGGERS = ("manual", "schedule", "watch", "startup")
 STEPS = {
+    "gather": "gather",
+    "noticed": None,
     "read": "url",
     "fetch": "url",
     "ask": "text",
@@ -53,6 +55,8 @@ STEPS = {
     "changed": None,
 }
 STEP_WORDS = {
+    "gather": "Read {value}",
+    "noticed": "Add what Steed noticed (watched pages that changed)",
     "read": "Read {value}",
     "fetch": "Fetch {value}",
     "ask": "Ask your assistant: {value}",
@@ -122,7 +126,18 @@ def check(automation):
             raise ValueError(f"Step {number}: use one of {', '.join(STEPS)}.")
         do, field = step["do"], STEPS[step["do"]]
         clean = {"do": do}
-        if field == "url":
+        if field == "gather":
+            from services.routine_steps import check_steps
+
+            pages = step.get("value") or []
+            if not isinstance(pages, list) or len(pages) > 10:
+                raise ValueError(f"Step {number}: give up to 10 pages to read.")
+            clean["value"] = [_web(url, number) for url in pages]
+            clean["steps"] = check_steps(step.get("steps"))
+            if not clean["value"] and not clean["steps"]:
+                raise ValueError(f"Step {number}: give pages to read or saved steps.")
+            clean["signin"] = bool(step.get("signin"))
+        elif field == "url":
             clean["value"] = _web(step.get("value"), number)
         elif field is not None:
             value = str(step.get("value", "")).strip()[:4000]
@@ -153,6 +168,14 @@ def describe_trigger(trigger):
 
 
 def describe_step(step):
+    if step["do"] == "gather":
+        parts = []
+        if step.get("steps"):
+            parts.append(f"{len(step['steps'])} saved steps")
+        if step.get("value"):
+            parts.append(", ".join(step["value"]))
+        text = "Read " + " then ".join(parts)
+        return text + (" (signing in if asked)" if step.get("signin") else "")
     return STEP_WORDS[step["do"]].format(value=step.get("value", ""))
 
 
@@ -170,6 +193,7 @@ class Automations(QObject):
     skill = pyqtSignal(dict, str, str)  # automation, skill id, text
     notify = pyqtSignal(str, str)  # title, text
     open_page = pyqtSignal(str)
+    needs_you = pyqtSignal(dict, str)  # automation, a page that wants a sign-in
 
     def __init__(self, registry, parent=None):
         super().__init__(parent or registry)
@@ -215,6 +239,31 @@ class Automations(QObject):
         return next(
             (dict(a) for a in self.automations if a["id"] == automation_id), None
         )
+
+    def adopt_routines(self, routines):
+        """Routines become automations (once); returns how many."""
+        adopted = 0
+        for routine in routines:
+            try:
+                clean = from_routine(routine)
+            except (ValueError, TypeError, KeyError):
+                continue
+            if len(self.automations) >= MAX_AUTOMATIONS:
+                break
+            clean.update(
+                id=str(routine.get("id") or uuid4().hex)[:32],
+                profile=str(routine.get("profile") or "global"),
+                paused=bool(routine.get("paused")),
+                created=float(routine.get("created") or time.time()),
+                last_run=float(routine.get("last_run") or time.time()),
+                last_outcome="",
+                last_text=str(routine.get("last_text") or "")[:TEXT_LIMIT],
+            )
+            self.automations.append(clean)
+            adopted += 1
+        if adopted:
+            self._save()
+        return adopted
 
     def add(self, automation, profile="global"):
         if profile == "search":
@@ -312,6 +361,7 @@ class Automations(QObject):
         item = next((a for a in self.automations if a["id"] == automation_id), None)
         if item is None or self.closed:
             return False
+        item["previous_run"] = item.get("last_run", 0)
         item["last_run"] = time.time()
         self._save()
         self.queue.append((item["id"], start))
@@ -363,7 +413,16 @@ class Automations(QObject):
         if do in ("ask", "chat", "skill") and self._paused_agents():
             self._done(f"Stopped at step {number}: agents are paused.")
             return
-        if do == "read":
+        if do == "gather":
+            self._gather(step)
+        elif do == "noticed":
+            from services.routines import brief_notes
+
+            watches = getattr(self.registry, "watches", None)
+            since = item.get("previous_run") or (time.time() - 24 * 3600)
+            notes = brief_notes(watches.list() if watches is not None else [], since)
+            self._advance((last + "\n\n" + notes).strip())
+        elif do == "read":
             self._read(fill(value, last))
         elif do == "fetch":
             self._fetch(fill(value, last))
@@ -399,6 +458,38 @@ class Automations(QObject):
                     f"Stopped at step {number}: "
                     + ("first run, remembered." if not before else "nothing changed.")
                 )
+
+    def _gather(self, step):
+        """Saved steps and pages, as routines read them."""
+        from services.routines import REASONS_NOTE, Gatherer
+
+        item = self.running["item"]
+        gatherer = Gatherer(
+            self.registry,
+            item["profile"],
+            step.get("value", []),
+            step.get("steps", []),
+            step.get("signin", False),
+            self,
+        )
+        self.running["page"] = gatherer
+        gatherer.needs_you.connect(lambda url: self.needs_you.emit(dict(item), url))
+
+        def finished(read, stopped):
+            if self.running is None or self.running.get("page") is not gatherer:
+                return
+            self.running["page"] = None
+            gatherer.deleteLater()
+            parts = [
+                f"### {title or url}\n{url}\n\n" + " ".join((text or "").split())[:6000]
+                for title, url, text in read
+            ]
+            if stopped is not None:
+                parts.append(REASONS_NOTE(stopped))
+            self._advance("\n\n".join(parts))
+
+        gatherer.finished.connect(finished)
+        gatherer.start()
 
     def _read(self, url):
         try:
@@ -498,8 +589,42 @@ class Automations(QObject):
         self.timer.stop()
         page = (self.running or {}).get("page")
         if page is not None and not sip.isdeleted(page):
+            if hasattr(page, "close") and not hasattr(page, "url"):
+                page.close()  # A gatherer: its own page goes first.
             sip.delete(page)
         self.running = None
+
+
+def from_routine(routine):
+    """The automation a routine is: when it runs, what it reads (with its
+    saved steps and sign-in), what Steed noticed, then your agent or a note."""
+    if routine.get("kind") == "hours":
+        trigger = {"kind": "schedule", "every": routine.get("every", 4)}
+    else:
+        trigger = {
+            "kind": "schedule",
+            "at": routine.get("at", "08:00"),
+            "days": routine.get("days", list(range(7))),
+        }
+    steps = []
+    if routine.get("pages") or routine.get("steps"):
+        steps.append(
+            {
+                "do": "gather",
+                "value": list(routine.get("pages", [])),
+                "steps": list(routine.get("steps", [])),
+                "signin": bool(routine.get("signin")),
+            }
+        )
+    if routine.get("brief"):
+        steps.append({"do": "noticed"})
+    if routine.get("tell") == "changes":
+        steps += [{"do": "changed"}, {"do": "notify", "value": "{last}"}]
+    else:
+        steps.append({"do": "chat", "value": routine.get("ask") or "Anything new?"})
+    return check(
+        {"name": routine.get("name", "Routine"), "trigger": trigger, "steps": steps}
+    )
 
 
 WRITER = (

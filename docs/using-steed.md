@@ -1318,6 +1318,15 @@ last until the page closes.
 
 ### Routines
 
+Routines are automations now (see Automations above): each one you had became
+an automation the first time this version started (the old list is kept as
+`routines.migrated.json`), and a routine you or an agent adds is kept as the
+automation it is: its schedule, a step that reads its pages (with its saved
+steps and signing in if allowed), what Steed noticed if asked, then a chat
+with its ask, or a note when it changed. **Agents → Automations → Morning
+brief…** starts the brief. What follows describes what a routine does.
+
+
 **Agents → Routines…**: things your agent does on a schedule, such as a
 morning brief. A routine has a name, what to ask, when (every day at a time on
 the days you choose, or every 1–12 hours), and up to five pages to read first.
@@ -1375,6 +1384,8 @@ writing `{last}`:
 | Step | What it does |
 | --- | --- |
 | Read a page | the page's text, read in the background with your sign-ins |
+| Read pages, signing in | a routine's reading: saved steps, then pages, signing in with your saved login if a page asks |
+| Add what Steed noticed | the watched pages that changed since the last run |
 | Fetch a web address | the response, without cookies |
 | Ask your assistant | a one-off answer from the assistant you chose, with no tools |
 | Start a chat | a new agent chat with the text, which may act with your approvals |

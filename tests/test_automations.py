@@ -198,6 +198,55 @@ class RunTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(len(self.notes), 1)
 
+    def test_routines_become_automations_once(self):
+        from browser.utils import save_json
+        from services.routines import Routines
+
+        registry = self.window.profile_manager.registry
+        path = registry.config.config_dir / "routines.json"
+        save_json(
+            path,
+            [
+                {
+                    "id": "r1",
+                    "name": "Mail",
+                    "ask": "Anything new?",
+                    "kind": "daily",
+                    "at": "07:00",
+                    "days": [0, 1, 2],
+                    "pages": ["https://mail.example/"],
+                    "signin": True,
+                    "brief": True,
+                    "profile": "global",
+                },
+                {
+                    "id": "r2",
+                    "name": "News",
+                    "ask": "x",
+                    "kind": "hours",
+                    "every": 6,
+                    "pages": ["https://news.example/"],
+                    "tell": "changes",
+                },
+            ],
+        )
+        routines = Routines(registry)
+        self.assertEqual(routines.list(), [])
+        routines.close()
+        self.assertFalse(path.exists())
+        self.assertTrue(path.with_name("routines.migrated.json").exists())
+        mail = registry.automations.get("r1")
+        self.assertEqual(describe_trigger(mail["trigger"]), "Mon, Tue, Wed at 07:00")
+        self.assertEqual(
+            [s["do"] for s in mail["steps"]], ["gather", "noticed", "chat"]
+        )
+        self.assertTrue(mail["steps"][0]["signin"])
+        news = registry.automations.get("r2")
+        self.assertEqual(describe_trigger(news["trigger"]), "Every 6 hours")
+        self.assertEqual(
+            [s["do"] for s in news["steps"]], ["gather", "changed", "notify"]
+        )
+
     def test_the_editor_builds_steps_and_saves(self):
         from ui.automations_dialog import AutomationEditor, AutomationsDialog
 

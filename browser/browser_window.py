@@ -1004,9 +1004,11 @@ class BrowserWindow(QMainWindow):
         add_assistant_action = QAction("Add an Assistant…", self)
         add_assistant_action.triggered.connect(self._add_assistant)
         agents_menu.addAction(add_assistant_action)
+        # Routines are automations now; the old entry leads there.
         routines_action = QAction("Routines…", self)
-        routines_action.triggered.connect(self.manage_routines)
-        agents_menu.addAction(routines_action)
+        routines_action.triggered.connect(self.manage_automations)
+        routines_action.setVisible(False)
+        self.addAction(routines_action)
         watches_action = QAction("Watches…", self)
         watches_action.triggered.connect(
             lambda: self._new_tab(url="steed:watches", return_tab=True)
@@ -3596,12 +3598,8 @@ class BrowserWindow(QMainWindow):
         self._present_dialog(ReadSearchDialog(self), modal=False)
 
     def manage_routines(self):
-        from ui.routines_dialog import RoutinesDialog
-
-        if self.profile_manager.is_search_profile():
-            self.status_bar.showMessage("Routines do not run in incognito.", 5000)
-            return
-        self._present_dialog(RoutinesDialog(self), modal=False)
+        """Routines are automations now."""
+        self.manage_automations()
 
     def edit_shortcuts(self):
         from ui.shortcuts_dialog import ShortcutsDialog
