@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from PyQt6.QtCore import QCoreApplication, QEvent
+from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser.browser_window import BrowserWindow
@@ -132,6 +132,23 @@ class TipTests(unittest.TestCase):
         self.assertIsNone(tips.offer(window, "address"))  # Never again.
         self.assertIsNotNone(tips.offer(window, "dictation"))
         self.assertIsNone(tips.offer(window, "no-such-tip"))
+
+    def test_a_page_tip_shows_only_on_its_page(self):
+        from ui import tips
+
+        window = self.window
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: tab.url().host() == "newtab")
+        on_newtab = lambda: tab.url().host() == "newtab"  # noqa: E731
+        window._new_tab(url="about:blank")  # Another page is in front now.
+        self.assertIsNone(tips.offer(window, "customize", when=lambda: False))
+        window._switch_tab(window.tabs.index(tab))
+        bubble = tips.offer(window, "customize", when=on_newtab)
+        self.assertIsNotNone(bubble)
+        tab.setUrl(QUrl("data:text/html,<title>away</title>"))
+        self.wait(lambda: window._tip is None)
+        # The first websites bring no dictation tip.
+        self.assertLess(getattr(window, "_web_loads", 0), 25)
 
     def test_welcome_choices_and_links_work_on_every_step(self):
         from PyQt6.QtCore import QUrl

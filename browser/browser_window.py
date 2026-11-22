@@ -78,6 +78,7 @@ from ui.tab_strip import TabStrip
 logger = logging.getLogger(__name__)
 # How often a profile's open windows are recorded (only when they changed).
 SESSION_SNAPSHOT_MS = 10 * 60 * 1000
+DICTATION_TIP_AFTER = 25  # web pages loaded before the dictation tip
 
 
 # Enough to merge a redirect chain or a SPA's boot sequence into one write.
@@ -6065,11 +6066,25 @@ class BrowserWindow(QMainWindow):
             from ui import tips
 
             if page_name(tab.url()) == "newtab":
-                QTimer.singleShot(1200, lambda: tips.offer(self, "customize"))
-            elif tab.url().scheme() in ("http", "https"):
+                # Only while that New Tab is still the page in front.
                 QTimer.singleShot(
-                    1500, lambda: tips.offer(self, "dictation", self.address_bar)
+                    1200,
+                    lambda: tips.offer(
+                        self,
+                        "customize",
+                        when=lambda: not sip.isdeleted(tab)
+                        and tab is self._current_browser_tab()
+                        and page_name(tab.url()) == "newtab",
+                    ),
                 )
+            elif tab.url().scheme() in ("http", "https"):
+                # Dictation is for later: after a good few pages, not the first.
+                self._web_loads = getattr(self, "_web_loads", 0) + 1
+                if self._web_loads >= DICTATION_TIP_AFTER:
+                    QTimer.singleShot(
+                        1500,
+                        lambda: tips.offer(self, "dictation", self.address_bar),
+                    )
         if tab == self.tabs[self.current_tab_index]:
             self._update_history_buttons()
             if ok or not getattr(tab, "quiet_stop", False):
@@ -6077,6 +6092,15 @@ class BrowserWindow(QMainWindow):
             self.find_bar.page_loaded()
             self._update_loading_indicator()
         tab.quiet_stop = False
+        tip = getattr(self, "_tip", None)
+        if (
+            tip is not None
+            and not sip.isdeleted(tip)
+            and tip.key == "customize"
+            and tab is self._current_browser_tab()
+            and page_name(tab.url()) != "newtab"
+        ):
+            tip.dismiss()
         if ok:
             self.history.record(tab.url().toString(), tab.title())
             profile = self.profile_manager.current_profile_name
