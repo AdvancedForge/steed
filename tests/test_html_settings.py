@@ -161,12 +161,7 @@ class HtmlSettingsTests(unittest.TestCase):
         )
         self.wait_for(
             lambda: (
-                dialog.draft.get("search_engine") == "https://www.google.com/search?q="
-                if hasattr(dialog, "draft")
-                else self.value(
-                    dialog, "document.getElementById('search_engine').value"
-                )
-                == "https://www.google.com/search?q="
+                dialog._draft.get("search_engine") == "https://www.google.com/search?q="
             )
         )
         dialog.set_preference("search_engine", "https://search.example.test/?q=")
