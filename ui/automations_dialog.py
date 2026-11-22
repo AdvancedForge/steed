@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QPlainTextEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -353,6 +354,7 @@ class AutomationsDialog(HtmlSettingsDialog):
             ("Morning brief…", self.morning_brief),
             ("Run now", self.run),
             ("Edit…", self.edit),
+            ("History…", self.history),
             ("Pause", self.pause),
             ("Remove", self.remove),
         ):
@@ -363,7 +365,7 @@ class AutomationsDialog(HtmlSettingsDialog):
                 self.selection_buttons.append(button)
             button.clicked.connect(callback)
             row.addWidget(button)
-        self.pause_button = self.selection_buttons[2]
+        self.pause_button = self.selection_buttons[3]
         layout.addLayout(row)
         self.service.changed.connect(self.refresh)
         self.finished.connect(lambda _: self.service.changed.disconnect(self.refresh))
@@ -436,6 +438,14 @@ class AutomationsDialog(HtmlSettingsDialog):
         self.window._present_dialog(editor, modal=False)
         return editor
 
+    def history(self):
+        item = self.selected()
+        if item is None:
+            return None
+        dialog = RunHistoryDialog(self.window, item)
+        self.window._present_dialog(dialog, modal=False)
+        return dialog
+
     def run(self):
         item = self.selected()
         if item is not None:
@@ -450,3 +460,73 @@ class AutomationsDialog(HtmlSettingsDialog):
         item = self.selected()
         if item is not None:
             self.service.remove(item["id"])
+
+
+def describe_run(run):
+    """One run, step by step, as the history shows it."""
+    lines = [f"Started with: {run['start']}" if run.get("start") else "Started"]
+    for step in run.get("steps", []):
+        lines.append(f"\n{step['n']}. {step['what']}")
+        if step.get("got"):
+            lines.append(f"   had: {step['got']}")
+        if "gave" in step:
+            lines.append(f"   gave: {step['gave']}")
+        if step.get("stopped"):
+            lines.append("   stopped here")
+    lines.append(f"\n{run['outcome']}")
+    return "\n".join(lines)
+
+
+class RunHistoryDialog(HtmlSettingsDialog):
+    """An automation's last runs: what each step had and gave, where it stopped."""
+
+    def __init__(self, window, automation, parent=None):
+        super().__init__(parent or window)
+        self.window = window
+        self.automation = automation
+        self.service = window.profile_manager.registry.automations
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setWindowTitle(f"History: {automation['name']}")
+        layout = QVBoxLayout(self)
+        note = QLabel(
+            "The last 20 runs, newest first, with a short part of what each step "
+            "had and gave. Kept on this computer only."
+        )
+        note.setWordWrap(True)
+        note.setProperty("role", "note")
+        layout.addWidget(note)
+        self.runs = QListWidget()
+        self.runs.setProperty("empty", "No runs yet. Run it now to see each step.")
+        self.runs.currentRowChanged.connect(self._show)
+        layout.addWidget(self.runs)
+        self.detail = QPlainTextEdit()
+        self.detail.setReadOnly(True)
+        layout.addWidget(self.detail, 1)
+        row = QHBoxLayout()
+        clear = QPushButton("Clear History")
+        clear.clicked.connect(self.clear)
+        close = QPushButton("Close")
+        close.clicked.connect(self.reject)
+        row.addWidget(clear)
+        row.addWidget(close)
+        layout.addLayout(row)
+        self.refresh()
+
+    def refresh(self):
+        self.items = self.service.history(self.automation["id"])
+        self.runs.clear()
+        for run in self.items:
+            when = time.strftime("%b %d %H:%M", time.localtime(run["started"]))
+            self.runs.addItem(f"{when}: {run['outcome']}")
+        if self.items:
+            self.runs.setCurrentRow(0)
+        else:
+            self.detail.setPlainText("")
+
+    def _show(self, row):
+        if 0 <= row < len(self.items):
+            self.detail.setPlainText(describe_run(self.items[row]))
+
+    def clear(self):
+        self.service.clear_history(self.automation["id"])
+        self.refresh()

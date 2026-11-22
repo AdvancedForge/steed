@@ -1447,7 +1447,11 @@ For example: every morning, read the bank's rates page, go on only if it
 changed, ask your assistant for the change in one line, notify me. **Write it
 for me** turns a description into an automation for you to check step by step
 before saving. Runs happen one at a time; Automations shows when each last ran
-and how it ended. Pause All Agents stops steps that need an assistant. Your own
+and how it ended. **History…** shows its last 20 runs, newest first:
+what started it, each step with a short part of the text it had and gave, and
+the step that stopped it, so you can see why it did (or didn't) act. History
+is kept on this computer only (`automation_runs.json`), goes when you remove
+the automation, never goes into a pack, and **Clear History** empties it. Pause All Agents stops steps that need an assistant. Your own
 pages can list automations and run them (`/api/automations`,
 `/api/run-automation?id=…`). Kept in `automations.json`; never in incognito.
 
