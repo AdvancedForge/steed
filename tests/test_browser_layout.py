@@ -73,8 +73,10 @@ class BrowserLayoutTests(unittest.TestCase):
         self.assertEqual(source.shortcut().toString(), "Ctrl+U")
         from ui.command_palette import menu_commands
 
-        paths = [path for path, _action in menu_commands(window._layout_menus)]
-        self.assertTrue(any("View Page Source" in str(path) for path in paths))
+        found = {
+            (path, text) for path, text, _action in menu_commands(window._layout_menus)
+        }
+        self.assertIn(("View › Advanced", "View Page Source"), found)
 
     def test_hiding_toolbar_buttons_leaves_settings_and_reset_reachable(self):
         window = self.window()
