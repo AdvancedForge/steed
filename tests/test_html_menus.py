@@ -148,6 +148,27 @@ class HtmlMenuTests(unittest.TestCase):
         )
         host.reject()
 
+    def test_a_button_that_cannot_act_takes_no_room(self):
+        from PyQt6.QtWidgets import QPushButton
+
+        window = self.window()
+        source = QDialog(window)
+        layout = QVBoxLayout(source)
+        ready, waiting = QPushButton("Add"), QPushButton("Remove")
+        waiting.setEnabled(False)
+        layout.addWidget(ready)
+        layout.addWidget(waiting)
+        host = self.present(source, window)
+        shown = lambda button: self.value(  # noqa: E731
+            host,
+            f"getComputedStyle(document.querySelector({selector('data-control', self.control(host, button))})).display",
+        )
+        self.assertNotEqual(shown(ready), "none")
+        self.assertEqual(shown(waiting), "none")
+        waiting.setEnabled(True)
+        self.wait_for(lambda: shown(waiting) != "none")
+        host.reject()
+
     def test_maintained_settings_controllers_render_in_html_hosts(self):
         from ui.agent_setup import AgentSetupDialog
         from ui.app_connections import AppConnectionsDialog

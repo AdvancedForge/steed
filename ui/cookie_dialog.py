@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from browser.cookie_manager import CookieInfo, CookieManager
-from ui.html_dialog import HtmlSettingsDialog
+from ui.html_dialog import HtmlSettingsDialog, needs_rows, needs_selection
 from ui.prompts import MessageBox as QMessageBox
 
 
@@ -92,6 +92,8 @@ class CookieDialog(HtmlSettingsDialog):
         button_layout.addWidget(self.delete_btn)
         button_layout.addWidget(self.delete_site_btn)
         button_layout.addWidget(self.clear_all_btn)
+        needs_selection(self.table, [self.delete_btn, self.delete_site_btn])
+        needs_rows(self.table, [self.clear_all_btn])
         button_layout.addStretch()
         button_layout.addWidget(self.close_btn)
         layout.addLayout(button_layout)

@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ui.html_dialog import HtmlSettingsDialog
+from ui.html_dialog import HtmlSettingsDialog, needs_rows, needs_selection
 
 PAGES = {
     "cookies": "Cookies",
@@ -102,6 +102,7 @@ class WatchesDialog(HtmlSettingsDialog):
         self.items.itemDoubleClicked.connect(lambda _: self.open_selected())
         body.addWidget(self.items)
         row = QHBoxLayout()
+        chosen = []
         for text, callback in (
             ("Open", self.open_selected),
             ("Look now", self.check_selected),
@@ -111,7 +112,9 @@ class WatchesDialog(HtmlSettingsDialog):
             button = QPushButton(text)
             button.clicked.connect(callback)
             row.addWidget(button)
+            chosen.append(button)
         body.addLayout(row)
+        needs_selection(self.items, chosen)
         service.changed.connect(self.refresh)
         self.finished.connect(lambda _: service.changed.disconnect(self.refresh))
         self.refresh()
@@ -207,6 +210,7 @@ class HistoryDialog(HtmlSettingsDialog):
         self.items.itemDoubleClicked.connect(lambda _: self.open_selected())
         body.addWidget(self.items)
         row = QHBoxLayout()
+        made = []
         for text, callback in (
             ("Open selected", self.open_selected),
             ("Copy address", self.copy_selected),
@@ -215,7 +219,10 @@ class HistoryDialog(HtmlSettingsDialog):
             button = QPushButton(text)
             button.clicked.connect(callback)
             row.addWidget(button)
+            made.append(button)
         body.addLayout(row)
+        needs_selection(self.items, made[:2])
+        needs_rows(self.items, made[2:])
         history.changed.connect(self.refresh)
         self.finished.connect(lambda _: history.changed.disconnect(self.refresh))
         self.refresh()

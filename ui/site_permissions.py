@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
 )
 
 from services.site_permissions import FEATURES
-from ui.html_dialog import HtmlSettingsDialog
+from ui.html_dialog import HtmlSettingsDialog, needs_selection
 from ui.prompts import MessageBox as QMessageBox
 
 
@@ -120,6 +120,7 @@ class SitePermissionsDialog(HtmlSettingsDialog):
         forget = QPushButton("Forget Selected Permission")
         forget.clicked.connect(self.forget)
         layout.addWidget(forget)
+        needs_selection(self.table, [forget])
         if site_settings is not None:
             where = "this incognito session" if profile == "search" else profile
             layout.addWidget(
@@ -137,6 +138,7 @@ class SitePermissionsDialog(HtmlSettingsDialog):
             reset = QPushButton("Reset Selected Site")
             reset.clicked.connect(self.reset_site)
             layout.addWidget(reset)
+            needs_selection(self.sites, [reset])
             site_settings.changed.connect(self.refresh_sites)
             self.refresh_sites()
         self.refresh()

@@ -100,9 +100,10 @@ class FileLibraryDialog(HtmlSettingsDialog):
             buttons.addWidget(button)
             self.import_buttons.append(button)
         layout.addLayout(buttons)
-        clear = QPushButton("Clear recovery copies…")
+        clear = self.clear_button = QPushButton("Clear recovery copies…")
         clear.clicked.connect(self.clear_recovery)
         layout.addWidget(clear)
+        self.files.currentItemChanged.connect(lambda *_: self._fit_buttons())
         self.status = QLabel(
             "Files: up to 64 MiB each; 512 MiB total including recovery copies. "
             "Worker inputs still use the task workspace's limits."
@@ -265,6 +266,25 @@ class FileLibraryDialog(HtmlSettingsDialog):
             self.status.setText(str(error))
         finally:
             self._loading = False
+        self._fit_buttons()
+
+    def _fit_buttons(self):
+        """Adding needs a folder; Export, Remove, Restore and Versions need a
+        chosen file; paging shows only when there is more than one page."""
+        if getattr(self, "_job", None):
+            return  # Importing: every button waits.
+        folder = bool(self.folder_id())
+        chosen = self.files.currentItem() is not None
+        for button in self.import_buttons:
+            label = button.text()
+            button.setEnabled(
+                chosen
+                if label in ("Export file…", "Remove", "Restore", "Versions…")
+                else folder
+            )
+        self.clear_button.setEnabled(folder)
+        paged = self.next_page.isEnabled() or self.previous_page.isEnabled()
+        self.page_label.setVisible(paged)
 
     def new_folder(self):
         name, ok = QInputDialog.getText(self, "New library folder", "Folder name:")
@@ -306,8 +326,7 @@ class FileLibraryDialog(HtmlSettingsDialog):
         folder_id, future = self._job
         self._job = None
         self.timer.stop()
-        for button in self.import_buttons:
-            button.setEnabled(True)
+        self._fit_buttons()
         result = self.perform(
             lambda: self.service.library.import_files(folder_id, future.result())
         )

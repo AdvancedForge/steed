@@ -177,3 +177,8 @@ button.control[data-tone=quiet] { background: transparent; }
 .control[data-role=warning] { padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 550;
   background: color-mix(in srgb, var(--accent) 10%, var(--surface)); color: var(--ink);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); }
+
+/* A button that can't do anything yet takes no room: it appears once there is
+   something to act on (a row chosen, text written), instead of greying out
+   a row of actions on an empty page. */
+button.control:disabled { display: none; }

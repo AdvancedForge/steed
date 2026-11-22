@@ -392,7 +392,18 @@ class TaskDialog(HtmlSettingsDialog):
         self.timer.timeout.connect(self.refresh_activity)
         self.finished.connect(self.timer.stop)
         self.timer.start()
+        self.table.itemSelectionChanged.connect(self._fit_layout)
         self.refresh()
+        self._fit_layout()
+
+    def _fit_layout(self):
+        """With no task chosen there is nothing to show below the list: the
+        details, the page watcher and the task's actions come with a task."""
+        chosen = self.selection() is not None
+        self.panels.setVisible(chosen)
+        has_pages = chosen and self.sessions.count() > 0
+        self.sessions.setVisible(has_pages)
+        self.watch_button.setVisible(has_pages)
 
     def selection(self):
         row = self.table.currentRow()
@@ -434,6 +445,8 @@ class TaskDialog(HtmlSettingsDialog):
         finally:
             self.table.blockSignals(False)
         self.show_details()
+
+        self._fit_layout()
 
     def refresh_saved_rules(self):
         previous = self.saved_rules.currentRow()

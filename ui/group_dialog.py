@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ui.html_dialog import HtmlSettingsDialog
+from ui.html_dialog import HtmlSettingsDialog, needs_selection
 from ui.prompts import InputDialog as QInputDialog
 
 
@@ -23,6 +23,7 @@ class GroupDialog(HtmlSettingsDialog):
         self.list = QListWidget()
         layout.addWidget(self.list)
         buttons = QHBoxLayout()
+        chosen = []
         for label, operation in (
             ("Create", "create"),
             ("Rename", "rename"),
@@ -33,11 +34,14 @@ class GroupDialog(HtmlSettingsDialog):
             button = QPushButton(label)
             button.clicked.connect(lambda checked=False, op=operation: self.perform(op))
             buttons.addWidget(button)
+            if operation != "create":
+                chosen.append(button)
         layout.addLayout(buttons)
         close = QPushButton("Close")
         close.clicked.connect(self.accept)
         layout.addWidget(close)
         self.refresh()
+        needs_selection(self.list, chosen)
         manager = self.window.tab_manager
         manager.group_data_updated.connect(self.refresh)
         self.finished.connect(

@@ -739,3 +739,53 @@ class HtmlDialog(QDialog):
             return
         self.reject()
         event.accept()
+
+
+def needs_selection(view, buttons, *, also=None):
+    """Keep buttons that act on a chosen row enabled only while one is chosen
+    (an HTML page then shows them only when they can do something). also:
+    an extra condition, re-checked with the selection."""
+    from PyQt6 import sip as _sip
+
+    buttons = [b for b in buttons if b is not None]
+
+    def update(*_):
+        if _sip.isdeleted(view):
+            return
+        chosen = bool(view.selectedItems()) if hasattr(view, "selectedItems") else False
+        current = getattr(view, "currentItem", lambda: None)()
+        ok = (chosen or current is not None) and (also() if also else True)
+        for button in buttons:
+            if not _sip.isdeleted(button):
+                button.setEnabled(ok)
+
+    for signal in ("itemSelectionChanged", "currentItemChanged"):
+        if hasattr(view, signal):
+            getattr(view, signal).connect(update)
+    model = view.model() if hasattr(view, "model") else None
+    if model is not None:
+        model.modelReset.connect(update)
+        model.rowsRemoved.connect(update)
+        model.rowsInserted.connect(update)
+    update()
+    return update
+
+
+def needs_rows(view, buttons):
+    """Buttons that act on the whole list (Clear all, Export): only when it
+    has rows."""
+    from PyQt6 import sip as _sip
+
+    def update(*_):
+        if _sip.isdeleted(view):
+            return
+        rows = view.rowCount() if hasattr(view, "rowCount") else view.count()
+        for button in buttons:
+            if button is not None and not _sip.isdeleted(button):
+                button.setEnabled(rows > 0)
+
+    model = view.model()
+    for signal in (model.modelReset, model.rowsRemoved, model.rowsInserted):
+        signal.connect(update)
+    update()
+    return update

@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from browser.bookmark_format import MAX_BOOKMARK_HTML_BYTES
-from ui.html_dialog import HtmlSettingsDialog
+from ui.html_dialog import HtmlSettingsDialog, needs_rows, needs_selection
 from ui.prompts import MessageBox as QMessageBox
 
 
@@ -141,6 +141,7 @@ class BookmarksDialog(HtmlSettingsDialog):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         row = QHBoxLayout()
+        chosen, whole = [], []
         for label, callback in (
             ("Open", self.open_selected),
             ("Add…", self.add),
@@ -152,10 +153,18 @@ class BookmarksDialog(HtmlSettingsDialog):
             button = QPushButton(label)
             button.setAutoDefault(False)
             button.clicked.connect(callback)
-            if label == "Open":
-                button.setEnabled(self.open_url is not None)
+            if label in ("Open", "Edit…", "Remove"):
+                chosen.append(button)
+            elif label == "Export HTML…":
+                whole.append(button)
             row.addWidget(button)
         layout.addLayout(row)
+        open_button, *edits = chosen
+        needs_selection(self.items, edits)
+        needs_selection(
+            self.items, [open_button], also=lambda: self.open_url is not None
+        )
+        needs_rows(self.items, whole)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.button(QDialogButtonBox.StandardButton.Close).setAutoDefault(False)
         buttons.rejected.connect(self.reject)
