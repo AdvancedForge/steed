@@ -144,7 +144,6 @@ class UpdateTests(unittest.TestCase):
                 finally:
                     service.close()
 
-
     def test_a_copy_that_is_not_a_git_checkout_says_so(self):
         class Config(dict):
             def set(self, key, value):

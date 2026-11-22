@@ -520,7 +520,7 @@ added, else Claude Code or Codex).
 
 ### Your week in topics
 
-**Tabs → Group My Recent History into Topics…** sends the titles and sites of
+**Tabs → More Tab Tools → Group My Recent History into Topics…** sends the titles and sites of
 the past week's pages (never page text; no banking, health or sign-in sites;
 nothing from incognito) to your assistant, which groups them into topics such
 as "Planning a trip to Lisbon". Reopen a topic's pages, or ask your agent to
@@ -603,12 +603,12 @@ time) and **Stop**. Nothing leaves the computer.
 
 ### Site apps
 
-**Tabs → Install This Site as an App…** puts the site in your applications
+**Tabs → Site Apps → Install This Site as an App…** puts the site in your applications
 menu, with its icon, and opens it in its own window: no tab strip or address
 bar, just the site. Links to other sites, and windows or tabs it opens, go to
 a normal Steed window; the app window is not part of saved sessions. Starting
 it from the menu runs `steed --app=<address>` (into the running Steed if there
-is one). **Tabs → Site Apps…** lists them to open or remove (removing takes
+is one). **Tabs → Site Apps → Site Apps…** lists them to open or remove (removing takes
 the menu entry away). Kept in `site_apps.json`; menu entries are
 `steed-app-*.desktop` in `~/.local/share/applications/`.
 
@@ -1637,7 +1637,7 @@ on hover** in Settings turns them off.
 **Session history.** Every 10 minutes Steed records this profile's open windows
 and tabs (only when they changed; also once when Steed quits), keeping the last
 48, and records each window you close while another of the profile stays open,
-keeping the last 20. **Tabs → Session History…** lists them with a preview of
+keeping the last 20. **Tabs → More Tab Tools → Session History…** lists them with a preview of
 their tabs; **Open** brings an entry back in new windows (tabs load when
 selected, and tab groups the entry used return with their colours), **Delete**
 removes it. **Tabs → Reopen Closed Window** brings back the last closed window.
@@ -1652,7 +1652,7 @@ the group's name, colour and web pages in `<profile>/saved_groups.json` (up to
 window's only tabs, a new tab keeps the window open. **Tabs → Saved Groups**
 lists them: **Open** reopens one as a group again (named "Name 2" if the name
 is taken; its tabs load when first selected, and it leaves the list), and
-**Delete** removes it. **Tabs → Save All Tabs as Group…** saves the window's web
+**Delete** removes it. **Tabs → More Tab Tools → Save All Tabs as Group…** saves the window's web
 pages as a group the same way without closing them. Saved groups also appear in
 the command palette (with bookmarks under `*`); choosing one reopens it.
 Incognito windows do not save groups.

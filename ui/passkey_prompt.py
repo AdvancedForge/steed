@@ -86,6 +86,7 @@ class PasskeyBar(QFrame):
         self.label.setWordWrap(True)
         row.addWidget(self.label, 1)
         self.choose = QPushButton("Choose…", self)
+        self.choose.setProperty("primary", True)
         self.choose.setAutoDefault(False)
         self.choose.clicked.connect(self._choose)
         row.addWidget(self.choose)

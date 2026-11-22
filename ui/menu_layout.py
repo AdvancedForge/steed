@@ -24,17 +24,8 @@ GROUPS = {
             "Close Tab",
         ),
         ("Back", "Forward", "Reload", "Home"),
-        ("Next Tab", "Previous Tab"),
-        (
-            "Tab Groups",
-            "Saved Groups",
-            "Workspaces",
-            "Save All Tabs as Group…",
-            "Session History…",
-            "Group My Recent History into Topics…",
-        ),
+        ("Tab Groups", "Saved Groups", "Workspaces"),
         ("Bookmark This Page…", "Manage Bookmarks…"),
-        ("Install This Site as an App…", "Site Apps…"),
         ("Organize Tabs with Agent…", "Compare Tabs with Agent…"),
     ),
     "view": (
@@ -81,6 +72,17 @@ SUBMENUS = {
             ),
         ),
         ("Help", (("Welcome to Steed", "Crash Log…"),)),
+    ),
+    "tabs": (
+        (
+            "More Tab Tools",
+            (
+                ("Next Tab", "Previous Tab"),
+                ("Save All Tabs as Group…", "Session History…"),
+                ("Group My Recent History into Topics…",),
+            ),
+        ),
+        ("Site Apps", (("Install This Site as an App…", "Site Apps…"),)),
     ),
     "view": (
         (

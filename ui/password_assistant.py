@@ -51,6 +51,7 @@ class PasswordBar(QFrame):
         self.label.setWordWrap(True)
         row.addWidget(self.label, 1)
         self.save = QPushButton("Save", self)
+        self.save.setProperty("primary", True)
         self.never = QPushButton("Never for this site", self)
         self.dismiss = QPushButton("Not now", self)
         for button in (self.save, self.never, self.dismiss):
