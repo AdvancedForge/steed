@@ -192,6 +192,16 @@ class AgentProviderTests(unittest.TestCase):
         self.complete(task)
         self.assertEqual(self.service.store.grants(task), [])
 
+    def test_a_question_pops_up_even_from_a_chat_not_showing(self):
+        task = self.chat("question-current")
+        self.sidebar._task_id = None  # Another chat (or none) is showing.
+        self.service.send_message(task, "Ask me before working")
+        self.wait_for(lambda: (task, "native-request") in self.sidebar._request_dialogs)
+        dialog = self.sidebar._request_dialogs[(task, "native-request")]
+        dialog.answers["choice"][0].setCurrentIndex(1)
+        dialog.allow.click()
+        self.complete(task)
+
     def test_working_states_and_queue_are_visible_without_task_details(self):
         task = self.chat("hang")
         self.send("Start")

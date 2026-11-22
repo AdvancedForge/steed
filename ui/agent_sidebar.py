@@ -775,7 +775,10 @@ class AgentSidebar(QDockWidget):
         dialog.show()
 
     def _request_added(self, task_id, request_id, payload):
-        if task_id == self._task_id and not self._private and self.isVisible():
+        """An agent asks you something: it waits until you answer, so the
+        question pops up whichever chat is showing (and with the sidebar
+        closed), like Steed's own approvals."""
+        if not self._private:
             self._show_request(task_id, request_id, payload)
 
     def change_display(self, method):
