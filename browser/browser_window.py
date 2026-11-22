@@ -8538,12 +8538,12 @@ class BrowserWindow(QMainWindow):
             tab.setUrl(target)
 
     def _updates_known(self):
-        summary = self.profile_manager.registry.updates.summary()
-        if summary and not self._closing and self.isActiveWindow():
+        notice = self.profile_manager.registry.updates.notice()
+        if notice and not self._closing and self.isActiveWindow():
             told = getattr(self.profile_manager.registry, "_updates_told", "")
-            if told != summary:
-                self.profile_manager.registry._updates_told = summary
-                self.status_bar.showMessage(summary + " (steed:features)", 15000)
+            if told != notice:
+                self.profile_manager.registry._updates_told = notice
+                self.status_bar.showMessage(notice, 15000)
 
     def _download_blocked(self, name, danger):
         from services.safe_browsing import REASONS
