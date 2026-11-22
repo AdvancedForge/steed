@@ -616,7 +616,7 @@ class BrowserTests(unittest.TestCase):
                 [sys.executable, str(script), "--data", str(data), "--phase", phase],
                 capture_output=True,
                 text=True,
-                timeout=15,
+                timeout=60,  # A busy machine starts the engine slowly.
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

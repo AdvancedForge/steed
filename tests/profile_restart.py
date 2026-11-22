@@ -65,6 +65,12 @@ def check(data, phase):
         QTimer.singleShot(8000, finish)
         app.exec()
         timer.stop()
+        # As Steed itself quits: pages and windows go before their profiles and
+        # the application (deleting the application first can crash the engine).
+        from browser.qt_cleanup import release_leftovers
+
+        timer.deleteLater()
+        release_leftovers(app)
         sip.delete(app)
         print(
             "Persistence diagnostic:",

@@ -7,6 +7,18 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Run logs, examples, steadier tests — November 22, 2026.** Automations keep
+a history of their last 20 runs (what each step had and gave, and where it
+stopped), and **Examples…** starts one from a ready morning brief, price check,
+right-click summary, reading digest, download notice or site reminder. The
+editor keeps a schedule's days (weekdays stayed weekdays only in name before).
+Your Pages adds a watch board and a bookmarks board. Outside agents start
+Steed through a launcher that follows it when its folder moves. The bars above
+pages share the toolbar's look, and Tabs is trimmed like General and View.
+Flaky tests were fixed at their causes: the New Tab panel now stays open
+across a quick double render, test commands no longer race the page's own,
+and a helper script releases the engine in order before quitting.
+
 **Asking on the page, a helper you choose, calmer menus — November 22,
 2026.** A page of yours that asks for something it may not have yet shows a bar
 above it: **Allow** gives just that page that access (kept with the page, never

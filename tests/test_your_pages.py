@@ -197,8 +197,8 @@ class YourPageTests(unittest.TestCase):
             with self.subTest(template=label):
                 registry.start_pages.save_your_page(profile, name, title, html)
                 tab = self.window._new_tab(url="steed:" + name, return_tab=True)
-                self.wait(lambda: tab.title() == title)
-                self.wait(lambda: "Loading" not in self.js(tab, TEXT))
+                self.wait(lambda tab=tab, title=title: tab.title() == title)
+                self.wait(lambda tab=tab: "Loading" not in self.js(tab, TEXT))
                 shown[name] = self.js(tab, TEXT)
                 self.assertNotIn("Not allowed", shown[name])
         self.assertIn("Kettles", shown["links"])

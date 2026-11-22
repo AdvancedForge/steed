@@ -368,7 +368,13 @@ class RunTests(unittest.TestCase):
             "<title>Deal</title><p>Half price kettles</p>",
             QUrl("https://deal.example/"),
         )
-        self.wait(lambda: tab.title() == "Deal")
+        self.wait(
+            lambda: (
+                tab.title() == "Deal"
+                and tab.url().toString() == "https://deal.example/"
+                and not tab.page().isLoading()
+            )
+        )
         menu = QMenu()
         self.window._add_ask_agent_item(menu, tab, None)
         (runs,) = [a.menu() for a in menu.actions() if a.menu()]

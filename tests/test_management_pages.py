@@ -409,7 +409,7 @@ class ManagementPageTests(unittest.TestCase):
         host.command(
             {
                 "context": host.context,
-                "sequence": 1,
+                "sequence": host.sequence + 1,
                 "action": "page",
                 "id": target,
                 "value": 1,
@@ -423,7 +423,7 @@ class ManagementPageTests(unittest.TestCase):
         host.command(
             {
                 "context": host.context,
-                "sequence": 2,
+                "sequence": host.sequence + 1,
                 "action": "select",
                 "id": target,
                 "item": stale,
