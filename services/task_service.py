@@ -146,6 +146,9 @@ class TaskService(QObject):
         from services.reading_access import ReadingAccess
 
         self.reading = ReadingAccess(self)
+        from services.tab_reading import TabReading
+
+        self.tab_reading = TabReading(self)
         from services.vault_signin import VaultSignin
 
         self.signin = VaultSignin(self)
@@ -183,6 +186,12 @@ class TaskService(QObject):
                 ),
                 "reading.status": lambda task_id, request_id: self._layout_action(
                     self.reading.status, task_id, request_id
+                ),
+                "browser.read_tab": lambda task_id, request_id: self._layout_action(
+                    self.tab_reading.read, task_id, request_id
+                ),
+                "browser.read_tab_status": lambda task_id, request_id: (
+                    self._layout_action(self.tab_reading.status, task_id, request_id)
                 ),
                 "signin.request": lambda task_id, session_id, request_id: (
                     self._layout_action(
@@ -3164,6 +3173,7 @@ class TaskService(QObject):
         self.watches.cancel_task(task_id, interrupted=status == "interrupted")
         self.routines.cancel_task(task_id, interrupted=status == "interrupted")
         self.reading.cancel_task(task_id, interrupted=status == "interrupted")
+        self.tab_reading.cancel_task(task_id, interrupted=status == "interrupted")
         self.signin.cancel_task(task_id, interrupted=status == "interrupted")
         self.settings_proposals.cancel_task(
             task_id, interrupted=status == "interrupted"

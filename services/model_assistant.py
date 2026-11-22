@@ -72,6 +72,8 @@ BROWSING_TOOLS = frozenset(
         "download.status",
         "reading.search",
         "reading.status",
+        "browser.read_tab",
+        "browser.read_tab_status",
         "watch.capabilities",
         "watch.propose",
         "watch.status",
