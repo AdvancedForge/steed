@@ -136,12 +136,14 @@ class HtmlMenuTests(unittest.TestCase):
         host = self.present(source, window)
         key = self.control(host, source.folder)
         field = f"document.querySelector({selector('data-control', key)})"
+        # Waits: the page lays the field out after it first appears.
+        self.wait_for(lambda: self.value(host, f"!!{field}"))
         self.assertEqual(self.value(host, field + ".type"), "text")
         self.assertEqual(
             self.value(host, field + ".placeholder"), "Unfiled, or type a folder name"
         )
-        self.assertGreater(
-            self.value(host, field + ".getBoundingClientRect().width"), 400
+        self.wait_for(
+            lambda: self.value(host, field + ".getBoundingClientRect().width") > 400
         )
         host.reject()
 
@@ -358,7 +360,7 @@ class HtmlMenuTests(unittest.TestCase):
         host.command(
             {
                 "context": host.context,
-                "sequence": 1,
+                "sequence": host.sequence + 1,
                 "action": "edit",
                 "id": key,
                 "value": "Changed",
@@ -368,7 +370,7 @@ class HtmlMenuTests(unittest.TestCase):
         host.command(
             {
                 "context": host.context,
-                "sequence": 2,
+                "sequence": host.sequence + 1,
                 "action": "activate",
                 "id": self.control(host, table),
                 "item": self.control(host, item),
@@ -442,7 +444,7 @@ class HtmlMenuTests(unittest.TestCase):
         menu.command(
             {
                 "context": menu.context,
-                "sequence": 1,
+                "sequence": menu.sequence + 1,
                 "action": "hover",
                 "id": token,
                 "x": 10,
@@ -465,7 +467,8 @@ class HtmlMenuTests(unittest.TestCase):
         host.command(
             {
                 "context": host.context,
-                "sequence": 1,
+                # After anything the page already sent (its own fit, say).
+                "sequence": host.sequence + 1,
                 "action": "select",
                 "id": key,
                 "item": row,
@@ -484,7 +487,7 @@ class HtmlMenuTests(unittest.TestCase):
         key = self.control(host, field)
         command = {
             "context": host.context,
-            "sequence": 1,
+            "sequence": host.sequence + 1,
             "action": "edit",
             "id": key,
             "value": "Changed",

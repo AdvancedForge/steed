@@ -39,16 +39,46 @@ class AgentSetupTests(unittest.TestCase):
                 repository="/repo with spaces",
             )
         command = config["mcpServers"]["steed"]
-        self.assertEqual(command["command"], "/python with spaces")
+        launcher = directory / "steed-mcp"
+        self.assertEqual(command["command"], str(launcher))
         self.assertEqual(
-            command["args"],
-            [
-                "/repo with spaces/agent_mcp.py",
-                "--discovery",
-                str(directory / "agent-access.json"),
-            ],
+            command["args"], ["--discovery", str(directory / "agent-access.json")]
         )
         self.assertNotIn("SYNTHETIC_PRIVATE_TOKEN", json.dumps(config))
+        # The launcher runs this Steed's adapter, quoted, and is private.
+        script = launcher.read_bytes().decode()
+        self.assertIn(
+            "exec '/python with spaces' '/repo with spaces/agent_mcp.py' \"$@\"",
+            script,
+        )
+        self.assertEqual(launcher.stat().st_mode & 0o777, 0o700)
+        self.assertNotIn("SYNTHETIC_PRIVATE_TOKEN", script)
+        # Steed moved: the same settings now start it from the new place.
+        launch_config(directory, executable="/new/python", repository="/new/steed")
+        self.assertIn("/new/steed/agent_mcp.py", launcher.read_bytes().decode())
+
+    def test_the_launcher_really_starts_the_adapter(self):
+        import subprocess
+        import sys
+
+        from services import mcp_launcher
+
+        root = Path(self.directory.name) / "launch"
+        repository = root / "steed"
+        repository.mkdir(parents=True)
+        (repository / "agent_mcp.py").write_text(
+            "import sys; print('adapter', *sys.argv[1:])"
+        )
+        launcher = mcp_launcher.write(
+            root, executable=sys.executable, repository=repository
+        )
+        output = subprocess.run(
+            [str(launcher), "--discovery", "x"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout
+        self.assertEqual(output.strip(), "adapter --discovery x")
 
     def test_setup_is_nonmodal_and_does_not_enable_access_or_create_tasks(self):
         window = self.window()

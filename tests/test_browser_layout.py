@@ -61,7 +61,7 @@ class BrowserLayoutTests(unittest.TestCase):
 
     def test_menus_keep_everyday_items_and_tuck_the_rest_away(self):
         window = self.window()
-        for name, most in (("general", 14), ("view", 24)):
+        for name, most in (("general", 14), ("view", 24), ("tabs", 18)):
             menu = window._layout_menus[name]
             items = [a for a in menu.actions() if not a.isSeparator() and a.isVisible()]
             self.assertLessEqual(len(items), most, name)
@@ -77,6 +77,21 @@ class BrowserLayoutTests(unittest.TestCase):
             (path, text) for path, text, _action in menu_commands(window._layout_menus)
         }
         self.assertIn(("View › Advanced", "View Page Source"), found)
+
+    def test_page_bars_share_the_toolbars_look(self):
+        window = self.window()
+        colors = window.address_bar.colors
+        bars = (
+            window.password_assistant.bar,
+            window.passkey_bar,
+            window.store_bar,
+            window.page_access_bar,
+        )
+        for bar in bars:
+            sheet = bar.styleSheet()
+            self.assertIn(colors["toolbar"], sheet)
+            self.assertIn('QPushButton[primary="true"]', sheet)
+            self.assertIn(colors["accent"], sheet)
 
     def test_hiding_toolbar_buttons_leaves_settings_and_reset_reachable(self):
         window = self.window()

@@ -182,6 +182,28 @@ class YourPageTests(unittest.TestCase):
         self.wait(lambda: "allowed" in self.js(tab, TEXT))
         self.assertFalse(bar.isVisible())  # You chose Never yourself.
 
+    def test_every_template_shows_its_data_once_allowed(self):
+        from ui.your_pages import TEMPLATES
+
+        registry = self.window.profile_manager.registry
+        profile = self.window.profile_manager.current_profile_name
+        for policy in ("steed", "bookmarks"):
+            access_levels.set_policy(self.window.config, "pages", policy, "always")
+        registry.start_pages.add_bookmark(
+            profile, "https://kettles.example/", "Kettles"
+        )
+        shown = {}
+        for label, name, title, html in TEMPLATES:
+            with self.subTest(template=label):
+                registry.start_pages.save_your_page(profile, name, title, html)
+                tab = self.window._new_tab(url="steed:" + name, return_tab=True)
+                self.wait(lambda tab=tab, title=title: tab.title() == title)
+                self.wait(lambda tab=tab: "Loading" not in self.js(tab, TEXT))
+                shown[name] = self.js(tab, TEXT)
+                self.assertNotIn("Not allowed", shown[name])
+        self.assertIn("Kettles", shown["links"])
+        self.assertIn("No watched pages yet", shown["changes"])
+
 
 if __name__ == "__main__":
     unittest.main()

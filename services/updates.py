@@ -51,6 +51,7 @@ class Updates(QObject):
             "installed_engine": self._installed_engine(),
             "checked": 0.0,
             "error": "",
+            "steed_checked": True,
         }
         self.network = None
         self.process = None
@@ -113,8 +114,11 @@ class Updates(QObject):
 
     def _check_steed(self):
         git = shutil.which("git")
-        if git is None or not (self.project / ".git").exists():
-            return
+        self.state["steed_checked"] = (
+            git is not None and (self.project / ".git").exists()
+        )
+        if not self.state["steed_checked"]:
+            return  # Not a git checkout: only the engine can be checked.
         process = self.process = QProcess(self)
         process.setWorkingDirectory(str(self.project))
         process.setProgram(git)

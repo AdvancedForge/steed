@@ -41,6 +41,8 @@ from services.routines import DAYS, EVERY_HOURS, describe, last_due
 MAX_AUTOMATIONS = 50
 MAX_STEPS = 20
 TEXT_LIMIT = 20_000
+RUNS_KEPT = 20  # per automation, in automation_runs.json
+LOG_CHARS = 600  # of each step's text kept in a run's history
 TICK_MS = 30_000
 SETTLE_MS = 2500
 READ_TIMEOUT_MS = 45_000
@@ -283,6 +285,12 @@ def describe_step(step):
     return STEP_WORDS[step["do"]].format(value=step.get("value", ""))
 
 
+def trim(text):
+    """A step's text as a run's history keeps it."""
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= LOG_CHARS else text[: LOG_CHARS - 1] + "…"
+
+
 def fill(text, last):
     """{last} in a step's text becomes what the step before produced."""
     return text.replace("{last}", last[:TEXT_LIMIT])
@@ -320,6 +328,9 @@ class Automations(QObject):
                 last_text=str(item.get("last_text") or "")[:TEXT_LIMIT],
             )
             self.automations.append(clean)
+        self.runs_path = registry.config.config_dir / "automation_runs.json"
+        raw_runs = load_json(self.runs_path, {})
+        self.runs = raw_runs if isinstance(raw_runs, dict) else {}
         self.queue = []
         self.running = None
         self.closed = False
@@ -399,7 +410,38 @@ class Automations(QObject):
 
     def remove(self, automation_id):
         self.automations = [a for a in self.automations if a["id"] != automation_id]
+        if self.runs.pop(automation_id, None) is not None:
+            save_json(self.runs_path, self.runs)
         self._save()
+
+    # ---------- What each run did ----------
+
+    def history(self, automation_id):
+        """Its last runs, newest first: {started, ended, start, outcome, steps:
+        [{n, what, got, gave, stopped}]}, each text trimmed."""
+        runs = self.runs.get(automation_id, [])
+        return [dict(r) for r in reversed(runs if isinstance(runs, list) else [])]
+
+    def clear_history(self, automation_id=None):
+        if automation_id is None:
+            self.runs = {}
+        else:
+            self.runs.pop(automation_id, None)
+        save_json(self.runs_path, self.runs)
+        self.changed.emit()
+
+    def _keep_run(self, item, run, outcome):
+        record = {
+            "started": run["started"],
+            "ended": time.time(),
+            "start": trim(run["start"]),
+            "outcome": outcome,
+            "steps": run["log"],
+        }
+        kept = self.runs.get(item["id"], [])
+        kept = (kept if isinstance(kept, list) else [])[-(RUNS_KEPT - 1) :]
+        self.runs[item["id"]] = [*kept, record]
+        save_json(self.runs_path, self.runs)
 
     def pause(self, automation_id, paused=True):
         for item in self.automations:
@@ -525,7 +567,15 @@ class Automations(QObject):
         if item is None:
             QTimer.singleShot(0, self._next_run)
             return
-        self.running = {"item": item, "index": 0, "last": start, "page": None}
+        self.running = {
+            "item": item,
+            "index": 0,
+            "last": start,
+            "page": None,
+            "start": start,
+            "started": time.time(),
+            "log": [],
+        }
         self._step()
 
     def _done(self, outcome):
@@ -534,6 +584,10 @@ class Automations(QObject):
             return
         item = run["item"]
         item["last_outcome"] = outcome
+        log = run.get("log") or []
+        if log and "gave" not in log[-1]:
+            log[-1]["stopped"] = True  # The step that ended the run.
+        self._keep_run(item, run, outcome)
         self._save()
         self.finished.emit(dict(item), outcome)
         QTimer.singleShot(0, self._next_run)
@@ -543,6 +597,9 @@ class Automations(QObject):
             return
         if text is not None:
             self.running["last"] = str(text)[:TEXT_LIMIT]
+        log = self.running.get("log")
+        if log and log[-1]["n"] == self.running["index"] + 1:
+            log[-1]["gave"] = trim(self.running["last"])
         self.running["index"] += 1
         QTimer.singleShot(0, self._step)
 
@@ -558,6 +615,7 @@ class Automations(QObject):
         step = steps[index]
         do, value = step["do"], step.get("value", "")
         number = index + 1
+        run["log"].append({"n": number, "what": describe_step(step), "got": trim(last)})
         if do in ("ask", "chat", "skill", "decide") and self._paused_agents():
             self._done(f"Stopped at step {number}: agents are paused.")
             return
@@ -793,6 +851,111 @@ class Automations(QObject):
                 page.close()  # A gatherer: its own page goes first.
             sip.delete(page)
         self.running = None
+
+
+def starters():
+    """Ready-made automations to start from: (title, what it does, the
+    automation, what to change before saving). Each opens in the editor; none
+    is saved until you press Save."""
+    from services.routines import BRIEF_ASK
+
+    weekdays = [0, 1, 2, 3, 4]
+    return [
+        (
+            "Morning brief",
+            "Weekday mornings: what changed on pages you watch, then a short "
+            "brief from your agent.",
+            {
+                "name": "Morning brief",
+                "trigger": {"kind": "schedule", "at": "08:00", "days": weekdays},
+                "steps": [{"do": "noticed"}, {"do": "chat", "value": BRIEF_ASK}],
+            },
+            "Add a step that reads your calendar and inbox (Read a page) before "
+            "the chat, then Save.",
+        ),
+        (
+            "Tell me when a price changes",
+            "Every few hours, read a product page and notify you in one line "
+            "when its price or stock changes.",
+            {
+                "name": "Price check",
+                "trigger": {"kind": "schedule", "every": 4},
+                "steps": [
+                    {"do": "read", "value": "https://shop.example/product"},
+                    {"do": "changed"},
+                    {
+                        "do": "ask",
+                        "value": "In one line: what is the price and is it in "
+                        "stock? {last}",
+                    },
+                    {"do": "notify", "value": "{last}"},
+                ],
+            },
+            "Replace the first step's address with the product page, then Save.",
+        ),
+        (
+            "Summarize the page I right-click",
+            "Right-click any page → Run Automation on This Page: a five-bullet "
+            "summary, saved to your files.",
+            {
+                "name": "Summarize this page",
+                "trigger": {"kind": "page"},
+                "steps": [
+                    {
+                        "do": "ask",
+                        "value": "Summarize this page in five short bullets: {last}",
+                    },
+                    {"do": "save", "value": "summary {date} {time}.md"},
+                    {"do": "notify", "value": "Saved a summary to Automations."},
+                ],
+            },
+            "Save, then right-click a page and choose Run Automation on This Page.",
+        ),
+        (
+            "Weekday reading digest",
+            "Weekday evenings: read your news sites and save the five stories "
+            "that matter, one line each.",
+            {
+                "name": "Reading digest",
+                "trigger": {"kind": "schedule", "at": "17:30", "days": weekdays},
+                "steps": [
+                    {"do": "gather", "value": ["https://news.example/"]},
+                    {
+                        "do": "ask",
+                        "value": "Pick the five most important stories, one line "
+                        "each with its link.",
+                    },
+                    {"do": "save", "value": "digest {date}.md"},
+                    {"do": "notify", "value": "Your reading digest is in Automations."},
+                ],
+            },
+            "Put your own news sites in the first step, then Save.",
+        ),
+        (
+            "Tell me when a download finishes",
+            "A notification with the file's name whenever a download (or only "
+            "PDFs) finishes.",
+            {
+                "name": "Download finished",
+                "trigger": {"kind": "download", "match": ".pdf"},
+                "steps": [{"do": "notify", "value": "Downloaded {last}"}],
+            },
+            "Clear “.pdf” to be told about every download, then Save.",
+        ),
+        (
+            "Remind me on a site",
+            "When you open a site, a reminder (for example, what to check on "
+            "your bank's site).",
+            {
+                "name": "Bank reminder",
+                "trigger": {"kind": "visit", "site": "bank.example"},
+                "steps": [
+                    {"do": "notify", "value": "Check the statement and due dates."}
+                ],
+            },
+            "Set the site and what to remind you of, then Save.",
+        ),
+    ]
 
 
 def from_routine(routine):

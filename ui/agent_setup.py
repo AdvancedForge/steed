@@ -29,17 +29,20 @@ AGENT_PROMPT = (
 
 
 def launch_config(config_dir, *, executable=None, repository=None):
-    """Describe this running browser's adapter; never include discovery tokens."""
-    repository = Path(repository) if repository else Path(__file__).resolve().parents[1]
+    """Describe this running browser's adapter; never include discovery tokens.
+
+    The command is Steed's own launcher in its config folder, rewritten at
+    each start, so the copied settings survive moving Steed."""
+    from services import mcp_launcher
+
+    launcher = mcp_launcher.write(
+        config_dir, executable=executable, repository=repository
+    )
     return {
         "mcpServers": {
             "steed": {
-                "command": executable or sys.executable,
-                "args": [
-                    str(repository / "agent_mcp.py"),
-                    "--discovery",
-                    str(Path(config_dir) / "agent-access.json"),
-                ],
+                "command": str(launcher),
+                "args": ["--discovery", str(Path(config_dir) / "agent-access.json")],
             }
         }
     }

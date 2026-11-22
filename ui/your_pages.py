@@ -111,6 +111,60 @@ steed("/api/skills").then(skills => {
 </script>"""
 )
 
+WATCH_BOARD = (
+    HELPERS
+    + """
+<main>
+<h1>What changed</h1>
+<p class="muted">The pages you watch, the latest change first.</p>
+<div id="board" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px"><p class="muted">Loading…</p></div>
+</main>
+<script>
+steed("/api/watches").then(watches => {
+  const board = document.getElementById("board");
+  watches.sort((a, b) => (b.last_change || 0) - (a.last_change || 0));
+  if (!watches.length) {
+    board.textContent = "No watched pages yet. Right-click a page and choose Watch This Page.";
+    return;
+  }
+  board.replaceChildren(...watches.map(w => {
+    const card = document.createElement("section");
+    const link = Object.assign(document.createElement("a"), {href: w.url, textContent: w.title});
+    const title = document.createElement("h2"); title.append(link);
+    const what = Object.assign(document.createElement("p"), {textContent: w.last_summary || "No change yet."});
+    const when_ = Object.assign(document.createElement("p"), {className: "muted", textContent: when(w.last_change) + (w.paused ? " · paused" : "")});
+    card.append(title, what, when_);
+    return card;
+  }));
+}).catch(() => { document.getElementById("board").textContent =
+  "Not allowed yet: choose Allow above this page, or Access → Local pages."; });
+</script>"""
+)
+
+BOOKMARK_BOARD = (
+    HELPERS
+    + """
+<main>
+<h1>Bookmarks</h1>
+<input id="filter" placeholder="Filter" style="width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--ink);font:inherit;margin:0 0 16px">
+<div id="tiles" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px"><p class="muted">Loading…</p></div>
+</main>
+<script>
+let all = [];
+const draw = () => {
+  const words = document.getElementById("filter").value.toLowerCase();
+  document.getElementById("tiles").replaceChildren(...all
+    .filter(b => (b.title + " " + b.url).toLowerCase().includes(words))
+    .map(b => Object.assign(document.createElement("a"), {href: b.url, textContent: b.title || b.url,
+      style: "display:block;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface);text-decoration:none;color:var(--ink)"})));
+};
+document.getElementById("filter").oninput = draw;
+steed("/api/bookmarks").then(items => { all = items; draw(); }).catch(() => {
+  document.getElementById("tiles").textContent =
+    "Not allowed yet: choose Allow above this page, or Access → Local pages."; });
+</script>"""
+)
+
 BLANK = """<main style="max-width:720px;margin:48px auto;padding:0 24px">
 <h1>My page</h1>
 <p>Write anything here. Scripts can use fetch("/api/…").</p>
@@ -119,6 +173,13 @@ BLANK = """<main style="max-width:720px;margin:48px auto;padding:0 24px">
 TEMPLATES = (
     ("Dashboard: watches, automations, skills", "dashboard", "My dashboard", DASHBOARD),
     ("Launcher: your skills", "launch", "Launch", LAUNCHER),
+    (
+        "Watch board: what changed on pages you watch",
+        "changes",
+        "What changed",
+        WATCH_BOARD,
+    ),
+    ("Bookmarks board: tiles with a filter", "links", "Bookmarks", BOOKMARK_BOARD),
     ("Blank page", "page", "My page", BLANK),
 )
 

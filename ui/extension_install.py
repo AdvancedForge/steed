@@ -122,6 +122,7 @@ class StoreBar(QFrame):
         self.label.setWordWrap(True)
         row.addWidget(self.label, 1)
         self.add = QPushButton("Add to Steed", self)
+        self.add.setProperty("primary", True)
         self.add.setAutoDefault(False)
         self.add.clicked.connect(self._add)
         row.addWidget(self.add)

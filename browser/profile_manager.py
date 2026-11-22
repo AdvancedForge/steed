@@ -91,6 +91,14 @@ class ProfileRegistry(QObject):
         from services import updates
 
         self.updates = updates.Updates(config, self, project=updates.PROJECT)
+        # Outside agents start Steed's adapter through a launcher that always
+        # points at where Steed is now (services/mcp_launcher.py).
+        try:
+            from services import mcp_launcher
+
+            mcp_launcher.write(config.config_dir)
+        except OSError:
+            pass
         from browser import download_manager
 
         self.downloads.confirm_program = download_manager.confirm_program

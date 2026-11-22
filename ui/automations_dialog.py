@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QPlainTextEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -116,6 +117,9 @@ class AutomationEditor(HtmlSettingsDialog):
         self.at = QLineEdit(trigger.get("at", "08:00"))
         self.at.setPlaceholderText("08:00")
         layout.addWidget(self.at)
+        self.days = QComboBox()
+        self.set_days(trigger.get("days", list(range(7))))
+        layout.addWidget(self.days)
         self.watch = QComboBox()
         for watch in window.profile_manager.registry.watches.list():
             self.watch.addItem(watch["title"], watch["id"])
@@ -177,10 +181,31 @@ class AutomationEditor(HtmlSettingsDialog):
         self.refresh_steps()
         self.finished.connect(lambda _: self.asking and self.asking.stop())
 
+    def set_days(self, days):
+        """Which days a daily schedule runs: the usual sets, or the one it had."""
+        from services.routines import DAYS
+
+        days = sorted(set(days))
+        self.days.clear()
+        choices = [
+            ("Every day", list(range(7))),
+            ("Weekdays", [0, 1, 2, 3, 4]),
+            ("Weekends", [5, 6]),
+        ]
+        if days not in [d for _, d in choices]:
+            choices.append((", ".join(DAYS[d] for d in days), days))
+        for label, value in choices:
+            self.days.addItem(label, value)
+        self.days.setCurrentIndex(
+            next(i for i, (_, value) in enumerate(choices) if value == days)
+        )
+
     def _trigger_changed(self, *_):
         kind = self.trigger.currentData()
         self.timing.setVisible(kind == "schedule")
-        self.at.setVisible(kind == "schedule" and self.timing.currentData() == "daily")
+        daily = kind == "schedule" and self.timing.currentData() == "daily"
+        self.at.setVisible(daily)
+        self.days.setVisible(daily)
         self.watch.setVisible(kind == "watch")
         self.trigger_value.setVisible(kind in TRIGGER_FIELDS)
         if kind in TRIGGER_FIELDS:
@@ -234,6 +259,7 @@ class AutomationEditor(HtmlSettingsDialog):
         if kind == "schedule":
             if self.timing.currentData() == "daily":
                 trigger["at"] = self.at.text().strip()
+                trigger["days"] = list(self.days.currentData())
             else:
                 trigger["every"] = self.timing.currentData()
         elif kind == "watch":
@@ -252,6 +278,7 @@ class AutomationEditor(HtmlSettingsDialog):
         else:
             self.timing.setCurrentIndex(0)
             self.at.setText(trigger.get("at", "08:00"))
+            self.set_days(trigger.get("days", list(range(7))))
         if trigger.get("watch"):
             self.watch.setCurrentIndex(max(0, self.watch.findData(trigger["watch"])))
         if trigger["kind"] in TRIGGER_FIELDS:
@@ -350,20 +377,21 @@ class AutomationsDialog(HtmlSettingsDialog):
         self.selection_buttons = []
         for text, callback in (
             ("New automation…", self.new),
-            ("Morning brief…", self.morning_brief),
+            ("Examples…", self.examples),
             ("Run now", self.run),
             ("Edit…", self.edit),
+            ("History…", self.history),
             ("Pause", self.pause),
             ("Remove", self.remove),
         ):
             button = QPushButton(text)
             if text == "New automation…":
                 button.setProperty("primary", True)
-            elif text != "Morning brief…":
+            elif text != "Examples…":
                 self.selection_buttons.append(button)
             button.clicked.connect(callback)
             row.addWidget(button)
-        self.pause_button = self.selection_buttons[2]
+        self.pause_button = self.selection_buttons[3]
         layout.addLayout(row)
         self.service.changed.connect(self.refresh)
         self.finished.connect(lambda _: self.service.changed.disconnect(self.refresh))
@@ -402,31 +430,15 @@ class AutomationsDialog(HtmlSettingsDialog):
         self.window._present_dialog(editor, modal=False)
         return editor
 
-    def morning_brief(self):
-        """A brief that is ready to go: add the pages it should read."""
-        from services.automations import check
-        from services.routines import BRIEF_ASK
+    def examples(self):
+        """Ready-made automations to start from."""
+        dialog = ExamplesDialog(self.window)
+        self.window._present_dialog(dialog, modal=False)
+        return dialog
 
-        editor = AutomationEditor(self.window)
-        editor.load(
-            check(
-                {
-                    "name": "Morning brief",
-                    "trigger": {
-                        "kind": "schedule",
-                        "at": "08:00",
-                        "days": [0, 1, 2, 3, 4],
-                    },
-                    "steps": [{"do": "noticed"}, {"do": "chat", "value": BRIEF_ASK}],
-                }
-            )
-        )
-        editor.status.setText(
-            "Add a step that reads your calendar and inbox (Read a page) before "
-            "the chat, then Save."
-        )
-        self.window._present_dialog(editor, modal=False)
-        return editor
+    def morning_brief(self):
+        """The Morning brief example, ready to finish."""
+        return ExamplesDialog.open_example(self.window, 0)
 
     def edit(self):
         item = self.selected()
@@ -435,6 +447,14 @@ class AutomationsDialog(HtmlSettingsDialog):
         editor = AutomationEditor(self.window, item)
         self.window._present_dialog(editor, modal=False)
         return editor
+
+    def history(self):
+        item = self.selected()
+        if item is None:
+            return None
+        dialog = RunHistoryDialog(self.window, item)
+        self.window._present_dialog(dialog, modal=False)
+        return dialog
 
     def run(self):
         item = self.selected()
@@ -450,3 +470,128 @@ class AutomationsDialog(HtmlSettingsDialog):
         item = self.selected()
         if item is not None:
             self.service.remove(item["id"])
+
+
+def describe_run(run):
+    """One run, step by step, as the history shows it."""
+    lines = [f"Started with: {run['start']}" if run.get("start") else "Started"]
+    for step in run.get("steps", []):
+        lines.append(f"\n{step['n']}. {step['what']}")
+        if step.get("got"):
+            lines.append(f"   had: {step['got']}")
+        if "gave" in step:
+            lines.append(f"   gave: {step['gave']}")
+        if step.get("stopped"):
+            lines.append("   stopped here")
+    lines.append(f"\n{run['outcome']}")
+    return "\n".join(lines)
+
+
+class RunHistoryDialog(HtmlSettingsDialog):
+    """An automation's last runs: what each step had and gave, where it stopped."""
+
+    def __init__(self, window, automation, parent=None):
+        super().__init__(parent or window)
+        self.window = window
+        self.automation = automation
+        self.service = window.profile_manager.registry.automations
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setWindowTitle(f"History: {automation['name']}")
+        layout = QVBoxLayout(self)
+        note = QLabel(
+            "The last 20 runs, newest first, with a short part of what each step "
+            "had and gave. Kept on this computer only."
+        )
+        note.setWordWrap(True)
+        note.setProperty("role", "note")
+        layout.addWidget(note)
+        self.runs = QListWidget()
+        self.runs.setProperty("empty", "No runs yet. Run it now to see each step.")
+        self.runs.currentRowChanged.connect(self._show)
+        layout.addWidget(self.runs)
+        self.detail = QPlainTextEdit()
+        self.detail.setReadOnly(True)
+        layout.addWidget(self.detail, 1)
+        row = QHBoxLayout()
+        clear = QPushButton("Clear History")
+        clear.clicked.connect(self.clear)
+        close = QPushButton("Close")
+        close.clicked.connect(self.reject)
+        row.addWidget(clear)
+        row.addWidget(close)
+        layout.addLayout(row)
+        self.refresh()
+
+    def refresh(self):
+        self.items = self.service.history(self.automation["id"])
+        self.runs.clear()
+        for run in self.items:
+            when = time.strftime("%b %d %H:%M", time.localtime(run["started"]))
+            self.runs.addItem(f"{when}: {run['outcome']}")
+        if self.items:
+            self.runs.setCurrentRow(0)
+        else:
+            self.detail.setPlainText("")
+
+    def _show(self, row):
+        if 0 <= row < len(self.items):
+            self.detail.setPlainText(describe_run(self.items[row]))
+
+    def clear(self):
+        self.service.clear_history(self.automation["id"])
+        self.refresh()
+
+
+class ExamplesDialog(HtmlSettingsDialog):
+    """Starters: each opens in the editor to check and change before saving."""
+
+    def __init__(self, window, parent=None):
+        from services.automations import starters
+
+        super().__init__(parent or window)
+        self.window = window
+        self.items = starters()
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setWindowTitle("Start from an example")
+        layout = QVBoxLayout(self)
+        self.list = QListWidget()
+        for title, what, _automation, _hint in self.items:
+            self.list.addItem(f"{title}: {what}")
+        self.list.setCurrentRow(0)
+        self.list.itemDoubleClicked.connect(lambda _: self.use())
+        layout.addWidget(self.list, 1)
+        note = QLabel(
+            "It opens in the editor: change anything, then Save. Nothing runs "
+            "until you do."
+        )
+        note.setWordWrap(True)
+        note.setProperty("role", "note")
+        layout.addWidget(note)
+        row = QDialogButtonBox()
+        use = QPushButton("Use this one")
+        use.setProperty("primary", True)
+        use.clicked.connect(self.use)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        row.addButton(use, QDialogButtonBox.ButtonRole.AcceptRole)
+        row.addButton(cancel, QDialogButtonBox.ButtonRole.RejectRole)
+        layout.addWidget(row)
+
+    @staticmethod
+    def open_example(window, index):
+        from services.automations import check, starters
+
+        _title, _what, automation, hint = starters()[index]
+        editor = AutomationEditor(window)
+        editor.load(check(automation))
+        editor.status.setText(hint)
+        window._present_dialog(editor, modal=False)
+        return editor
+
+    def use(self):
+        row = self.list.currentRow()
+        if not 0 <= row < len(self.items):
+            return None
+        window = self.window
+        self.accept()
+        return self.open_example(window, row)

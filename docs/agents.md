@@ -269,19 +269,24 @@ process. Local access is off when the browser starts.
 
 2. Start Steed and select **Agents → Enable Local Agent Access**. This enables
    local connections for the current browser run; it grants no site access.
-3. Configure your MCP client to launch the adapter. For clients using an
-   `mcpServers` configuration, substitute the absolute repository paths:
+3. Configure your MCP client to launch the adapter. **Agent Setup → Copy
+   settings** gives the exact `mcpServers` entry; with the default data folder
+   it is:
 
    ```json
    {
      "mcpServers": {
        "steed": {
-         "command": "/absolute/path/Browser/.venv/bin/python",
-         "args": ["/absolute/path/Browser/agent_mcp.py"]
+         "command": "/home/you/.custom_browser/steed-mcp",
+         "args": ["--discovery", "/home/you/.custom_browser/agent-access.json"]
        }
      }
    }
    ```
+
+   `steed-mcp` is a small launcher Steed rewrites at every start with where
+   its Python and `agent_mcp.py` are now, so these settings keep working if you
+   move Steed's folder or rebuild its environment.
 
    The adapter normally reads `~/.custom_browser/agent-access.json`. A custom
    browser data directory can be selected with `--discovery /path/agent-access.json`.

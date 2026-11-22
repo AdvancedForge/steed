@@ -228,6 +228,24 @@ QListView::item:selected, QListView::item:hover {{ background: {colors["hover"]}
 """
 
 
+def page_bar_stylesheet(colors):
+    """The bars above a page (Allow, passwords, passkeys, extensions): the
+    toolbar's colours and rounded buttons, the main choice in the accent."""
+    accent_ink = "#ffffff" if not colors.get("dark") else "#0d1320"
+    return f"""
+QFrame#PasswordBar {{ background: {colors["toolbar"]};
+    border-bottom: 1px solid {colors["border"]}; }}
+QFrame#PasswordBar QLabel {{ color: {colors["ink"]}; background: transparent; }}
+QFrame#PasswordBar QPushButton {{ background: transparent; color: {colors["ink"]};
+    border: 1px solid {colors["border"]}; border-radius: 11px; padding: 3px 14px; }}
+QFrame#PasswordBar QPushButton:hover {{ background: {colors["hover"]}; }}
+QFrame#PasswordBar QPushButton:pressed {{ background: {colors["pressed"]}; }}
+QFrame#PasswordBar QPushButton[primary="true"] {{ background: {colors["accent"]};
+    color: {accent_ink}; border-color: {colors["accent"]}; }}
+QFrame#PasswordBar QPushButton:disabled {{ color: {colors["muted"]}; }}
+"""
+
+
 def bar_stylesheet(colors):
     """Menu and status bars in the toolbar colour, without heavy borders."""
     return f"""

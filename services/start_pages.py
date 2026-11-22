@@ -2,6 +2,7 @@
 
 import base64
 import re
+import time
 from copy import deepcopy
 from html import escape
 from pathlib import Path
@@ -101,6 +102,28 @@ def profile_title(name):
 
 
 MAX_YOUR_PAGES = 30
+
+
+class Recently:
+    """Profiles marked a moment ago. New Tab's Customize panel stays open on
+    every render for a few seconds after a change, not only the next one: a
+    change can render the page twice in quick succession."""
+
+    def __init__(self, seconds=4.0):
+        self.seconds = seconds
+        self.marked = {}
+
+    def add(self, profile):
+        self.marked[profile] = time.monotonic()
+
+    def discard(self, profile):
+        self.marked.pop(profile, None)
+
+    def __contains__(self, profile):
+        when = self.marked.get(profile)
+        return when is not None and time.monotonic() - when < self.seconds
+
+
 # Your pages start out looking like Steed's (light and dark); their own
 # styles override this.
 YOUR_PAGE_BASE = (
@@ -400,8 +423,8 @@ class StartPages(QObject):
 
         self.photos = NewTabPhotos(registry.config.config_dir / "newtab", self)
         # Profiles whose customize panel stays open on the next render.
-        self.keep_open = set()
-        self.keep_more = set()  # …with More options open too.
+        self.keep_open = Recently()
+        self.keep_more = Recently()  # …with More options open too.
         # Where New Tab pages sit in the window, and its size (x, y, width,
         # height): with glass the picture fills the window (render_simple).
         self.canvas = None
@@ -905,8 +928,6 @@ class StartPages(QObject):
         )
         if in_menu:
             menu, panel = newtab_menu(panel, open_=opened), ""
-        self.keep_open.discard(profile)
-        self.keep_more.discard(profile)
         return (
             Template(SIMPLE_PAGE)
             .substitute(
@@ -1722,7 +1743,7 @@ def newtab_menu(extra="", open_=False):
             ("profile", "Profile"),
             ("tabs", "Tabs"),
             ("view", "View"),
-            ("cookies", "Cookies"),
+            ("cookies", "History"),
             ("agents", "Agents"),
         )
     )

@@ -1418,6 +1418,7 @@ class BrowserWindow(QMainWindow):
 
         self.passkey_bar = PasskeyBar(self)
         layout.addWidget(self.passkey_bar)
+        self._style_page_bars(self.address_bar.colors)
         self.content_area = QSplitter(Qt.Orientation.Horizontal)
         self.content_area.setObjectName("SteedContent")
         self.content_area.setChildrenCollapsible(False)
@@ -1535,6 +1536,7 @@ class BrowserWindow(QMainWindow):
             self.address_bar.apply_style(colors)
         if getattr(self, "find_bar", None) is not None:
             self.find_bar.apply_style(colors)
+        self._style_page_bars(colors)
         bars = bar_stylesheet(colors)
         # Scroll bars in dialogs and panels match the web pages' ones.
         self.setStyleSheet(self.styleSheet() + scrollbar_stylesheet(colors))
@@ -1935,6 +1937,21 @@ class BrowserWindow(QMainWindow):
         self._fade = animation
         self.address_bar.colors = new  # Readable at once; painting catches up.
         animation.start()
+
+    def _style_page_bars(self, colors):
+        from ui.chrome_style import page_bar_stylesheet
+
+        sheet = page_bar_stylesheet(colors)
+        assistant = getattr(self, "password_assistant", None)
+        for bar in (
+            getattr(assistant, "bar", None),
+            getattr(self, "passkey_bar", None),
+            getattr(self, "store_bar", None),
+            getattr(self, "page_access_bar", None),
+        ):
+            if bar is not None:
+                bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+                bar.setStyleSheet(sheet)
 
     def _fade_stop(self):
         animation = getattr(self, "_fade", None)

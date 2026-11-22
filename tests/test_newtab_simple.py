@@ -248,10 +248,16 @@ class SimpleNewTabTests(unittest.TestCase):
         self.assertEqual(
             (settings["background"], settings["color"]), ("color", "#1f3a5f")
         )
-        # The page that comes back after a choice keeps the panel open, once.
+        # The page that comes back after a choice keeps the panel open, also
+        # when it renders twice in quick succession; later, it starts closed.
         html = pages.render("global", "newtab").decode()
         self.assertIn('<details class="customize" open>', html)
         self.assertIn('class="swatch on" style="background:#1f3a5f"', html)
+        self.assertIn(
+            '<details class="customize" open>',
+            pages.render("global", "newtab").decode(),
+        )
+        pages.keep_open.marked["global"] -= pages.keep_open.seconds
         self.assertIn(
             '<details class="customize">', pages.render("global", "newtab").decode()
         )

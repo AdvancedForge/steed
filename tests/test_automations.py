@@ -368,7 +368,13 @@ class RunTests(unittest.TestCase):
             "<title>Deal</title><p>Half price kettles</p>",
             QUrl("https://deal.example/"),
         )
-        self.wait(lambda: tab.title() == "Deal")
+        self.wait(
+            lambda: (
+                tab.title() == "Deal"
+                and tab.url().toString() == "https://deal.example/"
+                and not tab.page().isLoading()
+            )
+        )
         menu = QMenu()
         self.window._add_ask_agent_item(menu, tab, None)
         (runs,) = [a.menu() for a in menu.actions() if a.menu()]
@@ -473,6 +479,96 @@ class RunTests(unittest.TestCase):
         self.assertEqual(editor.trigger_value.text(), "Alt+J")
         editor.trigger.setCurrentIndex(editor.trigger.findData("page"))
         self.assertTrue(editor.trigger_value.isHidden())
+
+    def test_each_run_keeps_what_every_step_had_and_gave(self):
+        from services.automations import RUNS_KEPT
+        from ui.automations_dialog import AutomationsDialog, describe_run
+
+        site = self.serve()
+        service = self.automations()
+        item = service.add(
+            {
+                "name": "Kettle",
+                "steps": [
+                    {"do": "read", "value": site + "/kettle"},
+                    {"do": "contains", "value": "sold out"},
+                    {"do": "notify", "value": "{last}"},
+                ],
+            }
+        )
+        Stock.level = "in stock"
+        service.run(item["id"], start="pressed Run now")
+        self.wait(lambda: self.outcomes)
+        Stock.level = "sold out"
+        service.run(item["id"])
+        self.wait(lambda: len(self.outcomes) == 2)
+        latest, first = service.history(item["id"])
+        self.assertEqual(latest["outcome"], "Done (3 steps).")
+        self.assertEqual([s["n"] for s in latest["steps"]], [1, 2, 3])
+        self.assertIn("sold out", latest["steps"][0]["gave"])
+        self.assertEqual(first["start"], "pressed Run now")
+        stopped = first["steps"][-1]
+        self.assertEqual(stopped["n"], 2)
+        self.assertTrue(stopped["stopped"])
+        self.assertNotIn("gave", stopped)
+        text = describe_run(first)
+        self.assertIn("2. Go on only if it contains “sold out”", text)
+        self.assertIn("stopped here", text)
+        # Shown from Automations → History…, newest first.
+        dialog = AutomationsDialog(self.window)
+        self.addCleanup(dialog.deleteLater)
+        dialog.table.setCurrentCell(0, 0)
+        history = dialog.history()
+        self.assertEqual(history.runs.count(), 2)
+        self.assertIn("Done (3 steps).", history.runs.item(0).text())
+        self.assertIn("1. Read", history.detail.toPlainText())
+        # Only the last RUNS_KEPT; kept on disk; cleared on request or removal.
+        service.runs[item["id"]] = [dict(first, outcome=str(n)) for n in range(40)]
+        service._keep_run(
+            service.get(item["id"]), {"started": 1, "start": "", "log": []}, "new"
+        )
+        self.assertEqual(len(service.history(item["id"])), RUNS_KEPT)
+        self.assertEqual(service.history(item["id"])[0]["outcome"], "new")
+        self.assertTrue(service.runs_path.exists())
+        history.clear()
+        self.assertEqual(service.history(item["id"]), [])
+        self.assertEqual(history.runs.count(), 0)
+        service.run(item["id"])
+        self.wait(lambda: len(self.outcomes) == 3)
+        service.remove(item["id"])
+        self.assertNotIn(item["id"], service.runs)
+
+    def test_examples_open_in_the_editor_and_keep_their_days(self):
+        from services.automations import starters
+        from ui.automations_dialog import AutomationsDialog
+
+        self.assertGreaterEqual(len(starters()), 5)
+        for title, what, automation, hint in starters():
+            check(automation)  # Every example is a valid automation.
+            self.assertTrue(what and hint, title)
+        service = self.automations()
+        dialog = AutomationsDialog(self.window)
+        self.addCleanup(dialog.deleteLater)
+        examples = dialog.examples()
+        self.assertEqual(examples.list.count(), len(starters()))
+        examples.list.setCurrentRow(0)
+        editor = examples.use()
+        self.assertEqual(editor.name.text(), "Morning brief")
+        self.assertIn("calendar", editor.status.text())
+        self.assertEqual(editor.days.currentText(), "Weekdays")
+        editor.save()
+        (saved,) = service.list()
+        self.assertEqual(saved["trigger"]["days"], [0, 1, 2, 3, 4])  # Not every day.
+        # An unusual set of days is kept, and can be changed.
+        from ui.automations_dialog import AutomationEditor
+
+        editor = AutomationEditor(
+            self.window, dict(saved, trigger=dict(saved["trigger"], days=[1, 3]))
+        )
+        self.addCleanup(editor.deleteLater)
+        self.assertEqual(editor.days.currentText(), "Tue, Thu")
+        editor.days.setCurrentIndex(editor.days.findText("Weekends"))
+        self.assertEqual(editor.values()["trigger"]["days"], [5, 6])
 
 
 if __name__ == "__main__":
