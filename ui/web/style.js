@@ -24,7 +24,7 @@ function paletteFields() {
     heading.htmlFor = 'color-' + key; heading.textContent = label;
     input.id = heading.htmlFor; input.type = 'color'; input.value = colors[key] || base[key];
     input.oninput = () => { colors[key] = input.value; };
-    code.textContent = token; wrap.append(heading, input, code); grid.append(wrap);
+    input.title = token; wrap.append(heading, input); grid.append(wrap);
   }
 }
 function guide() {

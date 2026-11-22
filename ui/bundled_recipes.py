@@ -1,10 +1,22 @@
 """Choose a shipped service; source, account and payload reviews remain separate."""
 
-from PyQt6.QtCore import Qt
+import re
+
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWidgets import QComboBox, QLabel, QPushButton, QVBoxLayout
 
 from ui.html_dialog import HtmlSettingsDialog
 from ui.recipe_review import RecipeReviewDialog
+
+
+def plain_action(tool):
+    """What a connector tool does, in a few words: its description up to the
+    technical detail ("Read one Asana task by its GID, …" → "Read one Asana
+    task"), marked when it changes something."""
+    words = re.split(r" by | using |, which|[,.;(]", tool.description, maxsplit=1)[0]
+    words = words.strip() or tool.name.replace("_", " ")
+    words = words[:1].upper() + words[1:]
+    return words if tool.effect == "read" else words + " (asks you first)"
 
 
 class BundledRecipesDialog(HtmlSettingsDialog):
@@ -51,10 +63,12 @@ class BundledRecipesDialog(HtmlSettingsDialog):
             )
             return
         recipe = self.entries[self.choice.currentIndex()].recipe
+        host = QUrl(recipe.origin).host() or recipe.origin
         self.description.setText(
-            f"Service: {recipe.name}\nAPI domain: {recipe.origin}\n"
-            + "\n".join(f"{t.effect.upper()}: {t.description}" for t in recipe.tools)
-            + "\n\nSource review adds this exact recipe. It does not sign in, enable account access, or authorize a task. Creates and sends need their own payload approval."
+            f"{recipe.name}, at {host}. Agents could:\n"
+            + "\n".join(f"• {plain_action(t)}" for t in recipe.tools)
+            + "\n\nAdding it only sets it up: you still sign in, choose what each "
+            "agent may use, and approve anything it creates or sends."
         )
 
     def review(self):

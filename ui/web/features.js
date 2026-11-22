@@ -60,7 +60,8 @@ window.steedUI = {render(next) {
   const current = u.steed_checked === false
     ? 'The engine is up to date. This copy of Steed is not a git checkout, so its own updates are not checked.'
     : 'Steed and its engine are up to date.';
-  $('updates').textContent = u.summary || (u.error ? u.error : u.checked ? current : u.enabled ? 'Checked once a day.' : 'Update checks are off (Settings → General).');
+  $('updates').textContent = u.notice || (u.error ? u.error : u.checked ? current : u.enabled ? 'Checked once a day.' : 'Update checks are off (Settings → General).');
+  $('update-how').hidden = !u.summary; $('update-how-text').textContent = u.summary || '';
   return true;
 }};
 $('check').onclick = () => command('check');

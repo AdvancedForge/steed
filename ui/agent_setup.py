@@ -9,6 +9,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -59,9 +60,9 @@ class AgentSetupDialog(HtmlSettingsDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Chatting in the sidebar needs none of this: add any assistant with "
-            "Agents → Add an Assistant…. This page connects any other MCP client "
-            "(an editor, a terminal agent, your own tool) to Steed."
+            "For connecting other agent programs (an editor, a terminal agent, your "
+            "own tool) to Steed. Chats in the sidebar, Codex and Claude Code need "
+            "none of this."
         )
         intro.setWordWrap(True)
         intro.setProperty("role", "quote")
@@ -73,21 +74,15 @@ class AgentSetupDialog(HtmlSettingsDialog):
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
-        codex = QLabel(
-            "Steed stays open and your client runs the adapter. This setup grants "
-            "no page or app permissions. Codex and Claude Code need no setup here: "
-            "install them and sign in once (codex login, or run claude), and they "
-            "appear among the sidebar's assistants."
-        )
-        codex.setWordWrap(True)
-        codex.setProperty("role", "note")
-        layout.addWidget(codex)
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.enable = QPushButton("Enable Local Agent Access")
         self.enable.clicked.connect(lambda: self.enable_requested.emit())
         layout.addWidget(self.enable)
+        # The settings themselves are for copying, not reading: shown on request.
+        self.show_config = QCheckBox("Show the settings")
+        layout.addWidget(self.show_config)
         self.config = QPlainTextEdit()
         self.config.setReadOnly(True)
         self.config.setAccessibleName("Steed MCP launch configuration")
@@ -96,12 +91,14 @@ class AgentSetupDialog(HtmlSettingsDialog):
         )
         layout.addWidget(self.config)
         syntax = QLabel(
-            "Copy this into clients that accept mcpServers JSON, or enter its command "
-            "and arguments in the client's MCP settings. HTTP setup is documented "
-            "in docs/agents.md. An idle agent client must be prompted to run."
+            "Paste these into the client's MCP settings (mcpServers). Setting up "
+            "grants no access to pages or apps; each task still asks."
         )
         syntax.setWordWrap(True)
+        syntax.setProperty("role", "note")
         layout.addWidget(syntax)
+        self.config.setVisible(False)
+        self.show_config.toggled.connect(self.config.setVisible)
         if find_spec("mcp") is None:
             repository = Path(__file__).resolve().parents[1]
             install = QPlainTextEdit()

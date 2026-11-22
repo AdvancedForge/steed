@@ -124,7 +124,7 @@ class AdBlocker(QObject):
         self.status = (
             "Cached filter lists loaded"
             if valid
-            else "Bootstrap rules only; update filter lists for full coverage"
+            else "Basic blocking only: download the full lists to block more"
         )
         # A full EasyList compile takes seconds, so it never runs on the GUI
         # thread. Start with the cheap bootstrap rules and swap in the cached
