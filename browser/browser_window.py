@@ -54,6 +54,7 @@ from services.start_pages import (
     action_page,
     display_url,
     page_name,
+    profile_title,
     workspace_name,
 )
 from ui import media_controls
@@ -78,6 +79,7 @@ from ui.tab_strip import TabStrip
 logger = logging.getLogger(__name__)
 # How often a profile's open windows are recorded (only when they changed).
 SESSION_SNAPSHOT_MS = 10 * 60 * 1000
+DICTATION_TIP_AFTER = 25  # web pages loaded before the dictation tip
 
 
 # Enough to merge a redirect chain or a SPA's boot sequence into one write.
@@ -611,7 +613,7 @@ class BrowserWindow(QMainWindow):
             "profile": menubar.addMenu("Profile"),
             "tabs": menubar.addMenu("Tabs"),
             "view": menubar.addMenu("View"),
-            "cookies": menubar.addMenu("Cookies"),
+            "cookies": menubar.addMenu("History"),
             "agents": menubar.addMenu("Agents"),
         }
         general_menu = self._layout_menus["general"]
@@ -627,7 +629,7 @@ class BrowserWindow(QMainWindow):
         self.saved_groups_menu = tabs_menu.addMenu("Saved Groups")
         self.workspaces_menu = tabs_menu.addMenu("Workspaces")
         self.workspaces_menu.aboutToShow.connect(self._fill_workspaces_menu)
-        switch_space = QAction("Switch Workspace…", self)
+        switch_space = self.switch_workspace_action = QAction("Switch Workspace…", self)
         switch_space.setShortcut(QKeySequence("Ctrl+Alt+W"))
         switch_space.triggered.connect(self.choose_workspace)
         self.addAction(switch_space)
@@ -692,11 +694,11 @@ class BrowserWindow(QMainWindow):
         history_action = cookies_menu.addAction("Browsing History…")
         history_action.setShortcut(QKeySequence("Ctrl+H"))
         history_action.triggered.connect(lambda: self._open_management("history"))
-        clear_history_action = QAction("Clear Browsing History...", self)
+        clear_history_action = QAction("Clear Browsing History…", self)
         clear_history_action.triggered.connect(self._clear_browsing_history)
         cookies_menu.addAction(clear_history_action)
         cookies_menu.addSeparator()
-        passwords_action = QAction("Passwords...", self)
+        passwords_action = QAction("Passwords…", self)
         passwords_action.triggered.connect(
             lambda: self._new_tab(url="steed:passwords", return_tab=True)
         )
@@ -710,7 +712,7 @@ class BrowserWindow(QMainWindow):
             lambda: self.password_assistant.fill_current()
         )
         general_menu.addAction(fill_login_action)
-        downloads_action = QAction("Downloads...", self)
+        downloads_action = QAction("Downloads…", self)
         downloads_action.setShortcut(QKeySequence("Ctrl+J"))
         downloads_action.triggered.connect(lambda: self._open_management("downloads"))
         general_menu.addAction(downloads_action)
@@ -748,11 +750,11 @@ class BrowserWindow(QMainWindow):
             lambda: self._new_tab(url="steed:userscripts", return_tab=True)
         )
         general_menu.addAction(scripts_action)
-        adblock_action = QAction("Ad Blocking...", self)
+        adblock_action = QAction("Ad Blocking…", self)
         adblock_action.triggered.connect(lambda: self._open_management("adblock"))
         general_menu.addAction(adblock_action)
         general_menu.addSeparator()
-        settings_action = QAction("Settings...", self)
+        settings_action = QAction("Settings…", self)
         settings_action.setShortcut(QKeySequence("Ctrl+,"))
         settings_action.triggered.connect(self._open_settings)
         general_menu.addAction(settings_action)
@@ -762,6 +764,11 @@ class BrowserWindow(QMainWindow):
         unsplit = QAction("Close Split View", self)
         unsplit.triggered.connect(self.close_split_view)
         view_menu.addAction(unsplit)
+        # Only while there is a split to close.
+        view_menu.aboutToShow.connect(
+            lambda: unsplit.setVisible(getattr(self, "split_tab", None) is not None)
+        )
+        unsplit.setVisible(False)
         save_page = QAction("Save Page As…", self)
         save_page.setShortcut(QKeySequence("Ctrl+S"))
         save_page.triggered.connect(lambda: self.save_page_as())
@@ -864,19 +871,19 @@ class BrowserWindow(QMainWindow):
         manage_bookmarks_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
         manage_bookmarks_action.triggered.connect(self._manage_bookmarks)
         tabs_menu.addAction(manage_bookmarks_action)
-        layout_action = QAction("Layout Settings...", self)
+        layout_action = QAction("Layout Settings…", self)
         layout_action.setToolTip(
             "Reorder or hide address bar buttons, reorder menus, and choose "
             "the agent sidebar side, width and control spacing"
         )
         layout_action.triggered.connect(self._open_layout_settings)
         general_menu.addAction(layout_action)
-        import_layout = QAction("Import Layout...", self)
+        import_layout = QAction("Import Layout…", self)
         import_layout.triggered.connect(self._import_layout)
-        general_menu.addAction(import_layout)
-        export_layout = QAction("Export Layout...", self)
+        view_menu.addAction(import_layout)
+        export_layout = QAction("Export Layout…", self)
         export_layout.triggered.connect(self._export_layout)
-        general_menu.addAction(export_layout)
+        view_menu.addAction(export_layout)
         recover_layout = QAction("Recover Previous Layout", self)
         recover_layout.triggered.connect(self._recover_layout)
         view_menu.addAction(recover_layout)
@@ -935,7 +942,7 @@ class BrowserWindow(QMainWindow):
             lambda: self._new_tab(url="steed:access", return_tab=True)
         )
         agents_menu.addAction(access_action)
-        task_action = QAction("Task Permissions...", self)
+        task_action = QAction("Task Permissions…", self)
         task_action.triggered.connect(self._open_tasks)
         agents_menu.addAction(task_action)
         self.auto_approval_action = QAction("Approve All Agent Requests (unsafe)", self)
@@ -957,10 +964,10 @@ class BrowserWindow(QMainWindow):
                 self._refresh_auto_approval
             )
         self._refresh_auto_approval()
-        site_action = QAction("Website Permissions...", self)
+        site_action = QAction("Website Permissions…", self)
         site_action.triggered.connect(lambda: self._open_management("permissions"))
         general_menu.addAction(site_action)
-        apps_action = QAction("App Connections...", self)
+        apps_action = QAction("App Connections…", self)
         apps_action.triggered.connect(self._open_app_connections)
         agents_menu.addAction(apps_action)
         self.file_library_action = QAction("Agent File Library…", self)
@@ -980,7 +987,7 @@ class BrowserWindow(QMainWindow):
         setup_agent_action.triggered.connect(self._open_agent_setup)
         agents_menu.addAction(setup_agent_action)
         view_menu.addSeparator()
-        self.find_action = QAction("Find in Page...", self)
+        self.find_action = QAction("Find in Page…", self)
         self.find_action.setShortcut(QKeySequence("Ctrl+F"))
         self.find_action.triggered.connect(self._open_find)
         view_menu.addAction(self.find_action)
@@ -1112,19 +1119,19 @@ class BrowserWindow(QMainWindow):
         reset_layout_action = QAction("Reset Layout", self)
         reset_layout_action.triggered.connect(self.reset_layout)
         view_menu.addAction(reset_layout_action)
-        new_profile_action = QAction("New Profile...", self)
+        new_profile_action = QAction("New Profile…", self)
         new_profile_action.triggered.connect(self._create_profile)
         profile_menu.addAction(new_profile_action)
-        switch_profile_action = QAction("Switch Profile...", self)
+        switch_profile_action = QAction("Switch Profile…", self)
         switch_profile_action.triggered.connect(self._switch_profile)
         profile_menu.addAction(switch_profile_action)
-        pop_out_action = QAction("Pop out Profile...", self)
+        pop_out_action = QAction("Pop out Profile…", self)
         pop_out_action.triggered.connect(self._pop_out_profile)
         profile_menu.addAction(pop_out_action)
-        rename_profile_action = QAction("Rename Profile...", self)
+        rename_profile_action = QAction("Rename Profile…", self)
         rename_profile_action.triggered.connect(self._rename_profile)
         profile_menu.addAction(rename_profile_action)
-        delete_profile_action = QAction("Delete Profile...", self)
+        delete_profile_action = QAction("Delete Profile…", self)
         delete_profile_action.triggered.connect(self._delete_profile)
         profile_menu.addAction(delete_profile_action)
         profile_menu.addSeparator()
@@ -1172,7 +1179,7 @@ class BrowserWindow(QMainWindow):
             )
         )
         group_menu.addSeparator()
-        manage_groups_action = QAction("Manage Tab Groups...", self)
+        manage_groups_action = QAction("Manage Tab Groups…", self)
         manage_groups_action.triggered.connect(self._manage_tab_groups)
         group_menu.addAction(manage_groups_action)
         install_app_action = QAction("Install This Site as an App…", self)
@@ -1187,13 +1194,13 @@ class BrowserWindow(QMainWindow):
         compare_action = QAction("Compare Tabs with Agent…", self)
         compare_action.triggered.connect(self.compare_tabs)
         tabs_menu.addAction(compare_action)
-        view_cookies_action = QAction("View Cookies...", self)
+        view_cookies_action = QAction("View Cookies…", self)
         view_cookies_action.triggered.connect(self._view_cookies)
         cookies_menu.addAction(view_cookies_action)
         clear_cookies_action = QAction("Clear All Cookies", self)
         clear_cookies_action.triggered.connect(self._clear_all_cookies)
         cookies_menu.addAction(clear_cookies_action)
-        use_global_action = QAction("Use Global Cookies for This Site...", self)
+        use_global_action = QAction("Use Global Cookies for This Site…", self)
         use_global_action.triggered.connect(self._use_global_cookies)
         cookies_menu.addAction(use_global_action)
         self._native_layout_actions = {
@@ -1363,6 +1370,7 @@ class BrowserWindow(QMainWindow):
         self.loading_indicator.hide()
         layout.addWidget(self.loading_indicator)
         self.find_bar = FindBar(self.navigation)
+        self.find_bar.apply_style(self.address_bar.colors)
         self.find_bar.closed.connect(self._focus_page)
         layout.addWidget(self.find_bar)
         self.live_bar = QWidget()
@@ -1519,6 +1527,8 @@ class BrowserWindow(QMainWindow):
         else:
             self._fade_stop()
             self.address_bar.apply_style(colors)
+        if getattr(self, "find_bar", None) is not None:
+            self.find_bar.apply_style(colors)
         bars = bar_stylesheet(colors)
         # Scroll bars in dialogs and panels match the web pages' ones.
         self.setStyleSheet(self.styleSheet() + scrollbar_stylesheet(colors))
@@ -2266,7 +2276,11 @@ class BrowserWindow(QMainWindow):
                 action.setShortcut(QKeySequence(trigger["keys"]))
                 self.addAction(action)
                 self._automation_shortcuts.append(action)
-        menu.addSeparator()
+        if menu.actions():
+            menu.addSeparator()
+        else:
+            empty = menu.addAction("No automations yet")
+            empty.setEnabled(False)
         menu.addAction("Manage Automations…").triggered.connect(self.manage_automations)
 
     def _automations_changed(self):
@@ -2275,14 +2289,8 @@ class BrowserWindow(QMainWindow):
                 window._fill_automations_menu()
 
     def manage_automations(self):
-        if self.profile_manager.current_profile_name == "search":
-            self.status_bar.showMessage(
-                "Automations are not available in incognito.", 4000
-            )
-            return
-        from ui.automations_dialog import AutomationsDialog
-
-        self._present_dialog(AutomationsDialog(self), modal=False)
+        """Agents → Automations: a steed:automations tab."""
+        return self._open_management("automations")
 
     def _skills_changed(self):
         for window in QApplication.topLevelWidgets():
@@ -2292,27 +2300,16 @@ class BrowserWindow(QMainWindow):
                     window.agent_sidebar._publish()
 
     def manage_your_pages(self):
-        if self.profile_manager.current_profile_name == "search":
-            self.status_bar.showMessage("Incognito has no pages of its own.", 4000)
-            return
-        from ui.your_pages import YourPagesDialog
-
-        self._present_dialog(YourPagesDialog(self), modal=False)
+        """View → Your Pages: a steed:pages tab."""
+        return self._open_management("pages")
 
     def manage_packs(self):
-        if self.profile_manager.current_profile_name == "search":
-            self.status_bar.showMessage("Packs are not available in incognito.", 4000)
-            return None
-        from ui.packs_dialog import PacksDialog
-
-        dialog = PacksDialog(self)
-        self._present_dialog(dialog, modal=False)
-        return dialog
+        """View → Packs: a steed:packs tab."""
+        return self._open_management("packs")
 
     def manage_skills(self):
-        from ui.skills_dialog import SkillsDialog
-
-        self._present_dialog(SkillsDialog(self), modal=False)
+        """Agents → Skills → Manage Skills: a steed:skills tab."""
+        return self._open_management("skills")
 
     def run_skill(self, skill_id, tabs=(), extra=""):
         """Run a skill: its saved steps first (by Steed, no model), then the
@@ -3419,7 +3416,7 @@ class BrowserWindow(QMainWindow):
         current = self.profile_manager.current_profile_name
         for name in self.profile_manager.list_profiles():
             action = menu.addAction(
-                name + (" (this window)" if name == current else "")
+                profile_title(name) + (" (this window)" if name == current else "")
             )
             action.triggered.connect(
                 lambda _=False, n=name: self._pop_out_profile_named(n)
@@ -3749,7 +3746,7 @@ class BrowserWindow(QMainWindow):
         self.profile_shortcuts_menu.clear()
         profiles = self.profile_manager.list_profiles()
         for i, name in enumerate(profiles[:9]):
-            action = QAction(f"{name} (Ctrl+Shift+{i + 1})", self)
+            action = QAction(profile_title(name), self)
             action.setShortcut(QKeySequence(f"Ctrl+Shift+{i + 1}"))
             action.triggered.connect(lambda checked, n=name: self._switch_to_profile(n))
             self.profile_shortcuts_menu.addAction(action)
@@ -6065,11 +6062,27 @@ class BrowserWindow(QMainWindow):
             from ui import tips
 
             if page_name(tab.url()) == "newtab":
-                QTimer.singleShot(1200, lambda: tips.offer(self, "customize"))
-            elif tab.url().scheme() in ("http", "https"):
+                # Only while that New Tab is still the page in front.
                 QTimer.singleShot(
-                    1500, lambda: tips.offer(self, "dictation", self.address_bar)
+                    1200,
+                    lambda: tips.offer(
+                        self,
+                        "customize",
+                        when=lambda: (
+                            not sip.isdeleted(tab)
+                            and tab is self._current_browser_tab()
+                            and page_name(tab.url()) == "newtab"
+                        ),
+                    ),
                 )
+            elif tab.url().scheme() in ("http", "https"):
+                # Dictation is for later: after a good few pages, not the first.
+                self._web_loads = getattr(self, "_web_loads", 0) + 1
+                if self._web_loads >= DICTATION_TIP_AFTER:
+                    QTimer.singleShot(
+                        1500,
+                        lambda: tips.offer(self, "dictation", self.address_bar),
+                    )
         if tab == self.tabs[self.current_tab_index]:
             self._update_history_buttons()
             if ok or not getattr(tab, "quiet_stop", False):
@@ -6077,6 +6090,15 @@ class BrowserWindow(QMainWindow):
             self.find_bar.page_loaded()
             self._update_loading_indicator()
         tab.quiet_stop = False
+        tip = getattr(self, "_tip", None)
+        if (
+            tip is not None
+            and not sip.isdeleted(tip)
+            and tip.key == "customize"
+            and tab is self._current_browser_tab()
+            and page_name(tab.url()) != "newtab"
+        ):
+            tip.dismiss()
         if ok:
             self.history.record(tab.url().toString(), tab.title())
             profile = self.profile_manager.current_profile_name
@@ -7458,9 +7480,7 @@ class BrowserWindow(QMainWindow):
             action.triggered.connect(lambda _=False, n=name: self.switch_workspace(n))
         menu.addSeparator()
         menu.addAction("New Workspace…").triggered.connect(self.new_workspace)
-        menu.addAction("Switch Workspace… (Ctrl+Alt+W)").triggered.connect(
-            self.choose_workspace
-        )
+        menu.addAction(self.switch_workspace_action)
         current = menu.addAction("Rename This Workspace…")
         current.setEnabled(self.workspace != "Main")
         current.triggered.connect(self.rename_workspace)
@@ -8514,12 +8534,12 @@ class BrowserWindow(QMainWindow):
             tab.setUrl(target)
 
     def _updates_known(self):
-        summary = self.profile_manager.registry.updates.summary()
-        if summary and not self._closing and self.isActiveWindow():
+        notice = self.profile_manager.registry.updates.notice()
+        if notice and not self._closing and self.isActiveWindow():
             told = getattr(self.profile_manager.registry, "_updates_told", "")
-            if told != summary:
-                self.profile_manager.registry._updates_told = summary
-                self.status_bar.showMessage(summary + " (steed:features)", 15000)
+            if told != notice:
+                self.profile_manager.registry._updates_told = notice
+                self.status_bar.showMessage(notice, 15000)
 
     def _download_blocked(self, name, danger):
         from services.safe_browsing import REASONS

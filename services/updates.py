@@ -155,6 +155,19 @@ class Updates(QObject):
             )
         return " ".join(parts)
 
+    def notice(self):
+        """The one line for the status bar, in plain words (how to update is
+        on the Engine & Features page)."""
+        if self.state["steed"] and self.state["engine"]:
+            what = "A newer Steed and a web engine security update are ready."
+        elif self.state["steed"]:
+            what = "A newer Steed is ready."
+        elif self.state["engine"]:
+            what = "A security update for Steed's web engine is ready."
+        else:
+            return ""
+        return what + " See View → Engine & Features to update."
+
     def close(self):
         self.timer.stop()
         if self.process is not None:

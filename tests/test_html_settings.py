@@ -144,6 +144,37 @@ class HtmlSettingsTests(unittest.TestCase):
         self.assertEqual(window.styleSheet(), second.styleSheet())
         self.assertEqual(self.profile.httpUserAgent(), "SyntheticSteed/1")
 
+    def test_search_engine_is_chosen_from_a_list_or_typed(self):
+        window, dialog = self.loaded()
+        self.assertEqual(
+            self.value(dialog, "document.getElementById('search_choice').value"),
+            DEFAULT_SEARCH_ENGINE,
+        )
+        self.assertTrue(
+            self.value(dialog, "document.getElementById('search_custom').hidden")
+        )
+        self.value(
+            dialog,
+            "const c = document.getElementById('search_choice');"
+            "c.value = 'https://www.google.com/search?q=';"
+            "c.dispatchEvent(new Event('change')); true",
+        )
+        self.wait_for(
+            lambda: (
+                dialog._draft.get("search_engine") == "https://www.google.com/search?q="
+            )
+        )
+        dialog.set_preference("search_engine", "https://search.example.test/?q=")
+        self.wait_for(
+            lambda: (
+                self.value(dialog, "document.getElementById('search_choice').value")
+                == "custom"
+            )
+        )
+        self.assertFalse(
+            self.value(dialog, "document.getElementById('search_custom').hidden")
+        )
+
     def test_blank_search_engine_restores_the_configured_default(self):
         window, dialog = self.loaded()
         self.assertEqual(self.config.get("search_engine"), DEFAULT_SEARCH_ENGINE)

@@ -43,8 +43,8 @@ class FindBar(QWidget):
         self._timer.setInterval(120)
         self._timer.timeout.connect(self.find_next)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.addWidget(QLabel("Find:"))
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(6)
         self.input = FindInput()
         self.input.setPlaceholderText("Find in page…")
         self.input.setClearButtonEnabled(True)
@@ -52,7 +52,8 @@ class FindBar(QWidget):
         self.input.step_requested.connect(self.find_next)
         layout.addWidget(self.input, 1)
         self.result_label = QLabel("")
-        self.result_label.setMinimumWidth(100)
+        self.result_label.setMinimumWidth(70)
+        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.result_label)
         self.previous_button = QPushButton("Previous")
         self.previous_button.setToolTip("Previous match (Shift+Enter / Shift+F3)")
@@ -69,11 +70,34 @@ class FindBar(QWidget):
         self.close_button.setToolTip("Close find (Escape)")
         self.close_button.clicked.connect(self.close_find)
         layout.addWidget(self.close_button)
+        self.setObjectName("findBar")
         escape = QShortcut(QKeySequence("Esc"), self)
         escape.setContext(Qt.ShortcutContext.WindowShortcut)
         escape.activated.connect(self.close_find)
         self.hide()
         self._update_buttons()
+
+    def apply_style(self, colors):
+        """The toolbar's colours and rounded controls, like the address bar."""
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            f"""
+            #findBar {{ background: {colors["toolbar"]};
+                border-bottom: 1px solid {colors["border"]}; }}
+            #findBar QLabel, #findBar QCheckBox {{ color: {colors["muted"]};
+                background: transparent; }}
+            #findBar QLineEdit {{ background: {colors["field"]}; color: {colors["ink"]};
+                border: 1px solid {colors["border"]}; border-radius: 15px;
+                padding: 4px 12px; min-height: 22px; }}
+            #findBar QLineEdit:focus {{ border-color: {colors["accent"]}; }}
+            #findBar QPushButton {{ background: transparent; color: {colors["ink"]};
+                border: 1px solid transparent; border-radius: 14px;
+                padding: 4px 12px; }}
+            #findBar QPushButton:hover {{ background: {colors["hover"]}; }}
+            #findBar QPushButton:pressed {{ background: {colors["pressed"]}; }}
+            #findBar QPushButton:disabled {{ color: {colors["muted"]}; }}
+            """
+        )
 
     def set_page(self, page):
         if page is self._page:

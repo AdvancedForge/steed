@@ -354,6 +354,9 @@ class HtmlDialog(QDialog):
                 selected=widget.currentIndex(),
                 options=[widget.itemText(i) for i in range(widget.count())],
                 editable=widget.isEditable(),
+                placeholder=widget.lineEdit().placeholderText()
+                if widget.isEditable() and widget.lineEdit() is not None
+                else "",
                 value=widget.currentText(),
             )
         elif isinstance(widget, (QSpinBox, QDoubleSpinBox, QSlider)):

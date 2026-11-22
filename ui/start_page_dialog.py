@@ -180,7 +180,7 @@ class StartPageDialog(HtmlSettingsDialog):
         feed_form = QFormLayout()
         self.feed = QLineEdit(state["settings"]["feed"])
         self.feed.setPlaceholderText("https://example.org/feed.xml")
-        feed_form.addRow("RSS / Atom address:", self.feed)
+        feed_form.addRow("RSS / Atom address", self.feed)
         form.addLayout(feed_form)
         note = QLabel(
             "News is fetched only with the News section enabled and a feed address saved. The feed receives no browser cookies. Images are copied locally."

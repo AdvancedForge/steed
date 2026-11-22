@@ -115,3 +115,26 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && state?.review) { event.preventDefault(); command('cancel_review', {}, true); }
 });
 new QWebChannel(qt.webChannelTransport, channel => { bridge = channel.objects.interface; bridge.ready(STEED_GENERATION); });
+
+// The search engine: a choice from the list, or Other… for any address.
+function syncSearchChoice() {
+  const field = $('search_engine'), choice = $('search_choice');
+  if (!field || !choice) return;
+  const known = [...choice.options].some(o => o.value === field.value);
+  if (!choice.dataset.custom) choice.value = known ? field.value : 'custom';
+  $('search_custom').hidden = choice.value !== 'custom';
+}
+if ($('search_choice')) {
+  $('search_choice').addEventListener('change', () => {
+    const choice = $('search_choice'), field = $('search_engine');
+    choice.dataset.custom = choice.value === 'custom' ? '1' : '';
+    if (choice.value !== 'custom') {
+      field.value = choice.value;
+      field.dispatchEvent(new Event('input'));
+    }
+    $('search_custom').hidden = choice.value !== 'custom';
+    if (choice.value === 'custom') field.focus();
+  });
+  const render = window.steedUI.render;
+  window.steedUI.render = next => { const done = render(next); syncSearchChoice(); return done; };
+}

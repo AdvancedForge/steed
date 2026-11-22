@@ -78,6 +78,10 @@ WORKSPACES = (
     "adblock",
     "services",
     "watches",
+    "pages",
+    "automations",
+    "skills",
+    "packs",
 )
 
 
@@ -91,7 +95,18 @@ def workspace_name(text):
     return None
 
 
+def profile_title(name):
+    """A profile's name as people read it: Steed's own is Global."""
+    return {"global": "Global", "search": "Incognito"}.get(name, name)
+
+
 MAX_YOUR_PAGES = 30
+# Your pages start out looking like Steed's (light and dark); their own
+# styles override this.
+YOUR_PAGE_BASE = (
+    "body{margin:0;background:var(--bg);color:var(--ink);"
+    "font:16px/1.5 system-ui,sans-serif}a{color:var(--accent)}"
+)
 YOUR_PAGE_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
 # Names Steed's own pages (and their helpers) keep.
 RESERVED_NAMES = frozenset({"newtab", "welcome", "action", *WORKSPACES})
@@ -236,7 +251,9 @@ def page_name(url):
 
 
 def display_url(url):
-    name = page_name(url) or your_page_name(url)
+    bare = QUrl(url)
+    bare.setFragment(None)  # The Welcome tour's steps are #fragments.
+    name = page_name(bare) or your_page_name(url)
     if name is None:
         return url.toString()
     fragment = (
@@ -589,6 +606,7 @@ class StartPages(QObject):
             + escape(page["title"])
             + "</title><style>"
             + root_css
+            + YOUR_PAGE_BASE
             + "</style></head>"
             + page["html"]
         ).encode()
@@ -731,7 +749,9 @@ class StartPages(QObject):
                 + custom_html
             ).encode()
         private = profile == "search"
-        profile_label = "Incognito" if private else profile.title()
+        profile_label = "Incognito" if private else profile_title(profile)
+        if name == "welcome" and profile == "global":
+            profile_label = ""  # A new person has one profile; no need to name it.
         if name == "newtab" and state["settings"]["layout"] == "simple":
             return self.render_simple(profile, state["settings"], root_css)
         if name == "welcome":
@@ -1091,7 +1111,8 @@ def assistant_cards(ready=()):
     )
     note = (
         f'<p class="ready">Already on this computer: {escape(" and ".join(ready))}. '
-        "Choose it in the agent panel.</p>"
+        + ("Choose one" if len(ready) > 1 else "Choose it")
+        + " in the agent panel.</p>"
         if ready
         else ""
     )
@@ -1544,14 +1565,17 @@ html[data-effects=balanced] .wordmark, html[data-effects=balanced] .search { ani
 # Welcome: one step at a time (the #fragment chooses; #look first).
 ONBOARD_CSS = """
 body.onboarding header nav, body.onboarding .browser-menu, body.onboarding footer { display: none; }
-.onboard { max-width: 620px; margin: 3vh auto 0; padding: 0 24px 40px; }
+.onboard { position: relative; max-width: 620px; margin: 3vh auto 0; padding: 0 24px 40px; }
+/* No sideways jump when a step is long enough to scroll. */
+html:has(body.onboarding) { scrollbar-gutter: stable; }
 .steps { list-style: none; display: flex; gap: 8px; padding: 0; margin: 0 0 26px; }
 .steps a { display: block; padding: 6px 14px; border-radius: 999px; color: var(--muted); text-decoration: none;
   font-size: 13px; font-weight: 600; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 .onboard:not(:has(.step:target)) .steps li:nth-child(1) a,
 .onboard:has(#look:target) .steps li:nth-child(1) a, .onboard:has(#bring:target) .steps li:nth-child(2) a,
 .onboard:has(#agent:target) .steps li:nth-child(3) a { color: var(--ink); background: var(--soft); border-color: transparent; }
-.step { display: none; }
+/* A step opens at the top of the page, not scrolled to its heading. */
+.step { display: none; scroll-margin-top: 100vh; }
 .step:target, .onboard:not(:has(.step:target)) #look { display: block; }
 .step h1 { margin: 0 0 10px; }
 .step p { font-size: 17px; max-width: 46ch; }
@@ -1601,7 +1625,8 @@ body.onboarding header nav, body.onboarding .browser-menu, body.onboarding foote
 .step .tile.glass .tile-art { background: linear-gradient(135deg, color-mix(in srgb, #fff 35%, transparent), color-mix(in srgb, #fff 8%, transparent)),
   linear-gradient(160deg, #577590, #f3722c); }
 .step .actions { display: flex; gap: 10px; margin-top: 26px; flex-wrap: wrap; }
-.onboard .skip { display: inline-block; margin-top: 40px; color: var(--muted); font-size: 13px; }
+/* Beside the step names, so it is in reach on every step. */
+.onboard .skip { position: absolute; top: 10px; right: 24px; color: var(--muted); font-size: 13px; }
 @keyframes step-in { from { opacity: 0; transform: translateY(10px); } }
 html:not([data-effects=minimal]) .step:target, html:not([data-effects=minimal]) .onboard:not(:has(.step:target)) #look {
   animation: step-in .45s cubic-bezier(.22, 1, .36, 1); }

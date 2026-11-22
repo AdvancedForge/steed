@@ -126,6 +126,11 @@ class UpdateTests(unittest.TestCase):
                     summary = service.summary()
                     self.assertIn("2 changes", summary)
                     self.assertIn("Qt WebEngine 6.14.0", summary)
+                    # The status bar says it plainly, with no commands to run.
+                    notice = service.notice()
+                    self.assertIn("A newer Steed and a web engine", notice)
+                    self.assertNotIn("python", notice)
+                    self.assertNotIn(".sh", notice)
                     # Nothing in the checkout changed.
                     self.assertEqual((mine / "a").read_text(), "1")
                     # Checked: not again within a day; never when switched off.

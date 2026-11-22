@@ -2,8 +2,8 @@ let state = null, bridge = null, sequence = 0, context = null, seen = new Set();
 const nodes = new Map(), $ = id => document.getElementById(id);
 const workspaceGroups = [
   ['Browse', [['history','History'],['bookmarks','Bookmarks'],['downloads','Downloads'],['cookies','Cookies'],['passwords','Passwords'],['library','Files']]],
-  ['Customize', [['settings','Settings'],['style','Style'],['layout','Layout'],['newtab-settings','Start pages'],['tab-groups','Tab groups'],['adblock','Ad blocking'],['permissions','Website permissions']]],
-  ['Agents', [['agents','Conversations'],['watches','Watches'],['tasks','Tasks & permissions'],['panels','Data panels'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
+  ['Customize', [['settings','Settings'],['style','Style'],['layout','Layout'],['newtab-settings','Start pages'],['pages','Your pages'],['packs','Packs'],['tab-groups','Tab groups'],['adblock','Ad blocking'],['permissions','Website permissions']]],
+  ['Agents', [['agents','Conversations'],['watches','Watches'],['automations','Automations'],['skills','Skills'],['tasks','Tasks & permissions'],['panels','Data panels'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
 ];
 function command(action, id, value, extra = {}) {
   if (!bridge || !state) return;
@@ -36,7 +36,7 @@ function build(node) {
   } else if (node.kind === 'combo') {
     element = el(node.editable ? 'input' : 'select');
     element[node.editable ? 'oninput' : 'onchange'] = () => command(node.editable ? 'edit' : 'choose', node.id, node.editable ? element.value : Number(element.value));
-    if (node.editable) { entry.list = el('datalist'); entry.list.id = 'options-' + node.id; element.setAttribute('list', entry.list.id); }
+    if (node.editable) { element.type = 'text'; element.placeholder = node.placeholder || ''; entry.list = el('datalist'); entry.list.id = 'options-' + node.id; element.setAttribute('list', entry.list.id); }
   } else if (node.kind === 'tabs') {
     element = el('section'); entry.nav = el('nav'); entry.body = el('div'); element.append(entry.nav, entry.body);
   } else if (node.kind === 'table') element = el('div');

@@ -122,6 +122,29 @@ class HtmlMenuTests(unittest.TestCase):
         self.wait_for(lambda: source.preferences.panels[0]["title"] == "Daily tools")
         self.assertEqual(source.preferences.toolbar_order[0], "menu")
 
+    def test_an_editable_choice_is_a_full_width_field_with_its_hint(self):
+        from ui.bookmarks_dialog import BookmarkDialog
+
+        window = self.window()
+        source = BookmarkDialog(
+            window.profile_manager.registry.start_pages,
+            "global",
+            window,
+            "https://a.example/",
+            "A",
+        )
+        host = self.present(source, window)
+        key = self.control(host, source.folder)
+        field = f"document.querySelector({selector('data-control', key)})"
+        self.assertEqual(self.value(host, field + ".type"), "text")
+        self.assertEqual(
+            self.value(host, field + ".placeholder"), "Unfiled, or type a folder name"
+        )
+        self.assertGreater(
+            self.value(host, field + ".getBoundingClientRect().width"), 400
+        )
+        host.reject()
+
     def test_maintained_settings_controllers_render_in_html_hosts(self):
         from ui.agent_setup import AgentSetupDialog
         from ui.app_connections import AppConnectionsDialog

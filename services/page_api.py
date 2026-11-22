@@ -231,18 +231,19 @@ class PageApi(QObject):
                 }
                 for w in registry.watches.list()
             ]
-        if name == "routines":
-            from services.routines import describe
+        if name == "routines":  # Routines are automations now.
+            from services.automations import describe_trigger
 
             return [
                 {
-                    "id": r["id"],
-                    "name": r["name"],
-                    "when": describe(r),
-                    "last_run": r.get("last_run", 0),
-                    "paused": bool(r.get("paused")),
+                    "id": a["id"],
+                    "name": a["name"],
+                    "when": describe_trigger(a["trigger"]),
+                    "last_run": a["last_run"],
+                    "paused": a["paused"],
                 }
-                for r in registry.routines.list()
+                for a in registry.automations.list()
+                if a["trigger"]["kind"] == "schedule"
             ]
         if name == "automations":
             from services.automations import describe_trigger
@@ -275,12 +276,10 @@ class PageApi(QObject):
             window.run_skill(skill["id"])
             return {"ran": skill["name"]}
         if name == "run-routine":
-            routine = next(
-                (r for r in registry.routines.list() if r["id"] == one("id")), None
-            )
-            if routine is None:
+            found = registry.automations.get(one("id"))
+            if found is None or not registry.automations.run(found["id"]):
                 raise ValueError("No such routine.")
-            return {"ran": routine["name"], "started": registry.routines.run(routine)}
+            return {"ran": found["name"], "started": True}
         if name == "open":
             target = QUrl(one("url"))
             if target.scheme() not in ("http", "https") or not target.host():

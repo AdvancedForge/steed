@@ -55,7 +55,8 @@ DIRECTORY = frozenset(
         "cookies", "permissions", "adblock", "access", "style", "layout",
         "newtab-settings", "welcome", "agents", "agent-setup", "tasks",
         "connections", "services", "panels", "apps", "userscripts", "memory",
-        "features", "dictation", "watches",
+        "features", "dictation", "watches", "automations", "skills", "pages",
+        "packs",
     )
 )  # fmt: skip
 

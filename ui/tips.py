@@ -114,9 +114,12 @@ class TipBubble(QWidget):
         self.deleteLater()
 
 
-def offer(window, key, anchor=None):
-    """Show this tip if it has not been shown yet and none is showing."""
+def offer(window, key, anchor=None, when=None):
+    """Show this tip if it has not been shown yet and none is showing (and,
+    for a tip about a page, ``when()`` says that page is still in front)."""
     if getattr(window, "_closing", False) or not window.isVisible():
+        return None
+    if when is not None and not when():
         return None
     current = getattr(window, "_tip", None)
     if current is not None and not sip.isdeleted(current):

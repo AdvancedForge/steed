@@ -130,7 +130,7 @@ class HtmlPageTests(unittest.TestCase):
         )
         self.assertEqual(
             [a.text() for a in window.browser_menu.actions()],
-            ["General", "Profile", "Tabs", "View", "Cookies", "Agents"],
+            ["General", "Profile", "Tabs", "View", "History", "Agents"],
         )
 
     def test_css_applies_across_pages_and_custom_html_can_override(self):

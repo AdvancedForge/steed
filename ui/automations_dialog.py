@@ -5,6 +5,7 @@ import time
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -86,6 +87,11 @@ class AutomationEditor(HtmlSettingsDialog):
         write.clicked.connect(self.write_for_me)
         builder.addWidget(write)
         layout.addLayout(builder)
+        # What Write it for me is doing, right under it.
+        self.write_status = QLabel("")
+        self.write_status.setWordWrap(True)
+        self.write_status.setProperty("role", "note")
+        layout.addWidget(self.write_status)
         layout.addWidget(QLabel("Name"))
         self.name = QLineEdit(automation.get("name", ""))
         self.name.setPlaceholderText("Morning rates")
@@ -122,7 +128,9 @@ class AutomationEditor(HtmlSettingsDialog):
             self.trigger_value.setText(trigger.get(TRIGGER_FIELDS[kind][0], ""))
         layout.addWidget(self.trigger_value)
         layout.addWidget(
-            QLabel("Steps, in order ({last} is what the step before found)")
+            QLabel(
+                "Steps, in order. Write {last} in a step to use what the one before found."
+            )
         )
         self.list = QListWidget()
         self.list.setProperty("empty", "No steps yet. Add the first below.")
@@ -152,15 +160,16 @@ class AutomationEditor(HtmlSettingsDialog):
         self.status = QLabel("")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
-        row = QHBoxLayout()
+        # Kept in view at the bottom however long the steps get.
+        row = QDialogButtonBox()
         save = QPushButton("Save")
         save.setProperty("primary", True)
         save.clicked.connect(self.save)
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)
-        row.addWidget(save)
-        row.addWidget(cancel)
-        layout.addLayout(row)
+        row.addButton(save, QDialogButtonBox.ButtonRole.AcceptRole)
+        row.addButton(cancel, QDialogButtonBox.ButtonRole.RejectRole)
+        layout.addWidget(row)
         self.trigger.currentIndexChanged.connect(self._trigger_changed)
         self.timing.currentIndexChanged.connect(self._trigger_changed)
         self._trigger_changed()
@@ -258,25 +267,27 @@ class AutomationEditor(HtmlSettingsDialog):
         description = self.describe.text().strip()
         command = agent_command(self.window.config)
         if not description:
-            self.status.setText("Describe what it should do first.")
+            self.write_status.setText("Describe what it should do first.")
             return
         if command is None:
-            self.status.setText("Add an assistant first (Agents → Add an Assistant…).")
+            self.write_status.setText(
+                "Add an assistant first (Agents → Add an Assistant…)."
+            )
             return
-        self.status.setText("Writing…")
+        self.write_status.setText("Writing…")
         self.asking = AgentOnce(
             command, WRITER.replace("{description}", description), self
         )
         self.asking.answered.connect(self._written)
-        self.asking.failed.connect(self.status.setText)
+        self.asking.failed.connect(self.write_status.setText)
 
     def _written(self, reply):
         try:
             self.load(parse_written(reply))
         except ValueError as error:
-            self.status.setText(f"{error} Try describing it differently.")
+            self.write_status.setText(f"{error} Try describing it differently.")
             return
-        self.status.setText("Check each step, change anything, then Save.")
+        self.write_status.setText("Check each step, change anything, then Save.")
 
     def save(self):
         try:
@@ -301,11 +312,12 @@ class AutomationsDialog(HtmlSettingsDialog):
         self.setWindowTitle("Automations")
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Your own workflows: something starts them (a time, a watched page "
-            "changing, Steed starting, or you) and they do steps in order: read "
-            "pages, fetch data, ask your assistant or start an agent chat, run a "
-            "skill, notify you, open pages, or stop unless something is true. "
-            "Many need no AI at all."
+            "Your own workflows. Something starts them: a time, a watched page "
+            "changing, a download finishing, visiting a site, a shortcut, a "
+            "page's right-click menu, Steed starting, or you. Then they do steps "
+            "in order: read pages, fetch data, ask your assistant or start an "
+            "agent chat, run a skill, save to your files, wait, notify you, open "
+            "pages, or stop unless something is true. Many need no AI at all."
         )
         intro.setWordWrap(True)
         intro.setProperty("role", "note")

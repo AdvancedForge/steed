@@ -54,7 +54,7 @@ MENU_LABELS = {
     "profile": "Profile",
     "tabs": "Tabs",
     "view": "View",
-    "cookies": "Cookies",
+    "cookies": "History",
     "agents": "Agents",
 }
 
@@ -196,7 +196,7 @@ class LayoutDialog(HtmlSettingsDialog):
             SIDEBAR_SIDES.index(self._working.sidebar_side)
         )
         self.sidebar_side.currentIndexChanged.connect(self._on_sidebar_changed)
-        form.addRow("Sidebar side:", self.sidebar_side)
+        form.addRow("Sidebar side", self.sidebar_side)
 
         self.sidebar_width = QSpinBox()
         low, high = SIDEBAR_WIDTH_RANGE
@@ -204,19 +204,19 @@ class LayoutDialog(HtmlSettingsDialog):
         self.sidebar_width.setValue(self._working.sidebar_width)
         self.sidebar_width.setSuffix(" px")
         self.sidebar_width.valueChanged.connect(self._on_sidebar_changed)
-        form.addRow("Sidebar width:", self.sidebar_width)
+        form.addRow("Sidebar width", self.sidebar_width)
 
         self.density = QComboBox()
         for name in DENSITIES:
             self.density.addItem(DENSITY_LABELS[name], name)
         self.density.setCurrentIndex(DENSITIES.index(self._working.density))
         self.density.currentIndexChanged.connect(self._on_density_changed)
-        form.addRow("Control spacing:", self.density)
+        form.addRow("Control spacing", self.density)
         self.text_size = QComboBox()
         for value in TEXT_SIZES:
             self.text_size.addItem(value.title(), value)
         self.text_size.currentIndexChanged.connect(self._on_density_changed)
-        form.addRow("Browser text:", self.text_size)
+        form.addRow("Browser text", self.text_size)
         return group
 
     def _build_named_group(self) -> QGroupBox:
