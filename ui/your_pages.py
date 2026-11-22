@@ -117,7 +117,7 @@ WATCH_BOARD = (
 <main>
 <h1>What changed</h1>
 <p class="muted">The pages you watch, the latest change first.</p>
-<div id="board" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px"></div>
+<div id="board" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px"><p class="muted">Loading…</p></div>
 </main>
 <script>
 steed("/api/watches").then(watches => {
@@ -147,7 +147,7 @@ BOOKMARK_BOARD = (
 <main>
 <h1>Bookmarks</h1>
 <input id="filter" placeholder="Filter" style="width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--ink);font:inherit;margin:0 0 16px">
-<div id="tiles" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px"></div>
+<div id="tiles" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px"><p class="muted">Loading…</p></div>
 </main>
 <script>
 let all = [];
