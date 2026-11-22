@@ -19,6 +19,7 @@ class FakeSidebar:
         self._task_id = None
         self.drafts = []
         self.started = 0
+        self.attached = []
 
     def select_task(self, task):
         self._task_id = task
@@ -36,6 +37,9 @@ class FakeSidebar:
 
     def refresh(self):
         pass
+
+    def attach_tab(self, task_id, tab):
+        self.attached.append((task_id, tab))
 
 
 class Request:
@@ -118,15 +122,26 @@ class AskAgentTests(unittest.TestCase):
             "On the page “Tide pools” (https://example.org/tides):\n"
             "> Anemones and crabs.\n> And kelp.\n\n",
         )
+        self.assertEqual(self.sidebar.attached, [])  # A selection is enough.
+        # The page itself: the draft says its text goes along, and it does.
+        self.window.ask_agent(self.tab, page="")
+        self.assertEqual(
+            self.sidebar.drafts[-1],
+            "On the page “Tide pools” (https://example.org/tides). "
+            "Its text goes with your message.\n\n",
+        )
+        self.assertEqual(self.sidebar.attached, [("new-task", self.tab)])
 
     def test_at_in_the_address_bar_sends_the_question_with_the_page(self):
         self.service.external_tasks.add("connected-task")
         self.sidebar._task_id = "connected-task"
         with patch.object(self.service, "send_message") as send:
             self.window._navigate_tab_to_url(self.tab, "@ summarize this")
+            self.wait(lambda: send.called)  # Once the page's text is read.
         send.assert_called_once_with(
             "connected-task",
-            "summarize this\n\nOn the page “Tide pools” (https://example.org/tides)",
+            "summarize this\n\n[This page: Tide pools — https://example.org/tides]\n"
+            "Anemones and crabs.",
         )
         self.assertEqual(self.tab.url().toString(), "https://example.org/tides")
         self.assertEqual(self.sidebar.drafts, [])

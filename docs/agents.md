@@ -573,11 +573,13 @@ Checked with Claude Code 2.1.312 and a synthetic offline runtime; Codex resuming
 - **Right-click a page** → **Ask Agent About Selection** (with text selected),
   **Ask Agent About Link** (on a link) or **Ask Agent About This Page**. The
   sidebar opens on your current conversation (or any connected one, or starts
-  a new chat) with a draft: the selection quoted, the page's title and address,
-  and room for your question. Nothing is sent until you press Send.
+  a new chat) with a draft: the selection quoted, or the page's title and
+  address, and room for your question. Asking about the page itself sends its
+  text with your message (the draft says so), so the agent can answer without
+  asking for the tab. Nothing is sent until you press Send.
 - **Type `@` in the address bar**, then a question (`@ summarize this`), and
-  press Enter: it goes straight to your agent with the page's title and address
-  (not its contents; the agent asks for page access as usual).
+  press Enter: it goes straight to your agent with the page's title, address
+  and up to 5,000 characters of its text.
 - **Desktop notifications**: when an agent finishes a reply or needs your
   approval while Steed is not in front (or that conversation is not showing),
   a notification says so; clicking it brings the conversation up. Turn them off

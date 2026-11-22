@@ -62,7 +62,7 @@ class TabMentionTests(unittest.TestCase):
         sidebar._task_id = "task"
         sidebar._drafts["task"] = "Is this a good kettle?"
         with patch.object(
-            AgentSidebar, "send_message", lambda self: sent.append(self.draft)
+            AgentSidebar, "_send_now", lambda self: sent.append(self.draft)
         ):
             sidebar.send_with_tabs([token, "tab-unknown"])
             self.wait(lambda: sent)
@@ -74,6 +74,19 @@ class TabMentionTests(unittest.TestCase):
         self.assertIn("boils in 3 minutes", message)
         self.assertIn("(more on the page)", message)
         self.assertLessEqual(len(message.encode("utf-8")), 8192)
+        # A page you asked about goes with your next message, once.
+        sidebar._drafts["task"] = "What do reviewers think?"
+        sidebar.attach_tab("task", tab)
+        with patch.object(
+            AgentSidebar, "_send_now", lambda self: sent.append(self.draft)
+        ):
+            sidebar.send_message()
+            self.wait(lambda: len(sent) == 2)
+            self.assertIn("[Attached tab: Kettle review", sent[1])
+            self.assertTrue(sent[1].startswith("What do reviewers think?"))
+            sidebar._drafts["task"] = "Thanks"
+            sidebar.send_message()
+        self.assertEqual(sent[2], "Thanks")
 
 
 if __name__ == "__main__":

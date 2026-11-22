@@ -80,6 +80,7 @@ logger = logging.getLogger(__name__)
 # How often a profile's open windows are recorded (only when they changed).
 SESSION_SNAPSHOT_MS = 10 * 60 * 1000
 DICTATION_TIP_AFTER = 25  # web pages loaded before the dictation tip
+PAGE_TEXT_SHARED = 5000  # characters of a page sent with an @ question
 
 
 # Enough to merge a redirect chain or a SPA's boot sequence into one write.
@@ -2904,10 +2905,11 @@ class BrowserWindow(QMainWindow):
     def ask_agent(
         self, tab, *, selection="", link="", page="", question="", send=False
     ):
-        """Bring your agent in on what you are looking at: the page's title and
-        address, plus a selection or link if given. Drafts the message in the
-        sidebar for you to finish and send; with send (a typed "@" question)
-        it goes at once. Nothing else from the page is shared."""
+        """Bring your agent in on what you are looking at: a selection or link
+        if given, else the page itself, whose text goes with your message so
+        the agent need not ask for the tab. Drafts the message in the sidebar
+        for you to finish and send; with send (a typed "@" question) it goes
+        at once."""
         if self._closing or self.profile_manager.current_profile_name == "search":
             self.status_bar.showMessage("Agents are not available in incognito.", 5000)
             return None
@@ -2917,15 +2919,37 @@ class BrowserWindow(QMainWindow):
         source = f"On the page “{title}”" if title else "On the page"
         if address and not address.startswith("steed:"):
             source += f" ({address})"
+        web = tab in self.tabs and tab.url().scheme() in ("http", "https")
         if selection:
             quoted = "\n".join("> " + line for line in selection[:4000].splitlines())
             parts.append(f"{source}:\n{quoted}")
         elif link:
             parts.append(f"About this link: {link}\n{source}")
+        elif web and send:
+            # A typed "@" question: send it with the page's text at once.
+            def got(body):
+                if self._closing or tab not in self.tabs:
+                    return
+                page = " ".join(str(body or "").split())[:PAGE_TEXT_SHARED]
+                block = f"[This page: {title[:160]} — {address[:400]}]\n{page}"
+                self.agent_message("\n\n".join([*parts, block]), send=True)
+
+            webengine.run_script(
+                tab.page(),
+                "document.body ? document.body.innerText : ''",
+                got,
+                world=webengine.STEED_WORLD,
+            )
+            return None
+        elif web:
+            parts.append(source + ". Its text goes with your message.")
         else:
             parts.append(source)
         text = "\n\n".join(parts) + ("" if send else "\n\n")
-        return self.agent_message(text, send=send)
+        task = self.agent_message(text, send=send)
+        if task is not None and web and not (selection or link):
+            self.agent_sidebar.attach_tab(task, tab)
+        return task
 
     def agent_message(self, text, *, send=False, new_chat=False):
         """Open the agent sidebar on a conversation (the one shown, else any
