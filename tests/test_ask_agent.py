@@ -127,8 +127,7 @@ class AskAgentTests(unittest.TestCase):
         self.window.ask_agent(self.tab, page="")
         self.assertEqual(
             self.sidebar.drafts[-1],
-            "On the page “Tide pools” (https://example.org/tides). "
-            "Its text goes with your message.\n\n",
+            "About “Tide pools” (page attached)\n\n",
         )
         self.assertEqual(self.sidebar.attached, [("new-task", self.tab)])
 

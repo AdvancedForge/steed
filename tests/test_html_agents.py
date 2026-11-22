@@ -43,6 +43,31 @@ class HtmlAgentTests(unittest.TestCase):
             sidebar, f"document.getElementById({json.dumps(identifier)}).click(); true"
         )
 
+    def test_a_page_sent_with_a_message_is_a_chip_not_a_wall(self):
+        _, sidebar = self.loaded()
+        found = self.value(
+            sidebar,
+            """(() => {
+              const box = document.createElement('div');
+              userBody(box, 'What should I buy?\\n\\n[Attached tab: Kettles — https://shop.example/k]\\n'
+                + 'Steel kettles last longest. '.repeat(50));
+              const chip = box.querySelector('details.attachment');
+              return [box.querySelector('.typed').textContent, chip.querySelector('summary').textContent,
+                      chip.open, chip.querySelector('summary').title,
+                      chip.querySelector('.attachment-text').textContent.startsWith('Steel kettles')];
+            })()""",
+        )
+        self.assertEqual(
+            found,
+            [
+                "What should I buy?",
+                "Kettles (page attached)",
+                False,
+                "https://shop.example/k",
+                True,
+            ],
+        )
+
     def test_onboarding_real_bridge_and_collapsed_settings(self):
         _, sidebar = self.loaded()
         self.assertTrue(

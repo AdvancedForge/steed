@@ -193,6 +193,33 @@ function markdown(body, source) {
   flush();
 }
 
+// What you sent with a message (a page, a skill's reading, an automation's
+// text) shows as a one-line chip you can open, not a wall of page text.
+const ATTACHMENT = /\n*\[(Attached tab|This page|Read by the skill's steps|From the automation)(?::\s*([^\]\n]*))?\]\n/g;
+function userBody(body, text) {
+  body.replaceChildren();
+  const marks = [...text.matchAll(ATTACHMENT)];
+  const typed = (marks.length ? text.slice(0, marks[0].index) : text).trim();
+  if (typed) {
+    const words = document.createElement("div");
+    words.className = "typed"; words.textContent = typed; body.append(words);
+  }
+  marks.forEach((mark, index) => {
+    const end = index + 1 < marks.length ? marks[index + 1].index : text.length;
+    const sent = text.slice(mark.index + mark[0].length, end).trim();
+    const [title, address] = (mark[2] || "").split(" — ");
+    const chip = document.createElement("details");
+    chip.className = "attachment";
+    const summary = document.createElement("summary");
+    summary.textContent = mark[1] === "From the automation" ? "From the automation"
+      : `${title || "A page"} (${mark[1] === "Read by the skill's steps" ? "read by the skill" : "page attached"})`;
+    if (address) summary.title = address;
+    const shown = document.createElement("div");
+    shown.className = "attachment-text"; shown.textContent = sent;
+    chip.append(summary, shown); body.append(chip);
+  });
+}
+
 function messageNode(log, previous, message, agentName) {
   let node = previous.get(message.id);
   if (!node) {
@@ -214,7 +241,7 @@ function messageNode(log, previous, message, agentName) {
   // Agent messages and service diagnostics are data, never HTML or commands.
   if (node.dataset.text !== message.text) {
     node.dataset.text = message.text;
-    if (user) node.lastChild.textContent = message.text;
+    if (user) userBody(node.lastChild, message.text);
     else markdown(node.lastChild, message.text);
   }
   log.append(node);

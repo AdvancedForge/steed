@@ -141,3 +141,14 @@
 
 /* No chats yet: say so, rather than an empty box. */
 .workspace .chat-list:empty::before { content: "No chats yet."; display: block; padding: 10px 12px; color: var(--muted); font-size: 12.5px; }
+
+/* A page sent with a message: one line, opened to see what went. */
+.message.user .typed { white-space: pre-wrap; }
+.message.user .attachment { margin-top: 8px; font-size: 12.5px; }
+.message.user .typed + .attachment, .message.user .attachment + .attachment { margin-top: 6px; }
+.message.user .attachment summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
+.message.user .attachment summary::-webkit-details-marker { display: none; }
+.message.user .attachment summary::before { content: "›"; transition: transform .15s; }
+.message.user .attachment[open] summary::before { transform: rotate(90deg); }
+.message.user .attachment-text { margin-top: 6px; max-height: 220px; overflow: auto; white-space: pre-wrap; color: var(--muted); }

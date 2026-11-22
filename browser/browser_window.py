@@ -2970,7 +2970,7 @@ class BrowserWindow(QMainWindow):
             )
             return None
         elif web:
-            parts.append(source + ". Its text goes with your message.")
+            parts.append(f"About “{title}” (page attached)" if title else source)
         else:
             parts.append(source)
         text = "\n\n".join(parts) + ("" if send else "\n\n")

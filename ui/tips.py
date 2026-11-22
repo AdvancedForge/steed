@@ -132,6 +132,7 @@ class TipBubble(QWidget):
         seen(self.window_.config, self.key)
         if getattr(self.window_, "_tip", None) is self:
             self.window_._tip = None
+        self.hide()  # Gone at once, whenever the deletion itself happens.
         self.deleteLater()
 
 
