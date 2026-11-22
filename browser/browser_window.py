@@ -1139,18 +1139,26 @@ class BrowserWindow(QMainWindow):
         delete_profile_action.triggered.connect(self._delete_profile)
         profile_menu.addAction(delete_profile_action)
         profile_menu.addSeparator()
-        pop_search_action = QAction("Pop Out Search Profile (Incognito)", self)
+        pop_search_action = QAction("New Incognito Window", self)
         pop_search_action.setShortcut(QKeySequence("Ctrl+Shift+N"))
         pop_search_action.triggered.connect(
             lambda: self._pop_out_profile_named("search")
         )
         profile_menu.addAction(pop_search_action)
-        search_profile_action = QAction("Switch to Search Profile (Incognito)", self)
-        search_profile_action.setShortcut(QKeySequence("Ctrl+Shift+0"))
-        search_profile_action.triggered.connect(
-            lambda: self._switch_to_profile("search")
+        search_profile_action = self.incognito_action = QAction(
+            "Switch to Incognito", self
         )
+        search_profile_action.setShortcut(QKeySequence("Ctrl+Shift+0"))
+        search_profile_action.triggered.connect(self.toggle_incognito)
         profile_menu.addAction(search_profile_action)
+        # In incognito the same item (and shortcut) takes you back.
+        profile_menu.aboutToShow.connect(
+            lambda: self.incognito_action.setText(
+                "Leave Incognito"
+                if self.profile_manager.current_profile_name == "search"
+                else "Switch to Incognito"
+            )
+        )
         # Quick shortcuts submenu
         self.profile_shortcuts_menu = QMenu("Quick Switch", self)
         profile_menu.addMenu(self.profile_shortcuts_menu)
@@ -3439,10 +3447,8 @@ class BrowserWindow(QMainWindow):
 
     def _update_window_title(self, url=None):
         profile_name = self.profile_manager.current_profile_name
-        label = (
-            "Search Profile (Incognito)" if profile_name == "search" else profile_name
-        )
-        title = f"Custom Browser - {label}"
+        label = profile_title(profile_name)
+        title = f"Steed - {label}"
         if getattr(self, "tab_manager", None) is not None:
             self._workspaces()  # Loads which workspace these tabs are.
         space = getattr(self, "workspace", None)
@@ -3458,6 +3464,19 @@ class BrowserWindow(QMainWindow):
 
     def _switch_profile(self):
         self._open_settings("profile", intent="switch")
+
+    def toggle_incognito(self):
+        """Into incognito, or back to the profile you were using before."""
+        current = self.profile_manager.current_profile_name
+        if current == "search":
+            back = getattr(self, "_before_incognito", None)
+            profiles = self.profile_manager.list_profiles()
+            if back not in profiles:
+                back = "global" if "global" in profiles else profiles[0]
+            self._switch_to_profile(back)
+        else:
+            self._before_incognito = current
+            self._switch_to_profile("search")
 
     def _switch_to_profile(self, profile_name: str):
         self._workspace_store = None  # Workspaces belong to each profile.

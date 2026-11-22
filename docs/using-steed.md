@@ -1273,7 +1273,7 @@ to remove them; your KeePassXC database is never touched.
 Desktop password managers' auto-type (for example
 [KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type))
 also works: window titles include the active hostname,
-so a window association such as `Custom Browser - * - accounts.google.com`
+so a window association such as `Steed - * - accounts.google.com`
 can match the site. The official Bitwarden extension (2026.10.2, checked
 November 12, 2026) installs from the Chrome Web Store and runs; see
 Extensions for the one engine limit it hit (closing while its background was
@@ -1615,9 +1615,9 @@ agents must be released first. To rename/archive the saved startup profile,
 choose another startup profile and save first. These actions happen immediately;
 **Cancel** in settings only discards unsaved preferences, not profile actions.
 
-### Search Profile (Incognito)
+### Incognito
 
-The search profile is a special profile that:
+Incognito is a special profile that:
 
 - Doesn't save cookies
 - Doesn't save browsing history
@@ -1629,7 +1629,10 @@ The search profile is a special profile that:
   still running in incognito delay this until they finish. Sites can still
   recognize you by your network address.
 
-Access it via **Profile → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
+Open it with **Profile → New Incognito Window** (`Ctrl+Shift+N`), or turn this
+window incognito with **Profile → Switch to Incognito** (`Ctrl+Shift+0`). In
+incognito the same item reads **Leave Incognito** and takes the window back to
+the profile it was using.
 
 **Profile → Quick Switch** lists existing profiles immediately at startup.
 The numbered shortcuts work before the menu is opened. Ordinary profiles are

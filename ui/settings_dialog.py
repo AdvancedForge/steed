@@ -214,7 +214,7 @@ class SettingsDialog(QDialog):
                     "name": name,
                     "label": "Global"
                     if name == "global"
-                    else "Private browsing"
+                    else "Incognito"
                     if name == "search"
                     else name,
                     "current": name == self.manager.current_profile_name,

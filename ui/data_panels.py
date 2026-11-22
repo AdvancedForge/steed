@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from services.app_accounts import AccountError
+from services.start_pages import profile_title
 from services.task_store import ACTIVE_STATUSES
 from ui.data_panel_form import PanelForm
 from ui.html_dialog import HtmlDialog, HtmlSettingsDialog
@@ -312,7 +313,7 @@ class DataPanelController(HtmlSettingsDialog):
             return
         profile = self.browser.profile_manager.current_profile_name
         self.profile_label.setText(
-            "Private browsing" if profile == "search" else "Profile: " + profile
+            "Incognito" if profile == "search" else "Profile: " + profile_title(profile)
         )
         old = self.selector.currentData()
         if self.service._closed or self.service.failure or profile == "search":
