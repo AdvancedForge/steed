@@ -59,9 +59,9 @@ class BookmarkDialog(HtmlSettingsDialog):
         self.folder.setCurrentText(folder)
         self.folder.lineEdit().setMaxLength(200)
         self.folder.lineEdit().setPlaceholderText("Unfiled, or type a folder name")
-        form.addRow("Name:", self.title)
-        form.addRow("Address:", self.url)
-        form.addRow("Folder:", self.folder)
+        form.addRow("Name", self.title)
+        form.addRow("Address", self.url)
+        form.addRow("Folder", self.folder)
         layout.addLayout(form)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save

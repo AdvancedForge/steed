@@ -75,6 +75,8 @@ class AgentOnce(QObject):
 
     def __init__(self, command, prompt, parent=None, timeout_ms=TIMEOUT_MS):
         super().__init__(parent)
+        self.name = agent_name(command)
+        self.title = self.name[:1].upper() + self.name[1:]  # Starts a sentence.
         self.output = bytearray()
         self.done = False
         self.process = None
@@ -143,7 +145,14 @@ class AgentOnce(QObject):
                 if not isinstance(text, str):
                     raise ValueError
             except (ValueError, KeyError, TypeError, IndexError):
-                self._fail(f"{entry['name']} did not answer.")
+                status = reply.attribute(
+                    QNetworkRequest.Attribute.HttpStatusCodeAttribute
+                )
+                why = f" (HTTP {status})" if status else ""
+                self._fail(
+                    f"{entry['name']} did not answer{why}. Check its address, "
+                    "model and key in Agents → Add an Assistant…."
+                )
                 return
             self.done = True
             self.timer.stop()
@@ -174,13 +183,27 @@ class AgentOnce(QObject):
         if code == 0:
             self.answered.emit(self.output.decode("utf-8", "replace"))
         else:
-            self.failed.emit("The agent did not answer.")
+            self.failed.emit(self._why_not(code))
+
+    def _why_not(self, code):
+        """Which assistant, what it said last, and what to try."""
+        said = bytes(self.process.readAllStandardError()).decode("utf-8", "replace")
+        lines = [line.strip() for line in said.splitlines() if line.strip()]
+        detail = f": {lines[-1][:160]}" if lines else f" (it stopped with code {code})"
+        return (
+            f"{self.title} did not answer{detail}. Check that {self.name} works and "
+            "is signed in, or choose another assistant in Agents → Add an "
+            "Assistant…."
+        )
 
     def _error(self, error):
         if error == QProcess.ProcessError.FailedToStart and not self.done:
             self.done = True
             self.timer.stop()
-            self.failed.emit("The agent could not be started.")
+            self.failed.emit(
+                f"{self.title} could not be started. Choose another assistant in "
+                "Agents → Add an Assistant…."
+            )
 
     def _timeout(self):
         if self.done:
@@ -188,7 +211,7 @@ class AgentOnce(QObject):
         if self.process is not None:
             self.process.kill()
         else:
-            self._fail("The agent did not answer in time.")
+            self._fail(f"{self.title} did not answer in time.")
             if self.reply is not None:
                 self.reply.abort()
 

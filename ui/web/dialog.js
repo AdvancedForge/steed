@@ -36,7 +36,7 @@ function build(node) {
   } else if (node.kind === 'combo') {
     element = el(node.editable ? 'input' : 'select');
     element[node.editable ? 'oninput' : 'onchange'] = () => command(node.editable ? 'edit' : 'choose', node.id, node.editable ? element.value : Number(element.value));
-    if (node.editable) { entry.list = el('datalist'); entry.list.id = 'options-' + node.id; element.setAttribute('list', entry.list.id); }
+    if (node.editable) { element.type = 'text'; element.placeholder = node.placeholder || ''; entry.list = el('datalist'); entry.list.id = 'options-' + node.id; element.setAttribute('list', entry.list.id); }
   } else if (node.kind === 'tabs') {
     element = el('section'); entry.nav = el('nav'); entry.body = el('div'); element.append(entry.nav, entry.body);
   } else if (node.kind === 'table') element = el('div');

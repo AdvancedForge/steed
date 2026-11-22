@@ -439,4 +439,20 @@ class AgentOnceTests(unittest.TestCase):
         once.answered.connect(answers.append)
         once.failed.connect(failures.append)
         fixtures.TaskServiceTests.wait_for(self, lambda: failures, WAIT_SECONDS)
-        self.assertEqual(failures, ["Fake model did not answer."])
+        self.assertEqual(len(failures), 1)
+        self.assertTrue(failures[0].startswith("Fake model did not answer"))
+        self.assertIn("Add an Assistant", failures[0])
+        self.assertIn("HTTP 500", failures[0])
+        # A command-line assistant that fails says what it printed last.
+        failing = ["sh", "-c", "cat >/dev/null; echo 'Not signed in' >&2; exit 1"]
+        once = AgentOnce(failing, "Hello?")
+        once.failed.connect(failures.append)
+        fixtures.TaskServiceTests.wait_for(
+            self, lambda: len(failures) == 2, WAIT_SECONDS
+        )
+        self.assertEqual(
+            failures[1],
+            "Your agent did not answer: Not signed in. Check that your agent "
+            "works and is signed in, or choose another assistant in Agents → "
+            "Add an Assistant….",
+        )

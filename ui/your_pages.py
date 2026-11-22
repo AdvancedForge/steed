@@ -10,6 +10,7 @@ in Access → Local pages (never, ask, always).
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
+    QDialogButtonBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -173,6 +174,11 @@ class YourPageEditor(HtmlSettingsDialog):
         write.clicked.connect(self.write_for_me)
         builder.addWidget(write)
         layout.addLayout(builder)
+        # What Write it for me is doing, right under it.
+        self.write_status = QLabel("")
+        self.write_status.setWordWrap(True)
+        self.write_status.setProperty("role", "note")
+        layout.addWidget(self.write_status)
         layout.addWidget(QLabel("HTML and JavaScript"))
         self.html = QPlainTextEdit(page.get("html", ""))
         layout.addWidget(self.html, 1)
@@ -183,15 +189,15 @@ class YourPageEditor(HtmlSettingsDialog):
         self.status = QLabel("")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
-        row = QHBoxLayout()
+        row = QDialogButtonBox()  # Kept in view at the bottom.
         save = QPushButton("Save and open")
         save.setProperty("primary", True)
         save.clicked.connect(self.save)
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)
-        row.addWidget(save)
-        row.addWidget(cancel)
-        layout.addLayout(row)
+        row.addButton(save, QDialogButtonBox.ButtonRole.AcceptRole)
+        row.addButton(cancel, QDialogButtonBox.ButtonRole.RejectRole)
+        layout.addWidget(row)
         if not page:
             self._template()
         self.finished.connect(lambda _: self.asking and self.asking.stop())
@@ -208,24 +214,26 @@ class YourPageEditor(HtmlSettingsDialog):
         description = self.describe.text().strip()
         command = agent_command(self.window.config)
         if not description:
-            self.status.setText("Describe the page first.")
+            self.write_status.setText("Describe the page first.")
             return
         if command is None:
-            self.status.setText("Add an assistant first (Agents → Add an Assistant…).")
+            self.write_status.setText(
+                "Add an assistant first (Agents → Add an Assistant…)."
+            )
             return
-        self.status.setText("Writing…")
+        self.write_status.setText("Writing…")
         self.asking = AgentOnce(
             command, WRITER.replace("{description}", description), self
         )
         self.asking.answered.connect(self._written)
-        self.asking.failed.connect(self.status.setText)
+        self.asking.failed.connect(self.write_status.setText)
 
     def _written(self, text):
         html = text.strip()
         if html.startswith("```"):  # Some assistants fence their answer.
             html = html.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         self.html.setPlainText(html)
-        self.status.setText("Check it, then Save and open.")
+        self.write_status.setText("Check it, then Save and open.")
 
     def save(self):
         pages = self.window.profile_manager.registry.start_pages

@@ -57,6 +57,11 @@ class SkillEditor(HtmlSettingsDialog):
         write.clicked.connect(self.write_for_me)
         builder.addWidget(write)
         layout.addLayout(builder)
+        # What Write it for me is doing, right under it.
+        self.write_status = QLabel("")
+        self.write_status.setWordWrap(True)
+        self.write_status.setProperty("role", "note")
+        layout.addWidget(self.write_status)
         layout.addWidget(QLabel("It looks at"))
         self.context = QComboBox()
         self.context.addItem("The page you are on", "page")
@@ -108,21 +113,23 @@ class SkillEditor(HtmlSettingsDialog):
         description = self.describe.text().strip()
         command = agent_command(self.window.config)
         if not description:
-            self.status.setText("Describe what the skill should do first.")
+            self.write_status.setText("Describe what the skill should do first.")
             return
         if command is None:
-            self.status.setText("Add an assistant first (Agents → Add an Assistant…).")
+            self.write_status.setText(
+                "Add an assistant first (Agents → Add an Assistant…)."
+            )
             return
-        self.status.setText("Writing…")
+        self.write_status.setText("Writing…")
         self.asking = AgentOnce(command, BUILDER.format(description=description), self)
         self.asking.answered.connect(self._written)
-        self.asking.failed.connect(self.status.setText)
+        self.asking.failed.connect(self.write_status.setText)
 
     def _written(self, text):
         self.ask.setPlainText(text.strip())
         if not self.name.text().strip():
             self.name.setText(self.describe.text().strip()[:60].capitalize())
-        self.status.setText("Check it, change it if you like, then Save.")
+        self.write_status.setText("Check it, change it if you like, then Save.")
 
     def values(self):
         return {

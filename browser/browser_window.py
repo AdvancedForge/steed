@@ -1370,6 +1370,7 @@ class BrowserWindow(QMainWindow):
         self.loading_indicator.hide()
         layout.addWidget(self.loading_indicator)
         self.find_bar = FindBar(self.navigation)
+        self.find_bar.apply_style(self.address_bar.colors)
         self.find_bar.closed.connect(self._focus_page)
         layout.addWidget(self.find_bar)
         self.live_bar = QWidget()
@@ -1526,6 +1527,8 @@ class BrowserWindow(QMainWindow):
         else:
             self._fade_stop()
             self.address_bar.apply_style(colors)
+        if getattr(self, "find_bar", None) is not None:
+            self.find_bar.apply_style(colors)
         bars = bar_stylesheet(colors)
         # Scroll bars in dialogs and panels match the web pages' ones.
         self.setStyleSheet(self.styleSheet() + scrollbar_stylesheet(colors))
