@@ -98,7 +98,9 @@ tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px;
 
 /* ---- Full pages (with the sidebar) ---- */
 .dialog-main { min-width: 0; }
-body.workspace-page { display: grid; grid-template-columns: 216px minmax(0, 1fr); }
+body.workspace-page { display: block; }
+/* The same heading as Steed's other full pages (Settings, Style, Passwords). */
+.workspace-page .dialog-header h1 { font-size: 30px; letter-spacing: -.6px; }
 #workspace-nav { padding: 18px 10px 24px; background: var(--surface); border-right: 1px solid var(--line); height: 100vh;
   position: sticky; top: 0; overflow: auto; scrollbar-gutter: stable; }
 /* The sidebar's scroll bar shows only while the pointer is over it. */

@@ -501,6 +501,11 @@ class HtmlDialog(QDialog):
                 "header": self.header,
                 "profile": self.owner.profile_manager.current_profile_name,
                 "shared": self.workspace in SHARED_PAGES,
+                # The profile is worth naming only when there is a choice.
+                "several_profiles": len(
+                    self.owner.profile_manager.list_profiles()
+                )
+                > 2,
                 "dark": self.owner.profile_manager.registry.page_style.dark(
                     self.owner.profile_manager.current_profile_name
                 ),

@@ -1,10 +1,5 @@
 let state = null, bridge = null, sequence = 0, context = null, seen = new Set();
 const nodes = new Map(), $ = id => document.getElementById(id);
-const workspaceGroups = [
-  ['Browse', [['history','History'],['bookmarks','Bookmarks'],['downloads','Downloads'],['cookies','Cookies'],['passwords','Passwords'],['library','Files']]],
-  ['Customize', [['settings','Settings'],['style','Style'],['layout','Layout'],['newtab-settings','Start pages'],['pages','Your pages'],['packs','Packs'],['tab-groups','Tab groups'],['adblock','Ad blocking'],['permissions','Website permissions']]],
-  ['Agents', [['agents','Conversations'],['watches','Watches'],['automations','Automations'],['skills','Skills'],['tasks','Tasks & permissions'],['panels','Data panels'],['connections','Connections'],['services','Add a service'],['agent-setup','Agent setup']]]
-];
 function command(action, id, value, extra = {}) {
   if (!bridge || !state) return;
   bridge.dispatch(JSON.stringify({generation: STEED_GENERATION, context, sequence: ++sequence, action, id, value, ...extra}));
@@ -190,25 +185,13 @@ window.steedUI = {render(next) {
   document.body.classList.toggle('compact-page', !!next.compact);
   document.querySelector('.dialog-header').hidden = next.header === false;
   document.body.dataset.page = next.workspace || 'dialog';
-  $('workspace-nav').hidden = !next.workspace;
-  $('workspace-picker').hidden = !next.workspace;
-  $('scope').hidden = !next.workspace;
+  // One page design: Steed's pages are a centred column, without a sidebar;
+  // the menus and Settings → Everything lead between them.
+  $('workspace-nav').hidden = true;
+  $('workspace-picker').hidden = true;
+  $('scope').hidden = !next.workspace || (!next.several_profiles && next.profile !== 'search');
   const profileName = next.profile === 'search' ? 'Incognito' : next.profile.charAt(0).toUpperCase() + next.profile.slice(1) + ' profile';
   $('scope').textContent = next.shared ? 'All profiles' : profileName;
-  if (next.workspace && $('workspace-nav').dataset.page !== next.workspace) {
-    const nav = $('workspace-nav'); nav.replaceChildren(); nav.dataset.page = next.workspace;
-    $('workspace-picker').replaceChildren();
-    for (const [heading, entries] of workspaceGroups) {
-      const title = document.createElement('h2'); title.textContent = heading; nav.append(title);
-      const group = document.createElement('optgroup'); group.label = heading;
-      for (const [page, name] of entries) {
-        const button = document.createElement('button'); button.textContent = name; button.setAttribute('aria-current', page === next.workspace ? 'page' : 'false'); button.onclick = () => command('workspace', null, page); nav.append(button);
-        const option = document.createElement('option'); option.value = page; option.textContent = name; group.append(option);
-      }
-      $('workspace-picker').append(group);
-    }
-  }
-  if (document.activeElement !== $('workspace-picker')) $('workspace-picker').value = next.workspace;
   $('title').textContent = next.title; $('error').textContent = next.error; $('error').hidden = !next.error;
   seen = new Set(); children($('controls'), next.children);
   emphasize();

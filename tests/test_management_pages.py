@@ -44,35 +44,26 @@ class ManagementPageTests(unittest.TestCase):
         self.ready(host)
         return window, tab, host
 
-    def test_narrow_page_uses_compact_navigation_and_keeps_content_width(self):
+    def test_narrow_page_keeps_its_content_and_no_navigation_chrome(self):
         window, tab, host = self.opened("history")
         window.resize(560, 600)
         # A view still being laid out reports a tiny placeholder width (100 px);
         # wait for the real narrow width rather than any width below the limit.
         self.wait_for(lambda: self.value(host, "innerWidth > 300 && innerWidth < 620"))
-        # The narrow rule applies once the page has rendered its workspace class.
-        self.wait_for(
-            lambda: (
+        for chrome in ("workspace-nav", "workspace-picker"):
+            self.assertEqual(
                 self.value(
                     host,
-                    "getComputedStyle(document.getElementById('workspace-nav')).display",
-                )
-                == "none"
+                    f"getComputedStyle(document.getElementById('{chrome}')).display",
+                ),
+                "none",
             )
-        )
-        self.assertNotEqual(
+        # The page's own content uses the width there is.
+        self.assertGreater(
             self.value(
-                host,
-                "getComputedStyle(document.getElementById('workspace-picker')).display",
+                host, "document.querySelector('main').getBoundingClientRect().width"
             ),
-            "none",
-        )
-        self.value(
-            host,
-            "const picker=document.getElementById('workspace-picker'); picker.value='panels'; picker.dispatchEvent(new Event('change')); true",
-        )
-        self.wait_for(
-            lambda: window.tabs[window.current_tab_index].workspace_name == "panels"
+            300,
         )
         self.assertIn(tab, window.tabs)
 
@@ -121,8 +112,13 @@ class ManagementPageTests(unittest.TestCase):
                 self.assertFalse(host.isWindow())
                 self.assertTrue(host.surface.profile.isOffTheRecord())
                 self.assertEqual(self.value(host, "state.workspace"), name)
-                self.assertFalse(
+                # One page design: a centred column, no sidebar, and no
+                # profile label while there is only one profile to mean.
+                self.assertTrue(
                     self.value(host, "document.getElementById('workspace-nav').hidden")
+                )
+                self.assertTrue(
+                    self.value(host, "document.getElementById('scope').hidden")
                 )
                 self.assertIs(
                     window._new_tab(url="steed:" + name, return_tab=True), tab
