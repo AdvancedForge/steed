@@ -57,7 +57,10 @@ window.steedUI = {render(next) {
   engine(next.engine); features(next.features);
   $('check').disabled = next.checking;
   const u = next.updates || {};
-  $('updates').textContent = u.summary || (u.error ? u.error : u.checked ? 'Steed and its engine are up to date.' : u.enabled ? 'Checked once a day.' : 'Update checks are off (Settings → General).');
+  const current = u.steed_checked === false
+    ? 'The engine is up to date. This copy of Steed is not a git checkout, so its own updates are not checked.'
+    : 'Steed and its engine are up to date.';
+  $('updates').textContent = u.summary || (u.error ? u.error : u.checked ? current : u.enabled ? 'Checked once a day.' : 'Update checks are off (Settings → General).');
   return true;
 }};
 $('check').onclick = () => command('check');

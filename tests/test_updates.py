@@ -145,5 +145,23 @@ class UpdateTests(unittest.TestCase):
                     service.close()
 
 
+    def test_a_copy_that_is_not_a_git_checkout_says_so(self):
+        class Config(dict):
+            def set(self, key, value):
+                self[key] = value
+
+        with tempfile.TemporaryDirectory() as directory:
+            pypi = f"http://127.0.0.1:{self.server.server_port}/{{name}}"
+            with patch.object(updates, "PYPI", pypi):
+                service = updates.Updates(Config(), project=Path(directory))
+                try:
+                    service.check()
+                    self.wait(lambda: service.state["engine"] is not None)
+                    self.assertFalse(service.state["steed_checked"])
+                    self.assertIsNone(service.state["steed"])
+                finally:
+                    service.close()
+
+
 if __name__ == "__main__":
     unittest.main()
