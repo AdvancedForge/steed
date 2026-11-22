@@ -1044,8 +1044,9 @@ class BrowserWindow(QMainWindow):
 
         for label, url in WEB_CHATS.items():
             action = web_chats_menu.addAction(label)
+            # In the chat sidebar, beside your agent chat, as promised.
             action.triggered.connect(
-                lambda checked=False, url=url: self._new_tab(url=url)
+                lambda checked=False, url=url: self._open_website_assistant(url)
             )
         web_chats_menu.addSeparator()
         web_chats_menu.addAction("Current tab in chat sidebar").triggered.connect(

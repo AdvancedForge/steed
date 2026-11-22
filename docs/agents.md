@@ -973,10 +973,11 @@ tab restoration can reopen this local HTML interface. Its address is
 and disables the Steed conversation.
 
 For website subscriptions, choose **Agents → Website Chats → ChatGPT / Claude /
-Gemini**. These open `chatgpt.com`, `claude.ai` and `gemini.google.com` in normal
-tabs using the current profile's ordinary cookies and sign-in. Open another
-HTTPS chat website normally to use it too. Choose **Current tab in chat sidebar**
-to move that exact page beside your browsing. **Back to tab**, or selecting its
+Gemini**. These open `chatgpt.com`, `claude.ai` and `gemini.google.com` in the
+chat sidebar beside your browsing (and your agent chat), using the current
+profile's ordinary cookies and sign-in. To use another HTTPS chat website, open
+it normally and choose **Current tab in chat sidebar** to move that exact page
+beside your browsing. **Back to tab**, or selecting its
 existing tab, returns it without reloading or copying its conversation. Changing
 profiles closes the old profile's chat view. Its address, profile/loading status,
 **Share instructions…** and **Back to tab** controls now use themed, offline HTML.
