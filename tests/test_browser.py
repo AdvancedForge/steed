@@ -898,6 +898,28 @@ class BrowserTests(unittest.TestCase):
             {"Switch to Incognito": "Ctrl+Alt+I"},
         )
 
+    def test_empty_menu_lines_are_not_commands_and_split_view_has_a_menu_item(self):
+        from browser import shortcuts
+
+        window = self.window
+        window._fill_automations_menu()
+        names = [name for name, _ in shortcuts.commands(window)]
+        self.assertNotIn("No automations yet", names)
+        self.assertIn("Restore Closed Tab", names)  # Disabled, but a command.
+        view = window._layout_menus["view"]
+        view.aboutToShow.emit()
+        shown = [a.text() for a in view.actions() if a.isVisible()]
+        self.assertIn("Split View with Next Tab", shown)
+        self.assertNotIn("Close Split View", shown)
+        window._new_tab(url=self.local_page)
+        window.split_with_next()
+        self.assertIsNotNone(window.split_tab)
+        view.aboutToShow.emit()
+        shown = [a.text() for a in view.actions() if a.isVisible()]
+        self.assertIn("Close Split View", shown)
+        self.assertNotIn("Split View with Next Tab", shown)
+        window.close_split_view()
+
     def test_tabs_and_profile_switching(self):
         self.window._new_tab(self.local_page, "Codec")
         self.window.tabs[-1].group = "Media"

@@ -264,6 +264,15 @@ class BrowserPage(webengine.Page):
         return True
 
 
+def placeholder(menu, text):
+    """A greyed line saying a menu is empty: not a command (shortcuts and the
+    command palette leave it out)."""
+    action = menu.addAction(text)
+    action.setEnabled(False)
+    action.setProperty("placeholder", True)
+    return action
+
+
 class BrowserTab(webengine.View):
     """Represents a single browser tab."""
 
@@ -771,10 +780,17 @@ class BrowserWindow(QMainWindow):
         unsplit = QAction("Close Split View", self)
         unsplit.triggered.connect(self.close_split_view)
         view_menu.addAction(unsplit)
-        # Only while there is a split to close.
-        view_menu.aboutToShow.connect(
-            lambda: unsplit.setVisible(getattr(self, "split_tab", None) is not None)
-        )
+        split = QAction("Split View with Next Tab", self)
+        split.triggered.connect(self.split_with_next)
+        view_menu.addAction(split)
+
+        # One of the two, as the window is: split it, or close the split.
+        def split_items():
+            in_split = getattr(self, "split_tab", None) is not None
+            unsplit.setVisible(in_split)
+            split.setVisible(not in_split)
+
+        view_menu.aboutToShow.connect(split_items)
         unsplit.setVisible(False)
         save_page = QAction("Save Page As…", self)
         save_page.setShortcut(QKeySequence("Ctrl+S"))
@@ -2318,8 +2334,7 @@ class BrowserWindow(QMainWindow):
         if menu.actions():
             menu.addSeparator()
         else:
-            empty = menu.addAction("No automations yet")
-            empty.setEnabled(False)
+            placeholder(menu, "No automations yet")
         menu.addAction("Manage Automations…").triggered.connect(self.manage_automations)
 
     def _automations_changed(self):
@@ -2438,10 +2453,9 @@ class BrowserWindow(QMainWindow):
                 lambda _=False, identity=entry["id"]: self.run_command(identity)
             )
         if not entries:
-            empty = menu.addAction(
-                "No commands yet: add a user script set to run when you choose it"
+            placeholder(
+                menu, "No commands yet: add a user script set to run when you choose it"
             )
-            empty.setEnabled(False)
         menu.addSeparator()
         menu.addAction(
             "Manage Commands…",
@@ -2588,8 +2602,7 @@ class BrowserWindow(QMainWindow):
                 lambda _=False, k=key: self.config.set("watch_agent", k)
             )
         if not choices:
-            none = menu.addAction("None yet: add one with Add an Assistant…")
-            none.setEnabled(False)
+            placeholder(menu, "None yet: add one with Add an Assistant…")
 
     def history_topics(self):
         """Your past week grouped into topics by your assistant, on request."""
@@ -5011,7 +5024,7 @@ class BrowserWindow(QMainWindow):
         name = self.profile_manager.current_profile_name
         extensions = self.profile_manager.registry.extensions
         if not extensions.available(name):
-            menu.addAction("Incognito windows have no extensions").setEnabled(False)
+            placeholder(menu, "Incognito windows have no extensions")
             return
         for entry in extensions.installed(name):
             if not entry["enabled"]:
@@ -7140,6 +7153,20 @@ class BrowserWindow(QMainWindow):
 
     # -- split view
 
+    def split_with_next(self):
+        """Split view from the menu: the next tab beside this one."""
+        web = [t for t in self.tabs if not getattr(t, "agent_panel", False)]
+        if len(web) < 2:
+            self.status_bar.showMessage(
+                "Open another tab to show it beside this one.", 5000
+            )
+            return
+        index = self.current_tab_index
+        other = self.tabs[(index + 1) % len(self.tabs)]
+        if other is self.tabs[index]:
+            other = self.tabs[index - 1]
+        self.show_beside(other)
+
     def show_beside(self, tab):
         """Split view: this tab beside the current one."""
         if tab not in self.tabs or tab is self.tabs[self.current_tab_index]:
@@ -7590,7 +7617,7 @@ class BrowserWindow(QMainWindow):
         menu.clear()
         store = self._workspaces()
         if store is None:
-            menu.addAction("Not in incognito").setEnabled(False)
+            placeholder(menu, "Not in incognito")
             return
         for name in store.names():
             action = menu.addAction(name)
@@ -7779,10 +7806,9 @@ class BrowserWindow(QMainWindow):
         menu.clear()
         saved = self.tab_manager.saved_groups() if self.tab_manager else []
         if not saved:
-            empty = menu.addAction(
-                "No saved groups (right-click a group → Save and Close Group)"
+            placeholder(
+                menu, "No saved groups (right-click a group → Save and Close Group)"
             )
-            empty.setEnabled(False)
             return
         for group in saved:
             count = len(group["tabs"])

@@ -329,6 +329,11 @@ class SimpleNewTabTests(unittest.TestCase):
         self.wait(lambda: self.js(tab, live) != "stale")
         self.assertEqual(self.js(tab, "window.steedMark"), 1)
 
+    def test_incognito_note_sits_clear_of_the_photo_credit(self):
+        css = self.pages.render("search", "newtab").decode()
+        self.assertIn("Incognito", css)
+        self.assertIn(".note { left: auto; right: 16px; }", css)
+
     def test_liquid_glass_mode(self):
         window, pages = self.window, self.pages
         styles = window.profile_manager.registry.page_style

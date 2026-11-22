@@ -1006,7 +1006,9 @@ WRITER = (
     '{"do": "changed"}]}\n'
     "A page trigger runs from a page's right-click menu with that page's text; "
     "decide goes on only if the assistant answers yes. "
-    "Use as few steps as do the job. Days: "
+    "Use as few steps as do the job. Put a changed or contains check right "
+    "after the read or fetch it checks, before any ask, chat or notify, so the "
+    "assistant is only asked when something changed. Days: "
     + ", ".join(f"{n}={d}" for n, d in enumerate(DAYS))
     + ".\n\nDescription: {description}"
 )

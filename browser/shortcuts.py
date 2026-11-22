@@ -23,6 +23,8 @@ def commands(window):
             if action.menu() is not None:
                 walk(action.menu())
                 continue
+            if action.property("placeholder"):
+                continue  # "No automations yet" and the like: not a command.
             name = label(action)
             if name and name not in seen:
                 seen.add(name)

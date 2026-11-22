@@ -39,7 +39,12 @@ GROUPS = {
             "Reading List…",
         ),
         ("Full Screen", "Bookmarks Bar"),
-        ("Save Page As…", "Take Screenshot", "Close Split View"),
+        (
+            "Save Page As…",
+            "Take Screenshot",
+            "Split View with Next Tab",
+            "Close Split View",
+        ),
         ("Page Style…", "Reset Layout"),
         ("Your Pages…", "Packs…", "Your Commands"),
     ),

@@ -7,6 +7,27 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Agents that wait, and a second new-user pass — November 22, 2026.** Using
+Steed as a new person would, with real Claude Code and Codex:
+- asking for access now waits (up to 50 seconds) for your answer, so an agent
+  carries on when you approve instead of ending its turn;
+- a new browser.read_tab lets an agent read the page you have open, once,
+  after one popup, without asking to control your tabs;
+- Ask Agent About This Page and `@` questions send the page's text;
+- an agent's question pops up whichever chat is showing;
+- helper jobs leave nothing in your Codex history and run in an empty folder;
+- downloads save straight to Downloads (Ask where to save each download
+  brings the picker back);
+- Website Chats open in the chat sidebar;
+- incognito is New Incognito Window and Switch to / Leave Incognito, one name
+  everywhere, and the window title says Steed;
+- tips fade in whole and sit clear of what they point at;
+- Steed's own tabs go by their names; Downloads shows only what each download
+  can do;
+- smaller fixes: split view in the View menu, the reader shows a headline
+  once, empty-menu lines are not shortcuts, and the incognito note no longer
+  covers the photo credit.
+
 **Run logs, examples, steadier tests — November 22, 2026.** Automations keep
 a history of their last 20 runs (what each step had and gave, and where it
 stopped), and **Examples…** starts one from a ready morning brief, price check,

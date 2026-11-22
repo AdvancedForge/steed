@@ -528,7 +528,8 @@ help you pick up where you left off. Nothing is kept; run it whenever you like.
 
 ### Split view and sites in a profile
 
-**Show Beside Current Tab** (tab menu) puts a tab beside the current one;
+**View → Split View with Next Tab**, or **Show Beside Current Tab** in a tab's
+right-click menu, puts a tab beside the current one;
 clicking into either side makes it the current tab, and **View → Close Split
 View** (or closing either tab) ends it. The tab beside stays running whatever
 the memory mode. The site menu's **Always Open in Profile** sends a site (and
