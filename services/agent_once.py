@@ -9,6 +9,7 @@ exec`), whichever is installed. The "watch_agent" setting picks one ("claude",
 """
 
 import json
+import os
 import shutil
 
 from PyQt6.QtCore import QByteArray, QObject, QProcess, QTimer, QUrl, pyqtSignal
@@ -19,10 +20,56 @@ NAMES = {"claude": "Claude Code", "codex": "Codex"}
 
 
 def agent_commands():
+    # One-off questions leave nothing in the person's own Claude Code or Codex
+    # history (no saved session), and run in an empty folder of their own.
     return {
         "claude": ["claude", "-p", "--no-session-persistence"],
         "codex": ["codex", "exec", "--skip-git-repo-check", "-"],
     }
+
+
+def without_saving(command):
+    """Codex's command with --ephemeral when this Codex knows it (checked
+    when a question is actually asked, never just to list assistants)."""
+    if (
+        command[:2] == ["codex", "exec"]
+        and "--ephemeral" not in command
+        and codex_ephemeral()
+    ):
+        return [*command[:-1], "--ephemeral", command[-1]]
+    return command
+
+
+_ephemeral = {}
+
+
+def codex_ephemeral():
+    """Whether this Codex can run without saving a session (asked once)."""
+    path = shutil.which("codex")
+    if path is None:
+        return False
+    if path not in _ephemeral:
+        import subprocess
+
+        try:
+            help_text = subprocess.run(
+                [path, "exec", "--help"], capture_output=True, text=True, timeout=10
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            help_text = ""
+        _ephemeral[path] = "--ephemeral" in help_text
+    return _ephemeral[path]
+
+
+def helper_folder():
+    """An empty folder for one-off questions: no project files, AGENTS.md or
+    repository around them."""
+    import tempfile
+    from pathlib import Path
+
+    folder = Path(tempfile.gettempdir()) / f"steed-helper-{os.getuid()}"
+    folder.mkdir(mode=0o700, exist_ok=True)
+    return str(folder)
 
 
 def _models(config):
@@ -105,7 +152,9 @@ class AgentOnce(QObject):
         if isinstance(command, dict):
             self._ask_model(command, prompt)
             return
+        command = without_saving(list(command))
         self.process = QProcess(self)
+        self.process.setWorkingDirectory(helper_folder())
         self.process.setProgram(command[0])
         self.process.setArguments(command[1:])
         self.process.readyReadStandardOutput.connect(self._read)
