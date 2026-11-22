@@ -7,6 +7,16 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Asking on the page, a helper you choose, calmer menus — November 22,
+2026.** A page of yours that asks for something it may not have yet shows a bar
+above it: **Allow** gives just that page that access (kept with the page, never
+in a pack, taken back in Your Pages). Steed asks once which assistant helps
+with Write it for me, Help Me Write, watches and automations when more than one
+is available, says which one is writing, and **Agents → Helper Assistant**
+changes it. General and View keep the everyday items; **More Tools**,
+**Keyboard Navigation**, **Appearance**, **Media** and **Advanced** hold the
+rest, with every shortcut and the command palette unchanged.
+
 **Using Steed as a new person would — November 21, 2026.** A pass through
 Steed as a new user, fixing what got in the way:
 - your Dashboard says when it isn't allowed to read your watches and

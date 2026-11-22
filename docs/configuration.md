@@ -128,7 +128,7 @@ Unsaved style fields stay in the form after an error. Conflicting saves from a
 second window stop with an explanation; **Reload saved** explicitly discards that
 form draft. Reloading the interface discards unsaved style fields and does not
 repeat a save. **Reset form** fills defaults without applying them. If custom CSS
-makes a page unusable, open **☰ → View → Reset Page Style** or press
+makes a page unusable, open **☰ → View → Appearance → Reset Page Style** or press
 **Ctrl+Alt+Shift+R** to recover with a native confirmation. The confirmation uses
 native styling so custom colors cannot hide it. Existing authored HTML and
 background images are preserved.

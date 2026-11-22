@@ -28,7 +28,7 @@ RELEASE_MS = 60000
 
 
 def menu_commands(menus):
-    """(path, action) for every enabled, named action, following submenus."""
+    """(path, text, action) for every enabled, named action, following submenus."""
     found, seen = [], set()
 
     def walk(menu, path):

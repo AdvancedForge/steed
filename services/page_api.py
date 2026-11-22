@@ -111,12 +111,37 @@ class PageApi(QObject):
         policy = access_levels.values(self.config, "pages")[capability]
         # Session answers belong to one page: allowing an app is not allowing another.
         key = (url.host(), capability)
-        if policy == "always" or self.session.get(key) is True:
+        host = url.host()
+        mine = host not in ("newtab", "welcome") and not APP_HOST.fullmatch(host)
+        if mine and capability in self.pages.page_allowed(self.profile_name, host):
+            self._serve(job, name, url)  # You allowed this page of yours.
+        elif policy == "always" or self.session.get(key) is True:
             self._serve(job, name, url)
         elif policy == "never" or self.session.get(key) is False:
             self._json(job, {"error": "denied", "capability": capability}, 403)
+            if mine and policy == "never" and not self._chosen(capability):
+                # Never only because nothing was chosen yet: offer it on the page.
+                self._offer(host, capability)
         else:
             self._ask(job, name, url, capability, key)
+
+    def _chosen(self, capability):
+        stored = self.config.get("page_access", {})
+        return isinstance(stored, dict) and capability in stored
+
+    def _offer(self, host, capability):
+        """Ask on the page itself (a bar Steed draws above it)."""
+        from PyQt6.QtWidgets import QApplication
+
+        for window in QApplication.topLevelWidgets():
+            bar = getattr(window, "page_access_bar", None)
+            if (
+                bar is not None
+                and not getattr(window, "_closing", True)
+                and window.profile_manager.registry is self.pages.registry
+                and window.profile_manager.current_profile_name == self.profile_name
+            ):
+                bar.offer(host, capability)
 
     def _custom_page(self, host):
         if APP_HOST.fullmatch(host):

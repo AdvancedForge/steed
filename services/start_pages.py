@@ -127,6 +127,13 @@ def clean_page_name(value):
     return name
 
 
+def clean_allowed(value):
+    from browser.access_levels import PAGE_CAPABILITIES
+
+    items = value if isinstance(value, list) else []
+    return sorted({c for c in items if c in PAGE_CAPABILITIES})
+
+
 def clean_your_page(item):
     """A stored page of yours, or ValueError."""
     if not isinstance(item, dict):
@@ -487,6 +494,9 @@ class StartPages(QObject):
                     page = clean_your_page(item)
                 except ValueError:
                     continue
+                # What you allowed this page (Steed's own record of it; a page's
+                # content, as packs and agents see it, never carries this).
+                page["allowed"] = clean_allowed(item.get("allowed"))
                 if all(other["name"] != page["name"] for other in yours):
                     yours.append(page)
             self._states[profile] = {
@@ -571,6 +581,11 @@ class StartPages(QObject):
             raise ValueError("Incognito windows have no pages of their own.")
         page = clean_your_page({"name": name, "title": title, "html": html})
         state = self.state(profile)
+        # Editing a page keeps what you allowed it; a new name starts with none.
+        old = next((p for p in state["pages"] if p["name"] == replacing), None)
+        page["allowed"] = (
+            list(old.get("allowed", [])) if old and old["name"] == page["name"] else []
+        )
         pages = [p for p in state["pages"] if p["name"] != replacing]
         if any(p["name"] == page["name"] for p in pages):
             raise ValueError(
@@ -586,6 +601,30 @@ class StartPages(QObject):
         state["pages"] = pages
         self._commit(profile, state)
         return page["name"]
+
+    def page_allowed(self, profile, name):
+        """Capabilities you allowed this page of yours (Steed's page API)."""
+        page = self.your_page(profile, name)
+        return set(page.get("allowed", [])) if page else set()
+
+    def allow_page(self, profile, name, capability):
+        state = self.state(profile)
+        for page in state["pages"]:
+            if page["name"] == name:
+                page["allowed"] = clean_allowed([*page.get("allowed", []), capability])
+                self._commit(profile, state)
+                return True
+        return False
+
+    def disallow_page(self, profile, name):
+        """Take back everything you allowed this page."""
+        state = self.state(profile)
+        for page in state["pages"]:
+            if page["name"] == name and page.get("allowed"):
+                page["allowed"] = []
+                self._commit(profile, state)
+                return True
+        return False
 
     def remove_your_page(self, profile, name):
         state = self.state(profile)

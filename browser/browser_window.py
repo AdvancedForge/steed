@@ -1014,6 +1014,8 @@ class BrowserWindow(QMainWindow):
         add_assistant_action = QAction("Add an Assistant…", self)
         add_assistant_action.triggered.connect(self._add_assistant)
         agents_menu.addAction(add_assistant_action)
+        self.helper_menu = agents_menu.addMenu("Helper Assistant")
+        self.helper_menu.aboutToShow.connect(self._fill_helper_menu)
         # Routines are automations now; the old entry leads there.
         routines_action = QAction("Routines…", self)
         routines_action.triggered.connect(self.manage_automations)
@@ -1408,6 +1410,10 @@ class BrowserWindow(QMainWindow):
         self.extension_installer = ExtensionInstaller(self)
         self.store_bar = StoreBar(self)
         layout.addWidget(self.store_bar)
+        from ui.page_access_bar import PageAccessBar
+
+        self.page_access_bar = PageAccessBar(self)
+        layout.addWidget(self.page_access_bar)
         from ui.passkey_prompt import PasskeyBar
 
         self.passkey_bar = PasskeyBar(self)
@@ -2533,28 +2539,62 @@ class BrowserWindow(QMainWindow):
         menu.insertAction(first, action)
         menu.insertSeparator(first)
 
+    def _fill_helper_menu(self):
+        """Who helps with Write it for me, automations and watches."""
+        from services.agent_once import helper_choices, helper_chosen
+
+        menu = self.helper_menu
+        menu.clear()
+        chosen = helper_chosen(self.config)
+        choices = helper_choices(self.config)
+        for key, label in choices:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(key == chosen)
+            action.triggered.connect(
+                lambda _=False, k=key: self.config.set("watch_agent", k)
+            )
+        if not choices:
+            none = menu.addAction("None yet: add one with Add an Assistant…")
+            none.setEnabled(False)
+
     def history_topics(self):
         """Your past week grouped into topics by your assistant, on request."""
-        from services.agent_once import agent_command
         from ui.history_topics import HistoryTopicsDialog
 
         if self.profile_manager.current_profile_name == "search":
             self.status_bar.showMessage("Not in incognito.", 4000)
             return
-        command = agent_command(self.config)
-        if command is None:
-            self.status_bar.showMessage(
-                "Add an assistant first (Agents → Add an Assistant…).", 6000
-            )
-            return
-        self._present_dialog(HistoryTopicsDialog(self, command), modal=False)
+        from ui.assistant_choice import ensure
+
+        def chosen(command):
+            if self._closing:
+                return
+            if command is None:
+                self.status_bar.showMessage(
+                    "Add an assistant first (Agents → Add an Assistant…).", 6000
+                )
+                return
+            self._present_dialog(HistoryTopicsDialog(self, command), modal=False)
+
+        ensure(self, chosen)
 
     def help_me_write(self, tab):
         """Your assistant rewrites the focused text field, shown first."""
-        from services.agent_once import agent_command
+        from ui.assistant_choice import ensure
+
+        ensure(
+            self,
+            lambda command: (
+                not self._closing
+                and tab in self.tabs
+                and self._help_me_write_with(tab, command)
+            ),
+        )
+
+    def _help_me_write_with(self, tab, command):
         from ui.writing_help import READ_FIELD, WritingHelpDialog
 
-        command = agent_command(self.config)
         if command is None:
             self.status_bar.showMessage(
                 "Add an assistant first (Agents → Add an Assistant…).", 6000
@@ -2678,12 +2718,18 @@ class BrowserWindow(QMainWindow):
                     selected=text,
                     parent=self,
                 )
-                dialog.watched.connect(
-                    lambda watch: self.status_bar.showMessage(
+
+                def watched(watch):
+                    from ui.assistant_choice import ensure
+
+                    self.status_bar.showMessage(
                         f"Watching {watch['title']}. Settings → Everything → Watches.",
                         6000,
                     )
-                )
+                    # Watches ask the helper in the background: settle who, now.
+                    ensure(self, lambda _command: None)
+
+                dialog.watched.connect(watched)
                 self._present_dialog(dialog, modal=False)
 
             if text is not None:
@@ -3952,6 +3998,7 @@ class BrowserWindow(QMainWindow):
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
         self.store_bar.update_for(self.tabs[index].url())
+        self.page_access_bar.update_for(self.tabs[index].url())
         self.passkey_bar.tab_changed(self.tabs[index])
         if self.address_bar.extension_pins:
             self._refresh_extension_pins()  # Badges can differ per tab.
@@ -5645,6 +5692,7 @@ class BrowserWindow(QMainWindow):
             self._update_window_title(url)
         if tab == self.tabs[self.current_tab_index]:
             self.store_bar.update_for(url)
+            self.page_access_bar.update_for(url)
             self._update_history_buttons()
             # History can commit just after the address changes.
             QTimer.singleShot(0, self._update_history_buttons)
@@ -7711,7 +7759,16 @@ class BrowserWindow(QMainWindow):
         if len(tabs) < 2:
             self.status_bar.showMessage("Open a few web pages to organize.", 5000)
             return
-        self._present_dialog(OrganizeDialog(self, tabs), modal=False)
+        from ui.assistant_choice import ensure
+
+        # The helper is settled first (asked once if there are several).
+        ensure(
+            self,
+            lambda _command: (
+                not self._closing
+                and self._present_dialog(OrganizeDialog(self, tabs), modal=False)
+            ),
+        )
 
     def compare_tabs(self):
         """The text of the tabs you pick, in a message to your agent."""

@@ -47,6 +47,11 @@ def application():
         import services.updates as updates
 
         updates.PYPI = "http://127.0.0.1:9/{name}"
+        # Which coding agents are installed here never decides a test (and
+        # tests never start the person's own Claude Code or Codex).
+        import services.agent_once as agent_once
+
+        agent_once.installed_agents = lambda: []
         updates.PROJECT = Path("/nonexistent-steed-checkout")
         QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         _application = QApplication.instance() or QApplication(["steed-tests"])
