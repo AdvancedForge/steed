@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PyQt6.QtCore import QStandardPaths, Qt
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
@@ -44,12 +44,15 @@ def reveal_file(path):
     return bool(folder) and QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
 
-def choose_download_destination(suggested, parent=None):
-    """UI adapter; managers can instead receive a noninteractive destination."""
-    directory = QStandardPaths.writableLocation(
-        QStandardPaths.StandardLocation.DownloadLocation
-    )
-    directory = Path(directory) if directory else Path.home() / "Downloads"
+def choose_download_destination(suggested, parent=None, config=None):
+    """UI adapter; managers can instead receive a noninteractive destination.
+    Files go straight to Downloads (a free name) unless Settings → General →
+    "Ask where to save each download" is on."""
+    from browser import download_manager
+
+    if config is None or not config.get("ask_download_location", False):
+        return download_manager.free_path(download_manager.download_folder(), suggested)
+    directory = download_manager.download_folder()
     path, _ = QFileDialog.getSaveFileName(
         parent, "Save Download", str(directory / Path(suggested).name)
     )

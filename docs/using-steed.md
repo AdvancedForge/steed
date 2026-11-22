@@ -1718,10 +1718,11 @@ web. **Show Folder** selects the file in the
 file manager (the `org.freedesktop.FileManager1` desktop interface used by
 Nautilus, Nemo, Dolphin, Thunar and Caja) and otherwise opens its folder.
 
-The Save Download picker starts in your system's Downloads directory, using the
-suggested filename without any supplied directory components. If the desktop
-does not publish a Downloads location, Steed uses `~/Downloads`. You can choose
-another destination before saving.
+Downloads go straight to your system's Downloads directory (`~/Downloads` if
+the desktop does not publish one), using the suggested filename without any
+supplied directory components; a taken name gets a number (`manual (2).pdf`),
+so nothing is overwritten. Turn on Settings → General → **Ask where to save
+each download** to choose the place and name for each one instead.
 
 Search filenames, profiles or destination paths in the Downloads search field;
 matching ignores case and treats punctuation literally. Clear the search to show

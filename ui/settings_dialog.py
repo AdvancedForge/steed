@@ -36,6 +36,7 @@ DEFAULTS = {
     "save_before_closing": True,
     "search_suggestions": True,
     "address_autocomplete": True,
+    "ask_download_location": False,
     "tab_previews": True,
     "visual_effects": "full",
     "tab_card_fixed_width": True,

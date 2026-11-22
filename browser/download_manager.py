@@ -14,6 +14,30 @@ from browser.utils import load_json, save_json
 logger = logging.getLogger(__name__)
 
 
+def download_folder():
+    """The person's Downloads folder (created if missing)."""
+    from PyQt6.QtCore import QStandardPaths
+
+    found = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.DownloadLocation
+    )
+    folder = Path(found) if found else Path.home() / "Downloads"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def free_path(folder, name):
+    """name in folder, or "name (2).ext" and so on: never over a file."""
+    name = Path(name).name or "download"
+    candidate = Path(folder) / name
+    stem, suffix = Path(name).stem, Path(name).suffix
+    number = 2
+    while candidate.exists():
+        candidate = Path(folder) / f"{stem} ({number}){suffix}"
+        number += 1
+    return str(candidate)
+
+
 @dataclass
 class DownloadRecord:
     download_id: str
