@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from browser.access_levels import PAGE_CAPABILITIES
 from ui.html_dialog import HtmlSettingsDialog
 
 API = """fetch("/api/<name>") from your page, each allowed in Access → Local pages:
@@ -280,6 +281,7 @@ class YourPagesDialog(HtmlSettingsDialog):
             ("New page…", self.new),
             ("Open", self.open),
             ("Edit…", self.edit),
+            ("Take Back Access", self.take_back),
             ("Remove", self.remove),
         ):
             button = QPushButton(text)
@@ -301,7 +303,12 @@ class YourPagesDialog(HtmlSettingsDialog):
     def refresh(self):
         self.list.clear()
         for page in self._pages().your_pages(self._profile()):
-            item = QListWidgetItem(f"steed:{page['name']}  ·  {page['title']}")
+            text = f"steed:{page['name']}  ·  {page['title']}"
+            if page.get("allowed"):
+                text += "  ·  allowed: " + ", ".join(
+                    PAGE_CAPABILITIES[c]["label"].lower() for c in page["allowed"]
+                )
+            item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, page["name"])
             self.list.addItem(item)
         self._selection_changed()
@@ -337,6 +344,13 @@ class YourPagesDialog(HtmlSettingsDialog):
         editor.finished.connect(lambda _: self.refresh())
         self.window._present_dialog(editor, modal=False)
         return editor
+
+    def take_back(self):
+        """Everything this page was allowed; it asks again next time."""
+        page = self.selected()
+        if page is not None:
+            self._pages().disallow_page(self._profile(), page["name"])
+            self.refresh()
 
     def remove(self):
         page = self.selected()

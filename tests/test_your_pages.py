@@ -127,6 +127,61 @@ class YourPageTests(unittest.TestCase):
             "rgba(0, 0, 0, 0)",
         )
 
+    def test_a_page_asks_on_the_page_and_keeps_what_you_allow_it(self):
+        from services.packs import build
+        from ui.your_pages import DASHBOARD, YourPagesDialog
+
+        registry = self.window.profile_manager.registry
+        pages = registry.start_pages
+        profile = self.window.profile_manager.current_profile_name
+        pages.save_your_page(profile, "dash", "Dash", DASHBOARD)
+        tab = self.window._new_tab(url="steed:dash", return_tab=True)
+        bar = self.window.page_access_bar
+        self.wait(lambda: bar.isVisible())
+        self.assertIn("steed:dash wants to see your watches", bar.label.text())
+        bar.grant()
+        self.assertFalse(bar.isVisible())
+        self.assertEqual(pages.page_allowed(profile, "dash"), {"steed"})
+        self.wait(lambda: "Summarize this page" in self.js(tab, TEXT))
+        # Only this page: Access → Local pages is unchanged.
+        self.assertEqual(
+            access_levels.values(self.window.config, "pages")["steed"], "never"
+        )
+        # Editing keeps it; packs never carry it; a new page of that name starts over.
+        pages.save_your_page(profile, "dash", "Dash 2", DASHBOARD, replacing="dash")
+        self.assertEqual(pages.page_allowed(profile, "dash"), {"steed"})
+        pack = build(registry, profile, pages=["dash"])
+        self.assertNotIn("allowed", pack["pages"][0])
+        dialog = YourPagesDialog(self.window)
+        self.addCleanup(dialog.deleteLater)
+        self.assertIn("allowed: see your watches", dialog.list.item(0).text())
+        dialog.list.setCurrentRow(0)
+        dialog.take_back()
+        self.assertEqual(pages.page_allowed(profile, "dash"), set())
+        pages.allow_page(profile, "dash", "steed")
+        pages.remove_your_page(profile, "dash")
+        pages.save_your_page(profile, "dash", "Other", DASHBOARD)
+        self.assertEqual(pages.page_allowed(profile, "dash"), set())
+
+    def test_no_bar_when_you_chose_never_or_said_not_now(self):
+        from ui.your_pages import DASHBOARD
+
+        pages = self.window.profile_manager.registry.start_pages
+        profile = self.window.profile_manager.current_profile_name
+        pages.save_your_page(profile, "dash", "Dash", DASHBOARD)
+        bar = self.window.page_access_bar
+        tab = self.window._new_tab(url="steed:dash", return_tab=True)
+        self.wait(lambda: bar.isVisible())
+        bar.decline()
+        tab.reload()
+        self.wait(lambda: "allowed" in self.js(tab, TEXT))
+        self.assertFalse(bar.isVisible())  # Not again this session.
+        bar.declined.clear()
+        access_levels.set_policy(self.window.config, "pages", "steed", "never")
+        tab.reload()
+        self.wait(lambda: "allowed" in self.js(tab, TEXT))
+        self.assertFalse(bar.isVisible())  # You chose Never yourself.
+
 
 if __name__ == "__main__":
     unittest.main()

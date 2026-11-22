@@ -1408,6 +1408,10 @@ class BrowserWindow(QMainWindow):
         self.extension_installer = ExtensionInstaller(self)
         self.store_bar = StoreBar(self)
         layout.addWidget(self.store_bar)
+        from ui.page_access_bar import PageAccessBar
+
+        self.page_access_bar = PageAccessBar(self)
+        layout.addWidget(self.page_access_bar)
         from ui.passkey_prompt import PasskeyBar
 
         self.passkey_bar = PasskeyBar(self)
@@ -3952,6 +3956,7 @@ class BrowserWindow(QMainWindow):
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
         self.store_bar.update_for(self.tabs[index].url())
+        self.page_access_bar.update_for(self.tabs[index].url())
         self.passkey_bar.tab_changed(self.tabs[index])
         if self.address_bar.extension_pins:
             self._refresh_extension_pins()  # Badges can differ per tab.
@@ -5645,6 +5650,7 @@ class BrowserWindow(QMainWindow):
             self._update_window_title(url)
         if tab == self.tabs[self.current_tab_index]:
             self.store_bar.update_for(url)
+            self.page_access_bar.update_for(url)
             self._update_history_buttons()
             # History can commit just after the address changes.
             QTimer.singleShot(0, self._update_history_buttons)

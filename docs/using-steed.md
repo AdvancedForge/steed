@@ -452,7 +452,12 @@ Settings (New tab page: `steed:dashboard`). Names are lowercase letters,
 digits and dashes; Steed's own page names stay Steed's.
 
 A page's scripts reach Steed with `fetch("/api/…")`, each capability allowed in
-**Access & Permissions → Local pages** (never by default, ask, or always):
+**Access & Permissions → Local pages** (never by default, ask, or always). While a
+capability is still at its default, a page of yours that asks for it shows a
+bar above it: **Allow** gives that one page that capability (kept with the
+page, never in a pack), **Not now** leaves it for this session. Your Pages
+lists what each page may do; **Take Back Access** clears it. Once you set a
+capability in Access yourself, that setting is the answer:
 
 | Endpoint | What it gives or does | Capability |
 | --- | --- | --- |
