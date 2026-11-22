@@ -445,7 +445,7 @@ with the classic sections, a feed, a custom colour and your own HTML.
 **View → Your Pages…** (the `steed:pages` tab) makes pages of your own, opened like Steed's as
 `steed:<name>` in any tab: a dashboard of your watches and routines, a
 launcher for your skills, a board of links, a small tool. Start from a
-template (a dashboard, a skills launcher, a blank page), write the HTML and
+template (a dashboard, a skills launcher, a board of what changed on pages you watch, your bookmarks as tiles, or a blank page), write the HTML and
 JavaScript yourself, or describe it and press **Write it for me** to have your
 assistant draft it. Type its address to open it, or set it as your New Tab in
 Settings (New tab page: `steed:dashboard`). Names are lowercase letters,
@@ -1444,7 +1444,12 @@ writing `{last}`:
 | Wait | 1 to 60 minutes before the next step |
 
 For example: every morning, read the bank's rates page, go on only if it
-changed, ask your assistant for the change in one line, notify me. **Write it
+changed, ask your assistant for the change in one line, notify me. **Examples…**
+starts from a ready one: a morning brief, a price check, summarizing the page
+you right-click into your files, a weekday reading digest, a download
+notification, or a reminder when you open a site. It opens in the editor to
+change (an address, the days) before you save. A daily schedule runs every
+day, on weekdays, on weekends, or on the days it was given. **Write it
 for me** turns a description into an automation for you to check step by step
 before saving. Runs happen one at a time; Automations shows when each last ran
 and how it ended. **History…** shows its last 20 runs, newest first:

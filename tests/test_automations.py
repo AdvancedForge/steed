@@ -532,6 +532,38 @@ class RunTests(unittest.TestCase):
         service.remove(item["id"])
         self.assertNotIn(item["id"], service.runs)
 
+    def test_examples_open_in_the_editor_and_keep_their_days(self):
+        from services.automations import starters
+        from ui.automations_dialog import AutomationsDialog
+
+        self.assertGreaterEqual(len(starters()), 5)
+        for title, what, automation, hint in starters():
+            check(automation)  # Every example is a valid automation.
+            self.assertTrue(what and hint, title)
+        service = self.automations()
+        dialog = AutomationsDialog(self.window)
+        self.addCleanup(dialog.deleteLater)
+        examples = dialog.examples()
+        self.assertEqual(examples.list.count(), len(starters()))
+        examples.list.setCurrentRow(0)
+        editor = examples.use()
+        self.assertEqual(editor.name.text(), "Morning brief")
+        self.assertIn("calendar", editor.status.text())
+        self.assertEqual(editor.days.currentText(), "Weekdays")
+        editor.save()
+        (saved,) = service.list()
+        self.assertEqual(saved["trigger"]["days"], [0, 1, 2, 3, 4])  # Not every day.
+        # An unusual set of days is kept, and can be changed.
+        from ui.automations_dialog import AutomationEditor
+
+        editor = AutomationEditor(
+            self.window, dict(saved, trigger=dict(saved["trigger"], days=[1, 3]))
+        )
+        self.addCleanup(editor.deleteLater)
+        self.assertEqual(editor.days.currentText(), "Tue, Thu")
+        editor.days.setCurrentIndex(editor.days.findText("Weekends"))
+        self.assertEqual(editor.values()["trigger"]["days"], [5, 6])
+
 
 if __name__ == "__main__":
     unittest.main()

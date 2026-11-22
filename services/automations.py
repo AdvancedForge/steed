@@ -853,6 +853,111 @@ class Automations(QObject):
         self.running = None
 
 
+def starters():
+    """Ready-made automations to start from: (title, what it does, the
+    automation, what to change before saving). Each opens in the editor; none
+    is saved until you press Save."""
+    from services.routines import BRIEF_ASK
+
+    weekdays = [0, 1, 2, 3, 4]
+    return [
+        (
+            "Morning brief",
+            "Weekday mornings: what changed on pages you watch, then a short "
+            "brief from your agent.",
+            {
+                "name": "Morning brief",
+                "trigger": {"kind": "schedule", "at": "08:00", "days": weekdays},
+                "steps": [{"do": "noticed"}, {"do": "chat", "value": BRIEF_ASK}],
+            },
+            "Add a step that reads your calendar and inbox (Read a page) before "
+            "the chat, then Save.",
+        ),
+        (
+            "Tell me when a price changes",
+            "Every few hours, read a product page and notify you in one line "
+            "when its price or stock changes.",
+            {
+                "name": "Price check",
+                "trigger": {"kind": "schedule", "every": 4},
+                "steps": [
+                    {"do": "read", "value": "https://shop.example/product"},
+                    {"do": "changed"},
+                    {
+                        "do": "ask",
+                        "value": "In one line: what is the price and is it in "
+                        "stock? {last}",
+                    },
+                    {"do": "notify", "value": "{last}"},
+                ],
+            },
+            "Replace the first step's address with the product page, then Save.",
+        ),
+        (
+            "Summarize the page I right-click",
+            "Right-click any page → Run Automation on This Page: a five-bullet "
+            "summary, saved to your files.",
+            {
+                "name": "Summarize this page",
+                "trigger": {"kind": "page"},
+                "steps": [
+                    {
+                        "do": "ask",
+                        "value": "Summarize this page in five short bullets: {last}",
+                    },
+                    {"do": "save", "value": "summary {date} {time}.md"},
+                    {"do": "notify", "value": "Saved a summary to Automations."},
+                ],
+            },
+            "Save, then right-click a page and choose Run Automation on This Page.",
+        ),
+        (
+            "Weekday reading digest",
+            "Weekday evenings: read your news sites and save the five stories "
+            "that matter, one line each.",
+            {
+                "name": "Reading digest",
+                "trigger": {"kind": "schedule", "at": "17:30", "days": weekdays},
+                "steps": [
+                    {"do": "gather", "value": ["https://news.example/"]},
+                    {
+                        "do": "ask",
+                        "value": "Pick the five most important stories, one line "
+                        "each with its link.",
+                    },
+                    {"do": "save", "value": "digest {date}.md"},
+                    {"do": "notify", "value": "Your reading digest is in Automations."},
+                ],
+            },
+            "Put your own news sites in the first step, then Save.",
+        ),
+        (
+            "Tell me when a download finishes",
+            "A notification with the file's name whenever a download (or only "
+            "PDFs) finishes.",
+            {
+                "name": "Download finished",
+                "trigger": {"kind": "download", "match": ".pdf"},
+                "steps": [{"do": "notify", "value": "Downloaded {last}"}],
+            },
+            "Clear “.pdf” to be told about every download, then Save.",
+        ),
+        (
+            "Remind me on a site",
+            "When you open a site, a reminder (for example, what to check on "
+            "your bank's site).",
+            {
+                "name": "Bank reminder",
+                "trigger": {"kind": "visit", "site": "bank.example"},
+                "steps": [
+                    {"do": "notify", "value": "Check the statement and due dates."}
+                ],
+            },
+            "Set the site and what to remind you of, then Save.",
+        ),
+    ]
+
+
 def from_routine(routine):
     """The automation a routine is: when it runs, what it reads (with its
     saved steps and sign-in), what Steed noticed, then your agent or a note."""
