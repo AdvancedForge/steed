@@ -58,7 +58,7 @@ class SitePermissionDialog(HtmlSettingsDialog):
                 if mode == "once"
                 else "This private session only; forgotten when Steed closes."
                 if private
-                else "This site and capability on every regular profile. Private browsing is excluded."
+                else "This site and capability on every regular profile. Incognito is excluded."
                 if mode == "global"
                 else f"This site and capability on profile {profile} only."
             )

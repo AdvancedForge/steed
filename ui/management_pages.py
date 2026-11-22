@@ -38,6 +38,24 @@ PAGES = {
     "packs": "Packs",
 }
 
+# Steed's other own pages, by the names people see.
+TITLES = {
+    "settings": "Settings",
+    "agents": "Agents",
+    "style": "Style",
+    "memory": "Memory & performance",
+    "features": "Engine & features",
+    "userscripts": "User scripts",
+    "access": "Access & permissions",
+    "apps": "Panel apps",
+}
+
+
+def page_title(name):
+    """The name of one of Steed's own pages, as its tab shows it."""
+    return PAGES.get(name) or TITLES.get(name) or name.replace("-", " ").capitalize()
+
+
 SHARED_PAGES = frozenset(
     (
         "downloads",

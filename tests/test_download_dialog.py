@@ -176,3 +176,50 @@ class DownloadDialogTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DownloadButtonsTests(unittest.TestCase):
+    setUpClass = classmethod(DownloadDialogTests.setUpClass.__func__)
+    setUp = DownloadDialogTests.setUp
+    tearDown = DownloadDialogTests.tearDown
+    select = DownloadDialogTests.select
+
+    def shown(self):
+        return {
+            action
+            for action, button in self.dialog.action_buttons.items()
+            if not button.isHidden()
+        }
+
+    def test_each_download_shows_only_what_it_can_do(self):
+        records = self.manager.records
+        records["notes"].state = "DownloadInProgress"
+        self.dialog.refresh()
+        self.select("notes")
+        self.assertEqual(self.shown(), {"pause", "cancel", "copy_path"})
+        records["notes"].paused = True
+        self.dialog.refresh()
+        self.assertEqual(self.shown(), {"resume", "cancel", "copy_path"})
+        records["notes"].paused = False
+        records["notes"].state = "DownloadCompleted"
+        records["notes"].received = records["notes"].total = 45
+        self.dialog.refresh()
+        self.assertEqual(self.shown(), {"open", "reveal", "copy_path"})
+        row = next(
+            r
+            for r in range(self.dialog.table.rowCount())
+            if self.dialog.table.item(r, 0).text().startswith("Notes.txt")
+        )
+        self.assertEqual(self.dialog.table.item(row, 0).text(), "Notes.txt / Global")
+        self.assertEqual(self.dialog.table.item(row, 1).text(), "45 bytes")
+        records["notes"].state = "DownloadInterrupted"
+        self.dialog.refresh()
+        self.assertEqual(self.shown(), {"retry", "copy_path"})
+
+    def test_sizes_read_like_sizes(self):
+        from ui.download_dialog import size
+
+        self.assertEqual(
+            [size(n) for n in (1, 45, 2048, 5 * 1024 * 1024 + 300_000, 3 << 30)],
+            ["1 byte", "45 bytes", "2.0 KB", "5.3 MB", "3.0 GB"],
+        )

@@ -43,6 +43,13 @@ def application():
         safety.BASE = "http://127.0.0.1:9/"
         safety.LISTS = {kind: safety.BASE + kind for kind in safety.LISTS}
         download_manager.confirm_program = lambda name, parent: True
+        # Downloads saved without asking go to a folder of the test run, never
+        # the person's own Downloads.
+        import tempfile
+
+        _downloads = Path(tempfile.mkdtemp(prefix="steed-test-downloads-"))
+        _directories.append(_TemporaryFolder(_downloads))
+        download_manager.download_folder = lambda: _downloads
         # Nor ask GitHub or PyPI about updates.
         import services.updates as updates
 
@@ -60,6 +67,18 @@ def application():
         apply_ui_font(_application)
         _application.setQuitOnLastWindowClosed(False)
     return _application
+
+
+class _TemporaryFolder:
+    """A folder made with mkdtemp, removed with the others at exit."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def cleanup(self):
+        import shutil
+
+        shutil.rmtree(self.path, ignore_errors=True)
 
 
 def keep_directory(directory):

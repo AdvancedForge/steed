@@ -1457,6 +1457,8 @@ body.scrim .wordmark { text-shadow: 0 2px 24px #0006; }
 .search:focus-within { border-color: var(--accent); }
 .search input { flex: 1; min-width: 0; font: inherit; font-size: 17px; color: var(--ink); background: transparent; border: 0; outline: none; }
 .credit, .note { position: fixed; left: 16px; bottom: 12px; font-size: 12px; color: inherit; opacity: .8; text-decoration: none; }
+/* Incognito's note sits on the right, clear of a photo's credit on the left. */
+.note { left: auto; right: 16px; }
 .credit:hover { opacity: 1; text-decoration: underline; }
 .browser-menu { position: relative; font-size: 14px; }
 .browser-menu > summary { list-style: none; cursor: pointer; font-size: 0; display: grid; place-items: center;

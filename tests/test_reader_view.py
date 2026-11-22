@@ -54,7 +54,16 @@ IMAGES = {}
 
 class Pages(BaseHTTPRequestHandler):
     def do_GET(self):
-        body = SHORT if self.path == "/short" else IMAGES.get(self.path, ARTICLE)
+        body = (
+            SHORT
+            if self.path == "/short"
+            # The page's title and its article's headline are the same words.
+            else ARTICLE.replace(
+                b"<title>Story</title>", b"<title>The headline</title>"
+            )
+            if self.path == "/same-title"
+            else IMAGES.get(self.path, ARTICLE)
+        )
         self.send_response(200)
         self.send_header(
             "Content-Type", "image/png" if self.path in IMAGES else "text/html"
@@ -195,6 +204,12 @@ class ReaderTests(unittest.TestCase):
         self.assertTrue(all(s == "" or s.startswith("data:image/") for s in sources))
         self.assertNotEqual(tab.title(), "pwned")
         self.assertEqual(self.js(page, "document.querySelectorAll('ul li').length"), 2)
+
+    def test_a_headline_that_repeats_the_title_shows_once(self):
+        tab = self.open("/same-title")
+        panel = self.reader(tab)
+        text = self.js(panel.surface.page, "document.body.innerText")
+        self.assertEqual(text.count("The headline"), 1)
 
     def test_images_are_fetched_checked_and_can_be_hidden(self):
         tab = self.open()

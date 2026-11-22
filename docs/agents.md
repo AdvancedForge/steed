@@ -195,7 +195,9 @@ For an isolated, interactive website, a minimal screenshot-control request is:
 }
 ```
 
-Send this to `steed_grant_request`, then poll `steed_grant_list`. `computer`
+Send this to `steed_grant_request`. The call waits up to 50 seconds for the
+person's decision and returns it; if they haven't decided yet, it says so and
+the agent keeps checking `steed_grant_list` instead of ending its turn. `computer`
 includes its required `read`, `visual`, `live`, `navigate`, `inspect` and `attach`
 permissions in the same visible review. Open `steed_session_open` with
 `profile="private"`, navigate and wait for readiness, then use
@@ -206,7 +208,15 @@ storage, with normal website JavaScript/background traffic in live mode. They do
 not access the user's incognito tabs. In Watch, Take control pauses the agent and
 allows direct interaction with a private live page; Return control resumes it.
 
-To take over the user's current tab, call `steed_browser_request_control` with a
+To read the page the person has open ("what is this about?"), call
+`steed_browser_read_tab` with a stable `request_id`. One popup names the page and
+says the agent gets its text once and can't click, type, navigate or see other
+tabs; **Read and browse pages** in Access & Permissions decides (Never refuses,
+Always answers at once for public websites, Ask shows the popup). The call waits
+for the answer and returns the title, address and text, or check
+`steed_browser_read_tab_status`. No grant or tab control is created.
+
+To act in the user's current tab, call `steed_browser_request_control` with a
 stable `request_id` and `selection="current_tab"` (or `profile_tabs`, up to ten
 website tabs). One popup shows the task, profile, selected tabs and sites. Poll
 `steed_browser_control_status`, then use `steed_browser_tabs` and
@@ -563,11 +573,13 @@ Checked with Claude Code 2.1.312 and a synthetic offline runtime; Codex resuming
 - **Right-click a page** → **Ask Agent About Selection** (with text selected),
   **Ask Agent About Link** (on a link) or **Ask Agent About This Page**. The
   sidebar opens on your current conversation (or any connected one, or starts
-  a new chat) with a draft: the selection quoted, the page's title and address,
-  and room for your question. Nothing is sent until you press Send.
+  a new chat) with a draft: the selection quoted, or the page's title and
+  address, and room for your question. Asking about the page itself sends its
+  text with your message (the draft says so), so the agent can answer without
+  asking for the tab. Nothing is sent until you press Send.
 - **Type `@` in the address bar**, then a question (`@ summarize this`), and
-  press Enter: it goes straight to your agent with the page's title and address
-  (not its contents; the agent asks for page access as usual).
+  press Enter: it goes straight to your agent with the page's title, address
+  and up to 5,000 characters of its text.
 - **Desktop notifications**: when an agent finishes a reply or needs your
   approval while Steed is not in front (or that conversation is not showing),
   a notification says so; clicking it brings the conversation up. Turn them off
@@ -961,10 +973,11 @@ tab restoration can reopen this local HTML interface. Its address is
 and disables the Steed conversation.
 
 For website subscriptions, choose **Agents → Website Chats → ChatGPT / Claude /
-Gemini**. These open `chatgpt.com`, `claude.ai` and `gemini.google.com` in normal
-tabs using the current profile's ordinary cookies and sign-in. Open another
-HTTPS chat website normally to use it too. Choose **Current tab in chat sidebar**
-to move that exact page beside your browsing. **Back to tab**, or selecting its
+Gemini**. These open `chatgpt.com`, `claude.ai` and `gemini.google.com` in the
+chat sidebar beside your browsing (and your agent chat), using the current
+profile's ordinary cookies and sign-in. To use another HTTPS chat website, open
+it normally and choose **Current tab in chat sidebar** to move that exact page
+beside your browsing. **Back to tab**, or selecting its
 existing tab, returns it without reloading or copying its conversation. Changing
 profiles closes the old profile's chat view. Its address, profile/loading status,
 **Share instructions…** and **Back to tab** controls now use themed, offline HTML.

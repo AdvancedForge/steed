@@ -720,6 +720,8 @@ class BrowserTests(unittest.TestCase):
     def test_real_download_completes_and_empty_save_cancels(self):
         destination = Path(self.directory.name) / "fixture.bin"
         page = self.window.tabs[0].page()
+        # Asking where to save is a setting (off: straight to Downloads).
+        self.window.config.set("ask_download_location", True)
         with patch.object(
             QFileDialog, "getSaveFileName", return_value=(str(destination), "")
         ):
@@ -868,6 +870,55 @@ class BrowserTests(unittest.TestCase):
             self.assertEqual(second.profile_manager.current_profile_name, "work")
         finally:
             second.close()
+
+    def test_incognito_is_one_item_in_and_the_same_item_out(self):
+        window = self.window
+        window.profile_manager.create_profile("work")
+        window._switch_to_profile("work")
+        profile_menu = window._layout_menus["profile"]
+        profile_menu.aboutToShow.emit()
+        self.assertEqual(window.incognito_action.text(), "Switch to Incognito")
+        window.incognito_action.trigger()
+        self.assertEqual(window.profile_manager.current_profile_name, "search")
+        self.assertEqual(window.windowTitle().split(" - ")[:2], ["Steed", "Incognito"])
+        profile_menu.aboutToShow.emit()
+        self.assertEqual(window.incognito_action.text(), "Leave Incognito")
+        window.incognito_action.trigger()  # Back where you were.
+        self.assertEqual(window.profile_manager.current_profile_name, "work")
+        window._switch_to_profile("default")
+
+    def test_a_shortcut_set_on_an_old_name_carries_over(self):
+        from browser import shortcuts
+
+        self.window.config.set(
+            "shortcuts", {"Switch to Search Profile (Incognito)": "Ctrl+Alt+I"}
+        )
+        self.assertEqual(
+            shortcuts.overrides(self.window.config),
+            {"Switch to Incognito": "Ctrl+Alt+I"},
+        )
+
+    def test_empty_menu_lines_are_not_commands_and_split_view_has_a_menu_item(self):
+        from browser import shortcuts
+
+        window = self.window
+        window._fill_automations_menu()
+        names = [name for name, _ in shortcuts.commands(window)]
+        self.assertNotIn("No automations yet", names)
+        self.assertIn("Restore Closed Tab", names)  # Disabled, but a command.
+        view = window._layout_menus["view"]
+        view.aboutToShow.emit()
+        shown = [a.text() for a in view.actions() if a.isVisible()]
+        self.assertIn("Split View with Next Tab", shown)
+        self.assertNotIn("Close Split View", shown)
+        window._new_tab(url=self.local_page)
+        window.split_with_next()
+        self.assertIsNotNone(window.split_tab)
+        view.aboutToShow.emit()
+        shown = [a.text() for a in view.actions() if a.isVisible()]
+        self.assertIn("Close Split View", shown)
+        self.assertNotIn("Split View with Next Tab", shown)
+        window.close_split_view()
 
     def test_tabs_and_profile_switching(self):
         self.window._new_tab(self.local_page, "Codec")
@@ -1348,12 +1399,12 @@ class BrowserTests(unittest.TestCase):
         active, background = self.window.tabs[1], self.window.tabs[0]
         self.window._on_tab_url_changed(active, QUrl("https://login.example.org/"))
         self.assertEqual(
-            self.window.windowTitle(), "Custom Browser - default - login.example.org"
+            self.window.windowTitle(), "Steed - default - login.example.org"
         )
         self.window._on_tab_title_changed(active, "bank.example.com")
         self.window._on_tab_url_changed(background, QUrl("https://bank.example.com/"))
         self.assertEqual(
-            self.window.windowTitle(), "Custom Browser - default - login.example.org"
+            self.window.windowTitle(), "Steed - default - login.example.org"
         )
         self.window._switch_tab(0)
         self.assertNotIn("login.example.org", self.window.windowTitle())

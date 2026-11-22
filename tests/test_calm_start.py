@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QUrl
+from PyQt6.QtWidgets import QLabel
 from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser.browser_window import BrowserWindow
@@ -161,6 +162,29 @@ class TipTests(unittest.TestCase):
             "global", "welcome"
         ).decode()
         self.assertNotIn('<span class="profile">Global', page)
+
+    def test_tips_fade_in_whole_say_where_and_sit_clear(self):
+        from ui import tips
+
+        window = self.window
+        window._new_tab(url="about:blank")  # Not over the Welcome tour.
+        bubble = tips.offer(window, "customize", text=tips.CUSTOMIZE_GEAR)
+        self.assertIn("gear", bubble.findChild(QLabel).text())
+        # Words and bubble fade together (no words without their bubble).
+        self.assertIsNotNone(bubble.graphicsEffect())
+        self.assertLess(bubble.graphicsEffect().opacity(), 1.0)
+        # Opening Customize is finding it: the tip goes.
+        tab = window._new_tab(url="steed:newtab", return_tab=True)
+        self.wait(lambda: tab.url().host() == "newtab")
+        window._start_page_action(tab, QUrl("steed://action/newtab-set?glass=1"))
+        self.wait(lambda: window._tip is None)
+        # Beside a tall panel, near its top rather than over its bottom.
+        window._toggle_agent_sidebar(True)
+        sidebar = window.agent_sidebar
+        self.wait(lambda: sidebar.isVisible())
+        bubble = tips.offer(window, "agent", sidebar)
+        top = sidebar.mapTo(window, sidebar.rect().topLeft()).y()
+        self.assertLess(bubble.y(), top + sidebar.height() // 2)
 
     def test_welcome_choices_and_links_work_on_every_step(self):
         from PyQt6.QtCore import QUrl

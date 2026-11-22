@@ -528,7 +528,8 @@ help you pick up where you left off. Nothing is kept; run it whenever you like.
 
 ### Split view and sites in a profile
 
-**Show Beside Current Tab** (tab menu) puts a tab beside the current one;
+**View → Split View with Next Tab**, or **Show Beside Current Tab** in a tab's
+right-click menu, puts a tab beside the current one;
 clicking into either side makes it the current tab, and **View → Close Split
 View** (or closing either tab) ends it. The tab beside stays running whatever
 the memory mode. The site menu's **Always Open in Profile** sends a site (and
@@ -1273,7 +1274,7 @@ to remove them; your KeePassXC database is never touched.
 Desktop password managers' auto-type (for example
 [KeePassXC Auto-Type](https://keepassxc.org/docs/KeePassXC_UserGuide#_auto_type))
 also works: window titles include the active hostname,
-so a window association such as `Custom Browser - * - accounts.google.com`
+so a window association such as `Steed - * - accounts.google.com`
 can match the site. The official Bitwarden extension (2026.10.2, checked
 November 12, 2026) installs from the Chrome Web Store and runs; see
 Extensions for the one engine limit it hit (closing while its background was
@@ -1615,9 +1616,9 @@ agents must be released first. To rename/archive the saved startup profile,
 choose another startup profile and save first. These actions happen immediately;
 **Cancel** in settings only discards unsaved preferences, not profile actions.
 
-### Search Profile (Incognito)
+### Incognito
 
-The search profile is a special profile that:
+Incognito is a special profile that:
 
 - Doesn't save cookies
 - Doesn't save browsing history
@@ -1629,7 +1630,10 @@ The search profile is a special profile that:
   still running in incognito delay this until they finish. Sites can still
   recognize you by your network address.
 
-Access it via **Profile → Pop Out Search Profile (Incognito)** or `Ctrl+Shift+N`.
+Open it with **Profile → New Incognito Window** (`Ctrl+Shift+N`), or turn this
+window incognito with **Profile → Switch to Incognito** (`Ctrl+Shift+0`). In
+incognito the same item reads **Leave Incognito** and takes the window back to
+the profile it was using.
 
 **Profile → Quick Switch** lists existing profiles immediately at startup.
 The numbered shortcuts work before the menu is opened. Ordinary profiles are
@@ -1718,10 +1722,11 @@ web. **Show Folder** selects the file in the
 file manager (the `org.freedesktop.FileManager1` desktop interface used by
 Nautilus, Nemo, Dolphin, Thunar and Caja) and otherwise opens its folder.
 
-The Save Download picker starts in your system's Downloads directory, using the
-suggested filename without any supplied directory components. If the desktop
-does not publish a Downloads location, Steed uses `~/Downloads`. You can choose
-another destination before saving.
+Downloads go straight to your system's Downloads directory (`~/Downloads` if
+the desktop does not publish one), using the suggested filename without any
+supplied directory components; a taken name gets a number (`manual (2).pdf`),
+so nothing is overwritten. Turn on Settings → General → **Ask where to save
+each download** to choose the place and name for each one instead.
 
 Search filenames, profiles or destination paths in the Downloads search field;
 matching ignores case and treats punctuation literally. Clear the search to show

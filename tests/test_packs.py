@@ -204,6 +204,11 @@ class PackTests(unittest.TestCase):
             self.assertEqual(
                 self.window.address_bar.address_input.text(), "steed:" + name
             )
+        # Steed's own tabs go by their names (palette, screenshots), not about:blank.
+        from ui.management_pages import page_title
+
+        self.assertEqual(opened.title(), page_title(name))
+        self.assertEqual(page_title("userscripts"), "User scripts")
 
 
 if __name__ == "__main__":

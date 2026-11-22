@@ -82,7 +82,11 @@ class ProfileRegistry(QObject):
         self.task_profiles = {}
         self.navigation = NavigationService(self)
         self.downloads = DownloadManager(
-            config, self, destination_picker=choose_download_destination
+            config,
+            self,
+            destination_picker=lambda suggested, parent=None: (
+                choose_download_destination(suggested, parent, config)
+            ),
         )
         from services.safe_browsing import SafeBrowsing
 

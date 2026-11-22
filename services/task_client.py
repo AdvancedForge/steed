@@ -24,6 +24,8 @@ CLIENT_COMMANDS = frozenset(
         "routine.status",
         "reading.search",
         "reading.status",
+        "browser.read_tab",
+        "browser.read_tab_status",
         "settings.capabilities",
         "settings.propose",
         "creation.capabilities",

@@ -404,6 +404,10 @@ class TaskApprovalQueue(QObject):
                     )
                     pending.extend(
                         (task, request)
+                        for request in self.service.tab_reading.pending(task.task_id)
+                    )
+                    pending.extend(
+                        (task, request)
                         for request in self.service.signin.pending(task.task_id)
                     )
                     pending.extend(
@@ -455,6 +459,7 @@ class TaskApprovalQueue(QObject):
             from services.routine_proposals import RoutineProposal
             from services.settings_proposals import SettingsProposal
             from services.start_page_proposals import PageProposal
+            from services.tab_reading import TabReadRequest
             from services.vault_signin import SigninRequest
             from services.watch_proposals import WatchProposal
             from services.worker_store import WorkerReceipt
@@ -470,6 +475,7 @@ class TaskApprovalQueue(QObject):
             from ui.settings_review import SettingsReviewDialog
             from ui.signin_review import SigninReviewDialog
             from ui.start_page_review import StartPageReviewDialog
+            from ui.tab_read_review import TabReadReviewDialog
             from ui.watch_review import WatchReviewDialog
             from ui.worker_approval import WorkerApprovalDialog
 
@@ -484,6 +490,7 @@ class TaskApprovalQueue(QObject):
                         WatchProposal,
                         RoutineProposal,
                         ReadingRequest,
+                        TabReadRequest,
                         SigninRequest,
                         SettingsProposal,
                         CreationProposal,
@@ -512,6 +519,8 @@ class TaskApprovalQueue(QObject):
                     if isinstance(grant, RoutineProposal)
                     else ReadingReviewDialog(self.service, grant, parent)
                     if isinstance(grant, ReadingRequest)
+                    else TabReadReviewDialog(self.service, grant, parent)
+                    if isinstance(grant, TabReadRequest)
                     else SigninReviewDialog(self.service, grant, parent)
                     if isinstance(grant, SigninRequest)
                     else SettingsReviewDialog(self.service, grant, parent)
@@ -581,6 +590,7 @@ class TaskApprovalQueue(QObject):
                         WatchProposal,
                         RoutineProposal,
                         ReadingRequest,
+                        TabReadRequest,
                         SigninRequest,
                         SettingsProposal,
                         CreationProposal,
@@ -619,6 +629,7 @@ class TaskApprovalQueue(QObject):
         from services.routine_proposals import RoutineProposal
         from services.settings_proposals import SettingsProposal
         from services.start_page_proposals import PageProposal
+        from services.tab_reading import TabReadRequest
         from services.vault_signin import SigninRequest
         from services.watch_proposals import WatchProposal
         from services.worker_store import WorkerReceipt
@@ -639,6 +650,7 @@ class TaskApprovalQueue(QObject):
                     WatchProposal,
                     RoutineProposal,
                     ReadingRequest,
+                    TabReadRequest,
                     SigninRequest,
                     SettingsProposal,
                     CreationProposal,

@@ -170,7 +170,7 @@ class SitePermissionTests(unittest.TestCase):
         self.assertEqual(dialog.remember.currentData(), "once")
         dialog.remember.setCurrentIndex(1)
         self.assertIn("every regular profile", dialog.notice.text())
-        self.assertIn("Private browsing is excluded", dialog.notice.text())
+        self.assertIn("Incognito is excluded", dialog.notice.text())
         dialog.remember.setCurrentIndex(2)
         self.assertIn("profile work only", dialog.notice.text())
         self.assertIn("do not authorize agents", dialog.notice.text())

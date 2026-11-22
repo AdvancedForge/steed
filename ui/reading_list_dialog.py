@@ -57,9 +57,17 @@ class ReadingListDialog(HtmlSettingsDialog):
         self.entries = self.store().entries()
         self.list.clear()
         for entry in self.entries:
-            mark = "✓ " if entry["read"] else "• "
-            offline = "" if entry["article"] is None else "  (offline)"
-            item = QListWidgetItem(mark + entry["title"] + offline)
+            notes = [
+                note
+                for note, on in (
+                    ("read", entry["read"]),
+                    ("saved for offline", entry["article"] is not None),
+                )
+                if on
+            ]
+            item = QListWidgetItem(
+                entry["title"] + (f"  ({', '.join(notes)})" if notes else "")
+            )
             item.setToolTip(entry["url"])
             self.list.addItem(item)
         if not self.entries:

@@ -354,3 +354,36 @@ class PrivateDownloadTests(unittest.TestCase):
             [r.url for r in again.records.values()],
             ["https://public.example/notes.pdf"],
         )
+
+
+class SaveWithoutAskingTests(unittest.TestCase):
+    def test_downloads_go_to_the_folder_unless_you_ask_to_choose(self):
+        import tempfile
+        from unittest.mock import patch as patched
+
+        from browser import download_manager
+        from ui.download_dialog import choose_download_destination
+
+        class Config(dict):
+            pass
+
+        with tempfile.TemporaryDirectory() as folder:
+            with patched.object(
+                download_manager, "download_folder", lambda: Path(folder)
+            ):
+                first = choose_download_destination("manual.pdf", None, Config())
+                self.assertEqual(first, str(Path(folder) / "manual.pdf"))
+                Path(first).write_bytes(b"x")
+                self.assertEqual(
+                    choose_download_destination("manual.pdf", None, Config()),
+                    str(Path(folder) / "manual (2).pdf"),
+                )
+                with patched(
+                    "ui.download_dialog.QFileDialog.getSaveFileName",
+                    return_value=("/chosen/manual.pdf", ""),
+                ) as asked:
+                    chosen = choose_download_destination(
+                        "manual.pdf", None, Config(ask_download_location=True)
+                    )
+                asked.assert_called_once()
+                self.assertEqual(chosen, "/chosen/manual.pdf")

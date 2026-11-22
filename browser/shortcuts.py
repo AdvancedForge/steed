@@ -23,6 +23,8 @@ def commands(window):
             if action.menu() is not None:
                 walk(action.menu())
                 continue
+            if action.property("placeholder"):
+                continue  # "No automations yet" and the like: not a command.
             name = label(action)
             if name and name not in seen:
                 seen.add(name)
@@ -46,13 +48,24 @@ def _defaults(action):
     return list(action.property("steed_default_shortcuts") or [])
 
 
+# Commands that were renamed: a shortcut you set keeps working.
+RENAMED = {
+    "Pop Out Search Profile (Incognito)": "New Incognito Window",
+    "Switch to Search Profile (Incognito)": "Switch to Incognito",
+}
+
+
 def overrides(config):
     raw = config.get("shortcuts", {})
-    return (
+    found = (
         {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
         if isinstance(raw, dict)
         else {}
     )
+    for old, new in RENAMED.items():
+        if old in found and new not in found:
+            found[new] = found.pop(old)
+    return found
 
 
 def apply(window):

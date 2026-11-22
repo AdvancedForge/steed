@@ -119,6 +119,20 @@ class WebChatTests(unittest.TestCase):
             self.value(view, "document.querySelector('textarea').value"), "Draft"
         )
 
+    def test_the_website_chats_menu_opens_them_in_the_chat_sidebar(self):
+        from unittest.mock import patch as patched
+
+        from services.website_chats import WEB_CHATS
+
+        window = self.window()
+        agents = window._layout_menus["agents"]
+        chats = next(a.menu() for a in agents.actions() if a.text() == "Website Chats")
+        label, url = next(iter(WEB_CHATS.items()))
+        action = next(a for a in chats.actions() if a.text() == label)
+        with patched.object(type(window), "_open_website_assistant") as opened:
+            action.trigger()
+        opened.assert_called_once_with(url)
+
     def test_closing_docked_current_index_and_switching_profile_releases_view(self):
         window = self.window()
         view = self.chat(window)

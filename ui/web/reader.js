@@ -9,8 +9,14 @@ function render(article) {
   $('title').textContent = article.title;
   $('meta').textContent = [article.byline, article.minutes + ' min read'].filter(Boolean).join(' · ');
   const body = $('body'); body.replaceChildren();
-  let list = null;
+  let list = null, titled = false;
+  const plain = text => String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
   for (const [index, block] of article.blocks.entries()) {
+    // The article's own first heading repeats the title shown above it.
+    if (!titled && /^h[1-3]$/.test(block.type) && plain(block.text) === plain(article.title)) {
+      titled = true;
+      continue;
+    }
     if (block.type !== 'li') list = null;
     let node;
     if (block.type === 'img') {

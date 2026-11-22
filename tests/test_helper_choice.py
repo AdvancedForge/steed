@@ -68,3 +68,23 @@ class HelperChoiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HelperJobsLeaveNoTraceTests(unittest.TestCase):
+    def test_codex_runs_ephemeral_in_its_own_empty_folder(self):
+        from unittest.mock import patch as patched
+
+        with patched.object(agent_once, "codex_ephemeral", lambda: True):
+            self.assertEqual(
+                agent_once.without_saving(agent_once.agent_commands()["codex"]),
+                ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "-"],
+            )
+        with patched.object(agent_once, "codex_ephemeral", lambda: False):
+            self.assertNotIn(
+                "--ephemeral",
+                agent_once.without_saving(agent_once.agent_commands()["codex"]),
+            )
+        self.assertIn("--no-session-persistence", agent_once.agent_commands()["claude"])
+        folder = agent_once.helper_folder()
+        self.assertTrue(folder.startswith(__import__("tempfile").gettempdir()))
+        self.assertEqual(__import__("os").stat(folder).st_mode & 0o777, 0o700)

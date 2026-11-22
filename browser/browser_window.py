@@ -80,6 +80,7 @@ logger = logging.getLogger(__name__)
 # How often a profile's open windows are recorded (only when they changed).
 SESSION_SNAPSHOT_MS = 10 * 60 * 1000
 DICTATION_TIP_AFTER = 25  # web pages loaded before the dictation tip
+PAGE_TEXT_SHARED = 5000  # characters of a page sent with an @ question
 
 
 # Enough to merge a redirect chain or a SPA's boot sequence into one write.
@@ -263,6 +264,15 @@ class BrowserPage(webengine.Page):
         return True
 
 
+def placeholder(menu, text):
+    """A greyed line saying a menu is empty: not a command (shortcuts and the
+    command palette leave it out)."""
+    action = menu.addAction(text)
+    action.setEnabled(False)
+    action.setProperty("placeholder", True)
+    return action
+
+
 class BrowserTab(webengine.View):
     """Represents a single browser tab."""
 
@@ -319,6 +329,12 @@ class BrowserTab(webengine.View):
         return self.pending_url if self.pending_url is not None else super().url()
 
     def title(self) -> str:
+        # Steed's own pages (Passwords, Settings…) are drawn over an empty
+        # view: their name, not "about:blank".
+        if getattr(self, "workspace_name", None):
+            from ui.management_pages import page_title
+
+            return page_title(self.workspace_name)
         return self.pending_title if self.pending_url is not None else super().title()
 
     def load_pending(self) -> bool:
@@ -764,10 +780,17 @@ class BrowserWindow(QMainWindow):
         unsplit = QAction("Close Split View", self)
         unsplit.triggered.connect(self.close_split_view)
         view_menu.addAction(unsplit)
-        # Only while there is a split to close.
-        view_menu.aboutToShow.connect(
-            lambda: unsplit.setVisible(getattr(self, "split_tab", None) is not None)
-        )
+        split = QAction("Split View with Next Tab", self)
+        split.triggered.connect(self.split_with_next)
+        view_menu.addAction(split)
+
+        # One of the two, as the window is: split it, or close the split.
+        def split_items():
+            in_split = getattr(self, "split_tab", None) is not None
+            unsplit.setVisible(in_split)
+            split.setVisible(not in_split)
+
+        view_menu.aboutToShow.connect(split_items)
         unsplit.setVisible(False)
         save_page = QAction("Save Page As…", self)
         save_page.setShortcut(QKeySequence("Ctrl+S"))
@@ -1043,8 +1066,9 @@ class BrowserWindow(QMainWindow):
 
         for label, url in WEB_CHATS.items():
             action = web_chats_menu.addAction(label)
+            # In the chat sidebar, beside your agent chat, as promised.
             action.triggered.connect(
-                lambda checked=False, url=url: self._new_tab(url=url)
+                lambda checked=False, url=url: self._open_website_assistant(url)
             )
         web_chats_menu.addSeparator()
         web_chats_menu.addAction("Current tab in chat sidebar").triggered.connect(
@@ -1137,18 +1161,26 @@ class BrowserWindow(QMainWindow):
         delete_profile_action.triggered.connect(self._delete_profile)
         profile_menu.addAction(delete_profile_action)
         profile_menu.addSeparator()
-        pop_search_action = QAction("Pop Out Search Profile (Incognito)", self)
+        pop_search_action = QAction("New Incognito Window", self)
         pop_search_action.setShortcut(QKeySequence("Ctrl+Shift+N"))
         pop_search_action.triggered.connect(
             lambda: self._pop_out_profile_named("search")
         )
         profile_menu.addAction(pop_search_action)
-        search_profile_action = QAction("Switch to Search Profile (Incognito)", self)
-        search_profile_action.setShortcut(QKeySequence("Ctrl+Shift+0"))
-        search_profile_action.triggered.connect(
-            lambda: self._switch_to_profile("search")
+        search_profile_action = self.incognito_action = QAction(
+            "Switch to Incognito", self
         )
+        search_profile_action.setShortcut(QKeySequence("Ctrl+Shift+0"))
+        search_profile_action.triggered.connect(self.toggle_incognito)
         profile_menu.addAction(search_profile_action)
+        # In incognito the same item (and shortcut) takes you back.
+        profile_menu.aboutToShow.connect(
+            lambda: self.incognito_action.setText(
+                "Leave Incognito"
+                if self.profile_manager.current_profile_name == "search"
+                else "Switch to Incognito"
+            )
+        )
         # Quick shortcuts submenu
         self.profile_shortcuts_menu = QMenu("Quick Switch", self)
         profile_menu.addMenu(self.profile_shortcuts_menu)
@@ -2302,8 +2334,7 @@ class BrowserWindow(QMainWindow):
         if menu.actions():
             menu.addSeparator()
         else:
-            empty = menu.addAction("No automations yet")
-            empty.setEnabled(False)
+            placeholder(menu, "No automations yet")
         menu.addAction("Manage Automations…").triggered.connect(self.manage_automations)
 
     def _automations_changed(self):
@@ -2422,10 +2453,9 @@ class BrowserWindow(QMainWindow):
                 lambda _=False, identity=entry["id"]: self.run_command(identity)
             )
         if not entries:
-            empty = menu.addAction(
-                "No commands yet: add a user script set to run when you choose it"
+            placeholder(
+                menu, "No commands yet: add a user script set to run when you choose it"
             )
-            empty.setEnabled(False)
         menu.addSeparator()
         menu.addAction(
             "Manage Commands…",
@@ -2572,8 +2602,7 @@ class BrowserWindow(QMainWindow):
                 lambda _=False, k=key: self.config.set("watch_agent", k)
             )
         if not choices:
-            none = menu.addAction("None yet: add one with Add an Assistant…")
-            none.setEnabled(False)
+            placeholder(menu, "None yet: add one with Add an Assistant…")
 
     def history_topics(self):
         """Your past week grouped into topics by your assistant, on request."""
@@ -2904,10 +2933,11 @@ class BrowserWindow(QMainWindow):
     def ask_agent(
         self, tab, *, selection="", link="", page="", question="", send=False
     ):
-        """Bring your agent in on what you are looking at: the page's title and
-        address, plus a selection or link if given. Drafts the message in the
-        sidebar for you to finish and send; with send (a typed "@" question)
-        it goes at once. Nothing else from the page is shared."""
+        """Bring your agent in on what you are looking at: a selection or link
+        if given, else the page itself, whose text goes with your message so
+        the agent need not ask for the tab. Drafts the message in the sidebar
+        for you to finish and send; with send (a typed "@" question) it goes
+        at once."""
         if self._closing or self.profile_manager.current_profile_name == "search":
             self.status_bar.showMessage("Agents are not available in incognito.", 5000)
             return None
@@ -2917,15 +2947,37 @@ class BrowserWindow(QMainWindow):
         source = f"On the page “{title}”" if title else "On the page"
         if address and not address.startswith("steed:"):
             source += f" ({address})"
+        web = tab in self.tabs and tab.url().scheme() in ("http", "https")
         if selection:
             quoted = "\n".join("> " + line for line in selection[:4000].splitlines())
             parts.append(f"{source}:\n{quoted}")
         elif link:
             parts.append(f"About this link: {link}\n{source}")
+        elif web and send:
+            # A typed "@" question: send it with the page's text at once.
+            def got(body):
+                if self._closing or tab not in self.tabs:
+                    return
+                page = " ".join(str(body or "").split())[:PAGE_TEXT_SHARED]
+                block = f"[This page: {title[:160]} — {address[:400]}]\n{page}"
+                self.agent_message("\n\n".join([*parts, block]), send=True)
+
+            webengine.run_script(
+                tab.page(),
+                "document.body ? document.body.innerText : ''",
+                got,
+                world=webengine.STEED_WORLD,
+            )
+            return None
+        elif web:
+            parts.append(source + ". Its text goes with your message.")
         else:
             parts.append(source)
         text = "\n\n".join(parts) + ("" if send else "\n\n")
-        return self.agent_message(text, send=send)
+        task = self.agent_message(text, send=send)
+        if task is not None and web and not (selection or link):
+            self.agent_sidebar.attach_tab(task, tab)
+        return task
 
     def agent_message(self, text, *, send=False, new_chat=False):
         """Open the agent sidebar on a conversation (the one shown, else any
@@ -3414,10 +3466,8 @@ class BrowserWindow(QMainWindow):
 
     def _update_window_title(self, url=None):
         profile_name = self.profile_manager.current_profile_name
-        label = (
-            "Search Profile (Incognito)" if profile_name == "search" else profile_name
-        )
-        title = f"Custom Browser - {label}"
+        label = profile_title(profile_name)
+        title = f"Steed - {label}"
         if getattr(self, "tab_manager", None) is not None:
             self._workspaces()  # Loads which workspace these tabs are.
         space = getattr(self, "workspace", None)
@@ -3433,6 +3483,19 @@ class BrowserWindow(QMainWindow):
 
     def _switch_profile(self):
         self._open_settings("profile", intent="switch")
+
+    def toggle_incognito(self):
+        """Into incognito, or back to the profile you were using before."""
+        current = self.profile_manager.current_profile_name
+        if current == "search":
+            back = getattr(self, "_before_incognito", None)
+            profiles = self.profile_manager.list_profiles()
+            if back not in profiles:
+                back = "global" if "global" in profiles else profiles[0]
+            self._switch_to_profile(back)
+        else:
+            self._before_incognito = current
+            self._switch_to_profile("search")
 
     def _switch_to_profile(self, profile_name: str):
         self._workspace_store = None  # Workspaces belong to each profile.
@@ -4961,7 +5024,7 @@ class BrowserWindow(QMainWindow):
         name = self.profile_manager.current_profile_name
         extensions = self.profile_manager.registry.extensions
         if not extensions.available(name):
-            menu.addAction("Incognito windows have no extensions").setEnabled(False)
+            placeholder(menu, "Incognito windows have no extensions")
             return
         for entry in extensions.installed(name):
             if not entry["enabled"]:
@@ -6128,6 +6191,9 @@ class BrowserWindow(QMainWindow):
 
             if page_name(tab.url()) == "newtab":
                 # Only while that New Tab is still the page in front.
+                gear_in_menu = self.profile_manager.registry.start_pages.state(
+                    self.profile_manager.current_profile_name
+                )["settings"]["gear_in_menu"]
                 QTimer.singleShot(
                     1200,
                     lambda: tips.offer(
@@ -6138,6 +6204,7 @@ class BrowserWindow(QMainWindow):
                             and tab is self._current_browser_tab()
                             and page_name(tab.url()) == "newtab"
                         ),
+                        text=None if gear_in_menu else tips.CUSTOMIZE_GEAR,
                     ),
                 )
             elif tab.url().scheme() in ("http", "https"):
@@ -7086,6 +7153,20 @@ class BrowserWindow(QMainWindow):
 
     # -- split view
 
+    def split_with_next(self):
+        """Split view from the menu: the next tab beside this one."""
+        web = [t for t in self.tabs if not getattr(t, "agent_panel", False)]
+        if len(web) < 2:
+            self.status_bar.showMessage(
+                "Open another tab to show it beside this one.", 5000
+            )
+            return
+        index = self.current_tab_index
+        other = self.tabs[(index + 1) % len(self.tabs)]
+        if other is self.tabs[index]:
+            other = self.tabs[index - 1]
+        self.show_beside(other)
+
     def show_beside(self, tab):
         """Split view: this tab beside the current one."""
         if tab not in self.tabs or tab is self.tabs[self.current_tab_index]:
@@ -7536,7 +7617,7 @@ class BrowserWindow(QMainWindow):
         menu.clear()
         store = self._workspaces()
         if store is None:
-            menu.addAction("Not in incognito").setEnabled(False)
+            placeholder(menu, "Not in incognito")
             return
         for name in store.names():
             action = menu.addAction(name)
@@ -7725,10 +7806,9 @@ class BrowserWindow(QMainWindow):
         menu.clear()
         saved = self.tab_manager.saved_groups() if self.tab_manager else []
         if not saved:
-            empty = menu.addAction(
-                "No saved groups (right-click a group → Save and Close Group)"
+            placeholder(
+                menu, "No saved groups (right-click a group → Save and Close Group)"
             )
-            empty.setEnabled(False)
             return
         for group in saved:
             count = len(group["tabs"])
@@ -8411,9 +8491,9 @@ class BrowserWindow(QMainWindow):
         panel.setGeometry(tab.rect())
         panel.show()
         panel.raise_()
-        from ui.management_pages import PAGES
+        from ui.management_pages import page_title
 
-        self.tab_bar.set_tab_title(self.tabs.index(tab), PAGES.get(name, name.title()))
+        self.tab_bar.set_tab_title(self.tabs.index(tab), page_title(name))
         # Its icon is Steed's own for this page.
         self.tab_bar.set_tab_state(self.tabs.index(tab), url="steed:" + name)
         self.address_bar.set_url("steed:" + name)
@@ -8950,6 +9030,9 @@ class BrowserWindow(QMainWindow):
     def _start_page_action(self, tab, url):
         if self._closing or tab not in self.tabs or action_page(tab.url()) is None:
             return
+        tip = getattr(self, "_tip", None)
+        if tip is not None and not sip.isdeleted(tip) and tip.key == "customize":
+            tip.dismiss()  # You found Customize.
         pages = self.profile_manager.registry.start_pages
         profile = self.profile_manager.current_profile_name
         if pages.state(profile)[

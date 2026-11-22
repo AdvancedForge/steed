@@ -2,11 +2,12 @@
 
 import json
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import test_html_settings as fixtures
-from PyQt6.QtCore import QPoint, QStandardPaths
+from PyQt6.QtCore import QPoint
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
     QDialog,
@@ -513,17 +514,27 @@ class HtmlMenuTests(unittest.TestCase):
         self.assertTrue(second.surface.disposed)
 
     def test_download_picker_starts_in_system_downloads_and_sanitizes_name(self):
+        from browser import download_manager
+
+        asking = {"ask_download_location": True}
         with (
             patch.object(
-                QStandardPaths,
-                "writableLocation",
-                return_value="/tmp/synthetic-downloads",
+                download_manager,
+                "download_folder",
+                return_value=Path("/tmp/synthetic-downloads"),
             ),
             patch(
                 "ui.download_dialog.QFileDialog.getSaveFileName", return_value=("", "")
             ) as picker,
         ):
-            self.assertEqual(choose_download_destination("../report.pdf"), "")
+            self.assertEqual(
+                choose_download_destination("../report.pdf", None, asking), ""
+            )
+            # Without asking: straight there, the name stripped of any folders.
+            self.assertEqual(
+                choose_download_destination("../report.pdf", None, {}),
+                "/tmp/synthetic-downloads/report.pdf",
+            )
         self.assertEqual(
             picker.call_args.args[2], "/tmp/synthetic-downloads/report.pdf"
         )

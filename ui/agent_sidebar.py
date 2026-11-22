@@ -133,6 +133,7 @@ class AgentSidebar(QDockWidget):
         self._new_agent = "codex"
         self._agent_picked = False
         self._tab_tokens = {}
+        self._attached = {}  # task -> tabs to send with its next message
         self._send_result = {"context": -1, "version": -1}
         self._error = ""
         self._load_failed = False
@@ -774,7 +775,10 @@ class AgentSidebar(QDockWidget):
         dialog.show()
 
     def _request_added(self, task_id, request_id, payload):
-        if task_id == self._task_id and not self._private and self.isVisible():
+        """An agent asks you something: it waits until you answer, so the
+        question pops up whichever chat is showing (and with the sidebar
+        closed), like Steed's own approvals."""
+        if not self._private:
             self._show_request(task_id, request_id, payload)
 
     def change_display(self, method):
@@ -1017,8 +1021,12 @@ class AgentSidebar(QDockWidget):
             for token in tokens
             if self._tab_tokens.get(token) in getattr(self.browser_window, "tabs", [])
         ]
+        # A page you asked about (Ask Agent About This Page) goes along too.
+        for tab in getattr(self, "_attached", {}).pop(self._task_id, []):
+            if tab in getattr(self.browser_window, "tabs", []) and tab not in tabs:
+                tabs.append(tab)
         if not tabs:
-            self.send_message()
+            self._send_now()
             return
         texts = {}
         task_id, draft = self._task_id, self.draft
@@ -1040,7 +1048,7 @@ class AgentSidebar(QDockWidget):
                     + more
                 )
             self._drafts[task_id] = "\n\n".join(parts)
-            self.send_message()
+            self._send_now()
 
         for tab in tabs:
             webengine.run_script(
@@ -1050,7 +1058,20 @@ class AgentSidebar(QDockWidget):
                 world=webengine.STEED_WORLD,
             )
 
+    def attach_tab(self, task_id, tab):
+        """Send this tab's title, address and text with the next message in
+        that chat (the draft says so)."""
+        if not hasattr(self, "_attached"):
+            self._attached = {}
+        self._attached[task_id] = [tab]
+
     def send_message(self):
+        if getattr(self, "_attached", {}).get(self._task_id):
+            self.send_with_tabs([])
+            return
+        self._send_now()
+
+    def _send_now(self):
         if not self.state.get("active") or self._private or self._detached:
             return
         try:
