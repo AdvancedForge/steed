@@ -7,6 +7,21 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**A design pass as a new person — November 22, 2026.** Making Steed's pages
+quieter and easier to read:
+- dismissed tips vanish at once; a page you send to a chat shows as a chip to
+  open instead of its whole text, with a shorter draft and hint;
+- buttons appear only when there is something to act on (a chosen row, a
+  folder, a task), so empty pages no longer show rows of greyed actions;
+- Steed's pages are one centred column with the same large heading, no
+  sidebar, and a profile label only when there are profiles to tell apart;
+- plain words: services say what agents could do with them, agent setup tucks
+  its settings away, apps and updates are explained without code;
+- each page opens with one sentence, and each empty list says what goes there;
+- smaller fixes: the page editor's help sits above the code, import hides its
+  controls when no other browser is found, examples read as two lines, the
+  update notice is shorter, and each of Steed's pages has its own tab icon.
+
 **Agents that wait, and a second new-user pass — November 22, 2026.** Using
 Steed as a new person would, with real Claude Code and Codex:
 - asking for access now waits (up to 50 seconds) for your answer, so an agent
