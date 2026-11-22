@@ -163,7 +163,9 @@ class PackTests(unittest.TestCase):
 
     def test_the_dialogs_save_and_review_a_pack(self):
         skill, automation, _ = self.make_things()
-        dialog = self.window.manage_packs()
+        tab = self.window.manage_packs()
+        self.assertEqual(tab.workspace_name, "packs")  # A tab, like Downloads.
+        dialog = tab.workspace_controller.source
         rows = [dialog.items.item(r) for r in range(dialog.items.count())]
         flagged = [r.text() for r in rows if "text a step types" in r.text()]
         self.assertEqual(
@@ -193,7 +195,15 @@ class PackTests(unittest.TestCase):
         broken.write_text("{}")
         self.assertIsNone(dialog.open_pack(broken))
         self.assertIn("not a Steed pack", dialog.status.text())
-        dialog.close()
+        for name in ("pages", "automations", "skills"):
+            opened = getattr(
+                self.window,
+                {"pages": "manage_your_pages"}.get(name, "manage_" + name),
+            )()
+            self.assertEqual(opened.workspace_name, name)
+            self.assertEqual(
+                self.window.address_bar.address_input.text(), "steed:" + name
+            )
 
 
 if __name__ == "__main__":

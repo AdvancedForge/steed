@@ -78,6 +78,10 @@ WORKSPACES = (
     "adblock",
     "services",
     "watches",
+    "pages",
+    "automations",
+    "skills",
+    "packs",
 )
 
 

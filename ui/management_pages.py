@@ -32,6 +32,10 @@ PAGES = {
     "adblock": "Ad blocking",
     "services": "Add a service",
     "watches": "Watches",
+    "pages": "Your pages",
+    "automations": "Automations",
+    "skills": "Skills",
+    "packs": "Packs",
 }
 
 SHARED_PAGES = frozenset(
@@ -240,7 +244,15 @@ def controller(window, name, source_tab=None):
             raise ValueError("The display profile changed. Reopen this page.")
         window._new_tab(url=url)
 
-    if profile == "search" and name in ("library", "newtab-settings", "panels"):
+    if profile == "search" and name in (
+        "library",
+        "newtab-settings",
+        "panels",
+        "pages",
+        "automations",
+        "skills",
+        "packs",
+    ):
         result = HtmlSettingsDialog(window)
         result.setWindowTitle(PAGES[name])
         QVBoxLayout(result).addWidget(
@@ -331,6 +343,22 @@ def controller(window, name, source_tab=None):
         from ui.adblock_dialog import AdBlockDialog
 
         return AdBlockDialog(window.adblock, window)
+    if name == "pages":
+        from ui.your_pages import YourPagesDialog
+
+        return YourPagesDialog(window)
+    if name == "automations":
+        from ui.automations_dialog import AutomationsDialog
+
+        return AutomationsDialog(window)
+    if name == "skills":
+        from ui.skills_dialog import SkillsDialog
+
+        return SkillsDialog(window)
+    if name == "packs":
+        from ui.packs_dialog import PacksDialog
+
+        return PacksDialog(window)
     if name == "services":
         from ui.bundled_recipes import BundledRecipesDialog
 

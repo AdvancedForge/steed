@@ -2286,14 +2286,8 @@ class BrowserWindow(QMainWindow):
                 window._fill_automations_menu()
 
     def manage_automations(self):
-        if self.profile_manager.current_profile_name == "search":
-            self.status_bar.showMessage(
-                "Automations are not available in incognito.", 4000
-            )
-            return
-        from ui.automations_dialog import AutomationsDialog
-
-        self._present_dialog(AutomationsDialog(self), modal=False)
+        """Agents → Automations: a steed:automations tab."""
+        return self._open_management("automations")
 
     def _skills_changed(self):
         for window in QApplication.topLevelWidgets():
@@ -2303,27 +2297,16 @@ class BrowserWindow(QMainWindow):
                     window.agent_sidebar._publish()
 
     def manage_your_pages(self):
-        if self.profile_manager.current_profile_name == "search":
-            self.status_bar.showMessage("Incognito has no pages of its own.", 4000)
-            return
-        from ui.your_pages import YourPagesDialog
-
-        self._present_dialog(YourPagesDialog(self), modal=False)
+        """View → Your Pages: a steed:pages tab."""
+        return self._open_management("pages")
 
     def manage_packs(self):
-        if self.profile_manager.current_profile_name == "search":
-            self.status_bar.showMessage("Packs are not available in incognito.", 4000)
-            return None
-        from ui.packs_dialog import PacksDialog
-
-        dialog = PacksDialog(self)
-        self._present_dialog(dialog, modal=False)
-        return dialog
+        """View → Packs: a steed:packs tab."""
+        return self._open_management("packs")
 
     def manage_skills(self):
-        from ui.skills_dialog import SkillsDialog
-
-        self._present_dialog(SkillsDialog(self), modal=False)
+        """Agents → Skills → Manage Skills: a steed:skills tab."""
+        return self._open_management("skills")
 
     def run_skill(self, skill_id, tabs=(), extra=""):
         """Run a skill: its saved steps first (by Steed, no model), then the

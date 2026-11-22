@@ -301,11 +301,12 @@ class AutomationsDialog(HtmlSettingsDialog):
         self.setWindowTitle("Automations")
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Your own workflows: something starts them (a time, a watched page "
-            "changing, Steed starting, or you) and they do steps in order: read "
-            "pages, fetch data, ask your assistant or start an agent chat, run a "
-            "skill, notify you, open pages, or stop unless something is true. "
-            "Many need no AI at all."
+            "Your own workflows. Something starts them: a time, a watched page "
+            "changing, a download finishing, visiting a site, a shortcut, a "
+            "page's right-click menu, Steed starting, or you. Then they do steps "
+            "in order: read pages, fetch data, ask your assistant or start an "
+            "agent chat, run a skill, save to your files, wait, notify you, open "
+            "pages, or stop unless something is true. Many need no AI at all."
         )
         intro.setWordWrap(True)
         intro.setProperty("role", "note")
