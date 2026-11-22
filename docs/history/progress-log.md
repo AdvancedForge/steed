@@ -7,6 +7,23 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Using Steed as a new person would — November 21, 2026.** A pass through
+Steed as a new user, fixing what got in the way:
+- your Dashboard says when it isn't allowed to read your watches and
+  automations, instead of looking empty, and your pages start in Steed's
+  colours;
+- the New Tab tip shows only on New Tab, and dictation waits until you have
+  browsed a while;
+- the update notice is in plain words;
+- a **History** menu, **Help** under General, layout files under View, and
+  shortcuts no longer written into menu labels;
+- the Welcome tour stays `steed:welcome` and opens each step at the top;
+- Your Pages, Automations, Skills and Packs open as `steed:` tabs;
+- a search engine list in Settings;
+- assistants that fail say which one and what to try;
+- Save stays in view in the editors, editable fields are full width, and the
+  find bar matches the toolbar.
+
 **More ways to start automations, packs, agent-made pages — November 21,
 2026.** Automations can start when a download finishes, when you visit a site,
 on a keyboard shortcut, or from a page's right-click menu with that page's

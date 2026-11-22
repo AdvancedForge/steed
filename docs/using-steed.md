@@ -442,7 +442,7 @@ with the classic sections, a feed, a custom colour and your own HTML.
 
 ### Your own steed: pages
 
-**View → Your Pages…** makes pages of your own, opened like Steed's as
+**View → Your Pages…** (the `steed:pages` tab) makes pages of your own, opened like Steed's as
 `steed:<name>` in any tab: a dashboard of your watches and routines, a
 launcher for your skills, a board of links, a small tool. Start from a
 template (a dashboard, a skills launcher, a blank page), write the HTML and
@@ -468,7 +468,7 @@ profile's start-page data; not in incognito.
 
 ### Packs: sharing pages, skills and automations
 
-**View → Packs…** puts any of your pages, skills and automations in one
+**View → Packs…** (the `steed:packs` tab) puts any of your pages, skills and automations in one
 `.steedpack` file, to keep or give someone. A pack holds exactly what each
 item is (a page's HTML, a skill's ask and saved steps, an automation's trigger
 and steps, with their web addresses and text) and nothing else: no logins,
@@ -1197,6 +1197,10 @@ windows using that profile. Incognito suggestions stay in memory and do not
 include ordinary profile history. Local files and URLs containing embedded
 usernames/passwords are excluded.
 
+**Search engine** (Settings → General): DuckDuckGo (the default), Google,
+Bing, Ecosia, Brave Search or Startpage from the list, or **Other…** to type
+any search address; Steed adds your search text to its end.
+
 **Search suggestions** (Settings → General, on by default): under "Search … for"
 the bar shows up to four suggestions from your search engine (DuckDuckGo,
 Google, Bing or Ecosia; other engines get none). Steed sends what you type to
@@ -1398,7 +1402,7 @@ differs from the last run.
 
 ### Automations
 
-**Agents → Automations → Manage Automations…** makes your own workflows. A
+**Agents → Automations → Manage Automations…** (the `steed:automations` tab) makes your own workflows. A
 routine asks your agent on a schedule; an automation is the general form,
 and many need no AI at all.
 
