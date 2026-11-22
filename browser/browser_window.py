@@ -6172,6 +6172,9 @@ class BrowserWindow(QMainWindow):
 
             if page_name(tab.url()) == "newtab":
                 # Only while that New Tab is still the page in front.
+                gear_in_menu = self.profile_manager.registry.start_pages.state(
+                    self.profile_manager.current_profile_name
+                )["settings"]["gear_in_menu"]
                 QTimer.singleShot(
                     1200,
                     lambda: tips.offer(
@@ -6182,6 +6185,7 @@ class BrowserWindow(QMainWindow):
                             and tab is self._current_browser_tab()
                             and page_name(tab.url()) == "newtab"
                         ),
+                        text=None if gear_in_menu else tips.CUSTOMIZE_GEAR,
                     ),
                 )
             elif tab.url().scheme() in ("http", "https"):
@@ -8994,6 +8998,9 @@ class BrowserWindow(QMainWindow):
     def _start_page_action(self, tab, url):
         if self._closing or tab not in self.tabs or action_page(tab.url()) is None:
             return
+        tip = getattr(self, "_tip", None)
+        if tip is not None and not sip.isdeleted(tip) and tip.key == "customize":
+            tip.dismiss()  # You found Customize.
         pages = self.profile_manager.registry.start_pages
         profile = self.profile_manager.current_profile_name
         if pages.state(profile)[
