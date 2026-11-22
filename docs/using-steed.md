@@ -1462,8 +1462,7 @@ often to look (15 minutes to daily).
 Steed reads the page in the background on that schedule, in the same profile,
 so your sign-ins apply, and compares the text (only the selected part, if you
 chose one — clocks and ads elsewhere on the page don't count). When it
-changed and you said what matters, it asks your agent (Claude Code, else
-Codex; Settings key `watch_agent` picks one) with just the before and after
+changed and you said what matters, it asks your helper assistant (see below) with just the before and after
 text, run once from its command line with no browser access, whether this is
 what you asked about. If it is, or if you asked for any change (or no agent
 is installed), a desktop notification says what happened; clicking it opens
@@ -1493,8 +1492,15 @@ site, as in any conversation. The Watches page shows each watch's action.
 (only their titles and addresses, numbered) and shows the groups it proposes,
 plus any duplicates. Nothing changes until you choose **Apply**: the tabs join
 named tab groups (pinned tabs stay put), and duplicates are closed if
-**Close duplicates** stays ticked. It uses the same agent command line as
-watches (Claude Code, else Codex; `watch_agent` picks one).
+**Close duplicates** stays ticked. It uses your helper assistant, like watches.
+
+**Agents → Helper Assistant** is the one assistant Steed sends its small,
+one-question jobs to: Write it for me, Help Me Write, history topics,
+organizing tabs, watches, and automations' ask and decide steps. It gets only
+the question, with no browser access. When more than one is available (a model
+you added, Codex, Claude Code), Steed asks which to use the first time one of
+these needs it, or when you save a watch or an automation that will, and
+remembers the answer; nothing is sent before you choose.
 
 **Tabs → Compare Tabs with Agent…** lists the window's web pages with the
 current tab (and the split-view tab) ticked; tick two to six. Their visible

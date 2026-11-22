@@ -57,6 +57,25 @@ def agent_command(config):
     return None
 
 
+def helper_choices(config):
+    """The assistants that can help: [(key, label)] for the "watch_agent"
+    setting, models you added first, then coding agents installed here."""
+    found = [("model:" + m["name"], m["name"]) for m in _models(config)]
+    found += [(key, NAMES[key]) for key in installed_agents()]
+    return found
+
+
+def installed_agents():
+    """The coding agents on this computer that can answer one question."""
+    return [k for k, c in agent_commands().items() if shutil.which(c[0])]
+
+
+def helper_chosen(config):
+    """The helper you chose, if it is still there; else None."""
+    choice = config.get("watch_agent", "") if config is not None else ""
+    return choice if choice in dict(helper_choices(config)) else None
+
+
 def agent_name(command):
     if isinstance(command, dict):
         return command["name"]

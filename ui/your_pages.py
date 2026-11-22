@@ -210,19 +210,27 @@ class YourPageEditor(HtmlSettingsDialog):
         self.html.setPlainText(html)
 
     def write_for_me(self):
-        from services.agent_once import AgentOnce, agent_command
+        from ui.assistant_choice import ensure
 
         description = self.describe.text().strip()
-        command = agent_command(self.window.config)
         if not description:
             self.write_status.setText("Describe the page first.")
+            return
+        ensure(self.window, lambda command: self._write(description, command))
+
+    def _write(self, description, command):
+        from PyQt6 import sip
+
+        from services.agent_once import AgentOnce, agent_name
+
+        if sip.isdeleted(self):
             return
         if command is None:
             self.write_status.setText(
                 "Add an assistant first (Agents → Add an Assistant…)."
             )
             return
-        self.write_status.setText("Writing…")
+        self.write_status.setText(f"Writing with {agent_name(command)}…")
         self.asking = AgentOnce(
             command, WRITER.replace("{description}", description), self
         )
