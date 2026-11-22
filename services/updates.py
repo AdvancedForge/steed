@@ -170,7 +170,7 @@ class Updates(QObject):
             what = "A security update for Steed's web engine is ready."
         else:
             return ""
-        return what + " See View → Advanced → Engine & Features to update."
+        return what + " (View → Advanced → Engine & Features)"
 
     def close(self):
         self.timer.stop()

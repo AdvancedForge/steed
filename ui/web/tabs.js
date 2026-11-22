@@ -36,6 +36,27 @@ const GLYPHS = {
   apps: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
   globe: '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.5 2.5 3.5 5.2 3.5 8s-1 5.5-3.5 8c-2.5-2.5-3.5-5.2-3.5-8s1-5.5 3.5-8z"/>',
 };
+// Each of Steed's own pages its own icon, so a row of them can be told apart.
+Object.assign(GLYPHS, {
+  automations: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+  skills: '<path d="M5 19L15 9M14 4v3M19 9h-3M17.5 5.5l-2 2M10 4.5l.5 1.5M18.5 13l-1.5.5"/>',
+  pages: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16M10 9v11"/>',
+  packs: '<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>',
+  watches: '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.5"/>',
+  layout: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 9h16M9 9v10"/>',
+  tasks: '<path d="M9 7h11M9 12h11M9 17h11"/><path d="M4 7l1 1 2-2M4 12l1 1 2-2M4 17l1 1 2-2"/>',
+  connections: '<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1"/><path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>',
+  services: '<circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/>',
+  panels: '<path d="M5 20V10M12 20V4M19 20v-7"/>',
+  features: '<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/>',
+  memory: '<path d="M4 16a8 8 0 0 1 16 0"/><path d="M12 16l4-5"/>',
+  userscripts: '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 6l-3 12"/>',
+  adblock: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M8.5 8.5l7 7"/>',
+  "tab-groups": '<path d="M4 9l8-4 8 4-8 4z"/><path d="M4 13l8 4 8-4"/>',
+  "agent-setup": '<path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5"/>',
+});
+GLYPHS.access = GLYPHS.permissions;
+GLYPHS["newtab-settings"] = GLYPHS.style;
 GLYPHS.welcome = GLYPHS.steed;
 GLYPHS.files = GLYPHS.library;
 GLYPHS.access = GLYPHS.permissions;

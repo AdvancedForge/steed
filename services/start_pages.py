@@ -1503,7 +1503,7 @@ body.glass .browser-menu .customize summary.row { color: inherit; }
 .swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
 .swatch.theme { background: linear-gradient(135deg, #dfe9ff, #f3e3f7); }
 .more { display: block; margin-top: 14px; font-size: 13px; color: var(--accent); }
-.photo-tools { margin-top: 8px; } .corner > .customize > .panel { max-height: calc(100vh - 90px); overflow-y: auto; } .panel .folder { width: 100%; margin: 2px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.photo-tools { margin-top: 8px; } .corner > .customize > .panel { max-height: calc(100vh - 120px); overflow-y: auto; } .panel .folder { width: 100%; margin: 2px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 """
 GEAR = (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'

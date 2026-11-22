@@ -40,11 +40,12 @@ class ImportDialog(HtmlSettingsDialog):
         for box in (self.bookmarks, self.history, self.tabs):
             box.setChecked(True)
             layout.addWidget(box)
+        # Nothing to choose from: no empty dropdown or choices, just the news.
+        for widget in (self.source, self.bookmarks, self.history, self.tabs):
+            widget.setVisible(bool(self.sources))
         passwords = QLabel(
-            "Passwords: other browsers keep them locked, so export them as a file "
-            "first (Chrome: Password Manager → Settings → Export passwords; "
-            "Firefox: about:logins → ⋯ → Export Passwords), then choose Import on "
-            "Steed's Passwords page. Delete the exported file afterwards."
+            "Passwords: export them from the other browser as a file, import it on "
+            "Steed's Passwords page, then delete the file."
         )
         passwords.setWordWrap(True)
         passwords.setProperty("role", "note")

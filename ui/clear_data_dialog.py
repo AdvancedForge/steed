@@ -51,9 +51,7 @@ class ClearDataDialog(HtmlSettingsDialog):
             box.setChecked(kind in (on_exit or DEFAULT_KINDS))
             layout.addWidget(box)
             self.boxes[kind] = box
-        self.exit = QCheckBox(
-            "Also clear these (all of it) whenever this profile closes"
-        )
+        self.exit = QCheckBox("Clear all of these every time this profile closes")
         self.exit.setChecked(bool(on_exit))
         layout.addWidget(self.exit)
         self.status = QLabel()

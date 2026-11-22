@@ -552,7 +552,7 @@ class ExamplesDialog(HtmlSettingsDialog):
         layout = QVBoxLayout(self)
         self.list = QListWidget()
         for title, what, _automation, _hint in self.items:
-            self.list.addItem(f"{title}: {what}")
+            self.list.addItem(f"{title}\n{what}")
         self.list.setCurrentRow(0)
         self.list.itemDoubleClicked.connect(lambda _: self.use())
         layout.addWidget(self.list, 1)

@@ -54,7 +54,7 @@ class FeaturesPage(QWidget):
                     **registry.updates.state,
                     "summary": registry.updates.summary(),
                     "notice": registry.updates.notice().replace(
-                        " See View → Advanced → Engine & Features to update.", ""
+                        " (View → Advanced → Engine & Features)", ""
                     ),
                     "enabled": registry.updates.enabled,
                 },
