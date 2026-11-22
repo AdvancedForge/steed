@@ -28,13 +28,7 @@ GROUPS = {
             "Ad Blocking…",
             "Website Permissions…",
         ),
-        (
-            "Clear Browsing Data…",
-            "Welcome to Steed",
-            "Crash Log…",
-            "Import Layout…",
-            "Export Layout…",
-        ),
+        ("Clear Browsing Data…",),
     ),
     "tabs": (
         (
@@ -70,7 +64,7 @@ GROUPS = {
             "Follow a Link with the Keyboard",
             "Open a Link in a New Tab with the Keyboard",
         ),
-        ("Zoom In", "Zoom Out", "Reset Zoom (100%)"),
+        ("Zoom In", "Zoom Out", "Reset Zoom", "Reset Zoom (100%)"),
         (
             "Reader View",
             "Read Aloud",
@@ -91,7 +85,10 @@ GROUPS = {
             "Reset Page Style…",
             "Reset Layout",
             "Recover Previous Layout",
+            "Import Layout…",
+            "Export Layout…",
         ),
+        ("Your Pages…", "Packs…", "Your Commands"),
         ("Memory & Performance…", "Engine & Features…", "Developer Tools"),
     ),
     "cookies": (
@@ -104,8 +101,9 @@ GROUPS = {
     ),
 }
 # Items gathered into a sub-menu at the end: what sets agents up and what
-# they may do, out of the way of everyday use.
+# they may do, and help, out of the way of everyday use.
 SUBMENUS = {
+    "general": ("Help", (("Welcome to Steed", "Crash Log…"),)),
     "agents": (
         "Access and Setup",
         (
@@ -215,9 +213,12 @@ def arrange(menus):
                 placed.update(id(a) for a in members)
         rest = [a for a in actions if id(a) not in placed and label(a) not in LAST]
         last = [a for a in actions if id(a) not in placed and label(a) in LAST]
-        ordered += [group for group in (rest, last) if group]
+        if rest:
+            ordered.append(rest)
         if sub is not None and sub.actions():
             ordered.append([sub.menuAction()])
+        if last:  # Close Window and Quit stay at the very end.
+            ordered.append(last)
         for action in menu.actions():
             menu.removeAction(action)
         for index, group in enumerate(ordered):

@@ -144,7 +144,7 @@ class BrowserTests(unittest.TestCase):
             action.text(): action.menu() for action in self.window.menuBar().actions()
         }
         self.assertEqual(
-            list(menus), ["General", "Profile", "Tabs", "View", "Cookies", "Agents"]
+            list(menus), ["General", "Profile", "Tabs", "View", "History", "Agents"]
         )
         self.assertIn(self.window.reload_action, menus["Tabs"].actions())
         self.assertIn(self.window.find_action, menus["View"].actions())
@@ -161,8 +161,8 @@ class BrowserTests(unittest.TestCase):
         )
         history = next(
             action
-            for action in menus["Cookies"].actions()
-            if action.text() == "Clear Browsing History..."
+            for action in menus["History"].actions()
+            if action.text() == "Clear Browsing History…"
         )
         with patch.object(self.window.history, "clear") as clear:
             with patch.object(
@@ -844,7 +844,7 @@ class BrowserTests(unittest.TestCase):
         actions = self.window.profile_shortcuts_menu.actions()
         self.assertEqual(
             [action.text() for action in actions],
-            ["default (Ctrl+Shift+1)", "global (Ctrl+Shift+2)"],
+            ["default", "Global"],
         )
         # A new window must list profiles that already exist, without switching.
         manager.create_profile("work")
@@ -853,11 +853,7 @@ class BrowserTests(unittest.TestCase):
             actions = second.profile_shortcuts_menu.actions()
             self.assertEqual(
                 [action.text() for action in actions],
-                [
-                    "default (Ctrl+Shift+1)",
-                    "global (Ctrl+Shift+2)",
-                    "work (Ctrl+Shift+3)",
-                ],
+                ["default", "Global", "work"],
             )
             second.show()
             second.activateWindow()

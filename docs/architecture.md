@@ -365,8 +365,8 @@ and two densities. Agent proposals use the portable format below.
 
 ### Portable layouts and agent proposals — implemented
 
-**General → Export Layout…** saves the committed appearance as a small JSON file.
-Choose a new filename; existing files are preserved. **General → Import Layout…**
+**View → Export Layout…** saves the committed appearance as a small JSON file.
+Choose a new filename; existing files are preserved. **View → Import Layout…**
 validates the file and opens a preview of the actual control changes. Click
 **Apply layout** to commit, or Close to leave settings unchanged. Import changes
 appearance only and preserves named layouts. Save As in Layout Settings can name

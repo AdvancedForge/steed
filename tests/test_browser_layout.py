@@ -16,6 +16,7 @@ from PyQt6.QtCore import Qt
 
 from browser.browser_window import BrowserWindow
 from browser.layout_preferences import MENU_ITEMS, TOOLBAR_ITEMS, LayoutPreferences
+from ui.layout_dialog import MENU_LABELS
 
 
 class BrowserLayoutTests(unittest.TestCase):
@@ -35,7 +36,7 @@ class BrowserLayoutTests(unittest.TestCase):
     def test_a_new_window_starts_on_todays_defaults(self):
         window = self.window()
         self.assertEqual(
-            self._menu_titles(window), [name.title() for name in MENU_ITEMS]
+            self._menu_titles(window), [MENU_LABELS[name] for name in MENU_ITEMS]
         )
         self.assertEqual(window.layout_preferences.visible_toolbar, list(TOOLBAR_ITEMS))
         self.assertEqual(window.address_bar.hidden_toolbar, [])
@@ -52,7 +53,7 @@ class BrowserLayoutTests(unittest.TestCase):
         window = self.window()
         self.assertEqual(
             self._menu_titles(window),
-            ["Agents", "Tabs", "General", "Profile", "View", "Cookies"],
+            ["Agents", "Tabs", "General", "Profile", "View", "History"],
         )
         self.assertEqual(window.address_bar.hidden_toolbar, ["passwords", "zoom"])
         self.assertEqual(window.address_bar.density, "compact")
@@ -68,8 +69,8 @@ class BrowserLayoutTests(unittest.TestCase):
         view = window._layout_menus["view"]
         general_titles = [action.text() for action in general.actions()]
         view_titles = [action.text() for action in view.actions()]
-        self.assertIn("Settings...", general_titles)
-        self.assertIn("Layout Settings...", general_titles)
+        self.assertIn("Settings…", general_titles)
+        self.assertIn("Layout Settings…", general_titles)
         self.assertIn("Reset Layout", view_titles)
         # Hidden buttons keep a menu route to the same action.
         tabs_titles = [
@@ -195,7 +196,7 @@ class BrowserLayoutTests(unittest.TestCase):
         self.config.set("layout", {"version": "one", "named": ["not", "a", "dict"]})
         window = self.window()
         self.assertEqual(
-            self._menu_titles(window), [name.title() for name in MENU_ITEMS]
+            self._menu_titles(window), [MENU_LABELS[name] for name in MENU_ITEMS]
         )
         self.assertEqual(window.layout_preferences.density, "comfortable")
         self.assertEqual(window.layout_preferences.named_layouts, [])

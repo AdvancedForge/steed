@@ -91,6 +91,11 @@ def workspace_name(text):
     return None
 
 
+def profile_title(name):
+    """A profile's name as people read it: Steed's own is Global."""
+    return {"global": "Global", "search": "Incognito"}.get(name, name)
+
+
 MAX_YOUR_PAGES = 30
 # Your pages start out looking like Steed's (light and dark); their own
 # styles override this.
@@ -738,7 +743,9 @@ class StartPages(QObject):
                 + custom_html
             ).encode()
         private = profile == "search"
-        profile_label = "Incognito" if private else profile.title()
+        profile_label = "Incognito" if private else profile_title(profile)
+        if name == "welcome" and profile == "global":
+            profile_label = ""  # A new person has one profile; no need to name it.
         if name == "newtab" and state["settings"]["layout"] == "simple":
             return self.render_simple(profile, state["settings"], root_css)
         if name == "welcome":

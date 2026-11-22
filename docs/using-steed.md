@@ -644,7 +644,7 @@ of its files, or as PDF. Screenshots are under View → Take Screenshot.
 
 When a page's process ends unexpectedly (a crash, or the system stopping it,
 for example when memory runs out), its tab shows **This tab crashed** with
-**Reload** and **Crash Log…**. **General → Crash Log…** lists the last 200
+**Reload** and **Crash Log…**. **General → Help → Crash Log…** lists the last 200
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
 
@@ -1204,7 +1204,7 @@ that engine 150 ms after you pause, without cookies or profile identity, and
 never sends text that looks like a web address. Incognito windows never send
 anything. Answers are cached for repeated text in the session.
 
-Use **Cookies → Clear Browsing History...** to clear the current profile's saved
+Use **History → Clear Browsing History…** to clear the current profile's saved
 visits and suggestions. Subsequent visits start a new history.
 
 ### Passwords
@@ -1660,7 +1660,7 @@ Incognito windows do not save groups.
 - Filter cookies by domain or name
 - Search profile has no cookie persistence
 
-Existing profiles are migrated conservatively: pre-existing cookies remain local rather than being overwritten by the global profile. **Cookies → Use Global Cookies for This Site** explicitly resets the current site's baseline, after confirmation. Local changes/deletions prevent automatic reinheritance. Cookie sharing does not copy local storage or guarantee a complete signed-in session.
+Existing profiles are migrated conservatively: pre-existing cookies remain local rather than being overwritten by the global profile. **History → Use Global Cookies for This Site…** explicitly resets the current site's baseline, after confirmation. Local changes/deletions prevent automatic reinheritance. Cookie sharing does not copy local storage or guarantee a complete signed-in session.
 
 ## Downloads and ad blocking
 

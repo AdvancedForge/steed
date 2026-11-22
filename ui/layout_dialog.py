@@ -54,7 +54,7 @@ MENU_LABELS = {
     "profile": "Profile",
     "tabs": "Tabs",
     "view": "View",
-    "cookies": "Cookies",
+    "cookies": "History",
     "agents": "Agents",
 }
 

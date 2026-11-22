@@ -13,6 +13,7 @@ from qt_test_support import WAIT_SECONDS, application, keep_directory
 
 from browser import tab_manager
 from browser.browser_window import _TAB_DRAGS, BrowserWindow
+from services.start_pages import profile_title
 
 
 class TabWindowTests(unittest.TestCase):
@@ -71,7 +72,7 @@ class TabWindowTests(unittest.TestCase):
         labels = [a.text() for a in root.profile_windows_menu.actions() if a.text()]
         self.assertIn("Work", labels)
         self.assertIn("Incognito", labels)
-        self.assertIn(before + " (this window)", labels)
+        self.assertIn(profile_title(before) + " (this window)", labels)
         work = next(
             a for a in root.profile_windows_menu.actions() if a.text() == "Work"
         )
