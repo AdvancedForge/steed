@@ -168,7 +168,7 @@ console, request and crash kind has a Steed name.
 
 ## Engine and storage internals
 
-**Memory & performance (`steed:memory`).** Open **View → Memory & Performance…**
+**Memory & performance (`steed:memory`).** Open **View → Advanced → Memory & Performance…**
 or type `steed:memory`. Choose a mode on the axis from least memory to smoothest,
 then change any setting on its own (the mode then shows as Custom):
 
@@ -365,12 +365,12 @@ and two densities. Agent proposals use the portable format below.
 
 ### Portable layouts and agent proposals — implemented
 
-**View → Export Layout…** saves the committed appearance as a small JSON file.
-Choose a new filename; existing files are preserved. **View → Import Layout…**
+**View → Appearance → Export Layout…** saves the committed appearance as a small JSON file.
+Choose a new filename; existing files are preserved. **View → Appearance → Import Layout…**
 validates the file and opens a preview of the actual control changes. Click
 **Apply layout** to commit, or Close to leave settings unchanged. Import changes
 appearance only and preserves named layouts. Save As in Layout Settings can name
-an imported appearance. **View → Recover Previous Layout** restores the previous
+an imported appearance. **View → Appearance → Recover Previous Layout** restores the previous
 committed appearance across windows and retains current named layouts; subsequent
 recovery swaps back. Preset-only edits do not erase the appearance recovery point.
 

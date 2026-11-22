@@ -146,7 +146,7 @@ startup; `python -m browser.build_codecs status` compares the full checksum.
 
 ### Engine & features (`steed:features`)
 
-**View → Engine & Features…** or `steed:features` shows the Qt WebEngine
+**View → Advanced → Engine & Features…** or `steed:features` shows the Qt WebEngine
 version, the Chromium version its web features come from, the Chromium version
 of its security fixes, and whether the video-codec build is installed. Below,
 44 web features are tested in a real https page in a private throwaway profile

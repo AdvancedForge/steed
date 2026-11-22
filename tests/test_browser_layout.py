@@ -59,6 +59,23 @@ class BrowserLayoutTests(unittest.TestCase):
         self.assertEqual(window.address_bar.density, "compact")
         self.assertEqual(window.tab_bar.density, "compact")
 
+    def test_menus_keep_everyday_items_and_tuck_the_rest_away(self):
+        window = self.window()
+        for name, most in (("general", 14), ("view", 24)):
+            menu = window._layout_menus[name]
+            items = [a for a in menu.actions() if not a.isSeparator() and a.isVisible()]
+            self.assertLessEqual(len(items), most, name)
+        view = {a.text(): a for a in window._layout_menus["view"].actions()}
+        advanced = view["Advanced"].menu()
+        source = next(a for a in advanced.actions() if a.text() == "View Page Source")
+        # Tucked away, still a shortcut and still in the command palette.
+        self.assertIn(source, window.actions())
+        self.assertEqual(source.shortcut().toString(), "Ctrl+U")
+        from ui.command_palette import menu_commands
+
+        paths = [path for path, _action in menu_commands(window._layout_menus)]
+        self.assertTrue(any("View Page Source" in str(path) for path in paths))
+
     def test_hiding_toolbar_buttons_leaves_settings_and_reset_reachable(self):
         window = self.window()
         preferences = window.layout_preferences

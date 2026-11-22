@@ -70,7 +70,7 @@ Open **General → Customize New Tab**, or click Customize on a built-in page:
 ### Panel apps (`steed:apps`)
 
 Small apps of your own — notes, a feed reader, a tracker, a dashboard — shown in
-the **App Panel** beside the page (**View → App Panel**). Each is one HTML page
+the **App Panel** beside the page (**View → Appearance → App Panel**). Each is one HTML page
 with its own CSS and JavaScript (up to 256 KB), kept per profile (up to 12).
 
 - **steed:apps** (or **Manage…** in the panel): **New app** starts from an
@@ -312,14 +312,14 @@ The menu bar has six categories, in this order:
   `#` shows only history, `*` only bookmarks, and typing without a prefix ranks
   open tabs, then bookmarks, then history and commands. With nothing typed it
   lists tabs only. Ctrl+Shift+E opens it on tabs and Ctrl+Shift+Y on history
-  (View → Search History…). Ctrl+Tab / Ctrl+Shift+Tab and
+  (View → Keyboard Navigation → Search History…). Ctrl+Tab / Ctrl+Shift+Tab and
   Ctrl+PgDn / Ctrl+PgUp move to the next or previous tab, Ctrl+1–8 open that tab
   and Ctrl+9 the last one; tabs hidden in a collapsed group are skipped.
 - **View:** Go to Address Bar, Find in Page, Find Next, Find Previous, Zoom In,
   Zoom Out and Reset Zoom. While you edit the address bar, the page changing its
   URL no longer replaces your text or its undo/redo history (Ctrl+Z, Ctrl+Shift+Z
   or Ctrl+Y); Escape restores the page's address.
-  **View → Developer Tools** opens Chromium's DevTools for the current tab, like
+  **View → Advanced → Developer Tools** opens Chromium's DevTools for the current tab, like
   Chrome: F12 or Ctrl+Shift+I toggles them, Ctrl+Shift+J opens the Console,
   Ctrl+Shift+C starts the element picker, and **Inspect** in a page's right-click
   menu selects that element. Each tab keeps its own panel; dock it to the right,
@@ -358,7 +358,7 @@ These choices remain in memory for the shared Search profile's lifetime and
 disappear when Steed closes. Private browsing never inherits regular approvals.
 Screen sharing still requires choosing a screen or window each time.
 
-Use **General → Website Permissions** to forget a choice and make future requests
+Use **General → More Tools → Website Permissions** to forget a choice and make future requests
 ask again. Forgetting does not promise to terminate an existing capture; close
 the tab using your camera, microphone or screen to stop it. Website approvals
 never authorize agents: task pages continue to deny engine permissions.
@@ -370,7 +370,7 @@ write failures deny access rather than granting an unsaved remembered permission
 
 ### User scripts and styles (`steed:userscripts`)
 
-**General → User Scripts & Styles…** or `steed:userscripts` keeps your own CSS
+**General → More Tools → User Scripts & Styles…** or `steed:userscripts` keeps your own CSS
 and JavaScript for chosen sites in this profile (`<profile>/user_scripts.json`,
 up to 50 entries). Each has a name, its sites (one per line or comma separated,
 such as `example.org`; a site includes its subdomains, `*.example.org` means
@@ -748,7 +748,7 @@ Glass both kinds of menu are rounded and see-through.
 
 ### Compact mode
 
-**View → Compact Mode** (Ctrl+Shift+K, or Style → Browser bars) gives the page
+**View → Appearance → Compact Mode** (Ctrl+Shift+K, or Style → Browser bars) gives the page
 the whole window: the tab strip (when it is on top) and the toolbar float over
 the page instead, shown while the pointer is at the top edge or on them, or
 while you type an address (Ctrl+L), and hidden shortly after. The page does
@@ -766,7 +766,7 @@ classic scroll bars, set `"thin_scrollbars": false` in
 
 ### Liquid glass
 
-**View → Liquid Glass** (also the new tab's gear panel under *Look*, or the
+**View → Appearance → Liquid Glass** (also the new tab's gear panel under *Look*, or the
 Style page's Browser bars section) switches the profile to a glass look: tabs
 become frosted pills lit by the accent colour (the current one, along the top,
 grows out of the toolbar with curved feet), the toolbar and address field
@@ -986,7 +986,7 @@ every start, and Steed switches back on the ones you left on
 (`extensions.json`). Incognito windows have none, and no puzzle button.
 
 **Sync.** Extensions from the Chrome Web Store sync with your other computers
-(General → Sync…): each computer downloads and installs the ones another
+(General → More Tools → Sync…): each computer downloads and installs the ones another
 added, removes the ones another removed and follows switching on and off,
 without asking again. A download that fails is tried again at the next sync or
 start. Extensions added from a folder or file stay on their computer.
@@ -999,7 +999,7 @@ does not expose the builder's constructor, so `browser/webengine.py` calls Qt's 
 
 ### Sync between computers
 
-**General → Sync…** keeps your computers in step through a folder you choose
+**General → More Tools → Sync…** keeps your computers in step through a folder you choose
 that reaches all of them: one kept in step by Syncthing, Nextcloud or Dropbox,
 or a USB stick. Nothing goes to a Steed server. It syncs **bookmarks**, **saved
 groups**, the **reading list** (with its offline articles) and your **search
@@ -1101,8 +1101,8 @@ profile's sign-ins, and closes it here unless it is the window's last tab).
 
 While a tab plays sound, a **⏸ title** button appears in the address bar (a
 `media` toolbar component; **▶** once paused). Its menu offers **Pause/Play**,
-**Mute Tab**, **Go to Tab** and **Open Mini Player**; **View → Play or Pause
-Media** and **View → Mini Player** do the same. The title comes from the site's
+**Mute Tab**, **Go to Tab** and **Open Mini Player**; **View → Media → Play or Pause
+Media** and **View → Media → Mini Player** do the same. The title comes from the site's
 Media Session information when it gives one, otherwise the tab title.
 
 Qt WebEngine turns off the web's picture-in-picture, so the **Mini Player**
@@ -1339,7 +1339,7 @@ for a passkey (WebAuthn "conditional" requests, which Chrome answers from the
 username field's autofill), Steed shows a bar, **Sign in to example.com with a
 saved passkey?**; **Choose…** lists your accounts, and the bar goes when you
 switch tabs, the page moves on or the site cancels. Passkeys sync with your
-other computers along with passwords (General → Sync…, with the sync
+other computers along with passwords (General → More Tools → Sync…, with the sync
 passphrase), sealed in the sync folder. Not possible here: using a passkey from
 a phone by QR code (that needs Bluetooth and Google's relay).
 
@@ -1511,7 +1511,7 @@ Only the tabs you tick are shared, and nothing is sent until you send it.
 ### Dictation
 
 Speak instead of typing, anywhere in Steed. Press `Ctrl+Shift+Space` (or
-**General → Dictation → Dictate**) and talk; press it again to finish, or hold
+**General → More Tools → Dictation → Dictate**) and talk; press it again to finish, or hold
 it while you talk and let go. A pill at the bottom of the window shows the
 microphone level and, on this computer, the words as they are recognized;
 `Escape` cancels. The text goes where the cursor was:
@@ -1720,4 +1720,4 @@ all records. Progress updates retain the selected download; filtering it out cle
 selection. Select a row and use **Copy Path** to copy its full destination path,
 including when the file is still downloading or is no longer available.
 
-Open **General → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, add host-name exceptions, or write **your own rules**, one per line in the same syntax as the lists: `||ads.example.com^` blocks a site's requests, `example.com##.cookie-banner` hides an element there, and `@@||example.com^` lets a site through (up to 1,000 rules, kept in `adblock_rules` in `config.json`). Your rules are compiled with the lists and survive list updates. Only a small bootstrap rule set ships with the browser; download the full lists for broader coverage. Rule compilation runs off the GUI thread, and a failed update keeps the last working rules. Network blocking applies immediately, while cosmetic (CSS) hiding is re-applied on page load — reload pages after changing exceptions. Same-origin frames, including nested frames and `srcdoc`, receive their own CSS rules; each pass covers up to 32 documents and eight frame levels. Cross-origin frames cannot be inspected. Scriptlets and resource redirects are not enabled, and unsupported filters are not presented as full uBlock compatibility.
+Open **General → More Tools → Ad Blocking** to download/update EasyList and EasyPrivacy, toggle filtering, add host-name exceptions, or write **your own rules**, one per line in the same syntax as the lists: `||ads.example.com^` blocks a site's requests, `example.com##.cookie-banner` hides an element there, and `@@||example.com^` lets a site through (up to 1,000 rules, kept in `adblock_rules` in `config.json`). Your rules are compiled with the lists and survive list updates. Only a small bootstrap rule set ships with the browser; download the full lists for broader coverage. Rule compilation runs off the GUI thread, and a failed update keeps the last working rules. Network blocking applies immediately, while cosmetic (CSS) hiding is re-applied on page load — reload pages after changing exceptions. Same-origin frames, including nested frames and `srcdoc`, receive their own CSS rules; each pass covers up to 32 documents and eight frame levels. Cross-origin frames cannot be inspected. Scriptlets and resource redirects are not enabled, and unsupported filters are not presented as full uBlock compatibility.

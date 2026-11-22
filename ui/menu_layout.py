@@ -12,23 +12,8 @@ GROUPS = {
     "general": (
         ("Print…",),
         ("Settings…", "Customize New Tab…", "Layout Settings…", "Keyboard Shortcuts…"),
-        (
-            "Passwords…",
-            "Bitwarden…",
-            "Fill Login",
-            "Downloads…",
-            "Dictation",
-            "Extensions",
-        ),
-        (
-            "Import from Another Browser…",
-            "Sync…",
-            "Search Keywords…",
-            "User Scripts & Styles…",
-            "Ad Blocking…",
-            "Website Permissions…",
-        ),
-        ("Clear Browsing Data…",),
+        ("Passwords…", "Downloads…", "Extensions"),
+        ("Import from Another Browser…", "Clear Browsing Data…"),
     ),
     "tabs": (
         (
@@ -53,17 +38,7 @@ GROUPS = {
         ("Organize Tabs with Agent…", "Compare Tabs with Agent…"),
     ),
     "view": (
-        (
-            "Find in Page…",
-            "Find Next",
-            "Find Previous",
-            "Go to Address Bar",
-            "Command Palette…",
-            "Search Tabs…",
-            "Search History…",
-            "Follow a Link with the Keyboard",
-            "Open a Link in a New Tab with the Keyboard",
-        ),
+        ("Find in Page…", "Command Palette…"),
         ("Zoom In", "Zoom Out", "Reset Zoom", "Reset Zoom (100%)"),
         (
             "Reader View",
@@ -71,25 +46,11 @@ GROUPS = {
             "Translate Page",
             "Save to Reading List",
             "Reading List…",
-            "Play or Pause Media",
-            "Mini Player",
         ),
-        ("Full Screen", "Bookmarks Bar", "View Page Source"),
-        ("Save Page As…", "Take Screenshot", "Close Split View", "App Panel"),
-        (
-            "Page Style…",
-            "Liquid Glass",
-            "Compact Mode",
-            "Show Top Menu Bar",
-            "Show Bottom Status Bar",
-            "Reset Page Style…",
-            "Reset Layout",
-            "Recover Previous Layout",
-            "Import Layout…",
-            "Export Layout…",
-        ),
+        ("Full Screen", "Bookmarks Bar"),
+        ("Save Page As…", "Take Screenshot", "Close Split View"),
+        ("Page Style…", "Reset Layout"),
         ("Your Pages…", "Packs…", "Your Commands"),
-        ("Memory & Performance…", "Engine & Features…", "Developer Tools"),
     ),
     "cookies": (
         ("Browsing History…", "Search What You've Read…", "Clear Browsing History…"),
@@ -106,21 +67,64 @@ GROUPS = {
         ("Agent Chat Tab", "Website Chats"),
     ),
 }
-# Items gathered into a sub-menu at the end: what sets agents up and what
-# they may do, and help, out of the way of everyday use.
+# Items gathered into sub-menus near the end, out of the way of everyday use:
+# each menu keeps what people reach for, and every command stays in the
+# command palette and keeps its shortcut.
 SUBMENUS = {
-    "general": ("Help", (("Welcome to Steed", "Crash Log…"),)),
-    "agents": (
-        "Access and Setup",
+    "general": (
         (
-            ("Agent Connection Setup…", "Enable Local Agent Access"),
+            "More Tools",
             (
-                "Access & Permissions…",
-                "Task Permissions…",
-                "App Connections…",
-                "Agent File Library…",
+                ("Bitwarden…", "Fill Login", "Dictation"),
+                ("Sync…", "Search Keywords…", "User Scripts & Styles…"),
+                ("Ad Blocking…", "Website Permissions…"),
             ),
-            ("Approve All Agent Requests (unsafe)",),
+        ),
+        ("Help", (("Welcome to Steed", "Crash Log…"),)),
+    ),
+    "view": (
+        (
+            "Keyboard Navigation",
+            (
+                ("Find Next", "Find Previous", "Go to Address Bar"),
+                ("Search Tabs…", "Search History…"),
+                (
+                    "Follow a Link with the Keyboard",
+                    "Open a Link in a New Tab with the Keyboard",
+                ),
+            ),
+        ),
+        (
+            "Appearance",
+            (
+                ("Liquid Glass", "Compact Mode"),
+                ("Show Top Menu Bar", "Show Bottom Status Bar", "App Panel"),
+                ("Reset Page Style…", "Recover Previous Layout"),
+                ("Import Layout…", "Export Layout…"),
+            ),
+        ),
+        ("Media", (("Play or Pause Media", "Mini Player"),)),
+        (
+            "Advanced",
+            (
+                ("View Page Source", "Developer Tools"),
+                ("Memory & Performance…", "Engine & Features…"),
+            ),
+        ),
+    ),
+    "agents": (
+        (
+            "Access and Setup",
+            (
+                ("Agent Connection Setup…", "Enable Local Agent Access"),
+                (
+                    "Access & Permissions…",
+                    "Task Permissions…",
+                    "App Connections…",
+                    "Agent File Library…",
+                ),
+                ("Approve All Agent Requests (unsafe)",),
+            ),
         ),
     ),
 }
@@ -207,22 +211,23 @@ def arrange(menus):
             if members:
                 ordered.append(members)
                 placed.update(id(a) for a in members)
-        sub = None
-        if name in SUBMENUS:
-            title, sub_groups = SUBMENUS[name]
+        subs = []
+        for title, sub_groups in SUBMENUS.get(name, ()):
             sub = QMenu(title, menu)
-            for index, group in enumerate(sub_groups):
+            for group in sub_groups:
                 members = [by_label[text] for text in group if text in by_label]
-                if members and index and sub.actions():
+                if members and sub.actions():
                     sub.addSeparator()
                 sub.addActions(members)
                 placed.update(id(a) for a in members)
+            if sub.actions():
+                subs.append(sub)
         rest = [a for a in actions if id(a) not in placed and label(a) not in LAST]
         last = [a for a in actions if id(a) not in placed and label(a) in LAST]
         if rest:
             ordered.append(rest)
-        if sub is not None and sub.actions():
-            ordered.append([sub.menuAction()])
+        if subs:
+            ordered.append([sub.menuAction() for sub in subs])
         if last:  # Close Window and Quit stay at the very end.
             ordered.append(last)
         for action in menu.actions():
