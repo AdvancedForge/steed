@@ -320,6 +320,12 @@ class BrowserTab(webengine.View):
         return self.pending_url if self.pending_url is not None else super().url()
 
     def title(self) -> str:
+        # Steed's own pages (Passwords, Settings…) are drawn over an empty
+        # view: their name, not "about:blank".
+        if getattr(self, "workspace_name", None):
+            from ui.management_pages import page_title
+
+            return page_title(self.workspace_name)
         return self.pending_title if self.pending_url is not None else super().title()
 
     def load_pending(self) -> bool:
@@ -8459,9 +8465,9 @@ class BrowserWindow(QMainWindow):
         panel.setGeometry(tab.rect())
         panel.show()
         panel.raise_()
-        from ui.management_pages import PAGES
+        from ui.management_pages import page_title
 
-        self.tab_bar.set_tab_title(self.tabs.index(tab), PAGES.get(name, name.title()))
+        self.tab_bar.set_tab_title(self.tabs.index(tab), page_title(name))
         # Its icon is Steed's own for this page.
         self.tab_bar.set_tab_state(self.tabs.index(tab), url="steed:" + name)
         self.address_bar.set_url("steed:" + name)
