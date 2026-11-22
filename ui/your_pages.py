@@ -64,7 +64,7 @@ const show = (id, load, line, empty) => load.then(items => {
   const target = document.getElementById(id);
   target.replaceChildren(...(items.length ? items.map(line) : [item(empty)]));
 }).catch(() => document.getElementById(id).replaceChildren(item(
-  "This page isn't allowed to see this. Allow it in Access → Local pages (See your watches, automations and skills).")));
+  "Not allowed yet: choose Allow above this page, or Access → Local pages.")));
 const when = seconds => seconds ? new Date(seconds * 1000).toLocaleString() : "not yet";
 </script>"""
 
@@ -107,7 +107,7 @@ steed("/api/skills").then(skills => {
     return b;
   }));
 }).catch(() => { document.getElementById("skills").textContent =
-  "This page isn't allowed to see your skills. Allow it in Access → Local pages."; });
+  "Not allowed yet: choose Allow above this page, or Access → Local pages."; });
 </script>"""
 )
 
