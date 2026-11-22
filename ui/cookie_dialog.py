@@ -55,11 +55,9 @@ class CookieDialog(HtmlSettingsDialog):
 
         # Filter
         filter_layout = QHBoxLayout()
-        filter_label = QLabel("Filter:")
         self.filter_input = QLineEdit()
         self.filter_input.setPlaceholderText("Filter by domain or name...")
         self.filter_input.textChanged.connect(self.filter_cookies)
-        filter_layout.addWidget(filter_label)
         filter_layout.addWidget(self.filter_input)
         layout.addLayout(filter_layout)
 

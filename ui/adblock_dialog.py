@@ -25,26 +25,21 @@ class AdBlockDialog(HtmlSettingsDialog):
         )
         self.enabled.setChecked(service.config.get("adblock_enabled", True))
         layout.addWidget(self.enabled)
-        layout.addWidget(
-            QLabel(
-                "Site exceptions (comma-separated host names; reload affected pages):"
-            )
-        )
+        layout.addWidget(QLabel("Sites to leave alone (separate with commas)"))
         self.exceptions = QLineEdit(
             ", ".join(service.config.get("adblock_exceptions", []))
         )
         layout.addWidget(self.exceptions)
         layout.addWidget(
-            QLabel(
-                "Your own rules, one per line, in the same syntax as the lists: "
-                "||ads.example.com^ blocks a site's requests, "
-                "example.com##.cookie-banner hides an element there, and "
-                "@@||example.com^ lets a site through. Lines starting with ! "
-                f"are notes. Up to {MAX_OWN_RULES:,} rules."
-            )
+            QLabel(f"Your own rules, one per line (up to {MAX_OWN_RULES:,})")
         )
         self.rules = QPlainTextEdit("\n".join(own_rules(service.config)))
-        self.rules.setPlaceholderText("example.com##.newsletter-popup")
+        self.rules.setPlaceholderText(
+            "||ads.example.com^   blocks a site's requests\n"
+            "example.com##.newsletter-popup   hides something on a site\n"
+            "@@||example.com^   lets a site through\n"
+            "! a line starting with ! is a note"
+        )
         layout.addWidget(self.rules, 1)
         self.status = QLabel()
         self.status.setWordWrap(True)

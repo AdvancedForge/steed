@@ -353,12 +353,8 @@ class AutomationsDialog(HtmlSettingsDialog):
         self.setWindowTitle("Automations")
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Your own workflows. Something starts them: a time, a watched page "
-            "changing, a download finishing, visiting a site, a shortcut, a "
-            "page's right-click menu, Steed starting, or you. Then they do steps "
-            "in order: read pages, fetch data, ask your assistant or start an "
-            "agent chat, run a skill, save to your files, wait, notify you, open "
-            "pages, or stop unless something is true. Many need no AI at all."
+            "Steps Steed runs for you when something happens: at a time, when a "
+            "page changes, when you press a shortcut, and more."
         )
         intro.setWordWrap(True)
         intro.setProperty("role", "note")

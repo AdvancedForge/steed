@@ -39,11 +39,14 @@ class AppConnectionsDialog(HtmlSettingsDialog):
         self.resize(720, 620)
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Sign in once, then choose what agents may do with each account. Browsing, files and running code are asked about separately. Sign-ins stay in your desktop keyring."
+            "Sign in to an app once, then choose what agents may do with it."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
         self.accounts = QTableWidget(0, 4)
+        self.accounts.setProperty(
+            "empty", "No apps connected yet. Connect Google, or add a service."
+        )
         self.accounts.setHorizontalHeaderLabels(
             ["Provider", "Account", "Tools", "State"]
         )

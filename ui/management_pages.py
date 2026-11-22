@@ -199,9 +199,7 @@ class HistoryDialog(HtmlSettingsDialog):
         self.search.setAccessibleName("Search history")
         self.search.textChanged.connect(self.refresh)
         body.addWidget(self.search)
-        body.addWidget(
-            QLabel("Most recent visits first. History belongs to this profile.")
-        )
+        body.addWidget(QLabel("Newest first."))
         self.items = QTableWidget(0, 2)
         self.items.setProperty("empty", "No history yet. Pages you visit appear here.")
         self.items.setHorizontalHeaderLabels(["Page", "Address"])

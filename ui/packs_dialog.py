@@ -79,10 +79,8 @@ class PacksDialog(HtmlSettingsDialog):
         self.profile = window.profile_manager.current_profile_name
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "A pack is your pages, skills and automations in one file, to keep or "
-            "to give someone. It holds exactly what each item is, with the web "
-            "addresses and text in it, and nothing else: no logins, history or "
-            "settings."
+            "Your pages, skills and automations in one file, to keep or share. "
+            "No logins, history or settings go in it."
         )
         intro.setWordWrap(True)
         intro.setProperty("role", "note")

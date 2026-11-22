@@ -21,6 +21,9 @@ class GroupDialog(HtmlSettingsDialog):
         self.resize(500, 350)
         layout = QVBoxLayout(self)
         self.list = QListWidget()
+        self.list.setProperty(
+            "empty", "No tab groups yet. Right-click a tab to put it in a group."
+        )
         layout.addWidget(self.list)
         buttons = QHBoxLayout()
         chosen = []

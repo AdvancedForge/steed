@@ -106,12 +106,15 @@ class SitePermissionsDialog(HtmlSettingsDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(
             plain_label(
-                "Saved website approvals are separate from agent approvals. Forgetting makes future "
-                "requests ask again. Close any tab currently using camera, microphone or screen sharing "
-                "to stop its existing capture."
+                "What you allowed websites to use. Forget one and the site asks again."
             )
         )
         self.table = QTableWidget(0, 3)
+        self.table.setProperty(
+            "empty",
+            "Nothing allowed yet. Sites ask before using your camera, microphone "
+            "or location.",
+        )
         self.table.setHorizontalHeaderLabels(["Site", "Capability", "Applies to"])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -130,6 +133,11 @@ class SitePermissionsDialog(HtmlSettingsDialog):
                 )
             )
             self.sites = QTableWidget(0, 2)
+            self.sites.setProperty(
+                "empty",
+                "No site settings changed. Use the icon beside the address to change "
+                "a site's zoom, JavaScript or pop-ups.",
+            )
             self.sites.setHorizontalHeaderLabels(["Site", "Settings"])
             self.sites.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
             self.sites.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)

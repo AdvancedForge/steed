@@ -43,7 +43,7 @@ class FileLibraryDialog(HtmlSettingsDialog):
         self._executor = ThreadPoolExecutor(max_workers=1)
         layout = QVBoxLayout(self)
         notice = QLabel(
-            "Files you add once and reuse across tasks. An enabled folder gives every connected agent full access to everything in it (read, create, edit, remove) until you disable it. Websites get no access; imports are copies."
+            "Files your agents can use. Turn on a folder's access to let connected agents read and change what's in it."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -70,6 +70,9 @@ class FileLibraryDialog(HtmlSettingsDialog):
         self.filter.textChanged.connect(self.refresh)
         layout.addWidget(self.filter)
         self.files = QTreeWidget()
+        self.files.setProperty(
+            "empty", "No files here yet. Add files to share them with your agents."
+        )
         self.files.setHeaderLabels(["Name", "Type", "Bytes", "Revision"])
         self.files.setColumnWidth(0, 400)
         self.files.setAccessibleName("Library files and subfolders")
@@ -104,10 +107,7 @@ class FileLibraryDialog(HtmlSettingsDialog):
         clear.clicked.connect(self.clear_recovery)
         layout.addWidget(clear)
         self.files.currentItemChanged.connect(lambda *_: self._fit_buttons())
-        self.status = QLabel(
-            "Files: up to 64 MiB each; 512 MiB total including recovery copies. "
-            "Worker inputs still use the task workspace's limits."
-        )
+        self.status = QLabel("Up to 64 MB a file, 512 MB in all.")
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.status)

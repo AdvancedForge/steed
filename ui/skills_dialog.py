@@ -168,10 +168,8 @@ class SkillsDialog(HtmlSettingsDialog):
         self.setWindowTitle("Skills")
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Things you ask your assistant often, kept to run in one go: from "
-            "Agents → Skills, the command palette, or by typing / in the agent "
-            "chat. A skill looks at the page you are on unless you say otherwise, "
-            "and can carry saved steps Steed does first, with no model."
+            "Things you ask your assistant often, run in one go. Type / in the "
+            "agent chat to use one."
         )
         intro.setWordWrap(True)
         intro.setProperty("role", "note")

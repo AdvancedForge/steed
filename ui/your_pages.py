@@ -331,10 +331,8 @@ class YourPagesDialog(HtmlSettingsDialog):
         self.setWindowTitle("Your pages")
         layout = QVBoxLayout(self)
         intro = QLabel(
-            "Your own steed:<name> tabs: dashboards, launchers and small tools in "
-            "HTML and JavaScript. Open one by typing its address, or set it as "
-            "your New Tab in Settings. What its scripts may do follows Access → "
-            "Local pages."
+            "Dashboards and small tools of your own, opened as steed:<name> like "
+            "Steed's pages."
         )
         intro.setWordWrap(True)
         intro.setProperty("role", "note")

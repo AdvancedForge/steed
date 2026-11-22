@@ -37,12 +37,13 @@ class TaskDialog(HtmlSettingsDialog):
         self.setWindowTitle("Agent tasks & permissions")
         self.resize(800, 600)
         layout = QVBoxLayout(self)
-        notice = QLabel(
-            "What your agents are doing and what they may do. Requests open for your approval as they come; revoking access cancels the task."
-        )
+        notice = QLabel("What your agents are doing, and what they may do.")
         notice.setWordWrap(True)
         layout.addWidget(notice)
         self.table = QTableWidget(0, 3)
+        self.table.setProperty(
+            "empty", "No agent tasks yet. Start a chat in the agent sidebar."
+        )
         self.table.setHorizontalHeaderLabels(["Task", "Task status", "Permission"])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
