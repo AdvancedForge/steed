@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from services.start_pages import profile_title
 from ui.html_dialog import HtmlSettingsDialog
 from ui.prompts import InputDialog as QInputDialog
 from ui.prompts import MessageBox as QMessageBox
@@ -59,6 +60,16 @@ def choose_download_destination(suggested, parent=None, config=None):
     return path
 
 
+def size(count):
+    """A file size people read: 45 bytes, 812 KB, 1.2 MB."""
+    count = int(count or 0)
+    for unit, scale in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):
+        if count >= scale:
+            value = count / scale
+            return f"{value:.1f} {unit}" if value < 10 else f"{value:,.0f} {unit}"
+    return f"{count} byte{'s' * (count != 1)}"
+
+
 class DownloadDialog(HtmlSettingsDialog):
     def __init__(self, manager, parent=None, *, tasks=None, page_for=None):
         super().__init__(parent)
@@ -86,6 +97,7 @@ class DownloadDialog(HtmlSettingsDialog):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
         buttons = QHBoxLayout()
+        self.action_buttons = {}
         for label, action in (
             ("Pause", "pause"),
             ("Resume", "resume"),
@@ -100,6 +112,7 @@ class DownloadDialog(HtmlSettingsDialog):
             button.setAutoDefault(False)
             button.clicked.connect(lambda checked=False, a=action: self.perform(a))
             buttons.addWidget(button)
+            self.action_buttons[action] = button
         close = QPushButton("Close")
         close.setAutoDefault(False)
         close.clicked.connect(self.accept)
@@ -108,6 +121,7 @@ class DownloadDialog(HtmlSettingsDialog):
         manager.changed.connect(self.refresh)
         self.finished.connect(lambda: manager.changed.disconnect(self.refresh))
         self.search.textChanged.connect(self.refresh)
+        self.table.itemSelectionChanged.connect(self._fit_buttons)
         self.refresh()
 
     def selected_key(self):
@@ -128,12 +142,14 @@ class DownloadDialog(HtmlSettingsDialog):
         self.table.setRowCount(len(records))
         for row, (key, record) in enumerate(records):
             progress = (
-                f"{record.received:,} / {record.total:,} bytes"
+                size(record.total or record.received)
+                if record.state == "DownloadCompleted"
+                else f"{size(record.received)} of {size(record.total)}"
                 if record.total > 0
-                else f"{record.received:,} bytes (size unknown)"
+                else f"{size(record.received)} (size unknown)"
             )
             values = (
-                f"{record.name} / {record.profile}",
+                f"{record.name} / {profile_title(record.profile)}",
                 progress,
                 "Paused" if record.paused else record.state.removeprefix("Download"),
                 record.path,
@@ -145,6 +161,29 @@ class DownloadDialog(HtmlSettingsDialog):
             if key == selected:
                 self.table.selectRow(row)
         self.table.resizeColumnsToContents()
+        self._fit_buttons()
+
+    def _fit_buttons(self):
+        """Only what this download can do now: pause a running one, open a
+        finished one, retry one that failed."""
+        record = self.manager.records.get(self.selected_key())
+        state = record.state if record is not None else None
+        running = state in ("DownloadInProgress", "DownloadRequested")
+        paused = running and bool(record.paused)
+        done = state == "DownloadCompleted"
+        failed = state in ("DownloadInterrupted", "DownloadCancelled")
+        show = {
+            "pause": running and not paused,
+            "resume": paused,
+            "cancel": running,
+            "retry": failed,
+            "open": done,
+            "reveal": done,
+            "copy_path": record is not None,
+            "library": done,
+        }
+        for action, button in self.action_buttons.items():
+            button.setVisible(show.get(action, True))
 
     def perform(self, action):
         key = self.selected_key()
