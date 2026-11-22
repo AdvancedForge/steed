@@ -88,13 +88,13 @@ PAGE_CAPABILITIES = {
         "help": "Read this profile's bookmarks.",
     },
     "steed": {
-        "label": "See your watches, routines and skills",
+        "label": "See your watches, automations and skills",
         "help": "Read the pages you watch (with what last changed), your "
-        "routines and your skills, for dashboards.",
+        "automations and your skills, for dashboards.",
     },
     "automation": {
-        "label": "Run your skills and routines, open tabs and notify you",
-        "help": "Start a skill or a routine you made, open a web page in a new "
+        "label": "Run your skills and automations, open tabs and notify you",
+        "help": "Start a skill or an automation you made, open a web page in a new "
         "tab, or show a desktop notification. Anything an agent then does "
         "still asks you as usual.",
     },

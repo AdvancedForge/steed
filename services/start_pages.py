@@ -92,6 +92,12 @@ def workspace_name(text):
 
 
 MAX_YOUR_PAGES = 30
+# Your pages start out looking like Steed's (light and dark); their own
+# styles override this.
+YOUR_PAGE_BASE = (
+    "body{margin:0;background:var(--bg);color:var(--ink);"
+    "font:16px/1.5 system-ui,sans-serif}a{color:var(--accent)}"
+)
 YOUR_PAGE_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
 # Names Steed's own pages (and their helpers) keep.
 RESERVED_NAMES = frozenset({"newtab", "welcome", "action", *WORKSPACES})
@@ -589,6 +595,7 @@ class StartPages(QObject):
             + escape(page["title"])
             + "</title><style>"
             + root_css
+            + YOUR_PAGE_BASE
             + "</style></head>"
             + page["html"]
         ).encode()

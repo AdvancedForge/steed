@@ -101,6 +101,31 @@ class YourPageTests(unittest.TestCase):
         self.assertEqual(dialog.list.count(), 1)
         self.assertIn("steed:dashboard", dialog.list.item(0).text())
 
+    def test_the_dashboard_template_explains_a_page_not_allowed(self):
+        from ui.your_pages import DASHBOARD
+
+        registry = self.window.profile_manager.registry
+        profile = self.window.profile_manager.current_profile_name
+        registry.start_pages.save_your_page(profile, "dash", "Dash", DASHBOARD)
+        tab = self.window._new_tab(url="steed:dash", return_tab=True)
+        self.wait(lambda: tab.title() == "Dash")
+        self.wait(lambda: "allowed" in self.js(tab, "document.body.innerText"))
+        text = self.js(tab, "document.body.innerText")
+        self.assertIn("Access → Local pages", text)
+        self.assertNotIn("Loading", text)
+        # Allowed, it lists what there is, and says what to do when empty.
+        access_levels.set_policy(self.window.config, "pages", "steed", "always")
+        tab.reload()
+        self.wait(
+            lambda: "Summarize this page" in self.js(tab, "document.body.innerText")
+        )
+        self.assertIn("No automations yet", self.js(tab, "document.body.innerText"))
+        # Your pages start out in Steed's colours.
+        self.assertNotEqual(
+            self.js(tab, "getComputedStyle(document.body).backgroundColor"),
+            "rgba(0, 0, 0, 0)",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

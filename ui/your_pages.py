@@ -24,61 +24,98 @@ from ui.html_dialog import HtmlSettingsDialog
 
 API = """fetch("/api/<name>") from your page, each allowed in Access → Local pages:
   fetch?url=…   load a web address (no cookies)     tabs, history, bookmarks
-  watches       pages you watch, with what changed   routines, skills
-  run-skill?id=…   run-routine?id=…   open?url=…   notify?title=…&text=…"""
+  watches       pages you watch, with what changed   automations, skills
+  run-automation?id=…   run-skill?id=…   open?url=…   notify?title=…&text=…"""
 
-DASHBOARD = """<main style="max-width:880px;margin:40px auto;padding:0 20px;font-family:system-ui">
-<h1>My dashboard</h1>
-<section><h2>Watched pages</h2><ul id="watches"><li>Loading…</li></ul></section>
-<section><h2>Routines</h2><ul id="routines"><li>Loading…</li></ul></section>
-<section><h2>Skills</h2><div id="skills"></div></section>
-</main>
+# Shared by the templates: a list that explains a "Don't allow" instead of
+# looking empty, and buttons that look like Steed's.
+HELPERS = """<style>
+main{max-width:880px;margin:48px auto;padding:0 24px}
+h1{font-size:2rem;margin:0 0 24px}
+section{background:var(--card,var(--surface));border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin:0 0 16px}
+h2{font-size:1rem;margin:0 0 8px;color:var(--muted)}
+ul{list-style:none;margin:0;padding:0}
+li{padding:6px 0;border-top:1px solid var(--border);display:flex;gap:12px;align-items:center;justify-content:space-between}
+li:first-child{border-top:0}
+button{font:inherit;border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+.muted{color:var(--muted)}
+</style>
 <script>
-const list = (id, items, line) => {
-  const target = document.getElementById(id);
-  target.replaceChildren(...(items.length ? items.map(line) : [Object.assign(document.createElement("li"), {textContent: "Nothing yet."})]));
+const steed = async name => {
+  const reply = await fetch(name).then(r => r.json());
+  if (reply && reply.error === "denied") throw new Error("denied");
+  return reply;
 };
-const item = text => Object.assign(document.createElement("li"), {textContent: text});
+const item = (text, button) => {
+  const li = document.createElement("li");
+  li.append(Object.assign(document.createElement("span"), {textContent: text}));
+  if (button) li.append(button);
+  return li;
+};
+const action = (label, run) => {
+  const b = Object.assign(document.createElement("button"), {textContent: label});
+  b.onclick = run;
+  return b;
+};
+const show = (id, load, line, empty) => load.then(items => {
+  const target = document.getElementById(id);
+  target.replaceChildren(...(items.length ? items.map(line) : [item(empty)]));
+}).catch(() => document.getElementById(id).replaceChildren(item(
+  "This page isn't allowed to see this. Allow it in Access → Local pages (See your watches, automations and skills).")));
 const when = seconds => seconds ? new Date(seconds * 1000).toLocaleString() : "not yet";
-fetch("/api/watches").then(r => r.json()).then(watches => list("watches", watches,
-  w => item(`${w.title}: ${w.last_summary || "no change yet"} (${when(w.last_change)})`)));
-fetch("/api/routines").then(r => r.json()).then(routines => list("routines", routines, r => {
-  const li = item(`${r.name}, ${r.when}, last ran ${when(r.last_run)} `);
-  const run = Object.assign(document.createElement("button"), {textContent: "Run now"});
-  run.onclick = () => fetch("/api/run-routine?id=" + encodeURIComponent(r.id));
-  li.append(run); return li;
-}));
-fetch("/api/skills").then(r => r.json()).then(skills => {
-  document.getElementById("skills").replaceChildren(...skills.map(s => {
-    const button = Object.assign(document.createElement("button"), {textContent: s.name, title: s.ask});
-    button.onclick = () => fetch("/api/run-skill?id=" + encodeURIComponent(s.id));
-    return button;
-  }));
-});
 </script>"""
 
-LAUNCHER = """<main style="max-width:640px;margin:12vh auto;padding:0 20px;font-family:system-ui;text-align:center">
+DASHBOARD = (
+    HELPERS
+    + """
+<main>
+<h1>My dashboard</h1>
+<section><h2>Watched pages</h2><ul id="watches"><li class="muted">Loading…</li></ul></section>
+<section><h2>Automations</h2><ul id="automations"><li class="muted">Loading…</li></ul></section>
+<section><h2>Skills</h2><ul id="skills"><li class="muted">Loading…</li></ul></section>
+</main>
+<script>
+show("watches", steed("/api/watches"), w => item(
+  `${w.title}: ${w.last_summary || "no change yet"} (${when(w.last_change)})`),
+  "No watched pages yet. Right-click a page and choose Watch This Page.");
+show("automations", steed("/api/automations"), a => item(
+  `${a.name}: ${a.runs}, last ran ${when(a.last_run)}`,
+  action("Run now", () => fetch("/api/run-automation?id=" + encodeURIComponent(a.id)))),
+  "No automations yet. Make one in Agents → Automations.");
+show("skills", steed("/api/skills"), s => item(s.name,
+  action("Run", () => fetch("/api/run-skill?id=" + encodeURIComponent(s.id)))),
+  "No skills yet. Make one in Agents → Skills.");
+</script>"""
+)
+
+LAUNCHER = (
+    HELPERS
+    + """
+<main style="max-width:640px;margin-top:12vh;text-align:center">
 <h1>What now?</h1>
-<p>Your skills, one click each.</p>
+<p class="muted">Your skills, one click each.</p>
 <div id="skills" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center"></div>
 </main>
 <script>
-fetch("/api/skills").then(r => r.json()).then(skills => {
+steed("/api/skills").then(skills => {
   document.getElementById("skills").replaceChildren(...skills.map(s => {
-    const button = Object.assign(document.createElement("button"), {textContent: s.name, title: s.ask});
-    button.onclick = () => fetch("/api/run-skill?id=" + encodeURIComponent(s.id));
-    return button;
+    const b = action(s.name, () => fetch("/api/run-skill?id=" + encodeURIComponent(s.id)));
+    b.title = s.ask;
+    return b;
   }));
-});
+}).catch(() => { document.getElementById("skills").textContent =
+  "This page isn't allowed to see your skills. Allow it in Access → Local pages."; });
 </script>"""
+)
 
-BLANK = """<main style="max-width:720px;margin:40px auto;padding:0 20px;font-family:system-ui">
+BLANK = """<main style="max-width:720px;margin:48px auto;padding:0 24px">
 <h1>My page</h1>
 <p>Write anything here. Scripts can use fetch("/api/…").</p>
 </main>"""
 
 TEMPLATES = (
-    ("Dashboard: watches, routines, skills", "dashboard", "My dashboard", DASHBOARD),
+    ("Dashboard: watches, automations, skills", "dashboard", "My dashboard", DASHBOARD),
     ("Launcher: your skills", "launch", "Launch", LAUNCHER),
     ("Blank page", "page", "My page", BLANK),
 )
@@ -89,13 +126,15 @@ WRITER = (
     "Its scripts can call these same-origin endpoints with fetch, which return "
     "JSON:\n"
     "/api/watches -> [{title,url,last_change,last_summary,paused}], "
-    "/api/routines -> [{id,name,when,last_run,paused}], "
+    "/api/automations -> [{id,name,runs,last_run,last_outcome,paused}], "
     "/api/skills -> [{id,name,ask}], /api/tabs, /api/history, /api/bookmarks -> "
     "[{title,url}], /api/fetch?url=… -> the web response, "
-    "/api/run-skill?id=…, /api/run-routine?id=…, /api/open?url=…, "
+    "/api/run-skill?id=…, /api/run-automation?id=…, /api/open?url=…, "
     "/api/notify?title=…&text=…. Use the CSS variables var(--bg), var(--surface), "
     "var(--ink), var(--muted), var(--accent), var(--border) so it matches light "
-    "and dark. Reply with the HTML only.\n\nDescription: {description}"
+    "and dark. If the person has not allowed the page, an endpoint answers "
+    '{"error": "denied"}: say so on the page (allow it in Access → Local '
+    "pages) instead of showing nothing. Reply with the HTML only.\n\nDescription: {description}"
 )
 
 
