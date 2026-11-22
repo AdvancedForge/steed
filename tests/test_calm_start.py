@@ -150,6 +150,18 @@ class TipTests(unittest.TestCase):
         # The first websites bring no dictation tip.
         self.assertLess(getattr(window, "_web_loads", 0), 25)
 
+    def test_welcome_reads_as_one_page_on_every_step(self):
+        from services.start_pages import assistant_cards, display_url
+
+        self.assertEqual(display_url(QUrl("steed://welcome/#agent")), "steed:welcome")
+        self.assertEqual(display_url(QUrl("steed://dashboard/#x")), "steed:dashboard#x")
+        self.assertIn("Choose one", assistant_cards(("Codex", "Claude Code")))
+        self.assertIn("Choose it", assistant_cards(("Codex",)))
+        page = self.window.profile_manager.registry.start_pages.render(
+            "global", "welcome"
+        ).decode()
+        self.assertNotIn('<span class="profile">Global', page)
+
     def test_welcome_choices_and_links_work_on_every_step(self):
         from PyQt6.QtCore import QUrl
 

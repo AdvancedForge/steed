@@ -18,6 +18,9 @@ localStorage.setItem("kept", "yes");
 </script>"""
 
 
+TEXT = "document.body ? document.body.innerText : ''"
+
+
 class NameTests(unittest.TestCase):
     def test_names_addresses_and_steeds_own(self):
         self.assertEqual(clean_page_name(" steed:Dashboard "), "dashboard")
@@ -109,17 +112,15 @@ class YourPageTests(unittest.TestCase):
         registry.start_pages.save_your_page(profile, "dash", "Dash", DASHBOARD)
         tab = self.window._new_tab(url="steed:dash", return_tab=True)
         self.wait(lambda: tab.title() == "Dash")
-        self.wait(lambda: "allowed" in self.js(tab, "document.body.innerText"))
-        text = self.js(tab, "document.body.innerText")
+        self.wait(lambda: "allowed" in self.js(tab, TEXT))
+        text = self.js(tab, TEXT)
         self.assertIn("Access → Local pages", text)
         self.assertNotIn("Loading", text)
         # Allowed, it lists what there is, and says what to do when empty.
         access_levels.set_policy(self.window.config, "pages", "steed", "always")
         tab.reload()
-        self.wait(
-            lambda: "Summarize this page" in self.js(tab, "document.body.innerText")
-        )
-        self.assertIn("No automations yet", self.js(tab, "document.body.innerText"))
+        self.wait(lambda: "Summarize this page" in self.js(tab, TEXT))
+        self.assertIn("No automations yet", self.js(tab, TEXT))
         # Your pages start out in Steed's colours.
         self.assertNotEqual(
             self.js(tab, "getComputedStyle(document.body).backgroundColor"),
