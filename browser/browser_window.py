@@ -796,6 +796,11 @@ class BrowserWindow(QMainWindow):
         save_page.setShortcut(QKeySequence("Ctrl+S"))
         save_page.triggered.connect(lambda: self.save_page_as())
         view_menu.addAction(save_page)
+        phone = QAction("Send to Your Phone…", self)
+        phone.triggered.connect(
+            lambda: self.tabs and self.send_to_phone(self.tabs[self.current_tab_index])
+        )
+        view_menu.addAction(phone)
         shots = view_menu.addMenu("Take Screenshot")
         for label, whole, copy, key in (
             ("Save Full Page…", True, False, "Ctrl+Shift+S"),
@@ -6719,6 +6724,20 @@ class BrowserWindow(QMainWindow):
     def _inspect_page_element(self, tab):
         self._devtools_call(self.devtools.inspect_element, tab)
 
+    def send_to_phone(self, tab):
+        """Show the page's address as a QR code to scan with a phone."""
+        if tab.url().scheme() not in ("http", "https"):
+            self.status_bar.showMessage(
+                "Only web pages can be opened on your phone.", 4000
+            )
+            return
+        from browser.link_cleaning import clean_link
+        from ui.send_to_phone import SendToPhoneDialog
+
+        # A clean address: tracking parameters don't need to travel along.
+        url = clean_link(tab.url().toString())
+        self._present_dialog(SendToPhoneDialog(url, tab.title(), self), modal=False)
+
     def _show_tab_menu(self, index, position):
         """Right-click actions for one tab, in Chrome's familiar order."""
         if not 0 <= index < len(self.tabs):
@@ -6757,6 +6776,9 @@ class BrowserWindow(QMainWindow):
         copy.setEnabled(not tab.workspace_name and not tab.url().isEmpty())
         clean = menu.addAction("Copy Clean Link", lambda: self.copy_clean_link(tab))
         clean.setEnabled(tab.url().scheme() in ("http", "https"))
+        menu.addAction(
+            "Send to Your Phone…", lambda: self.send_to_phone(tab)
+        ).setEnabled(tab.url().scheme() in ("http", "https"))
         destinations = [
             name
             for name in self.profile_manager.list_profiles()

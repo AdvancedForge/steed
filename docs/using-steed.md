@@ -1111,6 +1111,12 @@ their order), **Duplicate with History** (a copy whose Back and Forward lead
 where the original's do) and **Send Tab to Profile ▸** (opens the page in
 another profile's window, or a new one, or an incognito window, with that
 profile's sign-ins, and closes it here unless it is the window's last tab).
+**Send to Your Phone…** (also in the main menu) shows the page's address as a
+QR code: point your phone's camera at it and the page opens there. Nothing is
+sent anywhere, the address leaves out tracking parameters, and very long
+addresses (over about 2,300 characters) can't fit in a code. Steed draws the
+code itself (`browser/qr.py`); the tests check every code size with the zbar
+scanner.
 
 ### Media controls and Mini Player
 
