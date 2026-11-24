@@ -112,10 +112,13 @@ class YourPageTests(unittest.TestCase):
         registry.start_pages.save_your_page(profile, "dash", "Dash", DASHBOARD)
         tab = self.window._new_tab(url="steed:dash", return_tab=True)
         self.wait(lambda: tab.title() == "Dash")
-        self.wait(lambda: "allowed" in self.js(tab, TEXT))
+        # Each section answers on its own: wait for all of them.
+        self.wait(
+            lambda: "allowed" in (text := self.js(tab, TEXT)) and "Loading" not in text
+        )
         text = self.js(tab, TEXT)
         self.assertIn("Access → Local pages", text)
-        self.assertNotIn("Loading", text)
+        self.assertEqual(text.count("Not allowed yet"), 3)
         # Allowed, it lists what there is, and says what to do when empty.
         access_levels.set_policy(self.window.config, "pages", "steed", "always")
         tab.reload()
