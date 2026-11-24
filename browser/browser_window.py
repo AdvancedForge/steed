@@ -675,9 +675,6 @@ class BrowserWindow(QMainWindow):
         topics_action = QAction("Group My Recent History into Topics…", self)
         topics_action.triggered.connect(self.history_topics)
         tabs_menu.addAction(topics_action)
-        find_action = QAction("Find a Page I Saw…", self)
-        find_action.triggered.connect(self.find_in_history)
-        tabs_menu.addAction(find_action)
         history_action = QAction("Session History…", self)
         history_action.triggered.connect(self._open_session_history)
         tabs_menu.addAction(history_action)
@@ -729,6 +726,9 @@ class BrowserWindow(QMainWindow):
         read_action.setShortcut(QKeySequence("Ctrl+Shift+F"))
         read_action.triggered.connect(self.search_what_you_read)
         cookies_menu.addAction(read_action)
+        find_action = QAction("Find a Page I Saw…", self)
+        find_action.triggered.connect(self.find_in_history)
+        cookies_menu.addAction(find_action)
         history_action = cookies_menu.addAction("Browsing History…")
         history_action.setShortcut(QKeySequence("Ctrl+H"))
         history_action.triggered.connect(lambda: self._open_management("history"))
@@ -813,16 +813,20 @@ class BrowserWindow(QMainWindow):
             split.setVisible(not in_split)
 
         view_menu.aboutToShow.connect(split_items)
+        self.side_tabs_action = QAction("Tabs on the Side", self)
+        self.side_tabs_action.setCheckable(True)
+        self.side_tabs_action.triggered.connect(self.set_side_tabs)
+        view_menu.addAction(self.side_tabs_action)
+        view_menu.aboutToShow.connect(
+            lambda: self.side_tabs_action.setChecked(
+                self.layout_preferences.tabs["position"] in ("left", "right")
+            )
+        )
         unsplit.setVisible(False)
         save_page = QAction("Save Page As…", self)
         save_page.setShortcut(QKeySequence("Ctrl+S"))
         save_page.triggered.connect(lambda: self.save_page_as())
         view_menu.addAction(save_page)
-        phone = QAction("Send to Your Phone…", self)
-        phone.triggered.connect(
-            lambda: self.tabs and self.send_to_phone(self.tabs[self.current_tab_index])
-        )
-        view_menu.addAction(phone)
         shots = view_menu.addMenu("Take Screenshot")
         for label, whole, copy, key in (
             ("Save Full Page…", True, False, "Ctrl+Shift+S"),
@@ -917,6 +921,11 @@ class BrowserWindow(QMainWindow):
         bookmark_action.setShortcut(QKeySequence("Ctrl+D"))
         bookmark_action.triggered.connect(self._bookmark_current)
         tabs_menu.addAction(bookmark_action)
+        phone = QAction("Send to Your Phone…", self)
+        phone.triggered.connect(
+            lambda: self.tabs and self.send_to_phone(self.tabs[self.current_tab_index])
+        )
+        tabs_menu.addAction(phone)
         manage_bookmarks_action = QAction("Manage Bookmarks…", self)
         manage_bookmarks_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
         manage_bookmarks_action.triggered.connect(self._manage_bookmarks)
@@ -1474,6 +1483,9 @@ class BrowserWindow(QMainWindow):
 
         self.handoff_bar = HandoffBar(self)
         layout.addWidget(self.handoff_bar)
+        from ui.mouse_gestures import MouseGestures
+
+        self.mouse_gestures = MouseGestures(self)
         from ui.extension_install import ExtensionInstaller, StoreBar
 
         self.extension_installer = ExtensionInstaller(self)
@@ -6974,6 +6986,17 @@ class BrowserWindow(QMainWindow):
         tab = self._new_tab(index=index, return_tab=True)
         if tab is not None and tab in self.tabs:
             self._set_tab_group_existing(self.tabs.index(tab), group.name)
+
+    def set_side_tabs(self, side):
+        """View → Tabs on the Side: tabs in a list on the left (with their
+        groups, which collapse), or back along the top. Every window."""
+        saved = preferences_from_config(self.config)
+        edited = saved.copy()
+        edited.set_tabs({"position": "left" if side else "top"})
+        try:
+            self.profile_manager.registry.commit_layout(edited, base=saved)
+        except LayoutConflict:
+            self.apply_layout(preferences_from_config(self.config))
 
     def _commit_tab_width(self, width):
         """Save a dragged side-tab width for every window."""

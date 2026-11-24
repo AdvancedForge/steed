@@ -7,6 +7,22 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**What a new user looks for — November 24, 2026.**
+- Codex usage checked with a real chat: Steed's numbers matched what Codex
+  reported (the test chat was then removed from Codex's history);
+- Secure DNS (Settings → General): DNS over HTTPS with Cloudflare, Google,
+  Quad9, Mullvad or any server, with or without falling back, applied at once;
+- Send to Your Phone: the page's address as a QR code, drawn by Steed itself
+  and checked against the zbar scanner for every code size;
+- Find a Page I Saw: describe a page and your assistant picks it out of the
+  past month's titles, sites and dates;
+- right-click Ask Agent To ▸ Fill This Form, Extract This, Compare with Other
+  Tabs; New Tab errands under the search box (Watch a price, Summarise my
+  tabs, Fill a form from my notes);
+- Add an Assistant → Help me choose, in plain words; Manage Extensions says
+  what is known about Bitwarden and 1Password;
+- mouse gestures (off by default) and View → Appearance → Tabs on the Side.
+
 **Handoff, agent activity, addresses and cards — November 23, 2026.**
 - an agent stuck at a captcha, a sign-in, a code or a payment calls
   browser.ask_person: Steed brings the page to you with a bar (and a desktop

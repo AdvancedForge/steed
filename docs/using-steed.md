@@ -532,8 +532,8 @@ nothing from incognito) to your assistant, which groups them into topics such
 as "Planning a trip to Lisbon". Reopen a topic's pages, or ask your agent to
 help you pick up where you left off. Nothing is kept; run it whenever you like.
 
-**Find a Page I Saw…** (in the same menu, and **Describe it instead…** on the
-History page) finds a page from a description, such as "that heat pump
+**Find a Page I Saw…** (in the History menu, and **Describe it instead…** on
+the History page) finds a page from a description, such as "that heat pump
 article last week". Your assistant gets the titles, sites and dates of the
 past month's pages under the same rules (no page text, no banking, health or
 sign-in sites, nothing from incognito) and picks up to five matches; open the
@@ -1124,7 +1124,7 @@ their order), **Duplicate with History** (a copy whose Back and Forward lead
 where the original's do) and **Send Tab to Profile ▸** (opens the page in
 another profile's window, or a new one, or an incognito window, with that
 profile's sign-ins, and closes it here unless it is the window's last tab).
-**Send to Your Phone…** (also in the main menu) shows the page's address as a
+**Send to Your Phone…** (also Tabs → More Tab Tools) shows the page's address as a
 QR code: point your phone's camera at it and the page opens there. Nothing is
 sent anywhere, the address leaves out tracking parameters, and very long
 addresses (over about 2,300 characters) can't fit in a code. Steed draws the
@@ -1688,6 +1688,17 @@ The numbered shortcuts work before the menu is opened. Ordinary profiles are
 listed alphabetically, including `default` and `global`.
 
 ## Tabs and groups
+
+**Tabs on the side.** View → Appearance → **Tabs on the Side** puts tabs in a
+list on the left (Style → Tabs also offers the right, and the width can be
+dragged). Groups show as a heading over their tabs; click it to collapse the
+group to its first tab with a count, and again to open it.
+
+**Mouse gestures** (off; Settings → General). Hold the right button over a
+page and draw: ← Back, → Forward, ↓ New tab, ↓→ Close tab, ↑↓ Reload. A plain
+right-click still opens the page menu, when you let go of the button (Steed
+holds the press back until it knows you aren't drawing). They are off by
+default because some sites use right dragging themselves.
 
 **Tab previews.** Hovering a background tab for half a second shows a small
 snapshot of it (taken when you last left it; about 15 KB in memory, never

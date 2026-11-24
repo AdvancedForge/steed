@@ -43,6 +43,7 @@ DEFAULTS = {
     "auto_zoom_small_text": True,
     "strip_tracking": True,
     "https_first": True,
+    "mouse_gestures": False,
     "secure_dns": "off",
     "secure_dns_server": "https://cloudflare-dns.com/dns-query",
     "resist_fingerprinting": False,

@@ -49,7 +49,12 @@ GROUPS = {
         ("Your Pages…", "Packs…", "Your Commands"),
     ),
     "cookies": (
-        ("Browsing History…", "Search What You've Read…", "Clear Browsing History…"),
+        (
+            "Browsing History…",
+            "Search What You've Read…",
+            "Find a Page I Saw…",
+            "Clear Browsing History…",
+        ),
     ),
     "agents": (
         (
@@ -60,7 +65,7 @@ GROUPS = {
             "Pause All Agents",
         ),
         ("Automations", "Watches…", "Data Panels"),
-        ("Agent Chat Tab", "Website Chats"),
+        ("Agent Chat Tab", "Website Chats", "Agent Activity"),
     ),
 }
 # Items gathered into sub-menus near the end, out of the way of everyday use:
@@ -84,7 +89,7 @@ SUBMENUS = {
             (
                 ("Next Tab", "Previous Tab"),
                 ("Save All Tabs as Group…", "Session History…"),
-                ("Group My Recent History into Topics…",),
+                ("Send to Your Phone…", "Group My Recent History into Topics…"),
             ),
         ),
         ("Site Apps", (("Install This Site as an App…", "Site Apps…"),)),
@@ -104,7 +109,7 @@ SUBMENUS = {
         (
             "Appearance",
             (
-                ("Liquid Glass", "Compact Mode"),
+                ("Liquid Glass", "Compact Mode", "Tabs on the Side"),
                 ("Show Top Menu Bar", "Show Bottom Status Bar", "App Panel"),
                 ("Reset Page Style…", "Recover Previous Layout"),
                 ("Import Layout…", "Export Layout…"),
