@@ -872,3 +872,45 @@ _FAILURES = {
 def fail_request(job, reason: str) -> None:
     """Answer a steed:// request with "denied", "not_found", "invalid" or "failed"."""
     job.fail(_FAILURES[reason])
+
+
+# Secure DNS (browser/secure_dns.py). PyQt6 binds QWebEngineGlobalSettings'
+# DnsMode type but not setDnsMode itself, so Steed calls the function in Qt's
+# own library with a DnsMode PyQt built (passed by reference on Linux).
+_SET_DNS_MODE = "_ZN24QWebEngineGlobalSettings10setDnsModeENS_7DnsModeE"
+
+
+def _dns_function():
+    import ctypes
+    import os
+
+    import PyQt6
+
+    library = ctypes.CDLL(
+        os.path.join(
+            os.path.dirname(PyQt6.__file__), "Qt6", "lib", "libQt6WebEngineCore.so.6"
+        )
+    )
+    function = getattr(library, _SET_DNS_MODE)
+    function.restype = ctypes.c_bool
+    function.argtypes = [ctypes.c_void_p]
+    return function
+
+
+def set_dns_mode(mode, servers=()):
+    """mode: "system", "fallback" (secure, else the system's) or "secure"
+    (secure only). False when the engine refused it or has no such call."""
+    from PyQt6 import sip
+    from PyQt6.QtWebEngineCore import QWebEngineGlobalSettings
+
+    choice = QWebEngineGlobalSettings.DnsMode()
+    choice.secureMode = {
+        "system": QWebEngineGlobalSettings.SecureDnsMode.SystemOnly,
+        "fallback": QWebEngineGlobalSettings.SecureDnsMode.SecureWithFallback,
+        "secure": QWebEngineGlobalSettings.SecureDnsMode.SecureOnly,
+    }[mode]
+    choice.serverTemplates = list(servers)
+    try:
+        return bool(_dns_function()(sip.unwrapinstance(choice)))
+    except (OSError, AttributeError):
+        return False

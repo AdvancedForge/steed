@@ -7,7 +7,7 @@ from PyQt6 import sip
 from PyQt6.QtWebEngineCore import QWebEngineGlobalSettings as Settings
 from qt_test_support import application
 
-from browser import secure_dns
+from browser import secure_dns, webengine
 
 
 class SecureDnsTests(unittest.TestCase):
@@ -24,7 +24,7 @@ class SecureDnsTests(unittest.TestCase):
             seen.append((choice.secureMode, list(choice.serverTemplates)))
             return True
 
-        with patch.object(secure_dns, "_function", return_value=fake):
+        with patch.object(webengine, "_dns_function", return_value=fake):
             self.assertTrue(secure_dns.apply(config))
         return seen[0]
 
@@ -50,7 +50,7 @@ class SecureDnsTests(unittest.TestCase):
         )
 
     def test_the_real_function_is_found(self):
-        self.assertTrue(callable(secure_dns._function()))
+        self.assertTrue(callable(webengine._dns_function()))
 
     def test_settings_refuse_bad_choices(self):
         from ui.settings_dialog import DEFAULTS, SettingsDialog
