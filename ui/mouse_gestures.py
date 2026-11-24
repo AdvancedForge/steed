@@ -53,13 +53,11 @@ class MouseGestures(QObject):
         self.press = None  # (local position, global position, modifiers)
         self.points = []
         self.replaying = False
-        QApplication.instance().installEventFilter(self)
-        window.destroyed.connect(self._stop)
-
-    def _stop(self):
         app = QApplication.instance()
-        if app is not None:
-            app.removeEventFilter(self)
+        app.installEventFilter(self)
+        # Off the application as soon as this or its window goes away.
+        self.destroyed.connect(lambda: app.removeEventFilter(self))
+        window.destroyed.connect(lambda: app.removeEventFilter(self))
 
     def _enabled(self):
         return bool(self.browser.config.get("mouse_gestures", False))
@@ -74,7 +72,15 @@ class MouseGestures(QObject):
         return False
 
     def eventFilter(self, target, event):
-        if self.replaying:
+        # Every event in Steed passes here: an error must never escape (PyQt
+        # would abort), and a filter being torn down lets everything through.
+        try:
+            return self._filter(target, event)
+        except Exception:
+            return False
+
+    def _filter(self, target, event):
+        if getattr(self, "replaying", True) or sip.isdeleted(self.browser):
             return False
         kind = event.type()
         if kind == QEvent.Type.MouseButtonPress:
