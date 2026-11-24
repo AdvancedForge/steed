@@ -44,54 +44,65 @@ def directions(points, step=STEP):
 
 
 class MouseGestures(QObject):
-    """One per window: watches right-button drags over its pages."""
+    """One filter for the whole application (never deleted while Steed runs),
+    so no window's lifetime can leave a half-gone filter behind: it finds the
+    window from the page widget the right button went down on."""
 
-    def __init__(self, window):
-        super().__init__(window)
-        self.browser = window
-        self.target = None  # The page widget the right button went down on.
-        self.press = None  # (local position, global position, modifiers)
-        self.points = []
-        self.replaying = False
-        app = QApplication.instance()
-        app.installEventFilter(self)
-        # Off the application as soon as this or its window goes away.
-        self.destroyed.connect(lambda: app.removeEventFilter(self))
-        window.destroyed.connect(lambda: app.removeEventFilter(self))
+    _shared = None
 
-    def _enabled(self):
-        return bool(self.browser.config.get("mouse_gestures", False))
+    def __new__(cls, window=None):
+        if cls._shared is None or sip.isdeleted(cls._shared):
+            app = QApplication.instance()
+            shared = super().__new__(cls)
+            QObject.__init__(shared, app)
+            shared.browser = None  # The window of the drag in progress.
+            shared.target = None  # The page widget the right button went down on.
+            shared.press = None  # (local position, global position, modifiers)
+            shared.points = []
+            shared.replaying = False
+            app.installEventFilter(shared)
+            cls._shared = shared
+        return cls._shared
 
-    def _page_widget(self, widget):
-        """True when widget is (inside) one of this window's tabs."""
+    def __init__(self, window=None):
+        pass  # Set up once, in __new__.
+
+    @staticmethod
+    def _window_of(widget):
+        """The browser window whose tab holds widget, if gestures are on."""
         if not isinstance(widget, QWidget) or sip.isdeleted(widget):
-            return False
-        for tab in getattr(self.browser, "tabs", ()):
+            return None
+        window = widget.window()
+        tabs = getattr(window, "tabs", None)
+        if (
+            tabs is None
+            or getattr(window, "_closing", True)
+            or not window.config.get("mouse_gestures", False)
+        ):
+            return None
+        for tab in tabs:
             if not sip.isdeleted(tab) and (widget is tab or tab.isAncestorOf(widget)):
-                return True
-        return False
+                return window
+        return None
 
     def eventFilter(self, target, event):
         # Every event in Steed passes here: an error must never escape (PyQt
-        # would abort), and a filter being torn down lets everything through.
+        # would abort).
         try:
             return self._filter(target, event)
         except Exception:
             return False
 
     def _filter(self, target, event):
-        if getattr(self, "replaying", True) or sip.isdeleted(self.browser):
+        if self.replaying:
             return False
         kind = event.type()
         if kind == QEvent.Type.MouseButtonPress:
-            if (
-                event.button() == Qt.MouseButton.RightButton
-                and self.target is None
-                and self._enabled()
-                and not self.browser._closing
-                and self._page_widget(target)
-            ):
-                self.target = target
+            if event.button() == Qt.MouseButton.RightButton and self.target is None:
+                window = self._window_of(target)
+                if window is None:
+                    return False
+                self.browser, self.target = window, target
                 self.press = (
                     event.position(),
                     event.globalPosition(),
@@ -114,24 +125,28 @@ class MouseGestures(QObject):
             and event.button() == Qt.MouseButton.RightButton
         ):
             gesture = directions(self.points)
-            widget, press = self.target, self.press
-            self.target, self.press, self.points = None, None, []
+            window, widget, press = self.browser, self.target, self.press
+            self.browser = self.target = self.press = None
+            self.points = []
+            if sip.isdeleted(window) or window._closing:
+                return True
             if gesture:
-                self._run(gesture)
+                self._run(window, gesture)
             else:
-                self._replay(widget, press, event)
+                self._replay(widget, press)
             return True
         return False
 
-    def _run(self, gesture):
+    @staticmethod
+    def _run(window, gesture):
         found = GESTURES.get(gesture)
         if found is None:
             return
         label, method = found
-        getattr(self.browser, method)()
-        self.browser.status_bar.showMessage(f"Gesture: {label}", 1500)
+        getattr(window, method)()
+        window.status_bar.showMessage(f"Gesture: {label}", 1500)
 
-    def _replay(self, widget, press, release):
+    def _replay(self, widget, press):
         """A plain right-click after all: give the page its press and release."""
         if sip.isdeleted(widget):
             return
