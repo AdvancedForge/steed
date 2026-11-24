@@ -20,7 +20,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QProcess, QProcessEnvironment, QTimer
 
-from services.agent_provider import AgentProvider
+from services.agent_provider import AgentProvider, usage
 from services.command_broker import require_owner_thread
 
 PROTOCOL_VERSION = 1
@@ -223,6 +223,15 @@ class AcpProvider(AgentProvider):
         self._finish_reply()
         self.turn_active = False
         reason = result.get("stopReason") if isinstance(result, dict) else None
+        spent = result.get("usage") if isinstance(result, dict) else None
+        if isinstance(spent, dict):
+            report = usage(
+                spent.get("inputTokens"),
+                spent.get("outputTokens"),
+                spent.get("cachedReadTokens"),
+            )
+            if report is not None:
+                self.usage_reported.emit(report)
         if reason in ("end_turn", "cancelled", "max_tokens", "max_turn_requests"):
             self.turn_done.emit()
         elif reason == "refusal":

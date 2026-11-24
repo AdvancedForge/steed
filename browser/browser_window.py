@@ -968,6 +968,11 @@ class BrowserWindow(QMainWindow):
         task_action = QAction("Task Permissions…", self)
         task_action.triggered.connect(self._open_tasks)
         agents_menu.addAction(task_action)
+        activity_action = QAction("Agent Activity", self)
+        activity_action.triggered.connect(
+            lambda: self._new_tab(url="steed:activity", return_tab=True)
+        )
+        agents_menu.addAction(activity_action)
         self.auto_approval_action = QAction("Approve All Agent Requests (unsafe)", self)
         self.auto_approval_action.setCheckable(True)
         self.auto_approval_action.toggled.connect(self._toggle_auto_approval)

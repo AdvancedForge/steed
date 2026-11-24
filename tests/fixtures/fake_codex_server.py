@@ -293,6 +293,22 @@ for line in sys.stdin:
             "item/completed",
             {**scope, "item": {"type": "agentMessage", "id": "reply", "text": answer}},
         )
+        # Two model calls in this turn, each reporting its own usage.
+        for _ in range(2):
+            event(
+                "thread/tokenUsage/updated",
+                {
+                    "threadId": thread,
+                    "turnId": turn,
+                    "tokenUsage": {
+                        "last": {
+                            "inputTokens": 50,
+                            "cachedInputTokens": 40,
+                            "outputTokens": 7,
+                        }
+                    },
+                },
+            )
         event(
             "turn/completed",
             {"threadId": thread, "turn": {"id": turn, "status": "completed"}},

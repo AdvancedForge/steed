@@ -22,6 +22,7 @@ PAGES = {
     "library": "File library",
     "connections": "App connections",
     "tasks": "Agent tasks & permissions",
+    "activity": "Agent activity",
     "panels": "Data panels",
     "passwords": "Passwords",
     "layout": "Browser layout",
@@ -62,6 +63,7 @@ SHARED_PAGES = frozenset(
         "library",
         "connections",
         "tasks",
+        "activity",
         "layout",
         "permissions",
         "agent-setup",
@@ -334,6 +336,10 @@ def controller(window, name, source_tab=None):
         from ui.task_dialog import TaskDialog
 
         return TaskDialog(registry.tasks, window)
+    if name == "activity":
+        from ui.activity_page import ActivityDialog
+
+        return ActivityDialog(registry.tasks, window)
     if name == "layout":
         return window._layout_controller()
     if name == "newtab-settings":

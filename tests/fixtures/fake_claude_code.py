@@ -157,7 +157,20 @@ def reply(text):
         )
     else:
         emit(
-            {"type": "result", "subtype": "success", "is_error": False, "result": text}
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "result": text,
+                # Synthetic usage, as Claude Code reports it for each turn.
+                "usage": {
+                    "input_tokens": 10,
+                    "cache_creation_input_tokens": 5,
+                    "cache_read_input_tokens": 100,
+                    "output_tokens": 20,
+                },
+                "total_cost_usd": 0.0123,
+            }
         )
 
 

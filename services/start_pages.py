@@ -69,6 +69,7 @@ WORKSPACES = (
     "library",
     "connections",
     "tasks",
+    "activity",
     "panels",
     "passwords",
     "layout",

@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 from PyQt6.QtCore import QByteArray, QProcess, QTimer, QUrl
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
-from services.agent_provider import AgentProvider
+from services.agent_provider import AgentProvider, usage
 from services.command_broker import require_owner_thread
 
 PROTOCOL_VERSION = "2025-06-18"
@@ -492,6 +492,16 @@ class ModelAssistant(AgentProvider):
         )
 
     def _answered(self, value):
+        spent = value.get("usage")
+        if isinstance(spent, dict):
+            details = spent.get("prompt_tokens_details")
+            report = usage(
+                spent.get("prompt_tokens"),
+                spent.get("completion_tokens"),
+                details.get("cached_tokens") if isinstance(details, dict) else 0,
+            )
+            if report is not None:
+                self.usage_reported.emit(report)
         choice = value["choices"][0]
         message = choice["message"]
         content = message.get("content") or ""

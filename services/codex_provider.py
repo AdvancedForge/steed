@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QProcess, QTimer, pyqtSignal
 
-from services.agent_provider import AgentProvider
+from services.agent_provider import AgentProvider, usage
 from services.agent_tools import TOOLS
 from services.command_broker import require_owner_thread
 
@@ -52,6 +52,7 @@ class CodexProvider(AgentProvider):
     def __init__(self, parent=None, *, command=None, environment=None, model=None):
         super().__init__(parent)
         require_owner_thread(self)
+        self.turn_usage = {}  # This turn's tokens so far (thread/tokenUsage).
         self.command = command
         self.environment = environment
         self.model = model
@@ -346,6 +347,15 @@ class CodexProvider(AgentProvider):
         if method == "__host_request":
             self._host_request(params)
             return
+        if method == "thread/tokenUsage/updated":
+            # Each model call in a turn reports its own ("last") usage.
+            last = (params.get("tokenUsage") or {}).get("last")
+            if params.get("threadId") == self.thread_id and isinstance(last, dict):
+                for name in ("inputTokens", "cachedInputTokens", "outputTokens"):
+                    value = last.get(name)
+                    if isinstance(value, int) and value > 0:
+                        self.turn_usage[name] = self.turn_usage.get(name, 0) + value
+            return
         if method == "item/started" and params.get("threadId") == self.thread_id:
             item = params.get("item", {})
             if item.get("type") in ("fileChange", "commandExecution"):
@@ -430,6 +440,14 @@ class CodexProvider(AgentProvider):
                     )
                     return
                 self.turn_id = None
+                spent, self.turn_usage = self.turn_usage, {}
+                report = usage(
+                    spent.get("inputTokens"),
+                    spent.get("outputTokens"),
+                    spent.get("cachedInputTokens"),
+                )
+                if report is not None:
+                    self.usage_reported.emit(report)
                 self.turn_done.emit()
         elif method == "error" and not params.get("willRetry", False):
             self._fail(

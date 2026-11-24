@@ -1166,6 +1166,18 @@ shared task sessions, so its selector is null. Global now supports the explicit
 no access, and switching profiles never retargets existing grants or sessions.
 Restart Steed after updating the browser source to expose the new context tool.
 
+### What your agents did
+
+Agents → **Agent Activity** (steed:activity) shows one day at a time, today
+first, with Previous day and Next day. Each conversation or task gets one row:
+which assistant, when, the sites it visited, pages it read, actions it took
+(and forms it sent), files it downloaded, how often it asked you for help or
+for permission (and how many you refused), and the tokens it used. A line at
+the top adds the day up. Tokens come from each assistant's own app: Claude
+Code also reports a cost, Codex and models Steed runs itself report tokens
+only, and Steed never estimates a price. It is built from the task journal,
+which keeps sites (not page text), so the page shows no page content.
+
 ### When the agent needs you
 
 Some steps are for a person: a captcha or "are you human" check, signing in

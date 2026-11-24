@@ -105,6 +105,26 @@ class ClaudeCodeProviderTests(unittest.TestCase):
         self.assertEqual(activity["model"], "Model: claude-default · Anthropic")
         self.assertRegex(activity["hint"], r"^Last agent update [0-9:]+\.$")
 
+    def test_each_turn_records_the_tokens_and_cost_claude_code_reported(self):
+        task = self.chat()
+        self.service.send_message(task, "Count me")
+        self.agent_texts(task)
+        self.wait_for(
+            lambda: self.service.store.recent_events(task, kinds=("agent.usage",))
+        )
+        (event,) = self.service.store.recent_events(task, kinds=("agent.usage",))
+        self.assertEqual(
+            event.payload,
+            {
+                "input_tokens": 115,
+                "output_tokens": 20,
+                "cached_tokens": 100,
+                "cost_usd": 0.0123,
+                "agent": "Claude Code",
+                "model": "claude-default",
+            },
+        )
+
     def test_selected_model_and_unstreamed_replies(self):
         task = self.chat("no-partial", model="haiku")
         self.service.send_message(task, "Plain")

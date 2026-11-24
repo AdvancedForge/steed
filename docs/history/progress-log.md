@@ -7,6 +7,18 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Handoff, agent activity, addresses and cards — November 23, 2026.**
+- an agent stuck at a captcha, a sign-in, a code or a payment calls
+  browser.ask_person: Steed brings the page to you with a bar (and a desktop
+  notification), the agent waits, and Done hands the page back; "I can't"
+  tells it to ask you instead; page inspection flags captchas;
+- steed:activity (Agents → Agent Activity) shows what agents did each day:
+  sites, pages read, actions, forms, downloads, permissions, and the tokens
+  (and, for Claude Code, cost) each assistant reported;
+- addresses and payment cards live in the password vault; checkout pages get
+  a Fill bar, nothing is filled without a click, a security code is never
+  saved, and Steed offers to save what you submit.
+
 **A design pass as a new person — November 22, 2026.** Making Steed's pages
 quieter and easier to read:
 - dismissed tips vanish at once; a page you send to a chat shows as a chip to

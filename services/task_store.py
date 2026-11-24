@@ -126,6 +126,7 @@ class TaskStore:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS events_by_task ON events(task_id, sequence);
+                CREATE INDEX IF NOT EXISTS events_by_time ON events(created_at);
                 CREATE TRIGGER IF NOT EXISTS events_no_update
                     BEFORE UPDATE ON events BEGIN
                     SELECT RAISE(ABORT, 'Task events are append-only'); END;
@@ -827,6 +828,28 @@ class TaskStore:
                 "WHERE kind = 'conversation.continues' ORDER BY sequence"
             )
         }
+
+    def events_between(self, start, end, *, limit=20000):
+        """Trusted UI: every task's events from start (inclusive) to end, as
+        UTC ISO timestamps, oldest first. For Agent activity."""
+        self._check()
+        if not 1 <= limit <= 50000:
+            raise ValueError("Invalid event limit")
+        rows = self._db.execute(
+            "SELECT * FROM events WHERE created_at >= ? AND created_at < ?"
+            " ORDER BY sequence LIMIT ?",
+            (start, end, limit),
+        ).fetchall()
+        return [
+            TaskEvent(
+                row["sequence"],
+                row["task_id"],
+                row["kind"],
+                json.loads(row["payload"]),
+                row["created_at"],
+            )
+            for row in rows
+        ]
 
     def recent_events(self, task_id, *, limit=200, kinds=()):
         """Trusted UI tail, bounded and scoped without changing client cursors."""

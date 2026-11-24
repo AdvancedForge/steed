@@ -45,6 +45,7 @@ Object.assign(GLYPHS, {
   watches: '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.5"/>',
   layout: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 9h16M9 9v10"/>',
   tasks: '<path d="M9 7h11M9 12h11M9 17h11"/><path d="M4 7l1 1 2-2M4 12l1 1 2-2M4 17l1 1 2-2"/>',
+  activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
   connections: '<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1"/><path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>',
   services: '<circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/>',
   panels: '<path d="M5 20V10M12 20V4M19 20v-7"/>',

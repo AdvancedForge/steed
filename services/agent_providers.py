@@ -383,6 +383,9 @@ class AgentProviders(QObject):
             driver.model_reported.connect(
                 lambda report: self._model_reported(task.task_id, report)
             )
+            driver.usage_reported.connect(
+                lambda report: self._usage(task.task_id, report)
+            )
             driver.turn_done.connect(lambda: self._done(task.task_id))
             driver.failed.connect(lambda error: self._failed(task.task_id, error))
             self.changed.emit()
@@ -512,6 +515,25 @@ class AgentProviders(QObject):
         if any(message["message_id"] == message_id for message in chat["queue"]):
             return "Queued for agent"
         return None
+
+    def _usage(self, task_id, report):
+        """Keep what a turn used in the task's journal (for Agent activity)."""
+        chat = self.chats.get(task_id)
+        if chat is None or self.service._closed or self.service.failure:
+            return
+        model = (self.model_reports.get(task_id) or {}).get("model")
+        try:
+            self.service.store.record_event(
+                task_id,
+                "agent.usage",
+                {
+                    **report,
+                    "agent": chat["agent"],
+                    **({"model": str(model)[:80]} if model else {}),
+                },
+            )
+        except sqlite3.Error:
+            self.service._fatal()
 
     def _model_reported(self, task_id, report):
         if task_id not in self.chats:

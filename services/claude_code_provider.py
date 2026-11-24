@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from PyQt6.QtCore import QProcess, QProcessEnvironment, QTimer, pyqtSignal
 
-from services.agent_provider import AgentProvider
+from services.agent_provider import AgentProvider, count, usage
 from services.codex_provider import runtime_name
 from services.command_broker import require_owner_thread
 
@@ -319,6 +319,20 @@ class ClaudeCodeProvider(AgentProvider):
                     + ". Effects may be unknown; check Receipts before trying again."
                 )
                 return
+            spent = value.get("usage")
+            spent = spent if isinstance(spent, dict) else {}
+            cached = count(spent.get("cache_read_input_tokens"))
+            # Input includes what was written to and read from the prompt cache.
+            report = usage(
+                count(spent.get("input_tokens"))
+                + count(spent.get("cache_creation_input_tokens"))
+                + cached,
+                spent.get("output_tokens"),
+                cached,
+                value.get("total_cost_usd"),
+            )
+            if report is not None:
+                self.usage_reported.emit(report)
             self.turn_done.emit()
 
     def _stream(self, message_id, event):

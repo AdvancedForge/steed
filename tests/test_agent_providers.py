@@ -145,6 +145,26 @@ class AgentProviderTests(unittest.TestCase):
         self.assertIn("Agent fetched", self.sidebar.state["status"])
         self.assertEqual(len(self.drivers), 1)
 
+    def test_a_turn_adds_up_the_tokens_codex_reported_without_a_cost(self):
+        task = self.chat()
+        self.send("Count me")
+        self.complete(task)
+        self.wait_for(
+            lambda: self.service.store.recent_events(task, kinds=("agent.usage",))
+        )
+        (event,) = self.service.store.recent_events(task, kinds=("agent.usage",))
+        payload = dict(event.payload)
+        payload.pop("model", None)
+        self.assertEqual(
+            payload,
+            {
+                "input_tokens": 100,
+                "output_tokens": 14,
+                "cached_tokens": 80,
+                "agent": "Codex",
+            },
+        )
+
     def test_clock_optional_rpc_and_child_events_keep_followups_connected(self):
         for mode in ("clock", "unsupported-rpc", "child-events"):
             with self.subTest(mode=mode):
