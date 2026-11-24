@@ -138,3 +138,29 @@ if ($('search_choice')) {
   const render = window.steedUI.render;
   window.steedUI.render = next => { const done = render(next); syncSearchChoice(); return done; };
 }
+
+// Secure DNS: a provider from the list, or Other… for any address; the
+// provider only matters while Secure DNS is on.
+function syncDnsChoice() {
+  const field = $('secure_dns_server'), choice = $('secure_dns_choice');
+  if (!field || !choice) return;
+  const known = [...choice.options].some(o => o.value === field.value);
+  if (!choice.dataset.custom) choice.value = known ? field.value : 'custom';
+  $('secure_dns_custom').hidden = choice.value !== 'custom';
+  $('secure_dns_more').hidden = $('secure_dns').value === 'off';
+}
+if ($('secure_dns_choice')) {
+  $('secure_dns_choice').addEventListener('change', () => {
+    const choice = $('secure_dns_choice'), field = $('secure_dns_server');
+    choice.dataset.custom = choice.value === 'custom' ? '1' : '';
+    if (choice.value !== 'custom') {
+      field.value = choice.value;
+      field.dispatchEvent(new Event('input'));
+    }
+    $('secure_dns_custom').hidden = choice.value !== 'custom';
+    if (choice.value === 'custom') field.focus();
+  });
+  $('secure_dns').addEventListener('change', syncDnsChoice);
+  const render = window.steedUI.render;
+  window.steedUI.render = next => { const done = render(next); syncDnsChoice(); return done; };
+}

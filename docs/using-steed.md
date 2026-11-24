@@ -550,6 +550,13 @@ Settings → General:
   HTTPS, Steed loads it unencrypted after all (the status bar says so) and
   remembers the site until it quits. Local addresses, IP addresses and
   addresses with a port are left alone.
+- **Secure DNS** (off, Settings → General): looks up website addresses over
+  DNS over HTTPS, with Cloudflare, Google, Quad9, Mullvad or any https://
+  server (Other…). **On, with your computer's DNS if it fails** falls back when
+  the provider can't be reached; **On only** never does, so sites stop loading
+  instead. It applies at once to every profile, incognito included. (Qt
+  WebEngine has the setting, but PyQt6 doesn't expose it, so
+  `browser/secure_dns.py` calls Qt's own function.)
 - **Warn about dangerous sites** (on, Settings → General): pages on public
   lists of phishing sites (OpenPhish, PhishTank and others) and sites that have
   recently served malware (abuse.ch URLhaus), from the

@@ -107,6 +107,9 @@ class ProfileRegistry(QObject):
 
         self.downloads.confirm_program = download_manager.confirm_program
         self.passwords = PasswordService(config, self)
+        from browser import secure_dns
+
+        secure_dns.apply(config)
         # Bitwarden, once unlocked in Steed (General → Bitwarden…).
         self.bitwarden = None
         from browser.passkeys import Passkeys
@@ -732,7 +735,9 @@ class ProfileRegistry(QObject):
         return bool(self.config.get("restore_tabs_on_startup", True))
 
     def refresh_settings(self):
-        from browser import privacy
+        from browser import privacy, secure_dns
+
+        secure_dns.apply(self.config)
 
         guard = bool(self.config.get("resist_fingerprinting", False))
         for profile in (*self.profiles.values(), self.search_profile):

@@ -43,6 +43,8 @@ DEFAULTS = {
     "auto_zoom_small_text": True,
     "strip_tracking": True,
     "https_first": True,
+    "secure_dns": "off",
+    "secure_dns_server": "https://cloudflare-dns.com/dns-query",
     "resist_fingerprinting": False,
     "translate_service": "",
     "translate_language": "",
@@ -274,6 +276,9 @@ class SettingsDialog(QDialog):
             raise ValueError("Choose where Developer Tools open.")
         if values["visual_effects"] not in ("full", "balanced", "minimal"):
             raise ValueError("Choose how much motion and light Steed shows.")
+        from browser.secure_dns import check
+
+        check(values["secure_dns"], values["secure_dns_server"].strip())
         from browser.page_translation import check_settings
 
         check_settings(
