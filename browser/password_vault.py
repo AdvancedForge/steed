@@ -95,6 +95,89 @@ class Contents:
     logins: list = field(default_factory=list)
     never: list = field(default_factory=list)
     passkeys: list = field(default_factory=list)  # dicts, see passkeys.py
+    addresses: list = field(default_factory=list)  # dicts, ADDRESS_FIELDS
+    cards: list = field(default_factory=list)  # dicts, CARD_FIELDS
+    # Sections a newer Steed wrote: kept as they are, so they survive a write.
+    extra: dict = field(default_factory=dict)
+
+
+# Addresses and payment cards for filling forms. A card's security code is
+# never kept: sites ask for it each time, as other browsers do.
+ADDRESS_FIELDS = (
+    "name",
+    "organization",
+    "street",
+    "city",
+    "region",
+    "postal",
+    "country",
+    "phone",
+    "email",
+)
+CARD_FIELDS = ("name", "number", "exp_month", "exp_year", "nickname")
+AUTOFILL_FIELDS = {"addresses": ADDRESS_FIELDS, "cards": CARD_FIELDS}
+_KNOWN_SECTIONS = {"logins", "never", "passkeys", "addresses", "cards"}
+
+
+def luhn(number):
+    """True for a card number whose check digit is right."""
+    total = 0
+    for position, digit in enumerate(reversed(number)):
+        value = int(digit)
+        if position % 2:
+            value = value * 2 - 9 if value > 4 else value * 2
+        total += value
+    return total % 10 == 0
+
+
+def card_number(value):
+    digits = "".join(ch for ch in str(value or "") if ch not in " -")
+    if not digits.isdigit() or not 12 <= len(digits) <= 19 or not luhn(digits):
+        raise VaultError("That card number is not valid.")
+    return digits
+
+
+def card_label(card):
+    """How a card is named on screen: never more than its last four digits."""
+    ending = f"ending {card['number'][-4:]}"
+    return (
+        f"{card['nickname']} ({ending})" if card.get("nickname") else (f"Card {ending}")
+    )
+
+
+def address_label(address):
+    first = address.get("street", "").splitlines()[0] if address.get("street") else ""
+    return ", ".join(part for part in (address.get("name"), first) if part) or (
+        address.get("email") or "Address"
+    )
+
+
+def _autofill_record(kind, item):
+    """A checked address or card read from the vault (or a form), or None."""
+    if not isinstance(item, dict):
+        return None
+    record = {"id": item.get("id") if isinstance(item.get("id"), str) else ""}
+    try:
+        for name in AUTOFILL_FIELDS[kind]:
+            record[name] = _text(item.get(name, ""), name).strip()
+        if kind == "cards":
+            record["number"] = card_number(record["number"])
+            month = record["exp_month"]
+            if month and not (month.isdigit() and 1 <= int(month) <= 12):
+                raise VaultError("Enter the expiry month as 1 to 12.")
+            record["exp_month"] = f"{int(month):02d}" if month else ""
+            year = record["exp_year"]
+            if year and not (year.isdigit() and len(year) in (2, 4)):
+                raise VaultError("Enter the expiry year as 2 or 4 digits.")
+            record["exp_year"] = f"20{year}" if len(year) == 2 else year
+        elif not any(record[name] for name in ADDRESS_FIELDS):
+            raise VaultError("Enter at least one part of the address.")
+    except VaultError:
+        return None
+    for name in ("created", "updated", "last_used"):
+        value = item.get(name, 0.0)
+        record[name] = float(value) if isinstance(value, (int, float)) else 0.0
+    return record
 
 
 PASSKEY_FIELDS = {
@@ -399,6 +482,16 @@ class PasswordVault:
                         for found in map(_passkey, data.get("passkeys", []))
                         if found is not None
                     ],
+                    *(
+                        [
+                            found
+                            for item in data.get(kind, [])
+                            if (found := _autofill_record(kind, item)) is not None
+                            and found["id"]
+                        ]
+                        for kind in ("addresses", "cards")
+                    ),
+                    {k: v for k, v in data.items() if k not in _KNOWN_SECTIONS},
                 )
             except (ValueError, TypeError, AttributeError):
                 raise VaultError("The password vault file is damaged.") from None
@@ -425,6 +518,9 @@ class PasswordVault:
                 "logins": [asdict(login) for login in contents.logins],
                 "never": contents.never,
                 "passkeys": contents.passkeys,
+                "addresses": contents.addresses,
+                "cards": contents.cards,
+                **contents.extra,
             }
         ).encode()
         sealed = self._box.encrypt(raw)
@@ -618,6 +714,86 @@ class PasswordVault:
     def delete_passkey(self, passkey_id):
         contents = self._need()
         contents.passkeys = [p for p in contents.passkeys if p["id"] != passkey_id]
+        self._write()
+
+    # -- addresses and cards (for filling forms; see ui/form_autofill.py)
+
+    def autofill(self, kind):
+        """Saved addresses or cards, most recently used first."""
+        items = getattr(self._need(), kind)
+        return sorted(
+            (dict(item) for item in items),
+            key=lambda item: (-item["last_used"], -item["updated"]),
+        )
+
+    def autofill_item(self, kind, item_id):
+        for item in getattr(self._need(), kind):
+            if item["id"] == item_id:
+                return dict(item)
+        raise VaultError("That entry no longer exists.")
+
+    def save_autofill(self, kind, fields, item_id=None):
+        """Add an address or card, or change one. A card with the same number
+        (or the same address) updates the saved one instead of adding a copy."""
+        if kind not in AUTOFILL_FIELDS:
+            raise VaultError("Unknown kind of entry.")
+        record = _autofill_record(kind, {**fields, "id": item_id or ""})
+        if record is None:
+            # Run the checks again for a message the person can act on.
+            for name in AUTOFILL_FIELDS[kind]:
+                _text(fields.get(name, ""), name)
+            if kind == "cards":
+                card_number(fields.get("number"))
+            raise VaultError(
+                "Check the expiry date."
+                if kind == "cards"
+                else "Enter at least one part of the address."
+            )
+        items = getattr(self._need(), kind)
+        now = time.time()
+        same = (
+            (lambda item: item["number"] == record["number"])
+            if kind == "cards"
+            else (
+                lambda item: all(
+                    item[name].casefold() == record[name].casefold()
+                    for name in ("name", "street", "postal")
+                )
+            )
+        )
+        for index, item in enumerate(items):
+            if item["id"] == item_id or (item_id is None and same(item)):
+                record.update(
+                    id=item["id"],
+                    created=item["created"],
+                    updated=now,
+                    last_used=item["last_used"],
+                )
+                items[index] = record
+                self._write()
+                return dict(record)
+        if item_id is not None:
+            raise VaultError("That entry no longer exists.")
+        if len(items) >= MAX_ENTRIES:
+            raise VaultError("The vault is full.")
+        record.update(id=uuid4().hex, created=now, updated=now, last_used=0.0)
+        items.append(record)
+        self._write()
+        return dict(record)
+
+    def touch_autofill(self, kind, item_id):
+        for item in getattr(self._need(), kind):
+            if item["id"] == item_id:
+                item["last_used"] = time.time()
+        self._write()
+
+    def delete_autofill(self, kind, item_id):
+        contents = self._need()
+        setattr(
+            contents,
+            kind,
+            [item for item in getattr(contents, kind) if item["id"] != item_id],
+        )
         self._write()
 
     # -- sync

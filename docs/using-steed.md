@@ -1344,6 +1344,21 @@ other computers along with passwords (General → More Tools → Sync…, with t
 passphrase), sealed in the sync folder. Not possible here: using a passkey from
 a phone by QR code (that needs Bluetooth and Google's relay).
 
+### Addresses and cards
+
+steed:passwords → **Addresses and cards** keeps shipping addresses and payment
+cards in the same encrypted vault as your logins. A card's security code is
+never saved, and the page itself only ever sees a card's last four digits.
+When a page shows address or card fields (card fields may sit in a payment
+provider's frame), a bar asks **Fill your address?** or **Fill your card?**;
+nothing is filled until you click **Fill**, only empty fields are filled, and
+hidden fields are skipped. **Not now** stops the offer on that site until
+Steed closes. The key menu in the address bar lists the same entries. After
+you submit a checkout form by hand, Steed offers to save the card and then the
+address (or to update a saved one). Two settings on the same page turn the
+offers off. Agents never fill card fields, and addresses and cards do not sync
+yet.
+
 ### Password Checkup
 
 steed:passwords → **Check** marks logins whose password is **reused** or

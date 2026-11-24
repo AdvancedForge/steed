@@ -1437,6 +1437,7 @@ class BrowserWindow(QMainWindow):
 
         self.password_assistant = PasswordAssistant(self)
         layout.addWidget(self.password_assistant.bar)
+        layout.addWidget(self.password_assistant.forms.bar)
         from ui.extension_install import ExtensionInstaller, StoreBar
 
         self.extension_installer = ExtensionInstaller(self)

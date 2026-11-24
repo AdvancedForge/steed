@@ -474,8 +474,13 @@ class PasswordService(QObject):
 
     def install(self, profile):
         """Watch for submitted logins in every page and frame of a profile."""
+        from browser import form_autofill
+
         webengine.add_profile_script(
             profile, "steed-password-capture", CAPTURE_SCRIPT, frames=True
+        )
+        webengine.add_profile_script(
+            profile, "steed-form-capture", form_autofill.CAPTURE_SCRIPT, frames=True
         )
 
     def busy(self, profile):

@@ -71,6 +71,9 @@ class PasswordAssistant(QObject):
         self.bar.never.clicked.connect(self._never)
         self.bar.dismiss.clicked.connect(self._dismiss)
         self.filled = {}
+        from ui.form_autofill import FormAutofill
+
+        self.forms = FormAutofill(self)
         self.poll = QTimer(self)
         self.poll.setInterval(POLL_MS)
         self.poll.timeout.connect(self._collect_current)
@@ -135,11 +138,14 @@ class PasswordAssistant(QObject):
     def navigating(self, tab):
         """A page is leaving: collect anything its forms were submitting."""
         self._collect(tab, force=True)
+        self.forms.collect(tab, force=True)
 
     def _collect_current(self):
         if self.window._closing or not self.window.tabs:
             return
-        self._collect(self.window.tabs[self.window.current_tab_index], force=False)
+        tab = self.window.tabs[self.window.current_tab_index]
+        self._collect(tab, force=False)
+        self.forms.collect(tab, force=False)
 
     def _collect(self, tab, *, force):
         if (
@@ -230,6 +236,7 @@ class PasswordAssistant(QObject):
 
     def tab_changed(self):
         self._show_offer()
+        self.forms.show()
 
     def _accept(self):
         offer, self.offer = self.offer, None
@@ -272,8 +279,10 @@ class PasswordAssistant(QObject):
 
         Embedded frames and one-time codes are filled only when asked
         (Ctrl+Shift+L or the key menu): an embedding page must not get them
-        filled silently.
+        filled silently. Addresses and cards are only offered, never filled
+        without a click.
         """
+        self.forms.page_loaded(tab, ok)
         if not ok or sip.isdeleted(tab) or not self._enabled("password_autofill"):
             return
         vault = self.service.vault(self.profile)
@@ -350,6 +359,8 @@ class PasswordAssistant(QObject):
                         f"{site_of(frame_origin)} frame",
                         lambda other=other: self._fill_now(tab, vault, other),
                     )
+        if origin is not None:
+            self.forms.menu_entries(menu, tab, vault)
         menu.addSeparator()
         generate = QAction("Generate strong password", menu)
         generate.triggered.connect(lambda: self._generate(tab))

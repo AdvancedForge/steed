@@ -7,7 +7,15 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 
 from browser.password_service import copy_secret
-from browser.password_vault import VaultError, VaultLocked, generate_password, totp_code
+from browser.password_vault import (
+    AUTOFILL_FIELDS,
+    VaultError,
+    VaultLocked,
+    address_label,
+    card_label,
+    generate_password,
+    totp_code,
+)
 from ui.html_surface import HtmlSurface
 from ui.prompts import MessageBox
 
@@ -17,6 +25,8 @@ SETTINGS = {
     "offer_save_passwords": "Offer to save passwords when you sign in",
     "password_autofill": "Fill saved logins automatically when a page loads",
     "steed_passkeys": "Keep passkeys in Steed (otherwise sites use security keys)",
+    "form_autofill": "Offer to fill saved addresses and cards in forms",
+    "offer_save_autofill": "Offer to save addresses and cards you enter",
 }
 
 
@@ -65,6 +75,7 @@ class PasswordsPage(QWidget):
             soonest = min(until for _, until in self.revealed.values())
             self.expiry.start(max(100, int((soonest - now) * 1000) + 50))
         logins, never, passkeys = [], [], []
+        autofill = {"addresses": [], "cards": []}
         findings = self.checkup or {}
         state = (
             "private" if vault is None else "unlocked" if vault.unlocked else "locked"
@@ -87,6 +98,19 @@ class PasswordsPage(QWidget):
                     }
                 )
             never = list(vault._need().never)
+            for address in vault.autofill("addresses"):
+                autofill["addresses"].append(
+                    {**address, "label": address_label(address)}
+                )
+            for card in vault.autofill("cards"):
+                # The page never gets a card number, only its last digits.
+                autofill["cards"].append(
+                    {
+                        **{k: v for k, v in card.items() if k != "number"},
+                        "ending": card["number"][-4:],
+                        "label": card_label(card),
+                    }
+                )
             for passkey in vault.passkeys():
                 passkeys.append(
                     {
@@ -108,6 +132,7 @@ class PasswordsPage(QWidget):
                 "logins": logins,
                 "never": never,
                 "passkeys": passkeys,
+                "autofill": autofill,
                 "checkup": None
                 if self.checkup is None
                 else {
@@ -245,6 +270,37 @@ class PasswordsPage(QWidget):
             if reply == MessageBox.StandardButton.Yes:
                 vault.delete_passkey(passkey["id"])
                 self.notice = "Passkey deleted."
+                self.service.notify(self.profile)
+        elif action == "autofill_save":
+            kind = command.get("kind")
+            if kind not in AUTOFILL_FIELDS:
+                raise VaultError("Unsupported request.")
+            item_id = command.get("id") or None
+            fields = {
+                name: str(command.get(name, "") or "") for name in AUTOFILL_FIELDS[kind]
+            }
+            if kind == "cards" and item_id and not fields["number"].strip():
+                # Editing a card without retyping its number keeps the number.
+                fields["number"] = vault.autofill_item(kind, item_id)["number"]
+            vault.save_autofill(kind, fields, item_id)
+            self.notice = ("Card" if kind == "cards" else "Address") + (
+                " updated." if item_id else " added."
+            )
+            self.service.notify(self.profile)
+        elif action == "autofill_delete":
+            kind = command.get("kind")
+            if kind not in AUTOFILL_FIELDS:
+                raise VaultError("Unsupported request.")
+            item = vault.autofill_item(kind, command.get("id"))
+            name = card_label(item) if kind == "cards" else address_label(item)
+            reply = MessageBox.question(
+                self.window,
+                "Delete card" if kind == "cards" else "Delete address",
+                f"Delete {name}?",
+            )
+            if reply == MessageBox.StandardButton.Yes:
+                vault.delete_autofill(kind, item["id"])
+                self.notice = ("Card" if kind == "cards" else "Address") + " deleted."
                 self.service.notify(self.profile)
         elif action == "checkup":
             from browser.password_checkup import BreachCheck, local_findings

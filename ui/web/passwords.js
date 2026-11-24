@@ -60,6 +60,54 @@ function passkeys() {
     row.append(text, actions); target.append(row);
   }
 }
+// Addresses and cards. A card's number is never sent to this page, only its
+// last four digits; editing a card without retyping the number keeps it.
+const AF_FIELDS = {
+  addresses: [['name', 'Full name'], ['organization', 'Company'], ['street', 'Street address'],
+    ['city', 'City or town'], ['region', 'State, province or region'], ['postal', 'Postal or ZIP code'],
+    ['country', 'Country'], ['phone', 'Phone'], ['email', 'Email']],
+  cards: [['number', 'Card number'], ['name', 'Name on card'], ['exp_month', 'Expiry month (MM)'],
+    ['exp_year', 'Expiry year (YYYY)'], ['nickname', 'Nickname']],
+};
+let afEditing = null;
+function openAutofill(kind, item) {
+  afEditing = {kind, id: item ? item.id : null};
+  $('af-title').textContent = (item ? 'Edit ' : 'Add ') + (kind === 'cards' ? 'card' : 'address');
+  const grid = $('af-fields'); grid.replaceChildren();
+  for (const [name, text] of AF_FIELDS[kind]) {
+    const label = element('label', '', text);
+    const input = element(name === 'street' ? 'textarea' : 'input');
+    input.id = 'af-' + name; input.autocomplete = 'off';
+    input.value = item && name !== 'number' ? (item[name] || '') : '';
+    if (name === 'number') {
+      input.inputMode = 'numeric';
+      input.placeholder = item ? `Ending ${item.ending}: leave empty to keep it` : '';
+    }
+    label.append(input); grid.append(label);
+  }
+  $('af-editor').hidden = false;
+  grid.querySelector('input, textarea').focus();
+}
+function autofill() {
+  const target = $('autofill'); target.replaceChildren();
+  const all = [...state.autofill.addresses.map(item => ['addresses', item]),
+    ...state.autofill.cards.map(item => ['cards', item])];
+  for (const [kind, item] of all) {
+    const row = element('div', 'login'), text = element('div'), actions = element('div', 'actions');
+    row.setAttribute('role', 'listitem');
+    text.append(element('div', 'site', item.label));
+    if (kind === 'cards') {
+      if (item.exp_month) text.append(element('div', 'meta', `Expires ${item.exp_month}/${item.exp_year}`));
+    } else {
+      const place = [item.city, item.region, item.postal, item.country].filter(Boolean).join(', ');
+      if (place) text.append(element('div', 'meta', place));
+    }
+    actions.append(button('Edit', () => openAutofill(kind, item)),
+      button('Delete', () => command('autofill_delete', {kind, id: item.id})));
+    row.append(text, actions); target.append(row);
+  }
+  $('af-empty').hidden = all.length > 0;
+}
 function checkup() {
   const found = state.checkup, line = $('checkup');
   line.hidden = !found;
@@ -89,8 +137,8 @@ window.steedUI = {render(next) {
   $('private').hidden = next.state !== 'private';
   $('locked').hidden = next.state !== 'locked';
   $('unlocked').hidden = next.state !== 'unlocked';
-  $('scope').textContent = next.state === 'private' ? 'Incognito' : `Saved logins for the ${next.profile} profile, encrypted on this computer.`;
-  if (next.state === 'unlocked') { list(); passkeys(); checkup(); settings(); }
+  $('scope').textContent = next.state === 'private' ? 'Incognito' : `Saved logins, addresses and cards for the ${next.profile} profile, encrypted on this computer.`;
+  if (next.state === 'unlocked') { list(); autofill(); passkeys(); checkup(); settings(); }
   if (next.generated && !$('editor').hidden) {
     $('f-password').value = next.generated;
     $('f-password').type = 'text';
@@ -113,6 +161,17 @@ $('editor').onsubmit = event => {
   if (editing && !fields.totp) delete fields.totp;
   command('save', {id: editing, ...fields});
   $('editor').hidden = true; $('f-password').type = 'password'; editing = null;
+};
+$('add-address').onclick = () => openAutofill('addresses', null);
+$('add-card').onclick = () => openAutofill('cards', null);
+$('af-cancel').onclick = () => { $('af-editor').hidden = true; afEditing = null; };
+$('af-editor').onsubmit = event => {
+  event.preventDefault();
+  if (!afEditing) return;
+  const fields = {};
+  for (const [name] of AF_FIELDS[afEditing.kind]) fields[name] = $('af-' + name).value;
+  command('autofill_save', {kind: afEditing.kind, id: afEditing.id, ...fields});
+  $('af-editor').hidden = true; afEditing = null;
 };
 $('unlock-form').onsubmit = event => { event.preventDefault(); command('unlock', {password: $('master').value}); $('master').value = ''; };
 new QWebChannel(qt.webChannelTransport, channel => { bridge = channel.objects.interface; bridge.ready(STEED_GENERATION); });

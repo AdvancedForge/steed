@@ -198,3 +198,89 @@ class VaultTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutofillVaultTests(unittest.TestCase):
+    """Addresses and cards live sealed in the same vault as logins."""
+
+    # A synthetic test number (it passes the Luhn check; no real card).
+    CARD = "4111 1111 1111 1111"
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.path = Path(self.directory.name) / "passwords.vault"
+        self.keys = FakeKeys()
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def vault(self):
+        vault = pv.PasswordVault(self.path, self.keys)
+        vault.unlock()
+        return vault
+
+    def test_cards_and_addresses_are_sealed_and_reopen(self):
+        vault = self.vault()
+        card = vault.save_autofill(
+            "cards",
+            {
+                "number": self.CARD,
+                "name": "Ada Example",
+                "exp_month": "3",
+                "exp_year": "29",
+            },
+        )
+        self.assertEqual(card["number"], "4111111111111111")
+        self.assertEqual((card["exp_month"], card["exp_year"]), ("03", "2029"))
+        self.assertEqual(pv.card_label(card), "Card ending 1111")
+        vault.save_autofill(
+            "addresses",
+            {
+                "name": "Ada Example",
+                "street": "1 Test Lane\nFlat 2",
+                "city": "Exampleton",
+                "postal": "EX1 2AB",
+            },
+        )
+        raw = self.path.read_text()
+        for secret in ("4111111111111111", "Test Lane", "Exampleton"):
+            self.assertNotIn(secret, raw)
+        again = self.vault()
+        self.assertEqual(again.autofill("cards")[0]["number"], "4111111111111111")
+        address = again.autofill("addresses")[0]
+        self.assertEqual(pv.address_label(address), "Ada Example, 1 Test Lane")
+        self.assertNotIn("csc", again.autofill("cards")[0])
+
+    def test_invalid_cards_are_refused_with_a_message(self):
+        vault = self.vault()
+        with self.assertRaisesRegex(pv.VaultError, "card number"):
+            vault.save_autofill("cards", {"number": "4111 1111 1111 1112"})
+        with self.assertRaisesRegex(pv.VaultError, "expiry"):
+            vault.save_autofill("cards", {"number": self.CARD, "exp_month": "13"})
+        with self.assertRaisesRegex(pv.VaultError, "part of the address"):
+            vault.save_autofill("addresses", {})
+        self.assertEqual(vault.autofill("cards"), [])
+
+    def test_same_card_or_address_updates_instead_of_copying(self):
+        vault = self.vault()
+        first = vault.save_autofill("cards", {"number": self.CARD, "exp_month": "1"})
+        second = vault.save_autofill(
+            "cards", {"number": self.CARD, "exp_month": "2", "nickname": "Work"}
+        )
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(len(vault.autofill("cards")), 1)
+        self.assertEqual(pv.card_label(second), "Work (ending 1111)")
+        vault.delete_autofill("cards", first["id"])
+        self.assertEqual(vault.autofill("cards"), [])
+
+    def test_sections_from_a_newer_steed_survive_a_write(self):
+        vault = self.vault()
+        vault.save("https://example.org", "ada", "s3cret-PASSWORD")
+        # As a newer Steed might have left it: a section this one doesn't know.
+        vault._contents.extra = {"future_section": [{"kept": True}]}
+        vault._write()
+        again = self.vault()
+        again.save("https://example.com", "bea", "an0ther-PASSWORD")
+        reopened = self.vault()
+        self.assertEqual(reopened._contents.extra, {"future_section": [{"kept": True}]})
+        self.assertEqual(len(reopened.logins()), 2)
