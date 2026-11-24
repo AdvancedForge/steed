@@ -54,7 +54,7 @@ DIRECTORY = frozenset(
     (
         "history", "bookmarks", "downloads", "tab-groups", "library", "passwords",
         "cookies", "permissions", "adblock", "access", "style", "layout",
-        "newtab-settings", "welcome", "agents", "agent-setup", "tasks",
+        "newtab-settings", "welcome", "agents", "agent-setup", "tasks", "activity",
         "connections", "services", "panels", "apps", "userscripts", "memory",
         "features", "dictation", "watches", "automations", "skills", "pages",
         "packs",
