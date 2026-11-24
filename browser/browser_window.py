@@ -105,6 +105,17 @@ def reorder_menus(menubar, menus: dict, order) -> None:
         menubar.addMenu(menu)
 
 
+# Ask Agent To ▸ in the page menu: ready-made requests, in the person's words.
+FILL_FORM = (
+    "Fill in the form on this page for me from what you know about me. Ask me "
+    "for anything you don't know, and don't send the form: I'll check it first."
+)
+EXTRACT_SELECTION = "Pull the key facts out of this into a short table I can copy."
+EXTRACT_PAGE = (
+    "Pull the main facts and figures on this page into a short table I can copy."
+)
+
+
 class BrowserPage(webengine.Page):
     """Keep page console output out of the application's own logs.
 
@@ -2701,6 +2712,30 @@ class BrowserWindow(QMainWindow):
         action = QAction(label, menu)
         action.triggered.connect(lambda: self.ask_agent(tab, **{kind: value}))
         menu.insertAction(first, action)
+        web = tab.url().scheme() in ("http", "https")
+        if web:
+            errands = QMenu("Ask Agent To", menu)
+            if editable is not None and editable():
+                errands.addAction(
+                    "Fill This Form", lambda: self.ask_agent(tab, question=FILL_FORM)
+                )
+            errands.addAction(
+                "Extract This",
+                lambda: self.ask_agent(
+                    tab,
+                    selection=selection,
+                    question=EXTRACT_SELECTION if selection else EXTRACT_PAGE,
+                    send=True,
+                ),
+            )
+            others = [
+                t
+                for t in self.tabs
+                if t is not tab and t.url().scheme() in ("http", "https")
+            ]
+            if others:
+                errands.addAction("Compare with Other Tabs…", self.compare_tabs)
+            menu.insertMenu(first, errands)
         on_page = self.profile_manager.registry.automations.for_trigger(
             "page", self.profile_manager.current_profile_name
         )

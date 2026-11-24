@@ -580,6 +580,12 @@ Checked with Claude Code 2.1.312 and a synthetic offline runtime; Codex resuming
   address, and room for your question. Asking about the page itself sends its
   text with your message (the draft says so), so the agent can answer without
   asking for the tab. Nothing is sent until you press Send.
+- **Right-click a page → Ask Agent To ▸** has ready-made requests: **Fill This
+  Form** (on a form field: a draft asking the agent to fill the form from what
+  it knows about you and ask about the rest, without sending it), **Extract
+  This** (the selection, or the page's main facts and figures, as a table to
+  copy; sent at once) and **Compare with Other Tabs…** (the Compare dialog,
+  when another web page is open).
 - **Type `@` in the address bar**, then a question (`@ summarize this`), and
   press Enter: it goes straight to your agent with the page's title, address
   and up to 5,000 characters of its text.

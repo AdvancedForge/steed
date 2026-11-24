@@ -43,8 +43,10 @@ class FakeSidebar:
 
 
 class Request:
-    def __init__(self, selection="", link=""):
+    def __init__(self, selection="", link="", editable=None):
         self.selection, self.link = selection, link
+        if editable is not None:
+            self.isContentEditable = lambda: editable
 
     def selectedText(self):
         return self.selection
@@ -130,6 +132,39 @@ class AskAgentTests(unittest.TestCase):
             "About “Tide pools” (page attached)\n\n",
         )
         self.assertEqual(self.sidebar.attached, [("new-task", self.tab)])
+
+    def test_ask_agent_to_fill_extract_and_compare(self):
+        menus = []
+
+        def errands(request):
+            menu = QMenu()
+            menus.append(menu)  # Kept alive while its actions are used.
+            menu.addAction("Back")
+            self.window._add_ask_agent_item(menu, self.tab, request)
+            found = next(a.menu() for a in menu.actions() if a.text() == "Ask Agent To")
+            return {a.text(): a for a in found.actions()}
+
+        plain = errands(Request())
+        self.assertEqual(list(plain), ["Extract This"])  # One web tab, no field.
+        field = errands(Request(editable=True))
+        self.assertIn("Fill This Form", field)
+        field["Fill This Form"].trigger()
+        self.assertTrue(self.sidebar.drafts[-1].startswith("Fill in the form"))
+        self.assertIn("(page attached)", self.sidebar.drafts[-1])
+        self.assertEqual(self.sidebar.attached[-1][1], self.tab)
+        # Extracting a selection sends at once, with the selection quoted.
+        with patch.object(self.window, "agent_message") as message:
+            errands(Request(selection="Anemones: 4"))["Extract This"].trigger()
+        text = message.call_args.args[0]
+        self.assertTrue(text.startswith("Pull the key facts"))
+        self.assertIn("> Anemones: 4", text)
+        self.assertTrue(message.call_args.kwargs["send"])
+        # With another web tab open, Compare is offered.
+        self.window._new_tab(url="https://example.org/other")
+        other = self.window.tabs[self.window.current_tab_index]
+        self.assertIsNot(other, self.tab)
+        self.assertIn("Compare with Other Tabs…", errands(Request()))
+        self.window._close_tab(self.window.tabs.index(other))
 
     def test_at_in_the_address_bar_sends_the_question_with_the_page(self):
         self.service.external_tasks.add("connected-task")

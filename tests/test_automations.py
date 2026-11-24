@@ -377,7 +377,11 @@ class RunTests(unittest.TestCase):
         )
         menu = QMenu()
         self.window._add_ask_agent_item(menu, tab, None)
-        (runs,) = [a.menu() for a in menu.actions() if a.menu()]
+        (runs,) = [
+            a.menu()
+            for a in menu.actions()
+            if a.menu() and a.text() == "Run Automation on This Page"
+        ]
         self.assertEqual(runs.title(), "Run Automation on This Page")
         runs.actions()[0].trigger()
         self.wait(lambda: self.notes)
