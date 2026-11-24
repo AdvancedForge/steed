@@ -860,6 +860,13 @@ then. Steed checks each such background until it is active; closing the last
 window in the meantime shows "Finishing setting up …" and closes when it is
 ready (at most two minutes; closing again quits at once).
 
+**Password managers.** Bitwarden's extension (2026.10.2) installs and runs;
+filling a login with it has not been checked on a real desktop yet. 1Password's
+extension has not been tried (it also needs the 1Password app or account to
+pair with). Manage Extensions says the same. Without either extension you can
+import their exports into Steed's Passwords, or unlock your Bitwarden vault
+with General → **Bitwarden…** so Steed fills its logins (see Passwords).
+
 **What works.** Qt WebEngine 6.11 runs content scripts, popups and background
 service workers, but gives extensions only part of Chrome's APIs (`alarms`,
 `declarativeNetRequest`, `i18n`, `management`, `offscreen`, `runtime`,

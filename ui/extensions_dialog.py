@@ -31,6 +31,15 @@ class ExtensionsDialog(HtmlSettingsDialog):
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
+        # People ask this first; say what is known, and nothing more.
+        managers = QLabel(
+            "Password managers: Bitwarden's extension installs and runs here, but "
+            "filling logins with it has not been checked yet. 1Password's has not "
+            "been tried. Steed's own Passwords can import from either, and "
+            "General → Bitwarden… fills logins straight from your Bitwarden vault."
+        )
+        managers.setWordWrap(True)
+        layout.addWidget(managers)
         self.list = QListWidget()
         layout.addWidget(self.list, 1)
         self.about = QLabel()
