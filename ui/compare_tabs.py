@@ -21,10 +21,15 @@ TOTAL = 24000
 MAX_TABS = 6
 
 
-def comparison(pages):
+SUMMARISE = (
+    "Summarise each of these pages in a line or two, then say what they have in common:"
+)
+
+
+def comparison(pages, heading="Compare these pages:"):
     """pages: [(title, url, text)] → the message's body."""
     budget = max(1500, min(PER_TAB, TOTAL // max(1, len(pages))))
-    parts = ["Compare these pages:"]
+    parts = [heading]
     for number, (title, url, text) in enumerate(pages, start=1):
         body = "\n".join(line for line in (text or "").splitlines() if line.strip())
         parts.append(f"### {number}. {title or url}\n{url}\n\n{body[:budget]}")
@@ -32,13 +37,21 @@ def comparison(pages):
 
 
 class CompareDialog(QDialog):
-    def __init__(self, window, parent=None):
+    def __init__(self, window, parent=None, *, summarise=False):
         super().__init__(parent or window)
         self.window_ = window
-        self.setWindowTitle("Compare Tabs with Agent")
+        # Summarise (New Tab's errand): every web tab ticked, up to the limit,
+        # so you see which pages go before anything is sent.
+        self.summarise = summarise
+        self.setWindowTitle(
+            "Summarise Tabs with Agent" if summarise else "Compare Tabs with Agent"
+        )
         layout = QVBoxLayout(self)
         intro = QLabel(
-            f"Tick up to {MAX_TABS} tabs. Their text goes to your agent in a "
+            f"Untick any you'd rather keep to yourself (up to {MAX_TABS}). Their "
+            "text goes to your agent, which summarises each one."
+            if summarise
+            else f"Tick up to {MAX_TABS} tabs. Their text goes to your agent in a "
             "message you finish with your question."
         )
         intro.setWordWrap(True)
@@ -53,7 +66,11 @@ class CompareDialog(QDialog):
             title = tab.title() or host
             item = QListWidgetItem(f"{title} ({host})" if host not in title else title)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            chosen = tab is current or tab is window.split_tab
+            chosen = (
+                self.list.count() < MAX_TABS
+                if summarise
+                else tab is current or tab is window.split_tab
+            )
             item.setCheckState(
                 Qt.CheckState.Checked if chosen else Qt.CheckState.Unchecked
             )
@@ -64,7 +81,7 @@ class CompareDialog(QDialog):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         buttons = QHBoxLayout()
-        self.go = QPushButton("Compare")
+        self.go = QPushButton("Summarise" if summarise else "Compare")
         self.go.setProperty("primary", True)
         self.go.clicked.connect(self.compare)
         cancel = QPushButton("Cancel")
@@ -83,8 +100,12 @@ class CompareDialog(QDialog):
 
     def compare(self):
         tabs = self.chosen()
-        if len(tabs) < 2:
-            self.status.setText("Tick at least two tabs.")
+        if len(tabs) < (1 if self.summarise else 2):
+            self.status.setText(
+                "Tick at least one tab."
+                if self.summarise
+                else "Tick at least two tabs."
+            )
             return
         if len(tabs) > MAX_TABS:
             self.status.setText(f"Tick at most {MAX_TABS} tabs.")
@@ -102,7 +123,10 @@ class CompareDialog(QDialog):
                 page or (tab.title(), tab.url().toString(), "")
                 for page, tab in zip(pages, tabs, strict=True)
             ]
-            self.window_.agent_message(comparison(filled))
+            if self.summarise:
+                self.window_.agent_message(comparison(filled, SUMMARISE), send=True)
+            else:
+                self.window_.agent_message(comparison(filled))
             self.accept()
 
         # A frozen or unloaded tab may not answer: it counts as empty.

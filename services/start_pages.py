@@ -48,6 +48,8 @@ DEFAULT_SETTINGS = {
     "match_theme": True,
     # Customize inside the ☰ menu instead of its own gear button.
     "gear_in_menu": False,
+    # A few errands to start with your assistant, under the search box.
+    "errands": True,
 }
 LAYOUTS = ("simple", "classic")
 BACKGROUNDS = ("photo", "color", "image")
@@ -356,6 +358,9 @@ def clean_settings(value):
     gear_in_menu = value.get("gear_in_menu", False)
     if type(gear_in_menu) is not bool:
         raise ValueError("Choose where New Tab's settings button goes")
+    errands = value.get("errands", True)
+    if type(errands) is not bool:
+        raise ValueError("Choose whether New Tab shows errands")
     if layout not in LAYOUTS or background not in BACKGROUNDS or every not in PERIODS:
         raise ValueError("Choose a layout, background and photo schedule Steed offers")
     if not isinstance(color, str) or (
@@ -373,6 +378,7 @@ def clean_settings(value):
         "photo_every": every,
         "match_theme": match_theme,
         "gear_in_menu": gear_in_menu,
+        "errands": errands,
         "photo_source": source,
         "photo_folder": folder,
         "photo_style": style,
@@ -829,6 +835,7 @@ class StartPages(QObject):
             for module in settings["modules"]:
                 if module == "search":
                     body += '<form class="search" action="steed://action/search" method="get"><label class="sr-only" for="query">Search or enter a web address</label><input id="query" name="q" placeholder="Search or enter a web address" autocomplete="off" maxlength="4096" autofocus required><button type="submit">Go</button></form>'
+                    body += errand_links(settings, private)
                 elif module == "image":
                     # The selected image fills the viewport behind the content.
                     pass
@@ -945,6 +952,7 @@ class StartPages(QObject):
                 note='<span class="note">Incognito · nothing is saved</span>'
                 if private
                 else "",
+                errands=errand_links(settings, private),
                 credit=credit,
             )
             .encode()
@@ -1051,6 +1059,7 @@ class StartPages(QObject):
             "photo_every": tuple(PERIODS),
             "match_theme": ("1", "0"),
             "gear_in_menu": ("1", "0"),
+            "errands": ("1", "0"),
             "photo_source": SOURCES,
             "photo_style": STYLES,
         }
@@ -1062,7 +1071,9 @@ class StartPages(QObject):
                 changes["color"] = value
             elif key in allowed and value in allowed[key]:
                 changes[key] = (
-                    value == "1" if key in ("match_theme", "gear_in_menu") else value
+                    value == "1"
+                    if key in ("match_theme", "gear_in_menu", "errands")
+                    else value
                 )
             else:
                 raise ValueError("Not a choice the panel offers")
@@ -1150,6 +1161,7 @@ MORE_OPTIONS = {
     "match_theme",
     "layout",
     "gear_in_menu",
+    "errands",
 }
 
 
@@ -1157,7 +1169,7 @@ MORE_OPTIONS = {
 ASSISTANT_CARDS = (
     ("local", "On this computer", "A local model: private, free, offline."),
     ("key", "With your API key", "OpenAI, Anthropic, Gemini, OpenRouter…"),
-    ("coding", "A coding agent", "Codex, Claude Code or any ACP agent."),
+    ("coding", "A coding agent", "Codex, Claude Code or another on this computer."),
     ("website", "A chatbot website", "ChatGPT, Claude or Gemini in the sidebar."),
     ("cloud", "A cloud agent", "claude.ai or ChatGPT through a private link."),
 )
@@ -1387,6 +1399,10 @@ def customize_panel(
     more.append('<h3>Browser colours</h3><div class="choices">')
     more.append(choice("From the background", "match_theme", "1", match))
     more.append(choice("Steed's own", "match_theme", "0", not match))
+    errands = settings.get("errands", True)
+    more.append('</div><h3>Errands under the search box</h3><div class="choices">')
+    more.append(choice("Shown", "errands", "1", errands))
+    more.append(choice("Hidden", "errands", "0", not errands))
     more.append('</div><h3>Layout</h3><div class="choices">')
     more.append(choice("Simple", "layout", "simple", settings["layout"] == "simple"))
     more.append(choice("Classic", "layout", "classic", settings["layout"] == "classic"))
@@ -1457,6 +1473,10 @@ body.scrim .wordmark { text-shadow: 0 2px 24px #0006; }
   background: var(--surface); border: 1px solid var(--border); box-shadow: 0 6px 28px #0000002a; }
 .search:focus-within { border-color: var(--accent); }
 .search input { flex: 1; min-width: 0; font: inherit; font-size: 17px; color: var(--ink); background: transparent; border: 0; outline: none; }
+.errands { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+.errands a { padding: 6px 13px; border-radius: 999px; font-size: 13.5px; color: inherit; text-decoration: none;
+  background: color-mix(in srgb, var(--surface) 45%, transparent); backdrop-filter: blur(6px); opacity: .9; }
+.errands a:hover { background: color-mix(in srgb, var(--surface) 80%, transparent); opacity: 1; }
 .credit, .note { position: fixed; left: 16px; bottom: 12px; font-size: 12px; color: inherit; opacity: .8; text-decoration: none; }
 /* Incognito's note sits on the right, clear of a photo's credit on the left. */
 .note { left: auto; right: 16px; }
@@ -1698,6 +1718,10 @@ html:not([data-effects=minimal]) .step:target, html:not([data-effects=minimal]) 
 # Lumen for Welcome and the classic start pages: the same type, lit cards
 # that answer the pointer with a lift, and capsule buttons.
 PAGES_CSS = """
+.errands { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.errands a { padding: 6px 13px; border-radius: 999px; font-size: 13.5px; text-decoration: none;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--border); }
+.errands a:hover { background: var(--soft); }
 body { font-family: var(--steed-font, "Mona Sans", system-ui, sans-serif); font-weight: 450; -webkit-font-smoothing: antialiased; }
 h1, h2, .brand { font-family: var(--steed-title-font, "Mona Sans SemiExpanded", "Mona Sans", system-ui, sans-serif); font-weight: 700; letter-spacing: -.01em; }
 .hero h1 { font-family: var(--steed-display-font, "Mona Sans Expanded", "Mona Sans", system-ui, sans-serif); font-weight: 800; letter-spacing: -.03em;
@@ -1733,8 +1757,30 @@ SIMPLE_PAGE = (
     '<form class="search" action="steed://action/search" method="get">'
     '<label class="sr-only" for="query">Search or enter a web address</label>'
     '<input id="query" name="q" autocomplete="off" maxlength="4096" autofocus required>'
-    '</form></main><span id="steed-credit">$credit</span>$note</body></html>'
+    '</form>$errands</main><span id="steed-credit">$credit</span>$note</body></html>'
 )
+
+
+# One-click starts for your assistant (steed://action/errand?name=…).
+ERRANDS = (
+    ("price", "Watch a price"),
+    ("tabs", "Summarise my tabs"),
+    ("form", "Fill a form from my notes"),
+)
+
+
+def errand_links(settings, private):
+    """The errands under New Tab's search box; none in incognito."""
+    if private or not settings.get("errands", True):
+        return ""
+    return (
+        '<nav class="errands" aria-label="Ask your assistant">'
+        + "".join(
+            f'<a href="steed://action/errand?name={name}">{label}</a>'
+            for name, label in ERRANDS
+        )
+        + "</nav>"
+    )
 
 
 def newtab_menu(extra="", open_=False):

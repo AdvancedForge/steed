@@ -239,6 +239,24 @@ class CollabTests(unittest.TestCase):
         self.assertNotIn("Glass", text)  # Only the tabs you tick.
         self.assertNotIn("send", message.call_args.kwargs)
 
+    def test_summarise_ticks_every_tab_and_sends_at_once(self):
+        self.pages(
+            ("Kettle A", "https://shop.test/a", "Steel, $40"),
+            ("Kettle B", "https://shop.test/b", "Glass, $55"),
+        )
+        dialog = CompareDialog(self.window, summarise=True)
+        self.assertEqual(dialog.go.text(), "Summarise")
+        self.assertEqual(len(dialog.chosen()), 2)
+        dialog.list.item(1).setCheckState(Qt.CheckState.Unchecked)
+        with patch.object(BrowserWindow, "agent_message") as message:
+            dialog.compare()  # One page is enough to summarise.
+            self.wait(lambda: message.called)
+        text = message.call_args.args[0]
+        self.assertTrue(text.startswith("Summarise each of these pages"))
+        self.assertIn("Steel, $40", text)
+        self.assertNotIn("Glass", text)
+        self.assertTrue(message.call_args.kwargs["send"])
+
 
 if __name__ == "__main__":
     unittest.main()

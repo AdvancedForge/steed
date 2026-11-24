@@ -432,6 +432,12 @@ In the panel you can choose:
   Custom colours set in Style always win.
 - **Layout**: Simple (above) or Classic (the sections: search, bookmarks,
   recently closed, history, news).
+- **Errands under the search box** (shown): three one-click starts for your
+  assistant. **Watch a price** and **Fill a form from my notes** open the
+  sidebar with a draft that says what to fill in; **Summarise my tabs** opens
+  the Compare dialog with your web tabs ticked (up to six; untick any you'd
+  rather keep) and sends their text with a request to summarise each. Not in
+  incognito.
 
 - **Settings button**: the gear as its own button, or *In the ☰ menu*, where
   Customize New Tab is the first row of the menu and opens the same panel in

@@ -111,6 +111,14 @@ FILL_FORM = (
     "for anything you don't know, and don't send the form: I'll check it first."
 )
 EXTRACT_SELECTION = "Pull the key facts out of this into a short table I can copy."
+# New Tab's errands: drafts that say what to fill in.
+ERRAND_DRAFTS = {
+    "price": "Watch the price of this for me and tell me when it drops below "
+    "my price. The page: … My price: …",
+    "tabs": "",
+    "form": "Fill in a form for me from my notes, and don't send it: I'll check "
+    "it first. The form's address: … My notes: …",
+}
 EXTRACT_PAGE = (
     "Pull the main facts and figures on this page into a short table I can copy."
 )
@@ -7935,17 +7943,32 @@ class BrowserWindow(QMainWindow):
             ),
         )
 
-    def compare_tabs(self):
+    def start_errand(self, name):
+        """New Tab's errands: a draft to finish, or the tabs to summarise."""
+        if name == "tabs":
+            self.compare_tabs(summarise=True)
+        else:
+            self.agent_message(ERRAND_DRAFTS[name])
+
+    def compare_tabs(self, summarise=False):
         """The text of the tabs you pick, in a message to your agent."""
         if self._closing or self.profile_manager.current_profile_name == "search":
             self.status_bar.showMessage("Agents are not available in incognito.", 5000)
             return
         from ui.compare_tabs import CompareDialog
 
-        if sum(t.url().scheme() in ("http", "https") for t in self.tabs) < 2:
-            self.status_bar.showMessage("Open two or more web pages to compare.", 5000)
+        pages = sum(t.url().scheme() in ("http", "https") for t in self.tabs)
+        if pages < (1 if summarise else 2):
+            self.status_bar.showMessage(
+                "Open a web page first."
+                if summarise
+                else "Open two or more web pages to compare.",
+                5000,
+            )
             return
-        self._present_dialog(CompareDialog(self), modal=False)
+        self._present_dialog(
+            CompareDialog(self, summarise=summarise is True), modal=False
+        )
 
     def _manage_tab_groups(self):
         return self._open_management("tab-groups")
@@ -9128,6 +9151,13 @@ class BrowserWindow(QMainWindow):
             self._toggle_agent_sidebar(True)
             if self.agent_sidebar is not None:
                 self.agent_sidebar._assistant_chosen(params[0][1], None)
+        elif (
+            action == "errand"
+            and len(params) == 1
+            and params[0][0] == "name"
+            and params[0][1] in ERRAND_DRAFTS
+        ):
+            self.start_errand(params[0][1])
         elif action == "reopen" and len(params) == 1 and params[0][0] == "id":
             self._restore_closed_tab(params[0][1])
         elif action == "menu" and len(params) == 1 and params[0][0] == "name":

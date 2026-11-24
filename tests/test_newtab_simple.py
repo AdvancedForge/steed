@@ -329,6 +329,35 @@ class SimpleNewTabTests(unittest.TestCase):
         self.wait(lambda: self.js(tab, live) != "stale")
         self.assertEqual(self.js(tab, "window.steedMark"), 1)
 
+    def test_errands_under_the_search_box_start_with_your_assistant(self):
+        html = self.pages.render("global", "newtab").decode()
+        for label in (
+            "Watch a price",
+            "Summarise my tabs",
+            "Fill a form from my notes",
+        ):
+            self.assertIn(label, html)
+        self.assertNotIn(
+            "Watch a price", self.pages.render("search", "newtab").decode()
+        )
+        # Customize → More options hides them.
+        self.pages.set_from_page("global", [("errands", "0")])
+        self.assertNotIn(
+            "Watch a price", self.pages.render("global", "newtab").decode()
+        )
+        self.pages.set_from_page("global", [("errands", "1")])
+        tab = self.window._new_tab(url="steed:newtab", return_tab=True)
+        self.loaded(tab)
+        with patch.object(self.window, "agent_message") as message:
+            self.window._start_page_action(
+                tab, QUrl("steed://action/errand?name=price")
+            )
+        self.assertTrue(message.call_args.args[0].startswith("Watch the price"))
+        with patch.object(self.window, "compare_tabs") as compare:
+            self.window._start_page_action(tab, QUrl("steed://action/errand?name=tabs"))
+            self.window._start_page_action(tab, QUrl("steed://action/errand?name=x"))
+        compare.assert_called_once_with(summarise=True)
+
     def test_incognito_note_sits_clear_of_the_photo_credit(self):
         css = self.pages.render("search", "newtab").decode()
         self.assertIn("Incognito", css)
