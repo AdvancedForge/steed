@@ -81,6 +81,8 @@ class TaskWatchDialog(HtmlSettingsDialog):
         super().__init__(parent)
         self.service, self.task_id, self.session_id = service, task_id, session_id
         self.view, self.control_key = view, uuid4().hex
+        # What an agent asked the person to do here (browser.ask_person).
+        self.handoff_text = ""
         self._ended = self._closing = self._busy = False
         self.snapshot = None
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
@@ -197,7 +199,9 @@ class TaskWatchDialog(HtmlSettingsDialog):
         self.address.setText(state.url)
         owned = self.owns_control()
         self.notice.setText(
-            "You have control. Use this live page directly; the agent is paused until you return control."
+            self.handoff_text + " Return to Agent when you're done."
+            if owned and self.handoff_text
+            else "You have control. Use this live page directly; the agent is paused until you return control."
             if owned and state.mode == "live"
             else "You have control. The agent is paused on this page. Use the controls below; return it when ready."
             if owned

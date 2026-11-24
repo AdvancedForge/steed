@@ -1438,6 +1438,10 @@ class BrowserWindow(QMainWindow):
         self.password_assistant = PasswordAssistant(self)
         layout.addWidget(self.password_assistant.bar)
         layout.addWidget(self.password_assistant.forms.bar)
+        from ui.handoff_prompt import HandoffBar
+
+        self.handoff_bar = HandoffBar(self)
+        layout.addWidget(self.handoff_bar)
         from ui.extension_install import ExtensionInstaller, StoreBar
 
         self.extension_installer = ExtensionInstaller(self)
@@ -4078,6 +4082,7 @@ class BrowserWindow(QMainWindow):
         if self.web_chat_dock and self.web_chat_dock.view is self.tabs[index]:
             self.web_chat_dock.release()
         self.password_assistant.tab_changed()
+        self.handoff_bar.tab_changed()
         self.store_bar.update_for(self.tabs[index].url())
         self.page_access_bar.update_for(self.tabs[index].url())
         self.passkey_bar.tab_changed(self.tabs[index])

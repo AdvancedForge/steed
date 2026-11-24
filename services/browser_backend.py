@@ -2178,6 +2178,9 @@ class QtBrowserBackend(QObject):
             for view in session.views:
                 if not sip.isdeleted(view):
                     view.input_shield.setEnabled(owner == "agent")
+            # An adopted tab of the person's: let them use it while it is theirs.
+            if session.shield is not None and not sip.isdeleted(session.shield):
+                session.shield.setEnabled(owner == "agent")
         return self.inspect(session_id)
 
     def close_session(self, session_id):

@@ -295,6 +295,9 @@ class ProfileRegistry(QObject):
             )
             self.app_connections.task_service = self._tasks
             self.task_approvals = TaskApprovalQueue(self, self._tasks)
+            from ui.handoff_prompt import HandoffPrompt
+
+            self.handoff_prompt = HandoffPrompt(self, self._tasks)
             self._tasks.failed.connect(lambda _: self.set_agent_access(False))
             for owner in self.owners:
                 window = owner.parent()

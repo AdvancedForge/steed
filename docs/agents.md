@@ -1166,6 +1166,25 @@ shared task sessions, so its selector is null. Global now supports the explicit
 no access, and switching profiles never retargets existing grants or sessions.
 Restart Steed after updating the browser source to expose the new context tool.
 
+### When the agent needs you
+
+Some steps are for a person: a captcha or "are you human" check, signing in
+without a saved login, a verification code from your phone, confirming a
+payment. An agent that reaches one calls `browser.ask_person` with a reason and
+one short sentence. Steed brings that page to the front (a tab of yours, or the
+task page in its watch window), hands it to you at once (the agent's page
+commands pause, as with Take Control), and shows a bar: *Claude Code needs you
+to solve a check that you are a person: "Please tick the box". Do it on this
+page, then hand it back.* A desktop notification says the same when Steed is
+not in front. **Done, hand back** (or Return to Agent in the watch window)
+gives the page back and the agent carries on; **I can't** tells it you could
+not, so it asks you in the conversation instead of trying again. The agent's
+call waits for you (and keeps waiting without ending its turn). Asking needs
+no permission, since it only takes control away from the agent; a task page
+needs attach permission first so you can see it. Page inspection also tells
+agents when a page shows a captcha, so they ask instead of trying to get past
+it, and `signin.request` points them here when a site wants a code or a check.
+
 ### Watching and taking control
 
 Restart Steed after updating its source. Enable local agent access and connect

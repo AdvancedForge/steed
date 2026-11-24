@@ -89,6 +89,8 @@ BROWSING_TOOLS = frozenset(
         "creation.status",
         "signin.request",
         "signin.status",
+        "browser.ask_person",
+        "browser.ask_person_status",
         "customization.capabilities",
         "customization.propose",
         "customization.status",

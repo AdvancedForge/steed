@@ -310,9 +310,29 @@ TOOLS = (
     ),
     tool(
         "signin.request",
-        "Sign in on the session's current page with the person's saved login for that site, when a page you are working on asks for a sign-in (for example a watched page that signed out). Steed itself fills and submits each step (username, password, and a one-time code when the login has one); you never receive the password, code or username, only the outcome: signed_in, still_on_sign_in (a wrong password, captcha or check the person must do), code_needed_from_person, no_saved_login, no_sign_in_form or could_not_submit. Afterwards inspect the page as usual. The person's Access & Permissions decide: it may run at once, wait for their approval (state awaiting_approval: poll signin.status), or be refused.",
+        "Sign in on the session's current page with the person's saved login for that site, when a page you are working on asks for a sign-in (for example a watched page that signed out). Steed itself fills and submits each step (username, password, and a one-time code when the login has one); you never receive the password, code or username, only the outcome: signed_in, still_on_sign_in (a wrong password, captcha or check the person must do: use browser.ask_person), code_needed_from_person (use browser.ask_person with reason code), no_saved_login, no_sign_in_form or could_not_submit. Afterwards inspect the page as usual. The person's Access & Permissions decide: it may run at once, wait for their approval (state awaiting_approval: poll signin.status), or be refused.",
         {"session_id": string(64), "request_id": string(64)},
         ("session_id", "request_id"),
+    ),
+    tool(
+        "browser.ask_person",
+        'Hand the session\'s page to the person for one step only they should do: a captcha or "are you human" check (reason captcha), signing in without a saved login (sign_in), a verification code (code), confirming a payment (payment) or anything else they must confirm (confirm, other). Steed switches to the page, notifies them and shows your message; your page commands pause until they hand it back. The call waits; if still waiting_for_person, call browser.ask_person_status without ending your turn. Then: done (inspect the page again), not_done (they could not or would not: ask them in the conversation) or cancelled. message: one short sentence saying exactly what you need, e.g. "Please tick the I\'m not a robot box".',
+        {
+            "session_id": string(64),
+            "request_id": string(64),
+            "reason": {
+                **string(),
+                "enum": ["captcha", "sign_in", "code", "payment", "confirm", "other"],
+            },
+            "message": string(300),
+        },
+        ("session_id", "request_id", "reason"),
+    ),
+    tool(
+        "browser.ask_person_status",
+        "Poll a browser.ask_person request: waiting_for_person, done, not_done or cancelled.",
+        {"request_id": string(64)},
+        ("request_id",),
     ),
     tool(
         "signin.status",

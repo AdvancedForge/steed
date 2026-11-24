@@ -35,6 +35,8 @@ CLIENT_COMMANDS = frozenset(
         "settings.status",
         "signin.request",
         "signin.status",
+        "browser.ask_person",
+        "browser.ask_person_status",
         "panel.capabilities",
         "panel.propose",
         "panel.status",

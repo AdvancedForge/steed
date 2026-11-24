@@ -54,6 +54,18 @@ class WaitTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("steed_browser_control_status", result["result"]["waiting"])
         self.assertEqual(connection.calls[0][1], {"request_id": "r1"})
 
+    async def test_asking_the_person_waits_until_they_hand_back(self):
+        waiting = {"request_id": "h1", "state": "waiting_for_person"}
+        connection = Answers(
+            "steed_browser_ask_person_status",
+            [waiting, {"request_id": "h1", "state": "done"}],
+        )
+        result = await await_decision(
+            connection, "steed_browser_ask_person", {"result": waiting}, wait=5
+        )
+        self.assertEqual(result["result"]["state"], "done")
+        self.assertEqual(connection.calls[0][1], {"request_id": "h1"})
+
     async def test_other_calls_and_settled_requests_return_at_once(self):
         connection = Answers("never", [None])
         for name, value in (
