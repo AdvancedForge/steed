@@ -675,6 +675,9 @@ class BrowserWindow(QMainWindow):
         topics_action = QAction("Group My Recent History into Topics…", self)
         topics_action.triggered.connect(self.history_topics)
         tabs_menu.addAction(topics_action)
+        find_action = QAction("Find a Page I Saw…", self)
+        find_action.triggered.connect(self.find_in_history)
+        tabs_menu.addAction(find_action)
         history_action = QAction("Session History…", self)
         history_action.triggered.connect(self._open_session_history)
         tabs_menu.addAction(history_action)
@@ -2656,6 +2659,26 @@ class BrowserWindow(QMainWindow):
                 )
                 return
             self._present_dialog(HistoryTopicsDialog(self, command), modal=False)
+
+        ensure(self, chosen)
+
+    def find_in_history(self):
+        """Describe a page you saw; your assistant picks it out of history."""
+        if self.profile_manager.current_profile_name == "search":
+            self.status_bar.showMessage("Not in incognito.", 4000)
+            return
+        from ui.assistant_choice import ensure
+        from ui.history_find import FindInHistoryDialog
+
+        def chosen(command):
+            if self._closing:
+                return
+            if command is None:
+                self.status_bar.showMessage(
+                    "Add an assistant first (Agents → Add an Assistant…).", 6000
+                )
+                return
+            self._present_dialog(FindInHistoryDialog(self, command), modal=False)
 
         ensure(self, chosen)
 

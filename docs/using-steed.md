@@ -532,6 +532,13 @@ nothing from incognito) to your assistant, which groups them into topics such
 as "Planning a trip to Lisbon". Reopen a topic's pages, or ask your agent to
 help you pick up where you left off. Nothing is kept; run it whenever you like.
 
+**Find a Page I Saw…** (in the same menu, and **Describe it instead…** on the
+History page) finds a page from a description, such as "that heat pump
+article last week". Your assistant gets the titles, sites and dates of the
+past month's pages under the same rules (no page text, no banking, health or
+sign-in sites, nothing from incognito) and picks up to five matches; open the
+one you meant. Nothing is kept.
+
 ### Split view and sites in a profile
 
 **View → Split View with Next Tab**, or **Show Beside Current Tab** in a tab's

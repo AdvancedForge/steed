@@ -215,6 +215,7 @@ class HistoryDialog(HtmlSettingsDialog):
             ("Open selected", self.open_selected),
             ("Copy address", self.copy_selected),
             ("Clear history…", parent._clear_browsing_history),
+            ("Describe it instead…", parent.find_in_history),
         ):
             button = QPushButton(text)
             button.clicked.connect(callback)
