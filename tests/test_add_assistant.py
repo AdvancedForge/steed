@@ -115,6 +115,27 @@ class GalleryTests(unittest.TestCase):
         dialog.cards["cloud"].click()
         self.assertEqual(chosen, [("cloud", None)])
 
+    def test_help_me_choose_suggests_from_what_people_have(self):
+        dialog = AddAssistantDialog(probe=False)
+        self.addCleanup(dialog.deleteLater)
+        self.assertTrue(dialog.help.isHidden())
+        dialog.help_button.click()
+        self.assertFalse(dialog.help.isHidden())
+        self.assertTrue(dialog.use.isHidden())
+        chosen = []
+        dialog.chosen.connect(lambda kind, detail: chosen.append((kind, detail)))
+        dialog.situations[0].click()  # A ChatGPT subscription.
+        self.assertIn("Codex", dialog.answer.text())
+        dialog.use.click()
+        self.assertEqual(chosen, [("coding", None)])
+        # Plain words: no protocol names.
+        from ui.add_assistant import CARDS, SITUATIONS
+
+        words = " ".join(t for _, t, w in SITUATIONS for t in (t, w))
+        words += " ".join(text for _, _, text in CARDS)
+        for jargon in ("MCP", "ACP", "OpenAI-compatible endpoint"):
+            self.assertNotIn(jargon, words)
+
     def test_a_model_server_already_running_is_found(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Models)
         threading.Thread(target=server.serve_forever, daemon=True).start()

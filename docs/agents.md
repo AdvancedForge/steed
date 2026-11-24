@@ -13,7 +13,10 @@ where it runs: **On this computer**, **With your API key**, **Coding agents**
 The last entry, **Add an assistant…** (also in the Agents menu and on the
 sidebar's start screen), opens one gallery for adding any of them. It notices
 Ollama or LM Studio already running and Codex or Claude Code already
-installed, so there is often nothing to type.
+installed, so there is often nothing to type. **Not sure? Help me choose**
+asks what you already have (a ChatGPT or Claude subscription, a free chat
+account, an API key, nothing at all, or claude.ai or ChatGPT on the web) and
+suggests one in plain words, with **Set it up**.
 
 A **chatbot website** (ChatGPT, Claude, Gemini or any chat site) opens in the
 sidebar's place, signed in as you, beside the agent chat. It reaches Steed's

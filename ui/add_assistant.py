@@ -10,7 +10,7 @@ import shutil
 
 from PyQt6.QtCore import QUrl, pyqtSignal
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
-from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout
+from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ui.html_dialog import HtmlSettingsDialog
 
@@ -37,8 +37,8 @@ CARDS = (
     (
         "coding",
         "Coding agents",
-        "Codex, Claude Code, or any agent that speaks ACP, started by Steed in "
-        "the sidebar.",
+        "Codex, Claude Code or another coding assistant on this computer, "
+        "started by Steed in the sidebar.",
     ),
     (
         "website",
@@ -51,6 +51,50 @@ CARDS = (
         "Cloud agents and chatbots with connectors",
         "Let claude.ai, ChatGPT or a cloud agent use Steed's tools through a "
         "private, expiring link you pair yourself.",
+    ),
+)
+
+
+# Help me choose: what people already have, in their words, and what suits it.
+SITUATIONS = (
+    (
+        "A ChatGPT Plus or Pro subscription",
+        "coding",
+        "Use Codex. It signs in with your ChatGPT account, so it costs nothing "
+        "extra, and it can use your tabs when you allow it. Install it once "
+        "(npm install -g @openai/codex in a terminal), then sign in.",
+    ),
+    (
+        "A Claude Pro or Max subscription",
+        "coding",
+        "Use Claude Code. It signs in with your Claude account, so it costs "
+        "nothing extra, and it can use your tabs when you allow it. Install it "
+        "once (npm install -g @anthropic-ai/claude-code), then sign in.",
+    ),
+    (
+        "A free account on ChatGPT, Claude or Gemini",
+        "website",
+        "Use the chatbot website in the sidebar, signed in as you. It's the "
+        "simplest start: you hand it your task and paste its requests back.",
+    ),
+    (
+        "An API key (OpenAI, Anthropic, Google, OpenRouter…)",
+        "key",
+        "Use your API key. You pay the provider per use; the key stays in your "
+        "desktop keyring.",
+    ),
+    (
+        "Nothing yet, and I want it private and free",
+        "local",
+        "Run a model on this computer with Ollama or LM Studio. Nothing leaves "
+        "your computer; it needs a recent computer and is slower than the big "
+        "online models.",
+    ),
+    (
+        "I use claude.ai or ChatGPT on the web and want them to use Steed",
+        "cloud",
+        "Pair them with Steed through a private link that expires. They can "
+        "then use Steed's tools, and Steed still asks you first.",
     ),
 )
 
@@ -72,6 +116,31 @@ class AddAssistantDialog(HtmlSettingsDialog):
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
+        self.help_button = QPushButton("Not sure? Help me choose")
+        self.help_button.clicked.connect(self._show_help)
+        layout.addWidget(self.help_button)
+        self.help = QWidget()
+        guide = QVBoxLayout(self.help)
+        guide.setContentsMargins(0, 0, 0, 0)
+        guide.addWidget(QLabel("What do you have already?"))
+        self.situations = []
+        for index, (text, _kind, _why) in enumerate(SITUATIONS):
+            button = QPushButton(text)
+            button.clicked.connect(lambda _=False, i=index: self._suggest(i))
+            guide.addWidget(button)
+            self.situations.append(button)
+        self.answer = QLabel()
+        self.answer.setWordWrap(True)
+        guide.addWidget(self.answer)
+        self.use = QPushButton("Set it up")
+        self.use.setProperty("primary", True)
+        self.use.clicked.connect(lambda: self._choose(self.suggested))
+        guide.addWidget(self.use)
+        self.answer.hide()
+        self.use.hide()
+        self.help.hide()
+        self.suggested = None
+        layout.addWidget(self.help)
         self.cards = {}
         for kind, title, text in CARDS:
             button = QPushButton(title)
@@ -123,6 +192,24 @@ class AddAssistantDialog(HtmlSettingsDialog):
             for server, (_, models) in self.found.items()
         )
         self._detail("local", f"Found running here: {found}. Choose to add one.")
+
+    def _show_help(self):
+        self.help_button.hide()
+        self.help.show()
+        self._republish()
+
+    def _suggest(self, index):
+        _text, kind, why = SITUATIONS[index]
+        self.suggested = kind
+        self.answer.setText(why)
+        self.answer.show()
+        self.use.show()
+        self._republish()
+
+    def _republish(self):
+        host = self.presentation_host()
+        if host is not None:
+            host.publish()
 
     def detail(self, kind):
         return self.cards[kind].property("detail")
