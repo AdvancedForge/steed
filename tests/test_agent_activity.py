@@ -88,6 +88,33 @@ class ActivityTests(unittest.TestCase):
         )
         self.assertEqual(activity.totals_line([]), "")
 
+    def test_a_week_totals_per_assistant_and_todays_cost(self):
+        claude = self.store.create("Claude Code conversation").task_id
+        codex = self.store.create("Codex conversation").task_id
+        self.record(
+            claude,
+            "agent.usage",
+            input_tokens=40000,
+            output_tokens=2000,
+            cost_usd=0.4,
+            agent="Claude Code",
+        )
+        self.record(
+            claude, "agent.usage", input_tokens=1000, cost_usd=0.1, agent="Claude Code"
+        )
+        self.record(
+            codex, "agent.usage", input_tokens=16045, output_tokens=5, agent="Codex"
+        )
+        week = activity.summarize(self.store, date.today(), days=7)
+        self.assertEqual({d.task_id for d in week}, {claude, codex})
+        self.assertEqual(
+            activity.agents_line(week),
+            "By assistant: Claude Code 43k tokens, $0.50; Codex 16k tokens.",
+        )
+        self.assertAlmostEqual(activity.cost_on(self.store, date.today()), 0.5)
+        self.assertEqual(activity.cost_on(self.store, date.today() - timedelta(1)), 0)
+        self.assertEqual(activity.agents_line([]), "")
+
     def test_bounds_cover_the_local_day_in_utc(self):
         start, end = activity.day_bounds(date(2026, 11, 22))
         self.assertLess(start, end)

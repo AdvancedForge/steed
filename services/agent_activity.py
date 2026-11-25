@@ -47,13 +47,25 @@ class TaskDay:
         return self.input_tokens + self.output_tokens
 
 
-def day_bounds(day: date):
-    """The local day as UTC ISO bounds, matching the journal's timestamps."""
+def day_bounds(day: date, days=1):
+    """Local days (from day, for days) as UTC ISO bounds, matching the
+    journal's timestamps."""
     start = datetime.combine(day, time.min).astimezone()
-    end = datetime.combine(day + timedelta(days=1), time.min).astimezone()
+    end = datetime.combine(day + timedelta(days=days), time.min).astimezone()
     return (
         start.astimezone(timezone.utc).isoformat(),
         end.astimezone(timezone.utc).isoformat(),
+    )
+
+
+def cost_on(store, day: date):
+    """What assistants reported spending on a local day, in US dollars."""
+    start, end = day_bounds(day)
+    return sum(
+        float(event.payload.get("cost_usd"))
+        for event in store.events_between(start, end, kinds=("agent.usage",))
+        if isinstance(event.payload.get("cost_usd"), (int, float))
+        and event.payload["cost_usd"] >= 0
     )
 
 
@@ -64,9 +76,10 @@ def _host(url):
         return ""
 
 
-def summarize(store, day: date, *, objectives=None):
-    """Per-task activity for one local day, busiest first."""
-    start, end = day_bounds(day)
+def summarize(store, day: date, *, days=1, objectives=None):
+    """Per-task activity for local days (one, or a week ending on day when
+    days=7), busiest first."""
+    start, end = day_bounds(day - timedelta(days=days - 1), days)
     events = store.events_between(start, end)
     objectives = objectives if objectives is not None else {}
     tasks = {}
@@ -224,3 +237,25 @@ def totals_line(days):
             )
         )
     return parts[0] + ": " + ", ".join(parts[1:]) + "."
+
+
+def agents_line(days):
+    """Usage per assistant, biggest first: "Claude Code 45k tokens, $0.31"."""
+    totals = {}
+    for day in days:
+        if not day.turns:
+            continue
+        name = day.agent or "Other"
+        tokens, cost, priced = totals.get(name, (0, 0.0, False))
+        totals[name] = (
+            tokens + day.tokens,
+            cost + day.cost_usd,
+            priced or day.turns_with_cost > 0,
+        )
+    parts = [
+        f"{name} {tokens_text(tokens)}" + (f", ${cost:.2f}" if priced else "")
+        for name, (tokens, cost, priced) in sorted(
+            totals.items(), key=lambda item: -item[1][0]
+        )
+    ]
+    return ("By assistant: " + "; ".join(parts) + ".") if parts else ""

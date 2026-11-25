@@ -3198,6 +3198,24 @@ class BrowserWindow(QMainWindow):
         providers.replied.connect(replied)
         providers.requested.connect(requested)
 
+        def over_budget(spent, limit):
+            # Always shown: you asked for it, whatever else is in front.
+            notifier.notify(
+                "Agents passed today's cost limit",
+                f"Reported today: ${spent:.2f} (your limit: ${limit:.0f}). "
+                "Agents keep working; Pause All Agents stops them.",
+                on_click=lambda: self._new_tab(url="steed:activity"),
+            )
+            for window in QApplication.topLevelWidgets():
+                if isinstance(window, BrowserWindow) and not window._closing:
+                    window.status_bar.showMessage(
+                        f"Agents have reported ${spent:.2f} today, past your "
+                        f"${limit:.0f} limit.",
+                        10000,
+                    )
+
+        providers.cost_alert.connect(over_budget)
+
     def _toggle_agent_sidebar(self, visible):
         if visible:
             from ui import tips

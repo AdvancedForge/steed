@@ -340,7 +340,7 @@ def controller(window, name, source_tab=None):
     if name == "activity":
         from ui.activity_page import ActivityDialog
 
-        return ActivityDialog(registry.tasks, window)
+        return ActivityDialog(registry.tasks, window, config=window.config)
     if name == "layout":
         return window._layout_controller()
     if name == "newtab-settings":

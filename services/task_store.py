@@ -829,16 +829,21 @@ class TaskStore:
             )
         }
 
-    def events_between(self, start, end, *, limit=20000):
+    def events_between(self, start, end, *, limit=20000, kinds=()):
         """Trusted UI: every task's events from start (inclusive) to end, as
-        UTC ISO timestamps, oldest first. For Agent activity."""
+        UTC ISO timestamps, oldest first, of these kinds if given. For Agent
+        activity."""
         self._check()
-        if not 1 <= limit <= 50000:
+        if not 1 <= limit <= 50000 or len(kinds) > 20:
             raise ValueError("Invalid event limit")
+        condition = (
+            " AND kind IN (" + ",".join("?" for _ in kinds) + ")" if kinds else ""
+        )
         rows = self._db.execute(
             "SELECT * FROM events WHERE created_at >= ? AND created_at < ?"
-            " ORDER BY sequence LIMIT ?",
-            (start, end, limit),
+            + condition
+            + " ORDER BY sequence LIMIT ?",
+            (start, end, *kinds, limit),
         ).fetchall()
         return [
             TaskEvent(

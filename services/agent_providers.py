@@ -73,6 +73,8 @@ class AgentProviders(QObject):
     changed = pyqtSignal()
     requested = pyqtSignal(str, str, object)
     replied = pyqtSignal(str)  # task id: its agent finished a reply
+    # Today's reported cost passed the limit in Agent activity (cost, limit).
+    cost_alert = pyqtSignal(float, float)
 
     def __init__(self, registry, parent=None, *, factory=CodexProvider, factories=None):
         super().__init__(parent)
@@ -534,6 +536,28 @@ class AgentProviders(QObject):
             )
         except sqlite3.Error:
             self.service._fatal()
+            return
+        if "cost_usd" in report:
+            self._check_cost()
+
+    def _check_cost(self):
+        """Once a day: say so when today's reported cost passes the limit."""
+        from datetime import date
+
+        from services.agent_activity import cost_on
+
+        config = getattr(self.registry, "config", None)
+        limit = float(config.get("agent_cost_alert", 0.0) or 0.0) if config else 0.0
+        today = date.today()
+        if limit <= 0 or getattr(self, "_cost_alerted", None) == (today, limit):
+            return
+        try:
+            spent = cost_on(self.service.store, today)
+        except (sqlite3.Error, RuntimeError):
+            return
+        if spent >= limit:
+            self._cost_alerted = (today, limit)
+            self.cost_alert.emit(spent, limit)
 
     def _model_reported(self, task_id, report):
         if task_id not in self.chats:

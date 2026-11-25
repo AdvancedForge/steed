@@ -5,6 +5,7 @@ import unittest
 import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import test_task_services as fixtures
 
@@ -124,6 +125,23 @@ class ClaudeCodeProviderTests(unittest.TestCase):
                 "model": "claude-default",
             },
         )
+
+    def test_passing_the_daily_cost_limit_alerts_once(self):
+        alerts = []
+        self.manager.cost_alert.connect(lambda spent, limit: alerts.append(limit))
+        config = {"agent_cost_alert": 0.01}
+        with patch.object(self.manager.registry, "config", config, create=True):
+            task = self.chat()
+            for text in ("One", "Two"):
+                self.service.send_message(task, text)
+            self.agent_texts(task, 2)
+            self.wait_for(
+                lambda: (
+                    len(self.service.store.recent_events(task, kinds=("agent.usage",)))
+                    == 2
+                )
+            )
+        self.assertEqual(alerts, [0.01])  # Past the limit twice; told once.
 
     def test_selected_model_and_unstreamed_replies(self):
         task = self.chat("no-partial", model="haiku")

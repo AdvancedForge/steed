@@ -1187,6 +1187,14 @@ Code also reports a cost, Codex and models Steed runs itself report tokens
 only, and Steed never estimates a price. It is built from the task journal,
 which keeps sites (not page text), so the page shows no page content.
 
+**One day** or **A week** switches between a day and the seven days to it; a
+line under the totals adds usage up per assistant ("Claude Code 43k tokens,
+$0.50; Codex 16k tokens"). **Tell me when a day's reported cost passes** ($1 to
+$20, or Never) sends a desktop notification and a status-bar note the first
+time a day's reported cost goes over the limit. Agents keep working: Pause
+All Agents stops them. Only costs the assistants report count, so Codex and
+models Steed runs itself never trigger it.
+
 ### When the agent needs you
 
 Some steps are for a person: a captcha or "are you human" check, signing in
