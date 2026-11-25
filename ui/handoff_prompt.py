@@ -98,7 +98,12 @@ class HandoffPrompt(QObject):
             f"{self._agent(entry['task_id'])} needs you to {REASONS[entry['reason']]}"
         )
         said = f": “{entry['message']}”" if entry["message"] else "."
-        return f"{need}{said} Do it on this page, then hand it back."
+        where = (
+            f" It's ringed on the page ({entry['target']})."
+            if entry.get("target")
+            else ""
+        )
+        return f"{need}{said}{where} Do it on this page, then hand it back."
 
     def _asked(self, entry):
         session = self.service.backend._session(entry["session_id"])

@@ -1204,8 +1204,10 @@ one short sentence. Steed brings that page to the front (a tab of yours, or the
 task page in its watch window), hands it to you at once (the agent's page
 commands pause, as with Take Control), and shows a bar: *Claude Code needs you
 to solve a check that you are a person: "Please tick the box". Do it on this
-page, then hand it back.* A desktop notification says the same when Steed is
-not in front. **Done, hand back** (or Return to Agent in the watch window)
+page, then hand it back.* If the agent names the element (the `snapshot_id` and
+`target_id` from its last look at the page), Steed scrolls to it and rings it
+for a few seconds, and the bar names it. A desktop notification says the
+same when Steed is not in front. **Done, hand back** (or Return to Agent in the watch window)
 gives the page back and the agent carries on; **I can't** tells it you could
 not, so it asks you in the conversation instead of trying again. The agent's
 call waits for you (and keeps waiting without ending its turn). Asking needs

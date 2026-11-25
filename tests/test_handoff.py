@@ -11,6 +11,7 @@ from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtGui import QKeyEvent
 
 from services.agent_tools import TOOLS
+from services.page_inspector import PageInspectionError
 from services.task_client import CLIENT_COMMANDS
 from services.task_policy import TaskPermissionError
 from ui.handoff_prompt import HandoffPrompt
@@ -79,6 +80,34 @@ class AdoptedTabHandoffTests(live.LiveTabsTests):
         kinds = [e.kind for e in self.service.store.recent_events(task, limit=50)]
         self.assertIn("handoff.requested", kinds)
         self.assertIn("handoff.done", kinds)
+
+    def test_pointing_at_the_thing_rings_it_on_the_page(self):
+        window, view = self.window()
+        task, _, session = self.share(window)
+        snapshot = self.inspect(task, session)
+        target = next(
+            t for f in snapshot.frames for t in f.targets if t.label == "Confirm"
+        )
+        with self.assertRaises(PageInspectionError):
+            self.ask(task, session, snapshot_id=snapshot.snapshot_id, target_id="nope")
+        self.assertFalse(window.handoff_bar.isVisible())  # Nothing handed over.
+        self.ask(
+            task,
+            session,
+            reason="confirm",
+            snapshot_id=snapshot.snapshot_id,
+            target_id=target.target_id,
+        )
+        self.assertIn("ringed on the page (Confirm)", window.handoff_bar.label.text())
+        self.wait_for(
+            lambda: self.value(
+                view.page(),
+                "[...document.querySelectorAll('div[aria-hidden=true]')]"
+                ".some(d => d.style.borderColor || d.style.border)",
+            )
+        )
+        window.handoff_bar.done.click()
+        self.assertEqual(self.status(task)["state"], "done")
 
     def test_i_cant_reports_not_done_and_returns_control(self):
         window, view = self.window()

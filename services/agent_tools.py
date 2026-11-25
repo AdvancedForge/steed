@@ -316,7 +316,7 @@ TOOLS = (
     ),
     tool(
         "browser.ask_person",
-        'Hand the session\'s page to the person for one step only they should do: a captcha or "are you human" check (reason captcha), signing in without a saved login (sign_in), a verification code (code), confirming a payment (payment) or anything else they must confirm (confirm, other). Steed switches to the page, notifies them and shows your message; your page commands pause until they hand it back. The call waits; if still waiting_for_person, call browser.ask_person_status without ending your turn. Then: done (inspect the page again), not_done (they could not or would not: ask them in the conversation) or cancelled. message: one short sentence saying exactly what you need, e.g. "Please tick the I\'m not a robot box".',
+        'Hand the session\'s page to the person for one step only they should do: a captcha or "are you human" check (reason captcha), signing in without a saved login (sign_in), a verification code (code), confirming a payment (payment) or anything else they must confirm (confirm, other). Steed switches to the page, notifies them and shows your message; your page commands pause until they hand it back. The call waits; if still waiting_for_person, call browser.ask_person_status without ending your turn. Then: done (inspect the page again), not_done (they could not or would not: ask them in the conversation) or cancelled. message: one short sentence saying exactly what you need, e.g. "Please tick the I\'m not a robot box". To point at it, pass the snapshot_id and target_id from your latest page.inspect: Steed rings it on the page.',
         {
             "session_id": string(64),
             "request_id": string(64),
@@ -325,6 +325,8 @@ TOOLS = (
                 "enum": ["captcha", "sign_in", "code", "payment", "confirm", "other"],
             },
             "message": string(300),
+            "snapshot_id": string(64),
+            "target_id": string(64),
         },
         ("session_id", "request_id", "reason"),
     ),

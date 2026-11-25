@@ -124,7 +124,7 @@
         return {url: action.href, method, file_form:hasFiles, uploads};
     };
     try {
-        if (["target", "act", "scroll", "form", "submit", "live_prepare", "live_point", "frame_point", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
+        if (["target", "highlight", "act", "scroll", "form", "submit", "live_prepare", "live_point", "frame_point", "input_layout", "input_prepare", "input_check", "input_observe", "upload_prepare", "upload_observe"].includes(request.mode)) {
             const state = globalThis[request.state_key];
             if (!state || state.snapshot_id !== request.snapshot_id) return fail("stale_snapshot");
             for (const frame of state.frames) {
@@ -207,6 +207,23 @@
             const adjusting = request.operation === "adjust" && ["input_check", "input_observe"].includes(request.mode);
             if (state.live && !adjusting && (!target.fingerprint || liveFingerprint(target.node) !== target.fingerprint))
                 return fail("stale_snapshot");
+            if (request.mode === "highlight") {
+                // browser.ask_person: show the person what the agent means. A
+                // ring that ignores the pointer, gone after a few seconds.
+                const node = target.node, doc = node.ownerDocument;
+                node.scrollIntoView({block: "center", inline: "center", behavior: "instant"});
+                const box = node.getBoundingClientRect();
+                const ring = doc.createElement("div");
+                ring.setAttribute("aria-hidden", "true");
+                ring.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;" +
+                    "border:3px solid #e8590c;border-radius:10px;transition:opacity .5s;" +
+                    "box-shadow:0 0 0 4px #e8590c40,0 0 0 9999px #00000026;" +
+                    `left:${box.left - 7}px;top:${box.top - 7}px;` +
+                    `width:${box.width + 14}px;height:${box.height + 14}px`;
+                (doc.body || doc.documentElement).appendChild(ring);
+                setTimeout(() => { ring.style.opacity = "0"; setTimeout(() => ring.remove(), 600); }, 7000);
+                return JSON.stringify({highlighted: true});
+            }
             if (["upload_prepare", "upload_observe"].includes(request.mode)) {
                 const node = target.node, doc = node.ownerDocument;
                 if (node.tagName !== "INPUT" || node.type !== "file" || doc.defaultView !== window ||

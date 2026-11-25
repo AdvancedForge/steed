@@ -982,6 +982,20 @@ class QtBrowserBackend(QObject):
             session_id, session.page, snapshot_id, target_id, validate
         )
 
+    def highlight_target(self, session_id, snapshot_id, target_id):
+        """Ring a target for the person; returns its descriptor at once (the
+        ring is drawn in the page shortly after)."""
+        session, validate = self._read_context(session_id)
+        _, descriptor = self.inspector._target_reference(
+            session_id, snapshot_id, target_id
+        )
+        drawn = self.inspector.highlight(
+            session_id, session.page, snapshot_id, target_id, validate
+        )
+        # Handing control over clears references; the ring is drawn anyway.
+        drawn.add_done_callback(lambda future: future.exception())
+        return descriptor
+
     def _edit_context(self, session_id, action):
         session, validate_read = self._read_context(session_id)
         if session.pending_action is not None:

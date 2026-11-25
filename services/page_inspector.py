@@ -721,6 +721,18 @@ class PageInspector(QObject):
             consume,
         )
 
+    def highlight(self, session_id, page, snapshot_id, target_id, validate):
+        """Ring a target on the page for a few seconds (browser.ask_person)."""
+        require_owner_thread(self)
+        node_id, descriptor = self._target_reference(session_id, snapshot_id, target_id)
+        return self._run(
+            session_id,
+            page,
+            {"mode": "highlight", "snapshot_id": snapshot_id, "node_id": node_id},
+            validate,
+            lambda data: descriptor,
+        )
+
     def _snapshot_state(self, session_id, snapshot_id):
         state = self._states.get(session_id)
         if (

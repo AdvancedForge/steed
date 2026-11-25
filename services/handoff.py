@@ -64,7 +64,16 @@ class Handoffs(QObject):
             )
         return receipt
 
-    def ask(self, task_id, session_id, request_id, reason, message=""):
+    def ask(
+        self,
+        task_id,
+        session_id,
+        request_id,
+        reason,
+        message="",
+        snapshot_id=None,
+        target_id=None,
+    ):
         """Agent command: hand the page to the person for one step."""
         service = self.service
         service._usable()
@@ -100,6 +109,14 @@ class Handoffs(QObject):
                     "The person cannot see this page yet. Request attach permission "
                     "with grant.request, then ask again.",
                 ) from None
+        # The thing the agent means, ringed on the page before it changes hands
+        # (handing over clears the agent's references).
+        label = ""
+        if snapshot_id is not None or target_id is not None:
+            descriptor = service.backend.highlight_target(
+                session_id, snapshot_id, target_id
+            )
+            label = " ".join((descriptor.label or descriptor.role or "").split())[:80]
         control = "handoff:" + uuid4().hex
         entry = {
             "task_id": task_id,
@@ -107,6 +124,9 @@ class Handoffs(QObject):
             "session_id": session_id,
             "reason": reason,
             "message": message,
+            "target": label,
+            "snapshot_id": snapshot_id,
+            "target_id": target_id,
             "key": control,
             "state": "waiting_for_person",
             "created": time.time(),
