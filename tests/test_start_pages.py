@@ -364,3 +364,17 @@ class StartPageTests(unittest.TestCase):
             "my unfinished search",
         )
         self.assertEqual(self.js("window.scrollY", tab), 0)
+
+
+class AgentTourTests(unittest.TestCase):
+    def test_welcome_has_the_agent_tour_and_steed_pages_keep_a_place(self):
+        from services.start_pages import TOUR, internal_url, welcome_steps
+
+        html = welcome_steps("photo", False)
+        self.assertIn('href="#tour"', html)
+        self.assertIn('id="tour"', html)
+        for title, _ in TOUR:
+            self.assertIn(title, html)
+        url = internal_url("steed:welcome#tour")
+        self.assertEqual(url.toString(), "steed://welcome/#tour")
+        self.assertIsNone(internal_url("steed:welcome#<script>"))

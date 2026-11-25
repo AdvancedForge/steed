@@ -61,6 +61,7 @@ GROUPS = {
             "Agent Sidebar",
             "Skills",
             "Add an Assistant…",
+            "What Can My Assistant Do?",
             "Helper Assistant",
             "Pause All Agents",
         ),

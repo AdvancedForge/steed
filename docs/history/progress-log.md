@@ -7,6 +7,17 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Safety and loose ends — November 25, 2026.**
+- an error in one part of Steed no longer ends Steed: it is printed and kept
+  in errors.log, the agent input shield fails closed, and the test suite
+  fails at the end if any such error happened;
+- addresses and cards sync like passwords, sealed with the sync passphrase;
+- Agent Activity: a week view, usage per assistant, and an alert when a day's
+  reported cost passes your limit;
+- an agent asking you for help can point at the element, which Steed rings;
+- Find a Page I Saw also looks in remembered page text, on this computer;
+- What Can My Assistant Do?: a short tour from Welcome and the Agents menu.
+
 **What a new user looks for — November 24, 2026.**
 - Codex usage checked with a real chat: Steed's numbers matched what Codex
   reported (the test chat was then removed from Codex's history);

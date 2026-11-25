@@ -217,6 +217,14 @@ def internal_url(text):
     aliases.update({"steed:" + name: "steed://" + name + "/" for name in WORKSPACES})
     if text in aliases:
         return QUrl(aliases[text])
+    # steed:welcome#tour: the same page, at a place in it.
+    base, mark, fragment = (
+        text.partition("#") if isinstance(text, str) else ("", "", "")
+    )
+    if mark and base in aliases and re.fullmatch(r"[\w-]{1,40}", fragment):
+        url = QUrl(aliases[base])
+        url.setFragment(fragment)
+        return url
     if isinstance(text, str) and text.startswith("steed:") and "//" not in text:
         # steed:<name> for a page of yours.
         name = text.removeprefix("steed:").split("#")[0]
@@ -1258,9 +1266,51 @@ def welcome_steps(background, glass, ready=()):
         "anything.</p>"
         + assistant_cards(ready)
         + '<div class="actions"><a class="button" href="steed://action/start">Start browsing</a>'
-        '<a class="button secondary" href="steed://action/agents">Open the agent panel</a></div></section>'
-        '<a class="skip" href="steed://action/start">Skip the tour</a></div>'
+        '<a class="button secondary" href="steed://action/agents">Open the agent panel</a>'
+        '<a class="button secondary" href="#tour">What can it do?</a></div></section>'
+        + AGENT_TOUR
+        + '<a class="skip" href="steed://action/start">Skip the tour</a></div>'
     )
+
+
+# Welcome → What can it do? (also Agents → What Can My Assistant Do?): the
+# few things worth knowing, each where you find it.
+TOUR = (
+    (
+        "Ask about any page",
+        "Right-click a page → Ask Agent About This Page, or type @ and your "
+        "question in the address bar.",
+    ),
+    (
+        "Hand it errands",
+        "Right-click → Ask Agent To ▸ fills a form or pulls out the facts; the "
+        "errands under New Tab's search box watch a price or sum up your tabs.",
+    ),
+    (
+        "It asks you first",
+        "Before it uses your tabs, a site or a file, a popup asks (unless you "
+        "chose Always in Access & Permissions). When a page needs you (a "
+        "captcha, a code), it hands the page over and waits.",
+    ),
+    (
+        "Keep an eye on things",
+        "Right-click → Watch This Page with Agent tells you when a page "
+        "changes the way you care about.",
+    ),
+    (
+        "See what it did",
+        "Agents → Agent Activity lists each day's sites, steps and permissions, "
+        "with the tokens and cost its app reported.",
+    ),
+)
+AGENT_TOUR = (
+    '<section id="tour" class="step"><h1>What your assistant can do.</h1>'
+    "<p>Five things worth knowing. Everything else waits in the Agents menu.</p>"
+    '<dl class="tour">'
+    + "".join(f"<dt>{title}</dt><dd>{text}</dd>" for title, text in TOUR)
+    + "</dl>"
+    '<div class="actions"><a class="button" href="#agent">Back</a></div></section>'
+)
 
 
 def customize_panel(
@@ -1661,6 +1711,9 @@ html:has(body.onboarding) { scrollbar-gutter: stable; }
 .step { display: none; scroll-margin-top: 100vh; }
 .step:target, .onboard:not(:has(.step:target)) #look { display: block; }
 .step h1 { margin: 0 0 10px; }
+.tour { margin: 18px 0 8px; max-width: 52ch; }
+.tour dt { font-weight: 650; margin-top: 14px; }
+.tour dd { margin: 2px 0 0; color: var(--muted); }
 .step p { font-size: 17px; max-width: 46ch; }
 .step h2.choice { margin: 20px 0 0; font-size: 14px; color: var(--muted); font-weight: 600; }
 .step .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 12px 0 8px; max-width: 460px; }
@@ -1865,12 +1918,14 @@ class StartPageHandler(webengine.SchemeHandler):
                 return
             request.reply(b"text/html", data)
             return
-        name = page_name(request.url)
+        # A #fragment picks a place in the page (Welcome's steps); it never
+        # changes what is served.
+        name = action_page(request.url)
         initiator = request.initiator
         if (
             name is None
             or request.method != b"GET"
-            or (not initiator.isEmpty() and page_name(initiator) is None)
+            or (not initiator.isEmpty() and action_page(initiator) is None)
         ):
             request.fail("denied")
             return

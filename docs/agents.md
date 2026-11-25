@@ -18,6 +18,12 @@ asks what you already have (a ChatGPT or Claude subscription, a free chat
 account, an API key, nothing at all, or claude.ai or ChatGPT on the web) and
 suggests one in plain words, with **Set it up**.
 
+**What can it do?** (on Welcome's assistant step, and Agents → **What Can My
+Assistant Do?**) is a short page of the five things worth knowing: asking
+about any page, handing it errands, how it asks you first and hands pages
+over, watching pages, and seeing what it did. Steed's pages can be opened at a
+place in them (`steed:welcome#tour`).
+
 A **chatbot website** (ChatGPT, Claude, Gemini or any chat site) opens in the
 sidebar's place, signed in as you, beside the agent chat. It reaches Steed's
 tools only through what you hand it: **Share instructions…** or the reviewed

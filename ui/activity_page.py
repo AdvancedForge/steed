@@ -63,11 +63,6 @@ class ActivityDialog(HtmlSettingsDialog):
             )
         )
         days = QHBoxLayout()
-        self.span = QComboBox()
-        self.span.setAccessibleName("Show")
-        self.span.addItems(["One day", "A week"])
-        self.span.currentIndexChanged.connect(self._span_changed)
-        days.addWidget(self.span)
         self.earlier = QPushButton("Previous day")
         self.earlier.clicked.connect(lambda: self.show_day(-1))
         self.heading = QLabel()
@@ -77,6 +72,9 @@ class ActivityDialog(HtmlSettingsDialog):
         days.addWidget(self.earlier)
         days.addWidget(self.heading, 1, Qt.AlignmentFlag.AlignCenter)
         days.addWidget(self.later)
+        self.span = QPushButton("Show the week")
+        self.span.clicked.connect(lambda: self._span_changed(0 if self.week else 1))
+        days.addWidget(self.span)
         layout.addLayout(days)
         self.totals = QLabel()
         self.totals.setWordWrap(True)
@@ -130,6 +128,7 @@ class ActivityDialog(HtmlSettingsDialog):
 
     def _span_changed(self, index):
         self.week = index == 1
+        self.span.setText("Show one day" if self.week else "Show the week")
         self.earlier.setText("Previous week" if self.week else "Previous day")
         self.later.setText("Next week" if self.week else "Next day")
         self.refresh()

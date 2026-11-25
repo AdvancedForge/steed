@@ -1004,6 +1004,11 @@ class BrowserWindow(QMainWindow):
         task_action = QAction("Task Permissions…", self)
         task_action.triggered.connect(self._open_tasks)
         agents_menu.addAction(task_action)
+        tour_action = QAction("What Can My Assistant Do?", self)
+        tour_action.triggered.connect(
+            lambda: self._new_tab(url="steed:welcome#tour", return_tab=True)
+        )
+        agents_menu.addAction(tour_action)
         activity_action = QAction("Agent Activity", self)
         activity_action.triggered.connect(
             lambda: self._new_tab(url="steed:activity", return_tab=True)
