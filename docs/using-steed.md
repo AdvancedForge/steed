@@ -537,7 +537,10 @@ the History page) finds a page from a description, such as "that heat pump
 article last week". Your assistant gets the titles, sites and dates of the
 past month's pages under the same rules (no page text, no banking, health or
 sign-in sites, nothing from incognito) and picks up to five matches; open the
-one you meant. Nothing is kept.
+one you meant. Nothing is kept. With **Remember what I read** on, the
+description's words (without fillers such as "that article last week") are
+also looked up in the text of pages you read, on this computer; those
+matches show at once and nothing more is sent.
 
 ### Split view and sites in a profile
 

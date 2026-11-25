@@ -37,12 +37,15 @@ def excluded(host, sites):
     return any(host == s or host.endswith("." + s) for s in sites)
 
 
-def query_of(text):
-    """Words as an FTS5 query: every word must appear (prefix match on the last)."""
+def query_of(text, *, any_word=False):
+    """Words as an FTS5 query: every word must appear (prefix match on the
+    last), or with any_word, any of them (each a prefix)."""
     words = re.findall(r"\w+", text or "", re.UNICODE)[:12]
     if not words:
         return None
     quoted = ['"' + w.replace('"', "") + '"' for w in words]
+    if any_word:
+        return " OR ".join(word + "*" for word in quoted)
     quoted[-1] += "*"
     return " ".join(quoted)
 
@@ -78,9 +81,9 @@ class PageMemory:
                     (count - MAX_PAGES,),
                 )
 
-    def search(self, text, limit=30):
+    def search(self, text, limit=30, *, any_word=False):
         """[{url, title, snippet, visited}], best matches first."""
-        query = query_of(text)
+        query = query_of(text, any_word=any_word)
         if self.db is None or query is None:
             return []
         try:

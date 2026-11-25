@@ -39,6 +39,13 @@ class FindFunctionTests(unittest.TestCase):
         self.assertNotIn("/heat-pumps", prompt)  # Sites, not full addresses.
         self.assertIn("Today is", prompt)
 
+    def test_describing_words_leave_out_filler(self):
+        from ui.history_find import content_words
+
+        self.assertEqual(
+            content_words("that heat pump article I read last week"), "heat pump"
+        )
+
     def test_replies_are_checked(self):
         self.assertEqual(parse_matches('Here: [3, 1, 3, 99, "x"]', 3), [2, 0])
         self.assertEqual(parse_matches("none", 3), [])
@@ -84,6 +91,40 @@ class FindDialogTests(unittest.TestCase):
             before = len(self.window.tabs)
             dialog.open_selected()
         self.assertEqual(len(self.window.tabs), before + 1)
+
+    def test_remembered_text_finds_pages_on_this_computer(self):
+        class Once(fixture.FakeOnce):
+            def __init__(self, command, prompt, parent=None, **_):
+                fixture.QObject.__init__(self, parent)
+                self.running = True
+                fixture.QTimer.singleShot(0, lambda: self.answered.emit("[]"))
+
+        memory = self.window.history.memory
+        if memory is None:
+            self.skipTest("This profile keeps no page text")
+        memory.remember(
+            "https://energy.example/guide",
+            "A guide",
+            "Choosing a heat pump for an old house, with costs.",
+        )
+        shown = []
+        with (
+            patch("services.agent_once.agent_command", return_value=["fake"]),
+            patch("services.agent_once.AgentOnce", Once),
+            patch.object(
+                fixture.BrowserWindow,
+                "_present_dialog",
+                lambda self, dialog, **_: shown.append(dialog),
+            ),
+        ):
+            self.window.find_in_history()
+            dialog = shown[0]
+            dialog.description.setText("that heat pump article last week")
+            dialog.search()
+            # Shown at once, before the assistant answers, and kept after.
+            self.assertEqual(dialog.table.item(0, 0).text(), "A guide")
+            self.wait(lambda: dialog.go.isEnabled())
+        self.assertEqual(dialog.matches[0][1], "https://energy.example/guide")
 
 
 if __name__ == "__main__":
