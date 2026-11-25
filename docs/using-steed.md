@@ -1398,8 +1398,8 @@ hidden fields are skipped. **Not now** stops the offer on that site until
 Steed closes. The key menu in the address bar lists the same entries. After
 you submit a checkout form by hand, Steed offers to save the card and then the
 address (or to update a saved one). Two settings on the same page turn the
-offers off. Agents never fill card fields, and addresses and cards do not sync
-yet.
+offers off. Agents never fill card fields. Addresses and cards sync with your
+other computers along with passwords (sealed with the sync passphrase).
 
 ### Password Checkup
 

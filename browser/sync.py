@@ -13,8 +13,9 @@ others. On a computer's first sync its items count as oldest, so they never
 overwrite newer changes made elsewhere. Markers older than 90 days are dropped.
 
 Profiles sync by name, between profiles that exist on both computers; incognito
-never syncs. Passwords and passkeys sync only with a sync passphrase: each
-profile's logins and passkeys are sealed with a key stretched from it (Argon2id, then XSalsa20-Poly1305), so
+never syncs. Passwords, passkeys, addresses and cards sync only with a sync
+passphrase: each profile's are sealed with a key stretched from it (Argon2id,
+then XSalsa20-Poly1305), so
 the folder holds no readable password, and a computer syncs them only while
 that profile's vault is unlocked.
 """
@@ -343,6 +344,31 @@ def _logins_of(vault):
     )
 
 
+def _autofill(kind):
+    def clean(data):
+        from browser.password_vault import _autofill_record
+
+        record = (
+            _autofill_record(kind, {**data, "id": ""})
+            if isinstance(data, dict)
+            else None
+        )
+        if record is None:
+            return None
+        for name in ("id", "last_used"):
+            record.pop(name)  # Each computer keeps its own.
+        return record
+
+    def of(vault):
+        return Collection(
+            lambda: vault.synced_autofill(kind),
+            lambda found: vault.replace_synced_autofill(kind, list(found.values())),
+            clean,
+        )
+
+    return of
+
+
 def _passkeys_of(vault):
     return Collection(
         vault.synced_passkeys,
@@ -435,6 +461,8 @@ def sync_folder(folder, device, name, sources, *, key=None, now=None):
         for kind, collection in (
             ("passwords", _logins_of),
             ("passkeys", _passkeys_of),
+            ("addresses", _autofill("addresses")),
+            ("cards", _autofill("cards")),
         ):
             sealed = mine_all.get(kind)
             if key is None or vault is None or not vault.unlocked:

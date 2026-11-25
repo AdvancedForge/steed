@@ -796,6 +796,44 @@ class PasswordVault:
         )
         self._write()
 
+    @staticmethod
+    def autofill_key(kind, item):
+        """What names one address or card on every computer (sync's key)."""
+        if kind == "cards":
+            return "card " + item["number"]
+        return "address " + "|".join(
+            item[name].casefold() for name in ("name", "street", "postal")
+        )
+
+    def synced_autofill(self, kind):
+        """key -> the fields sync shares (not ids or when last used here)."""
+        return {
+            self.autofill_key(kind, item): {
+                **{name: item[name] for name in AUTOFILL_FIELDS[kind]},
+                "created": item["created"],
+                "updated": item["updated"],
+            }
+            for item in getattr(self._need(), kind)
+        }
+
+    def replace_synced_autofill(self, kind, found):
+        """Make the vault hold exactly these synced entries, keeping local ids."""
+        contents = self._need()
+        current = {self.autofill_key(kind, i): i for i in getattr(contents, kind)}
+        result = []
+        for data in found:
+            record = _autofill_record(kind, {**data, "id": ""})
+            if record is None or len(result) >= MAX_ENTRIES:
+                continue
+            old = current.get(self.autofill_key(kind, record))
+            record.update(
+                id=old["id"] if old else uuid4().hex,
+                last_used=old["last_used"] if old else 0.0,
+            )
+            result.append(record)
+        setattr(contents, kind, result)
+        self._write()
+
     # -- sync
 
     SYNCED = ("origin", "username", "password", "title", "totp", "notes")

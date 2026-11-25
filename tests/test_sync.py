@@ -246,6 +246,43 @@ class PasskeySyncTests(PasswordTests):
         self.assertEqual(a.passkeys(), [])
 
 
+class AutofillSyncTests(PasswordTests):
+    # A synthetic test number (it passes the Luhn check; no real card).
+    CARD = "4111111111111111"
+
+    def test_addresses_and_cards_travel_sealed_and_keep_local_use(self):
+        key = sync.passphrase_key(self.folder, "correct horse", *FAST)
+        a, b = self.vault("a"), self.vault("b")
+        card = a.save_autofill(
+            "cards", {"number": self.CARD, "nickname": "Synthetic travel"}
+        )
+        a.touch_autofill("cards", card["id"])
+        b.save_autofill(
+            "addresses",
+            {"name": "Bo Synthetic", "street": "9 Mock Way", "postal": "MK1 1MK"},
+        )
+        self.run_sync("a" * 32, a, key, 100)
+        self.run_sync("b" * 32, b, key, 101)
+        self.run_sync("a" * 32, a, key, 102)
+        for vault in (a, b):
+            self.assertEqual(vault.autofill("cards")[0]["number"], self.CARD)
+            self.assertEqual(vault.autofill("addresses")[0]["street"], "9 Mock Way")
+        self.assertEqual(b.autofill("cards")[0]["last_used"], 0.0)  # Used on a.
+        for path in (self.folder / "steed-sync").iterdir():
+            text = path.read_text()
+            for secret in (self.CARD, "Mock Way", "Synthetic travel"):
+                self.assertNotIn(secret, text)
+        # A change on one computer reaches the other; so does deleting.
+        a.save_autofill("cards", {"number": self.CARD, "nickname": "Renamed"})
+        self.run_sync("a" * 32, a, key, 200)
+        self.run_sync("b" * 32, b, key, 201)
+        self.assertEqual(b.autofill("cards")[0]["nickname"], "Renamed")
+        b.delete_autofill("addresses", b.autofill("addresses")[0]["id"])
+        self.run_sync("b" * 32, b, key, 300)
+        self.run_sync("a" * 32, a, key, 301)
+        self.assertEqual(a.autofill("addresses"), [])
+
+
 class WindowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
