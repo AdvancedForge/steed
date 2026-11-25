@@ -66,7 +66,38 @@ def application():
 
         apply_ui_font(_application)
         _application.setQuitOnLastWindowClosed(False)
+        _report_callback_errors()
     return _application
+
+
+CALLBACK_ERRORS = []
+
+
+def _report_callback_errors():
+    """An error in Python code Qt calls (an event filter, a slot) is printed
+    and the run continues, as in Steed; at the end the run fails and lists
+    them, so no such error passes unnoticed."""
+    import atexit
+    import os
+    import sys
+    import traceback
+
+    def hook(kind, value, trace):
+        text = "".join(traceback.format_exception(kind, value, trace))
+        CALLBACK_ERRORS.append(text)
+        sys.stderr.write(text)
+
+    def verdict():
+        if CALLBACK_ERRORS:
+            sys.stderr.write(
+                f"\n{len(CALLBACK_ERRORS)} error(s) in Qt callbacks during the "
+                "tests; the first:\n" + CALLBACK_ERRORS[0]
+            )
+            sys.stderr.flush()
+            os._exit(1)
+
+    sys.excepthook = hook
+    atexit.register(verdict)
 
 
 class _TemporaryFolder:

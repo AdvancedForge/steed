@@ -101,6 +101,9 @@ def main() -> int:
 
     # Prevent separate processes from corrupting the same Chromium stores.
     config = Config()
+    from browser import error_hook
+
+    error_hook.install(config.config_dir)
     app._profile_lock = QLockFile(str(config.config_dir / "browser.lock"))
     urls = launch_urls(sys.argv[1:])
     if not app._profile_lock.tryLock(0):

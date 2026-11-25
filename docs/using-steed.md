@@ -674,6 +674,15 @@ for example when memory runs out), its tab shows **This tab crashed** with
 crashes: when, which site (only the host; "incognito" for private windows) and
 why, with no page content; **Clear** empties it.
 
+Steed's own errors don't close Steed: an error in one part (a menu, a bar, a
+page tool) is printed and kept in `~/.custom_browser/errors.log` (the newest
+256 KB, readable only by you, tracebacks without page content), and the rest
+keeps working. Without this, PyQt ends the whole program on such an error.
+While an agent has a page, the guard that keeps your clicks off it fails
+closed: if its check goes wrong, input to that page is blocked, not let
+through. The test suite reports such errors too, and fails the run at the end
+if there were any.
+
 ### Lumen: Steed's look
 
 Steed's look is built on light. The page floats as a rounded card; around

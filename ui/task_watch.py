@@ -56,16 +56,23 @@ class InputShield(QObject):
         QApplication.instance().installEventFilter(self)
 
     def eventFilter(self, target, event):
-        if (
-            self.enabled
-            and event.type() in self.BLOCKED
-            and isinstance(target, QWidget)
-            and not sip.isdeleted(self.view)
-            and (target is self.view or self.view.isAncestorOf(target))
-        ):
-            event.accept()
-            return True
-        return False
+        try:
+            if (
+                self.enabled
+                and event.type() in self.BLOCKED
+                and isinstance(target, QWidget)
+                and not sip.isdeleted(self.view)
+                and (target is self.view or self.view.isAncestorOf(target))
+            ):
+                event.accept()
+                return True
+            return False
+        except Exception:
+            # Fail closed: while an agent has the page, a check that went
+            # wrong must not let input through.
+            return bool(getattr(self, "enabled", False)) and (
+                event.type() in self.BLOCKED
+            )
 
     def setEnabled(self, enabled):
         self.enabled = enabled
