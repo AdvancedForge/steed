@@ -61,6 +61,13 @@ AGENT_CAPABILITIES = {
         "on) and get the matching pages' text.",
         "actions": set(),
     },
+    "customize": {
+        "label": "See and change your customizations",
+        "help": "Read your own pages, automations, skills, watches, user scripts "
+        "and panel apps, and propose changes to them or to your settings. You "
+        "review every change before it happens.",
+        "actions": set(),
+    },
     "profiles": {
         "label": "Your signed-in profiles",
         "help": "Work in your own profiles, with their cookies and sign-ins, "

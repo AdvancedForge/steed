@@ -1201,6 +1201,23 @@ time a day's reported cost goes over the limit. Agents keep working: Pause
 All Agents stops them. Only costs the assistants report count, so Codex and
 models Steed runs itself never trigger it.
 
+### Your customizations, open to your agent
+
+Agents can see and change what you made, always with your review:
+`customizations.list` lists your own pages, automations, skills, watches, user
+scripts and styles and panel apps in the profile you're using;
+`customizations.read` returns one in full (its HTML, steps or code); and
+`customizations.change` proposes replacing or removing one. Steed checks the
+new version as it checks anything you make and shows what it is now and what
+it would become; only **Apply** changes it. New things are still proposed with
+`custom_page.propose`, `automation.propose` and the rest. Settings proposals
+(`settings.propose`) can now set any preference except how Steed treats agents
+(access levels and approve-everything aren't preferences at all, and keeping
+agent chats or recording replays stay yours); a change that weakens security
+or privacy, such as turning off HTTPS first or safe browsing, is marked in the
+review. Access & Permissions → **See and change your customizations** set to
+Never refuses all of this.
+
 ### When the agent needs you
 
 Some steps are for a person: a captcha or "are you human" check, signing in

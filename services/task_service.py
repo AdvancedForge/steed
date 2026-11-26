@@ -149,6 +149,9 @@ class TaskService(QObject):
         from services.tab_reading import TabReading
 
         self.tab_reading = TabReading(self)
+        from services.customization_changes import CustomizationChanges
+
+        self.customization_changes = CustomizationChanges(self)
         from services.handoff import Handoffs
 
         self.handoffs = Handoffs(self)
@@ -198,6 +201,29 @@ class TaskService(QObject):
                 ),
                 "browser.ask_person": lambda task_id, **arguments: self._layout_action(
                     lambda: self.handoffs.ask(task_id, **arguments)
+                ),
+                "customizations.list": lambda task_id: self._layout_action(
+                    self.customization_changes.inventory, task_id
+                ),
+                "customizations.read": lambda task_id, kind, id: self._layout_action(
+                    self.customization_changes.read, task_id, kind, id
+                ),
+                "customizations.change": lambda task_id, **arguments: (
+                    self._layout_action(
+                        lambda: self.customization_changes.change(
+                            task_id,
+                            arguments.get("request_id"),
+                            arguments.get("kind"),
+                            arguments.get("id"),
+                            arguments.get("action"),
+                            arguments.get("item"),
+                        )
+                    )
+                ),
+                "customizations.status": lambda task_id, request_id: (
+                    self._layout_action(
+                        self.customization_changes.status, task_id, request_id
+                    )
                 ),
                 "browser.ask_person_status": lambda task_id, request_id: (
                     self._layout_action(self.handoffs.status, task_id, request_id)
@@ -3184,6 +3210,9 @@ class TaskService(QObject):
         self.reading.cancel_task(task_id, interrupted=status == "interrupted")
         self.tab_reading.cancel_task(task_id, interrupted=status == "interrupted")
         self.handoffs.cancel_task(task_id, interrupted=status == "interrupted")
+        self.customization_changes.cancel_task(
+            task_id, interrupted=status == "interrupted"
+        )
         self.signin.cancel_task(task_id, interrupted=status == "interrupted")
         self.settings_proposals.cancel_task(
             task_id, interrupted=status == "interrupted"

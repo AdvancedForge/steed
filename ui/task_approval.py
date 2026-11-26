@@ -408,6 +408,12 @@ class TaskApprovalQueue(QObject):
                     )
                     pending.extend(
                         (task, request)
+                        for request in self.service.customization_changes.pending(
+                            task.task_id
+                        )
+                    )
+                    pending.extend(
+                        (task, request)
                         for request in self.service.signin.pending(task.task_id)
                     )
                     pending.extend(
@@ -450,6 +456,7 @@ class TaskApprovalQueue(QObject):
                 continue
             from services.connector_reviews import AppReview
             from services.creation_proposals import CreationProposal
+            from services.customization_changes import ChangeRequest
             from services.customization_proposals import CustomizationProposal
             from services.data_panels import PanelReceipt
             from services.layout_proposals import LayoutProposal
@@ -465,6 +472,7 @@ class TaskApprovalQueue(QObject):
             from services.worker_store import WorkerReceipt
             from ui.app_review import AppReviewDialog
             from ui.creation_review import CreationReviewDialog
+            from ui.customization_change_review import CustomizationChangeDialog
             from ui.customization_review import CustomizationReviewDialog
             from ui.data_panels import DataPanelReviewDialog
             from ui.layout_review import LayoutReviewDialog
@@ -491,6 +499,7 @@ class TaskApprovalQueue(QObject):
                         RoutineProposal,
                         ReadingRequest,
                         TabReadRequest,
+                        ChangeRequest,
                         SigninRequest,
                         SettingsProposal,
                         CreationProposal,
@@ -521,6 +530,8 @@ class TaskApprovalQueue(QObject):
                     if isinstance(grant, ReadingRequest)
                     else TabReadReviewDialog(self.service, grant, parent)
                     if isinstance(grant, TabReadRequest)
+                    else CustomizationChangeDialog(self.service, grant, parent)
+                    if isinstance(grant, ChangeRequest)
                     else SigninReviewDialog(self.service, grant, parent)
                     if isinstance(grant, SigninRequest)
                     else SettingsReviewDialog(self.service, grant, parent)
@@ -591,6 +602,7 @@ class TaskApprovalQueue(QObject):
                         RoutineProposal,
                         ReadingRequest,
                         TabReadRequest,
+                        ChangeRequest,
                         SigninRequest,
                         SettingsProposal,
                         CreationProposal,
@@ -620,6 +632,7 @@ class TaskApprovalQueue(QObject):
     def request_key(self, task, item):
         from services.connector_reviews import AppReview
         from services.creation_proposals import CreationProposal
+        from services.customization_changes import ChangeRequest
         from services.customization_proposals import CustomizationProposal
         from services.data_panels import PanelReceipt
         from services.layout_proposals import LayoutProposal
@@ -651,6 +664,7 @@ class TaskApprovalQueue(QObject):
                     RoutineProposal,
                     ReadingRequest,
                     TabReadRequest,
+                    ChangeRequest,
                     SigninRequest,
                     SettingsProposal,
                     CreationProposal,

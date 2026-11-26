@@ -1,7 +1,7 @@
 """Your agent proposing changes to Steed's settings: preferences, shortcuts,
 search keywords, ad-blocking rules and per-site settings, applied only after
-you review every change; settings that affect security, privacy or agents
-are never proposable."""
+you review every change; any setting but how Steed treats agents, with
+changes that weaken security or privacy marked."""
 
 import tempfile
 import time
@@ -57,18 +57,16 @@ class SettingsProposalTests(unittest.TestCase):
         task = self.command("task.create", objective="Tidy my settings")
         return task.task_id, self.service.client(task.task_id)
 
-    def test_capabilities_show_what_can_change_and_nothing_sensitive(self):
+    def test_capabilities_offer_every_setting_but_how_agents_are_treated(self):
         task, client = self.task()
         found = self.command("settings.capabilities", client=client)
         self.assertIn("dark_pages", found["preferences"])
-        for sensitive in (
-            "safe_browsing",
-            "https_first",
-            "remember_pages",
-            "keep_agent_chats",
-            "user_agent_override",
-        ):
-            self.assertNotIn(sensitive, found["preferences"])
+        for open_to_agents in ("safe_browsing", "https_first", "reader_engine"):
+            self.assertIn(open_to_agents, found["preferences"])
+        self.assertIs(found["preferences"]["safe_browsing"]["weakens_when"], False)
+        self.assertIs(found["preferences"]["https_first"]["now"], True)
+        for agents in ("keep_agent_chats", "agent_replay"):
+            self.assertNotIn(agents, found["preferences"])
         self.assertIn("Command Palette…", found["shortcuts"])
         self.assertIn("w", found["search_keywords"])
 
@@ -132,7 +130,8 @@ class SettingsProposalTests(unittest.TestCase):
         self.service.settings_proposals.resolve(task, "d", approve=False)
         self.assertFalse(self.config.get("dark_pages"))
         for bad in (
-            {"preferences": {"safe_browsing": False}},
+            {"preferences": {"keep_agent_chats": False}},
+            {"preferences": {"secure_dns": "strict", "secure_dns_server": "http://x"}},
             {"preferences": {"visual_effects": "wild"}},
             {"shortcuts": {"Command Palette…": "not a key"}},
             {"search_keywords": {"add": {"x": ["X", "javascript:alert(1)"]}}},
@@ -142,6 +141,23 @@ class SettingsProposalTests(unittest.TestCase):
         ):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 self.command("settings.propose", client=client, request_id="b", **bad)
+
+    def test_weakening_changes_are_allowed_and_marked(self):
+        task, client = self.task()
+        receipt = self.command(
+            "settings.propose",
+            client=client,
+            request_id="w",
+            preferences={"safe_browsing": False, "reader_engine": "readability"},
+        )
+        self.assertEqual(receipt["state"], "awaiting_approval")
+        document = self.service.settings_proposals.requests[(task, "w")]["document"]
+        rows = self.service.settings_proposals.changes(document)
+        marked = [row for row in rows if "weakens security or privacy" in row[1]]
+        self.assertEqual(len(marked), 1)
+        self.service.settings_proposals.resolve(task, "w", approve=True)
+        self.assertIs(self.config.get("safe_browsing"), False)
+        self.assertEqual(self.config.get("reader_engine"), "readability")
 
 
 if __name__ == "__main__":

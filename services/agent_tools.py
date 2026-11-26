@@ -331,6 +331,43 @@ TOOLS = (
         ("session_id", "request_id", "reason"),
     ),
     tool(
+        "customizations.list",
+        "List what the person has made in the profile they are using: their own pages (steed:<name>), automations, skills, watches, user scripts and styles, and panel apps, by id and name. Settings: use settings.capabilities. Their Access & Permissions may refuse this.",
+    ),
+    tool(
+        "customizations.read",
+        "Read one customization in full (a page's HTML, an automation's trigger and steps, a skill's text, a script's code, an app's HTML).",
+        {
+            "kind": {
+                **string(16),
+                "enum": ["page", "automation", "skill", "watch", "script", "app"],
+            },
+            "id": string(128),
+        },
+        ("kind", "id"),
+    ),
+    tool(
+        "customizations.change",
+        "Propose replacing (action replace, with the whole new version as item, in the same shape customizations.read returned) or removing (action remove) one of the person's customizations. Steed checks it as it checks anything the person makes and shows them what it is now and what it would be; only their Apply changes it. Poll customizations.status. Watches can only be removed (propose a new one with watch.propose).",
+        {
+            "request_id": string(64),
+            "kind": {
+                **string(16),
+                "enum": ["page", "automation", "skill", "watch", "script", "app"],
+            },
+            "id": string(128),
+            "action": {**string(8), "enum": ["replace", "remove"]},
+            "item": {"type": "object"},
+        },
+        ("request_id", "kind", "id", "action"),
+    ),
+    tool(
+        "customizations.status",
+        "Poll a customizations.change request: awaiting_approval, applied, declined or cancelled.",
+        {"request_id": string(64)},
+        ("request_id",),
+    ),
+    tool(
         "browser.ask_person_status",
         "Poll a browser.ask_person request: waiting_for_person, done, not_done or cancelled.",
         {"request_id": string(64)},

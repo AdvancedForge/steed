@@ -76,8 +76,47 @@ PREFERENCES = {
 }
 
 
+# How Steed treats agents themselves stays with the person (access levels and
+# approve-everything are not preferences at all). Every other setting can be
+# proposed; one that weakens security or privacy is marked in the review.
+AGENT_SETTINGS = frozenset({"keep_agent_chats", "agent_replay"})
+WEAKENS = {
+    "safe_browsing": False,
+    "https_first": False,
+    "strip_tracking": False,
+    "resist_fingerprinting": False,
+    "remember_pages": True,
+    "secure_dns": "off",
+    "global_cookie_sharing_mode": "all_profiles",
+}
+
+
+def weakens(key, value):
+    if key == "user_agent_override":
+        return bool(value)
+    return key in WEAKENS and WEAKENS[key] == value
+
+
+def proposable():
+    """Every preference a proposal may set: (label, check) by key."""
+    from ui.settings_dialog import DEFAULTS
+
+    found = dict(PREFERENCES)
+    for key, default in DEFAULTS.items():
+        if key in found or key in AGENT_SETTINGS:
+            continue
+        kind = type(default)
+        found[key] = (
+            key.replace("_", " ").capitalize(),
+            lambda v, kind=kind: (
+                type(v) is kind and (not isinstance(v, str) or len(v) <= 4096)
+            ),
+        )
+    return found
+
+
 def _preference_ok(key, value):
-    check = PREFERENCES[key][1]
+    check = proposable()[key][1]
     if check is bool:
         return isinstance(value, bool)
     if isinstance(check, tuple):
@@ -118,7 +157,7 @@ def check(document):
     if not isinstance(preferences, dict):
         raise ValueError("preferences is an object of setting: value.")
     for key, value in preferences.items():
-        if key not in PREFERENCES:
+        if key not in proposable():
             raise ValueError(f"{key!r} cannot be proposed; see settings.capabilities.")
         if not _preference_ok(key, value):
             raise ValueError(f"{value!r} is not a valid value for {key}.")
@@ -253,6 +292,8 @@ class SettingsProposals:
             if window is not None
             else {}
         )
+        from ui.settings_dialog import DEFAULTS as defaults
+
         return {
             "preferences": {
                 key: {
@@ -260,11 +301,14 @@ class SettingsProposals:
                     "values": list(test)
                     if isinstance(test, tuple)
                     else "true/false"
-                    if test is bool
+                    if test is bool or isinstance(defaults.get(key), bool)
+                    else "text"
+                    if isinstance(defaults.get(key), str)
                     else "see label",
-                    "now": self.config.get(key),
+                    "now": self.config.get(key, defaults.get(key)),
+                    **({"weakens_when": WEAKENS[key]} if key in WEAKENS else {}),
                 }
-                for key, (label, test) in PREFERENCES.items()
+                for key, (label, test) in proposable().items()
             },
             "shortcuts": commands,
             "search_keywords": {
@@ -296,8 +340,8 @@ class SettingsProposals:
                 "request_id": "settings-1",
             },
             "notes": "The person sees every change as now → after and must press "
-            "Apply. Settings that affect security, privacy or agents are not "
-            "proposable.",
+            "Apply. Any setting can be proposed except how Steed treats agents; "
+            "a change that weakens security or privacy is marked in the review.",
         }
 
     def changes(self, document):
@@ -305,11 +349,13 @@ class SettingsProposals:
         from browser import shortcuts
 
         rows = []
+        labels = proposable()
         for key, value in document["preferences"].items():
             rows.append(
                 (
                     "Setting",
-                    PREFERENCES[key][0],
+                    labels[key][0]
+                    + (" (weakens security or privacy)" if weakens(key, value) else ""),
                     _show(self.config.get(key)),
                     _show(value),
                 )
@@ -352,6 +398,17 @@ class SettingsProposals:
         if not stable_id(request_id):
             raise ValueError("Invalid request ID")
         cleaned = check(document)
+        if cleaned["preferences"]:
+            # The same checks as the Settings page, on the settings as they
+            # would be (a search address, a DNS server, a choice of rules).
+            from ui.settings_dialog import DEFAULTS, SettingsDialog
+
+            after = {k: self.config.get(k, d) for k, d in DEFAULTS.items()}
+            after.update(cleaned["preferences"])
+            for k, d in DEFAULTS.items():
+                if type(after[k]) is not type(d):
+                    after[k] = d  # An odd stored value is not this proposal's.
+            SettingsDialog._validate_values(after)
         key = (task_id, request_id)
         if key in self.requests:
             entry = self.requests[key]
