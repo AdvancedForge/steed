@@ -142,4 +142,28 @@ class TaskClient:
             return self._broker.submit(
                 "client.denied", task_id=self.task_id, reason="task_identity_mismatch"
             )
+        if command == "page.inspect":
+            # Agents read pages compactly unless they ask for every field.
+            detail = arguments.pop("detail", "compact")
+            if detail not in ("compact", "full"):
+                return self._broker.submit(
+                    "client.denied", task_id=self.task_id, reason="invalid_detail"
+                )
+            source = self._broker.submit(command, task_id=self.task_id, **arguments)
+            return source if detail == "full" else _compacted(source)
         return self._broker.submit(command, task_id=self.task_id, **arguments)
+
+
+def _compacted(source):
+    from services.page_compact import compact_snapshot
+
+    result = Future()
+
+    def done(future):
+        try:
+            result.set_result(compact_snapshot(future.result()))
+        except Exception as error:
+            result.set_exception(error)
+
+    source.add_done_callback(done)
+    return result

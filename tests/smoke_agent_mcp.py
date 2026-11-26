@@ -867,7 +867,7 @@ async def sdk_client(
                 "session.navigate", session_id=session_id, url=origin + "/mcp-start"
             )
             await call("page.wait", session_id=session_id)
-            component = await call("page.inspect", session_id=session_id)
+            component = await call("page.inspect", session_id=session_id, detail="full")
             assert "Reusable component report" in component["frames"][0]["text"]
             assert "COMPONENT_PRIVATE" not in json.dumps(component)
             field = next(
@@ -887,7 +887,9 @@ async def sdk_client(
             shared["sdk_bounded_form_metadata"] = True
 
             async def target(label):
-                snapshot = await call("page.inspect", session_id=session_id)
+                snapshot = await call(
+                    "page.inspect", session_id=session_id, detail="full"
+                )
                 assert "FORM_PRIVATE" not in json.dumps(snapshot)
                 found = next(
                     target

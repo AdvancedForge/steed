@@ -193,6 +193,17 @@ cannot call `page.inspect`, `page.target`, `page.navigate`, `page.act`, `page.su
 or `page.wait`. No cloud provider receives this data
 through a built-in classification/search provider. Local MCP clients receive
 approved reads; their external model/provider use is outside browser enforcement.
+
+Agents get snapshots in a compact form by default (`detail: "compact"`): each
+frame's text and outline lines (`# Heading`, `table "Prices" [Item | Cost] 4
+rows`), and its targets as one text line each, `[target_id] role "label" ->
+link {operations} (states and flags) !constraints form: METHOD action --
+help error: message`, with empty fields left out and same-site links
+shortened. On busy real pages that list was 3–9 times smaller than the full
+form, whose seventeen named fields per target are still there with
+`detail: "full"`. Steed's own callers (the watch window, tests) always get the
+full form; the compact one is made where results leave for agents
+(`services/task_client.py`, `services/page_compact.py`).
 Browser-managed provider disclosure remains future work.
 
 After successful loading, call `page.inspect` through the task-bound client. It
