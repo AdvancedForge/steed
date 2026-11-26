@@ -187,7 +187,8 @@ class ReadAloud(QObject):
             if isinstance(text, str) and text.strip():
                 self.speak(text)
                 return
-            from ui.reader_view import EXTRACT, article
+            from ui.reader_engines import extract_script
+            from ui.reader_view import article
 
             def extracted(raw):
                 found = article(raw)
@@ -203,7 +204,12 @@ class ReadAloud(QObject):
                         page, BODY, self.speak, world=webengine.STEED_WORLD
                     )
 
-            webengine.run_script(page, EXTRACT, extracted, world=webengine.STEED_WORLD)
+            webengine.run_script(
+                page,
+                extract_script(self.window.config),
+                extracted,
+                world=webengine.STEED_WORLD,
+            )
 
         webengine.run_script(page, SELECTION, selected, world=webengine.STEED_WORLD)
 

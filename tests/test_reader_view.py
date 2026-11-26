@@ -35,6 +35,19 @@ ARTICLE = f"""<!doctype html><title>Story</title>
 <div class="comments"><p>A comment that should not appear in the reader at all, really.</p></div>
 </article>""".encode()
 SHORT = b"<title>Short</title><p>Hello.</p><a href='/x'>Link</a>"
+# An essay laid out the old way: text in <font> with <br>s, and the only <p>
+# a short epigraph (where Steed's own extractor picks the epigraph).
+ESSAY_TEXT = " ".join(
+    f"Essay sentence {n} carries the actual argument forward." for n in range(60)
+)
+ESSAY = (
+    "<title>An essay</title><table><tr><td><img src='/logo.gif' width=20 height=20>"
+    "<a href='/a'>Home</a> <a href='/b'>Essays</a></td><td>"
+    "<p>The best lack all conviction, while the worst are full of intensity.</p>"
+    "<font size=2>"
+    + "<br><br>".join(ESSAY_TEXT[i : i + 400] for i in range(0, len(ESSAY_TEXT), 400))
+    + "</font></td></tr></table>"
+).encode()
 
 
 def png_bytes():
@@ -62,6 +75,8 @@ class Pages(BaseHTTPRequestHandler):
                 b"<title>Story</title>", b"<title>The headline</title>"
             )
             if self.path == "/same-title"
+            else ESSAY
+            if self.path == "/essay"
             else IMAGES.get(self.path, ARTICLE)
         )
         self.send_response(200)
@@ -212,6 +227,10 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(text.count("The headline"), 1)
 
     def test_images_are_fetched_checked_and_can_be_hidden(self):
+        # Image checks come after extraction, whichever engine; Steed's own
+        # keeps every image the page shows (Defuddle drops an image whose file
+        # is also used as an icon, as /pic.png is here).
+        self.window.config.set("reader_engine", "steed")
         tab = self.open()
         panel = self.reader(tab)
         page = panel.surface.page
@@ -324,6 +343,76 @@ class ReaderTests(unittest.TestCase):
         self.window._new_tab(url="steed:memory")
         self.window._toggle_reader()
         self.assertIn("web pages", self.window.status_bar.currentMessage())
+
+    def read_with(self, engine, path):
+        from ui.reader_engines import extract_script
+        from ui.reader_view import article
+
+        self.window.config.set("reader_engine", engine)
+        tab = self.open(path)
+        out = []
+        webengine.run_script(
+            tab.page(),
+            extract_script(self.window.config),
+            out.append,
+            world=webengine.STEED_WORLD,
+        )
+        self.wait(lambda: out)
+        return article(out[0])
+
+    def test_every_engine_finds_the_story_and_leaves_the_rest(self):
+        for engine in ("defuddle", "readability", "steed"):
+            with self.subTest(engine=engine):
+                found = self.read_with(engine, "/story")
+                text = " ".join(b["text"] for b in found["blocks"])
+                self.assertIn("This sentence is long enough", text)
+                self.assertIn("Second point.", text)
+                for absent in ("Sports", "Related:", "A comment that should not"):
+                    self.assertNotIn(absent, text)
+
+    def test_defuddle_and_readability_read_old_style_essays(self):
+        steed = self.read_with("steed", "/essay")
+        self.assertIsNone(steed)  # Only the short epigraph: not an article.
+        for engine in ("defuddle", "readability"):
+            with self.subTest(engine=engine):
+                found = self.read_with(engine, "/essay")
+                text = " ".join(b["text"] for b in found["blocks"])
+                self.assertIn("Essay sentence 59", text)
+                self.assertNotIn("Essays", text.split("Essay sentence 0")[0][-20:])
+
+    def test_agents_get_the_article_or_the_whole_page(self):
+        from ui.reader_engines import page_text_script
+
+        tab = self.open("/story")
+
+        def text(config):
+            out = []
+            webengine.run_script(
+                tab.page(),
+                page_text_script(config),
+                out.append,
+                world=webengine.STEED_WORLD,
+            )
+            self.wait(lambda: out)
+            return out[0]
+
+        article_text = text({"reader_engine": "defuddle", "agent_page_text": "article"})
+        self.assertIn("## A section", article_text)  # Markdown keeps structure.
+        self.assertNotIn("Sports", article_text)
+        whole = text({"reader_engine": "defuddle", "agent_page_text": "page"})
+        self.assertIn("Sports", whole)
+        self.assertEqual(text({"reader_engine": "steed"}), whole)
+        # No article: the whole page, whatever the choice.
+        short = self.open("/short")
+        out = []
+        webengine.run_script(
+            short.page(),
+            page_text_script({"reader_engine": "defuddle"}),
+            out.append,
+            world=webengine.STEED_WORLD,
+        )
+        self.wait(lambda: out)
+        self.assertIn("Hello.", out[0])
 
 
 if __name__ == "__main__":

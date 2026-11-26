@@ -1051,9 +1051,11 @@ class AgentSidebar(QDockWidget):
             self._send_now()
 
         for tab in tabs:
+            from ui.reader_engines import page_text_script
+
             webengine.run_script(
                 tab.page(),
-                "document.body ? document.body.innerText : ''",
+                page_text_script(getattr(self.browser_window, "config", None)),
                 lambda value, tab=tab: read(tab, value),
                 world=webengine.STEED_WORLD,
             )

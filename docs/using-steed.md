@@ -1183,6 +1183,21 @@ Tab photo and sets the text on a frosted card over a soft blur of it, with a
 glass toolbar (light or dark with the theme; plain colours without a photo). **F9**, **Esc** or **Exit reader** returns to the page, as does
 following a link in the tab.
 
+**Finding a page's article** (Settings → General) picks the extractor:
+**Defuddle** (the default; the extractor of Obsidian's web clipper),
+**Readability** (Firefox's reader mode) or **Steed's own** small heuristic.
+Defuddle and Readability come with Steed (`browser/data`, MIT and Apache-2.0)
+and run in Steed's script world; their article becomes the same plain text
+blocks, and when one finds no article Steed's own has its turn. On 18 live
+pages Steed's own picked the wrong part of 5 (a photo caption on the BBC,
+Wikipedia's reference list, a two-line epigraph on an old-style essay site)
+where Defuddle found the article. The same choice serves Read Aloud and the
+reading list. **When an agent reads a page** sends it the article (as Markdown
+with headings and lists, link addresses left out so the text fits) or
+everything on the page; pages with no article always send everything. This
+covers `@` questions, tabs attached in the chat, skills that use the page,
+`browser.read_tab` and Compare Tabs.
+
 The article is found by a script in Steed's own script world (the page cannot
 see or change it): the element with the most paragraph text wins, with menus,
 sidebars, related links, comments and hidden text left out. Only plain text

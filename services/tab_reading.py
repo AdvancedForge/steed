@@ -142,9 +142,11 @@ class TabReading:
         if view is None or sip.isdeleted(view) or view.url().toString() != entry["url"]:
             entry["state"] = "unavailable"  # The page went away or moved on.
             return
+        from ui.reader_engines import page_text_script
+
         webengine.run_script(
             view.page(),
-            "document.body ? document.body.innerText : ''",
+            page_text_script(getattr(self.service.profiles, "config", None)),
             got,
             world=webengine.STEED_WORLD,
         )

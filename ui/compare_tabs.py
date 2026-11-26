@@ -146,9 +146,11 @@ class CompareDialog(QDialog):
                 if all(page is not None for page in pages):
                     finish()
 
+            from ui.reader_engines import page_text_script
+
             webengine.run_script(
                 tab.page(),
-                "document.body ? document.body.innerText : ''",
+                page_text_script(getattr(self.window_, "config", None)),
                 got,
                 world=webengine.STEED_WORLD,
             )

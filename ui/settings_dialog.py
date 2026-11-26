@@ -42,6 +42,8 @@ DEFAULTS = {
     "tab_card_fixed_width": True,
     "auto_zoom_small_text": True,
     "strip_tracking": True,
+    "reader_engine": "defuddle",
+    "agent_page_text": "article",
     "link_rules": "steed",
     "link_rules_file": "",
     "link_rules_extra": "",
@@ -280,6 +282,12 @@ class SettingsDialog(QDialog):
             raise ValueError("Choose where Developer Tools open.")
         if values["visual_effects"] not in ("full", "balanced", "minimal"):
             raise ValueError("Choose how much motion and light Steed shows.")
+        from ui.reader_engines import AGENT_PAGE_TEXT, READER_ENGINES
+
+        if values["reader_engine"] not in READER_ENGINES:
+            raise ValueError("Choose how Steed finds a page's article.")
+        if values["agent_page_text"] not in AGENT_PAGE_TEXT:
+            raise ValueError("Choose what agents get when they read a page.")
         from browser.link_cleaning import RULE_SETS
 
         if values["link_rules"] not in RULE_SETS:

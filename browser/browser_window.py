@@ -2454,9 +2454,11 @@ class BrowserWindow(QMainWindow):
                 state["waiting"] -= 1
                 deliver()
 
+            from ui.reader_engines import page_text_script
+
             webengine.run_script(
                 tab.page(),
-                "document.body ? document.body.innerText : ''",
+                page_text_script(self.config),
                 read,
                 world=webengine.STEED_WORLD,
             )
@@ -3060,9 +3062,11 @@ class BrowserWindow(QMainWindow):
                 block = f"[This page: {title[:160]} — {address[:400]}]\n{page}"
                 self.agent_message("\n\n".join([*parts, block]), send=True)
 
+            from ui.reader_engines import page_text_script
+
             webengine.run_script(
                 tab.page(),
-                "document.body ? document.body.innerText : ''",
+                page_text_script(self.config),
                 got,
                 world=webengine.STEED_WORLD,
             )
@@ -4688,7 +4692,8 @@ class BrowserWindow(QMainWindow):
 
     def _toggle_reader(self):
         """Show the current page's article in reader view, or leave it (F9)."""
-        from ui.reader_view import EXTRACT, ReaderPanel, article
+        from ui.reader_engines import extract_script
+        from ui.reader_view import ReaderPanel, article
 
         if self._closing or not self.tabs:
             return
@@ -4729,7 +4734,10 @@ class BrowserWindow(QMainWindow):
             panel.surface.setFocus()
 
         webengine.run_script(
-            tab.page(), EXTRACT, extracted, world=webengine.STEED_WORLD
+            tab.page(),
+            extract_script(self.config),
+            extracted,
+            world=webengine.STEED_WORLD,
         )
 
     def _local_download_actions(self, menu, page, request):
@@ -4814,7 +4822,8 @@ class BrowserWindow(QMainWindow):
 
     def save_to_reading_list(self, tab=None):
         """Keep a page to read later, with its article text when there is one."""
-        from ui.reader_view import EXTRACT, article
+        from ui.reader_engines import extract_script
+        from ui.reader_view import article
 
         tab = tab or (self.tabs[self.current_tab_index] if self.tabs else None)
         if (
@@ -4841,7 +4850,10 @@ class BrowserWindow(QMainWindow):
             self.status_bar.showMessage(f"Saved to Reading List{note}", 5000)
 
         webengine.run_script(
-            tab.page(), EXTRACT, extracted, world=webengine.STEED_WORLD
+            tab.page(),
+            extract_script(self.config),
+            extracted,
+            world=webengine.STEED_WORLD,
         )
 
     def _open_reading_list(self):
