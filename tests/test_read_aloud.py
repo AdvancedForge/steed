@@ -25,6 +25,23 @@ ARTICLE = (
 
 
 class PieceTests(unittest.TestCase):
+    def test_abbreviations_initials_links_and_money_read_naturally(self):
+        self.assertEqual(
+            chunks(
+                "Dr. Smith met Gov. Brown in the U.S. on Monday. It cost $2.3 billion, "
+                "e.g. for roads. See https://www.example.com/a?id=4 now. "
+                "J. K. Rowling wrote it. Prices rose 5%, etc. The end."
+            ),
+            [
+                "Dr. Smith met Gov. Brown in the U.S. on Monday.",
+                "It cost 2.3 billion dollars, for example for roads.",
+                "See a link to example.com now.",
+                "J. K. Rowling wrote it.",
+                "Prices rose 5%, et cetera",
+                "The end.",
+            ],
+        )
+
     def test_text_becomes_sentences(self):
         self.assertEqual(
             chunks("One two.  Three?\n\nFour!\nFive"),

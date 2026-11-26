@@ -18,6 +18,60 @@ SELECTION = "(getSelection() ? getSelection().toString() : '')"
 BODY = "(document.body ? document.body.innerText : '')"
 
 
+# Words ending in a full stop that don't end a sentence.
+ABBREVIATIONS = frozenset(
+    """dr mr mrs ms mx prof sr jr st mt ft vs e.g i.e u.s u.k u.n e.u
+    no nos fig figs inc ltd co corp gov rep sen gen col capt lt sgt dept est
+    approx apt ave blvd rd jan feb mar apr jun jul aug sep sept oct nov dec
+    ph.d""".split()
+)
+# Said the way people say them; the rest is left to the voice.
+SPOKEN = (
+    (re.compile(r"\be\.g\.(?=\s|,|$)", re.I), "for example"),
+    (re.compile(r"\bi\.e\.(?=\s|,|$)", re.I), "that is"),
+    (re.compile(r"\bvs\.(?=\s)", re.I), "versus"),
+    (re.compile(r"\betc\.(?=\s|$)", re.I), "et cetera"),
+    # A link: just its site, not every character of it.
+    (
+        re.compile(r"https?://(?:www\.)?([^/\s]+)\S*", re.I),
+        lambda m: f"a link to {m.group(1)}",
+    ),
+    # $2.3 billion -> 2.3 billion dollars (and euros, pounds).
+    (
+        re.compile(
+            r"([$€£])\s?(\d[\d,]*(?:\.\d+)?)(\s?(?:million|billion|trillion|thousand|[mbk]n?)\b)?",
+            re.I,
+        ),
+        lambda m: (
+            f"{m.group(2)}{m.group(3) or ''} "
+            + {"$": "dollars", "€": "euros", "£": "pounds"}[m.group(1)]
+        ),
+    ),
+)
+
+
+def spoken(text):
+    for pattern, replacement in SPOKEN:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def sentences(paragraph):
+    """A paragraph's sentences, not broken after "Dr.", "e.g." or initials."""
+    parts = re.split(r"(?<=[.!?…])\s+(?=[\"“'(\[]?[A-Z0-9À-ÖØ-Þ])", paragraph)
+    found = []
+    for part in parts:
+        if found:
+            last = found[-1].rstrip()
+            word = last.split()[-1].lower().rstrip(".") if last.split() else ""
+            initial = re.fullmatch(r"[a-z]", word)
+            if word in ABBREVIATIONS or initial:
+                found[-1] = last + " " + part
+                continue
+        found.append(part)
+    return found
+
+
 def chunks(text):
     """Sentences (or parts of long ones), each short enough to stop between."""
     pieces = []
@@ -25,7 +79,8 @@ def chunks(text):
         paragraph = " ".join(paragraph.split())
         if not paragraph:
             continue
-        for sentence in re.split(r"(?<=[.!?…])\s+", paragraph):
+        for sentence in sentences(paragraph):
+            sentence = spoken(sentence)
             while len(sentence) > MAX_CHUNK:
                 cut = sentence.rfind(" ", 0, MAX_CHUNK)
                 cut = cut if cut > 0 else MAX_CHUNK
