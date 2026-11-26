@@ -164,3 +164,14 @@ if ($('secure_dns_choice')) {
   const render = window.steedUI.render;
   window.steedUI.render = next => { const done = render(next); syncDnsChoice(); return done; };
 }
+
+// Tracking rules: your own file only when chosen.
+function syncLinkRules() {
+  const choice = $('link_rules');
+  if (choice) $('link_rules_own').hidden = choice.value !== 'file';
+}
+if ($('link_rules')) {
+  $('link_rules').addEventListener('change', syncLinkRules);
+  const render = window.steedUI.render;
+  window.steedUI.render = next => { const done = render(next); syncLinkRules(); return done; };
+}

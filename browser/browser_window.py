@@ -6836,7 +6836,7 @@ class BrowserWindow(QMainWindow):
         from ui.send_to_phone import SendToPhoneDialog
 
         # A clean address: tracking parameters don't need to travel along.
-        url = clean_link(tab.url().toString())
+        url = clean_link(tab.url().toString(), self.config)
         self._present_dialog(SendToPhoneDialog(url, tab.title(), self), modal=False)
 
     def _show_tab_menu(self, index, position):
@@ -7270,7 +7270,7 @@ class BrowserWindow(QMainWindow):
     def copy_clean_link(self, tab):
         from browser.link_cleaning import clean_link
 
-        link = clean_link(tab.url().toString())
+        link = clean_link(tab.url().toString(), self.config)
         QApplication.clipboard().setText(link)
         self.status_bar.showMessage(f"Copied {link}", 4000)
         return link

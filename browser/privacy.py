@@ -38,7 +38,7 @@ def navigation(url: str, config) -> str:
     if config is None:
         return url
     if config.get("strip_tracking", True):
-        url = clean_link(url)
+        url = clean_link(url, config)
     if config.get("https_first", True):
         parts = urlsplit(url)
         host = parts.hostname or ""

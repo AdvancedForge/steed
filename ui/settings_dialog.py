@@ -42,6 +42,9 @@ DEFAULTS = {
     "tab_card_fixed_width": True,
     "auto_zoom_small_text": True,
     "strip_tracking": True,
+    "link_rules": "steed",
+    "link_rules_file": "",
+    "link_rules_extra": "",
     "https_first": True,
     "mouse_gestures": False,
     "secure_dns": "off",
@@ -277,6 +280,12 @@ class SettingsDialog(QDialog):
             raise ValueError("Choose where Developer Tools open.")
         if values["visual_effects"] not in ("full", "balanced", "minimal"):
             raise ValueError("Choose how much motion and light Steed shows.")
+        from browser.link_cleaning import RULE_SETS
+
+        if values["link_rules"] not in RULE_SETS:
+            raise ValueError("Choose which rules remove tracking from addresses.")
+        if values["link_rules"] == "file" and not values["link_rules_file"].strip():
+            raise ValueError("Choose your rules file, or another set of rules.")
         from browser.secure_dns import check
 
         check(values["secure_dns"], values["secure_dns_server"].strip())

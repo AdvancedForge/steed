@@ -561,7 +561,17 @@ Settings → General:
 
 - **Remove tracking from addresses** (on): before a page loads, parameters that
   only follow you across sites (utm_…, fbclid, gclid and others, as Copy Clean
-  Link removes) are dropped from its address.
+  Link removes) are dropped from its address. **Tracking rules** picks how:
+  Steed's short list (the default and the most cautious: the same few
+  parameters on every site), **ClearURLs** (the ClearURLs project's rules,
+  bundled with Steed under the LGPL-3.0: hundreds of site rules such as
+  Amazon's `/ref=…` and YouTube's `si=`, and tracking redirects like
+  `google.com/url?q=…` go straight to where they lead; sites a rule would break
+  are its exceptions), or **your own rules file** in the same format. **Also
+  remove these parameters** adds names of your own to any of them. The same
+  rules clean Copy Clean Link and Send to Your Phone. In a test of 24 shared
+  links from big sites, ClearURLs removed 55 of 70 trackers and Steed's list
+  10, and neither removed a parameter the page needed.
 - **HTTPS first** (on): http:// pages load over HTTPS. When a site has no
   HTTPS, Steed loads it unencrypted after all (the status bar says so) and
   remembers the site until it quits. Local addresses, IP addresses and
