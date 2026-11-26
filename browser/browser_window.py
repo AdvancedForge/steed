@@ -2454,13 +2454,12 @@ class BrowserWindow(QMainWindow):
                 state["waiting"] -= 1
                 deliver()
 
-            from ui.reader_engines import page_text_script
+            from ui.page_text import read_page_text
 
-            webengine.run_script(
+            read_page_text(
                 tab.page(),
-                page_text_script(self.config),
+                self.config,
                 read,
-                world=webengine.STEED_WORLD,
             )
         if skill.get("steps"):
             from services.routine_steps import StepRunner
@@ -3062,13 +3061,12 @@ class BrowserWindow(QMainWindow):
                 block = f"[This page: {title[:160]} — {address[:400]}]\n{page}"
                 self.agent_message("\n\n".join([*parts, block]), send=True)
 
-            from ui.reader_engines import page_text_script
+            from ui.page_text import read_page_text
 
-            webengine.run_script(
+            read_page_text(
                 tab.page(),
-                page_text_script(self.config),
+                self.config,
                 got,
-                world=webengine.STEED_WORLD,
             )
             return None
         elif web:

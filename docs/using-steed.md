@@ -1197,6 +1197,10 @@ with headings and lists, link addresses left out so the text fits) or
 everything on the page; pages with no article always send everything. This
 covers `@` questions, tabs attached in the chat, skills that use the page,
 `browser.read_tab` and Compare Tabs.
+A PDF counts too: Chromium's PDF viewer gives page scripts no text, so Steed
+fetches the file from inside the tab (with its sign-in, usually from the
+cache) and reads its text with Qt's PDF module, the first 400 pages and up to
+40 MB.
 
 The article is found by a script in Steed's own script world (the page cannot
 see or change it): the element with the most paragraph text wins, with menus,

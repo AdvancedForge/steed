@@ -1014,7 +1014,6 @@ class AgentSidebar(QDockWidget):
     def send_with_tabs(self, tokens):
         """Send the draft with the @-mentioned tabs' title, address and text,
         sharing the room an 8 KiB message has."""
-        from browser import webengine
 
         tabs = [
             self._tab_tokens.get(token)
@@ -1051,13 +1050,12 @@ class AgentSidebar(QDockWidget):
             self._send_now()
 
         for tab in tabs:
-            from ui.reader_engines import page_text_script
+            from ui.page_text import read_page_text
 
-            webengine.run_script(
+            read_page_text(
                 tab.page(),
-                page_text_script(getattr(self.browser_window, "config", None)),
+                getattr(self.browser_window, "config", None),
                 lambda value, tab=tab: read(tab, value),
-                world=webengine.STEED_WORLD,
             )
 
     def attach_tab(self, task_id, tab):

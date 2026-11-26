@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from PyQt6 import sip
 
-from browser import access_levels, webengine
+from browser import access_levels
 from browser.data_panel_format import stable_id
 from services.agent_errors import AgentRequestError
 from services.task_policy import TaskPermissionError, everyday_origin
@@ -142,13 +142,12 @@ class TabReading:
         if view is None or sip.isdeleted(view) or view.url().toString() != entry["url"]:
             entry["state"] = "unavailable"  # The page went away or moved on.
             return
-        from ui.reader_engines import page_text_script
+        from ui.page_text import read_page_text
 
-        webengine.run_script(
+        read_page_text(
             view.page(),
-            page_text_script(getattr(self.service.profiles, "config", None)),
+            getattr(self.service.profiles, "config", None),
             got,
-            world=webengine.STEED_WORLD,
         )
 
     def status(self, task_id, request_id):
