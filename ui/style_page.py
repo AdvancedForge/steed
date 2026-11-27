@@ -138,6 +138,10 @@ class StylePage(QWidget):
                 self._save_layout(command)
                 self.publish()
                 return
+            if action == "theme":
+                self._save_theme(command)
+                self.publish()
+                return
             if action != "save" or set(command) != {
                 "context",
                 "sequence",
@@ -165,6 +169,27 @@ class StylePage(QWidget):
                 "Appearance could not be saved. Your current settings are preserved."
             )
         self.publish()
+
+    def _save_theme(self, command):
+        """Light, dark or the system's: applied at once, like other browsers'
+        theme switches, without the rest of the form."""
+        value = command.get("value")
+        if set(command) != {"context", "sequence", "action", "value"} or value not in (
+            "system",
+            "light",
+            "dark",
+        ):
+            raise ValueError("Choose light, dark or the system's theme.")
+        profile = self.manager.current_profile_name
+        saved = self.styles.get(profile)
+        saved["theme"] = value
+        self.styles.save(profile, saved, expected=self.base)
+        self.base = self.styles.get(profile)
+        self.notice = {
+            "system": "Steed follows your system's light or dark setting.",
+            "light": "Steed is light.",
+            "dark": "Steed is dark.",
+        }[value]
 
     def _save_layout(self, command):
         """Tabs, spacing and text size are browser-wide: every window follows."""

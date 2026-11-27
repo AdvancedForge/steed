@@ -125,7 +125,8 @@ $('save').onclick = () => {
   command('save', {values, all_profiles: $('all_profiles').checked});
 };
 $('reset').onclick = () => fill(state.defaults);
-$('theme').onchange = paletteFields;
+// Light, dark or the system's applies at once (the rest waits for Apply).
+$('theme').onchange = () => { paletteFields(); command('theme', {value: $('theme').value}); };
 $('reset-palette').onclick = () => { colors = {}; $('accent').value = state.defaults.accent; paletteFields(); };
 $('reload').onclick = () => command('reload');
 $('chrome-keep').onclick = () => { chrome = {...state.chrome_auto, ...chrome}; chromeFields(); };

@@ -822,6 +822,11 @@ card floats over the frosted photo instead of the light, so bars, page edges
 and the New Tab are one picture. Compact mode and fullscreen video are edge
 to edge.
 
+**Light or dark.** At the top of Style, **Theme** (Follow my system, Light or
+Dark) applies at once to the browser and Steed's pages. Your own colours and
+CSS, and the browser colours one by one, are folded away below it as
+advanced.
+
 **One theme by default.** Everything takes its colours from one place: the
 New Tab photo (with *Match the background*), or else the browser colours set
 in Style, or else Steed's own. The bars, the light, menus, the New Tab and
