@@ -7,6 +7,29 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**What a first-time user tripped over — November 27, 2026.** A reviewer who
+knew only that Steed is a browser used it for 116 actions through the screen
+alone and rated it 4/10. Fixed from what it found:
+- Ctrl+T and + open at the end of the strip with the cursor in the address
+  bar; the command palette takes the keyboard on its first opening;
+- address suggestions close when you go, and late ones no longer reopen them;
+- a bookmark star in the address bar, a note when one is saved, and Bookmarks
+  in the main menu (Bookmarks and History);
+- Style's theme (Light, Dark, your system's) applies at once; your own
+  colours and CSS are folded away as advanced;
+- History shows when you visited and removes single pages; History and
+  Bookmarks rows have right-click menus, and selected rows show clearly;
+- prompts showed only their title (Add a chatbot website and others): their
+  fields and buttons are back;
+- Welcome no longer shifts when you answer, and its Colour tile shows the
+  colour you get; Start in the agent panel adds an assistant when none is set
+  up instead of failing on Codex; New Tab errands wait for an assistant;
+- the page menu starts with the usual items, the tab menu keeps Close in
+  reach (the rest under More), Steed's pages are named in their tab's card,
+  and the address bar tip leaves once you have used the address bar;
+- the site menu says whether the connection is secure and shows the
+  certificate.
+
 **Readable photo colours — November 27, 2026.**
 - colours taken from a New Tab photo are checked for contrast: text, links
   and help text 4.5:1, icons 3:1, on Steed's pages and in the bars. Of 4,810
