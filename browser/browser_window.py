@@ -4559,6 +4559,9 @@ class BrowserWindow(QMainWindow):
         return service.live_tabs.request(task_id, tabs)
 
     def _navigate_to_url(self, url_text: str):
+        tip = getattr(self, "_tip", None)
+        if tip is not None and not sip.isdeleted(tip) and tip.key == "address":
+            tip.dismiss()  # You typed and went: the address bar tip is done.
         if not self.tabs:
             return
         self._navigate_tab_to_url(self.tabs[self.current_tab_index], url_text)
