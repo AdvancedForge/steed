@@ -25,7 +25,6 @@ GROUPS = {
         ),
         ("Back", "Forward", "Reload", "Home"),
         ("Tab Groups", "Saved Groups", "Workspaces"),
-        ("Bookmark This Page…", "Manage Bookmarks…"),
         ("Organize Tabs with Agent…", "Compare Tabs with Agent…"),
     ),
     "view": (
@@ -49,6 +48,7 @@ GROUPS = {
         ("Your Pages…", "Packs…", "Your Commands"),
     ),
     "cookies": (
+        ("Bookmark This Page…", "Manage Bookmarks…"),
         (
             "Browsing History…",
             "Search What You've Read…",

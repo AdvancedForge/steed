@@ -199,6 +199,7 @@ class AddressBar(QWidget):
     passwords_requested = pyqtSignal()
     reset_zoom_requested = pyqtSignal()
     site_menu_requested = pyqtSignal()
+    bookmark_requested = pyqtSignal()
     downloads_requested = pyqtSignal()
     media_requested = pyqtSignal()
     extensions_requested = pyqtSignal()
@@ -263,6 +264,13 @@ class AddressBar(QWidget):
         )
         self.site_action.setToolTip("Search or enter an address")
         self.site_action.triggered.connect(self.site_menu_requested.emit)
+        # The star: filled when this page is bookmarked; click to save or edit.
+        self.bookmarked = False
+        self.star_action = self.address_input.addAction(
+            icon("star", "#5d6c83", 16), QLineEdit.ActionPosition.TrailingPosition
+        )
+        self.star_action.triggered.connect(self.bookmark_requested.emit)
+        self.star_action.setVisible(False)
         self.site_kind = "search"
         self.passwords_btn = QPushButton()
         self.passwords_btn.setAccessibleName("Passwords")
@@ -464,6 +472,32 @@ class AddressBar(QWidget):
     def set_bookmarks(self, entries) -> None:
         """(title, url) pairs from the current profile's bookmarks."""
         self.bookmark_entries = list(entries)
+        self._update_star()
+
+    def _update_star(self) -> None:
+        url = getattr(self.address_input, "page_url", "") or ""
+        web = QUrl(url).scheme() in ("http", "https")
+        self.star_action.setVisible(web)
+        if not web:
+            return
+
+        def same(address):
+            return address.rstrip("/") == url.rstrip("/")
+
+        self.bookmarked = any(same(saved) for _, saved in self.bookmark_entries)
+        colors = self.colors
+        self.star_action.setIcon(
+            icon(
+                "starred" if self.bookmarked else "star",
+                colors["accent"] if self.bookmarked else colors["muted"],
+                16,
+            )
+        )
+        self.star_action.setToolTip(
+            "Edit this bookmark (Ctrl+D)"
+            if self.bookmarked
+            else "Bookmark this page (Ctrl+D)"
+        )
 
     def set_search_name(self, name: str) -> None:
         self.search_name = name or "the web"
@@ -554,6 +588,7 @@ class AddressBar(QWidget):
         if kind != self.site_kind:
             self.site_kind = kind
             self._update_site_icon()
+        self._update_star()
 
     def _update_site_icon(self):
         tips = {
@@ -585,6 +620,7 @@ class AddressBar(QWidget):
                 )
                 button.setIconSize(QSize(18, 18))
         self._update_site_icon()
+        self._update_star()
 
     def _apply_glide(self, colors) -> None:
         """Lumen motion on the toolbar (none in Minimal effects or glass)."""

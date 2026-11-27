@@ -23,6 +23,7 @@ ICONS = {
     "search": '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
     "history": '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
     "star": '<path d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/>',
+    "starred": '<path fill="currentColor" d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/>',
     "tab": '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M8 6v4"/>',
     "puzzle": '<path d="M5 8h3.5a2 2 0 1 1 4 0H16v3.5a2 2 0 1 1 0 4V19H5z"/>',
     "go": '<path d="M5 12h14M13 6l6 6-6 6"/>',
@@ -40,7 +41,7 @@ def icon(name, color, size=20, disabled=None):
     for shade, mode in shades:
         svg = (
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-            f'stroke="{shade}" stroke-width="2" stroke-linecap="round" '
+            f'color="{shade}" stroke="{shade}" stroke-width="2" stroke-linecap="round" '
             f'stroke-linejoin="round">{ICONS[name]}</svg>'
         )
         renderer = QSvgRenderer(QByteArray(svg.encode()))

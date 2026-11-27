@@ -664,7 +664,7 @@ class BrowserWindow(QMainWindow):
             "profile": menubar.addMenu("Profile"),
             "tabs": menubar.addMenu("Tabs"),
             "view": menubar.addMenu("View"),
-            "cookies": menubar.addMenu("History"),
+            "cookies": menubar.addMenu("Bookmarks and History"),
             "agents": menubar.addMenu("Agents"),
         }
         general_menu = self._layout_menus["general"]
@@ -936,7 +936,7 @@ class BrowserWindow(QMainWindow):
         bookmark_action = QAction("Bookmark This Page…", self)
         bookmark_action.setShortcut(QKeySequence("Ctrl+D"))
         bookmark_action.triggered.connect(self._bookmark_current)
-        tabs_menu.addAction(bookmark_action)
+        cookies_menu.addAction(bookmark_action)
         phone = QAction("Send to Your Phone…", self)
         phone.triggered.connect(
             lambda: self.tabs and self.send_to_phone(self.tabs[self.current_tab_index])
@@ -945,7 +945,7 @@ class BrowserWindow(QMainWindow):
         manage_bookmarks_action = QAction("Manage Bookmarks…", self)
         manage_bookmarks_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
         manage_bookmarks_action.triggered.connect(self._manage_bookmarks)
-        tabs_menu.addAction(manage_bookmarks_action)
+        cookies_menu.addAction(manage_bookmarks_action)
         layout_action = QAction("Layout Settings…", self)
         layout_action.setToolTip(
             "Reorder or hide address bar buttons, reorder menus, and choose "
@@ -1433,6 +1433,7 @@ class BrowserWindow(QMainWindow):
         )
         self.address_bar.reset_zoom_requested.connect(lambda: self._zoom())
         self.address_bar.site_menu_requested.connect(self._show_site_menu)
+        self.address_bar.bookmark_requested.connect(self._bookmark_current)
         self.address_bar.downloads_requested.connect(
             lambda: self._open_management("downloads")
         )
@@ -9259,7 +9260,9 @@ class BrowserWindow(QMainWindow):
             url,
             title,
         )
-        dialog.exec()
+        if dialog.exec() == QDialog.DialogCode.Accepted and not self._closing:
+            # Saved: the star fills (bookmarks changed) and this says so.
+            self.status_bar.showMessage("Saved to your bookmarks.", 3000)
 
     def _manage_bookmarks(self):
         return self._open_management("bookmarks")

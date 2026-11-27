@@ -117,8 +117,10 @@ each Never, Ask or Always (changing one shows the area as Custom).
 - **Local pages** (default Nothing): web data, open tabs, history and bookmarks
   for your custom New Tab and Welcome pages and panel apps, as above.
 
-Ctrl+D saves an HTTP(S) page with an editable name and folder. **Tabs → Manage
-Bookmarks** searches names/addresses/folders, filters by folder, and edits names,
+Ctrl+D, or the star at the end of the address bar, saves an HTTP(S) page with
+an editable name and folder; the star is filled on pages you have bookmarked
+(click it to edit), and Steed says when one is saved. **Bookmarks and History →
+Manage Bookmarks** searches names/addresses/folders, filters by folder, and edits names,
 addresses and folder labels while preserving bookmark IDs. Type a new folder name
 when saving/editing; an empty folder means Unfiled. Changes from another window
 refresh the manager. New Tab shows the first 24 bookmarks with **Manage all**.
@@ -547,7 +549,7 @@ nothing from incognito) to your assistant, which groups them into topics such
 as "Planning a trip to Lisbon". Reopen a topic's pages, or ask your agent to
 help you pick up where you left off. Nothing is kept; run it whenever you like.
 
-**Find a Page I Saw…** (in the History menu, and **Describe it instead…** on
+**Find a Page I Saw…** (in the Bookmarks and History menu, and **Describe it instead…** on
 the History page) finds a page from a description, such as "that heat pump
 article last week". Your assistant gets the titles, sites and dates of the
 past month's pages under the same rules (no page text, no banking, health or

@@ -144,8 +144,12 @@ class BrowserTests(unittest.TestCase):
             action.text(): action.menu() for action in self.window.menuBar().actions()
         }
         self.assertEqual(
-            list(menus), ["General", "Profile", "Tabs", "View", "History", "Agents"]
+            list(menus),
+            ["General", "Profile", "Tabs", "View", "Bookmarks and History", "Agents"],
         )
+        texts = [a.text() for a in menus["Bookmarks and History"].actions()]
+        self.assertIn("Bookmark This Page…", texts)
+        self.assertIn("Manage Bookmarks…", texts)
         self.assertIn(self.window.reload_action, menus["Tabs"].actions())
         self.assertIn(self.window.find_action, menus["View"].actions())
         self.assertIn(self.window.agent_sidebar_action, menus["Agents"].actions())
@@ -161,7 +165,7 @@ class BrowserTests(unittest.TestCase):
         )
         history = next(
             action
-            for action in menus["History"].actions()
+            for action in menus["Bookmarks and History"].actions()
             if action.text() == "Clear Browsing History…"
         )
         with patch.object(self.window.history, "clear") as clear:

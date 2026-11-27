@@ -53,7 +53,7 @@ class BrowserLayoutTests(unittest.TestCase):
         window = self.window()
         self.assertEqual(
             self._menu_titles(window),
-            ["Agents", "Tabs", "General", "Profile", "View", "History"],
+            ["Agents", "Tabs", "General", "Profile", "View", "Bookmarks and History"],
         )
         self.assertEqual(window.address_bar.hidden_toolbar, ["passwords", "zoom"])
         self.assertEqual(window.address_bar.density, "compact")
