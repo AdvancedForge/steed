@@ -823,6 +823,11 @@ class AgentSidebar(QDockWidget):
     def start_chat(self):
         if self._private or self.providers is None or not self.state.get("available"):
             return
+        if not self._agent_choices():
+            # Nothing set up yet (no model, no Codex or Claude Code installed):
+            # choosing one comes first, not a chat that fails.
+            self.add_assistant()
+            return
         rule = getattr(self.browser_window, "workspace_agents", lambda: "allowed")()
         if rule == "never":
             self._error = (

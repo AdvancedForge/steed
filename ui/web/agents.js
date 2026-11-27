@@ -334,6 +334,12 @@ function renderAgents(next) {
   }
   const current = agents.find(a => a.id === next.new_agent) || agents[0];
   $("agent").dataset.current = $("welcome-agent").dataset.current = current ? current.id : "";
+  // No assistant yet: the button adds one rather than starting a chat that
+  // cannot run.
+  $("welcome-start").textContent = current ? "Start" : "Add an assistant";
+  $("welcome-start").dataset.action = current ? "new_chat" : "add_assistant";
+  $("welcome-agent").hidden = !current;
+  visible("continue-session", agents.some(a => a.id === "claude"));
   if (!current) return;
   $("agent").value = current.id;
   $("welcome-agent").value = current.id;
@@ -343,7 +349,6 @@ function renderAgents(next) {
   }
   $("model").value = next.new_model || "";
   visible("model-row", current.models.length > 1);
-  visible("continue-session", agents.some(a => a.id === "claude"));
 }
 
 window.steedUI = {render(next) {
