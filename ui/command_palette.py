@@ -208,9 +208,20 @@ class CommandPalette(QDialog):
         self.show()
         self.raise_()
         self.activateWindow()
+        # The keyboard goes to the palette at once, even on its first opening
+        # while its page still loads (the page focuses its field when it
+        # renders); typing before then is not lost to the window behind.
+        self.surface.view.setFocus()
         if self.surface.ready:
+            webengine.run_in(
+                self.surface.page, "window.steedPalette && steedPalette.focus()"
+            )
+        else:
+            QTimer.singleShot(400, self._focus_when_shown)
+
+    def _focus_when_shown(self):
+        if self.isVisible():
             self.surface.view.setFocus()
-            # A page still loading focuses its field when it first renders.
             webengine.run_in(
                 self.surface.page, "window.steedPalette && steedPalette.focus()"
             )
