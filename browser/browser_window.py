@@ -3586,6 +3586,11 @@ class BrowserWindow(QMainWindow):
         profile_name = self.profile_manager.current_profile_name
         label = profile_title(profile_name)
         title = f"Steed - {label}"
+        from browser.config import own_data_dir
+
+        if own_data_dir():
+            # A second Steed on its own data: say which, so they're told apart.
+            title += f" [{self.config.config_dir.name}]"
         if getattr(self, "tab_manager", None) is not None:
             self._workspaces()  # Loads which workspace these tabs are.
         space = getattr(self, "workspace", None)

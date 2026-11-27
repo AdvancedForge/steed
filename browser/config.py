@@ -1,18 +1,35 @@
 """Configuration management for the custom browser."""
 
+import os
 from pathlib import Path
 from typing import Any
 
 from browser.utils import load_json, save_json
 
 DEFAULT_SEARCH_ENGINE = "https://www.duckduckgo.com/?q="
+DATA_ENV = "STEED_DATA_DIR"
+
+
+def data_dir() -> Path:
+    """Where Steed keeps everything: ~/.custom_browser, or another folder
+    (steed --data-dir FOLDER, or STEED_DATA_DIR), so a second Steed, such as
+    a copy you or your agent changed, runs beside yours with its own data."""
+    chosen = os.environ.get(DATA_ENV, "").strip()
+    if chosen:
+        return Path(chosen).expanduser().resolve()
+    return Path.home() / ".custom_browser"
+
+
+def own_data_dir() -> bool:
+    """True when this Steed runs on a folder other than the usual one."""
+    return bool(os.environ.get(DATA_ENV, "").strip())
 
 
 class Config:
     """Manages browser configuration."""
 
     def __init__(self) -> None:
-        self.config_dir = Path.home() / ".custom_browser"
+        self.config_dir = data_dir()
         self.config_file = self.config_dir / "config.json"
         self.profiles_dir = self.config_dir / "profiles"
         self._ensure_directories()

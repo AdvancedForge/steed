@@ -11,6 +11,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from browser.config import data_dir
 from services.agent_tools import REQUEST_LIMIT, RESPONSE_LIMIT, TOOLS
 
 CALL_LIMIT = 32
@@ -517,7 +518,7 @@ def main():
     parser.add_argument(
         "--discovery",
         type=Path,
-        default=Path.home() / ".custom_browser" / "agent-access.json",
+        default=data_dir() / "agent-access.json",
     )
     parser.add_argument(
         "--transport",

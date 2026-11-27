@@ -31,7 +31,9 @@ REASONS = {
 
 
 def folder() -> Path:
-    return Path.home() / ".custom_browser" / "safe_browsing"
+    from browser.config import data_dir
+
+    return data_dir() / "safe_browsing"
 
 
 def parse(text: str) -> set[str]:

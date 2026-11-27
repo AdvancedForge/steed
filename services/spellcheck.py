@@ -52,7 +52,9 @@ LANGUAGES = {
 
 
 def folder() -> Path:
-    return Path.home() / ".custom_browser" / "dictionaries"
+    from browser.config import data_dir
+
+    return data_dir() / "dictionaries"
 
 
 def installed(language: str, where: Path | None = None) -> bool:

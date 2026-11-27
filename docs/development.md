@@ -98,6 +98,27 @@ It saves `/tmp/steed-google-document-receipts.png` and
 `/tmp/steed-google-document-review.png`. It does not contact Google or
 establish real account, consent, certificate or desktop-keyring acceptance.
 
+## Your own Steed: a copy you or your agent change
+
+Steed's code is open, and changing it is welcome: clone it (or fork it on
+GitHub), point Claude Code, Codex or another agent at the folder (it reads
+`AGENTS.md`), and run the result beside your everyday Steed:
+
+```bash
+git clone https://github.com/AdvancedForge/steed ~/steed-copy
+cd ~/steed-copy && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+./steed --data-dir ~/steed-copy-data
+```
+
+`--data-dir` (or `STEED_DATA_DIR`) gives that Steed its own folder instead of
+`~/.custom_browser`. Without it a second Steed would hand its links to the one
+already running, or, with yours closed, run on your real profiles and
+passwords. Its windows say which folder in the title (`Steed - Global
+[steed-copy-data]`), and the `steed-mcp` launcher in that folder connects
+agents to that Steed. To try it with your things, start from a copy of your
+data: `cp -a ~/.custom_browser ~/steed-copy-data` (with a keyring, the copied
+password vault opens as yours does).
+
 ## Verification record
 
 ### Startup exits and a live chat — November 16, 2026

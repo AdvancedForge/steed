@@ -80,9 +80,29 @@ def open_launch_request(urls) -> None:
     target.activateWindow()
 
 
+def take_data_dir(arguments):
+    """--data-dir FOLDER (or --data-dir=FOLDER): run on that folder's data
+    instead of ~/.custom_browser. Removed from arguments; child processes see
+    it as STEED_DATA_DIR."""
+    import os
+
+    from browser.config import DATA_ENV
+
+    for index, argument in enumerate(list(arguments[1:]), start=1):
+        if argument == "--data-dir" and index + 1 < len(arguments):
+            os.environ[DATA_ENV] = arguments[index + 1]
+            del arguments[index : index + 2]
+            return
+        if argument.startswith("--data-dir="):
+            os.environ[DATA_ENV] = argument.split("=", 1)[1]
+            del arguments[index]
+            return
+
+
 def main() -> int:
     """Create the browser and return the Qt event loop's exit code."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    take_data_dir(sys.argv)
     configure_chromium_flags(Config().get("thin_scrollbars", True) is not False)
     prepare_engine_environment()
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)

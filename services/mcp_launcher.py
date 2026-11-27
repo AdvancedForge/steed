@@ -15,12 +15,14 @@ from pathlib import Path
 NAME = "steed-mcp"
 
 
-def text(executable, repository):
+def text(executable, repository, discovery=None):
     adapter = Path(repository) / "agent_mcp.py"
+    # A Steed on its own data folder: agents using this launcher reach it.
+    extra = f" --discovery {shlex.quote(str(discovery))}" if discovery else ""
     return (
         "#!/bin/sh\n"
         "# Written by Steed at each start: where Steed's adapter lives now.\n"
-        f'exec {shlex.quote(str(executable))} {shlex.quote(str(adapter))} "$@"\n'
+        f'exec {shlex.quote(str(executable))} {shlex.quote(str(adapter))}{extra} "$@"\n'
     )
 
 
@@ -28,7 +30,10 @@ def write(config_dir, *, executable=None, repository=None):
     """The launcher's path, (re)written if it changed; never reads secrets."""
     repository = repository or Path(__file__).resolve().parents[1]
     path = Path(config_dir) / NAME
-    wanted = text(executable or sys.executable, repository).encode()
+    from browser.config import own_data_dir
+
+    discovery = Path(config_dir) / "agent-access.json" if own_data_dir() else None
+    wanted = text(executable or sys.executable, repository, discovery).encode()
     try:
         current = path.read_bytes() if path.is_file() else None
     except OSError:
