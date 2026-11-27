@@ -284,12 +284,21 @@ The menu bar has six categories, in this order:
   browsing and use Quick Switch shortcuts. **Open in New Window** opens any
   profile in a window of its own while this one keeps its profile, and **New
   Profile in New Window…** (`Ctrl+Alt+N`) makes a profile and opens it there.
-- **Tabs:** New Tab, Restore Closed Tab, Close Tab, Reload, Bookmark This Page
-  and Manage Bookmarks.
+- **Tabs:** New Tab, Restore Closed Tab, Close Tab and Reload. New Tab (`Ctrl+T`
+  or **+**) opens at the end of the strip with the cursor in the address bar;
+  links you open in new tabs go next to their page.
+- **Bookmarks and History:** Bookmark This Page, Manage Bookmarks, Browsing
+  History (with when you visited each page; right-click a page to open, copy
+  or remove it), Find a Page I Saw and Clear Browsing History.
   **Tabs → Tab Groups** assigns/removes the current tab's group, collapses/expands
   that group, and opens Manage Tab Groups. Right-click a tab for New Tab to the
   Right, Reload, Duplicate, Pin/Unpin, Mute, Copy Link Address, Add to Group / Remove from
-  Group, Close, Close Other Tabs, Close Tabs to the Right and Reopen Closed Tab.
+  Group, Move Tab to Window, Close, Close Other Tabs, Close Tabs to the Right and
+  Reopen Closed Tab; **More** holds the rest (Keep This Tab Loaded, Save to
+  Reading List, Duplicate with History, Copy Clean Link, Send to Your Phone, Send
+  Tab to Profile, Show Beside Current Tab). A page's right-click menu starts with
+  the usual items; your agent's (Ask Agent About…, Watch This Page) come after
+  them.
   Tab, group and page right-click menus use Steed's own menu style.
   Middle-click closes a tab, double-clicking empty strip space opens one, tabs
   drag to reorder, and the strip is keyboard navigable (arrow keys, Enter,
