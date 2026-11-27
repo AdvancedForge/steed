@@ -106,10 +106,13 @@ class InputDialog(HtmlPresentation, NativeInputDialog):
 
     @staticmethod
     def _result(box):
-        # QInputDialog constructs its layout lazily; polishing it avoids showing
-        # a native frame while allowing the HTML renderer to enumerate controls.
+        # QInputDialog builds its layout only when shown or sized; the HTML
+        # host shows its controls instead of the native frame, so ask for its
+        # size (which builds the label, field or list and buttons) first.
+        # Without this the prompt showed only its title.
         box.setVisible(False)
         box.ensurePolished()
+        box.sizeHint()
         try:
             result = box.exec()
             return box.textValue(), result == box.DialogCode.Accepted
