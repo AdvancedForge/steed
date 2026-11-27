@@ -846,7 +846,7 @@ class StartPages(QObject):
             for module in settings["modules"]:
                 if module == "search":
                     body += '<form class="search" action="steed://action/search" method="get"><label class="sr-only" for="query">Search or enter a web address</label><input id="query" name="q" placeholder="Search or enter a web address" autocomplete="off" maxlength="4096" autofocus required><button type="submit">Go</button></form>'
-                    body += errand_links(settings, private)
+                    body += errand_links(settings, private, self.assistant_ready())
                 elif module == "image":
                     # The selected image fills the viewport behind the content.
                     pass
@@ -963,7 +963,7 @@ class StartPages(QObject):
                 note='<span class="note">Incognito · nothing is saved</span>'
                 if private
                 else "",
-                errands=errand_links(settings, private),
+                errands=errand_links(settings, private, self.assistant_ready()),
                 credit=credit,
             )
             .encode()
@@ -1009,6 +1009,18 @@ class StartPages(QObject):
                     f" --soft: color-mix(in srgb, {accent} 28%, {toolbar}); }}"
                 )
         return css, credit, scrim
+
+    def assistant_ready(self) -> bool:
+        """An assistant is set up: a model, a coding agent installed here, an
+        ACP agent or a chatbot website (without starting the agent service)."""
+        from services.agent_once import helper_choices
+
+        config = self.registry.config
+        return bool(
+            helper_choices(config)
+            or config.get("acp_agents")
+            or config.get("website_chats")
+        )
 
     def theme_tint(self, profile) -> str | None:
         """The colour the browser takes from this profile's new tab background
@@ -1877,9 +1889,10 @@ ERRANDS = (
 )
 
 
-def errand_links(settings, private):
-    """The errands under New Tab's search box; none in incognito."""
-    if private or not settings.get("errands", True):
+def errand_links(settings, private, ready=True):
+    """The errands under New Tab's search box; none in incognito, and none
+    until an assistant is set up (they would only lead to an error)."""
+    if private or not ready or not settings.get("errands", True):
         return ""
     return (
         '<nav class="errands" aria-label="Ask your assistant">'

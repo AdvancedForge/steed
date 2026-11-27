@@ -330,6 +330,16 @@ class SimpleNewTabTests(unittest.TestCase):
         self.assertEqual(self.js(tab, "window.steedMark"), 1)
 
     def test_errands_under_the_search_box_start_with_your_assistant(self):
+        from services.start_pages import StartPages
+
+        # None until an assistant is set up: they would only lead to an error.
+        with patch.object(StartPages, "assistant_ready", return_value=False):
+            self.assertNotIn(
+                "Watch a price", self.pages.render("global", "newtab").decode()
+            )
+        ready = patch.object(StartPages, "assistant_ready", return_value=True)
+        ready.start()
+        self.addCleanup(ready.stop)
         html = self.pages.render("global", "newtab").decode()
         for label in (
             "Watch a price",
