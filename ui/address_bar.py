@@ -438,12 +438,21 @@ class AddressBar(QWidget):
     def _on_return_pressed(self) -> None:
         """Handle return key press."""
         text = self.address_input.text().strip()
+        self._close_suggestions()
         if text:
             # The edit is committed; later page URLs may replace it again.
             self.address_input.committed = True
             self.url_changed.emit(text)
 
+    def _close_suggestions(self) -> None:
+        """Gone once you go: and search suggestions still on their way
+        must not open the list again over the page."""
+        self.completer.popup().hide()
+        if hasattr(self, "remote"):
+            self.remote.cancel()
+
     def _on_suggestion(self, index) -> None:
+        self._close_suggestions()
         self.address_input.committed = True
         kind = index.data(KIND_ROLE)
         if kind == "tab":
@@ -470,6 +479,7 @@ class AddressBar(QWidget):
         if (
             self.remote_enabled
             and self.address_input.hasFocus()
+            and not getattr(self.address_input, "committed", False)
             and self.address_input.text().strip() == query
         ):
             self._suggest(query)
