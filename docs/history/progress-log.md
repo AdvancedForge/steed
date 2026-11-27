@@ -7,6 +7,15 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Notifications and a few questions — November 26, 2026.**
+- notifications where you want them (your desktop, a note inside Steed, or
+  none) and as often (every time, at most one every 15 minutes or an hour, or
+  only when something needs you); what needs you is never held back;
+- Welcome asks three optional questions (how often you use AI, features or
+  memory, notifications) and each answer sets a few defaults, saying which;
+- the tests no longer send desktop notifications;
+- Steed's own pages refresh on any Welcome step, not only the first.
+
 **Choices, and bring your own — November 26, 2026.** From a hands-on test of
 open-source tools, the ones that earned a place, each as a choice:
 - cookie banners: Reject (default), Accept or Leave them, with DuckDuckGo's

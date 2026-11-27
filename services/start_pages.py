@@ -832,10 +832,13 @@ class StartPages(QObject):
         if name == "newtab" and state["settings"]["layout"] == "simple":
             return self.render_simple(profile, state["settings"], root_css)
         if name == "welcome":
+            from services.welcome_questions import answers
+
             body = welcome_steps(
                 state["settings"]["background"],
                 styles.get(profile)["glass"],
                 installed_assistants(),
+                answers(self.registry.config),
             )
         else:
             settings = state["settings"]
@@ -1210,10 +1213,38 @@ def installed_assistants():
     ]
 
 
-def welcome_steps(background, glass, ready=()):
-    """Getting started in three calm steps, one idea each: the look, your
-    things from another browser, your agent. No script: the address's
-    #fragment picks the step (and survives the page being shown again)."""
+def welcome_questions(given):
+    """Welcome's three quick questions, with what each answer sets."""
+    from html import escape
+
+    from services.welcome_questions import EFFECTS, QUESTIONS
+
+    parts = []
+    for key, question, choices in QUESTIONS:
+        chosen = given.get(key)
+        options = "".join(
+            f'<a class="answer{" on" if value == chosen else ""}"'
+            f' aria-pressed="{str(value == chosen).lower()}"'
+            f' href="steed://action/welcome-answer?q={key}&amp;a={value}">'
+            f"{escape(label)}</a>"
+            for value, label in choices
+        )
+        said = (
+            f'<p class="sets">{escape(EFFECTS[key][chosen][4])}</p>' if chosen else ""
+        )
+        parts.append(
+            f'<h2 class="choice">{escape(question)}</h2>'
+            f'<div class="answers" role="group" aria-label="{escape(question)}">'
+            f"{options}</div>{said}"
+        )
+    return "".join(parts)
+
+
+def welcome_steps(background, glass, ready=(), given=None):
+    """Getting started in four calm steps, one idea each: the look, a few
+    questions, your things from another browser, your agent. No script: the
+    address's #fragment picks the step (and survives the page being shown
+    again)."""
 
     def tile(label, href, kind, on):
         state = " on" if on else ""
@@ -1227,7 +1258,8 @@ def welcome_steps(background, glass, ready=()):
     return (
         '<div class="onboard">'
         '<ol class="steps" aria-label="Getting started">'
-        '<li><a href="#look">Look</a></li><li><a href="#bring">Your things</a></li>'
+        '<li><a href="#look">Look</a></li><li><a href="#you">You</a></li>'
+        '<li><a href="#bring">Your things</a></li>'
         '<li><a href="#agent">Agent</a></li></ol>'
         '<section id="look" class="step"><h1>Welcome to Steed.</h1>'
         "<p>First, how should it look? You can change it any time.</p>"
@@ -1254,6 +1286,11 @@ def welcome_steps(background, glass, ready=()):
         "<span>See-through bars and panels over the page</span></span>"
         '<span class="track"><span class="knob"></span></span>'
         f'<span class="state">{"On" if glass else "Off"}</span></a>'
+        + '<div class="actions"><a class="button" href="#you">Next</a></div></section>'
+        '<section id="you" class="step"><h1>Three quick questions.</h1>'
+        "<p>So Steed starts out the way you like. Answer any, or none; "
+        "everything can be changed later in Settings.</p>"
+        + welcome_questions(given or {})
         + '<div class="actions"><a class="button" href="#bring">Next</a></div></section>'
         '<section id="bring" class="step"><h1>Bring your things.</h1>'
         "<p>Bookmarks and history from another browser, and your passwords "
@@ -1705,8 +1742,9 @@ html:has(body.onboarding) { scrollbar-gutter: stable; }
 .steps a { display: block; padding: 6px 14px; border-radius: 999px; color: var(--muted); text-decoration: none;
   font-size: 13px; font-weight: 600; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 .onboard:not(:has(.step:target)) .steps li:nth-child(1) a,
-.onboard:has(#look:target) .steps li:nth-child(1) a, .onboard:has(#bring:target) .steps li:nth-child(2) a,
-.onboard:has(#agent:target) .steps li:nth-child(3) a { color: var(--ink); background: var(--soft); border-color: transparent; }
+.onboard:has(#look:target) .steps li:nth-child(1) a, .onboard:has(#you:target) .steps li:nth-child(2) a,
+.onboard:has(#bring:target) .steps li:nth-child(3) a,
+.onboard:has(#agent:target) .steps li:nth-child(4) a { color: var(--ink); background: var(--soft); border-color: transparent; }
 /* A step opens at the top of the page, not scrolled to its heading. */
 .step { display: none; scroll-margin-top: 100vh; }
 .step:target, .onboard:not(:has(.step:target)) #look { display: block; }
@@ -1756,6 +1794,13 @@ html:has(body.onboarding) { scrollbar-gutter: stable; }
 .step .switch.on .knob { left: 21px; }
 .step .switch .state { width: 2.2em; font-size: 13px; font-weight: 600; color: var(--muted); }
 .step .switch.on .state { color: var(--ink); }
+.step .answers { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.step .answer { padding: 9px 16px; border-radius: 999px; text-decoration: none; color: var(--ink);
+  font-size: 14px; font-weight: 600; background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); transition: border-color .2s, background-color .2s; }
+.step .answer:hover { border-color: var(--accent); }
+.step .answer.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.step p.sets { font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
 .step .tile.photo .tile-art { background: linear-gradient(160deg, #f3a66b, #6a4c93 60%, #1d3557); }
 .step .tile.colour .tile-art { background: conic-gradient(from 200deg, #1f3a5f, #2f5d50, #8a6d1f, #7a2e2e, #5b3a6b, #1f3a5f); }
 .step .tile.glass .tile-art { background: linear-gradient(135deg, color-mix(in srgb, #fff 35%, transparent), color-mix(in srgb, #fff 8%, transparent)),

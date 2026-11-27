@@ -9,15 +9,30 @@ profile. Existing Default data remains an ordinary profile you can rename or
 archive through Profile; it is not deleted. Older Default startup selections
 become Global, while other explicitly selected profiles are preserved.
 
-`steed:welcome` is a short tour in three steps, one idea each: how Steed looks
+`steed:welcome` is a short tour in four steps, one idea each: how Steed looks
 (a photo or colour background, marked **Chosen**, and a **Liquid glass**
-switch; both apply as you choose), bringing
+switch; both apply as you choose), three quick questions, bringing
 your bookmarks, history and passwords from another browser, and bringing an
 assistant, or not: Steed works fully without one, and five cards (on this
 computer, with your API key, a coding agent, a chatbot website, a cloud agent)
 open each setup directly, noting any coding agent already installed. Every
 step can be skipped; **Start browsing** (or *Skip the tour*)
-completes it, and Settings → Everything → Welcome takes it again. After that,
+completes it, and Settings → Everything → Welcome takes it again.
+
+The questions are optional, and each answer sets a few defaults at once and
+says which under it (all can be changed later):
+
+| Question | Answer | Sets |
+|---|---|---|
+| How often do you use AI? | Every day | Agents menu first, New Tab errands, agent notifications |
+| | Now and then | Agents menu in its place, New Tab errands, agent notifications |
+| | Rarely or never | No New Tab errands, no agent notifications |
+| More features, or lighter on memory? | Everything on | Memory: Performance, every effect, tab previews |
+| | Balanced | Memory: Balanced, every effect, tab previews |
+| | Light on memory | Memory: Memory saver, fewer effects, no tab previews |
+| How should Steed tell you things? | On my desktop / Only inside Steed / Only when it needs me / Not at all | [Notifications](#notifications) |
+
+The answers are kept in `config.json` as `welcome_answers`. After that,
 Steed teaches as you go: the first time you reach the address bar, a website,
 a New Tab or the agent sidebar, a small tip says one useful thing, once
 ("Got it", or it fades after a while; never twice, never over the tour).

@@ -18,9 +18,9 @@ from services.start_pages import WORKSPACES, customize_panel, welcome_steps
 
 
 class PieceTests(unittest.TestCase):
-    def test_welcome_is_three_steps_with_a_way_out(self):
+    def test_welcome_is_four_steps_with_a_way_out(self):
         page = welcome_steps("photo", glass=False)
-        for step in ('id="look"', 'id="bring"', 'id="agent"'):
+        for step in ('id="look"', 'id="you"', 'id="bring"', 'id="agent"'):
             self.assertIn(step, page)
         self.assertIn("steed://action/import", page)
         self.assertIn("steed://action/agents", page)

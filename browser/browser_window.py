@@ -5975,7 +5975,10 @@ class BrowserWindow(QMainWindow):
     def _on_load_started(self, tab):
 
         tab.is_loading = True
-        tab.load_started_at = monotonic()
+        if not getattr(tab, "quiet_stop", False):
+            # A link Steed handles (steed://action/…) loads nothing: the page
+            # shown is still the one from before, and may need refreshing.
+            tab.load_started_at = monotonic()
         tab.load_progress = 0
         self._clear_crash_panel(tab)
         self._navigation_event(tab, "onBeforeNavigate")
@@ -9028,7 +9031,8 @@ class BrowserWindow(QMainWindow):
         if self._closing:
             return
         for tab in self.tabs:
-            if page_name(tab.url()) is not None:
+            # Welcome on one of its #steps is still Welcome.
+            if action_page(tab.url()) is not None:
                 self._reload_steed_page(tab, "start page changed")
 
     def _newtab_photo_changed(self, first):
@@ -9111,6 +9115,11 @@ class BrowserWindow(QMainWindow):
             self._log_reload_loop(tab, reason)
             return
         recent.append(now)
+        if tab.url().hasFragment():
+            # The same address with a #place (Welcome's steps) only moves
+            # within the page; it is not loading, so reload it.
+            tab.reload()
+            return
         # Not reload(): a reload during the tab's first load cancels it and
         # leaves nothing to reload. The same address replaces it.
         self.navigation.navigate(tab, tab.url())
@@ -9247,6 +9256,39 @@ class BrowserWindow(QMainWindow):
     def _manage_bookmarks(self):
         return self._open_management("bookmarks")
 
+    def _welcome_answer(self, question, answer):
+        """Welcome's quick questions: the answer's settings, at once."""
+        from browser.layout_preferences import LayoutConflict, preferences_from_config
+        from services import welcome_questions
+
+        try:
+            errands, agents_first, _ = welcome_questions.apply(
+                self.config, question, answer
+            )
+        except ValueError:
+            return
+        registry = self.profile_manager.registry
+        profile = self.profile_manager.current_profile_name
+        if errands is not None:
+            try:
+                registry.start_pages.set_from_page(
+                    profile, [("errands", "1" if errands else "0")]
+                )
+            except (ValueError, OSError):
+                pass  # Already so.
+        if agents_first is not None:
+            saved = preferences_from_config(self.config)
+            order = welcome_questions.menu_order(saved.menu_order, agents_first)
+            if order != saved.menu_order:
+                edited = saved.copy()
+                edited.set_menu_order(order)
+                try:
+                    registry.commit_layout(edited, base=saved)
+                except LayoutConflict:
+                    pass
+        self._settings_applied()
+        registry.start_pages.changed.emit(profile)  # The page shows the answer.
+
     def _start_page_action(self, tab, url):
         if self._closing or tab not in self.tabs or action_page(tab.url()) is None:
             return
@@ -9289,6 +9331,12 @@ class BrowserWindow(QMainWindow):
             self.start_errand(params[0][1])
         elif action == "reopen" and len(params) == 1 and params[0][0] == "id":
             self._restore_closed_tab(params[0][1])
+        elif (
+            action == "welcome-answer"
+            and action_page(tab.url()) == "welcome"
+            and [key for key, _ in params] == ["q", "a"]
+        ):
+            self._welcome_answer(params[0][1], params[1][1])
         elif action == "menu" and len(params) == 1 and params[0][0] == "name":
             self._newtab_menu_at(tab, params[0][1])
         elif action == "newtab-set" and params:
