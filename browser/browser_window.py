@@ -992,6 +992,9 @@ class BrowserWindow(QMainWindow):
         read_aloud_action.setShortcut(QKeySequence("Ctrl+Shift+U"))
         read_aloud_action.triggered.connect(self.read_aloud)
         view_menu.addAction(read_aloud_action)
+        read_aloud_voice_action = QAction("Read Aloud Voice…", self)
+        read_aloud_voice_action.triggered.connect(self.open_read_aloud_settings)
+        view_menu.addAction(read_aloud_voice_action)
         source_action = QAction("View Page Source", self)
         source_action.setShortcut(QKeySequence("Ctrl+U"))
         source_action.triggered.connect(self.view_source)
@@ -3736,14 +3739,29 @@ class BrowserWindow(QMainWindow):
 
     def read_aloud(self):
         """Read the selection or the article aloud; again stops it."""
+        reader = self.read_aloud_reader()
+        if reader.active:
+            reader.stop()
+        elif self.tabs:
+            reader.start(self.tabs[self.current_tab_index])
+
+    def read_aloud_reader(self):
         from ui.read_aloud import ReadAloud
 
         if getattr(self, "_read_aloud", None) is None:
             self._read_aloud = ReadAloud(self)
-        if self._read_aloud.active:
-            self._read_aloud.stop()
-        elif self.tabs:
-            self._read_aloud.start(self.tabs[self.current_tab_index])
+        return self._read_aloud
+
+    def open_read_aloud_settings(self):
+        """View → Read Aloud Voice…: the desktop's voices or your own service."""
+        from ui.read_aloud_dialog import ReadAloudVoiceDialog
+
+        reader = getattr(self, "_read_aloud", None)
+        dialog = ReadAloudVoiceDialog(self, getattr(reader, "engine_name", None))
+        host = self._present_dialog(dialog, modal=False)
+        if host is not None:
+            host.finished.connect(lambda _: dialog.deleteLater())
+        return host
 
     def show_bookmarks_bar(self, shown):
         """Every window's bookmarks bar, on or off (kept for next time)."""

@@ -82,7 +82,8 @@ class PieceTests(unittest.TestCase):
         for page in DIRECTORY:
             self.assertIn(f'data-page="{page}"', html)
             self.assertTrue(
-                page in WORKSPACES or page in ("welcome", "dictation"), page
+                page in WORKSPACES or page in ("welcome", "dictation", "read-aloud"),
+                page,
             )
         # And every maintained page is listed (Settings itself and New Tab aside).
         listed = {page for page in WORKSPACES if f'data-page="{page}"' in html}

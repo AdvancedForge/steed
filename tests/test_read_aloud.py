@@ -67,7 +67,7 @@ class ReadAloudTests(unittest.TestCase):
         self.tab = self.window.tabs[self.window.current_tab_index]
         self.reader = self.window._read_aloud = ReadAloud(self.window, "mock")
         self.spoken = []
-        engine = self.reader._engine()
+        engine = self.reader._voice().engine
         engine.sayingWord.connect(lambda *a: None)
         original = engine.say
         engine.say = lambda text: (self.spoken.append(text), original(text))

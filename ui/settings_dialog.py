@@ -57,15 +57,15 @@ DEFAULTS = {
 }
 SECTIONS = ("general", "profile", "tabs", "view", "cookies", "agents", "everything")
 # Settings → Everything: the pages it opens (each in a new tab), and
-# Dictation, which is a dialog.
+# Dictation and Read Aloud, which are dialogs.
 DIRECTORY = frozenset(
     (
         "history", "bookmarks", "downloads", "tab-groups", "library", "passwords",
         "cookies", "permissions", "adblock", "access", "style", "layout",
         "newtab-settings", "welcome", "agents", "agent-setup", "tasks", "activity",
         "connections", "services", "panels", "apps", "userscripts", "memory",
-        "features", "dictation", "watches", "automations", "skills", "pages",
-        "packs",
+        "features", "dictation", "read-aloud", "watches", "automations",
+        "skills", "pages", "packs",
     )
 )  # fmt: skip
 
@@ -515,6 +515,8 @@ class SettingsDialog(QDialog):
                     raise ValueError("That is not a Steed page.")
                 if page == "dictation":
                     self.window.open_dictation_settings()
+                elif page == "read-aloud":
+                    self.window.open_read_aloud_settings()
                 else:
                     self.window._new_tab(url="steed:" + page)
             elif action == "open":

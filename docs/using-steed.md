@@ -643,10 +643,25 @@ Chromium could read as something wider: clearing the malformed origin
 ### Read aloud
 
 **View → Read Aloud** (`Ctrl+Shift+U`) reads the selection, or else the page's
-article (as reader view finds it), with the desktop's voices
-(speech-dispatcher), sentence by sentence. A bar at the bottom shows the
-sentence being read, with **Pause**, **Slower**, **Faster** (kept for next
-time) and **Stop**. Nothing leaves the computer.
+article (as reader view finds it), sentence by sentence. A bar at the bottom
+shows the sentence being read, with **Pause**, **Slower**, **Faster** (kept
+for next time), **Voice** and **Stop**.
+
+**View → Read Aloud Voice…** (also under Settings → Everything) chooses who
+reads:
+
+- **The desktop's voices** (the default): speech-dispatcher, with any of its
+  voices; add more with your system's packages (espeak-ng, RHVoice, a Piper
+  module). Nothing leaves the computer.
+- **Your speech service**: anything that answers OpenAI's `/v1/audio/speech`
+  request, such as Kokoro-FastAPI (`http://localhost:8880/v1`), LocalAI or
+  openedai-speech on this computer, or a hosted service over https. Give the
+  model and, if you like, a voice (blank lets the service choose); a hosted
+  service's key goes in the desktop keyring. The text is sent a sentence or so
+  at a time, and the next one is asked for while one plays. Slower and Faster
+  become the service's speed. Private windows always use the desktop's voices.
+
+**Listen** plays a sample with what you chose.
 
 ### Site apps
 

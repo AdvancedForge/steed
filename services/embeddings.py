@@ -46,37 +46,18 @@ def check_service(url):
 
 
 def api_key():
-    try:
-        import secretstorage
+    from services import service_keys
 
-        connection = secretstorage.dbus_init()
-        collection = secretstorage.get_default_collection(connection)
-        if collection.is_locked():
-            collection.unlock()
-        items = list(collection.search_items(KEYRING_ATTRIBUTES))
-        if not items:
-            return ""
-        if items[0].is_locked():
-            items[0].unlock()
-        return items[0].get_secret().decode()
-    except Exception:
-        return ""
+    return service_keys.read(KEYRING_ATTRIBUTES["purpose"])
 
 
 def set_api_key(value):
     """Keep (or with "" forget) the service's key in the keyring."""
-    import secretstorage
+    from services import service_keys
 
-    connection = secretstorage.dbus_init()
-    collection = secretstorage.get_default_collection(connection)
-    if collection.is_locked():
-        collection.unlock()
-    for item in collection.search_items(KEYRING_ATTRIBUTES):
-        item.delete()
-    if value:
-        collection.create_item(
-            "Steed embeddings service key", KEYRING_ATTRIBUTES, value.encode()
-        )
+    service_keys.write(
+        KEYRING_ATTRIBUTES["purpose"], "Steed embeddings service key", value
+    )
 
 
 def cosine_rank(query, vectors, limit=5):

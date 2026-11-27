@@ -1,17 +1,22 @@
 """Read Aloud (View → Read Aloud, Ctrl+Shift+U): the selection, or else the
-page's article, spoken by the desktop's voices (speech-dispatcher), sentence
-by sentence, with a small player at the bottom of the window: pause, slower,
-faster, stop. Nothing leaves the computer.
+page's article, spoken sentence by sentence, with a small player at the bottom
+of the window: pause, slower, faster, voice, stop.
+
+View → Read Aloud Voice… chooses who speaks: the desktop's voices
+(speech-dispatcher, any of its voices; nothing leaves the computer) or your
+own speech service (services.speech_service). Private windows always use the
+desktop's voices.
 """
 
 import re
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, Qt
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QWidget
 
 from browser import webengine
 
+VOICES_FROM = ("system", "service")
 MAX_CHUNK = 400
 RATE_STEP = 0.15
 SELECTION = "(getSelection() ? getSelection().toString() : '')"
@@ -110,6 +115,7 @@ class Player(QWidget):
         row.addWidget(self.text, 1)
         row.addWidget(self.slower)
         row.addWidget(self.faster)
+        row.addWidget(self._button("Voice", reader.choose_voice))
         row.addWidget(self._button("Stop", reader.stop))
         self.hide()
 
@@ -150,6 +156,64 @@ class Player(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
 
+def system_engine(engine_name=None, parent=None):
+    from PyQt6.QtTextToSpeech import QTextToSpeech
+
+    names = QTextToSpeech.availableEngines()
+    name = engine_name or ("speechd" if "speechd" in names else "")
+    return QTextToSpeech(name, parent) if name else QTextToSpeech(parent)
+
+
+class SystemVoice(QObject):
+    """The desktop's voices through Qt (speech-dispatcher)."""
+
+    finished = pyqtSignal()
+    failed = pyqtSignal(str)
+
+    def __init__(self, engine_name=None, rate=0.0, voice="", parent=None):
+        super().__init__(parent)
+        self.engine = system_engine(engine_name, self)
+        self.engine.setRate(rate)
+        for found in self.engine.availableVoices() if voice else ():
+            if found.name() == voice:
+                self.engine.setVoice(found)
+                break
+        self.engine.stateChanged.connect(self._state)
+
+    def _state(self, state):
+        from PyQt6.QtTextToSpeech import QTextToSpeech
+
+        if state == QTextToSpeech.State.Ready:
+            self.finished.emit()
+        elif state == QTextToSpeech.State.Error:
+            self.failed.emit(
+                "Read Aloud: the desktop's speech service did not answer "
+                "(is speech-dispatcher installed?)."
+            )
+
+    def say(self, text, upcoming=None):
+        self.engine.say(text)
+
+    def pause(self):
+        self.engine.pause()
+
+    def resume(self):
+        self.engine.resume()
+
+    def set_rate(self, rate):
+        self.engine.setRate(rate)
+
+    def stop(self):
+        self.engine.stop()
+
+
+def voice_from(window):
+    """Who speaks in this window: "system" or "service"."""
+    chosen = window.config.get("read_aloud_voice_from", "system")
+    private = window.profile_manager.current_profile_name == "search"
+    return chosen if chosen in VOICES_FROM and not private else "system"
+
+
 class ReadAloud(QObject):
     """Reading for one window; one text at a time."""
 
@@ -157,7 +221,7 @@ class ReadAloud(QObject):
         super().__init__(window)
         self.window = window
         self.engine_name = engine_name
-        self.engine = None
+        self.voice = None
         self.queue, self.index = [], 0
         self.paused = False
         self.player = Player(self, window)
@@ -166,16 +230,37 @@ class ReadAloud(QObject):
     def active(self):
         return bool(self.queue)
 
-    def _engine(self):
-        if self.engine is None:
-            from PyQt6.QtTextToSpeech import QTextToSpeech
+    def _voice(self):
+        if self.voice is None:
+            config = self.window.config
+            rate = float(config.get("read_aloud_rate", 0.0))
+            if voice_from(self.window) == "service":
+                from services.speech_service import ServiceVoice
 
-            names = QTextToSpeech.availableEngines()
-            name = self.engine_name or ("speechd" if "speechd" in names else "")
-            self.engine = QTextToSpeech(name, self) if name else QTextToSpeech(self)
-            self.engine.stateChanged.connect(self._state)
-            self.engine.setRate(float(self.window.config.get("read_aloud_rate", 0.0)))
-        return self.engine
+                try:
+                    self.voice = ServiceVoice(config, rate, self)
+                except ValueError:
+                    self.voice = None
+            if self.voice is None:
+                self.voice = SystemVoice(
+                    self.engine_name,
+                    rate,
+                    str(config.get("read_aloud_system_voice", "") or ""),
+                    self,
+                )
+            self.voice.finished.connect(self._spoken)
+            self.voice.failed.connect(self._failed)
+        return self.voice
+
+    def voice_changed(self):
+        """The voice settings changed: the next piece uses them."""
+        self.stop()
+        if self.voice is not None:
+            self.voice.deleteLater()
+            self.voice = None
+
+    def choose_voice(self):
+        self.window.open_read_aloud_settings()
 
     def start(self, tab):
         """Read the selection in tab, else its article, else its text."""
@@ -227,49 +312,46 @@ class ReadAloud(QObject):
             self.stop()
             return
         text = self.queue[self.index]
+        upcoming = (
+            self.queue[self.index + 1] if self.index + 1 < len(self.queue) else None
+        )
         self.player.show_chunk(text, self.index + 1, len(self.queue))
-        self._engine().say(text)
+        self._voice().say(text, upcoming)
 
-    def _state(self, state):
-        from PyQt6.QtTextToSpeech import QTextToSpeech
-
-        if not self.queue:
-            return
-        if state == QTextToSpeech.State.Ready and not self.paused:
+    def _spoken(self):
+        if self.queue and not self.paused:
             self.index += 1
             self._say()
-        elif state == QTextToSpeech.State.Error:
-            self.window.status_bar.showMessage(
-                "Read Aloud: the desktop's speech service did not answer "
-                "(is speech-dispatcher installed?).",
-                8000,
-            )
+
+    def _failed(self, message):
+        if self.queue:
+            self.window.status_bar.showMessage(message, 8000)
             self.stop()
 
     def toggle(self):
         if not self.queue:
             return
-        engine = self._engine()
+        voice = self._voice()
         if self.paused:
             self.paused = False
             self.player.toggle.setText("Pause")
-            engine.resume()
+            voice.resume()
         else:
             self.paused = True
             self.player.toggle.setText("Play")
-            engine.pause()
+            voice.pause()
 
     def change_rate(self, step):
         rate = max(
             -1.0, min(1.0, float(self.window.config.get("read_aloud_rate", 0.0)) + step)
         )
         self.window.config.set("read_aloud_rate", round(rate, 2))
-        self._engine().setRate(rate)
+        self._voice().set_rate(rate)
 
     def stop(self):
         queue, self.queue = self.queue, []
         self.paused = False
         self.player.toggle.setText("Pause")
         self.player.hide()
-        if queue and self.engine is not None:
-            self.engine.stop()
+        if queue and self.voice is not None:
+            self.voice.stop()
