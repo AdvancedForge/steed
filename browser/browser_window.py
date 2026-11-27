@@ -5939,7 +5939,9 @@ class BrowserWindow(QMainWindow):
             left, tab.site_host = getattr(tab, "site_host", ""), url.host()
             if left and left != url.host():
                 QTimer.singleShot(0, lambda: self._site_left(left))
-            self.tab_bar.set_tab_state(self.tabs.index(tab), url=url.toString())
+            # A Steed page (Settings, History…) shows its own name, not the
+            # blank page it is drawn over.
+            self.tab_bar.set_tab_state(self.tabs.index(tab), url=self._tab_url(tab))
             self._apply_site_zoom(tab)
             if tab.reader_panel is not None and url != tab.reader_panel.url:
                 # Reader view belongs to one article; following a link leaves it.
@@ -7197,7 +7199,7 @@ class BrowserWindow(QMainWindow):
         self.tabs.insert(index, tab)
         self.tab_bar.insert_tab(index, tab.title() or state.title)
         self.tab_bar.set_tab_icon(index, tab.icon())
-        self.tab_bar.set_tab_state(index, url=tab.url().toString())
+        self.tab_bar.set_tab_state(index, url=self._tab_url(tab))
         tab.group = tab.group_id = None
         tab.pinned = False
         if state.pinned:
