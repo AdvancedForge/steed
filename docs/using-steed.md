@@ -585,6 +585,22 @@ Settings → General:
   rules clean Copy Clean Link and Send to Your Phone. In a test of 24 shared
   links from big sites, ClearURLs removed 55 of 70 trackers and Steed's list
   10, and neither removed a parameter the page needed.
+- **Cookie banners** (Reject): Steed answers sites' "accept cookies?"
+  banners for you. **Reject** declines everything optional, **Accept** agrees,
+  **Leave them for me to answer** does nothing. **On your agents' own pages**
+  can differ (the same as yours by default), so an agent's pages can clear
+  banners while you answer your own; agents working in your tabs follow your
+  choice. **Leave these sites alone** takes site names (and their
+  subdomains), and **Your own rules file** adds rules in autoconsent's JSON
+  format (a list, or `{"autoconsent": [...]}`) to the built-in ones. It uses
+  DuckDuckGo's [autoconsent](https://github.com/duckduckgo/autoconsent)
+  (bundled under the MPL-2.0), which knows about 1,600 consent tools and sites
+  and recognises unknown banners by their buttons. It runs in a script world
+  of its own in each web page's top frame, which the page can't see; banners
+  shown only inside an embedded frame are handled when a rule for the page
+  covers them. The status bar says when a banner was declined, accepted or
+  hidden. In a test on 14 news and shopping sites, it declined the banner on
+  6 of the 7 that showed one.
 - **HTTPS first** (on): http:// pages load over HTTPS. When a site has no
   HTTPS, Steed loads it unencrypted after all (the status bar says so) and
   remembers the site until it quits. Local addresses, IP addresses and

@@ -92,8 +92,10 @@ WEAKENS = {
 
 
 def weakens(key, value):
-    if key == "user_agent_override":
+    if key in ("user_agent_override", "cookie_banner_skip"):
         return bool(value)
+    if key in ("cookie_banners", "cookie_banners_agents"):
+        return value == "accept"
     return key in WEAKENS and WEAKENS[key] == value
 
 

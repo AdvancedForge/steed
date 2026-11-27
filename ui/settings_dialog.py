@@ -47,6 +47,10 @@ DEFAULTS = {
     "link_rules": "steed",
     "link_rules_file": "",
     "link_rules_extra": "",
+    "cookie_banners": "reject",
+    "cookie_banners_agents": "same",
+    "cookie_banner_skip": "",
+    "cookie_banner_rules_file": "",
     "https_first": True,
     "mouse_gestures": False,
     "secure_dns": "off",
@@ -294,6 +298,14 @@ class SettingsDialog(QDialog):
             raise ValueError("Choose which rules remove tracking from addresses.")
         if values["link_rules"] == "file" and not values["link_rules_file"].strip():
             raise ValueError("Choose your rules file, or another set of rules.")
+        from browser import cookie_banners
+
+        if values["cookie_banners"] not in cookie_banners.MODES:
+            raise ValueError("Choose what Steed does with cookie banners.")
+        if values["cookie_banners_agents"] not in cookie_banners.AGENT_MODES:
+            raise ValueError("Choose what agents' pages do with cookie banners.")
+        if values["cookie_banner_rules_file"].strip():
+            cookie_banners.check_rules_file(values["cookie_banner_rules_file"].strip())
         from browser.secure_dns import check
 
         check(values["secure_dns"], values["secure_dns_server"].strip())

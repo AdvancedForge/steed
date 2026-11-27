@@ -106,7 +106,19 @@ class Page(QWebEnginePage):
         return None
 
     def javaScriptConsoleMessage(self, level, message, line, source):
+        if message.startswith("\x01steedconsent "):
+            from browser import cookie_banners
+
+            cookie_banners.received(self, message)
+            return
         self.console_message(CONSOLE_LEVELS.get(level, "info"), message, line, source)
+
+    def cookie_banner_settings(self):
+        """(reject, accept or leave; the settings) for cookie banners here."""
+        return "leave", None
+
+    def cookie_banner_answered(self, done):
+        """Steed answered a cookie banner here: {"tool", "answer"}."""
 
     def console_message(self, level, message, line, source):
         """level: info, warning or error. By default the engine prints it."""

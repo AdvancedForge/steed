@@ -134,8 +134,24 @@ class BrowserPage(webengine.Page):
 
     def __init__(self, profile, parent=None, config=None):
         super().__init__(profile, parent)
+        self.config = config
         self.site_compatibility = SiteCompatibilityInterceptor(config, self)
         webengine.set_request_filter(self, self.site_compatibility)
+
+    def cookie_banner_settings(self):
+        from browser.cookie_banners import mode_for
+
+        return mode_for(self.config), self.config
+
+    def cookie_banner_answered(self, done):
+        from browser.cookie_banners import said
+
+        tab = self.parent()
+        window = getattr(tab, "browser_window", None)
+        if window is None or window._closing or tab not in window.tabs:
+            return
+        if tab is window.tabs[window.current_tab_index] and said(done):
+            window.status_bar.showMessage(said(done), 3000)
 
     def console_message(self, level, message, line, source):
         """Steed's own messages from scripts it runs in pages go to Steed."""

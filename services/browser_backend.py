@@ -162,6 +162,13 @@ class TaskPage(webengine.Page):
     def script_prompt(self, origin, message, default):
         return False, ""
 
+    def cookie_banner_settings(self):
+        """Agents' own pages follow Settings → Cookie banners → agents."""
+        from browser.cookie_banners import mode_for
+
+        config = getattr(self, "browser_config", None)
+        return mode_for(config, agent=True), config
+
 
 REDIRECT_GUARD_SCRIPT = """
 (() => {
@@ -339,6 +346,14 @@ class QtBrowserBackend(QObject):
             self.blocked.emit(task_id, reason)
 
         page = TaskPage(profile, self, grant, report, live=mode == "live")
+        page.browser_config = self.browser_config
+        if owns_profile and mode == "live":
+            from browser import cookie_banners
+
+            cookie_banners.install(
+                profile,
+                cookie_banners.mode_for(self.browser_config, agent=True) != "leave",
+            )
         if owns_profile and mode == "restricted":
             interceptor = TaskRequestInterceptor(
                 grant, report, profile, submission=page.submission

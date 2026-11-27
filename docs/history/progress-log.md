@@ -7,6 +7,23 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Choices, and bring your own — November 26, 2026.** From a hands-on test of
+open-source tools, the ones that earned a place, each as a choice:
+- cookie banners: Reject (default), Accept or Leave them, with DuckDuckGo's
+  autoconsent; a separate choice for agents' own pages, sites to skip and your
+  own rules file;
+- tracking rules: Steed's short list, ClearURLs' site rules or your own file;
+- reader engines: Defuddle (default), Readability or Steed's own, for Reader
+  View, Read Aloud, the reading list and what agents read (as Markdown);
+- Read Aloud: sentences don't break after Dr. or U.S.; links and prices are
+  said naturally; any of the desktop's voices or your own speech service;
+- Find a Page I Saw by meaning with your own embeddings service;
+- agents read PDF tabs, get compact page snapshots (3-9 times smaller), and
+  can see and propose changes to everything you've customized; settings
+  proposals cover every preference but agents', with weakening ones marked;
+- a second Steed on its own data folder (`--data-dir`), for a copy you or your
+  agent changed.
+
 **Safety and loose ends — November 25, 2026.**
 - an error in one part of Steed no longer ends Steed: it is printed and kept
   in errors.log, the agent input shield fails closed, and the test suite

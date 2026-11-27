@@ -13,13 +13,15 @@ The road to a public release is the [release plan](docs/RELEASE_PLAN.md).
 
 - **Everyday browser: usable daily.** Tabs, groups and split view, profiles and
   incognito, passwords and passkeys, bookmarks and history (with import), reader
-  view, translation, dictation, spell check, ad blocking and safe browsing,
-  Chrome (Manifest V3) extensions, site apps, printing. Linux only, run from
-  source.
+  view, translation, dictation, read aloud, spell check, ad blocking, safe
+  browsing and cookie banners answered for you, Chrome (Manifest V3)
+  extensions, site apps, printing. Linux only, run from source.
 - **Customization: broad.** Lumen (Steed's look) and every colour, font and
   motion setting, `steed:style` themes and CSS, user scripts, panel apps, an
   editable New Tab and Welcome, a rearrangeable toolbar and menus, custom
-  shortcuts.
+  shortcuts. Where there is more than one good way, a choice and room for
+  your own: reader engines, tracking rules, cookie banners, Read Aloud voices,
+  dictation, embeddings for finding pages; a second Steed on its own data.
 - **Agents: working, still growing.** Any assistant: a sidebar for models
   Steed runs itself (local, or any OpenAI-compatible API with your own key),
   Codex, Claude Code and ACP agents (Claude Code and Codex chats can continue

@@ -195,6 +195,9 @@ class ProfileRegistry(QObject):
         configure_web_settings(profile.settings())
         self.downloads.attach(profile, "search")
         self.adblock.attach(profile)
+        from browser import cookie_banners
+
+        cookie_banners.install(profile, cookie_banners.wanted(self.config))
         self.search_profile = profile
         self._spell_profile(profile)
         self.prepare_inspection("search", profile)
@@ -609,6 +612,9 @@ class ProfileRegistry(QObject):
         privacy.install_fingerprint_guard(
             profile, bool(self.config.get("resist_fingerprinting", False))
         )
+        from browser import cookie_banners
+
+        cookie_banners.install(profile, cookie_banners.wanted(self.config))
         self.user_scripts(name).install(profile)
         self.downloads.attach(profile, name)
         self.adblock.attach(profile)
@@ -740,8 +746,12 @@ class ProfileRegistry(QObject):
         secure_dns.apply(self.config)
 
         guard = bool(self.config.get("resist_fingerprinting", False))
+        from browser import cookie_banners
+
+        banners = cookie_banners.wanted(self.config)
         for profile in (*self.profiles.values(), self.search_profile):
             privacy.install_fingerprint_guard(profile, guard)
+            cookie_banners.install(profile, banners)
         override = self.config.get("user_agent_override", "").strip()
         for name, profile in {**self.profiles, "search": self.search_profile}.items():
             profile.setHttpUserAgent(override or self.defaults[name])
