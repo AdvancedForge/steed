@@ -630,6 +630,7 @@ class HtmlDialog(QDialog):
                 "expand",
                 "activate",
                 "move",
+                "menu",
             ) and isinstance(obj, (QListWidget, QTableWidget, QTreeWidget)):
                 item = self.objects.get(command.get("item"))
                 if item is None or sip.isdeleted(item):
@@ -668,6 +669,24 @@ class HtmlDialog(QDialog):
                         obj.model().moveRow(
                             QModelIndex(), row, QModelIndex(), target + (value > 0)
                         )
+                elif action == "menu":
+                    # The row right-clicked becomes the selection (unless it
+                    # already is), then the list's own menu opens at the mouse.
+                    if not item.isSelected():
+                        flag = (
+                            QItemSelectionModel.SelectionFlag.Rows
+                            | QItemSelectionModel.SelectionFlag.ClearAndSelect
+                        )
+                        obj.setCurrentItem(item, flag) if not isinstance(
+                            obj, QTreeWidget
+                        ) else obj.setCurrentItem(item, 0, flag)
+                    if (
+                        obj.contextMenuPolicy()
+                        == Qt.ContextMenuPolicy.CustomContextMenu
+                    ):
+                        from PyQt6.QtCore import QPoint
+
+                        obj.customContextMenuRequested.emit(QPoint(0, 0))
                 elif action in ("select", "activate"):
                     flag = QItemSelectionModel.SelectionFlag.Rows | (
                         QItemSelectionModel.SelectionFlag.Toggle

@@ -201,10 +201,12 @@ class HistoryDialog(HtmlSettingsDialog):
         self.search.setAccessibleName("Search history")
         self.search.textChanged.connect(self.refresh)
         body.addWidget(self.search)
-        body.addWidget(QLabel("Newest first."))
-        self.items = QTableWidget(0, 2)
+        body.addWidget(QLabel("Newest first. Right-click a page for more."))
+        self.items = QTableWidget(0, 3)
         self.items.setProperty("empty", "No history yet. Pages you visit appear here.")
-        self.items.setHorizontalHeaderLabels(["Page", "Address"])
+        self.items.setHorizontalHeaderLabels(["When", "Page", "Address"])
+        self.items.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.items.customContextMenuRequested.connect(lambda _: self.row_menu())
         self.items.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.items.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.items.itemDoubleClicked.connect(lambda _: self.open_selected())
@@ -214,6 +216,7 @@ class HistoryDialog(HtmlSettingsDialog):
         for text, callback in (
             ("Open selected", self.open_selected),
             ("Copy address", self.copy_selected),
+            ("Remove from history", self.remove_selected),
             ("Clear history…", parent._clear_browsing_history),
             ("Describe it instead…", parent.find_in_history),
         ):
@@ -222,8 +225,8 @@ class HistoryDialog(HtmlSettingsDialog):
             row.addWidget(button)
             made.append(button)
         body.addLayout(row)
-        needs_selection(self.items, made[:2])
-        needs_rows(self.items, made[2:])
+        needs_selection(self.items, made[:3])
+        needs_rows(self.items, made[3:])
         history.changed.connect(self.refresh)
         self.finished.connect(lambda _: history.changed.disconnect(self.refresh))
         self.refresh()
@@ -240,7 +243,7 @@ class HistoryDialog(HtmlSettingsDialog):
         for entry in entries:
             row = self.items.rowCount()
             self.items.insertRow(row)
-            for column, value in enumerate((entry.title, entry.url)):
+            for column, value in enumerate((when(entry.time), entry.title, entry.url)):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, entry.url)
                 self.items.setItem(row, column, item)
@@ -258,6 +261,53 @@ class HistoryDialog(HtmlSettingsDialog):
     def copy_selected(self):
         if url := self.selected():
             QApplication.clipboard().setText(url)
+
+    def remove_selected(self):
+        if url := self.selected():
+            self.history.remove(url)
+
+    def row_menu(self):
+        """Right-click on a page: open it, copy it or remove it."""
+        url = self.selected()
+        if not url:
+            return
+        from PyQt6.QtGui import QCursor
+        from PyQt6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        menu.addAction("Open", self.open_selected)
+        window = self.parent()
+        if hasattr(window, "open_in_background"):
+            menu.addAction("Open in New Tab", lambda: window._new_tab(url=url))
+        menu.addAction("Copy Address", self.copy_selected)
+        menu.addSeparator()
+        menu.addAction("Remove from History", self.remove_selected)
+        menu.popup(QCursor.pos())
+        self.menu = menu
+
+
+def when(seconds):
+    """Today 14:32, Yesterday 09:10, Mon 24 Nov 18:00, or 3 Mar 2025."""
+    import time as clock
+
+    if not seconds:
+        return ""
+    moment = clock.localtime(seconds)
+    today = clock.localtime()
+    hour = clock.strftime("%H:%M", moment)
+    days = (
+        clock.mktime(today[:3] + (0, 0, 0, 0, 0, -1))
+        - clock.mktime(moment[:3] + (0, 0, 0, 0, 0, -1))
+    ) // 86400
+    if days == 0:
+        return f"Today {hour}"
+    if days == 1:
+        return f"Yesterday {hour}"
+    if days < 7:
+        return clock.strftime("%a %-d %b ", moment) + hour
+    if moment.tm_year == today.tm_year:
+        return clock.strftime("%-d %b ", moment) + hour
+    return clock.strftime("%-d %b %Y", moment)
 
 
 def controller(window, name, source_tab=None):

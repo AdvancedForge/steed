@@ -98,6 +98,18 @@ class BrowsingHistory(QObject):
         self._changed()
         self.flush()
 
+    def remove(self, url: str) -> bool:
+        """Forget one page (and any text remembered from it)."""
+        if self._closed or url not in self._entries:
+            return False
+        del self._entries[url]
+        forget = getattr(self.memory, "forget_url", None)
+        if forget is not None:
+            forget(url)
+        self._changed()
+        self.flush()
+        return True
+
     def remove_since(self, since: float) -> list[str]:
         """Forget pages visited at or after since (0: everything); their URLs."""
         if self._closed:

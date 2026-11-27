@@ -79,7 +79,7 @@ td, th { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align
 td { white-space: pre-wrap; overflow-wrap: break-word; }
 td.long { overflow-wrap: anywhere; min-width: 16ch; }
 tbody tr:last-child td { border-bottom: 0; }
-tr[aria-selected=true] { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+tr[aria-selected=true] { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: inset 3px 0 var(--accent); }
 tbody tr { cursor: pointer; } tbody tr:hover { background: var(--row-hover); }
 tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .row-button { min-height: 24px; padding: 0 7px; margin-right: 6px; border-radius: 6px; font-size: 12px; }

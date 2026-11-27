@@ -128,8 +128,11 @@ class BookmarksDialog(HtmlSettingsDialog):
             lambda _: self.open_selected() if self.open_url else self.edit()
         )
         self.items.setToolTip(
-            "Use the arrow keys to select a bookmark, then Enter to open."
+            "Use the arrow keys to select a bookmark, then Enter to open. "
+            "Right-click one for more."
         )
+        self.items.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.items.customContextMenuRequested.connect(lambda _: self.row_menu())
         for key in ("Return", "Enter"):
             shortcut = QShortcut(QKeySequence(key), self.items)
             shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
@@ -219,9 +222,30 @@ class BookmarksDialog(HtmlSettingsDialog):
             self.items.addItem(item)
             if bookmark["id"] == identity:
                 self.items.setCurrentItem(item)
+        count = f"{self.items.count()} of {len(self.bookmarks)} bookmarks"
         self.status.setText(
-            f"{self.items.count()} of {len(self.bookmarks)} bookmarks • profile {self.profile}"
+            count if self.profile == "global" else f"{count} in this profile"
         )
+
+    def row_menu(self):
+        """Right-click on a bookmark: open, edit, copy or remove it."""
+        bookmark = self.selected()
+        if bookmark is None:
+            return
+        from PyQt6.QtGui import QCursor
+        from PyQt6.QtWidgets import QApplication, QMenu
+
+        menu = QMenu(self)
+        if self.open_url is not None:
+            menu.addAction("Open", self.open_selected)
+        menu.addAction("Edit…", self.edit)
+        menu.addAction(
+            "Copy Address", lambda: QApplication.clipboard().setText(bookmark["url"])
+        )
+        menu.addSeparator()
+        menu.addAction("Remove", self.remove)
+        menu.popup(QCursor.pos())
+        self.menu = menu
 
     def selected(self):
         item = self.items.currentItem()

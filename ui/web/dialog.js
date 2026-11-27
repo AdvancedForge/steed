@@ -130,6 +130,8 @@ function update(entry, node) {
       const tr = document.createElement('tr'); tr.dataset.row = row.id; tr.tabIndex = row.selected || (!node.rows.some(item => item.selected) && row === node.rows[0]) ? 0 : -1; tr.setAttribute('aria-selected', row.selected);
       const send = (action, value, additive = false) => command(action, node.id, value, {item: row.id, additive});
       tr.onclick = event => send('select', null, event.ctrlKey || event.metaKey); tr.ondblclick = () => send('activate');
+      // Right-click: the row's menu (Open, Copy, Remove…) where the list has one.
+      tr.oncontextmenu = event => { event.preventDefault(); send('menu'); };
       tr.onkeydown = event => {
         if (event.key === 'Enter') { event.preventDefault(); send('activate'); }
         else if (event.key === ' ') { event.preventDefault(); send('select'); }

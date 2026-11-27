@@ -99,6 +99,13 @@ class PageMemory:
             for u, t, s, v, x in rows
         ]
 
+    def forget_url(self, url):
+        """Forget the text remembered from one page."""
+        if self.db is None:
+            return
+        with self.db:
+            self.db.execute("DELETE FROM pages WHERE url = ?", (url,))
+
     def text_of(self, url):
         """A remembered page's text, or ""."""
         if self.db is None:
