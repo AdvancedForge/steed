@@ -90,6 +90,9 @@ CONSOLE_LEVELS = {
 class Page(QWebEnginePage):
     """A web page. Subclasses override the Steed hooks below."""
 
+    # How Steed last answered a cookie banner here (browser.cookie_banners).
+    cookie_banner = None
+
     def acceptNavigationRequest(self, url, kind, main_frame):
         return self.navigation_allowed(url, NAVIGATIONS.get(kind, "other"), main_frame)
 

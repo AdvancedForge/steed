@@ -40,7 +40,9 @@ class AgentPageTests(unittest.TestCase):
     def test_agents_pages_reject_even_when_you_answer_yourself(self):
         page = self.open("reject")
         self.assertEqual(page.cookie_banner_settings()[0], "reject")
-        self.wait_for(lambda: page.title() == "rejected")
+        # The banner goes when its button is clicked; autoconsent reports
+        # after checking it worked.
+        self.wait_for(lambda: page.title() == "rejected" and page.cookie_banner)
         self.assertEqual(page.cookie_banner["answer"], "reject")
 
     def test_same_as_yours_leaves_them(self):

@@ -210,10 +210,14 @@ class LivePageTests(unittest.TestCase):
         return page
 
     def wait_for_answer(self, page, seconds=WAIT_SECONDS):
+        """The page's title once a button was clicked and autoconsent said
+        so (it reports after checking it worked)."""
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             self.app.processEvents()
-            if page.title() in ("rejected", "accepted", "pwned"):
+            if page.title() == "pwned" or (
+                page.title() in ("rejected", "accepted") and page.answered
+            ):
                 break
             time.sleep(0.01)
         return page.title()
