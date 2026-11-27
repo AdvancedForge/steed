@@ -542,6 +542,19 @@ description's words (without fillers such as "that article last week") are
 also looked up in the text of pages you read, on this computer; those
 matches show at once and nothing more is sent.
 
+**Find with** in the same window chooses how: **Your assistant**, as above, or
+**Your embeddings service**, which searches by meaning without an assistant.
+Give the address of any service that answers OpenAI's `/v1/embeddings`
+request (Ollama at `http://localhost:11434/v1`, LM Studio, llama.cpp's server
+or LocalAI on this computer, or a hosted one over https) and a model, such as
+`nomic-embed-text` or `bge-small`; a hosted service's key goes in the desktop
+keyring. Steed sends your description and each page's title and site (with
+the start of its text when Remember what I read is on, under the same
+site rules) and ranks the pages itself. Each page is embedded once; the
+vectors stay in `embeddings.sqlite` in Steed's data folder. In a test on 487
+real pages, a small model (bge-small) put the page someone described first
+93% of the time, against 80% for keyword search.
+
 ### Split view and sites in a profile
 
 **View → Split View with Next Tab**, or **Show Beside Current Tab** in a tab's

@@ -99,6 +99,15 @@ class PageMemory:
             for u, t, s, v, x in rows
         ]
 
+    def text_of(self, url):
+        """A remembered page's text, or ""."""
+        if self.db is None:
+            return ""
+        row = self.db.execute(
+            "SELECT text FROM pages WHERE url = ? LIMIT 1", (url,)
+        ).fetchone()
+        return row[0] if row else ""
+
     def count(self):
         return (
             self.db.execute("SELECT count(*) FROM pages").fetchone()[0]

@@ -2688,6 +2688,10 @@ class BrowserWindow(QMainWindow):
         from ui.assistant_choice import ensure
         from ui.history_find import FindInHistoryDialog
 
+        if self.config.get("find_page_with", "assistant") == "embeddings":
+            self._present_dialog(FindInHistoryDialog(self, None), modal=False)
+            return
+
         def chosen(command):
             if self._closing:
                 return
