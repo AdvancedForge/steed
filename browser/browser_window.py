@@ -675,7 +675,7 @@ class BrowserWindow(QMainWindow):
         agents_menu = self._layout_menus["agents"]
         new_tab_action = QAction("New Tab", self)
         new_tab_action.setShortcut(QKeySequence("Ctrl+T"))
-        new_tab_action.triggered.connect(lambda: self._new_tab())
+        new_tab_action.triggered.connect(self.new_tab_from_you)
         tabs_menu.addAction(new_tab_action)
         self.saved_groups_menu = tabs_menu.addMenu("Saved Groups")
         self.workspaces_menu = tabs_menu.addMenu("Workspaces")
@@ -1401,7 +1401,7 @@ class BrowserWindow(QMainWindow):
 
             strip = NativeTabStrip
         self.tab_bar = strip(self.chrome_column)
-        self.tab_bar.new_tab_requested.connect(self._new_tab)
+        self.tab_bar.new_tab_requested.connect(self.new_tab_from_you)
         self.tab_bar.tab_changed.connect(self._switch_tab)
         self.tab_bar.tab_close_requested.connect(self._close_tab)
         self.tab_bar.tab_moved.connect(self._on_tab_moved)
@@ -4047,6 +4047,14 @@ class BrowserWindow(QMainWindow):
             self.addAction(action)
 
     # ---------- Tab handling ----------
+    def new_tab_from_you(self):
+        """Ctrl+T or +: a New Tab at the end of the strip, as in other
+        browsers, with the cursor in the address bar to type at once."""
+        self._new_tab(index=len(self.tabs))
+        self.address_bar.focus_address()
+        # Once the page is shown, the address bar still has the keyboard.
+        QTimer.singleShot(0, self.address_bar.focus_address)
+
     def _new_tab(
         self,
         url: str | None = None,
