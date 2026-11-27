@@ -2779,7 +2779,22 @@ class BrowserWindow(QMainWindow):
             label, kind, value = "Ask Agent About Link", "link", link.toString()
         else:
             label, kind, value = "Ask Agent About This Page", "page", ""
-        first = menu.actions()[0] if menu.actions() else None
+        # The agent's items come after the ordinary ones (Back, Reload, Save…),
+        # just before View page source and Inspect.
+        first = next(
+            (
+                a
+                for a in menu.actions()
+                if a.text().replace("&", "").lower()
+                in ("view page source", "inspect", "inspect element")
+            ),
+            None,
+        )
+        if first is not None:
+            index = menu.actions().index(first)
+            if index and menu.actions()[index - 1].isSeparator():
+                first = menu.actions()[index - 1]
+        menu.insertSeparator(first)
         action = QAction(label, menu)
         action.triggered.connect(lambda: self.ask_agent(tab, **{kind: value}))
         menu.insertAction(first, action)
@@ -2828,7 +2843,6 @@ class BrowserWindow(QMainWindow):
             )
             watch.triggered.connect(lambda: self.watch_page(tab))
             menu.insertAction(first, watch)
-        menu.insertSeparator(first)
 
     def run_automation_on_page(self, tab, automation_id):
         """An automation started from the page menu: the page is its {last}."""

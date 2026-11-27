@@ -113,8 +113,17 @@ class AskAgentTests(unittest.TestCase):
         ):
             menu = QMenu()
             menu.addAction("Back")
+            menu.addAction("Reload")
+            menu.addSeparator()
+            menu.addAction("View page source")
+            menu.addAction("Inspect")
             self.window._add_ask_agent_item(menu, self.tab, request)
-            self.assertEqual(menu.actions()[0].text(), label)
+            texts = [a.text() for a in menu.actions()]
+            # Ordinary browsing first; the agent's items before the
+            # developer ones at the end.
+            self.assertEqual(texts[:2], ["Back", "Reload"])
+            self.assertIn(label, texts)
+            self.assertLess(texts.index(label), texts.index("View page source"))
         # With no conversation yet: a new chat starts and the text waits as a draft.
         self.window.ask_agent(self.tab, selection="Anemones and crabs.\nAnd kelp.")
         self.assertEqual(self.sidebar.started, 1)
