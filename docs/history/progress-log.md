@@ -7,6 +7,15 @@ then: modules now live in `browser/`, and the documentation in `docs/`.
 
 ## Rounds since October 25, 2026
 
+**Readable photo colours — November 27, 2026.**
+- colours taken from a New Tab photo are checked for contrast: text, links
+  and help text 4.5:1, icons 3:1, on Steed's pages and in the bars. Of 4,810
+  checks over 185 photo colours, 2,391 fell short before and none do now;
+- dark pages and the dark toolbar keep the photo's hue at a safe depth (a
+  bright photo used to make bright cards under light text);
+- text on accent buttons is white or near-black, whichever reads
+  (`--on-accent`), also on Steed's own dark theme.
+
 **Notifications and a few questions — November 26, 2026.**
 - notifications where you want them (your desktop, a note inside Steed, or
   none) and as often (every time, at most one every 15 minutes or an hour, or

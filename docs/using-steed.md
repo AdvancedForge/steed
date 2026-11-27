@@ -830,6 +830,16 @@ pages match the browser's colours* is on for everyone (it replaced the older
 "pages take their colours from the photo"). Colours you choose by hand for
 pages or the browser still win, and the matching can be turned off.
 
+Whatever the photo, what is worked out from it stays readable. Light pages
+take a pale wash of the photo's colour; dark pages and the dark toolbar take
+its hue at a fixed depth, so a bright or pale photo never makes bright cards
+under light text or a murky bar. The accent is a clear version of the photo's
+hue, moved lighter or darker only as far as needed. In the tests this means
+4.5:1 for text, links and help text (WCAG AA) and 3:1 for icons. Text on accent buttons is white or near-black,
+whichever reads better (`--on-accent` for your own CSS). An accent you chose
+yourself is kept as it is, with readable text on it (`ui/contrast.py`,
+`page_colors` and `tint_colors` in `ui/chrome_style.py`).
+
 ### Browser colours
 
 **Style → Browser colours** lists every colour of the browser around pages:

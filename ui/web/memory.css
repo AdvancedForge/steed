@@ -4,7 +4,7 @@
 .memory-shell section { background: var(--surface); border: 1px solid var(--border); padding: 24px; border-radius: 16px; margin: 16px 0; }
 .axis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .axis button { padding: 14px 10px; border-radius: 12px; font-weight: 600; }
-.axis button[aria-checked=true] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.axis button[aria-checked=true] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 :root[data-theme="dark"] .axis button[aria-checked=true] { color: #142440; }
 .axis-ends { display: flex; justify-content: space-between; font-size: 12px; margin: 8px 4px 0; }
 .usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }

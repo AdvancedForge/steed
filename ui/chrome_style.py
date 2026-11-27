@@ -65,26 +65,94 @@ def mix(first, second, amount):
     ).name()
 
 
+def accent_from(tint, dark):
+    """A highlight of the picture's hue: vivid enough to notice, at a
+    lightness that suits a light or a dark page (checked for contrast by
+    whoever places it)."""
+    from ui.contrast import from_hsl, hsl
+
+    hue, saturation, lightness = hsl(tint)
+    if saturation > 0.08 and 0.04 < lightness < 0.97:
+        saturation = max(saturation, 0.5)  # A colour, not a grey.
+    lightness = (
+        min(max(lightness, 0.62), 0.78) if dark else min(max(lightness, 0.3), 0.45)
+    )
+    return from_hsl(hue, saturation, lightness)
+
+
 def tint_colors(tint, dark):
     """A toolbar and accent from a picture's colour: a pale (or deep) wash of
-    it, and a stronger version for highlights."""
-    toolbar = mix(tint, "#141414" if dark else "#ffffff", 0.6 if dark else 0.7)
-    accent = mix(tint, "#ffffff" if dark else "#000000", 0.25)
-    return toolbar, accent
+    its hue at a fixed lightness, so a bright or dark picture never makes a
+    murky bar, and a highlight of it that stands out on the bar."""
+    from ui.contrast import LARGE, from_hsl, hsl, readable
+
+    hue, saturation, _ = hsl(tint)
+    wash = min(saturation, 0.6)
+    if dark:
+        toolbar = from_hsl(hue, wash * 0.7, 0.19)
+    else:
+        toolbar = from_hsl(hue, wash * 0.8, 0.89)
+    return toolbar, readable(accent_from(tint, dark), toolbar, LARGE)
+
+
+def page_colors(tint, dark, accent=None):
+    """Steed's page colours (CSS variables) from a picture's colour: light
+    pages keep a pale wash of it; dark pages its hue at safe depths. Accent,
+    help text and the text on accent buttons are checked to read (4.5:1).
+    accent: one the person chose (kept as it is)."""
+    from ui.contrast import LARGE, TEXT, from_hsl, hsl, readable, text_on, under_text
+
+    if dark:
+        hue, saturation, _ = hsl(tint)
+        wash = min(saturation, 0.6)
+        ink = "#e8edf6"
+        palette = {
+            "bg": from_hsl(hue, wash * 0.85, 0.13),
+            "surface": from_hsl(hue, wash * 0.75, 0.17),
+            "soft": from_hsl(hue, wash * 0.8, 0.22),
+            "border": from_hsl(hue, wash * 0.6, 0.31),
+        }
+    else:
+        ink = "#202b40"
+        shades = {"bg": 0.9, "surface": 0.97, "soft": 0.84, "border": 0.72}
+        palette = {key: mix(tint, "#ffffff", amount) for key, amount in shades.items()}
+    if accent is None:
+        accent = readable(
+            accent_from(tint, dark), [palette["bg"], palette["surface"]], TEXT
+        )
+        accent = under_text(readable(accent, palette["soft"], LARGE), palette["bg"])
+    palette["accent"] = accent
+    palette["accent-hover"] = (
+        mix(accent, "#ffffff", 0.18) if dark else mix(accent, "#000000", 0.15)
+    )
+    palette["on-accent"] = text_on(accent)
+    palette["muted"] = readable(
+        mix(ink, palette["bg"], 0.4), [palette["bg"], palette["surface"]], TEXT
+    )
+    return palette
 
 
 def chrome_colors(toolbar, dark, accent=None, glass=False):
-    """Derive every toolbar colour from the toolbar background."""
+    """Derive every toolbar colour from the toolbar background; secondary
+    text and the accent are kept readable on it."""
+    from ui.contrast import LARGE, TEXT, readable, text_on, under_text
+
     ink = "#e8edf6" if dark else "#202b40"
+    field = mix(toolbar, "#000000" if dark else "#ffffff", 0.35 if dark else 0.7)
+    accent = under_text(
+        readable(accent or ("#8caaff" if dark else "#355ed6"), [toolbar, field], LARGE),
+        toolbar,
+    )
     return {
         "toolbar": toolbar,
         "ink": ink,
-        "muted": mix(ink, toolbar, 0.45),
-        "field": mix(toolbar, "#000000" if dark else "#ffffff", 0.35 if dark else 0.7),
+        "muted": readable(mix(ink, toolbar, 0.45), toolbar, TEXT),
+        "field": field,
         "hover": mix(toolbar, ink, 0.1),
         "pressed": mix(toolbar, ink, 0.18),
         "border": mix(toolbar, ink, 0.16),
-        "accent": accent or ("#8caaff" if dark else "#355ed6"),
+        "accent": accent,
+        "on_accent": text_on(accent),
         "strip": mix(toolbar, "#000000", 0.28 if dark else 0.1),
         "menu": toolbar,
         "dark": dark,
@@ -101,6 +169,10 @@ def browser_colors(toolbar, dark, accent=None, glass=False, chosen=None):
     )
     colors["card"] = colors["field"]
     colors.update(chosen)
+    if "accent" in chosen:
+        from ui.contrast import text_on
+
+        colors["on_accent"] = text_on(colors["accent"])
     return colors
 
 
@@ -137,7 +209,7 @@ def toolbar_stylesheet(colors, density="comfortable"):
   border: 1px solid transparent; border-radius: {radius}px;
   padding: {3 if compact else 5}px 12px; min-height: {button - 8}px;
   selection-background-color: {colors["accent"]};
-  selection-color: {"#142440" if colors["dark"] else "#ffffff"};
+  selection-color: {colors.get("on_accent") or ("#142440" if colors["dark"] else "#ffffff")};
 }}
 #SteedToolbar QLineEdit:hover {{ border-color: {colors["border"]}; }}
 #SteedToolbar QLineEdit:focus {{ border: 2px solid {colors["accent"]}; padding: {2 if compact else 4}px 11px; }}

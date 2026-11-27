@@ -79,7 +79,7 @@
 .workspace .composer-box textarea { min-height: 38px; max-height: 220px; padding: 9px 10px; resize: none; line-height: 1.45; }
 .workspace .send { flex: none; display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0; border-radius: 50%;
   border: 0; background: var(--soft); color: var(--muted); box-shadow: none; }
-.workspace .send.ready { background: var(--accent); color: var(--surface); }
+.workspace .send.ready { background: var(--accent); color: var(--on-accent); }
 .workspace .send.ready:hover:enabled { background: var(--accent-hover); }
 .workspace .send:disabled { opacity: .5; }
 .workspace .task-actions { align-items: center; gap: 16px; margin-top: 4px; padding: 0 6px; }

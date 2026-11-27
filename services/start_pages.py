@@ -996,7 +996,12 @@ class StartPages(QObject):
             toolbar = chosen.get("toolbar", toolbar)
             accent = chosen.get("accent", accent)
             # html:root[data-theme] outranks the theme's own dark palette.
-            css += f"html:root[data-theme] {{ --accent: {accent}; }}"
+            from ui.contrast import text_on
+
+            css += (
+                f"html:root[data-theme] {{ --accent: {accent};"
+                f" --on-accent: {text_on(accent)}; }}"
+            )
             if dark:  # The search box and panel in the browser's colour too.
                 css += (
                     f"html:root[data-theme] {{ --surface: {toolbar};"
@@ -1605,7 +1610,7 @@ body.glass .browser-menu .customize summary.row { color: inherit; }
 .pill { display: inline-block; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border);
   color: var(--ink); text-decoration: none; font-size: 13px; }
 .pill:hover { background: var(--soft); }
-.pill.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.pill.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .swatches { display: grid; grid-template-columns: repeat(6, 28px); gap: 8px; }
 .swatch { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); }
 .swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1712,7 +1717,7 @@ html:not([data-effects=minimal]) body::before { transition: background-image .9s
 .tile.colour .tile-art { background: conic-gradient(from 200deg, #1f3a5f, #2f5d50, #8a6d1f, #7a2e2e, #5b3a6b, #1f3a5f); }
 .tile.image .tile-art { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink) 10%, transparent) 0 6px, transparent 6px 12px); }
 .quick, .look, .swatches { margin-top: 12px; }
-.panel .pill.primary, .browser-menu .panel .pill.primary { background: var(--accent); color: var(--bg); border-color: transparent; font-weight: 600; }
+.panel .pill.primary, .browser-menu .panel .pill.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
 .more-options { margin-top: 14px; border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding-top: 10px; }
 .more-options > summary { cursor: pointer; list-style: none; color: var(--muted); font-size: 13px; font-weight: 500; }
 .more-options > summary::-webkit-details-marker { display: none; }
@@ -1758,7 +1763,7 @@ html:has(body.onboarding) { scrollbar-gutter: stable; }
 .step .tile { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 14px; }
 .step .tile-label { display: flex; align-items: center; gap: 8px; }
 .step .chosen { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
-  background: var(--accent); color: var(--bg); }
+  background: var(--accent); color: var(--on-accent); }
 .step .tile-art { display: block; aspect-ratio: 16 / 9; border-radius: 16px; border: 2px solid transparent;
   background: var(--surface); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent);
   transition: border-color .2s, transform .35s cubic-bezier(.34, 1.45, .64, 1); }
@@ -1768,7 +1773,7 @@ html:has(body.onboarding) { scrollbar-gutter: stable; }
 .step .tile.on .tile-art { border-color: var(--bg);
   box-shadow: 0 0 0 3px var(--accent), 0 14px 30px -18px var(--accent); }
 .step .tile.on .tile-art::after { content: "✓"; position: absolute; top: 10px; right: 10px; display: grid;
-  place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--bg);
+  place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--on-accent);
   font-size: 15px; font-weight: 800; }
 .step .tile:not(.on) .tile-art { opacity: .78; }
 .step .tile:not(.on):hover .tile-art { opacity: 1; }
@@ -1799,7 +1804,7 @@ html:has(body.onboarding) { scrollbar-gutter: stable; }
   font-size: 14px; font-weight: 600; background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); transition: border-color .2s, background-color .2s; }
 .step .answer:hover { border-color: var(--accent); }
-.step .answer.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.step .answer.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .step p.sets { font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
 .step .tile.photo .tile-art { background: linear-gradient(160deg, #f3a66b, #6a4c93 60%, #1d3557); }
 .step .tile.colour .tile-art { background: conic-gradient(from 200deg, #1f3a5f, #2f5d50, #8a6d1f, #7a2e2e, #5b3a6b, #1f3a5f); }

@@ -48,7 +48,7 @@ button.control:hover:enabled, .table-paging button:hover:enabled { background: v
 button.control[data-tone=danger] { color: var(--error); border-color: color-mix(in srgb, var(--error) 35%, var(--border)); }
 button.control[data-tone=danger]:hover:enabled { background: var(--error-bg); border-color: var(--error); }
 button.control[data-tone=quiet] { border-color: transparent; color: var(--muted); }
-button.control.primary { background: var(--accent); border-color: transparent; color: var(--bg); padding: 6px 18px; }
+button.control.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); padding: 6px 18px; }
 button.control.primary:hover:enabled { background: var(--accent-hover, var(--accent)); border-color: transparent; }
 button.control:disabled { opacity: .45; border-color: var(--border); }
 /* Full pages close with the header's ✕; their own Close buttons repeat it. */

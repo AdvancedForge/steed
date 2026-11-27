@@ -350,17 +350,22 @@ class PageStyle(QObject):
         return self.config.dark_mode if theme == "system" else theme == "dark"
 
     def css(self, profile):
+        from ui.contrast import text_on
+
         value = self.get(profile)
         accent = (
             ':root, :root[data-theme="dark"] { --accent: '
             + value["accent"]
             + "; --accent-hover: "
             + value["accent"]
+            + "; --on-accent: "
+            + text_on(value["accent"])
             + "; }\n"
         )
-        colors = "; ".join(
-            "--" + key + ": " + color for key, color in value["colors"].items()
-        )
+        chosen = dict(value["colors"])
+        if "accent" in chosen and "on-accent" not in chosen:
+            chosen["on-accent"] = text_on(chosen["accent"])
+        colors = "; ".join("--" + key + ": " + color for key, color in chosen.items())
         return (
             (accent if value["accent"] != DEFAULTS["accent"] else "")
             + lumen_css(value)
@@ -380,43 +385,25 @@ class PageStyle(QObject):
 
         if sip.isdeleted(pages):  # Shutting down: pages render no more.
             return ""
-        from ui.chrome_style import mix, tint_colors
+        from ui.chrome_style import page_colors
+        from ui.contrast import text_on
 
         dark = self.dark(profile)
         photo = pages.theme_tint(profile)
         tint = photo or value["chrome"].get("toolbar")
+        chosen = value["chrome"].get("accent")
         if not tint:
             if not dark:  # The light pages already match the light browser.
-                accent = value["chrome"].get("accent")
                 return (
-                    f':root, :root[data-theme="dark"] {{ --accent: {accent}; }}\n'
-                    if accent
+                    f':root, :root[data-theme="dark"] {{ --accent: {chosen};'
+                    f" --on-accent: {text_on(chosen)}; }}\n"
+                    if chosen
                     else ""
                 )
             tint = DARK_TOOLBAR  # The dark browser's own neutral.
-        accent = value["chrome"].get("accent") or (
-            tint_colors(tint, dark)[1] if photo else DARK_ACCENT if dark else None
-        )
-        accent = accent or tint_colors(tint, dark)[1]
-        if dark:
-            # Surfaces and lines lift toward white, so cards, fields and
-            # buttons keep visible edges on the dark page.
-            ink = "#e8edf6"
-            palette = {
-                "bg": mix(tint, "#101010", 0.5),
-                "surface": mix(tint, "#ffffff", 0.04),
-                "soft": mix(tint, "#ffffff", 0.09),
-                "border": mix(tint, "#ffffff", 0.18),
-            }
-            hover = mix(accent, "#ffffff", 0.18)
-        else:
-            ink, base = "#202b40", "#ffffff"
-            shades = {"bg": 0.9, "surface": 0.97, "soft": 0.84, "border": 0.72}
-            palette = {key: mix(tint, base, amount) for key, amount in shades.items()}
-            hover = mix(accent, "#000000", 0.15)
-        palette.update(
-            accent=accent, **{"accent-hover": hover}, muted=mix(ink, palette["bg"], 0.4)
-        )
+        if not chosen and not photo and dark:
+            chosen = DARK_ACCENT  # Steed's own, not a grey from the neutral.
+        palette = page_colors(tint, dark, chosen)
         return (
             ':root, :root[data-theme="dark"] {'
             + "; ".join(f"--{key}: {color}" for key, color in palette.items())
