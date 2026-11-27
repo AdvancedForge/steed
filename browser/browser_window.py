@@ -6916,17 +6916,12 @@ class BrowserWindow(QMainWindow):
         if not 0 <= index < len(self.tabs):
             return
         tab = self.tabs[index]
+        web = tab.url().scheme() in ("http", "https")
         menu = QMenu(self)
         menu.addAction("New Tab to the Right", lambda: self._new_tab(index=index + 1))
         menu.addSeparator()
         menu.addAction("Reload", lambda: self._reload_tab(tab))
         menu.addAction("Duplicate", lambda: self._duplicate_tab(tab))
-        menu.addAction(
-            "Save to Reading List", lambda: self.save_to_reading_list(tab)
-        ).setEnabled(tab.url().scheme() in ("http", "https"))
-        menu.addAction(
-            "Duplicate with History", lambda: self.duplicate_with_history(tab)
-        ).setEnabled(not tab.workspace_name)
         menu.addAction(
             "Unpin Tab" if tab.pinned else "Pin Tab",
             lambda: self._set_pinned(tab, not tab.pinned),
@@ -6936,61 +6931,11 @@ class BrowserWindow(QMainWindow):
             "Unmute Tab" if muted else "Mute Tab",
             lambda: tab in self.tabs and self._toggle_tab_mute(self.tabs.index(tab)),
         )
-        keep = menu.addAction(
-            "Keep This Tab Loaded",
-            lambda checked=False: self._set_keep_loaded(tab, checked),
-        )
-        keep.setCheckable(True)
-        keep.setChecked(getattr(tab, "keep_loaded", False))
         copy = menu.addAction(
             "Copy Link Address",
             lambda: QApplication.clipboard().setText(tab.url().toString()),
         )
         copy.setEnabled(not tab.workspace_name and not tab.url().isEmpty())
-        clean = menu.addAction("Copy Clean Link", lambda: self.copy_clean_link(tab))
-        clean.setEnabled(tab.url().scheme() in ("http", "https"))
-        menu.addAction(
-            "Send to Your Phone…", lambda: self.send_to_phone(tab)
-        ).setEnabled(tab.url().scheme() in ("http", "https"))
-        destinations = [
-            name
-            for name in self.profile_manager.list_profiles()
-            if name != self.profile_manager.current_profile_name
-        ]
-        if self.profile_manager.current_profile_name != "search":
-            destinations.append("search")
-        send = menu.addMenu("Send Tab to Profile")
-        send.setEnabled(
-            bool(destinations)
-            and not tab.workspace_name
-            and tab.url().scheme() in ("http", "https")
-        )
-        for name in destinations:
-            send.addAction(
-                "Incognito window" if name == "search" else name,
-                lambda name=name: self.send_tab_to_profile(tab, name),
-            )
-        beside = menu.addAction(
-            "Show Beside Current Tab", lambda: self.show_beside(tab)
-        )
-        beside.setEnabled(
-            tab is not self.tabs[self.current_tab_index] and not tab.workspace_name
-        )
-        movable = len(self.tabs) > 1
-        menu.addAction(
-            "Move Tab to New Window", lambda: self._move_tab(tab)
-        ).setEnabled(movable)
-        others = self._same_profile_windows()
-        if others:
-            destinations = menu.addMenu("Move Tab to Window")
-            destinations.setEnabled(movable)
-            for other in others:
-                current = other.tabs[other.current_tab_index] if other.tabs else None
-                label = (current.title() if current else "") or "Window"
-                destinations.addAction(
-                    f"{label[:40]} ({len(other.tabs)} tabs)",
-                    lambda other=other: self._move_tab(tab, other),
-                )
         menu.addSeparator()
         groups = menu.addMenu("Add Tab to Group")
         groups.setEnabled(not tab.pinned)
@@ -7010,6 +6955,20 @@ class BrowserWindow(QMainWindow):
                 "Collapse / Expand Group",
                 lambda: self._toggle_named_group(tab.group),
             )
+        movable = len(self.tabs) > 1
+        move = menu.addMenu("Move Tab to Window")
+        move.setEnabled(movable)
+        move.addAction("New Window", lambda: self._move_tab(tab))
+        others = self._same_profile_windows()
+        if others:
+            move.addSeparator()
+        for other in others:
+            current = other.tabs[other.current_tab_index] if other.tabs else None
+            label = (current.title() if current else "") or "Window"
+            move.addAction(
+                f"{label[:40]} ({len(other.tabs)} tabs)",
+                lambda other=other: self._move_tab(tab, other),
+            )
         menu.addSeparator()
         single = len(self.tabs) <= 1
         menu.addAction(
@@ -7022,6 +6981,47 @@ class BrowserWindow(QMainWindow):
         menu.addAction(
             "Close Tabs to the Right", lambda: self._close_tabs_after(tab)
         ).setEnabled(index < len(self.tabs) - 1)
+        menu.addSeparator()
+        # Less everyday: one level down, so Close stays in view.
+        more = menu.addMenu("More")
+        keep = more.addAction(
+            "Keep This Tab Loaded",
+            lambda checked=False: self._set_keep_loaded(tab, checked),
+        )
+        keep.setCheckable(True)
+        keep.setChecked(getattr(tab, "keep_loaded", False))
+        more.addAction(
+            "Save to Reading List", lambda: self.save_to_reading_list(tab)
+        ).setEnabled(web)
+        more.addAction(
+            "Duplicate with History", lambda: self.duplicate_with_history(tab)
+        ).setEnabled(not tab.workspace_name)
+        more.addAction("Copy Clean Link", lambda: self.copy_clean_link(tab)).setEnabled(
+            web
+        )
+        more.addAction(
+            "Send to Your Phone…", lambda: self.send_to_phone(tab)
+        ).setEnabled(web)
+        destinations = [
+            name
+            for name in self.profile_manager.list_profiles()
+            if name != self.profile_manager.current_profile_name
+        ]
+        if self.profile_manager.current_profile_name != "search":
+            destinations.append("search")
+        send = more.addMenu("Send Tab to Profile")
+        send.setEnabled(bool(destinations) and not tab.workspace_name and web)
+        for name in destinations:
+            send.addAction(
+                "Incognito window" if name == "search" else name,
+                lambda name=name: self.send_tab_to_profile(tab, name),
+            )
+        beside = more.addAction(
+            "Show Beside Current Tab", lambda: self.show_beside(tab)
+        )
+        beside.setEnabled(
+            tab is not self.tabs[self.current_tab_index] and not tab.workspace_name
+        )
         reopen = menu.addAction("Reopen Closed Tab", self._restore_closed_tab)
         reopen.setEnabled(self.restore_tab_action.isEnabled())
         self._show_html_menu(menu, position, context=True)
