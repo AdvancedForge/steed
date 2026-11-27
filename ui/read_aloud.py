@@ -2,7 +2,7 @@
 page's article, spoken sentence by sentence, with a small player at the bottom
 of the window: pause, slower, faster, voice, stop.
 
-View → Read Aloud Voice… chooses who speaks: the desktop's voices
+View → Media → Read Aloud Voice… chooses who speaks: the desktop's voices
 (speech-dispatcher, any of its voices; nothing leaves the computer) or your
 own speech service (services.speech_service). Private windows always use the
 desktop's voices.

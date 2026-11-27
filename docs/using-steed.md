@@ -663,7 +663,7 @@ article (as reader view finds it), sentence by sentence. A bar at the bottom
 shows the sentence being read, with **Pause**, **Slower**, **Faster** (kept
 for next time), **Voice** and **Stop**.
 
-**View → Read Aloud Voice…** (also under Settings → Everything) chooses who
+**View → Media → Read Aloud Voice…** (also **Voice** on the bar, and Settings → Everything) chooses who
 reads:
 
 - **The desktop's voices** (the default): speech-dispatcher, with any of its

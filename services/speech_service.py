@@ -125,7 +125,7 @@ class ServiceVoice(QObject):
         if not self.service or not self.model:
             self.failed.emit(
                 "Read Aloud: set up your speech service first "
-                "(View → Read Aloud Voice…)."
+                "(View → Media → Read Aloud Voice…)."
             )
             return
         if text in self.audio:

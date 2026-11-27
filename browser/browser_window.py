@@ -3769,7 +3769,7 @@ class BrowserWindow(QMainWindow):
         return self._read_aloud
 
     def open_read_aloud_settings(self):
-        """View → Read Aloud Voice…: the desktop's voices or your own service."""
+        """View → Media → Read Aloud Voice…: the desktop's voices or your own service."""
         from ui.read_aloud_dialog import ReadAloudVoiceDialog
 
         reader = getattr(self, "_read_aloud", None)

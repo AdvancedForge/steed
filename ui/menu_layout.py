@@ -116,7 +116,10 @@ SUBMENUS = {
                 ("Import Layout…", "Export Layout…"),
             ),
         ),
-        ("Media", (("Play or Pause Media", "Mini Player"),)),
+        (
+            "Media",
+            (("Play or Pause Media", "Mini Player"), ("Read Aloud Voice…",)),
+        ),
         (
             "Advanced",
             (
