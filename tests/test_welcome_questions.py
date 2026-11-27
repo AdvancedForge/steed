@@ -31,7 +31,9 @@ class PieceTests(unittest.TestCase):
         self.assertIn('id="you"', page)
         self.assertIn("steed://action/welcome-answer?q=ai&amp;a=daily", page)
         self.assertNotIn('class="answer on"', page)
-        self.assertNotIn('class="sets"', page)
+        # The note under each question is there before it is answered (empty),
+        # so answering never moves the questions below.
+        self.assertEqual(page.count('<p class="sets"></p>'), 3)
         chosen = rendered({"weight": "light"})
         self.assertEqual(chosen.count('class="answer on"'), 1)
         self.assertIn(

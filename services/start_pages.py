@@ -1234,8 +1234,10 @@ def welcome_questions(given):
             f"{escape(label)}</a>"
             for value, label in choices
         )
+        # Always there (empty until answered), so answering never moves the
+        # questions below it.
         said = (
-            f'<p class="sets">{escape(EFFECTS[key][chosen][4])}</p>' if chosen else ""
+            f'<p class="sets">{escape(EFFECTS[key][chosen][4]) if chosen else ""}</p>'
         )
         parts.append(
             f'<h2 class="choice">{escape(question)}</h2>'
@@ -1805,9 +1807,12 @@ html:has(body.onboarding) { scrollbar-gutter: stable; }
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent); transition: border-color .2s, background-color .2s; }
 .step .answer:hover { border-color: var(--accent); }
 .step .answer.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.step p.sets { font-size: 13.5px; color: var(--muted); margin: 6px 0 0; }
+.step p.sets { font-size: 13.5px; line-height: 1.45; color: var(--muted); margin: 6px 0 0;
+  max-width: 64ch; min-height: 2.9em; }
 .step .tile.photo .tile-art { background: linear-gradient(160deg, #f3a66b, #6a4c93 60%, #1d3557); }
-.step .tile.colour .tile-art { background: conic-gradient(from 200deg, #1f3a5f, #2f5d50, #8a6d1f, #7a2e2e, #5b3a6b, #1f3a5f); }
+/* What Colour gives you: New Tab's own soft wash (FALLBACK_GRADIENT). */
+.step .tile.colour .tile-art { background: radial-gradient(circle at 20% 15%, #dfe9ff 0, transparent 55%),
+  radial-gradient(circle at 85% 80%, #f3e3f7 0, transparent 50%), #eef2f8; }
 .step .tile.glass .tile-art { background: linear-gradient(135deg, color-mix(in srgb, #fff 35%, transparent), color-mix(in srgb, #fff 8%, transparent)),
   linear-gradient(160deg, #577590, #f3722c); }
 .step .actions { display: flex; gap: 10px; margin-top: 26px; flex-wrap: wrap; }
