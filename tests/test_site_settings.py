@@ -147,8 +147,12 @@ class WindowTests(unittest.TestCase):
         self.window._show_site_menu()
         menu = self.window.site_menu
         actions = {a.text(): a for a in menu.actions()}
+        # The page's own server is plain http here: said first.
+        self.assertEqual(menu.title(), "127.0.0.1")
+        self.assertIn("Connection is not secure", actions)
+        self.assertIn("Allow JavaScript", actions)
         self.assertTrue(actions["Allow pop-ups and new windows"].isChecked())
-        self.assertFalse(actions["Clear settings for this site"].isEnabled())
+        self.assertFalse(actions["Reset Settings for This Site"].isEnabled())
         actions["Allow autoplay with sound"].setChecked(False)
         actions["Allow pop-ups and new windows"].setChecked(False)
         menu.close()

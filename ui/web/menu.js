@@ -73,7 +73,7 @@ window.steedUI = {render(next) {
   document.getElementById('title').textContent = next.title;
   // Right-click menus show only their items: no title bar or settings footer.
   document.body.classList.toggle('context-menu', !!next.context_menu && !next.back);
-  document.querySelector('footer').hidden = !!next.context_menu;
+  document.querySelector('footer').hidden = !!next.context_menu || !!next.plain;
   document.getElementById('back').hidden = !next.back;
   const signature = JSON.stringify(next.rows); if (key === signature) return true; key = signature;
   const items = document.getElementById('items'); items.replaceChildren();

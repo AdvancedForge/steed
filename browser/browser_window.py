@@ -5612,10 +5612,27 @@ class BrowserWindow(QMainWindow):
         store = self._site_settings()
         values = store.get(host)
         menu = QMenu(self)
-        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        menu.addSection(host)
+        secure = tab.url().scheme() == "https"
+        name = tab.url().host() or host
+        menu.setTitle(name)
+        menu.setProperty("steed_plain", True)
+        # First: whether anyone can listen in.
+        heading = menu.addAction(
+            "Connection is secure" if secure else "Connection is not secure"
+        )
+        heading.setEnabled(False)
+        if secure:
+            menu.addAction("Certificate…").triggered.connect(
+                lambda: self._show_certificate(name, tab.url().port(443))
+            )
+        menu.addSeparator()
         for key, label in site_settings.LABELS.items():
-            action = menu.addAction(f"Allow {label.lower()}")
+            text = (
+                label
+                if label.startswith("JavaScript")
+                else label[:1].lower() + label[1:]
+            )
+            action = menu.addAction(f"Allow {text}")
             action.setCheckable(True)
             action.setChecked(values[key] == "allow")
             action.toggled.connect(
@@ -5623,38 +5640,102 @@ class BrowserWindow(QMainWindow):
                     tab, host, key, "allow" if allowed else "block"
                 )
             )
+        zoom = round(values["zoom"] * 100)
+        reset = menu.addAction(f"Reset Zoom ({zoom}%)")
+        reset.setEnabled(zoom != 100)
+        reset.triggered.connect(lambda: store.set(host, "zoom", 1.0))
+        menu.addSeparator()
         rules = menu.addMenu("Always Open in Profile")
         chosen = self.site_profile(host)
-        for name in [None, *[p for p in self.profile_manager.list_profiles()]]:
-            action = rules.addAction(name or "No rule")
+        for name_ in [None, *[p for p in self.profile_manager.list_profiles()]]:
+            action = rules.addAction(name_ or "No rule")
             action.setCheckable(True)
-            action.setChecked(chosen == name)
+            action.setChecked(chosen == name_)
             action.triggered.connect(
-                lambda _=False, name=name: self.set_site_profile(host, name)
+                lambda _=False, name_=name_: self.set_site_profile(host, name_)
             )
-        menu.addAction("Clear Data for This Site…").triggered.connect(
-            lambda: self.clear_site_data(host)
-        )
-        forget = menu.addAction("Forget this site when its tabs close")
+        forget = menu.addAction("Forget This Site When Its Tabs Close")
         forget.setCheckable(True)
         forget.setChecked(values["forget"] == "forget")
         forget.toggled.connect(
             lambda on: store.set(host, "forget", "forget" if on else "keep")
         )
-        zoom = round(values["zoom"] * 100)
-        reset = menu.addAction(f"Reset zoom ({zoom}%)")
-        reset.setEnabled(zoom != 100)
-        reset.triggered.connect(lambda: store.set(host, "zoom", 1.0))
-        menu.addSeparator()
-        clear = menu.addAction("Clear settings for this site")
+        menu.addAction("Clear Data for This Site…").triggered.connect(
+            lambda: self.clear_site_data(host)
+        )
+        clear = menu.addAction("Reset Settings for This Site")
         clear.setEnabled(bool(store.changed_keys(host)))
         clear.triggered.connect(lambda: self._clear_site_settings(tab, host))
-        menu.addAction("Website permissions…").triggered.connect(
+        menu.addAction("Website Permissions…").triggered.connect(
             lambda: self._open_management("permissions")
         )
         self.site_menu = menu
         field = self.address_bar.address_input
-        menu.popup(field.mapToGlobal(field.rect().bottomLeft()))
+        self._show_html_menu(menu, field.mapToGlobal(field.rect().bottomLeft()))
+
+    def _show_certificate(self, host, port=443):
+        """The site's certificate: who it was issued to and by, and when it
+        expires (Steed asks the server for it again, as the page did)."""
+        from PyQt6.QtCore import QCryptographicHash
+        from PyQt6.QtNetwork import QSslCertificate, QSslSocket
+
+        socket = QSslSocket(self)
+        self._certificate_socket = socket
+        info = QSslCertificate.SubjectInfo
+        answered = []
+
+        def who(certificate, issuer=False):
+            read = certificate.issuerInfo if issuer else certificate.subjectInfo
+            name = ", ".join(read(info.CommonName)) or "(no name)"
+            group = ", ".join(read(info.Organization))
+            return f"{name} ({group})" if group else name
+
+        def shown():
+            answered.append(True)
+            chain = socket.peerCertificateChain()
+            problems = [e.errorString() for e in socket.sslHandshakeErrors()]
+            socket.abort()
+            if not chain:
+                QMessageBox.information(
+                    self, f"Certificate for {host}", "The site sent no certificate."
+                )
+                return
+            first = chain[0]
+            fingerprint = (
+                bytes(first.digest(QCryptographicHash.Algorithm.Sha256).toHex(b":"))
+                .decode()
+                .upper()
+            )
+            lines = [
+                f"Issued to: {who(first)}",
+                f"Issued by: {who(first, issuer=True)}",
+                "Valid from "
+                + first.effectiveDate().toString("d MMM yyyy")
+                + " to "
+                + first.expiryDate().toString("d MMM yyyy"),
+                f"Certificates in the chain: {len(chain)}",
+                f"SHA-256 fingerprint: {fingerprint}",
+            ]
+            if problems:
+                lines.append("Problems: " + "; ".join(problems))
+            else:
+                lines.append("Verified: the certificate is valid for this site.")
+            QMessageBox.information(self, f"Certificate for {host}", "\n".join(lines))
+
+        def failed(*_):
+            if answered:
+                return  # Closed after it answered: nothing went wrong.
+            answered.append(False)
+            QMessageBox.information(
+                self,
+                f"Certificate for {host}",
+                f"The certificate could not be fetched: {socket.errorString()}",
+            )
+
+        socket.encrypted.connect(shown)
+        socket.errorOccurred.connect(failed)
+        socket.ignoreSslErrors()  # Shown below as problems, not refused.
+        socket.connectToHostEncrypted(host, port)
 
     def _set_site_setting(self, tab, host, key, value):
         self._site_settings().set(host, key, value)

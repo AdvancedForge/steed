@@ -585,6 +585,15 @@ only for it closes). Incognito windows never send pages elsewhere. Tab search
 (Ctrl+K, or `@` for tabs) also lists recently closed tabs; choosing one
 reopens it where it was.
 
+### Site information
+
+The icon at the start of the address bar opens the site's menu: whether the
+connection is secure, **Certificate…** (who it was issued to and by, when it
+expires and its SHA-256 fingerprint, fetched again from the site), this
+site's JavaScript, autoplay, pop-ups and text enlarging, its zoom, **Always
+Open in Profile**, **Forget This Site When Its Tabs Close**, **Clear Data for
+This Site…** and **Website Permissions…**.
+
 ### Privacy on every page
 
 Settings → General:

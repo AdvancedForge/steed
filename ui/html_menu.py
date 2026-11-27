@@ -187,6 +187,8 @@ class HtmlMenu(QDialog):
                 "title": menu.title() or "Browser menu",
                 "back": len(self.stack) > 1,
                 "context_menu": self.context_menu,
+                # A menu of its own (the site menu): no "Open in Settings".
+                "plain": bool(self.stack[0].property("steed_plain")),
                 "rows": rows,
                 "colors": self._colors(),
                 "glass": self.glass,
