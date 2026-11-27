@@ -2715,11 +2715,9 @@ class BrowserWindow(QMainWindow):
         def chosen(command):
             if self._closing:
                 return
-            if command is None:
-                self.status_bar.showMessage(
-                    "Add an assistant first (Agents → Add an Assistant…).", 6000
-                )
-                return
+            # Without an assistant it still opens: it looks in pages you read
+            # on this computer, or by meaning with your embeddings service,
+            # and says how to add an assistant.
             self._present_dialog(FindInHistoryDialog(self, command), modal=False)
 
         ensure(self, chosen)
