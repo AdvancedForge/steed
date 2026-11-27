@@ -22,6 +22,8 @@ DEFAULTS = {
     "safe_browsing": True,
     "check_updates": True,
     "open_again": "front",
+    "notifications_where": "desktop",
+    "notifications_often": "every",
     "keep_agent_chats": True,
     "agent_replay": False,
     "remember_pages": False,
@@ -298,6 +300,12 @@ class SettingsDialog(QDialog):
             raise ValueError("Choose which rules remove tracking from addresses.")
         if values["link_rules"] == "file" and not values["link_rules_file"].strip():
             raise ValueError("Choose your rules file, or another set of rules.")
+        from ui.notifications import OFTEN, WHERE
+
+        if values["notifications_where"] not in WHERE:
+            raise ValueError("Choose where notifications appear.")
+        if values["notifications_often"] not in OFTEN:
+            raise ValueError("Choose how often notifications come.")
         from browser import cookie_banners
 
         if values["cookie_banners"] not in cookie_banners.MODES:

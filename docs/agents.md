@@ -597,8 +597,11 @@ Checked with Claude Code 2.1.312 and a synthetic offline runtime; Codex resuming
   and up to 5,000 characters of its text.
 - **Desktop notifications**: when an agent finishes a reply or needs your
   approval while Steed is not in front (or that conversation is not showing),
-  a notification says so; clicking it brings the conversation up. Turn them off
-  with `"agent_notifications": false` in `~/.custom_browser/config.json`.
+  a notification says so; clicking it brings the conversation up. Settings →
+  General → **Notifications** chooses where (your desktop, only inside Steed,
+  or none) and how often (see [Notifications](using-steed.md#notifications));
+  `"agent_notifications": false` in `~/.custom_browser/config.json` still turns
+  off agents' alone.
 
 Incognito windows have no agents, so none of these appear there.
 

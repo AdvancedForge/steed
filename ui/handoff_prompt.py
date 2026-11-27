@@ -155,13 +155,9 @@ class HandoffPrompt(QObject):
         if window is not None and window.isActiveWindow():
             return  # The bar or watch window is already in front of them.
         try:
-            from ui.desktop_notify import DesktopNotifier
+            from ui.notifications import notifications_for
 
-            notifier = getattr(self.registry, "_agent_notifier", None)
-            if notifier is None:
-                notifier = self.registry._agent_notifier = DesktopNotifier(
-                    self.registry
-                )
+            notifier = notifications_for(self.registry)
 
             def bring_up():
                 if window is not None and not sip.isdeleted(window):
@@ -173,6 +169,7 @@ class HandoffPrompt(QObject):
                 f"{self._agent(entry['task_id'])} needs you",
                 entry["message"] or REASONS[entry["reason"]].capitalize() + ".",
                 on_click=bring_up,
+                kind="needs_me",
             )
         except Exception:
             pass  # No notification service: the bar still shows.

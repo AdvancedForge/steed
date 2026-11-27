@@ -2919,9 +2919,9 @@ class BrowserWindow(QMainWindow):
         registry = self.profile_manager.registry
         if getattr(registry, "_watch_notifier", None) is not None:
             return
-        from ui.desktop_notify import DesktopNotifier
+        from ui.notifications import notifications_for
 
-        notifier = registry._watch_notifier = DesktopNotifier(registry)
+        notifier = registry._watch_notifier = notifications_for(registry)
 
         def window_for(watch):
             owner = registry.last_active_owner or next(iter(registry.owners), None)
@@ -2978,6 +2978,7 @@ class BrowserWindow(QMainWindow):
                 "The page now asks you to sign in. Steed keeps looking and picks "
                 "up where it left off once you do.",
                 on_click=open_it,
+                kind="needs_me",
             )
 
         registry.watches.signed_out.connect(signed_out)
@@ -2991,6 +2992,7 @@ class BrowserWindow(QMainWindow):
                     f"Routine “{routine['name']}” could not start",
                     "No agent is set up. Agents → Access and Setup → "
                     "Agent Connection Setup.",
+                    kind="needs_me",
                 )
                 return
             notifier.notify(
@@ -3043,6 +3045,7 @@ class BrowserWindow(QMainWindow):
                 f"{QUrl(url).host()} asks you to sign in, so your agent gets the "
                 "rest without it. Sign in and the next run will read it.",
                 on_click=open_it,
+                kind="needs_me",
             )
 
         registry.routines.needs_you.connect(routine_needs_you)
@@ -3169,9 +3172,9 @@ class BrowserWindow(QMainWindow):
         registry = self.profile_manager.registry
         if getattr(registry, "_agent_notifier", None) is not None:
             return
-        from ui.desktop_notify import DesktopNotifier
+        from ui.notifications import notifications_for
 
-        notifier = registry._agent_notifier = DesktopNotifier(registry)
+        notifier = registry._agent_notifier = notifications_for(registry)
         providers = registry.agent_providers
 
         def showing(task):
@@ -3204,9 +3207,9 @@ class BrowserWindow(QMainWindow):
                 window.agent_sidebar.refresh()
                 window.agent_sidebar.select_task(task)
 
-        def alert(task, title, body):
+        def alert(task, title, body, kind="news"):
             if self.config.get("agent_notifications", True) and not showing(task):
-                notifier.notify(title, body, on_click=lambda: bring_up(task))
+                notifier.notify(title, body, on_click=lambda: bring_up(task), kind=kind)
 
         def replied(task):
             name = providers.agent_label_for(task)
@@ -3222,7 +3225,10 @@ class BrowserWindow(QMainWindow):
         def requested(task, _request, payload):
             name = (payload or {}).get("agent") or providers.agent_label_for(task)
             alert(
-                task, f"{name} needs your approval", "Open Steed to allow or deny it."
+                task,
+                f"{name} needs your approval",
+                "Open Steed to allow or deny it.",
+                "needs_me",
             )
 
         providers.replied.connect(replied)
@@ -3235,6 +3241,7 @@ class BrowserWindow(QMainWindow):
                 f"Reported today: ${spent:.2f} (your limit: ${limit:.0f}). "
                 "Agents keep working; Pause All Agents stops them.",
                 on_click=lambda: self._new_tab(url="steed:activity"),
+                kind="needs_me",
             )
             for window in QApplication.topLevelWidgets():
                 if isinstance(window, BrowserWindow) and not window._closing:

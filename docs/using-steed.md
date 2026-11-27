@@ -631,6 +631,19 @@ The site menu's **Forget this site when its tabs close** deletes the site's
 cookies (it and its subdomains) when its last tab in the profile closes or
 moves to another site, along with everything else it stores.
 
+### Notifications
+
+Agents replying or needing you, watches, routines, automations and your own
+pages can notify you. Settings → General → **Notifications** chooses where:
+**On my desktop** (the default), **Only inside Steed** (a note in the
+top-right corner of the window you used last; it waits until you've had the
+window in front for ten seconds, and clicking it opens what it is about), or
+**None**. **How often**: **Every time**, **At most one every 15 minutes** or
+**At most one an hour** (what comes in between is gathered into one: "3
+updates from Steed"), or **Only when something needs me**. Something that
+needs you (an approval, a page an agent handed you, a watch or routine that
+needs you to sign in, agents past their cost limit) always comes at once.
+
 ### Clearing browsing data
 
 **General → Clear Browsing Data…** (Ctrl+Shift+Delete) clears, for a time range

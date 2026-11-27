@@ -316,11 +316,9 @@ class PageApi(QObject):
         title, text = one("title")[:120], one("text")[:400]
         if not title:
             raise ValueError("Give the notification a title.")
-        if getattr(self, "notifier", None) is None:
-            from ui.desktop_notify import DesktopNotifier
+        from ui.notifications import notifications_for
 
-            self.notifier = DesktopNotifier(self)
-        self.notifier.notify(title, text)
+        notifications_for(self.pages.registry).notify(title, text)
         return {"notified": True}
 
     def _tabs(self):

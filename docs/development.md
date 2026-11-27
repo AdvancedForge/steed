@@ -35,7 +35,12 @@ QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu" python test
 python tests/smoke_password_manager.py
 ```
 
-Tests use temporary profiles and local content. Chromium still needs to initialize its process sandbox; a restricted container may require running the tests outside that container's sandbox.
+Tests use temporary profiles and local content, and send no desktop
+notifications: `tests/qt_test_support.py` sets
+`STEED_NO_DESKTOP_NOTIFICATIONS=1` (and `STEED_NO_TIPS=1`); tests of
+notifications replace `DesktopNotifier.notify` and see every call. Set the
+variable yourself when you run a smoke script or a test Steed you don't want
+notifications from. Chromium still needs to initialize its process sandbox; a restricted container may require running the tests outside that container's sandbox.
 
 Qt unittest classes use `tests/qt_test_support.py` to share one QApplication
 throughout the process. Register profile fixture directories with

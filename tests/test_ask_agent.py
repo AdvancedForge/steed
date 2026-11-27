@@ -187,18 +187,18 @@ class AskAgentTests(unittest.TestCase):
             self.assertIsNone(self.window.ask_agent(self.tab, page=""))
 
     def test_desktop_notifications_when_the_agent_replies_or_needs_you(self):
+        from ui.desktop_notify import DesktopNotifier
+
         shown = []
 
-        class Notifier:
-            def __init__(self, parent=None):
-                pass
+        def notify(notifier, summary, body="", on_click=None, replaces=0):
+            shown.append((summary, body, on_click))
+            return 1
 
-            def notify(self, summary, body="", on_click=None, replaces=0):
-                shown.append((summary, body, on_click))
-                return 1
-
-        with patch("ui.desktop_notify.DesktopNotifier", Notifier):
-            self.window._agent_alerts()
+        delivered = patch.object(DesktopNotifier, "notify", notify)
+        delivered.start()
+        self.addCleanup(delivered.stop)
+        self.window._agent_alerts()
         providers = self.registry.agent_providers
         providers.agent_names["t1"] = "Claude Code"
         with patch.object(
