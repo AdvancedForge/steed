@@ -2,8 +2,11 @@
 
 Used when an agent replies or needs an approval while Steed is not in front.
 Clicking a notification runs its callback (to bring the conversation up).
-Without a notification service it quietly does nothing.
+Without a notification service it quietly does nothing, and so it does while
+STEED_NO_DESKTOP_NOTIFICATIONS is set (the tests set it).
 """
+
+import os
 
 from PyQt6.QtCore import QMetaType, QObject, QVariant, pyqtSlot
 from PyQt6.QtDBus import QDBusConnection, QDBusMessage
@@ -19,7 +22,9 @@ class DesktopNotifier(QObject):
         super().__init__(parent)
         self.bus = QDBusConnection.sessionBus()
         self.callbacks = {}
-        self.available = self.bus.isConnected()
+        self.available = self.bus.isConnected() and not os.environ.get(
+            "STEED_NO_DESKTOP_NOTIFICATIONS"
+        )
         if self.available:
             self.bus.connect(SERVICE, PATH, INTERFACE, "ActionInvoked", self._invoked)
             self.bus.connect(

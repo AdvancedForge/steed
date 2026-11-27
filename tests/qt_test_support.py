@@ -22,6 +22,9 @@ WAIT_SECONDS = float(os.environ.get("STEED_TEST_WAIT", "30"))
 
 # One-time tips stay out of the way of tests (test_tips turns them on).
 os.environ.setdefault("STEED_NO_TIPS", "1")
+# Nor do desktop notifications reach your desktop while tests run; tests of
+# them replace DesktopNotifier.notify and see every call.
+os.environ.setdefault("STEED_NO_DESKTOP_NOTIFICATIONS", "1")
 
 
 def application():
